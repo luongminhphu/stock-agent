@@ -48,6 +48,6 @@ jobs:
         env:
           ENVIRONMENT: test
           MOCK_MARKET: "true"
-          DATABASE_URL: 'sqlite+aiosqlite:///:memory:'
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
           DISCORD_TOKEN: test-token
           PERPLEXITY_API_KEY: test-key
