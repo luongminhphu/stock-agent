@@ -1,35 +1,36 @@
-"""Health check routes.
+"""Health routes — liveness + readiness probes.
 
-GET /health        — liveness probe (always 200 if process is alive)
-GET /health/ready  — readiness probe (checks DB connectivity)
+Owner: api segment (thin adapter over platform.health).
+
+GET /health  — liveness probe (always 200 if process is alive)
+GET /ready   — readiness probe (200 only when bootstrap + DB are healthy)
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 
-from src.api.deps import get_db
-from src.api.dto.health import HealthResponse, ReadinessResponse
-from src.platform.config import settings
+from src.platform.health import HealthStatus, check_liveness, check_readiness
 
 router = APIRouter(tags=["health"])
 
 
-@router.get("/health", response_model=HealthResponse)
-async def liveness() -> HealthResponse:
-    """Liveness probe — returns 200 as long as the process is running."""
-    return HealthResponse(status="ok", env=settings.environment, version="0.1.0")
+@router.get("/health", summary="Liveness probe")
+async def liveness() -> JSONResponse:
+    """Returns 200 as long as the process is running."""
+    report = await check_liveness()
+    return JSONResponse(
+        status_code=200,
+        content={"status": report.status, "checks": report.checks},
+    )
 
 
-@router.get("/health/ready", response_model=ReadinessResponse)
-async def readiness(db: AsyncSession = Depends(get_db)) -> ReadinessResponse:
-    """Readiness probe — checks DB connectivity before accepting traffic."""
-    try:
-        await db.execute(text("SELECT 1"))
-        db_ok = True
-    except Exception:
-        db_ok = False
-
-    status = "ready" if db_ok else "not_ready"
-    return ReadinessResponse(status=status, db=db_ok)
+@router.get("/ready", summary="Readiness probe")
+async def readiness() -> JSONResponse:
+    """Returns 200 only when DB is reachable and all singletons are initialised."""
+    report = await check_readiness()
+    status_code = 200 if report.status == HealthStatus.OK else 503
+    return JSONResponse(
+        status_code=status_code,
+        content={"status": report.status, "checks": report.checks},
+    )

@@ -2,6 +2,11 @@
 
 Owner: platform segment.
 Called by both API lifespan and bot on_ready.
+
+Guarantees:
+    - Idempotent: safe to call multiple times (singletons are initialised only once).
+    - Fast in test environment: mock adapter selected, no real HTTP clients.
+    - All get_*() raise RuntimeError if called before bootstrap().
 """
 from __future__ import annotations
 
@@ -17,6 +22,7 @@ _snapshot_scheduler: object | None = None
 
 
 async def bootstrap() -> None:
+    """Initialise all application singletons. Idempotent."""
     configure_logging()
 
     global _quote_service, _perplexity_client, _thesis_review_agent
@@ -49,6 +55,17 @@ async def bootstrap() -> None:
         logger.info("platform.bootstrap.briefing_agent_ready")
 
     logger.info("platform.bootstrap.ok")
+
+
+def reset_singletons() -> None:
+    """Reset all singletons — for use in tests only."""
+    global _quote_service, _perplexity_client, _thesis_review_agent
+    global _briefing_agent, _snapshot_scheduler
+    _quote_service = None
+    _perplexity_client = None
+    _thesis_review_agent = None
+    _briefing_agent = None
+    _snapshot_scheduler = None
 
 
 def get_quote_service() -> object:
