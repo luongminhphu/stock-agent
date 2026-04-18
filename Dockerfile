@@ -1,64 +1,82 @@
 # syntax=docker/dockerfile:1
-# ──────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
 # stock-agent — multi-stage Dockerfile
 # Stage 1: builder  — installs deps into a venv
-# Stage 2: runtime  — minimal image, copies venv only
+# Stage 2: runtime  — minimal image, copies venv + source only
 #
 # Build:   docker build -t stock-agent .
 # Run API: docker run --env-file .env -p 8000:8000 stock-agent api
 # Run bot: docker run --env-file .env stock-agent bot
-# ──────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
 
-# ── Stage 1: builder ──────────────────────────────────────────────────────────
+# -- Stage 1: builder -------------------------------------------------------
 FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
-# System deps needed to compile some Python packages (e.g. asyncpg)
+# System deps needed to compile asyncpg / psycopg2
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Create isolated virtualenv so we can copy it cleanly to runtime stage
+# Isolated venv so we can copy it cleanly to the runtime stage
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Install deps first (layer-cached unless pyproject.toml changes)
+# 1. Upgrade pip + install hatchling so the build backend is available
+RUN pip install --upgrade pip hatchling
+
+# 2. Copy only the manifest first — layer is cached unless deps change
 COPY pyproject.toml ./
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -e ".[dev]"
 
-# Copy source last (invalidates layer only on code changes)
+# 3. Install runtime deps (non-editable — no src needed at this step)
+RUN pip install --no-cache-dir \
+        fastapi \
+        "uvicorn[standard]" \
+        "sqlalchemy[asyncio]" \
+        alembic \
+        asyncpg \
+        aiosqlite \
+        pydantic \
+        pydantic-settings \
+        httpx \
+        tenacity \
+        structlog \
+        "discord.py" \
+        python-dotenv
+
+# 4. Copy source and install the package itself (now src/ is present)
 COPY . .
+RUN pip install --no-cache-dir --no-deps .
 
 
-# ── Stage 2: runtime ──────────────────────────────────────────────────────────
+# -- Stage 2: runtime -------------------------------------------------------
 FROM python:3.12-slim AS runtime
 
 WORKDIR /app
 
-# Runtime system deps only
+# Runtime system libs only (asyncpg needs libpq at runtime)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
-# Non-root user for security
+# Non-root user
 RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
 
 # Copy venv from builder
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy application source
-COPY --from=builder /app /app
+# Copy application source + config files
+COPY --from=builder /app/src        ./src
+COPY --from=builder /app/migrations ./migrations
+COPY --from=builder /app/alembic.ini ./alembic.ini
+COPY --from=builder /app/scripts    ./scripts
 
-# Ensure the entrypoint is executable
 RUN chmod +x /app/scripts/entrypoint.sh
 
-# Run as non-root
 USER appuser
 
-# Default: start API. Override with "bot" to start the Discord bot.
 ENTRYPOINT ["/app/scripts/entrypoint.sh"]
 CMD ["api"]

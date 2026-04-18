@@ -13,6 +13,7 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.0",
     "alembic>=1.13.0",
     "asyncpg>=0.29.0",
+    "aiosqlite>=0.20.0",
     "pydantic>=2.7.0",
     "pydantic-settings>=2.3.0",
     "httpx>=0.27.0",
@@ -29,9 +30,12 @@ dev = [
     "pytest-cov>=5.0.0",
     "ruff>=0.4.0",
     "mypy>=1.10.0",
-    "aiosqlite>=0.20.0",
     "httpx>=0.27.0",
 ]
+
+# Tell hatchling where the packages live (src layout)
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
 
 [tool.ruff]
 line-length = 100
@@ -40,16 +44,16 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 ignore = [
-    "E501",   # line too long — formatter handles line length, not linter
-    "B008",   # FastAPI Depends() in function defaults — intentional
-    "SIM108", # ternary vs if-else — readability preference
-    "UP007",  # Use X | Y for union types — keep Optional[] for clarity in some cases
+    "E501",
+    "B008",
+    "SIM108",
+    "UP007",
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = [
-    "S101",  # assert is fine in tests
-    "B011",  # assert False — fine in tests
+    "S101",
+    "B011",
 ]
 
 [tool.pytest.ini_options]
@@ -74,8 +78,8 @@ ignore_missing_imports = true
 [tool.coverage.run]
 source = ["src"]
 omit = [
-    "src/platform/bootstrap.py",  # requires real DB to init
-    "src/bot/*",                   # discord runtime — not unit-testable
+    "src/platform/bootstrap.py",
+    "src/bot/*",
 ]
 
 [tool.coverage.report]
