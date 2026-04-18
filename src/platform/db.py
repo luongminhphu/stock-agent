@@ -1,22 +1,41 @@
 from collections.abc import AsyncGenerator
 
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import StaticPool
 
 from src.platform.config import settings
 
 
-engine = create_async_engine(
-    settings.database_url,
-    echo=settings.is_development,
-    pool_size=10,
-    max_overflow=20,
-    pool_pre_ping=True,  # Reconnect on stale connections
-)
+def _build_engine():
+    url = settings.database_url
+    is_sqlite = url.startswith("sqlite")
+
+    if is_sqlite:
+        # SQLite does not support pool_size / max_overflow;
+        # use StaticPool so the same in-memory DB is shared across threads.
+        return create_async_engine(
+            url,
+            echo=settings.is_development,
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+
+    return create_async_engine(
+        url,
+        echo=settings.is_development,
+        pool_size=10,
+        max_overflow=20,
+        pool_pre_ping=True,
+    )
+
+
+engine = _build_engine()
 
 AsyncSessionLocal = async_sessionmaker(
     engine,
@@ -43,3 +62,7 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
             raise
         finally:
             await session.close()
+
+
+# Alias used by routes/readmodel.py and any other callers expecting `get_session`.
+get_session = get_db_session
