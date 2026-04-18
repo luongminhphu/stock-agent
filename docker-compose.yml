@@ -1,0 +1,75 @@
+# stock-agent — local development stack
+# Usage:
+#   docker compose up           # start all services
+#   docker compose up api       # API only (no bot)
+#   docker compose up bot       # bot only
+#   docker compose down -v      # stop and remove volumes
+
+services:
+
+  # ── PostgreSQL ────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: stock_agent
+      POSTGRES_USER: stock_agent
+      POSTGRES_PASSWORD: stock_agent_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stock_agent"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Alembic migrate (runs once then exits) ────────────────────────────────
+  migrate:
+    build: .
+    command: ["migrate"]
+    env_file: .env
+    environment:
+      DATABASE_URL: 'postgresql+asyncpg://stock_agent:stock_agent_dev@db:5432/stock_agent'
+      ENVIRONMENT: development
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ── FastAPI ───────────────────────────────────────────────────────────────
+  api:
+    build: .
+    command: ["api"]
+    env_file: .env
+    environment:
+      DATABASE_URL: 'postgresql+asyncpg://stock_agent:stock_agent_dev@db:5432/stock_agent'
+      ENVIRONMENT: development
+      MOCK_MARKET: 'false'
+    ports:
+      - "8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Discord bot ───────────────────────────────────────────────────────────
+  bot:
+    build: .
+    command: ["bot"]
+    env_file: .env
+    environment:
+      DATABASE_URL: 'postgresql+asyncpg://stock_agent:stock_agent_dev@db:5432/stock_agent'
+      ENVIRONMENT: development
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
