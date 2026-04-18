@@ -6,9 +6,6 @@ on:
     types: [opened, synchronize, reopened]
 
 jobs:
-  # -----------------------------------------------------------------------
-  # Enforce segment boundary: each PR should touch ≤2 segments
-  # -----------------------------------------------------------------------
   segment-boundary:
     name: Segment boundary check
     runs-on: ubuntu-latest
@@ -25,14 +22,10 @@ jobs:
           echo "Segment count: $COUNT"
           if [ "$COUNT" -gt 2 ]; then
             echo "WARNING: PR touches $COUNT segments ($CHANGED)."
-            echo "Blueprint rule: each patch should touch ≤2 segments."
+            echo "Blueprint rule: each patch should touch <=2 segments."
             echo "Please split into smaller PRs unless this is a cross-cutting change."
-            # Warn only, do not fail — large refactors are sometimes needed
           fi
 
-  # -----------------------------------------------------------------------
-  # Quick smoke: lint + tests must pass on PR
-  # -----------------------------------------------------------------------
   pr-smoke:
     name: PR smoke (lint + tests)
     runs-on: ubuntu-latest
