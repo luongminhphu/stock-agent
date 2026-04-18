@@ -26,6 +26,15 @@ from src.platform.db import Base
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _enum_values(x):
+    """Return .value list for SAEnum so asyncpg binds lowercase strings."""
+    return [e.value for e in x]
+
+
+# ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
 
@@ -72,7 +81,9 @@ class Thesis(Base):
     title: Mapped[str] = mapped_column(String(256), nullable=False)
     summary: Mapped[str | None] = mapped_column(Text)
     status: Mapped[ThesisStatus] = mapped_column(
-        SAEnum(ThesisStatus), nullable=False, default=ThesisStatus.ACTIVE
+        SAEnum(ThesisStatus, values_callable=_enum_values),
+        nullable=False,
+        default=ThesisStatus.ACTIVE,
     )
 
     # Prices (VND)
@@ -165,7 +176,9 @@ class Assumption(Base):
     )
     description: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[AssumptionStatus] = mapped_column(
-        SAEnum(AssumptionStatus), nullable=False, default=AssumptionStatus.PENDING
+        SAEnum(AssumptionStatus, values_callable=_enum_values),
+        nullable=False,
+        default=AssumptionStatus.PENDING,
     )
     note: Mapped[str | None] = mapped_column(Text)
     updated_at: Mapped[datetime] = mapped_column(
@@ -196,7 +209,9 @@ class Catalyst(Base):
     )
     description: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[CatalystStatus] = mapped_column(
-        SAEnum(CatalystStatus), nullable=False, default=CatalystStatus.PENDING
+        SAEnum(CatalystStatus, values_callable=_enum_values),
+        nullable=False,
+        default=CatalystStatus.PENDING,
     )
     expected_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -221,7 +236,9 @@ class ThesisReview(Base):
     thesis_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("theses.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    verdict: Mapped[ReviewVerdict] = mapped_column(SAEnum(ReviewVerdict), nullable=False)
+    verdict: Mapped[ReviewVerdict] = mapped_column(
+        SAEnum(ReviewVerdict, values_callable=_enum_values), nullable=False
+    )
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
     reasoning: Mapped[str] = mapped_column(Text, nullable=False)
     risk_signals: Mapped[str | None] = mapped_column(Text)  # JSON list stored as text
