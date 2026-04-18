@@ -30,13 +30,8 @@ class Settings(BaseSettings):
     mock_market: bool = False  # Force MockAdapter regardless of environment
 
     # Briefing scheduler
-    # Channel IDs where scheduled briefs are sent (Discord channel snowflake IDs).
-    # Leave empty to disable that scheduled brief.
-    morning_channel_id: str = ""  # e.g. "123456789012345678"
-    eod_channel_id: str = ""      # e.g. "123456789012345679"
-
-    # Service-account user_id whose watchlist drives scheduled briefs.
-    # Must match a Discord user snowflake that has a populated watchlist.
+    morning_channel_id: str = ""
+    eod_channel_id: str = ""
     scheduler_user_id: str = ""
 
     # ------------------------------------------------------------------
@@ -65,4 +60,14 @@ class Settings(BaseSettings):
         return bool(self.morning_channel_id or self.eod_channel_id) and bool(self.scheduler_user_id)
 
 
+# Singleton — imported directly by most modules
 settings = Settings()
+
+
+def get_settings() -> Settings:
+    """Factory returning the singleton Settings instance.
+
+    Useful for FastAPI Depends() and testing overrides:
+        app.dependency_overrides[get_settings] = lambda: test_settings
+    """
+    return settings
