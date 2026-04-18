@@ -1,0 +1,31 @@
+# Segment ownership — reviewers auto-assigned per boundary
+
+# Platform: infra changes require extra scrutiny
+/src/platform/           @luongminhphu
+
+# AI: prompt/schema changes affect all agents
+/src/ai/                 @luongminhphu
+
+# Market: adapter changes can break all enrichment
+/src/market/             @luongminhphu
+
+# Thesis: core domain — highest review bar
+/src/thesis/             @luongminhphu
+
+# Watchlist
+/src/watchlist/          @luongminhphu
+
+# Briefing
+/src/briefing/           @luongminhphu
+
+# Readmodel: query-side changes
+/src/readmodel/          @luongminhphu
+
+# Bot adapter — must not contain domain logic
+/src/bot/                @luongminhphu
+
+# API adapter
+/src/api/                @luongminhphu
+
+# CI changes require full review
+/.github/                @luongminhphu

@@ -1,0 +1,60 @@
+name: PR Check
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  # -----------------------------------------------------------------------
+  # Enforce segment boundary: each PR should touch ≤2 segments
+  # -----------------------------------------------------------------------
+  segment-boundary:
+    name: Segment boundary check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check changed segments
+        run: |
+          CHANGED=$(git diff --name-only origin/main...HEAD | grep '^src/' | sed 's|src/||' | cut -d/ -f1 | sort -u)
+          COUNT=$(echo "$CHANGED" | grep -v '^$' | wc -l)
+          echo "Changed segments: $CHANGED"
+          echo "Segment count: $COUNT"
+          if [ "$COUNT" -gt 2 ]; then
+            echo "WARNING: PR touches $COUNT segments ($CHANGED)."
+            echo "Blueprint rule: each patch should touch ≤2 segments."
+            echo "Please split into smaller PRs unless this is a cross-cutting change."
+            # Warn only, do not fail — large refactors are sometimes needed
+          fi
+
+  # -----------------------------------------------------------------------
+  # Quick smoke: lint + tests must pass on PR
+  # -----------------------------------------------------------------------
+  pr-smoke:
+    name: PR smoke (lint + tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[dev]" aiosqlite httpx
+
+      - name: Lint
+        run: ruff check src/ tests/
+
+      - name: Test
+        run: pytest --tb=short -q
+        env:
+          ENVIRONMENT: test
+          MOCK_MARKET: "true"
+          DATABASE_URL: sqlite+aiosqlite:///:memory:
+          DISCORD_TOKEN: test-token
+          PERPLEXITY_API_KEY: test-key

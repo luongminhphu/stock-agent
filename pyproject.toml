@@ -29,6 +29,8 @@ dev = [
     "pytest-cov>=5.0.0",
     "ruff>=0.4.0",
     "mypy>=1.10.0",
+    "aiosqlite>=0.20.0",
+    "httpx>=0.27.0",
 ]
 
 [tool.ruff]
@@ -37,11 +39,44 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = [
+    "B008",   # FastAPI Depends() in function defaults — intentional
+    "SIM108", # ternary vs if-else — readability preference
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]  # assert is fine in tests
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+addopts = "-v --tb=short"
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
+exclude = ["tests/"]
+
+[[tool.mypy.overrides]]
+module = [
+    "discord.*",
+    "structlog.*",
+    "tenacity.*",
+    "alembic.*",
+]
+ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "src/platform/bootstrap.py",  # requires real DB to init
+    "src/bot/*",                   # discord runtime — not unit-testable
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "\\.\.\\.",
+]
