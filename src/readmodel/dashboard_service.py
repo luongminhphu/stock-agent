@@ -2,18 +2,30 @@
 
 Owner: readmodel segment.
 
+Endpoints served (via src/api/routes/dashboard.py):
+    get_stats()                  — KPI tong quan (open theses, verdict dist, risky count)
+    get_theses_list()            — list thesis + last review + health score
+    get_thesis_detail()          — full detail + assumption history + score series
+    get_upcoming_catalysts()     — catalysts sap toi
+    get_scan_latest()            — snapshot scan gan nhat (WatchlistScan)
+    get_brief_latest()           — snapshot brief gan nhat (BriefSnapshot)
+    get_verdict_accuracy()       — backtesting: accuracy per verdict
+    get_thesis_performances()    — backtesting: performance per thesis
+    get_price_snapshots()        — backtesting: price chart data for one thesis
+
 Design rules:
 - SELECT only columns needed; never load full ORM graphs.
 - No writes. No business logic. No AI calls.
-- Current price is fetched from market segment and injected into DTOs;
-  the SQL query itself never touches market tables.
+- Scoring logic delegates to src.thesis.scoring (not duplicated here).
 - All public methods are async and accept an AsyncSession.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import json
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
-from sqlalchemy import Integer, func, select
+from sqlalchemy import Integer, and_, case, cast, desc, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.readmodel.schemas import (
@@ -22,17 +34,682 @@ from src.readmodel.schemas import (
     WatchlistSnapshotRow,
 )
 
+# Vietnam timezone offset (UTC+7)
+_VN_OFFSET = timedelta(hours=7)
+
+
+def _now_vn() -> datetime:
+    return datetime.now(timezone.utc).astimezone(timezone(_VN_OFFSET))
+
 
 class DashboardService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
     # ------------------------------------------------------------------
-    # Public API
+    # 1. Stats — KPI tong quan
+    # ------------------------------------------------------------------
+
+    async def get_stats(self, user_id: str) -> dict[str, Any]:
+        """Tuong duong GET /api/stats cua dashboard cu."""
+        from src.thesis.models import (
+            Catalyst,
+            CatalystStatus,
+            Thesis,
+            ThesisReview,
+            ThesisStatus,
+        )
+
+        # open thesis count
+        open_count = await self._session.scalar(
+            select(func.count(Thesis.id)).where(
+                Thesis.user_id == user_id,
+                Thesis.status == ThesisStatus.ACTIVE,
+            )
+        ) or 0
+
+        # verdict distribution on latest review per thesis
+        latest_review_subq = (
+            select(
+                ThesisReview.thesis_id,
+                ThesisReview.verdict,
+                func.row_number()
+                .over(
+                    partition_by=ThesisReview.thesis_id,
+                    order_by=ThesisReview.reviewed_at.desc(),
+                )
+                .label("rn"),
+            )
+            .join(Thesis, Thesis.id == ThesisReview.thesis_id)
+            .where(
+                Thesis.user_id == user_id,
+                Thesis.status == ThesisStatus.ACTIVE,
+            )
+            .subquery()
+        )
+        verdict_rows = (
+            await self._session.execute(
+                select(
+                    latest_review_subq.c.verdict,
+                    func.count().label("cnt"),
+                )
+                .where(latest_review_subq.c.rn == 1)
+                .group_by(latest_review_subq.c.verdict)
+            )
+        ).all()
+        verdict_map: dict[str, int] = {str(r.verdict): r.cnt for r in verdict_rows}
+
+        # catalysts upcoming within 7 days
+        now_vn = _now_vn()
+        in_7d = now_vn + timedelta(days=7)
+        upcoming_7d = await self._session.scalar(
+            select(func.count(Catalyst.id))
+            .join(Thesis, Thesis.id == Catalyst.thesis_id)
+            .where(
+                Thesis.user_id == user_id,
+                Thesis.status == ThesisStatus.ACTIVE,
+                Catalyst.status == CatalystStatus.PENDING,
+                Catalyst.expected_date.between(now_vn, in_7d),
+            )
+        ) or 0
+
+        # total reviews & reviews today
+        total_reviews = await self._session.scalar(
+            select(func.count(ThesisReview.id))
+            .join(Thesis, Thesis.id == ThesisReview.thesis_id)
+            .where(Thesis.user_id == user_id)
+        ) or 0
+
+        today_start = now_vn.replace(hour=0, minute=0, second=0, microsecond=0)
+        reviews_today = await self._session.scalar(
+            select(func.count(ThesisReview.id))
+            .join(Thesis, Thesis.id == ThesisReview.thesis_id)
+            .where(
+                Thesis.user_id == user_id,
+                ThesisReview.reviewed_at >= today_start,
+            )
+        ) or 0
+
+        # risky theses: score < 40
+        risky = await self._session.scalar(
+            select(func.count(Thesis.id)).where(
+                Thesis.user_id == user_id,
+                Thesis.status == ThesisStatus.ACTIVE,
+                Thesis.score < 40,
+            )
+        ) or 0
+
+        return {
+            "open_theses": open_count,
+            "verdict": {
+                "BULLISH": verdict_map.get("BULLISH", 0),
+                "BEARISH": verdict_map.get("BEARISH", 0),
+                "NEUTRAL": verdict_map.get("NEUTRAL", 0),
+                "WATCHLIST": verdict_map.get("WATCHLIST", 0),
+            },
+            "risky_theses": risky,
+            "upcoming_catalysts_7d": upcoming_7d,
+            "total_reviews": total_reviews,
+            "reviews_today": reviews_today,
+        }
+
+    # ------------------------------------------------------------------
+    # 2. Theses list
+    # ------------------------------------------------------------------
+
+    async def get_theses_list(
+        self,
+        user_id: str,
+        status: str | None = "active",
+        ticker: str | None = None,
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        """Tuong duong GET /api/theses cua dashboard cu."""
+        from src.thesis.models import (
+            Assumption,
+            Catalyst,
+            Thesis,
+            ThesisReview,
+            ThesisStatus,
+        )
+
+        filters = [Thesis.user_id == user_id]
+        if status and status != "all":
+            try:
+                filters.append(Thesis.status == ThesisStatus(status))
+            except ValueError:
+                pass
+        if ticker:
+            filters.append(Thesis.ticker == ticker.upper())
+
+        latest_review_subq = (
+            select(
+                ThesisReview.thesis_id,
+                ThesisReview.verdict,
+                ThesisReview.confidence,
+                ThesisReview.reasoning,
+                ThesisReview.reviewed_at,
+                func.row_number()
+                .over(
+                    partition_by=ThesisReview.thesis_id,
+                    order_by=ThesisReview.reviewed_at.desc(),
+                )
+                .label("rn"),
+            ).subquery()
+        )
+
+        n_assumptions_subq = (
+            select(
+                Assumption.thesis_id,
+                func.count(Assumption.id).label("n"),
+            )
+            .group_by(Assumption.thesis_id)
+            .subquery()
+        )
+        n_catalysts_subq = (
+            select(
+                Catalyst.thesis_id,
+                func.count(Catalyst.id).label("n"),
+            )
+            .group_by(Catalyst.thesis_id)
+            .subquery()
+        )
+
+        stmt = (
+            select(
+                Thesis,
+                latest_review_subq.c.verdict.label("last_verdict"),
+                latest_review_subq.c.confidence.label("last_confidence"),
+                latest_review_subq.c.reviewed_at.label("last_reviewed_at"),
+                func.coalesce(n_assumptions_subq.c.n, 0).label("n_assumptions"),
+                func.coalesce(n_catalysts_subq.c.n, 0).label("n_catalysts"),
+            )
+            .outerjoin(
+                latest_review_subq,
+                and_(
+                    latest_review_subq.c.thesis_id == Thesis.id,
+                    latest_review_subq.c.rn == 1,
+                ),
+            )
+            .outerjoin(n_assumptions_subq, n_assumptions_subq.c.thesis_id == Thesis.id)
+            .outerjoin(n_catalysts_subq, n_catalysts_subq.c.thesis_id == Thesis.id)
+            .where(*filters)
+            .order_by(Thesis.updated_at.desc())
+            .limit(limit)
+        )
+
+        rows = (await self._session.execute(stmt)).all()
+        result = []
+        for r in rows:
+            t = r.Thesis
+            result.append(
+                {
+                    "id": t.id,
+                    "ticker": t.ticker,
+                    "title": t.title,
+                    "status": str(t.status.value),
+                    "score": t.score,
+                    "entry_price": t.entry_price,
+                    "target_price": t.target_price,
+                    "stop_loss": t.stop_loss,
+                    "created_at": t.created_at.isoformat() if t.created_at else None,
+                    "updated_at": t.updated_at.isoformat() if t.updated_at else None,
+                    "last_verdict": str(r.last_verdict) if r.last_verdict else None,
+                    "last_confidence": r.last_confidence,
+                    "last_reviewed_at": r.last_reviewed_at.isoformat() if r.last_reviewed_at else None,
+                    "n_assumptions": r.n_assumptions,
+                    "n_catalysts": r.n_catalysts,
+                }
+            )
+        return result
+
+    # ------------------------------------------------------------------
+    # 3. Thesis detail
+    # ------------------------------------------------------------------
+
+    async def get_thesis_detail(
+        self, user_id: str, thesis_id: int
+    ) -> dict[str, Any] | None:
+        """Tuong duong GET /api/theses/<id>."""
+        from src.thesis.models import (
+            Assumption,
+            Catalyst,
+            Thesis,
+            ThesisReview,
+        )
+
+        thesis = await self._session.get(Thesis, thesis_id)
+        if thesis is None or thesis.user_id != user_id:
+            return None
+
+        reviews_rows = (
+            await self._session.execute(
+                select(ThesisReview)
+                .where(ThesisReview.thesis_id == thesis_id)
+                .order_by(ThesisReview.reviewed_at.desc())
+                .limit(20)
+            )
+        ).scalars().all()
+
+        assumptions_rows = (
+            await self._session.execute(
+                select(Assumption)
+                .where(Assumption.thesis_id == thesis_id)
+                .order_by(Assumption.id.asc())
+            )
+        ).scalars().all()
+
+        catalysts_rows = (
+            await self._session.execute(
+                select(Catalyst)
+                .where(Catalyst.thesis_id == thesis_id)
+                .order_by(Catalyst.expected_date.asc())
+            )
+        ).scalars().all()
+
+        def _review_dict(r: ThesisReview) -> dict:
+            return {
+                "id": r.id,
+                "verdict": str(r.verdict.value),
+                "confidence": r.confidence,
+                "reasoning": r.reasoning,
+                "risk_signals": _parse_json_field(r.risk_signals),
+                "next_watch_items": _parse_json_field(r.next_watch_items),
+                "reviewed_at": r.reviewed_at.isoformat() if r.reviewed_at else None,
+                "reviewed_price": r.reviewed_price,
+            }
+
+        def _assumption_dict(a: Assumption) -> dict:
+            return {
+                "id": a.id,
+                "description": a.description,
+                "status": str(a.status.value),
+                "note": a.note,
+                "updated_at": a.updated_at.isoformat() if a.updated_at else None,
+            }
+
+        def _catalyst_dict(c: Catalyst) -> dict:
+            return {
+                "id": c.id,
+                "description": c.description,
+                "status": str(c.status.value),
+                "expected_date": c.expected_date.isoformat() if c.expected_date else None,
+                "triggered_at": c.triggered_at.isoformat() if c.triggered_at else None,
+                "note": c.note,
+            }
+
+        last_review = reviews_rows[0] if reviews_rows else None
+
+        return {
+            "thesis": {
+                "id": thesis.id,
+                "ticker": thesis.ticker,
+                "title": thesis.title,
+                "summary": thesis.summary,
+                "status": str(thesis.status.value),
+                "score": thesis.score,
+                "entry_price": thesis.entry_price,
+                "target_price": thesis.target_price,
+                "stop_loss": thesis.stop_loss,
+                "created_at": thesis.created_at.isoformat() if thesis.created_at else None,
+                "updated_at": thesis.updated_at.isoformat() if thesis.updated_at else None,
+                "last_verdict": str(last_review.verdict.value) if last_review else None,
+                "last_confidence": last_review.confidence if last_review else None,
+                "n_assumptions": len(assumptions_rows),
+                "n_catalysts": len(catalysts_rows),
+                "n_reviews": len(reviews_rows),
+            },
+            "reviews": [_review_dict(r) for r in reviews_rows],
+            "assumptions": [_assumption_dict(a) for a in assumptions_rows],
+            "catalysts": [_catalyst_dict(c) for c in catalysts_rows],
+        }
+
+    # ------------------------------------------------------------------
+    # 4. Upcoming catalysts
+    # ------------------------------------------------------------------
+
+    async def get_upcoming_catalysts(
+        self, user_id: str, days: int = 30
+    ) -> list[dict[str, Any]]:
+        """Tuong duong GET /api/catalysts/upcoming."""
+        from src.thesis.models import Catalyst, CatalystStatus, Thesis, ThesisStatus
+
+        now_vn = _now_vn()
+        end = now_vn + timedelta(days=days)
+
+        rows = (
+            await self._session.execute(
+                select(
+                    Catalyst.id,
+                    Catalyst.thesis_id,
+                    Catalyst.description,
+                    Catalyst.expected_date,
+                    Catalyst.note,
+                    Thesis.ticker.label("thesis_ticker"),
+                    Thesis.title.label("thesis_title"),
+                    Thesis.status.label("thesis_status"),
+                )
+                .join(Thesis, Thesis.id == Catalyst.thesis_id)
+                .where(
+                    Thesis.user_id == user_id,
+                    Thesis.status == ThesisStatus.ACTIVE,
+                    Catalyst.status == CatalystStatus.PENDING,
+                    Catalyst.expected_date.between(now_vn, end),
+                )
+                .order_by(Catalyst.expected_date.asc())
+                .limit(100)
+            )
+        ).all()
+
+        return [
+            {
+                "id": r.id,
+                "thesis_id": r.thesis_id,
+                "description": r.description,
+                "expected_date": r.expected_date.isoformat() if r.expected_date else None,
+                "note": r.note,
+                "thesis_ticker": r.thesis_ticker,
+                "thesis_title": r.thesis_title,
+                "thesis_status": str(r.thesis_status.value),
+            }
+            for r in rows
+        ]
+
+    # ------------------------------------------------------------------
+    # 5. Latest scan snapshot
+    # ------------------------------------------------------------------
+
+    async def get_scan_latest(self, user_id: str) -> dict[str, Any] | None:
+        """Tuong duong GET /api/scan/latest."""
+        try:
+            from src.watchlist.models import WatchlistScan
+
+            row = (
+                await self._session.execute(
+                    select(WatchlistScan)
+                    .where(WatchlistScan.user_id == user_id)
+                    .order_by(WatchlistScan.scanned_at.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+
+            if not row:
+                return None
+
+            return {
+                "id": row.id,
+                "user_id": row.user_id,
+                "summary": row.summary,
+                "scanned_at": row.scanned_at.isoformat() if row.scanned_at else None,
+            }
+        except Exception:
+            return None
+
+    # ------------------------------------------------------------------
+    # 6. Latest brief snapshot
+    # ------------------------------------------------------------------
+
+    async def get_brief_latest(
+        self, user_id: str, phase: str = "morning"
+    ) -> dict[str, Any] | None:
+        """Tuong duong GET /api/brief/latest."""
+        try:
+            from src.briefing.models import BriefSnapshot
+
+            row = (
+                await self._session.execute(
+                    select(BriefSnapshot)
+                    .where(
+                        BriefSnapshot.user_id == user_id,
+                        BriefSnapshot.phase == phase,
+                    )
+                    .order_by(BriefSnapshot.created_at.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+
+            if not row:
+                return None
+
+            return {
+                "id": row.id,
+                "user_id": row.user_id,
+                "phase": row.phase,
+                "content": row.content,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+            }
+        except Exception:
+            return None
+
+    # ------------------------------------------------------------------
+    # 7. Backtesting — verdict accuracy
+    # ------------------------------------------------------------------
+
+    async def get_verdict_accuracy(
+        self, user_id: str
+    ) -> list[dict[str, Any]]:
+        """Tuong duong GET /api/backtesting/verdict-accuracy.
+
+        Dung ThesisSnapshot: so sanh verdict cua review truoc snapshot
+        voi pnl_pct thuc te.
+        Bullish/Watchlist dung neu pnl_pct >= 0.
+        Bearish dung neu pnl_pct < 0.
+        """
+        from src.thesis.models import Thesis, ThesisReview, ThesisSnapshot
+
+        # Lay snapshot co review gan nhat truoc no
+        # Dung lateral/subquery don gian: lay reviewed_price + verdict tai thoi diem snapshot
+        snap_subq = (
+            select(
+                ThesisSnapshot.id,
+                ThesisSnapshot.thesis_id,
+                ThesisSnapshot.pnl_pct,
+                ThesisSnapshot.snapshotted_at,
+            )
+            .join(Thesis, Thesis.id == ThesisSnapshot.thesis_id)
+            .where(
+                Thesis.user_id == user_id,
+                ThesisSnapshot.pnl_pct.isnot(None),
+            )
+            .subquery()
+        )
+
+        # review ngay truoc moi snapshot
+        review_before_subq = (
+            select(
+                ThesisReview.thesis_id,
+                ThesisReview.verdict,
+                ThesisReview.reviewed_at,
+                func.row_number()
+                .over(
+                    partition_by=ThesisReview.thesis_id,
+                    order_by=ThesisReview.reviewed_at.desc(),
+                )
+                .label("rn"),
+            ).subquery()
+        )
+
+        rows = (
+            await self._session.execute(
+                select(
+                    review_before_subq.c.verdict,
+                    func.count().label("total"),
+                    func.round(func.avg(snap_subq.c.pnl_pct), 2).label("avg_pnl"),
+                    func.round(
+                        100.0
+                        * func.sum(
+                            cast(
+                                case(
+                                    (
+                                        and_(
+                                            review_before_subq.c.verdict.in_(["BULLISH", "WATCHLIST"]),
+                                            snap_subq.c.pnl_pct >= 0,
+                                        ),
+                                        1,
+                                    ),
+                                    (
+                                        and_(
+                                            review_before_subq.c.verdict.in_(["BEARISH"]),
+                                            snap_subq.c.pnl_pct < 0,
+                                        ),
+                                        1,
+                                    ),
+                                    else_=0,
+                                ),
+                                Integer,
+                            )
+                        )
+                        / func.nullif(func.count(), 0),
+                        2,
+                    ).label("accuracy_pct"),
+                )
+                .select_from(snap_subq)
+                .join(
+                    review_before_subq,
+                    and_(
+                        review_before_subq.c.thesis_id == snap_subq.c.thesis_id,
+                        review_before_subq.c.rn == 1,
+                    ),
+                )
+                .group_by(review_before_subq.c.verdict)
+                .order_by(review_before_subq.c.verdict)
+            )
+        ).all()
+
+        return [
+            {
+                "verdict": str(r.verdict),
+                "total": r.total,
+                "avg_pnl": r.avg_pnl,
+                "accuracy_pct": r.accuracy_pct,
+            }
+            for r in rows
+        ]
+
+    # ------------------------------------------------------------------
+    # 8. Backtesting — thesis performances
+    # ------------------------------------------------------------------
+
+    async def get_thesis_performances(
+        self,
+        user_id: str,
+        ticker: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Tuong duong GET /api/backtesting/thesis-performances.
+
+        Aggregate ThesisSnapshot per thesis: avg/max/min pnl_pct.
+        """
+        from src.thesis.models import Thesis, ThesisSnapshot
+
+        filters = [Thesis.user_id == user_id]
+        if ticker:
+            filters.append(Thesis.ticker == ticker.upper())
+
+        rows = (
+            await self._session.execute(
+                select(
+                    Thesis.id.label("thesis_id"),
+                    Thesis.ticker,
+                    Thesis.title,
+                    Thesis.status,
+                    Thesis.entry_price,
+                    Thesis.score,
+                    func.count(ThesisSnapshot.id).label("snapshot_count"),
+                    func.round(func.avg(ThesisSnapshot.pnl_pct), 2).label("avg_pnl_pct"),
+                    func.round(func.max(ThesisSnapshot.pnl_pct), 2).label("max_pnl_pct"),
+                    func.round(func.min(ThesisSnapshot.pnl_pct), 2).label("min_pnl_pct"),
+                    func.max(ThesisSnapshot.snapshotted_at).label("last_snapshot_at"),
+                )
+                .outerjoin(ThesisSnapshot, ThesisSnapshot.thesis_id == Thesis.id)
+                .where(*filters)
+                .group_by(Thesis.id)
+                .order_by(desc(func.max(ThesisSnapshot.snapshotted_at)))
+                .limit(min(limit, 500))
+            )
+        ).all()
+
+        return [
+            {
+                "thesis_id": r.thesis_id,
+                "ticker": r.ticker,
+                "title": r.title,
+                "thesis_status": str(r.status.value),
+                "entry_price": r.entry_price,
+                "score": r.score,
+                "snapshot_count": r.snapshot_count,
+                "avg_pnl_pct": r.avg_pnl_pct,
+                "max_pnl_pct": r.max_pnl_pct,
+                "min_pnl_pct": r.min_pnl_pct,
+                "last_snapshot_at": r.last_snapshot_at.isoformat() if r.last_snapshot_at else None,
+            }
+            for r in rows
+        ]
+
+    # ------------------------------------------------------------------
+    # 9. Backtesting — price snapshots (chart data)
+    # ------------------------------------------------------------------
+
+    async def get_price_snapshots(
+        self, user_id: str, thesis_id: int
+    ) -> dict[str, Any] | None:
+        """Tuong duong GET /api/backtesting/price-snapshots/<id>."""
+        from src.thesis.models import Thesis, ThesisReview, ThesisSnapshot
+
+        thesis = await self._session.get(Thesis, thesis_id)
+        if thesis is None or thesis.user_id != user_id:
+            return None
+
+        snapshots = (
+            await self._session.execute(
+                select(ThesisSnapshot)
+                .where(ThesisSnapshot.thesis_id == thesis_id)
+                .order_by(ThesisSnapshot.snapshotted_at.asc())
+            )
+        ).scalars().all()
+
+        # Review tai thoi diem gan nhat truoc moi snapshot
+        reviews = (
+            await self._session.execute(
+                select(ThesisReview)
+                .where(ThesisReview.thesis_id == thesis_id)
+                .order_by(ThesisReview.reviewed_at.asc())
+            )
+        ).scalars().all()
+
+        def _verdict_at(snap_time: datetime) -> str | None:
+            """Binary search-style: last review before snap_time."""
+            last: str | None = None
+            for rv in reviews:
+                if rv.reviewed_at <= snap_time:
+                    last = str(rv.verdict.value)
+                else:
+                    break
+            return last
+
+        return {
+            "thesis_id": thesis_id,
+            "ticker": thesis.ticker,
+            "title": thesis.title,
+            "snapshots": [
+                {
+                    "id": s.id,
+                    "price_at_snapshot": s.price_at_snapshot,
+                    "pnl_pct": s.pnl_pct,
+                    "score_at_snapshot": s.score_at_snapshot,
+                    "verdict_at_snap": _verdict_at(s.snapshotted_at) if s.snapshotted_at else None,
+                    "snapshotted_at": s.snapshotted_at.isoformat() if s.snapshotted_at else None,
+                }
+                for s in snapshots
+            ],
+        }
+
+    # ------------------------------------------------------------------
+    # Legacy compatibility — kept for existing callers
     # ------------------------------------------------------------------
 
     async def get_dashboard(self, user_id: str) -> DashboardResponse:
-        """Build full dashboard payload for a user."""
+        """Build full dashboard payload for a user (legacy)."""
         rows = await self._thesis_summary_rows(user_id)
         active = sum(1 for r in rows if r.status == "active")
         invalidated = sum(1 for r in rows if r.status == "invalidated")
@@ -53,8 +730,8 @@ class DashboardService:
     async def get_watchlist_snapshot(
         self, user_id: str
     ) -> list[WatchlistSnapshotRow]:
-        """Watchlist items joined with linked thesis summary."""
-        from src.thesis.models import Thesis  # read-only join
+        """Watchlist items joined with linked thesis summary (legacy)."""
+        from src.thesis.models import Thesis
         from src.watchlist.models import WatchlistItem
 
         stmt = (
@@ -79,7 +756,7 @@ class DashboardService:
                 thesis_id=r.thesis_id,
                 thesis_title=r.thesis_title,
                 thesis_status=str(r.thesis_status) if r.thesis_status else None,
-                current_price=None,  # caller injects from market segment
+                current_price=None,
                 added_at=r.added_at,
             )
             for r in rows
@@ -101,7 +778,6 @@ class DashboardService:
             ThesisReview,
         )
 
-        # Latest review per thesis via correlated subquery.
         latest_review_subq = (
             select(
                 ThesisReview.thesis_id,
@@ -213,3 +889,17 @@ class DashboardService:
                 )
             )
         return out
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _parse_json_field(value: str | None) -> list | dict | None:
+    if not value:
+        return None
+    try:
+        return json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        return value  # type: ignore[return-value]
