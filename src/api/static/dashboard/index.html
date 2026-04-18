@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>stock-agent &mdash; Dashboard</title>
+    <link rel="stylesheet" href="/static/dashboard/dashboard.css" />
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <div class="title">
+          <h1>stock-agent dashboard</h1>
+          <p>Shell UI cho readmodel dashboard. Dữ liệu lấy từ <code>/api/v1/readmodel</code>.</p>
+        </div>
+        <div class="toolbar">
+          <input id="userId" value="demo-user" placeholder="user_id" />
+          <select id="statusFilter">
+            <option value="active">active</option>
+            <option value="all">all</option>
+            <option value="invalidated">invalidated</option>
+            <option value="closed">closed</option>
+          </select>
+          <button id="reloadBtn">&#8635; Reload</button>
+        </div>
+      </div>
+
+      <!-- KPI row -->
+      <div class="grid kpis">
+        <div class="card">
+          <div class="muted">Open theses</div>
+          <div class="kpi-value" id="openTheses">-</div>
+        </div>
+        <div class="card">
+          <div class="muted">Risky (score &lt; 40)</div>
+          <div class="kpi-value" id="riskyTheses">-</div>
+        </div>
+        <div class="card">
+          <div class="muted">Upcoming catalysts 7d</div>
+          <div class="kpi-value" id="upcoming7d">-</div>
+        </div>
+        <div class="card">
+          <div class="muted">Reviews today</div>
+          <div class="kpi-value" id="reviewsToday">-</div>
+        </div>
+        <div class="card">
+          <div class="muted">Total reviews</div>
+          <div class="kpi-value" id="totalReviews">-</div>
+        </div>
+      </div>
+
+      <!-- Main grid -->
+      <div class="grid main">
+        <!-- Theses table -->
+        <div class="card">
+          <h2>Theses</h2>
+          <div id="thesesTableWrap" class="empty">Chưa tải dữ liệu…</div>
+        </div>
+
+        <!-- Right column -->
+        <div class="grid side">
+          <div class="card">
+            <h2>Verdict distribution</h2>
+            <div id="verdictList" class="list empty">Chưa tải dữ liệu…</div>
+          </div>
+          <div class="card">
+            <h2>Upcoming catalysts (30d)</h2>
+            <div id="catalystList" class="list empty">Chưa tải dữ liệu…</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="errorBanner" class="error-banner hidden"></div>
+
+      <div class="footer">
+        Route <code>/dashboard</code> chỉ serve static shell.
+        Business data đi qua <code>/api/v1/readmodel/dashboard/{user_id}/...</code>.
+      </div>
+    </div>
+
+    <script src="/static/dashboard/dashboard.js" defer></script>
+  </body>
+</html>

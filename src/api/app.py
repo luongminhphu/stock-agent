@@ -6,7 +6,8 @@ No business logic — all domain work is delegated to segment services.
 
 Route groups:
     /health                — liveness + readiness probes
-    /dashboard             — static dashboard shell (wave 3 UI bootstrap)
+    /dashboard             — static dashboard shell (wave 3 UI)
+    /static/dashboard/     — CSS + JS assets for the shell
     /api/v1/market         — quote, OHLCV
     /api/v1/thesis         — thesis CRUD + review
     /api/v1/watchlist      — watchlist management
@@ -35,8 +36,10 @@ from src.api.routes.thesis import router as thesis_router
 from src.api.routes.watchlist import router as watchlist_router
 
 logger = get_logger(__name__)
-STATIC_DIR = Path(__file__).resolve().parent / "static"
-DASHBOARD_HTML = STATIC_DIR / "dashboard.html"
+
+_STATIC_DIR    = Path(__file__).resolve().parent / "static"
+_DASHBOARD_DIR = _STATIC_DIR / "dashboard"
+_DASHBOARD_HTML = _DASHBOARD_DIR / "index.html"
 
 
 @asynccontextmanager
@@ -66,24 +69,27 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Static shell for dashboard UI.
-    if STATIC_DIR.exists():
-        app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+    # Mount static assets (CSS, JS, fonts, …)
+    # /static/dashboard/dashboard.css
+    # /static/dashboard/dashboard.js
+    if _STATIC_DIR.exists():
+        app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
     @app.get("/dashboard", include_in_schema=False)
     async def serve_dashboard() -> FileResponse:
         """Serve static dashboard shell.
 
-        API data is fetched client-side from /api/v1/readmodel/... endpoints.
+        HTML is at src/api/static/dashboard/index.html.
+        API data is fetched client-side from /api/v1/readmodel/dashboard/{user_id}/...
         """
-        return FileResponse(DASHBOARD_HTML)
+        return FileResponse(_DASHBOARD_HTML)
 
     # Register routers — order matters for OpenAPI grouping
     app.include_router(health_router)
-    app.include_router(market_router, prefix="/api/v1")
-    app.include_router(thesis_router, prefix="/api/v1")
+    app.include_router(market_router,    prefix="/api/v1")
+    app.include_router(thesis_router,    prefix="/api/v1")
     app.include_router(watchlist_router, prefix="/api/v1")
-    app.include_router(briefing_router, prefix="/api/v1")
+    app.include_router(briefing_router,  prefix="/api/v1")
     app.include_router(readmodel_router, prefix="/api/v1")
 
     @app.exception_handler(Exception)
