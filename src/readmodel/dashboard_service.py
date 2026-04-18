@@ -61,7 +61,6 @@ class DashboardService:
             ThesisStatus,
         )
 
-        # open thesis count
         open_count = (
             await self._session.scalar(
                 select(func.count(Thesis.id)).where(
@@ -72,7 +71,6 @@ class DashboardService:
             or 0
         )
 
-        # verdict distribution on latest review per thesis
         latest_review_subq = (
             select(
                 ThesisReview.thesis_id,
@@ -103,7 +101,6 @@ class DashboardService:
         ).all()
         verdict_map: dict[str, int] = {str(r.verdict): r.cnt for r in verdict_rows}
 
-        # catalysts upcoming within 7 days
         now_vn = _now_vn()
         in_7d = now_vn + timedelta(days=7)
         upcoming_7d = (
@@ -120,7 +117,6 @@ class DashboardService:
             or 0
         )
 
-        # total reviews & reviews today
         total_reviews = (
             await self._session.scalar(
                 select(func.count(ThesisReview.id))
@@ -143,7 +139,6 @@ class DashboardService:
             or 0
         )
 
-        # risky theses: score < 40
         risky = (
             await self._session.scalar(
                 select(func.count(Thesis.id)).where(
@@ -168,10 +163,6 @@ class DashboardService:
             "total_reviews": total_reviews,
             "reviews_today": reviews_today,
         }
-
-    # ------------------------------------------------------------------
-    # 2. Theses list
-    # ------------------------------------------------------------------
 
     async def get_theses_list(
         self,
@@ -278,10 +269,6 @@ class DashboardService:
                 }
             )
         return result
-
-    # ------------------------------------------------------------------
-    # 3. Thesis detail
-    # ------------------------------------------------------------------
 
     async def get_thesis_detail(self, user_id: str, thesis_id: int) -> dict[str, Any] | None:
         """Tuong duong GET /api/theses/<id>."""
@@ -390,10 +377,6 @@ class DashboardService:
             "catalysts": [_catalyst_dict(c) for c in catalysts_rows],
         }
 
-    # ------------------------------------------------------------------
-    # 4. Upcoming catalysts
-    # ------------------------------------------------------------------
-
     async def get_upcoming_catalysts(self, user_id: str, days: int = 30) -> list[dict[str, Any]]:
         """Tuong duong GET /api/catalysts/upcoming."""
         from src.thesis.models import Catalyst, CatalystStatus, Thesis, ThesisStatus
@@ -439,10 +422,6 @@ class DashboardService:
             for r in rows
         ]
 
-    # ------------------------------------------------------------------
-    # 5. Latest scan snapshot
-    # ------------------------------------------------------------------
-
     async def get_scan_latest(self, user_id: str) -> dict[str, Any] | None:
         """Tuong duong GET /api/scan/latest."""
         try:
@@ -468,10 +447,6 @@ class DashboardService:
             }
         except Exception:
             return None
-
-    # ------------------------------------------------------------------
-    # 6. Latest brief snapshot
-    # ------------------------------------------------------------------
 
     async def get_brief_latest(self, user_id: str, phase: str = "morning") -> dict[str, Any] | None:
         """Tuong duong GET /api/brief/latest."""
@@ -503,25 +478,20 @@ class DashboardService:
         except Exception:
             return None
 
-    # ------------------------------------------------------------------
-    # 7. Backtesting — verdict accuracy
-    # ------------------------------------------------------------------
-
     async def get_verdict_accuracy(self, user_id: str) -> list[dict[str, Any]]:
         """Tuong duong GET /api/backtesting/verdict-accuracy.
 
-        Dung ThesisSnapshot: so sanh verdict cua review truoc snapshot
-        voi pnl_pct thuc te.
+        Dung ThesisSnapshot: danh gia huong verdict gan nhat cua moi thesis
+        so voi pnl_pct thuc te tren cac snapshot.
         Bullish/Watchlist dung neu pnl_pct >= 0.
         Bearish dung neu pnl_pct < 0.
+        Neutral khong tinh accuracy directional, se ra 0.
         """
         from src.thesis.models import Thesis, ThesisReview, ThesisSnapshot
 
-        # Lay snapshot co review gan nhat truoc no
-        # Dung lateral/subquery don gian: lay reviewed_price + verdict tai thoi diem snapshot
         snap_subq = (
             select(
-                ThesisSnapshot.id,
+                ThesisSnapshot.id.label("snapshot_id"),
                 ThesisSnapshot.thesis_id,
                 ThesisSnapshot.pnl_pct,
                 ThesisSnapshot.snapshotted_at,
@@ -534,65 +504,63 @@ class DashboardService:
             .subquery()
         )
 
-        # review ngay truoc moi snapshot
-        review_before_subq = select(
-            ThesisReview.thesis_id,
-            ThesisReview.verdict,
-            ThesisReview.reviewed_at,
-            func.row_number()
-            .over(
-                partition_by=ThesisReview.thesis_id,
-                order_by=ThesisReview.reviewed_at.desc(),
+        latest_review_subq = (
+            select(
+                ThesisReview.thesis_id,
+                ThesisReview.verdict,
+                func.row_number()
+                .over(
+                    partition_by=ThesisReview.thesis_id,
+                    order_by=ThesisReview.reviewed_at.desc(),
+                )
+                .label("rn"),
             )
-            .label("rn"),
-        ).subquery()
+            .join(Thesis, Thesis.id == ThesisReview.thesis_id)
+            .where(Thesis.user_id == user_id)
+            .subquery()
+        )
+
+        directional_hit = case(
+            (
+                and_(
+                    latest_review_subq.c.verdict.in_(["BULLISH", "WATCHLIST"]),
+                    snap_subq.c.pnl_pct >= 0,
+                ),
+                1,
+            ),
+            (
+                and_(
+                    latest_review_subq.c.verdict == "BEARISH",
+                    snap_subq.c.pnl_pct < 0,
+                ),
+                1,
+            ),
+            else_=0,
+        )
 
         rows = (
             await self._session.execute(
                 select(
-                    review_before_subq.c.verdict,
-                    func.count().label("total"),
+                    latest_review_subq.c.verdict,
+                    func.count(snap_subq.c.snapshot_id).label("total"),
                     func.round(func.avg(snap_subq.c.pnl_pct), 2).label("avg_pnl"),
                     func.round(
                         100.0
-                        * func.sum(
-                            cast(
-                                case(
-                                    (
-                                        and_(
-                                            review_before_subq.c.verdict.in_(
-                                                ["BULLISH", "WATCHLIST"]
-                                            ),
-                                            snap_subq.c.pnl_pct >= 0,
-                                        ),
-                                        1,
-                                    ),
-                                    (
-                                        and_(
-                                            review_before_subq.c.verdict.in_(["BEARISH"]),
-                                            snap_subq.c.pnl_pct < 0,
-                                        ),
-                                        1,
-                                    ),
-                                    else_=0,
-                                ),
-                                Integer,
-                            )
-                        )
-                        / func.nullif(func.count(), 0),
+                        * func.sum(cast(directional_hit, Integer))
+                        / func.nullif(func.count(snap_subq.c.snapshot_id), 0),
                         2,
                     ).label("accuracy_pct"),
                 )
                 .select_from(snap_subq)
                 .join(
-                    review_before_subq,
+                    latest_review_subq,
                     and_(
-                        review_before_subq.c.thesis_id == snap_subq.c.thesis_id,
-                        review_before_subq.c.rn == 1,
+                        latest_review_subq.c.thesis_id == snap_subq.c.thesis_id,
+                        latest_review_subq.c.rn == 1,
                     ),
                 )
-                .group_by(review_before_subq.c.verdict)
-                .order_by(review_before_subq.c.verdict)
+                .group_by(latest_review_subq.c.verdict)
+                .order_by(latest_review_subq.c.verdict)
             )
         ).all()
 
@@ -605,10 +573,6 @@ class DashboardService:
             }
             for r in rows
         ]
-
-    # ------------------------------------------------------------------
-    # 8. Backtesting — thesis performances
-    # ------------------------------------------------------------------
 
     async def get_thesis_performances(
         self,
@@ -666,10 +630,6 @@ class DashboardService:
             for r in rows
         ]
 
-    # ------------------------------------------------------------------
-    # 9. Backtesting — price snapshots (chart data)
-    # ------------------------------------------------------------------
-
     async def get_price_snapshots(self, user_id: str, thesis_id: int) -> dict[str, Any] | None:
         """Tuong duong GET /api/backtesting/price-snapshots/<id>."""
         from src.thesis.models import Thesis, ThesisReview, ThesisSnapshot
@@ -690,7 +650,6 @@ class DashboardService:
             .all()
         )
 
-        # Review tai thoi diem gan nhat truoc moi snapshot
         reviews = (
             (
                 await self._session.execute(
@@ -704,7 +663,6 @@ class DashboardService:
         )
 
         def _verdict_at(snap_time: datetime) -> str | None:
-            """Binary search-style: last review before snap_time."""
             last: str | None = None
             for rv in reviews:
                 if rv.reviewed_at <= snap_time:
@@ -730,12 +688,7 @@ class DashboardService:
             ],
         }
 
-    # ------------------------------------------------------------------
-    # Legacy compatibility — kept for existing callers
-    # ------------------------------------------------------------------
-
     async def get_dashboard(self, user_id: str) -> DashboardResponse:
-        """Build full dashboard payload for a user (legacy)."""
         rows = await self._thesis_summary_rows(user_id)
         active = sum(1 for r in rows if r.status == "active")
         invalidated = sum(1 for r in rows if r.status == "invalidated")
@@ -754,7 +707,6 @@ class DashboardService:
         )
 
     async def get_watchlist_snapshot(self, user_id: str) -> list[WatchlistSnapshotRow]:
-        """Watchlist items joined with linked thesis summary (legacy)."""
         from src.thesis.models import Thesis
         from src.watchlist.models import WatchlistItem
 
@@ -785,10 +737,6 @@ class DashboardService:
             )
             for r in rows
         ]
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
 
     async def _thesis_summary_rows(self, user_id: str) -> list[ThesisSummaryRow]:
         from src.thesis.models import (
@@ -906,11 +854,6 @@ class DashboardService:
                 )
             )
         return out
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 
 def _parse_json_field(value: str | None) -> list | dict | None:
