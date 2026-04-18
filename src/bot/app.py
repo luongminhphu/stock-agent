@@ -31,7 +31,8 @@ def create_bot() -> commands.Bot:
     async def on_ready() -> None:
         await bootstrap()
         await _register_cogs(bot)
-        _start_scheduler(bot)
+        _start_briefing_scheduler(bot)
+        _start_snapshot_scheduler()
         await bot.tree.sync()
         logger.info(
             "bot.ready",
@@ -56,22 +57,18 @@ async def _register_cogs(bot: commands.Bot) -> None:
     await bot.add_cog(WatchlistCog(bot))
     await bot.add_cog(ThesisCog(bot))
     await bot.add_cog(MarketCog(bot))
-    await bot.add_cog(BriefingCog(bot))  # wave 2b
+    await bot.add_cog(BriefingCog(bot))
     logger.info(
         "bot.cogs_loaded",
         cogs=["WatchlistCog", "ThesisCog", "MarketCog", "BriefingCog"],
     )
 
 
-def _start_scheduler(bot: commands.Bot) -> None:
-    """Attach and start BriefingScheduler if configured.
-
-    Guarded by settings.briefing_scheduler_enabled so a dev environment
-    with no channel IDs set never attempts to send to Discord.
-    """
+def _start_briefing_scheduler(bot: commands.Bot) -> None:
+    """Attach BriefingScheduler if all three channel/user settings are configured."""
     if not settings.briefing_scheduler_enabled:
         logger.info(
-            "bot.scheduler.skipped",
+            "bot.briefing_scheduler.skipped",
             reason="morning_channel_id/eod_channel_id/scheduler_user_id not configured",
         )
         return
@@ -81,11 +78,31 @@ def _start_scheduler(bot: commands.Bot) -> None:
     scheduler = BriefingScheduler(client=bot)
     scheduler.start()
     logger.info(
-        "bot.scheduler.started",
+        "bot.briefing_scheduler.started",
         morning_channel=settings.morning_channel_id,
         eod_channel=settings.eod_channel_id,
         user=settings.scheduler_user_id,
     )
+
+
+def _start_snapshot_scheduler() -> None:
+    """Start the daily thesis snapshot job (market segment).
+
+    Runs at 15:10 ICT on weekdays regardless of briefing config.
+    Guarded: skips gracefully in test/mock environment.
+    """
+    from src.platform.config import settings
+
+    if settings.environment == "test":
+        logger.info("bot.snapshot_scheduler.skipped", reason="test environment")
+        return
+
+    from src.platform.bootstrap import get_snapshot_scheduler
+    from src.market.snapshot_scheduler import SnapshotScheduler
+
+    scheduler: SnapshotScheduler = get_snapshot_scheduler()  # type: ignore[assignment]
+    scheduler.start()
+    logger.info("bot.snapshot_scheduler.started", time_ict="15:10")
 
 
 def run() -> None:

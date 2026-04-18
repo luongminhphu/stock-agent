@@ -13,12 +13,14 @@ _quote_service: object | None = None
 _perplexity_client: object | None = None
 _thesis_review_agent: object | None = None
 _briefing_agent: object | None = None
+_snapshot_scheduler: object | None = None
 
 
 async def bootstrap() -> None:
     configure_logging()
 
-    global _quote_service, _perplexity_client, _thesis_review_agent, _briefing_agent
+    global _quote_service, _perplexity_client, _thesis_review_agent
+    global _briefing_agent, _snapshot_scheduler
 
     if _quote_service is None:
         from src.market.adapters.factory import build_adapter
@@ -71,3 +73,15 @@ def get_briefing_agent() -> object:
     if _briefing_agent is None:
         raise RuntimeError("BriefingAgent not initialised — call bootstrap() first.")
     return _briefing_agent
+
+
+def get_snapshot_scheduler() -> object:
+    """Returns the SnapshotScheduler singleton (market segment).
+
+    Only used by bot._start_snapshot_scheduler(); not needed by API.
+    """
+    global _snapshot_scheduler
+    if _snapshot_scheduler is None:
+        from src.market.snapshot_scheduler import SnapshotScheduler
+        _snapshot_scheduler = SnapshotScheduler()
+    return _snapshot_scheduler

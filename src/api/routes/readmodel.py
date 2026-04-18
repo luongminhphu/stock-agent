@@ -1,7 +1,8 @@
 """Read-model API routes.
 
 Owner: api segment — thin adapter only.
-Delegates 100% to readmodel services. No business logic here.
+Delegates 100% to readmodel services + price enrichment from market segment.
+No business logic here.
 """
 from __future__ import annotations
 
@@ -10,7 +11,9 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.platform.bootstrap import get_quote_service
 from src.platform.db import get_session
+from src.market.price_enrichment import PriceEnrichmentService
 from src.readmodel.dashboard_service import DashboardService
 from src.readmodel.leaderboard_service import LeaderboardService
 from src.readmodel.schemas import (
@@ -24,6 +27,13 @@ from src.readmodel.timeline_service import ThesisTimelineService
 router = APIRouter(prefix="/readmodel", tags=["readmodel"])
 
 
+def _enrichment() -> PriceEnrichmentService:
+    """Dependency: PriceEnrichmentService wired to the bootstrapped QuoteService."""
+    from src.market.quote_service import QuoteService
+    qs: QuoteService = get_quote_service()  # type: ignore[assignment]
+    return PriceEnrichmentService(qs)
+
+
 # ---------------------------------------------------------------------------
 # Dashboard
 # ---------------------------------------------------------------------------
@@ -33,20 +43,24 @@ router = APIRouter(prefix="/readmodel", tags=["readmodel"])
 async def get_dashboard(
     user_id: str,
     session: Annotated[AsyncSession, Depends(get_session)],
+    enrichment: Annotated[PriceEnrichmentService, Depends(_enrichment)],
 ) -> DashboardResponse:
-    """Full dashboard payload for a user."""
+    """Full dashboard payload with live prices injected."""
     svc = DashboardService(session)
-    return await svc.get_dashboard(user_id)
+    response = await svc.get_dashboard(user_id)
+    return await enrichment.enrich_dashboard(response)  # type: ignore[return-value]
 
 
 @router.get("/dashboard/{user_id}/watchlist", response_model=list[WatchlistSnapshotRow])
 async def get_watchlist_snapshot(
     user_id: str,
     session: Annotated[AsyncSession, Depends(get_session)],
+    enrichment: Annotated[PriceEnrichmentService, Depends(_enrichment)],
 ) -> list[WatchlistSnapshotRow]:
-    """Watchlist items enriched with linked thesis summary."""
+    """Watchlist items enriched with thesis summary + live prices."""
     svc = DashboardService(session)
-    return await svc.get_watchlist_snapshot(user_id)
+    rows = await svc.get_watchlist_snapshot(user_id)
+    return await enrichment.enrich_watchlist(rows)  # type: ignore[return-value]
 
 
 # ---------------------------------------------------------------------------
