@@ -7,7 +7,7 @@ never by importing these models directly.
 from __future__ import annotations
 
 import enum
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (
     Boolean,
@@ -32,11 +32,11 @@ from src.platform.db import Base
 
 
 class AlertConditionType(str, enum.Enum):
-    PRICE_ABOVE = "price_above"       # price >= threshold
-    PRICE_BELOW = "price_below"       # price <= threshold
-    CHANGE_PCT_UP = "change_pct_up"   # daily change% >= threshold
-    CHANGE_PCT_DOWN = "change_pct_down"  # daily change% <= -threshold
-    VOLUME_SPIKE = "volume_spike"     # volume >= threshold * avg_volume
+    PRICE_ABOVE = "price_above"
+    PRICE_BELOW = "price_below"
+    CHANGE_PCT_UP = "change_pct_up"
+    CHANGE_PCT_DOWN = "change_pct_down"
+    VOLUME_SPIKE = "volume_spike"
 
 
 class AlertStatus(str, enum.Enum):
@@ -49,7 +49,7 @@ class AlertStatus(str, enum.Enum):
 class ReminderFrequency(str, enum.Enum):
     DAILY = "daily"
     WEEKLY = "weekly"
-    ON_SIGNAL = "on_signal"  # only when scan detects a signal
+    ON_SIGNAL = "on_signal"
 
 
 # ---------------------------------------------------------------------------
@@ -67,13 +67,8 @@ class WatchlistItem(Base):
     user_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
     ticker: Mapped[str] = mapped_column(String(10), nullable=False)
     note: Mapped[str | None] = mapped_column(Text)
-
-    # Optional link to a thesis — stores ID only, no FK to keep segments decoupled
     thesis_id: Mapped[int | None] = mapped_column(Integer, index=True)
-
-    # Priority for ordering in UI (lower = higher priority)
     priority: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
-
     added_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -84,7 +79,6 @@ class WatchlistItem(Base):
         nullable=False,
     )
 
-    # Relationships
     alerts: Mapped[list[Alert]] = relationship(
         back_populates="watchlist_item", cascade="all, delete-orphan"
     )
@@ -112,7 +106,6 @@ class Alert(Base):
     watchlist_item_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("watchlist_items.id", ondelete="CASCADE"), index=True
     )
-
     condition_type: Mapped[AlertConditionType] = mapped_column(
         SAEnum(AlertConditionType), nullable=False
     )
@@ -120,16 +113,13 @@ class Alert(Base):
     status: Mapped[AlertStatus] = mapped_column(
         SAEnum(AlertStatus), nullable=False, default=AlertStatus.ACTIVE
     )
-
     triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     triggered_price: Mapped[float | None] = mapped_column(Float)
     note: Mapped[str | None] = mapped_column(Text)
-
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    # Relationship
     watchlist_item: Mapped[WatchlistItem | None] = relationship(back_populates="alerts")
 
     def __repr__(self) -> str:
@@ -143,11 +133,13 @@ class Alert(Base):
     # Domain helpers
     # ------------------------------------------------------------------
 
-    def is_triggered_by(self, current_price: float, change_pct: float, volume_ratio: float) -> bool:
-        """Check if this alert should fire given current market data.
-
-        Does NOT mutate state — caller (ScanService) decides to trigger.
-        """
+    def is_triggered_by(
+        self,
+        current_price: float,
+        change_pct: float,
+        volume_ratio: float,
+    ) -> bool:
+        """Check if this alert should fire. Does NOT mutate state."""
         if self.status != AlertStatus.ACTIVE:
             return False
         match self.condition_type:
@@ -163,6 +155,14 @@ class Alert(Base):
                 return volume_ratio >= self.threshold
             case _:
                 return False
+
+    def mark_triggered(self, price: float | None = None) -> None:
+        """Transition alert to TRIGGERED state. Idempotent if already triggered."""
+        if self.status == AlertStatus.ACTIVE:
+            self.status = AlertStatus.TRIGGERED
+            self.triggered_at = datetime.now(tz=timezone.utc)
+            if price is not None:
+                self.triggered_price = price
 
 
 # ---------------------------------------------------------------------------
@@ -184,7 +184,6 @@ class Reminder(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    # Relationship
     watchlist_item: Mapped[WatchlistItem] = relationship(back_populates="reminder")
 
     def __repr__(self) -> str:
