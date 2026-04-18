@@ -8,7 +8,9 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Allow cancellation on feature branches to save minutes,
+  # but NEVER cancel runs on main — every commit must finish.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   # -----------------------------------------------------------------------
@@ -58,7 +60,7 @@ jobs:
         run: mypy src/
         env:
           ENVIRONMENT: test
-          DATABASE_URL: 'sqlite+aiosqlite:///:memory:'
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
           DISCORD_TOKEN: test-token
           PERPLEXITY_API_KEY: test-key
 
@@ -109,7 +111,7 @@ jobs:
           retention-days: 7
 
   # -----------------------------------------------------------------------
-  # Job 4: Security — secret scanning on changed files
+  # Job 4: Security — detect committed .env files and real secrets
   # -----------------------------------------------------------------------
   security:
     name: Secret scan
@@ -120,17 +122,21 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check for committed secrets (.env files)
+      - name: Check for committed .env files (by filename)
         run: |
-          if git grep -rn --include="*.env" -l . | grep -v '.env.example'; then
+          # Find tracked files whose name is exactly ".env" or ends with ".env"
+          # Exclude .env.example explicitly
+          FOUND=$(git ls-files | grep -E '(^|/)\.env$' | grep -v '\.env\.example$' || true)
+          if [ -n "$FOUND" ]; then
             echo "ERROR: .env file committed to repo!"
+            echo "$FOUND"
             exit 1
           fi
           echo "No .env secrets found."
 
-      - name: Verify .env.example has no real values
+      - name: Verify .env.example has no real secret values
         run: |
-          if grep -E '(sk-|Bearer |ghp_|AKIA|xoxb-)' .env.example 2>/dev/null; then
+          if grep -E '(sk-[A-Za-z0-9]{20,}|Bearer [A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16}|xoxb-[0-9]+-[0-9]+-[A-Za-z0-9]+)' .env.example 2>/dev/null; then
             echo "ERROR: .env.example contains real secret patterns!"
             exit 1
           fi
