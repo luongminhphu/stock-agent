@@ -29,9 +29,24 @@ class Settings(BaseSettings):
     # Feature flags
     mock_market: bool = False  # Force MockAdapter regardless of environment
 
+    # Briefing scheduler
+    # Channel IDs where scheduled briefs are sent (Discord channel snowflake IDs).
+    # Leave empty to disable that scheduled brief.
+    morning_channel_id: str = ""  # e.g. "123456789012345678"
+    eod_channel_id: str = ""      # e.g. "123456789012345679"
+
+    # Service-account user_id whose watchlist drives scheduled briefs.
+    # Must match a Discord user snowflake that has a populated watchlist.
+    scheduler_user_id: str = ""
+
     @property
     def cors_origins(self) -> list[str]:
         return [o.strip() for o in self.cors_origins_raw.split(",") if o.strip()]
+
+    @property
+    def briefing_scheduler_enabled(self) -> bool:
+        """True only when all three scheduler fields are configured."""
+        return bool(self.morning_channel_id or self.eod_channel_id) and bool(self.scheduler_user_id)
 
 
 settings = Settings()
