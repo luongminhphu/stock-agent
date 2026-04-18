@@ -6,6 +6,7 @@ No business logic — all domain work is delegated to segment services.
 
 Route groups:
     /health                — liveness + readiness probes
+    /dashboard             — static dashboard shell (wave 3 UI bootstrap)
     /api/v1/market         — quote, OHLCV
     /api/v1/thesis         — thesis CRUD + review
     /api/v1/watchlist      — watchlist management
@@ -15,11 +16,13 @@ Route groups:
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from src.platform.bootstrap import bootstrap
 from src.platform.config import settings
@@ -32,6 +35,8 @@ from src.api.routes.thesis import router as thesis_router
 from src.api.routes.watchlist import router as watchlist_router
 
 logger = get_logger(__name__)
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+DASHBOARD_HTML = STATIC_DIR / "dashboard.html"
 
 
 @asynccontextmanager
@@ -61,13 +66,25 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # Static shell for dashboard UI.
+    if STATIC_DIR.exists():
+        app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+    @app.get("/dashboard", include_in_schema=False)
+    async def serve_dashboard() -> FileResponse:
+        """Serve static dashboard shell.
+
+        API data is fetched client-side from /api/v1/readmodel/... endpoints.
+        """
+        return FileResponse(DASHBOARD_HTML)
+
     # Register routers — order matters for OpenAPI grouping
     app.include_router(health_router)
-    app.include_router(market_router,    prefix="/api/v1")
-    app.include_router(thesis_router,    prefix="/api/v1")
+    app.include_router(market_router, prefix="/api/v1")
+    app.include_router(thesis_router, prefix="/api/v1")
     app.include_router(watchlist_router, prefix="/api/v1")
-    app.include_router(briefing_router,  prefix="/api/v1")   # wave 2b
-    app.include_router(readmodel_router, prefix="/api/v1")   # wave 3
+    app.include_router(briefing_router, prefix="/api/v1")
+    app.include_router(readmodel_router, prefix="/api/v1")
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request, exc: Exception) -> JSONResponse:
