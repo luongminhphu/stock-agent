@@ -8,22 +8,24 @@ on:
         required: false
         default: "main"
       unsafe_fixes:
-        description: "Apply --unsafe-fixes as well?"
+        description: "Apply --unsafe-fixes as well? (default: true)"
         required: false
-        default: "false"
+        default: "true"
         type: choice
-        options: ["false", "true"]
+        options: ["true", "false"]
 
 jobs:
   autofix:
     name: ruff check --fix + format
     runs-on: ubuntu-latest
+    # Required for the bot to push commits back
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.branch || 'main' }}
-          # Need write access to push the fix commit
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-python@v5
@@ -37,8 +39,8 @@ jobs:
       - name: Run ruff check --fix (safe)
         run: ruff check src/ tests/ --fix
 
-      - name: Run ruff check --unsafe-fixes (optional)
-        if: ${{ github.event.inputs.unsafe_fixes == 'true' }}
+      - name: Run ruff check --unsafe-fixes
+        if: ${{ github.event.inputs.unsafe_fixes != 'false' }}
         run: ruff check src/ tests/ --unsafe-fixes --fix
 
       - name: Run ruff format
@@ -63,3 +65,6 @@ jobs:
       - name: No changes needed
         if: steps.diff.outputs.changed == 'false'
         run: echo "✅ Nothing to fix — ruff is already clean."
+
+      - name: Verify clean after fix
+        run: ruff check src/ tests/
