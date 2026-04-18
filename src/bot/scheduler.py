@@ -99,3 +99,7 @@ class BriefingScheduler:
 
         except Exception as exc:
             logger.error("scheduler.briefing.error", phase=phase, error=str(exc))
+
+
+# Alias — src/bot/__init__.py imports `Scheduler` by this name
+Scheduler = BriefingScheduler
