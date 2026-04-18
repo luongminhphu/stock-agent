@@ -58,7 +58,7 @@ jobs:
         run: mypy src/
         env:
           ENVIRONMENT: test
-          DATABASE_URL: sqlite+aiosqlite:///:memory:
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
           DISCORD_TOKEN: test-token
           PERPLEXITY_API_KEY: test-key
 
