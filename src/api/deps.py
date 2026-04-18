@@ -3,9 +3,11 @@
 Owner: api segment.
 Provides reusable Depends() callables for all routes.
 
-    get_db()              — yields AsyncSession (commit/rollback)
-    get_current_user_id() — Wave 1: X-User-Id header | Wave 2: JWT
-    get_quote_service()   — returns singleton QuoteService
+    get_db()                  — yields AsyncSession
+    get_current_user_id()     — Wave 1: X-User-Id header | Wave 2: JWT
+    get_quote_service()       — singleton QuoteService
+    get_thesis_review_agent() — singleton ThesisReviewAgent
+    get_review_service()      — per-request ReviewService (session + agent + quote)
 """
 from __future__ import annotations
 
@@ -15,12 +17,13 @@ from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.db import AsyncSessionLocal
-from src.platform.bootstrap import get_quote_service as _get_qs
-from src.market.quote_service import QuoteService
+from src.platform.bootstrap import (
+    get_quote_service as _get_qs,
+    get_thesis_review_agent as _get_agent,
+)
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """Provide a DB session. Commits on success, rolls back on error."""
     async with AsyncSessionLocal() as session:
         try:
             yield session
@@ -33,11 +36,6 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 async def get_current_user_id(
     x_user_id: str | None = Header(default=None, alias="X-User-Id"),
 ) -> str:
-    """Extract user ID from request.
-
-    Wave 1: reads X-User-Id header (no auth, dev/internal only).
-    Wave 2: replace with JWT Bearer token verification.
-    """
     if not x_user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -46,6 +44,20 @@ async def get_current_user_id(
     return x_user_id
 
 
-def get_quote_service() -> QuoteService:
-    """Return the singleton QuoteService (wired at bootstrap)."""
+def get_quote_service() -> object:
     return _get_qs()
+
+
+def get_thesis_review_agent() -> object:
+    return _get_agent()
+
+
+async def get_review_service(
+    session: AsyncSession = Depends(get_db),
+    agent: object = Depends(get_thesis_review_agent),
+    quote_svc: object = Depends(get_quote_service),
+) -> "ReviewService":  # type: ignore[name-defined]  # noqa: F821
+    """Construct a per-request ReviewService with all dependencies injected."""
+    from src.thesis.review_service import ReviewService
+
+    return ReviewService(session=session, agent=agent, quote_service=quote_svc)  # type: ignore[arg-type]

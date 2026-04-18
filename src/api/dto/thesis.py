@@ -1,37 +1,47 @@
-"""Thesis DTOs."""
+"""Thesis DTOs.
+
+Owner: api segment.
+No SQLAlchemy objects cross this boundary.
+"""
 from __future__ import annotations
+
+import json
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict
+
+from pydantic import BaseModel, field_validator
 
 
-class CreateThesisRequest(BaseModel):
-    ticker: str
-    title: str
-    summary: str = ""
-    entry_price: float | None = None
-    target_price: float | None = None
-    stop_loss: float | None = None
-
-
-class ThesisResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class ThesisReviewResponse(BaseModel):
+    """Response for a single ThesisReview record."""
 
     id: int
-    ticker: str
-    title: str
-    status: str
-    entry_price: float | None
-    target_price: float | None
-    stop_loss: float | None
-    upside_pct: float | None
-    risk_reward: float | None
-    score: float | None
-    created_at: datetime
+    thesis_id: int
+    verdict: str
+    confidence: float
+    reasoning: str
+    risk_signals: list[str]
+    next_watch_items: list[str]
+    reviewed_at: datetime
+    reviewed_price: float | None
+
+    @field_validator("risk_signals", "next_watch_items", mode="before")
+    @classmethod
+    def parse_json_list(cls, v: object) -> list[str]:
+        """ORM stores these as JSON strings; API exposes them as real lists."""
+        if isinstance(v, str):
+            try:
+                parsed = json.loads(v)
+                return parsed if isinstance(parsed, list) else [v]
+            except json.JSONDecodeError:
+                return [v]
+        if isinstance(v, list):
+            return v
+        return []
+
+    model_config = {"from_attributes": True}
 
 
-class ThesisListResponse(BaseModel):
-    items: list[ThesisResponse]
-    total: int = 0
-
-    def model_post_init(self, __context: object) -> None:
-        self.total = len(self.items)
+class ThesisReviewListResponse(BaseModel):
+    thesis_id: int
+    reviews: list[ThesisReviewResponse]
+    total: int
