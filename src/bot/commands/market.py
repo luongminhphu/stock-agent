@@ -5,6 +5,13 @@ Commands: /quote <ticker>
 
 Wires QuoteService from platform bootstrap.
 No business logic — parse input → call service → format embed.
+
+Embed colour scheme:
+    🟣 Purple  — ceiling (trần)
+    🔵 Cyan    — floor   (sàn)
+    🟢 Green   — price up
+    🔴 Red     — price down
+    🟡 Yellow  — flat / reference (tham chiếu)
 """
 from __future__ import annotations
 
@@ -20,12 +27,14 @@ from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Colour coding: green = up, red = down, grey = flat
-_COLOUR_UP = discord.Color.green()
-_COLOUR_DOWN = discord.Color.red()
-_COLOUR_FLAT = discord.Color.light_grey()
-_COLOUR_CEILING = discord.Color.from_rgb(255, 165, 0)   # orange — at ceiling
-_COLOUR_FLOOR = discord.Color.from_rgb(128, 0, 128)      # purple — at floor
+# ---------------------------------------------------------------------------
+# Colour constants
+# ---------------------------------------------------------------------------
+_COLOUR_UP      = discord.Color.green()
+_COLOUR_DOWN    = discord.Color.red()
+_COLOUR_FLAT    = discord.Color.yellow()               # tham chiếu
+_COLOUR_CEILING = discord.Color.purple()               # trần
+_COLOUR_FLOOR   = discord.Color.from_rgb(0, 191, 255)  # sàn — deep sky blue / cyan
 
 
 class MarketCog(BaseCog):
@@ -82,51 +91,35 @@ def _build_quote_embed(
     exchange: str,
 ) -> discord.Embed:
     """Build a rich Discord embed from a Quote."""
-    # Colour by market status
     if q.is_ceiling:
         colour = _COLOUR_CEILING
-        status_icon = "\U0001f7e0"  # orange circle — ceiling
+        status_icon = "🟣"  # purple — trần
     elif q.is_floor:
         colour = _COLOUR_FLOOR
-        status_icon = "\U0001f7e3"  # purple circle — floor
+        status_icon = "🔵"  # cyan — sàn
     elif q.is_up:
         colour = _COLOUR_UP
-        status_icon = "\U0001f7e2"  # green circle
+        status_icon = "🟢"  # green — tăng
     elif q.is_down:
         colour = _COLOUR_DOWN
-        status_icon = "\U0001f534"  # red circle
+        status_icon = "🔴"  # red — giảm
     else:
         colour = _COLOUR_FLAT
-        status_icon = "\u26aa"  # grey circle — flat
+        status_icon = "🟡"  # yellow — tham chiếu
 
     embed = discord.Embed(
         title=f"{status_icon} {q.ticker} — {name}",
         colour=colour,
     )
 
-    # Price row
-    embed.add_field(
-        name="Price",
-        value=f"**{q.format_price()}** VND",
-        inline=True,
-    )
-    embed.add_field(
-        name="Change",
-        value=q.format_change(),
-        inline=True,
-    )
-    embed.add_field(
-        name="Volume",
-        value=f"{q.volume:,}",
-        inline=True,
-    )
+    embed.add_field(name="Price",  value=f"**{q.format_price()}** VND", inline=True)
+    embed.add_field(name="Change", value=q.format_change(),             inline=True)
+    embed.add_field(name="Volume", value=f"{q.volume:,}",               inline=True)
 
-    # OHLC row
-    embed.add_field(name="Open",  value=f"{q.open:,.0f}",  inline=True)
-    embed.add_field(name="High",  value=f"{q.high:,.0f}",  inline=True)
-    embed.add_field(name="Low",   value=f"{q.low:,.0f}",   inline=True)
+    embed.add_field(name="Open", value=f"{q.open:,.0f}",  inline=True)
+    embed.add_field(name="High", value=f"{q.high:,.0f}",  inline=True)
+    embed.add_field(name="Low",  value=f"{q.low:,.0f}",   inline=True)
 
-    # Ref / Ceiling / Floor row
     embed.add_field(name="Ref",     value=f"{q.ref_price:,.0f}", inline=True)
     embed.add_field(name="Ceiling", value=f"{q.ceiling:,.0f}",   inline=True)
     embed.add_field(name="Floor",   value=f"{q.floor:,.0f}",     inline=True)
