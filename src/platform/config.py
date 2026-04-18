@@ -1,42 +1,37 @@
-from functools import lru_cache
+"""Platform configuration.
+
+Owner: platform segment.
+Single source of truth for all settings. All segments import from here.
+"""
+from __future__ import annotations
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-    )
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # Platform
-    environment: str = "development"
-    log_level: str = "INFO"
+    # Runtime
+    environment: str = "development"  # development | test | production
 
     # Database
-    database_url: str
+    database_url: str = "sqlite+aiosqlite:///./stock_agent.db"
 
-    # AI
-    perplexity_api_key: str
+    # Discord bot
+    discord_token: str = ""
 
-    # Bot
-    discord_token: str
-    discord_guild_id: str = ""
+    # Perplexity AI
+    perplexity_api_key: str = ""
+
+    # CORS (comma-separated origins)
+    cors_origins_raw: str = "http://localhost:3000,http://localhost:8080"
+
+    # Feature flags
+    mock_market: bool = False  # Force MockAdapter regardless of environment
 
     @property
-    def is_production(self) -> bool:
-        return self.environment == "production"
-
-    @property
-    def is_development(self) -> bool:
-        return self.environment == "development"
+    def cors_origins(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins_raw.split(",") if o.strip()]
 
 
-@lru_cache(maxsize=1)
-def get_settings() -> Settings:
-    """Singleton settings instance. Use this everywhere — do not instantiate Settings() directly."""
-    return Settings()
-
-
-# Module-level convenience alias
-settings = get_settings()
+settings = Settings()
