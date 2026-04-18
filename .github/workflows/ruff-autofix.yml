@@ -1,0 +1,65 @@
+name: Ruff Auto-fix
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to fix (default: main)"
+        required: false
+        default: "main"
+      unsafe_fixes:
+        description: "Apply --unsafe-fixes as well?"
+        required: false
+        default: "false"
+        type: choice
+        options: ["false", "true"]
+
+jobs:
+  autofix:
+    name: ruff check --fix + format
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch || 'main' }}
+          # Need write access to push the fix commit
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install ruff
+        run: pip install "ruff>=0.4.0"
+
+      - name: Run ruff check --fix (safe)
+        run: ruff check src/ tests/ --fix
+
+      - name: Run ruff check --unsafe-fixes (optional)
+        if: ${{ github.event.inputs.unsafe_fixes == 'true' }}
+        run: ruff check src/ tests/ --unsafe-fixes --fix
+
+      - name: Run ruff format
+        run: ruff format src/ tests/
+
+      - name: Check for changes
+        id: diff
+        run: |
+          git diff --quiet && echo "changed=false" >> $GITHUB_OUTPUT || echo "changed=true" >> $GITHUB_OUTPUT
+
+      - name: Commit and push fixes
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "style: ruff auto-fix [skip ci]"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: No changes needed
+        if: steps.diff.outputs.changed == 'false'
+        run: echo "✅ Nothing to fix — ruff is already clean."
