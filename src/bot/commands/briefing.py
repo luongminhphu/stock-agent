@@ -1,21 +1,32 @@
 """Briefing commands cog.
 
 Owner: bot segment.
-Adapter only: parse Discord interaction → call BriefingService → format embed.
+Adapter only: parse Discord interaction → call BriefingService → format via briefing.formatter.
+
+NO business logic here. BriefingService owns the flow.
+formatter.py owns the string rendering.
 """
 from __future__ import annotations
 
 import discord
 from discord import app_commands
 
+from src.ai.schemas import BriefOutput, MarketSentiment
 from src.bot.commands.base import BaseCog
-from src.briefing.models import MarketBrief
+from src.briefing.formatter import format_eod_brief, format_morning_brief
 from src.briefing.service import BriefingService
 from src.platform.bootstrap import get_briefing_agent, get_quote_service
 from src.platform.logging import get_logger
 from src.watchlist.service import WatchlistService
 
 logger = get_logger(__name__)
+
+_SENTIMENT_COLOUR = {
+    MarketSentiment.RISK_ON: discord.Color.green(),
+    MarketSentiment.RISK_OFF: discord.Color.red(),
+    MarketSentiment.MIXED: discord.Color.gold(),
+    MarketSentiment.UNCERTAIN: discord.Color.greyple(),
+}
 
 
 class BriefingCog(BaseCog):
@@ -41,7 +52,7 @@ class BriefingCog(BaseCog):
                     briefing_agent=get_briefing_agent(),
                 )
                 if phase == "morning":
-                    brief = await svc.generate_morning_brief(user_id=user_id)
+                    brief: BriefOutput = await svc.generate_morning_brief(user_id=user_id)
                 else:
                     brief = await svc.generate_eod_brief(user_id=user_id)
         except Exception as exc:
@@ -53,28 +64,28 @@ class BriefingCog(BaseCog):
             )
             return
 
-        await interaction.followup.send(embed=_build_brief_embed(brief, phase=phase), ephemeral=False)
+        embed = _build_brief_embed(brief, phase=phase)
+        await interaction.followup.send(embed=embed, ephemeral=False)
 
 
-def _build_brief_embed(brief: MarketBrief, phase: str) -> discord.Embed:
-    title = "🌅 Morning Brief" if phase == "morning" else "🌇 End-of-Day Brief"
-    colour = discord.Color.gold() if phase == "morning" else discord.Color.orange()
+def _build_brief_embed(brief: BriefOutput, phase: str) -> discord.Embed:
+    """Convert BriefOutput → Discord Embed.
 
-    embed = discord.Embed(
-        title=title,
-        description=brief.summary[:1000] if brief.summary else "No summary available.",
-        color=colour,
+    Uses briefing.formatter for the text body, then wraps in Embed chrome.
+    Keeps all string-building logic inside formatter.py (single responsibility).
+    """
+    title = "\U0001f305 Morning Brief" if phase == "morning" else "\U0001f307 End-of-Day Brief"
+    colour = _SENTIMENT_COLOUR.get(brief.sentiment, discord.Color.blurple())
+
+    formatted_text = (
+        format_morning_brief(brief) if phase == "morning" else format_eod_brief(brief)
     )
 
-    if brief.market_view:
-        embed.add_field(name="Market View", value=brief.market_view[:500], inline=False)
-    if brief.watchlist_focus:
-        embed.add_field(name="Watchlist Focus", value=brief.watchlist_focus[:500], inline=False)
-    if brief.action_items:
-        action_text = "\n".join(f"• {item}" for item in brief.action_items[:5])
-        embed.add_field(name="Action Items", value=action_text, inline=False)
-
-    ts = getattr(brief, "generated_at", None)
-    ts_str = ts.strftime("%H:%M %d/%m/%Y") if ts else "N/A"
-    embed.set_footer(text=f"Generated at {ts_str} · stock-agent")
+    # Discord embed description cap: 4096 chars
+    embed = discord.Embed(
+        title=title,
+        description=formatted_text[:4096],
+        color=colour,
+    )
+    embed.set_footer(text="stock-agent · AI-native")
     return embed

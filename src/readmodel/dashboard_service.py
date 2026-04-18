@@ -11,10 +11,9 @@ Design rules:
 """
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import Integer, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.readmodel.schemas import (
@@ -55,9 +54,8 @@ class DashboardService:
         self, user_id: str
     ) -> list[WatchlistSnapshotRow]:
         """Watchlist items joined with linked thesis summary."""
-        # Lazy import to avoid hard coupling at module load time.
-        from src.watchlist.models import WatchlistItem
         from src.thesis.models import Thesis  # read-only join
+        from src.watchlist.models import WatchlistItem
 
         stmt = (
             select(
@@ -118,7 +116,6 @@ class DashboardService:
             .subquery("latest_review")
         )
 
-        # Assumption counts
         total_assumptions_subq = (
             select(
                 Assumption.thesis_id,
@@ -133,7 +130,6 @@ class DashboardService:
             .subquery("assumption_counts")
         )
 
-        # Catalyst counts
         total_catalysts_subq = (
             select(
                 Catalyst.thesis_id,
@@ -178,12 +174,16 @@ class DashboardService:
 
         out: list[ThesisSummaryRow] = []
         for r in rows:
-            # Compute derived fields in Python (mirrors domain helpers)
             upside_pct: float | None = None
             risk_reward: float | None = None
             if r.entry_price and r.target_price and r.entry_price > 0:
                 upside_pct = (r.target_price - r.entry_price) / r.entry_price * 100
-            if r.entry_price and r.target_price and r.stop_loss and r.entry_price > r.stop_loss:
+            if (
+                r.entry_price
+                and r.target_price
+                and r.stop_loss
+                and r.entry_price > r.stop_loss
+            ):
                 upside = r.target_price - r.entry_price
                 downside = r.entry_price - r.stop_loss
                 if downside > 0:
@@ -201,8 +201,8 @@ class DashboardService:
                     stop_loss=r.stop_loss,
                     upside_pct=upside_pct,
                     risk_reward=risk_reward,
-                    current_price=None,   # injected by caller from market segment
-                    pnl_pct=None,         # injected by caller
+                    current_price=None,
+                    pnl_pct=None,
                     last_verdict=str(r.last_verdict) if r.last_verdict else None,
                     last_reviewed_at=r.last_reviewed_at,
                     created_at=r.created_at,
@@ -213,7 +213,3 @@ class DashboardService:
                 )
             )
         return out
-
-
-# Fix missing Integer import used inside _thesis_summary_rows
-from sqlalchemy import Integer  # noqa: E402  (placed after class to keep top clean)
