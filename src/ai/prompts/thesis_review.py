@@ -1,19 +1,33 @@
 """Prompt pack for ThesisReviewAgent.
 
-Owner: ai segment. Business rules about what makes a thesis valid/invalid
-live in the thesis segment — these prompts only encode reasoning instructions.
+Owner: ai segment.
+Keep prompts here; agent logic stays in agents/thesis_review.py.
 """
+from __future__ import annotations
 
-SYSTEM_PROMPT = """Bạn là một chuyên gia phân tích đầu tư chứng khoán Việt Nam (HOSE, HNX, UPCoM).
-Nhiệm vụ của bạn là review một investment thesis và đánh giá xem thesis đó còn giá trị không,
-dựa trên thông tin thị trường hiện tại.
+SYSTEM_PROMPT = """Bạn là chuyên gia phân tích đầu tư cổ phiếu Việt Nam (HOSE, HNX, UPCoM).
+Nhiệm vụ: review một investment thesis và đưa ra đánh giá có cấu trúc.
 
-Yêu cầu output:
-- Phân tích khách quan, dựa trên dữ liệu
-- Chỉ ra rõ các risk signals cụ thể
-- Đưa ra verdict rõ ràng: BULLISH / BEARISH / NEUTRAL / WATCHLIST
-- Confidence score từ 0.0 đến 1.0
-- Trả về JSON hợp lệ theo schema được cung cấp
+Quy tắc:
+- Luôn trả về JSON hợp lệ, không có text thừa.
+- Verdict phải là một trong: BULLISH, BEARISH, NEUTRAL, WATCHLIST.
+- Confidence: 0.0 (rất không chắc) đến 1.0 (rất chắc chắn).
+- risk_signals: danh sách rủi ro cụ thể, có thể đo lường.
+- next_watch_items: sự kiện/data point cần theo dõi tiếp.
+- assumption_updates: assumptions nào cần được revisit.
+- catalyst_status: update về tiến độ của từng catalyst.
+- reasoning: giải thích ngắn gọn, rõ ràng bằng tiếng Việt.
+
+JSON schema:
+{
+  "verdict": "BULLISH|BEARISH|NEUTRAL|WATCHLIST",
+  "confidence": 0.0-1.0,
+  "risk_signals": ["..."],
+  "next_watch_items": ["..."],
+  "reasoning": "...",
+  "assumption_updates": ["..."],
+  "catalyst_status": ["..."]
+}
 """
 
 
@@ -27,37 +41,36 @@ def build_review_prompt(
     entry_price: float | None = None,
     target_price: float | None = None,
 ) -> str:
-    """Build the user message for thesis review."""
-    price_context = ""
-    if current_price is not None:
-        price_context = f"\n- Giá hiện tại: {current_price:,.0f} VND"
+    """Build the user message for a thesis review."""
+    lines = [
+        f"**Thesis Review: {ticker} — {thesis_title}**",
+        "",
+        f"Tóm tắt thesis: {thesis_summary}",
+        "",
+    ]
+
+    if assumptions:
+        lines.append("Assumptions:")
+        for i, a in enumerate(assumptions, 1):
+            lines.append(f"  {i}. {a}")
+        lines.append("")
+
+    if catalysts:
+        lines.append("Catalysts:")
+        for i, c in enumerate(catalysts, 1):
+            lines.append(f"  {i}. {c}")
+        lines.append("")
+
+    price_parts = []
     if entry_price is not None:
-        price_context += f"\n- Giá vào: {entry_price:,.0f} VND"
+        price_parts.append(f"Entry: {entry_price:,.0f}")
+    if current_price is not None:
+        price_parts.append(f"Current: {current_price:,.0f}")
     if target_price is not None:
-        price_context += f"\n- Giá mục tiêu: {target_price:,.0f} VND"
+        price_parts.append(f"Target: {target_price:,.0f}")
+    if price_parts:
+        lines.append("Giá: " + " | ".join(price_parts))
+        lines.append("")
 
-    assumptions_text = "\n".join(f"  - {a}" for a in assumptions) if assumptions else "  (chưa có)"
-    catalysts_text = "\n".join(f"  - {c}" for c in catalysts) if catalysts else "  (chưa có)"
-
-    return f"""Review investment thesis sau cho cổ phiếu {ticker}:
-
-**Thesis:** {thesis_title}
-**Tóm tắt:** {thesis_summary}{price_context}
-
-**Assumptions:**
-{assumptions_text}
-
-**Catalysts:**
-{catalysts_text}
-
-Hãy đánh giá thesis này dựa trên thông tin thị trường mới nhất và trả về JSON theo schema:
-{{
-  "verdict": "BULLISH|BEARISH|NEUTRAL|WATCHLIST",
-  "confidence": 0.0-1.0,
-  "risk_signals": ["..."],
-  "next_watch_items": ["..."],
-  "reasoning": "...",
-  "assumption_updates": ["..."],
-  "catalyst_status": ["..."]
-}}
-"""
+    lines.append("Review thesis này và trả về JSON theo schema đã định nghĩa.")
+    return "\n".join(lines)
