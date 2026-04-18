@@ -18,7 +18,7 @@ case "$CMD" in
 
   bot)
     echo "[entrypoint] Starting Discord bot..."
-    exec python -m src.bot.app
+    exec python -m src.bot
     ;;
 
   migrate)
