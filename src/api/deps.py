@@ -2,12 +2,6 @@
 
 Owner: api segment.
 Provides reusable Depends() callables for all routes.
-
-    get_db()                  — yields AsyncSession
-    get_current_user_id()     — Wave 1: X-User-Id header | Wave 2: JWT
-    get_quote_service()       — singleton QuoteService
-    get_thesis_review_agent() — singleton ThesisReviewAgent
-    get_review_service()      — per-request ReviewService (session + agent + quote)
 """
 from __future__ import annotations
 
@@ -18,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.db import AsyncSessionLocal
 from src.platform.bootstrap import (
+    get_briefing_agent as _get_briefing_agent,
     get_quote_service as _get_qs,
     get_thesis_review_agent as _get_agent,
 )
@@ -52,12 +47,31 @@ def get_thesis_review_agent() -> object:
     return _get_agent()
 
 
+def get_briefing_agent() -> object:
+    return _get_briefing_agent()
+
+
 async def get_review_service(
     session: AsyncSession = Depends(get_db),
     agent: object = Depends(get_thesis_review_agent),
     quote_svc: object = Depends(get_quote_service),
 ) -> "ReviewService":  # type: ignore[name-defined]  # noqa: F821
-    """Construct a per-request ReviewService with all dependencies injected."""
     from src.thesis.review_service import ReviewService
 
     return ReviewService(session=session, agent=agent, quote_service=quote_svc)  # type: ignore[arg-type]
+
+
+async def get_briefing_service(
+    session: AsyncSession = Depends(get_db),
+    quote_svc: object = Depends(get_quote_service),
+    briefing_agent: object = Depends(get_briefing_agent),
+) -> "BriefingService":  # type: ignore[name-defined]  # noqa: F821
+    from src.briefing.service import BriefingService
+    from src.watchlist.service import WatchlistService
+
+    watchlist_service = WatchlistService(session=session)
+    return BriefingService(
+        watchlist_service=watchlist_service,
+        quote_service=quote_svc,
+        briefing_agent=briefing_agent,
+    )
