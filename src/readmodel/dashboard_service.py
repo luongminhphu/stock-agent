@@ -535,7 +535,6 @@ class DashboardService:
             )
         ).all()
 
-        # thesis_id -> verdict string
         thesis_verdict: dict[int, str] = {
             r.thesis_id: str(r.verdict) for r in review_rows
         }
@@ -559,7 +558,6 @@ class DashboardService:
         ).all()
 
         # --- Pure-Python aggregation ---
-        # verdict -> {total, hits, pnl_sum}
         stats: dict[str, dict] = defaultdict(lambda: {"total": 0, "hits": 0, "pnl_sum": 0.0})
 
         for snap in snap_rows:
@@ -580,10 +578,9 @@ class DashboardService:
             b = stats[verdict]
             total = b["total"]
             avg_pnl = round(b["pnl_sum"] / total, 2) if total else None
-            if verdict == "NEUTRAL":
-                accuracy_pct = None
-            else:
-                accuracy_pct = round(b["hits"] / total * 100, 2) if total else None
+            accuracy_pct = None if verdict == "NEUTRAL" else (
+                round(b["hits"] / total * 100, 2) if total else None
+            )
             result.append(
                 {
                     "verdict": verdict,
@@ -596,7 +593,7 @@ class DashboardService:
         return result
 
     # ------------------------------------------------------------------
-    # 8. Backtesting — thesis performances
+    # 8. Backtesting — thesis performances  (pure-Python aggregation)
     # ------------------------------------------------------------------
 
     async def get_thesis_performances(
@@ -605,51 +602,99 @@ class DashboardService:
         ticker: str | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
+        """Tinh performance per thesis bang 2 query don gian + Python aggregation.
+
+        Query 1: tat ca theses cua user (co filter ticker neu co).
+        Query 2: tat ca snapshots co pnl_pct cua nhung thesis do.
+        Aggregation trong Python: count, avg, max, min pnl_pct, last_snapshot_at.
+        Khong dung func.round() de tranh round(double precision, integer) trap cua Postgres.
+        """
         from src.thesis.models import Thesis, ThesisSnapshot
 
+        # --- Query 1: theses ---
         filters = [Thesis.user_id == user_id]
         if ticker:
             filters.append(Thesis.ticker == ticker.upper())
 
-        rows = (
+        thesis_rows = (
             await self._session.execute(
                 select(
-                    Thesis.id.label("thesis_id"),
+                    Thesis.id,
                     Thesis.ticker,
                     Thesis.title,
                     Thesis.status,
                     Thesis.entry_price,
                     Thesis.score,
-                    func.count(ThesisSnapshot.id).label("snapshot_count"),
-                    func.round(func.avg(ThesisSnapshot.pnl_pct), 2).label("avg_pnl_pct"),
-                    func.round(func.max(ThesisSnapshot.pnl_pct), 2).label("max_pnl_pct"),
-                    func.round(func.min(ThesisSnapshot.pnl_pct), 2).label("min_pnl_pct"),
-                    func.max(ThesisSnapshot.snapshotted_at).label("last_snapshot_at"),
                 )
-                .outerjoin(ThesisSnapshot, ThesisSnapshot.thesis_id == Thesis.id)
                 .where(*filters)
-                .group_by(Thesis.id)
-                .order_by(desc(func.max(ThesisSnapshot.snapshotted_at)))
+                .order_by(Thesis.updated_at.desc())
                 .limit(min(limit, 500))
             )
         ).all()
 
-        return [
-            {
-                "thesis_id": r.thesis_id,
-                "ticker": r.ticker,
-                "title": r.title,
-                "thesis_status": str(r.status.value),
-                "entry_price": r.entry_price,
-                "score": r.score,
-                "snapshot_count": r.snapshot_count,
-                "avg_pnl_pct": r.avg_pnl_pct,
-                "max_pnl_pct": r.max_pnl_pct,
-                "min_pnl_pct": r.min_pnl_pct,
-                "last_snapshot_at": r.last_snapshot_at.isoformat() if r.last_snapshot_at else None,
-            }
-            for r in rows
-        ]
+        if not thesis_rows:
+            return []
+
+        thesis_ids = [r.id for r in thesis_rows]
+        thesis_map = {r.id: r for r in thesis_rows}
+
+        # --- Query 2: snapshots for those theses ---
+        snap_rows = (
+            await self._session.execute(
+                select(
+                    ThesisSnapshot.thesis_id,
+                    ThesisSnapshot.pnl_pct,
+                    ThesisSnapshot.snapshotted_at,
+                )
+                .where(
+                    ThesisSnapshot.thesis_id.in_(thesis_ids),
+                    ThesisSnapshot.pnl_pct.isnot(None),
+                )
+            )
+        ).all()
+
+        # --- Pure-Python aggregation per thesis ---
+        # thesis_id -> {pnl_values, last_snapshot_at}
+        agg: dict[int, dict] = defaultdict(
+            lambda: {"pnl_values": [], "last_snapshot_at": None}
+        )
+
+        for s in snap_rows:
+            bucket = agg[s.thesis_id]
+            bucket["pnl_values"].append(s.pnl_pct)
+            if bucket["last_snapshot_at"] is None or s.snapshotted_at > bucket["last_snapshot_at"]:
+                bucket["last_snapshot_at"] = s.snapshotted_at
+
+        # --- Build result, preserve thesis ordering from query 1 ---
+        result = []
+        for thesis_id in thesis_ids:
+            t = thesis_map[thesis_id]
+            b = agg[thesis_id]
+            pnl_vals = b["pnl_values"]
+            n = len(pnl_vals)
+            last_at = b["last_snapshot_at"]
+
+            avg_pnl = round(sum(pnl_vals) / n, 2) if n else None
+            max_pnl = round(max(pnl_vals), 2) if n else None
+            min_pnl = round(min(pnl_vals), 2) if n else None
+
+            result.append(
+                {
+                    "thesis_id": t.id,
+                    "ticker": t.ticker,
+                    "title": t.title,
+                    "thesis_status": str(t.status.value),
+                    "entry_price": t.entry_price,
+                    "score": t.score,
+                    "snapshot_count": n,
+                    "avg_pnl_pct": avg_pnl,
+                    "max_pnl_pct": max_pnl,
+                    "min_pnl_pct": min_pnl,
+                    "last_snapshot_at": last_at.isoformat() if last_at else None,
+                }
+            )
+
+        return result
 
     # ------------------------------------------------------------------
     # 9. Backtesting — price snapshots (chart data)
