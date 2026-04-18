@@ -24,7 +24,7 @@ async def get_morning_brief(
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Morning brief failed: {exc}",
-        )
+        ) from exc
     return BriefResponse.model_validate(brief.model_dump())
 
 
@@ -38,6 +38,6 @@ async def get_eod_brief(
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"EOD brief failed: {exc}",
-        )
+            detail=f"Morning brief failed: {exc}",
+        ) from exc
     return BriefResponse.model_validate(brief.model_dump())
