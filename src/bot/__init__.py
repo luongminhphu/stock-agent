@@ -15,7 +15,10 @@ Scheduler:
 Rule: No domain logic in this segment.
       Bot = parse input → call service → format output.
 """
-from src.bot.app import create_bot, run
-from src.bot.scheduler import Scheduler
+# Intentionally minimal — do NOT import app/run here to avoid double-import
+# when running `python -m src.bot`. Consumers should import directly:
+#   from src.bot.app import create_bot, run
+#   from src.bot.scheduler import BriefingScheduler, Scheduler
+from src.bot.scheduler import BriefingScheduler, Scheduler
 
-__all__ = ["create_bot", "run", "Scheduler"]
+__all__ = ["BriefingScheduler", "Scheduler"]
