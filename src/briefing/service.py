@@ -7,13 +7,12 @@ Responsibilities:
 - return structured BriefOutput to adapters
 
 Non-responsibilities:
-- no Discord formatting
+- no Discord formatting (see formatter.py)
 - no HTTP route logic
 - no scheduler logic
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime
 
 from src.ai.agents.briefing import BriefingAgent
@@ -22,15 +21,6 @@ from src.platform.logging import get_logger
 from src.watchlist.service import WatchlistService
 
 logger = get_logger(__name__)
-
-
-@dataclass(slots=True)
-class MarketSnapshot:
-    ticker: str
-    price: float
-    change: float
-    change_pct: float
-    volume: int | None = None
 
 
 class BriefingService:
@@ -50,7 +40,8 @@ class BriefingService:
         tickers = await self._get_watchlist_tickers(user_id)
         market_context = await self._build_market_context(tickers, phase="morning")
         logger.info("briefing.generate_morning", user_id=user_id, tickers=tickers)
-        return await self._agent.generate_morning_brief(
+        # FIX: agent method is morning_brief(), not generate_morning_brief()
+        return await self._agent.morning_brief(
             market_context=market_context,
             watchlist_tickers=tickers,
         )
@@ -59,7 +50,8 @@ class BriefingService:
         tickers = await self._get_watchlist_tickers(user_id)
         market_context = await self._build_market_context(tickers, phase="eod")
         logger.info("briefing.generate_eod", user_id=user_id, tickers=tickers)
-        return await self._agent.generate_eod_brief(
+        # FIX: agent method is eod_brief(), not generate_eod_brief()
+        return await self._agent.eod_brief(
             market_context=market_context,
             watchlist_tickers=tickers,
         )
@@ -77,7 +69,7 @@ class BriefingService:
             )
 
         try:
-            quotes = await self._quote_service.get_bulk_quotes(tickers)
+            quotes = await self._quote_service.get_bulk_quotes(tickers)  # type: ignore[attr-defined]
         except Exception as exc:
             logger.warning("briefing.quote_fetch_failed", tickers=tickers, error=str(exc))
             return (
