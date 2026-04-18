@@ -1,12 +1,9 @@
 # syntax=docker/dockerfile:1
 # ---------------------------------------------------------------------------
 # stock-agent — multi-stage Dockerfile
-# Stage 1: builder  — installs deps into a venv
-# Stage 2: runtime  — minimal image, copies venv + source only
-#
-# Build:   docker build -t stock-agent .
-# Run API: docker run --env-file .env -p 8000:8000 stock-agent api
-# Run bot: docker run --env-file .env stock-agent bot
+# No pip install of the project itself — source is copied directly and
+# PYTHONPATH is set so Python can find src/ without a package install step.
+# This avoids all hatchling / editable-install issues in Docker.
 # ---------------------------------------------------------------------------
 
 # -- Stage 1: builder -------------------------------------------------------
@@ -14,65 +11,58 @@ FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
-# System deps needed to compile asyncpg / psycopg2
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Isolated venv so we can copy it cleanly to the runtime stage
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# 1. Upgrade pip + install hatchling so the build backend is available
-RUN pip install --upgrade pip hatchling
+RUN pip install --upgrade pip
 
-# 2. Copy only the manifest first — layer is cached unless deps change
+# Copy only the deps list first — layer cached until pyproject.toml changes
 COPY pyproject.toml ./
 
-# 3. Install runtime deps (non-editable — no src needed at this step)
+# Install all runtime dependencies directly (no package install, no hatchling)
 RUN pip install --no-cache-dir \
-        fastapi \
-        "uvicorn[standard]" \
-        "sqlalchemy[asyncio]" \
-        alembic \
-        asyncpg \
-        aiosqlite \
-        pydantic \
-        pydantic-settings \
-        httpx \
-        tenacity \
-        structlog \
-        "discord.py" \
-        python-dotenv
-
-# 4. Copy source and install the package itself (now src/ is present)
-COPY . .
-RUN pip install --no-cache-dir --no-deps .
-
+    "fastapi>=0.115.0" \
+    "uvicorn[standard]>=0.30.0" \
+    "sqlalchemy[asyncio]>=2.0.0" \
+    "alembic>=1.13.0" \
+    "asyncpg>=0.29.0" \
+    "aiosqlite>=0.20.0" \
+    "pydantic>=2.7.0" \
+    "pydantic-settings>=2.3.0" \
+    "httpx>=0.27.0" \
+    "tenacity>=8.3.0" \
+    "structlog>=24.2.0" \
+    "discord.py>=2.4.0" \
+    "python-dotenv>=1.0.0"
 
 # -- Stage 2: runtime -------------------------------------------------------
 FROM python:3.12-slim AS runtime
 
 WORKDIR /app
 
-# Runtime system libs only (asyncpg needs libpq at runtime)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
-# Non-root user
 RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
 
-# Copy venv from builder
+# Copy venv (deps only, no project wheel needed)
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy application source + config files
-COPY --from=builder /app/src        ./src
-COPY --from=builder /app/migrations ./migrations
-COPY --from=builder /app/alembic.ini ./alembic.ini
-COPY --from=builder /app/scripts    ./scripts
+# Copy source files
+COPY src        ./src
+COPY migrations ./migrations
+COPY alembic.ini ./alembic.ini
+COPY scripts    ./scripts
+
+# PYTHONPATH lets Python find src.* without installing the package
+ENV PYTHONPATH="/app"
 
 RUN chmod +x /app/scripts/entrypoint.sh
 
