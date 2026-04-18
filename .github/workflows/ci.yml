@@ -30,11 +30,15 @@ jobs:
       - name: Install ruff
         run: pip install "ruff>=0.4.0"
 
-      - name: Run ruff check
-        run: ruff check src/ tests/
-
       - name: Run ruff format check
         run: ruff format --check src/ tests/
+
+      - name: Run ruff check (statistics always visible)
+        run: |
+          echo "=== Ruff violations by rule ==="
+          ruff check src/ tests/ --statistics || true
+          echo "=== Full error list ==="
+          ruff check src/ tests/
 
   # -----------------------------------------------------------------------
   # Job 2: Type check (mypy)
