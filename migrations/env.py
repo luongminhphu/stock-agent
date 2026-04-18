@@ -1,12 +1,7 @@
-"""Alembic env.py — async-compatible with SQLAlchemy asyncpg.
+"""Alembic env.py — async SQLAlchemy setup.
 
-Owner: platform segment.
-
-Key decisions:
-- Uses AsyncEngine from src.platform.db (same engine as app).
-- Imports ALL ORM models before running migrations so Alembic
-  can detect schema changes via autogenerate.
-- DATABASE_URL is read from environment at runtime — never from alembic.ini.
+Supports both online (real DB) and offline (SQL script) migration modes.
+DB URL is always read from src.platform.config.settings — never hardcoded.
 """
 from __future__ import annotations
 
@@ -14,83 +9,57 @@ import asyncio
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import pool
-from sqlalchemy.engine import Connection
-from sqlalchemy.ext.asyncio import async_engine_from_config
+from sqlalchemy.ext.asyncio import create_async_engine
+
+# Load all ORM models so Alembic can see their metadata.
+# Add new model imports here as new segments are added.
+from src.platform.db import Base  # noqa: F401 — registers Base.metadata
+import src.thesis.models  # noqa: F401
+import src.watchlist.models  # noqa: F401
 
 from src.platform.config import settings
-from src.platform.db import Base
 
-# Import ALL models so their tables are registered on Base.metadata
-# before autogenerate runs. Add new model modules here as segments grow.
-from src.thesis.models import (  # noqa: F401
-    Assumption,
-    Catalyst,
-    Thesis,
-    ThesisReview,
-    ThesisSnapshot,
-)
-from src.watchlist.models import (  # noqa: F401
-    Alert,
-    Reminder,
-    WatchlistItem,
-)
-
-# Alembic Config object (gives access to .ini values)
+# Alembic Config object
 config = context.config
 
-# Inject real DATABASE_URL from pydantic settings (overrides blank in alembic.ini)
-config.set_main_option("sqlalchemy.url", settings.database_url)
-
-# Setup Python logging from alembic.ini
+# Logging setup from alembic.ini
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Metadata target for autogenerate
+# Target metadata for autogenerate
 target_metadata = Base.metadata
 
 
-# ---------------------------------------------------------------------------
-# Offline mode — generate SQL script without DB connection
-# ---------------------------------------------------------------------------
+def get_url() -> str:
+    return settings.database_url
 
 
 def run_migrations_offline() -> None:
-    url = config.get_main_option("sqlalchemy.url")
+    """Generate SQL script without a live DB connection."""
     context.configure(
-        url=url,
+        url=get_url(),
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
-        compare_server_default=True,
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
-# ---------------------------------------------------------------------------
-# Online mode — run against live async connection
-# ---------------------------------------------------------------------------
-
-
-def do_run_migrations(connection: Connection) -> None:
+def do_run_migrations(connection):
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
         compare_type=True,
-        compare_server_default=True,
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
 async def run_async_migrations() -> None:
-    connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,  # no pool for migration runs
-    )
+    """Run migrations against a live async DB connection."""
+    connectable = create_async_engine(get_url())
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
     await connectable.dispose()

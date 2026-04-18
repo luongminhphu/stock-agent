@@ -1,30 +1,18 @@
-"""initial schema
+"""Initial schema — theses, watchlist, alerts, reminders.
 
-Revision ID: 0001_initial
-Revises: -
-Create Date: 2026-04-18 00:00:00 UTC
-
-Tables created:
-    theses                 — thesis lifecycle (thesis segment)
-    assumptions            — thesis assumptions (thesis segment)
-    catalysts              — thesis catalysts (thesis segment)
-    thesis_reviews         — AI review snapshots (thesis segment)
-    thesis_snapshots       — point-in-time PnL snapshots (thesis segment)
-    watchlist_items        — user watchlist (watchlist segment)
-    alerts                 — price/volume alerts (watchlist segment)
-    reminders              — notification reminders (watchlist segment)
+Revision ID: 0001_initial_schema
+Revises: None
+Create Date: 2026-04-18
 """
 from __future__ import annotations
-
-from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0001_initial"
-down_revision: Union[str, None] = None
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+revision: str = "0001_initial_schema"
+down_revision: str | None = None
+branch_labels: str | tuple[str, ...] | None = None
+depends_on: str | None = None
 
 
 def upgrade() -> None:
@@ -34,14 +22,15 @@ def upgrade() -> None:
     op.create_table(
         "theses",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("user_id", sa.String(length=64), nullable=False),
-        sa.Column("ticker", sa.String(length=10), nullable=False),
-        sa.Column("title", sa.String(length=256), nullable=False),
+        sa.Column("user_id", sa.String(64), nullable=False),
+        sa.Column("ticker", sa.String(10), nullable=False),
+        sa.Column("title", sa.String(256), nullable=False),
         sa.Column("summary", sa.Text(), nullable=True),
         sa.Column(
             "status",
             sa.Enum("active", "invalidated", "closed", "paused", name="thesisstatus"),
             nullable=False,
+            server_default="active",
         ),
         sa.Column("entry_price", sa.Float(), nullable=True),
         sa.Column("target_price", sa.Float(), nullable=True),
@@ -77,6 +66,7 @@ def upgrade() -> None:
             "status",
             sa.Enum("valid", "invalid", "uncertain", "pending", name="assumptionstatus"),
             nullable=False,
+            server_default="pending",
         ),
         sa.Column("note", sa.Text(), nullable=True),
         sa.Column(
@@ -102,6 +92,7 @@ def upgrade() -> None:
             "status",
             sa.Enum("pending", "triggered", "expired", "cancelled", name="catalyststatus"),
             nullable=False,
+            server_default="pending",
         ),
         sa.Column("expected_date", sa.DateTime(timezone=True), nullable=True),
         sa.Column("triggered_at", sa.DateTime(timezone=True), nullable=True),
@@ -159,12 +150,6 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_thesis_snapshots_thesis_id", "thesis_snapshots", ["thesis_id"])
-    # Composite index for leaderboard queries: latest snapshot per thesis
-    op.create_index(
-        "ix_thesis_snapshots_thesis_snapshotted",
-        "thesis_snapshots",
-        ["thesis_id", "snapshotted_at"],
-    )
 
     # ------------------------------------------------------------------
     # watchlist_items
@@ -172,8 +157,8 @@ def upgrade() -> None:
     op.create_table(
         "watchlist_items",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("user_id", sa.String(length=64), nullable=False),
-        sa.Column("ticker", sa.String(length=10), nullable=False),
+        sa.Column("user_id", sa.String(64), nullable=False),
+        sa.Column("ticker", sa.String(10), nullable=False),
         sa.Column("note", sa.Text(), nullable=True),
         sa.Column("thesis_id", sa.Integer(), nullable=True),
         sa.Column("priority", sa.Integer(), nullable=False, server_default="100"),
@@ -201,8 +186,8 @@ def upgrade() -> None:
     op.create_table(
         "alerts",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("user_id", sa.String(length=64), nullable=False),
-        sa.Column("ticker", sa.String(length=10), nullable=False),
+        sa.Column("user_id", sa.String(64), nullable=False),
+        sa.Column("ticker", sa.String(10), nullable=False),
         sa.Column("watchlist_item_id", sa.Integer(), nullable=True),
         sa.Column(
             "condition_type",
@@ -221,6 +206,7 @@ def upgrade() -> None:
             "status",
             sa.Enum("active", "triggered", "dismissed", "expired", name="alertstatus"),
             nullable=False,
+            server_default="active",
         ),
         sa.Column("triggered_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("triggered_price", sa.Float(), nullable=True),
@@ -245,12 +231,13 @@ def upgrade() -> None:
     op.create_table(
         "reminders",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("user_id", sa.String(length=64), nullable=False),
+        sa.Column("user_id", sa.String(64), nullable=False),
         sa.Column("watchlist_item_id", sa.Integer(), nullable=False),
         sa.Column(
             "frequency",
             sa.Enum("daily", "weekly", "on_signal", name="reminderfrequency"),
             nullable=False,
+            server_default="on_signal",
         ),
         sa.Column("enabled", sa.Boolean(), nullable=False, server_default="true"),
         sa.Column("last_sent_at", sa.DateTime(timezone=True), nullable=True),
@@ -263,7 +250,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Drop in reverse dependency order
     op.drop_table("reminders")
     op.drop_table("alerts")
     op.drop_table("watchlist_items")
@@ -272,12 +258,11 @@ def downgrade() -> None:
     op.drop_table("catalysts")
     op.drop_table("assumptions")
     op.drop_table("theses")
-
-    # Drop enum types (PostgreSQL)
-    op.execute("DROP TYPE IF EXISTS thesisstatus")
-    op.execute("DROP TYPE IF EXISTS assumptionstatus")
-    op.execute("DROP TYPE IF EXISTS catalyststatus")
-    op.execute("DROP TYPE IF EXISTS reviewverdict")
-    op.execute("DROP TYPE IF EXISTS alertconditiontype")
-    op.execute("DROP TYPE IF EXISTS alertstatus")
+    # Drop Postgres enum types (no-op on SQLite)
     op.execute("DROP TYPE IF EXISTS reminderfrequency")
+    op.execute("DROP TYPE IF EXISTS alertstatus")
+    op.execute("DROP TYPE IF EXISTS alertconditiontype")
+    op.execute("DROP TYPE IF EXISTS reviewverdict")
+    op.execute("DROP TYPE IF EXISTS catalyststatus")
+    op.execute("DROP TYPE IF EXISTS assumptionstatus")
+    op.execute("DROP TYPE IF EXISTS thesisstatus")
