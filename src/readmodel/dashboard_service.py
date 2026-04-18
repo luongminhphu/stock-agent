@@ -23,10 +23,11 @@ Design rules:
 from __future__ import annotations
 
 import json
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import Integer, and_, case, cast, desc, func, select, text
+from sqlalchemy import Integer, and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.readmodel.schemas import (
@@ -52,7 +53,6 @@ class DashboardService:
     # ------------------------------------------------------------------
 
     async def get_stats(self, user_id: str) -> dict[str, Any]:
-        """Tuong duong GET /api/stats cua dashboard cu."""
         from src.thesis.models import (
             Catalyst,
             CatalystStatus,
@@ -164,6 +164,10 @@ class DashboardService:
             "reviews_today": reviews_today,
         }
 
+    # ------------------------------------------------------------------
+    # 2. Theses list
+    # ------------------------------------------------------------------
+
     async def get_theses_list(
         self,
         user_id: str,
@@ -171,7 +175,6 @@ class DashboardService:
         ticker: str | None = None,
         limit: int = 200,
     ) -> list[dict[str, Any]]:
-        """Tuong duong GET /api/theses cua dashboard cu."""
         from src.thesis.models import (
             Assumption,
             Catalyst,
@@ -270,8 +273,11 @@ class DashboardService:
             )
         return result
 
+    # ------------------------------------------------------------------
+    # 3. Thesis detail
+    # ------------------------------------------------------------------
+
     async def get_thesis_detail(self, user_id: str, thesis_id: int) -> dict[str, Any] | None:
-        """Tuong duong GET /api/theses/<id>."""
         from src.thesis.models import (
             Assumption,
             Catalyst,
@@ -377,8 +383,11 @@ class DashboardService:
             "catalysts": [_catalyst_dict(c) for c in catalysts_rows],
         }
 
+    # ------------------------------------------------------------------
+    # 4. Upcoming catalysts
+    # ------------------------------------------------------------------
+
     async def get_upcoming_catalysts(self, user_id: str, days: int = 30) -> list[dict[str, Any]]:
-        """Tuong duong GET /api/catalysts/upcoming."""
         from src.thesis.models import Catalyst, CatalystStatus, Thesis, ThesisStatus
 
         now_vn = _now_vn()
@@ -422,8 +431,11 @@ class DashboardService:
             for r in rows
         ]
 
+    # ------------------------------------------------------------------
+    # 5. Latest scan snapshot
+    # ------------------------------------------------------------------
+
     async def get_scan_latest(self, user_id: str) -> dict[str, Any] | None:
-        """Tuong duong GET /api/scan/latest."""
         try:
             from src.watchlist.models import WatchlistScan
 
@@ -448,8 +460,11 @@ class DashboardService:
         except Exception:
             return None
 
+    # ------------------------------------------------------------------
+    # 6. Latest brief snapshot
+    # ------------------------------------------------------------------
+
     async def get_brief_latest(self, user_id: str, phase: str = "morning") -> dict[str, Any] | None:
-        """Tuong duong GET /api/brief/latest."""
         try:
             from src.briefing.models import BriefSnapshot
 
@@ -478,32 +493,23 @@ class DashboardService:
         except Exception:
             return None
 
-    async def get_verdict_accuracy(self, user_id: str) -> list[dict[str, Any]]:
-        """Tuong duong GET /api/backtesting/verdict-accuracy.
+    # ------------------------------------------------------------------
+    # 7. Backtesting — verdict accuracy  (pure-Python aggregation)
+    # ------------------------------------------------------------------
 
-        Dung ThesisSnapshot: danh gia huong verdict gan nhat cua moi thesis
-        so voi pnl_pct thuc te tren cac snapshot.
-        Bullish/Watchlist dung neu pnl_pct >= 0.
-        Bearish dung neu pnl_pct < 0.
-        Neutral khong tinh accuracy directional, se ra 0.
+    async def get_verdict_accuracy(self, user_id: str) -> list[dict[str, Any]]:
+        """Tinh accuracy theo verdict bang 2 query don gian + Python aggregation.
+
+        Query 1: latest verdict per thesis (1 row / thesis).
+        Query 2: tat ca snapshots co pnl_pct cua user.
+        Join trong Python, tinh accuracy directional:
+          BULLISH / WATCHLIST → dung neu pnl_pct >= 0
+          BEARISH             → dung neu pnl_pct < 0
+          NEUTRAL             → khong co directional edge, accuracy = None
         """
         from src.thesis.models import Thesis, ThesisReview, ThesisSnapshot
 
-        snap_subq = (
-            select(
-                ThesisSnapshot.id.label("snapshot_id"),
-                ThesisSnapshot.thesis_id,
-                ThesisSnapshot.pnl_pct,
-                ThesisSnapshot.snapshotted_at,
-            )
-            .join(Thesis, Thesis.id == ThesisSnapshot.thesis_id)
-            .where(
-                Thesis.user_id == user_id,
-                ThesisSnapshot.pnl_pct.isnot(None),
-            )
-            .subquery()
-        )
-
+        # --- Query 1: latest review per thesis ---
         latest_review_subq = (
             select(
                 ThesisReview.thesis_id,
@@ -520,59 +526,78 @@ class DashboardService:
             .subquery()
         )
 
-        directional_hit = case(
-            (
-                and_(
-                    latest_review_subq.c.verdict.in_(["BULLISH", "WATCHLIST"]),
-                    snap_subq.c.pnl_pct >= 0,
-                ),
-                1,
-            ),
-            (
-                and_(
-                    latest_review_subq.c.verdict == "BEARISH",
-                    snap_subq.c.pnl_pct < 0,
-                ),
-                1,
-            ),
-            else_=0,
-        )
-
-        rows = (
+        review_rows = (
             await self._session.execute(
                 select(
+                    latest_review_subq.c.thesis_id,
                     latest_review_subq.c.verdict,
-                    func.count(snap_subq.c.snapshot_id).label("total"),
-                    func.round(func.avg(snap_subq.c.pnl_pct), 2).label("avg_pnl"),
-                    func.round(
-                        100.0
-                        * func.sum(cast(directional_hit, Integer))
-                        / func.nullif(func.count(snap_subq.c.snapshot_id), 0),
-                        2,
-                    ).label("accuracy_pct"),
-                )
-                .select_from(snap_subq)
-                .join(
-                    latest_review_subq,
-                    and_(
-                        latest_review_subq.c.thesis_id == snap_subq.c.thesis_id,
-                        latest_review_subq.c.rn == 1,
-                    ),
-                )
-                .group_by(latest_review_subq.c.verdict)
-                .order_by(latest_review_subq.c.verdict)
+                ).where(latest_review_subq.c.rn == 1)
             )
         ).all()
 
-        return [
-            {
-                "verdict": str(r.verdict),
-                "total": r.total,
-                "avg_pnl": r.avg_pnl,
-                "accuracy_pct": r.accuracy_pct,
-            }
-            for r in rows
-        ]
+        # thesis_id -> verdict string
+        thesis_verdict: dict[int, str] = {
+            r.thesis_id: str(r.verdict) for r in review_rows
+        }
+
+        if not thesis_verdict:
+            return []
+
+        # --- Query 2: all snapshots with pnl_pct for this user ---
+        snap_rows = (
+            await self._session.execute(
+                select(
+                    ThesisSnapshot.thesis_id,
+                    ThesisSnapshot.pnl_pct,
+                )
+                .join(Thesis, Thesis.id == ThesisSnapshot.thesis_id)
+                .where(
+                    Thesis.user_id == user_id,
+                    ThesisSnapshot.pnl_pct.isnot(None),
+                )
+            )
+        ).all()
+
+        # --- Pure-Python aggregation ---
+        # verdict -> {total, hits, pnl_sum}
+        stats: dict[str, dict] = defaultdict(lambda: {"total": 0, "hits": 0, "pnl_sum": 0.0})
+
+        for snap in snap_rows:
+            verdict = thesis_verdict.get(snap.thesis_id)
+            if verdict is None:
+                continue
+            pnl = snap.pnl_pct
+            bucket = stats[verdict]
+            bucket["total"] += 1
+            bucket["pnl_sum"] += pnl
+            if verdict in ("BULLISH", "WATCHLIST") and pnl >= 0:
+                bucket["hits"] += 1
+            elif verdict == "BEARISH" and pnl < 0:
+                bucket["hits"] += 1
+
+        result = []
+        for verdict in sorted(stats.keys()):
+            b = stats[verdict]
+            total = b["total"]
+            avg_pnl = round(b["pnl_sum"] / total, 2) if total else None
+            if verdict == "NEUTRAL":
+                accuracy_pct = None
+            else:
+                accuracy_pct = round(b["hits"] / total * 100, 2) if total else None
+            result.append(
+                {
+                    "verdict": verdict,
+                    "total": total,
+                    "avg_pnl": avg_pnl,
+                    "accuracy_pct": accuracy_pct,
+                }
+            )
+
+        return result
+
+    # ------------------------------------------------------------------
+    # 8. Backtesting — thesis performances
+    # ------------------------------------------------------------------
 
     async def get_thesis_performances(
         self,
@@ -580,10 +605,6 @@ class DashboardService:
         ticker: str | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
-        """Tuong duong GET /api/backtesting/thesis-performances.
-
-        Aggregate ThesisSnapshot per thesis: avg/max/min pnl_pct.
-        """
         from src.thesis.models import Thesis, ThesisSnapshot
 
         filters = [Thesis.user_id == user_id]
@@ -630,8 +651,11 @@ class DashboardService:
             for r in rows
         ]
 
+    # ------------------------------------------------------------------
+    # 9. Backtesting — price snapshots (chart data)
+    # ------------------------------------------------------------------
+
     async def get_price_snapshots(self, user_id: str, thesis_id: int) -> dict[str, Any] | None:
-        """Tuong duong GET /api/backtesting/price-snapshots/<id>."""
         from src.thesis.models import Thesis, ThesisReview, ThesisSnapshot
 
         thesis = await self._session.get(Thesis, thesis_id)
@@ -688,6 +712,10 @@ class DashboardService:
             ],
         }
 
+    # ------------------------------------------------------------------
+    # Legacy compatibility
+    # ------------------------------------------------------------------
+
     async def get_dashboard(self, user_id: str) -> DashboardResponse:
         rows = await self._thesis_summary_rows(user_id)
         active = sum(1 for r in rows if r.status == "active")
@@ -737,6 +765,10 @@ class DashboardService:
             )
             for r in rows
         ]
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
 
     async def _thesis_summary_rows(self, user_id: str) -> list[ThesisSummaryRow]:
         from src.thesis.models import (
@@ -854,6 +886,11 @@ class DashboardService:
                 )
             )
         return out
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 
 def _parse_json_field(value: str | None) -> list | dict | None:
