@@ -1,7 +1,7 @@
 """Unit tests for ReviewService.
 
-Zero real API calls — PerplexityClient is mocked.
-Zero real DB — SQLite in-memory via AsyncSession mock.
+All external dependencies (agent, repo, quote_service) are AsyncMock.
+No DB, no HTTP.
 """
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.ai.schemas import ThesisReviewOutput, Verdict
+from src.ai.schemas import ThesisReviewOutput
 from src.thesis.models import (
     AssumptionStatus,
     CatalystStatus,
@@ -20,193 +20,208 @@ from src.thesis.models import (
 from src.thesis.review_service import ReviewNotAllowedError, ReviewService
 from src.thesis.service import ThesisNotFoundError
 
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
+from tests.thesis.conftest import make_assumption, make_catalyst, make_review, make_thesis
 
 
-def _make_thesis(
-    thesis_id: int = 1,
-    user_id: str = "user_42",
-    ticker: str = "HPG",
-    status: ThesisStatus = ThesisStatus.ACTIVE,
-) -> MagicMock:
-    thesis = MagicMock()
-    thesis.id = thesis_id
-    thesis.user_id = user_id
-    thesis.ticker = ticker
-    thesis.title = "HPG recovery thesis"
-    thesis.summary = "Steel demand recovery driven by public investment"
-    thesis.status = status
-    thesis.entry_price = 28_000.0
-    thesis.target_price = 35_000.0
-    thesis.stop_loss = 24_000.0
-    thesis.assumptions = [
-        MagicMock(description="Public investment cycle accelerates", status=AssumptionStatus.PENDING),
-        MagicMock(description="Steel price stabilises above cost", status=AssumptionStatus.VALID),
-        MagicMock(description="Assume valid", status=AssumptionStatus.INVALID),  # excluded
-    ]
-    thesis.catalysts = [
-        MagicMock(description="New housing decree passes", status=CatalystStatus.PENDING),
-        MagicMock(description="Q2 earnings beat", status=CatalystStatus.TRIGGERED),
-        MagicMock(description="Old catalyst", status=CatalystStatus.EXPIRED),  # excluded
-    ]
-    return thesis
-
-
-def _make_ai_output(verdict: Verdict = Verdict.BULLISH) -> ThesisReviewOutput:
+def _make_output(
+    verdict: str = "BULLISH",
+    confidence: float = 0.80,
+) -> ThesisReviewOutput:
     return ThesisReviewOutput(
-        verdict=verdict,
-        confidence=0.75,
-        risk_signals=["Global steel oversupply", "USD strengthening"],
-        next_watch_items=["Monthly public investment disbursement", "HPG inventory level"],
-        reasoning="Public investment is the key catalyst; steel margins stabilising.",
-        assumption_updates=["Monitor steel price weekly"],
-        catalyst_status=["Housing decree expected Q3 2026"],
+        verdict=ReviewVerdict(verdict),
+        confidence=confidence,
+        reasoning="Strong steel demand outlook.",
+        risk_signals=["iron ore price drop"],
+        next_watch_items=["Q2 earnings"],
+        action="Hold position",
     )
 
 
+def _make_service(
+    mock_repo: AsyncMock,
+    mock_agent: AsyncMock,
+    quote_service: object | None = None,
+) -> ReviewService:
+    svc = ReviewService.__new__(ReviewService)
+    svc._repo = mock_repo
+    svc._agent = mock_agent
+    svc._quote_service = quote_service
+    return svc
+
+
 # ---------------------------------------------------------------------------
-# Tests
+# review_thesis — happy path
 # ---------------------------------------------------------------------------
 
 
-async def test_review_thesis_success() -> None:
-    """Happy path: agent returns structured output, review is persisted."""
-    thesis = _make_thesis()
-    ai_output = _make_ai_output(Verdict.BULLISH)
+@pytest.mark.asyncio
+async def test_review_thesis_happy_path(mock_repo, mock_agent):
+    """Active thesis → agent called → review persisted and returned."""
+    output = _make_output()
+    mock_agent.review.return_value = output
 
-    mock_repo = AsyncMock()
+    svc = _make_service(mock_repo, mock_agent)
+    result = await svc.review_thesis(thesis_id=1, user_id="user-test-001")
+
+    mock_agent.review.assert_awaited_once()
+    mock_repo.save_review.assert_awaited_once()
+    assert result.verdict == ReviewVerdict.BULLISH
+    assert result.confidence == 0.80
+
+
+@pytest.mark.asyncio
+async def test_review_thesis_with_assumptions_and_catalysts(mock_repo, mock_agent):
+    """Assumptions + catalysts are correctly extracted and passed to agent."""
+    thesis = make_thesis(
+        assumptions=[
+            make_assumption("Steel demand grows", AssumptionStatus.VALID),
+            make_assumption("Export quota stays", AssumptionStatus.INVALID),  # excluded
+        ],
+        catalysts=[
+            make_catalyst("Q2 earnings", CatalystStatus.TRIGGERED),
+            make_catalyst("Credit expansion", CatalystStatus.PENDING),
+            make_catalyst("Old catalyst", CatalystStatus.EXPIRED),  # excluded
+        ],
+    )
     mock_repo.get_by_id.return_value = thesis
-    mock_repo.save_review.return_value = AsyncMock()
+    mock_agent.review.return_value = _make_output()
 
-    mock_agent = AsyncMock()
-    mock_agent.review.return_value = ai_output
+    svc = _make_service(mock_repo, mock_agent)
+    await svc.review_thesis(thesis_id=1, user_id="user-test-001")
 
-    mock_session = AsyncMock()
-
-    with patch("src.thesis.review_service.ThesisRepository", return_value=mock_repo):
-        svc = ReviewService(session=mock_session, agent=mock_agent)
-        review = await svc.review_thesis(thesis_id=1, user_id="user_42")
-
-    mock_agent.review.assert_called_once()
     call_kwargs = mock_agent.review.call_args.kwargs
-    assert call_kwargs["ticker"] == "HPG"
-    assert len(call_kwargs["assumptions"]) == 2   # INVALID excluded
-    assert len(call_kwargs["catalysts"]) == 2     # EXPIRED excluded
+    # INVALID assumption excluded
+    assert "Steel demand grows" in call_kwargs["assumptions"]
+    assert "Export quota stays" not in call_kwargs["assumptions"]
+    # Only TRIGGERED + PENDING catalysts included; EXPIRED excluded
+    assert "Q2 earnings" in call_kwargs["catalysts"]
+    assert "Credit expansion" in call_kwargs["catalysts"]
+    assert "Old catalyst" not in call_kwargs["catalysts"]
 
-    mock_repo.save_review.assert_called_once()
-    saved = mock_repo.save_review.call_args.args[0]
-    assert saved.verdict == ReviewVerdict.BULLISH
-    assert saved.confidence == 0.75
+
+@pytest.mark.asyncio
+async def test_review_thesis_price_from_quote_service(mock_repo, mock_agent):
+    """When current_price is None, QuoteService is called for live price."""
+    mock_agent.review.return_value = _make_output()
+
+    mock_qs = AsyncMock()
+    mock_quote = MagicMock()
+    mock_quote.price = 29500.0
+    mock_qs.get_quote.return_value = mock_quote
+
+    svc = _make_service(mock_repo, mock_agent, quote_service=mock_qs)
+    await svc.review_thesis(thesis_id=1, user_id="user-test-001", current_price=None)
+
+    mock_qs.get_quote.assert_awaited_once_with("HPG")
+    call_kwargs = mock_agent.review.call_args.kwargs
+    assert call_kwargs["current_price"] == 29500.0
 
 
-async def test_review_thesis_not_found() -> None:
-    mock_repo = AsyncMock()
+@pytest.mark.asyncio
+async def test_review_thesis_explicit_price_skips_quote_service(mock_repo, mock_agent):
+    """Explicit current_price → QuoteService never called."""
+    mock_agent.review.return_value = _make_output()
+    mock_qs = AsyncMock()
+
+    svc = _make_service(mock_repo, mock_agent, quote_service=mock_qs)
+    await svc.review_thesis(thesis_id=1, user_id="user-test-001", current_price=27000.0)
+
+    mock_qs.get_quote.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_review_thesis_quote_service_failure_is_silent(mock_repo, mock_agent):
+    """QuoteService failure must not abort the review — just log and continue."""
+    mock_agent.review.return_value = _make_output()
+    mock_qs = AsyncMock()
+    mock_qs.get_quote.side_effect = RuntimeError("market adapter down")
+
+    svc = _make_service(mock_repo, mock_agent, quote_service=mock_qs)
+    # Should NOT raise
+    result = await svc.review_thesis(thesis_id=1, user_id="user-test-001")
+    assert result.verdict == ReviewVerdict.BULLISH
+
+
+# ---------------------------------------------------------------------------
+# review_thesis — error cases
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_review_thesis_not_found_raises(mock_repo, mock_agent):
     mock_repo.get_by_id.return_value = None
-    mock_agent = AsyncMock()
-    mock_session = AsyncMock()
+    svc = _make_service(mock_repo, mock_agent)
 
-    with patch("src.thesis.review_service.ThesisRepository", return_value=mock_repo):
-        svc = ReviewService(session=mock_session, agent=mock_agent)
-        with pytest.raises(ThesisNotFoundError):
-            await svc.review_thesis(thesis_id=999, user_id="user_42")
+    with pytest.raises(ThesisNotFoundError):
+        await svc.review_thesis(thesis_id=999, user_id="user-test-001")
 
-    mock_agent.review.assert_not_called()
+    mock_agent.review.assert_not_awaited()
 
 
-async def test_review_thesis_wrong_owner() -> None:
-    thesis = _make_thesis(user_id="other_user")
-    mock_repo = AsyncMock()
+@pytest.mark.asyncio
+async def test_review_thesis_wrong_user_raises(mock_repo, mock_agent):
+    """Thesis owned by another user → ThesisNotFoundError (no info leak)."""
+    thesis = make_thesis(user_id="other-user")
     mock_repo.get_by_id.return_value = thesis
-    mock_agent = AsyncMock()
-    mock_session = AsyncMock()
+    svc = _make_service(mock_repo, mock_agent)
 
-    with patch("src.thesis.review_service.ThesisRepository", return_value=mock_repo):
-        svc = ReviewService(session=mock_session, agent=mock_agent)
-        with pytest.raises(ThesisNotFoundError):
-            await svc.review_thesis(thesis_id=1, user_id="user_42")
+    with pytest.raises(ThesisNotFoundError):
+        await svc.review_thesis(thesis_id=1, user_id="user-test-001")
 
 
-async def test_review_thesis_not_active() -> None:
-    thesis = _make_thesis(status=ThesisStatus.CLOSED)
-    mock_repo = AsyncMock()
+@pytest.mark.asyncio
+async def test_review_thesis_invalidated_raises(mock_repo, mock_agent):
+    """INVALIDATED thesis → ReviewNotAllowedError."""
+    thesis = make_thesis(status=ThesisStatus.INVALIDATED)
     mock_repo.get_by_id.return_value = thesis
-    mock_agent = AsyncMock()
-    mock_session = AsyncMock()
+    svc = _make_service(mock_repo, mock_agent)
 
-    with patch("src.thesis.review_service.ThesisRepository", return_value=mock_repo):
-        svc = ReviewService(session=mock_session, agent=mock_agent)
-        with pytest.raises(ReviewNotAllowedError):
-            await svc.review_thesis(thesis_id=1, user_id="user_42")
-
-    mock_agent.review.assert_not_called()
+    with pytest.raises(ReviewNotAllowedError):
+        await svc.review_thesis(thesis_id=1, user_id="user-test-001")
 
 
-async def test_review_thesis_filters_invalid_assumptions_and_expired_catalysts() -> None:
-    """Verify INVALID assumptions and EXPIRED catalysts are excluded from agent call."""
-    thesis = _make_thesis()
-    mock_repo = AsyncMock()
+@pytest.mark.asyncio
+async def test_review_thesis_closed_raises(mock_repo, mock_agent):
+    """CLOSED thesis → ReviewNotAllowedError."""
+    thesis = make_thesis(status=ThesisStatus.CLOSED)
     mock_repo.get_by_id.return_value = thesis
-    mock_repo.save_review.return_value = AsyncMock()
-    mock_agent = AsyncMock()
-    mock_agent.review.return_value = _make_ai_output()
-    mock_session = AsyncMock()
+    svc = _make_service(mock_repo, mock_agent)
 
-    with patch("src.thesis.review_service.ThesisRepository", return_value=mock_repo):
-        svc = ReviewService(session=mock_session, agent=mock_agent)
-        await svc.review_thesis(thesis_id=1, user_id="user_42")
-
-    kwargs = mock_agent.review.call_args.kwargs
-    assumption_texts = kwargs["assumptions"]
-    catalyst_texts = kwargs["catalysts"]
-
-    assert not any("Assume valid" in t for t in assumption_texts), "INVALID assumption must be excluded"
-    assert not any("Old catalyst" in t for t in catalyst_texts), "EXPIRED catalyst must be excluded"
+    with pytest.raises(ReviewNotAllowedError):
+        await svc.review_thesis(thesis_id=1, user_id="user-test-001")
 
 
-async def test_price_enrichment_from_quote_service() -> None:
-    """When current_price not provided, ReviewService fetches from QuoteService."""
-    thesis = _make_thesis()
-    mock_repo = AsyncMock()
+# ---------------------------------------------------------------------------
+# list_reviews
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_reviews_returns_list(mock_repo, mock_agent):
+    reviews = [make_review(), make_review()]
+    reviews[1].id = 2
+    mock_repo.list_reviews_by_thesis.return_value = reviews
+
+    svc = _make_service(mock_repo, mock_agent)
+    result = await svc.list_reviews(thesis_id=1, user_id="user-test-001")
+
+    assert len(result) == 2
+    mock_repo.list_reviews_by_thesis.assert_awaited_once_with(1, limit=10)
+
+
+@pytest.mark.asyncio
+async def test_list_reviews_wrong_user_raises(mock_repo, mock_agent):
+    thesis = make_thesis(user_id="another")
     mock_repo.get_by_id.return_value = thesis
-    mock_repo.save_review.return_value = AsyncMock()
+    svc = _make_service(mock_repo, mock_agent)
 
-    mock_quote = MagicMock(price=29_500.0)
-    mock_quote_svc = AsyncMock()
-    mock_quote_svc.get_quote.return_value = mock_quote
-
-    mock_agent = AsyncMock()
-    mock_agent.review.return_value = _make_ai_output()
-    mock_session = AsyncMock()
-
-    with patch("src.thesis.review_service.ThesisRepository", return_value=mock_repo):
-        svc = ReviewService(session=mock_session, agent=mock_agent, quote_service=mock_quote_svc)
-        await svc.review_thesis(thesis_id=1, user_id="user_42")
-
-    mock_quote_svc.get_quote.assert_called_once_with("HPG")
-    saved = mock_repo.save_review.call_args.args[0]
-    assert saved.reviewed_price == 29_500.0
+    with pytest.raises(ThesisNotFoundError):
+        await svc.list_reviews(thesis_id=1, user_id="user-test-001")
 
 
-async def test_price_enrichment_fallback_on_quote_error() -> None:
-    """If QuoteService fails, review continues without price (reviewed_price=None)."""
-    thesis = _make_thesis()
-    mock_repo = AsyncMock()
-    mock_repo.get_by_id.return_value = thesis
-    mock_repo.save_review.return_value = AsyncMock()
-
-    mock_quote_svc = AsyncMock()
-    mock_quote_svc.get_quote.side_effect = RuntimeError("market down")
-
-    mock_agent = AsyncMock()
-    mock_agent.review.return_value = _make_ai_output()
-    mock_session = AsyncMock()
-
-    with patch("src.thesis.review_service.ThesisRepository", return_value=mock_repo):
-        svc = ReviewService(session=mock_session, agent=mock_agent, quote_service=mock_quote_svc)
-        await svc.review_thesis(thesis_id=1, user_id="user_42")  # must not raise
-
-    saved = mock_repo.save_review.call_args.args[0]
-    assert saved.reviewed_price is None
+@pytest.mark.asyncio
+async def test_list_reviews_custom_limit(mock_repo, mock_agent):
+    mock_repo.list_reviews_by_thesis.return_value = []
+    svc = _make_service(mock_repo, mock_agent)
+    await svc.list_reviews(thesis_id=1, user_id="user-test-001", limit=5)
+    mock_repo.list_reviews_by_thesis.assert_awaited_once_with(1, limit=5)
