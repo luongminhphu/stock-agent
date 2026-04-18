@@ -3,6 +3,7 @@
 All external dependencies (agent, repo, quote_service) are AsyncMock.
 No DB, no HTTP.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone

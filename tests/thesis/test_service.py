@@ -3,6 +3,7 @@
 Covers: create, list_for_user, close, invalidate, guard against
 double-close, and ownership isolation.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -66,9 +67,7 @@ async def test_upside_pct_computed(session):
 async def test_risk_reward_computed(session):
     # upside=10k, downside=3k → R/R = 10/3 ≈ 3.33
     svc = ThesisService(session)
-    thesis = await svc.create(
-        _inp(entry_price=20_000, target_price=30_000, stop_loss=17_000)
-    )
+    thesis = await svc.create(_inp(entry_price=20_000, target_price=30_000, stop_loss=17_000))
     await session.flush()
 
     assert thesis.risk_reward == pytest.approx(10_000 / 3_000, rel=1e-2)

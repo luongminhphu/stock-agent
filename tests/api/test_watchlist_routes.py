@@ -3,6 +3,7 @@
 Owner: api + watchlist segments.
 Uses SQLite in-memory DB (ENVIRONMENT=test).
 """
+
 from __future__ import annotations
 
 import pytest
@@ -96,15 +97,18 @@ async def test_multiple_items_independent_per_user(app):
     """Two users have independent watchlists."""
     from httpx import ASGITransport, AsyncClient
 
-    async with AsyncClient(
-        transport=ASGITransport(app=app),
-        base_url="http://test",
-        headers={"X-User-Id": "user-A"},
-    ) as client_a, AsyncClient(
-        transport=ASGITransport(app=app),
-        base_url="http://test",
-        headers={"X-User-Id": "user-B"},
-    ) as client_b:
+    async with (
+        AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+            headers={"X-User-Id": "user-A"},
+        ) as client_a,
+        AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+            headers={"X-User-Id": "user-B"},
+        ) as client_b,
+    ):
         await client_a.post("/api/v1/watchlist", json={"ticker": "HPG"})
         await client_b.post("/api/v1/watchlist", json={"ticker": "VCB"})
 

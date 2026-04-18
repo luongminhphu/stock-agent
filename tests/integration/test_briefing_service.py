@@ -5,6 +5,7 @@ Uses:
  - MockPerplexityClient + stub QuoteService
  - Real BriefingAgent, BriefingService, WatchlistService
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -119,6 +120,7 @@ async def test_eod_brief_with_watchlist(session):
 
 async def test_brief_quote_failure_degrades_gracefully(session):
     """If QuoteService raises, brief should still be generated (degraded context)."""
+
     class _FailingQuoteService:
         async def get_bulk_quotes(self, _):
             raise RuntimeError("Network error")

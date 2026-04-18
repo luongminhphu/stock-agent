@@ -4,6 +4,7 @@ Owner: thesis segment.
 Only ThesisService and ReviewService call this.
 readmodel segment uses its own optimized read queries.
 """
+
 from __future__ import annotations
 
 from sqlalchemy import select

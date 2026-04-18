@@ -1,4 +1,5 @@
 """Unit tests for VCIAdapter — no real HTTP, uses httpx mock transport."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -89,6 +90,7 @@ async def test_fetch_quote_calls_post_and_returns_quote() -> None:
     class MockTransport(httpx.AsyncBaseTransport):
         async def handle_async_request(self, request):
             import json as _json
+
             return httpx.Response(200, json=raw_response)
 
     adapter = VCIAdapter()

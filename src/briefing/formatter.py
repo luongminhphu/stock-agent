@@ -6,6 +6,7 @@ Callers: bot adapters, API response builders.
 This module knows Discord markdown but NOT Discord SDK.
 It returns plain strings; bot/api layers decide how to send them.
 """
+
 from __future__ import annotations
 
 from src.ai.schemas import BriefOutput, MarketSentiment

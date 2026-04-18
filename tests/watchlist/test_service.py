@@ -3,6 +3,7 @@
 Covers: add, remove, list, duplicate guard, add_alert, dismiss_alert.
 All DB ops use the in-memory SQLite fixture from conftest.py.
 """
+
 from __future__ import annotations
 
 import pytest

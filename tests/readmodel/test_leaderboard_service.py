@@ -1,4 +1,5 @@
 """Tests for readmodel.LeaderboardService."""
+
 from __future__ import annotations
 
 import pytest

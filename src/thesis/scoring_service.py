@@ -4,6 +4,7 @@ Owner: thesis segment.
 Scoring rules live here, not in the AI layer.
 Wave 3: enrich with AI-assisted scoring signals.
 """
+
 from __future__ import annotations
 
 from src.thesis.models import AssumptionStatus, CatalystStatus, Thesis
@@ -42,9 +43,7 @@ class ScoringService:
 
         # 2. Catalyst progress (30%)
         if thesis.catalysts:
-            triggered = sum(
-                1 for c in thesis.catalysts if c.status == CatalystStatus.TRIGGERED
-            )
+            triggered = sum(1 for c in thesis.catalysts if c.status == CatalystStatus.TRIGGERED)
             catalyst_score = triggered / len(thesis.catalysts)
             score += catalyst_score * _WEIGHTS["catalyst_progress"] * 100
         else:

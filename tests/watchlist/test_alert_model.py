@@ -1,4 +1,5 @@
 """Unit tests for Alert domain helpers (pure logic, no DB)."""
+
 from __future__ import annotations
 
 from src.watchlist.models import Alert, AlertConditionType, AlertStatus

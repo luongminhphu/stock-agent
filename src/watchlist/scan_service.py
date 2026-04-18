@@ -5,6 +5,7 @@ Consumes QuoteService (market segment) via injection.
 Does NOT own alert-firing logic — calls alert.is_triggered_by() (domain helper)
 then returns structured scan result for bot/api adapters.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -22,6 +23,7 @@ logger = get_logger(__name__)
 @dataclass
 class ScanSignal:
     """A signal produced by ScanService for a single ticker."""
+
     ticker: str
     current_price: float
     change_pct: float
@@ -50,6 +52,7 @@ class ScanSignal:
 @dataclass
 class ScanResult:
     """Aggregated result of a full watchlist scan."""
+
     scanned_at: datetime
     signals: list[ScanSignal] = field(default_factory=list)
     errors: dict[str, str] = field(default_factory=dict)
@@ -83,9 +86,7 @@ class ScanService:
 
     async def scan_user(self, user_id: str) -> ScanResult:
         if self._quote_service is None:
-            raise ScanServiceNotConfiguredError(
-                "ScanService requires a QuoteService adapter."
-            )
+            raise ScanServiceNotConfiguredError("ScanService requires a QuoteService adapter.")
 
         items = await self._repo.list_for_user(user_id)
         tickers = sorted({i.ticker for i in items})
@@ -124,9 +125,7 @@ class ScanService:
         all_alerts: list[Alert] = []
         for item in items:
             if item.ticker == ticker:
-                all_alerts.extend(
-                    a for a in item.alerts if a.status == AlertStatus.ACTIVE
-                )
+                all_alerts.extend(a for a in item.alerts if a.status == AlertStatus.ACTIVE)
 
         for alert in all_alerts:
             if alert.is_triggered_by(

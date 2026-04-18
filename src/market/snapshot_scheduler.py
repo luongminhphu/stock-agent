@@ -11,6 +11,7 @@ Design rules:
 - Does NOT call ThesisService; snapshots are append-only side-effects.
 - Skips tickers where QuoteService raises (logs warning, continues).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -36,8 +37,7 @@ class SnapshotScheduler:
 
     def __init__(self) -> None:
         self._task = tasks.loop(
-            time=__import__("datetime").time(8, 10, 0,
-                tzinfo=__import__("datetime").timezone.utc)
+            time=__import__("datetime").time(8, 10, 0, tzinfo=__import__("datetime").timezone.utc)
         )(self._run_snapshot)
 
     def start(self) -> None:
@@ -83,9 +83,7 @@ class SnapshotScheduler:
                 quotes = await qs.get_bulk_quotes(tickers)  # type: ignore[attr-defined]
                 price_map: dict[str, float] = {q.ticker: q.price for q in quotes}
             except Exception as exc:
-                logger.error(
-                    "market.snapshot_scheduler.bulk_fetch_failed", error=str(exc)
-                )
+                logger.error("market.snapshot_scheduler.bulk_fetch_failed", error=str(exc))
                 return
 
             # 3. Write snapshots

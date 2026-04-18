@@ -10,6 +10,7 @@ Public API:
     Errors:      WatchlistItemNotFoundError, WatchlistItemAlreadyExistsError,
                  AlertNotFoundError, ScanServiceNotConfiguredError
 """
+
 from src.watchlist.models import (
     Alert,
     AlertConditionType,

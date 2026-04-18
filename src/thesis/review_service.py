@@ -11,6 +11,7 @@ Flow:
     4. Persist ThesisReview ORM record
     5. Return ThesisReview
 """
+
 from __future__ import annotations
 
 import json
@@ -108,9 +109,7 @@ class ReviewService:
 
         # Build context lists
         assumptions = [
-            a.description
-            for a in thesis.assumptions
-            if a.status != AssumptionStatus.INVALID
+            a.description for a in thesis.assumptions if a.status != AssumptionStatus.INVALID
         ]
         catalysts = [
             c.description

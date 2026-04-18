@@ -11,6 +11,7 @@ Public API:
     bootstrap()      — async startup routine (logging + future: migrations)
     check_health()   — async health probe
 """
+
 from src.platform.bootstrap import bootstrap
 from src.platform.config import get_settings, settings
 from src.platform.db import AsyncSessionLocal, Base, get_db_session

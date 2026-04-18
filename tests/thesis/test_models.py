@@ -1,4 +1,5 @@
 """Unit tests for thesis domain model helpers (no DB required)."""
+
 import pytest
 from unittest.mock import MagicMock
 from datetime import datetime

@@ -4,6 +4,7 @@ Owner: market segment.
 Source of truth for ticker → exchange/sector/name mapping.
 Wave 2 will populate this from a real data file or API.
 """
+
 from dataclasses import dataclass
 from enum import Enum
 

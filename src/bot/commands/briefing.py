@@ -6,6 +6,7 @@ Adapter only: parse Discord interaction → call BriefingService → format via 
 NO business logic here. BriefingService owns the flow.
 formatter.py owns the string rendering.
 """
+
 from __future__ import annotations
 
 import discord
@@ -77,9 +78,7 @@ def _build_brief_embed(brief: BriefOutput, phase: str) -> discord.Embed:
     title = "\U0001f305 Morning Brief" if phase == "morning" else "\U0001f307 End-of-Day Brief"
     colour = _SENTIMENT_COLOUR.get(brief.sentiment, discord.Color.blurple())
 
-    formatted_text = (
-        format_morning_brief(brief) if phase == "morning" else format_eod_brief(brief)
-    )
+    formatted_text = format_morning_brief(brief) if phase == "morning" else format_eod_brief(brief)
 
     # Discord embed description cap: 4096 chars
     embed = discord.Embed(

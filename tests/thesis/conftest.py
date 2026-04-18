@@ -6,6 +6,7 @@ Strategy:
 - MagicMock for ThesisRepository
 - Thesis ORM objects built via _make_thesis() helper (no DB)
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone

@@ -14,6 +14,7 @@ Route groups:
     /api/v1/briefing       — on-demand brief generation
     /api/v1/readmodel      — dashboard, leaderboard, thesis timeline (wave 3)
 """
+
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
@@ -37,7 +38,7 @@ from src.api.routes.watchlist import router as watchlist_router
 
 logger = get_logger(__name__)
 
-_STATIC_DIR    = Path(__file__).resolve().parent / "static"
+_STATIC_DIR = Path(__file__).resolve().parent / "static"
 _DASHBOARD_DIR = _STATIC_DIR / "dashboard"
 _DASHBOARD_HTML = _DASHBOARD_DIR / "index.html"
 
@@ -86,10 +87,10 @@ def create_app() -> FastAPI:
 
     # Register routers — order matters for OpenAPI grouping
     app.include_router(health_router)
-    app.include_router(market_router,    prefix="/api/v1")
-    app.include_router(thesis_router,    prefix="/api/v1")
+    app.include_router(market_router, prefix="/api/v1")
+    app.include_router(thesis_router, prefix="/api/v1")
     app.include_router(watchlist_router, prefix="/api/v1")
-    app.include_router(briefing_router,  prefix="/api/v1")
+    app.include_router(briefing_router, prefix="/api/v1")
     app.include_router(readmodel_router, prefix="/api/v1")
 
     @app.exception_handler(Exception)

@@ -3,6 +3,7 @@
 Owner: ai segment.
 Keep prompts here; agent logic stays in agents/thesis_review.py.
 """
+
 from __future__ import annotations
 
 SYSTEM_PROMPT = """Bạn là chuyên gia phân tích đầu tư cổ phiếu Việt Nam (HOSE, HNX, UPCoM).

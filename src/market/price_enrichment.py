@@ -12,6 +12,7 @@ Design rules:
   the dashboard must still render.
 - Never import thesis/watchlist/briefing domain models.
 """
+
 from __future__ import annotations
 
 import asyncio

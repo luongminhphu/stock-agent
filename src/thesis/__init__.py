@@ -9,6 +9,7 @@ Public API:
     Errors:       ThesisNotFoundError, ThesisAlreadyClosedError
     Results:      InvalidationCheckResult
 """
+
 from src.thesis.invalidation_service import InvalidationCheckResult, InvalidationService
 from src.thesis.models import (
     Assumption,

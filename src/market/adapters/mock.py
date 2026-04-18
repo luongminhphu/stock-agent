@@ -16,6 +16,7 @@ Usage:
     adapter = MockAdapter(fail_tickers={"ERR"})
     await adapter.fetch_quote("ERR")  # raises ValueError
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -49,7 +50,7 @@ def _make_mock_quote(ticker: str) -> Quote:
     change = price * (_MOCK_CHANGE_PCT / 100)
     ref_price = price - change
     ceiling = round(ref_price * 1.07, -2)  # HOSE +7%
-    floor_ = round(ref_price * 0.93, -2)   # HOSE -7%
+    floor_ = round(ref_price * 0.93, -2)  # HOSE -7%
 
     return Quote(
         ticker=ticker,

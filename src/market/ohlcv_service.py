@@ -3,6 +3,7 @@
 Owner: market segment.
 Wave 2: implement adapter backed by real data provider.
 """
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import date
@@ -84,6 +85,7 @@ class OHLCVService:
     ) -> list[Candle]:
         """Convenience: fetch last N candles. Adapter resolves date range."""
         from datetime import timedelta
+
         today = date.today()
         # Provide enough buffer for weekends/holidays
         from_date = today - timedelta(days=n * 2)

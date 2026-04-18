@@ -1,4 +1,5 @@
 """Run the API: python -m src.api"""
+
 import uvicorn
 from src.platform.config import settings
 

@@ -9,6 +9,7 @@ Tests:
 - signal_type classification
 - ScanResult aggregation properties
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
@@ -204,6 +205,7 @@ def test_scan_result_triggered_count():
     signal2 = ScanSignal(ticker="VCB", current_price=50000.0, change_pct=0.5)
 
     from datetime import datetime
+
     result = ScanResult(scanned_at=datetime.utcnow(), signals=[signal1, signal2])
     assert result.triggered_count == 1
     assert result.tickers_with_signals == ["HPG"]
@@ -217,6 +219,7 @@ def test_scan_result_triggered_alerts_flat():
     s2 = ScanSignal(ticker="VCB", current_price=1.0, change_pct=0.0)
 
     from datetime import datetime
+
     result = ScanResult(scanned_at=datetime.utcnow(), signals=[s1, s2])
     assert len(result.triggered_alerts) == 2
 

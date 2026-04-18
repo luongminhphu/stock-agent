@@ -9,6 +9,7 @@ Rules:
 This is the ONLY place where adapter selection logic lives.
 All other code calls build_adapter() and works against MarketDataAdapter.
 """
+
 from __future__ import annotations
 
 from src.market.quote_service import MarketDataAdapter
@@ -23,6 +24,7 @@ def build_adapter() -> MarketDataAdapter:
     # Lazy imports to avoid loading httpx in test-only contexts unnecessarily
     if settings.environment == "test" or getattr(settings, "mock_market", False):
         from src.market.adapters.mock import MockAdapter
+
         logger.info("market.adapter", provider="mock")
         return MockAdapter()
 

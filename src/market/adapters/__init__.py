@@ -11,6 +11,7 @@ Usage:
     adapter = build_adapter()          # reads settings
     quote_service = QuoteService(adapter)
 """
+
 from src.market.adapters.vci import VCIAdapter
 from src.market.adapters.vndirect import VNDirectAdapter
 from src.market.adapters.chained import ChainedAdapter

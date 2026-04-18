@@ -3,6 +3,7 @@
 Owner: ai segment.
 Keep prompts in this file; agent logic stays in agents/briefing.py.
 """
+
 from __future__ import annotations
 
 SYSTEM_PROMPT = """Bạn là chuyên gia phân tích thị trường chứng khoán Việt Nam (HOSE, HNX, UPCoM).
@@ -36,7 +37,7 @@ def build_morning_prompt(
     prompt = f"""[MORNING BRIEF — Phiên hôm nay]
 
 Dữ liệu thị trường:
-{market_context or 'Chưa có dữ liệu pre-market.'}
+{market_context or "Chưa có dữ liệu pre-market."}
 
 Watchlist cần theo dõi: {ticker_str}
 """
@@ -57,7 +58,7 @@ def build_eod_prompt(
     prompt = f"""[EOD BRIEF — Tổng kết phiên]
 
 Diễn biến phiên hôm nay:
-{market_context or 'Chưa có dữ liệu EOD.'}
+{market_context or "Chưa có dữ liệu EOD."}
 
 Watchlist cần review: {ticker_str}
 """

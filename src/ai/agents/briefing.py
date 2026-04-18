@@ -6,6 +6,7 @@ Caller: briefing segment's BriefingService.
 This agent does NOT know watchlist business rules or user preferences;
 those are resolved by BriefingService before calling this agent.
 """
+
 from __future__ import annotations
 
 import json

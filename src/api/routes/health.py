@@ -5,6 +5,7 @@ Owner: api segment (thin adapter over platform.health).
 GET /health  — liveness probe (always 200 if process is alive)
 GET /ready   — readiness probe (200 only when bootstrap + DB are healthy)
 """
+
 from __future__ import annotations
 
 from fastapi import APIRouter

@@ -17,6 +17,7 @@ Public API:
     OHLCVAdapter              — ABC for OHLCV adapters
     OHLCVServiceNotConfiguredError
 """
+
 from src.market.ohlcv_service import (
     Candle,
     Interval,

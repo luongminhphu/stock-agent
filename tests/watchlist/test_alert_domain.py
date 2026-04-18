@@ -3,6 +3,7 @@
 Pure domain logic — no DB, no async, no mocks.
 All 5 AlertConditionType variants tested.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone

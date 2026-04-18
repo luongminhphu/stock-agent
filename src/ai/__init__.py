@@ -12,6 +12,7 @@ Public API:
     BriefOutput          — structured schema
     Verdict, RiskLevel, MarketSentiment  — enums
 """
+
 from src.ai.agents.investor import InvestorAgent
 from src.ai.agents.thesis_review import ThesisReviewAgent
 from src.ai.client import (

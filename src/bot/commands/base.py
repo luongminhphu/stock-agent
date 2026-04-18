@@ -7,6 +7,7 @@ Provides:
   - send_ok()       success embed shortcut
   - send_error()    error embed shortcut
 """
+
 from __future__ import annotations
 
 from contextlib import asynccontextmanager

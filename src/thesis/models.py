@@ -4,6 +4,7 @@ Owner: thesis segment only.
 No other segment imports these models directly;
 they access thesis data through ThesisService or read via readmodel.
 """
+
 from __future__ import annotations
 
 import enum
@@ -28,6 +29,7 @@ from src.platform.db import Base
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _enum_values(x):
     """Return .value list for SAEnum so asyncpg binds lowercase strings."""

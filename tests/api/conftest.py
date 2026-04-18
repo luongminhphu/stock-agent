@@ -6,6 +6,7 @@ Strategy:
 - Services that need DB use SQLite in-memory (already configured via conftest env)
 - Services that need AI (ReviewService) are patched with AsyncMock
 """
+
 from __future__ import annotations
 
 import pytest
@@ -26,15 +27,14 @@ def reset_singletons():
 def app():
     """FastAPI app without lifespan (bootstrap controlled per test)."""
     from src.api.app import create_app
+
     return create_app()
 
 
 @pytest.fixture()
 async def client(app):
     """Unauthenticated async client."""
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as ac:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
 
 

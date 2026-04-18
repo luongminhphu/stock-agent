@@ -5,6 +5,7 @@ Owner: platform segment.
 Liveness  : always returns quickly (no I/O).
 Readiness : checks DB connectivity AND whether bootstrap singletons are up.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -59,9 +60,7 @@ async def check_readiness() -> HealthReport:
             HealthStatus.OK if _bs._perplexity_client is not None else HealthStatus.DOWN
         )
         checks["thesis_review_agent"] = (
-            HealthStatus.OK
-            if _bs._thesis_review_agent is not None
-            else HealthStatus.DOWN
+            HealthStatus.OK if _bs._thesis_review_agent is not None else HealthStatus.DOWN
         )
         checks["briefing_agent"] = (
             HealthStatus.OK if _bs._briefing_agent is not None else HealthStatus.DOWN

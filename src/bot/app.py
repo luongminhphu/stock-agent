@@ -4,6 +4,7 @@ Owner: bot segment.
 This module only wires the runtime — no business logic here.
 All domain operations are delegated to segment services.
 """
+
 from __future__ import annotations
 
 import discord

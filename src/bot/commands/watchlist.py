@@ -10,6 +10,7 @@ Commands:
 
 No business logic. All rules live in watchlist/market/scan segments.
 """
+
 from __future__ import annotations
 
 import discord
@@ -31,11 +32,11 @@ from src.watchlist.service import (
 logger = get_logger(__name__)
 
 _CONDITION_LABEL = {
-    AlertConditionType.PRICE_ABOVE:     "Price ≥",
-    AlertConditionType.PRICE_BELOW:     "Price ≤",
-    AlertConditionType.CHANGE_PCT_UP:   "Change ≥ +",
+    AlertConditionType.PRICE_ABOVE: "Price ≥",
+    AlertConditionType.PRICE_BELOW: "Price ≤",
+    AlertConditionType.CHANGE_PCT_UP: "Change ≥ +",
     AlertConditionType.CHANGE_PCT_DOWN: "Change ≤ -",
-    AlertConditionType.VOLUME_SPIKE:    "Volume ≥",
+    AlertConditionType.VOLUME_SPIKE: "Volume ≥",
 }
 
 
@@ -65,11 +66,13 @@ class WatchlistCog(BaseCog):
         try:
             async with self.db_session() as session:
                 svc = WatchlistService(session)
-                await svc.add(AddToWatchlistInput(
-                    user_id=user_id,
-                    ticker=ticker.upper(),
-                    note=note or None,
-                ))
+                await svc.add(
+                    AddToWatchlistInput(
+                        user_id=user_id,
+                        ticker=ticker.upper(),
+                        note=note or None,
+                    )
+                )
         except WatchlistItemAlreadyExistsError:
             await self.send_error(
                 interaction,
@@ -196,6 +199,7 @@ class WatchlistCog(BaseCog):
         try:
             async with self.db_session() as session:
                 from src.watchlist.scan_service import ScanService
+
                 svc = ScanService(
                     session=session,
                     quote_service=get_quote_service(),
@@ -259,13 +263,15 @@ class WatchlistCog(BaseCog):
         condition="Alert condition type",
         threshold="Threshold value (price in VND, % for change, ratio for volume)",
     )
-    @app_commands.choices(condition=[
-        app_commands.Choice(name="Price above (VND)",     value="price_above"),
-        app_commands.Choice(name="Price below (VND)",     value="price_below"),
-        app_commands.Choice(name="Daily change up (%)",   value="change_pct_up"),
-        app_commands.Choice(name="Daily change down (%)", value="change_pct_down"),
-        app_commands.Choice(name="Volume spike (ratio)",  value="volume_spike"),
-    ])
+    @app_commands.choices(
+        condition=[
+            app_commands.Choice(name="Price above (VND)", value="price_above"),
+            app_commands.Choice(name="Price below (VND)", value="price_below"),
+            app_commands.Choice(name="Daily change up (%)", value="change_pct_up"),
+            app_commands.Choice(name="Daily change down (%)", value="change_pct_down"),
+            app_commands.Choice(name="Volume spike (ratio)", value="volume_spike"),
+        ]
+    )
     async def watchlist_alert(
         self,
         interaction: discord.Interaction,
@@ -280,19 +286,20 @@ class WatchlistCog(BaseCog):
         try:
             async with self.db_session() as session:
                 svc = WatchlistService(session)
-                alert = await svc.add_alert(AddAlertInput(
-                    user_id=user_id,
-                    ticker=ticker.upper(),
-                    condition_type=condition_type,
-                    threshold=threshold,
-                ))
+                alert = await svc.add_alert(
+                    AddAlertInput(
+                        user_id=user_id,
+                        ticker=ticker.upper(),
+                        condition_type=condition_type,
+                        threshold=threshold,
+                    )
+                )
         except WatchlistItemNotFoundError:
             await self.send_error(
                 interaction,
                 title="Ticker not in watchlist",
                 description=(
-                    f"**{ticker.upper()}** is not in your watchlist.\n"
-                    "Use `/watchlist add` first."
+                    f"**{ticker.upper()}** is not in your watchlist.\nUse `/watchlist add` first."
                 ),
             )
             return

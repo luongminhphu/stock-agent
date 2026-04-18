@@ -1,4 +1,5 @@
 """Tests for readmodel.TimelineService."""
+
 from __future__ import annotations
 
 import pytest
@@ -34,20 +35,20 @@ async def test_timeline_review_event_added(session):
     from tests.ai.conftest import MockPerplexityClient
 
     thesis_svc = ThesisService(session)
-    thesis = await thesis_svc.create(
-        CreateThesisInput(user_id=USER, ticker="FPT", title="Tech")
-    )
+    thesis = await thesis_svc.create(CreateThesisInput(user_id=USER, ticker="FPT", title="Tech"))
     await session.flush()
 
-    mock = MockPerplexityClient({
-        "verdict": "NEUTRAL",
-        "confidence": 0.5,
-        "risk_signals": [],
-        "next_watch_items": [],
-        "reasoning": "Mixed signals.",
-        "assumption_updates": [],
-        "catalyst_status": [],
-    })
+    mock = MockPerplexityClient(
+        {
+            "verdict": "NEUTRAL",
+            "confidence": 0.5,
+            "risk_signals": [],
+            "next_watch_items": [],
+            "reasoning": "Mixed signals.",
+            "assumption_updates": [],
+            "catalyst_status": [],
+        }
+    )
     review_svc = ReviewService(session=session, agent=ThesisReviewAgent(mock))
     await review_svc.review_thesis(thesis_id=thesis.id, user_id=USER)
     await session.flush()
@@ -60,9 +61,7 @@ async def test_timeline_review_event_added(session):
 
 async def test_timeline_invalidation_event(session):
     thesis_svc = ThesisService(session)
-    thesis = await thesis_svc.create(
-        CreateThesisInput(user_id=USER, ticker="NVL", title="RE play")
-    )
+    thesis = await thesis_svc.create(CreateThesisInput(user_id=USER, ticker="NVL", title="RE play"))
     await session.flush()
     await thesis_svc.invalidate(thesis_id=thesis.id, user_id=USER)
     await session.flush()

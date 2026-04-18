@@ -23,6 +23,7 @@ Response shape:
       }]
     }
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -65,8 +66,7 @@ class VNDirectAdapter(MarketDataAdapter):
 
     async def fetch_bulk_quotes(self, tickers: list[str]) -> list[Quote]:
         chunks = [
-            tickers[i : i + _BULK_CHUNK_SIZE]
-            for i in range(0, len(tickers), _BULK_CHUNK_SIZE)
+            tickers[i : i + _BULK_CHUNK_SIZE] for i in range(0, len(tickers), _BULK_CHUNK_SIZE)
         ]
         results: list[Quote] = []
         for chunk in chunks:

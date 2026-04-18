@@ -8,6 +8,7 @@ Guarantees:
     - Fast in test environment: mock adapter selected, no real HTTP clients.
     - All get_*() raise RuntimeError if called before bootstrap().
 """
+
 from __future__ import annotations
 
 from src.platform.logging import configure_logging, get_logger
@@ -100,5 +101,6 @@ def get_snapshot_scheduler() -> object:
     global _snapshot_scheduler
     if _snapshot_scheduler is None:
         from src.market.snapshot_scheduler import SnapshotScheduler
+
         _snapshot_scheduler = SnapshotScheduler()
     return _snapshot_scheduler

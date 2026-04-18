@@ -3,6 +3,7 @@
 All DB interactions replaced with AsyncMock repository.
 No real DB, no real session.
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock
@@ -75,9 +76,7 @@ async def test_add_with_thesis_id(mock_repo):
     mock_repo.get_item.return_value = None
     svc = _make_service(mock_repo)
 
-    result = await svc.add(
-        AddToWatchlistInput(user_id="user-A", ticker="VCB", thesis_id=42)
-    )
+    result = await svc.add(AddToWatchlistInput(user_id="user-A", ticker="VCB", thesis_id=42))
     assert result.thesis_id == 42
 
 

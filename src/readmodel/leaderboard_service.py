@@ -3,6 +3,7 @@
 Owner: readmodel segment.
 Read-only. No writes, no AI calls, no business logic.
 """
+
 from __future__ import annotations
 
 from typing import Literal

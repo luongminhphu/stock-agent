@@ -3,6 +3,7 @@
 Owner: api segment.
 All response models are Pydantic — no SQLAlchemy objects cross this boundary.
 """
+
 from __future__ import annotations
 
 from datetime import datetime

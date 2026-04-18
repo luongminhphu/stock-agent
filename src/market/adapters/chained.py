@@ -10,6 +10,7 @@ Design:
 - Callers receive a Quote regardless of which adapter succeeded.
 - Metrics: tracks source ('primary'/'secondary'/'failed') per call via logger.
 """
+
 from __future__ import annotations
 
 from src.market.quote_service import MarketDataAdapter, Quote

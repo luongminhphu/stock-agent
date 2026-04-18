@@ -3,6 +3,7 @@
 Owner: api + market segments.
 Uses MockAdapter (ENVIRONMENT=test) — no real HTTP calls.
 """
+
 from __future__ import annotations
 
 import pytest

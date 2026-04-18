@@ -1,4 +1,5 @@
 """Unit tests for platform.health probes."""
+
 from __future__ import annotations
 
 import pytest

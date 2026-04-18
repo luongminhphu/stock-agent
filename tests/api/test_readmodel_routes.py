@@ -4,6 +4,7 @@ Readmodel services (DashboardService, LeaderboardService, ThesisTimelineService)
 are patched with AsyncMock to avoid DB setup complexity.
 Price enrichment is also patched to return input unchanged.
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -117,18 +118,14 @@ async def test_leaderboard_sort_by_pnl(bootstrapped_client):
         new_callable=AsyncMock,
         return_value=leaderboard,
     ):
-        r = await bootstrapped_client.get(
-            "/api/v1/readmodel/leaderboard/user-test-001?sort_by=pnl"
-        )
+        r = await bootstrapped_client.get("/api/v1/readmodel/leaderboard/user-test-001?sort_by=pnl")
     assert r.status_code == 200
 
 
 @pytest.mark.asyncio
 async def test_leaderboard_invalid_sort_by_422(bootstrapped_client):
     """Invalid sort_by value rejected at FastAPI validation layer."""
-    r = await bootstrapped_client.get(
-        "/api/v1/readmodel/leaderboard/user-test-001?sort_by=invalid"
-    )
+    r = await bootstrapped_client.get("/api/v1/readmodel/leaderboard/user-test-001?sort_by=invalid")
     assert r.status_code == 422
 
 

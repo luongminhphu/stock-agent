@@ -15,6 +15,7 @@ Scheduler:
 Rule: No domain logic in this segment.
       Bot = parse input → call service → format output.
 """
+
 # Intentionally minimal — do NOT import app/run here to avoid double-import
 # when running `python -m src.bot`. Consumers should import directly:
 #   from src.bot.app import create_bot, run

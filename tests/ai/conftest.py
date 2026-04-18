@@ -3,6 +3,7 @@
 Provides a MockPerplexityClient that returns pre-configured JSON
 without making any HTTP calls.
 """
+
 from __future__ import annotations
 
 import json
@@ -32,9 +33,7 @@ class MockPerplexityClient:
     ) -> dict[str, Any]:
         self.calls.append({"messages": messages, **kwargs})
         return {
-            "choices": [
-                {"message": {"content": json.dumps(self._payload)}}
-            ],
+            "choices": [{"message": {"content": json.dumps(self._payload)}}],
             "model": "mock",
             "usage": {"total_tokens": 0},
         }

@@ -1,4 +1,5 @@
 """Unit tests for InvestorAgent."""
+
 from __future__ import annotations
 
 import pytest
@@ -45,6 +46,7 @@ async def test_analyze_raises_on_bad_json():
     class _BrokenClient:
         async def chat_completion(self, **_):
             return {"choices": [{"message": {"content": "{{broken"}}]}
+
         def extract_text(self, r):
             return r["choices"][0]["message"]["content"]
 

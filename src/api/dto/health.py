@@ -1,4 +1,5 @@
 """Health check DTOs."""
+
 from pydantic import BaseModel
 
 

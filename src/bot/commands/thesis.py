@@ -9,6 +9,7 @@ Commands:
 
 No business logic — parse input → call domain service → format embed.
 """
+
 from __future__ import annotations
 
 import json
@@ -121,13 +122,15 @@ class ThesisCog(BaseCog):
 
     @group.command(name="list", description="Show all your investment theses")
     @app_commands.describe(status="Filter by status (default: active)")
-    @app_commands.choices(status=[
-        app_commands.Choice(name="Active", value="active"),
-        app_commands.Choice(name="Paused", value="paused"),
-        app_commands.Choice(name="Closed", value="closed"),
-        app_commands.Choice(name="Invalidated", value="invalidated"),
-        app_commands.Choice(name="All", value="all"),
-    ])
+    @app_commands.choices(
+        status=[
+            app_commands.Choice(name="Active", value="active"),
+            app_commands.Choice(name="Paused", value="paused"),
+            app_commands.Choice(name="Closed", value="closed"),
+            app_commands.Choice(name="Invalidated", value="invalidated"),
+            app_commands.Choice(name="All", value="all"),
+        ]
+    )
     async def thesis_list(
         self,
         interaction: discord.Interaction,
@@ -151,8 +154,7 @@ class ThesisCog(BaseCog):
                 interaction,
                 title="Your theses",
                 description=(
-                    f"No **{status}** theses found.\n"
-                    "Use `/thesis add` to create your first thesis."
+                    f"No **{status}** theses found.\nUse `/thesis add` to create your first thesis."
                 ),
             )
             return
@@ -177,10 +179,12 @@ class ThesisCog(BaseCog):
         thesis_id="Thesis ID to close (from /thesis list)",
         reason="closed or invalidated",
     )
-    @app_commands.choices(reason=[
-        app_commands.Choice(name="Closed (target reached / exit)", value="closed"),
-        app_commands.Choice(name="Invalidated (thesis broken)", value="invalidated"),
-    ])
+    @app_commands.choices(
+        reason=[
+            app_commands.Choice(name="Closed (target reached / exit)", value="closed"),
+            app_commands.Choice(name="Invalidated (thesis broken)", value="invalidated"),
+        ]
+    )
     async def thesis_close(
         self,
         interaction: discord.Interaction,

@@ -3,6 +3,7 @@
 Owner: api segment.
 Expose BriefOutput to API clients without leaking AI layer internals.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel

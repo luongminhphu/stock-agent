@@ -1,4 +1,5 @@
 """HTTP-level tests for /health and /ready API routes."""
+
 from __future__ import annotations
 
 import pytest
@@ -18,14 +19,13 @@ def reset_between_tests():
 def app():
     """Create the FastAPI app without triggering lifespan (bootstrap controlled manually)."""
     from src.api.app import create_app
+
     return create_app()
 
 
 @pytest.fixture()
 async def client(app):
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as ac:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
 
 

@@ -2,6 +2,7 @@
 
 Pure string tests — no DB, no HTTP.
 """
+
 from __future__ import annotations
 
 from src.ai.schemas import BriefOutput, MarketSentiment

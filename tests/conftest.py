@@ -3,6 +3,7 @@
 Uses an in-memory SQLite database so tests run without a real Postgres instance.
 All fixtures are async-compatible via pytest-asyncio (asyncio_mode = auto).
 """
+
 from __future__ import annotations
 
 import pytest

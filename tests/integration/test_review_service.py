@@ -8,6 +8,7 @@ Uses:
 No HTTP calls. Tests the full flow:
   create thesis → review_thesis() → persist ThesisReview → assert fields
 """
+
 from __future__ import annotations
 
 import pytest
@@ -171,15 +172,17 @@ async def test_review_with_assumptions_and_catalysts(session):
     )
     await session.flush()
 
-    mock_client = MockPerplexityClient({
-        "verdict": "BULLISH",
-        "confidence": 0.7,
-        "risk_signals": [],
-        "next_watch_items": [],
-        "reasoning": "Context received.",
-        "assumption_updates": ["Steel demand holds — confirmed"],
-        "catalyst_status": ["Q2 earnings pending"],
-    })
+    mock_client = MockPerplexityClient(
+        {
+            "verdict": "BULLISH",
+            "confidence": 0.7,
+            "risk_signals": [],
+            "next_watch_items": [],
+            "reasoning": "Context received.",
+            "assumption_updates": ["Steel demand holds — confirmed"],
+            "catalyst_status": ["Q2 earnings pending"],
+        }
+    )
     agent = ThesisReviewAgent(mock_client)
     review_svc = ReviewService(session=session, agent=agent)
     await review_svc.review_thesis(thesis_id=thesis.id, user_id=USER)

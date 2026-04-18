@@ -2,6 +2,7 @@
 
 All tests use MockPerplexityClient — no HTTP, no API key required.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -74,9 +75,11 @@ async def test_review_sends_messages_to_client(thesis_review_payload):
 
 async def test_review_raises_value_error_on_bad_json():
     """Malformed JSON from client must raise ValueError, not crash silently."""
+
     class _BrokenClient:
         async def chat_completion(self, **_):
             return {"choices": [{"message": {"content": "not valid json {{{"}}]}
+
         def extract_text(self, r):
             return r["choices"][0]["message"]["content"]
 

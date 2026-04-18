@@ -3,6 +3,7 @@
 Pure synchronous service — no DB, no async, no mocks needed.
 Tests exercise all 4 scoring dimensions independently and combined.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -44,7 +45,9 @@ def test_score_all_valid_assumptions(svc):
     """All VALID assumptions → full assumption score."""
     thesis = make_thesis(
         assumptions=[make_assumption(status=AssumptionStatus.VALID) for _ in range(3)],
-        entry_price=None, target_price=None, stop_loss=None,
+        entry_price=None,
+        target_price=None,
+        stop_loss=None,
     )
     score = svc.compute(thesis)
     # assumption component = (3-0)/3 = 1.0 → 40pts; rest neutral 50% → 30pts
@@ -55,7 +58,9 @@ def test_score_all_invalid_assumptions_clamped(svc):
     """All INVALID assumptions → assumption component clamped to 0 (not negative)."""
     thesis = make_thesis(
         assumptions=[make_assumption(status=AssumptionStatus.INVALID) for _ in range(3)],
-        entry_price=None, target_price=None, stop_loss=None,
+        entry_price=None,
+        target_price=None,
+        stop_loss=None,
     )
     score = svc.compute(thesis)
     # assumption component = max(0, (0 - 3*2)/3) = 0
@@ -71,7 +76,9 @@ def test_score_mixed_assumptions(svc):
             make_assumption(status=AssumptionStatus.VALID),
             make_assumption(status=AssumptionStatus.INVALID),
         ],
-        entry_price=None, target_price=None, stop_loss=None,
+        entry_price=None,
+        target_price=None,
+        stop_loss=None,
     )
     score = svc.compute(thesis)
     # (2 - 1*2)/3 = 0/3 = 0 → assumption score = 0pts
@@ -90,7 +97,9 @@ def test_score_all_triggered_catalysts(svc):
             make_catalyst(status=CatalystStatus.TRIGGERED),
             make_catalyst(status=CatalystStatus.TRIGGERED),
         ],
-        entry_price=None, target_price=None, stop_loss=None,
+        entry_price=None,
+        target_price=None,
+        stop_loss=None,
     )
     score = svc.compute(thesis)
     # catalyst component = 2/2 = 1.0 → 30pts; rest neutral
@@ -101,7 +110,9 @@ def test_score_no_triggered_catalysts(svc):
     """No triggered catalysts → catalyst component = 0pts."""
     thesis = make_thesis(
         catalysts=[make_catalyst(status=CatalystStatus.PENDING)],
-        entry_price=None, target_price=None, stop_loss=None,
+        entry_price=None,
+        target_price=None,
+        stop_loss=None,
     )
     score = svc.compute(thesis)
     # catalyst = 0pts; rest neutral
@@ -128,9 +139,7 @@ def test_score_rr_1_to_1(svc):
     thesis = make_thesis(entry_price=25000.0, target_price=30000.0, stop_loss=20000.0)
     score = svc.compute(thesis)
     rr_contribution = (1.0 / 3.0) * 20.0
-    assert score == pytest.approx(
-        20.0 + 15.0 + rr_contribution + 5.0, abs=0.5
-    )
+    assert score == pytest.approx(20.0 + 15.0 + rr_contribution + 5.0, abs=0.5)
 
 
 def test_score_rr_above_3_capped(svc):
@@ -154,7 +163,9 @@ def test_score_review_confidence_high(svc):
     review = make_review(confidence=1.0)
     thesis = make_thesis(
         reviews=[review],
-        entry_price=None, target_price=None, stop_loss=None,
+        entry_price=None,
+        target_price=None,
+        stop_loss=None,
     )
     score = svc.compute(thesis)
     # review component = 1.0 * 10 = 10pts; rest neutral
@@ -172,7 +183,9 @@ def test_score_uses_latest_review(svc):
 
     thesis = make_thesis(
         reviews=[r1, r2],
-        entry_price=None, target_price=None, stop_loss=None,
+        entry_price=None,
+        target_price=None,
+        stop_loss=None,
     )
     score = svc.compute(thesis)
     # Latest review (r2, confidence=0.9) should dominate
@@ -188,6 +201,7 @@ def test_score_uses_latest_review(svc):
 def test_score_always_between_0_and_100(svc):
     """Score is always clamped to [0, 100]."""
     import random
+
     random.seed(42)
     for _ in range(50):
         n_assumptions = random.randint(0, 5)
@@ -195,8 +209,12 @@ def test_score_always_between_0_and_100(svc):
         statuses = [AssumptionStatus.VALID, AssumptionStatus.INVALID, AssumptionStatus.UNCERTAIN]
         cat_statuses = [CatalystStatus.PENDING, CatalystStatus.TRIGGERED, CatalystStatus.EXPIRED]
         thesis = make_thesis(
-            assumptions=[make_assumption(status=random.choice(statuses)) for _ in range(n_assumptions)],
-            catalysts=[make_catalyst(status=random.choice(cat_statuses)) for _ in range(n_catalysts)],
+            assumptions=[
+                make_assumption(status=random.choice(statuses)) for _ in range(n_assumptions)
+            ],
+            catalysts=[
+                make_catalyst(status=random.choice(cat_statuses)) for _ in range(n_catalysts)
+            ],
             entry_price=random.choice([None, 20000.0, 25000.0]),
             target_price=random.choice([None, 30000.0, 35000.0]),
             stop_loss=random.choice([None, 15000.0, 18000.0]),

@@ -1,4 +1,5 @@
 """Unit tests for Thesis domain model helpers (pure, no DB)."""
+
 from __future__ import annotations
 
 import pytest
@@ -15,6 +16,7 @@ from src.thesis.models import (
 
 def make_thesis(**kwargs) -> Thesis:
     from datetime import datetime, timezone
+
     defaults = dict(
         id=1,
         user_id="u1",
@@ -43,6 +45,7 @@ def make_thesis(**kwargs) -> Thesis:
 # is_active
 # ---------------------------------------------------------------------------
 
+
 def test_is_active_true():
     assert make_thesis(status=ThesisStatus.ACTIVE).is_active
 
@@ -54,6 +57,7 @@ def test_is_active_false_when_invalidated():
 # ---------------------------------------------------------------------------
 # upside_pct
 # ---------------------------------------------------------------------------
+
 
 def test_upside_pct_correct():
     t = make_thesis(entry_price=50_000.0, target_price=65_000.0)
@@ -73,6 +77,7 @@ def test_upside_pct_none_when_no_target():
 # ---------------------------------------------------------------------------
 # risk_reward
 # ---------------------------------------------------------------------------
+
 
 def test_risk_reward_correct():
     # upside = 15000, downside = 5000 → R/R = 3.0
@@ -94,6 +99,7 @@ def test_risk_reward_none_when_stop_above_entry():
 # invalid_assumption_count
 # ---------------------------------------------------------------------------
 
+
 def test_invalid_assumption_count():
     t = make_thesis()
     a1 = Assumption.__new__(Assumption)
@@ -109,6 +115,7 @@ def test_invalid_assumption_count():
 # ---------------------------------------------------------------------------
 # triggered_catalyst_count
 # ---------------------------------------------------------------------------
+
 
 def test_triggered_catalyst_count():
     t = make_thesis()

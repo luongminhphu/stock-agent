@@ -4,6 +4,7 @@ Owner: thesis segment.
 This is the primary entry point for all thesis write operations.
 Bot commands and API routes call this; they do not import models directly.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -39,8 +40,8 @@ class CreateThesisInput:
     entry_price: float | None = None
     target_price: float | None = None
     stop_loss: float | None = None
-    assumptions: list[str] | None = None   # list of description strings
-    catalysts: list[str] | None = None     # list of description strings
+    assumptions: list[str] | None = None  # list of description strings
+    catalysts: list[str] | None = None  # list of description strings
 
 
 @dataclass
@@ -91,14 +92,10 @@ class ThesisService:
             stop_loss=inp.stop_loss,
         )
 
-        for desc in (inp.assumptions or []):
-            thesis.assumptions.append(
-                Assumption(description=desc, status=AssumptionStatus.PENDING)
-            )
-        for desc in (inp.catalysts or []):
-            thesis.catalysts.append(
-                Catalyst(description=desc, status=CatalystStatus.PENDING)
-            )
+        for desc in inp.assumptions or []:
+            thesis.assumptions.append(Assumption(description=desc, status=AssumptionStatus.PENDING))
+        for desc in inp.catalysts or []:
+            thesis.catalysts.append(Catalyst(description=desc, status=CatalystStatus.PENDING))
 
         await self._repo.save(thesis)
         logger.info("thesis.created", thesis_id=thesis.id, ticker=thesis.ticker)

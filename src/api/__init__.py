@@ -24,6 +24,7 @@ Rule: No domain logic in this segment.
 Auth (Wave 1): X-User-Id header (dev only).
 Auth (Wave 2): JWT Bearer token.
 """
+
 from src.api.app import app, create_app
 
 __all__ = ["app", "create_app"]

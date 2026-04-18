@@ -21,6 +21,7 @@ Response shape (per symbol):
       "bidAsk": { ... }
     }
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -65,8 +66,7 @@ class VCIAdapter(MarketDataAdapter):
     async def fetch_bulk_quotes(self, tickers: list[str]) -> list[Quote]:
         """Fetch quotes in chunks to respect VCI's soft limit."""
         chunks = [
-            tickers[i : i + _BULK_CHUNK_SIZE]
-            for i in range(0, len(tickers), _BULK_CHUNK_SIZE)
+            tickers[i : i + _BULK_CHUNK_SIZE] for i in range(0, len(tickers), _BULK_CHUNK_SIZE)
         ]
         results: list[Quote] = []
         for chunk in chunks:

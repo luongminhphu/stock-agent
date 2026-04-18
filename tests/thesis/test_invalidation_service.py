@@ -2,6 +2,7 @@
 
 Pure synchronous service. Tests all invalidation rules and edge cases.
 """
+
 from __future__ import annotations
 
 import pytest

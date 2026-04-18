@@ -8,6 +8,7 @@ Endpoints:
     GET  /thesis/{thesis_id}/reviews        — list past reviews
     GET  /thesis/{thesis_id}/reviews/latest — latest review only
 """
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status

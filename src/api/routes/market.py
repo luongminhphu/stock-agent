@@ -8,6 +8,7 @@ Endpoints:
     GET /market/symbols/{ticker}  — registry metadata only
     GET /market/quote/{ticker}    — live quote via QuoteService (VCI → VNDirect)
 """
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status

@@ -4,6 +4,7 @@ Owner: market segment.
 Adapters (VNDIRECT, SSI, FireAnt, mock) implement MarketDataAdapter
 and are injected into QuoteService. Wave 2 adds real adapter.
 """
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
@@ -17,15 +18,15 @@ from datetime import datetime
 @dataclass(frozen=True)
 class Quote:
     ticker: str
-    price: float              # VND
-    change: float             # absolute change
-    change_pct: float         # percentage change
-    volume: int               # shares traded
-    value: float              # VND traded
+    price: float  # VND
+    change: float  # absolute change
+    change_pct: float  # percentage change
+    volume: int  # shares traded
+    value: float  # VND traded
     open: float
     high: float
     low: float
-    ref_price: float          # reference (ceiling/floor base)
+    ref_price: float  # reference (ceiling/floor base)
     ceiling: float
     floor: float
     timestamp: datetime
@@ -103,6 +104,4 @@ class QuoteService:
         return await self._require_adapter().fetch_quote(ticker.upper())
 
     async def get_bulk_quotes(self, tickers: list[str]) -> list[Quote]:
-        return await self._require_adapter().fetch_bulk_quotes(
-            [t.upper() for t in tickers]
-        )
+        return await self._require_adapter().fetch_bulk_quotes([t.upper() for t in tickers])

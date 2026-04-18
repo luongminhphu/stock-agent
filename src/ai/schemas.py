@@ -4,6 +4,7 @@ These Pydantic models define the contract between the AI layer and
 calling segments. All structured responses from Perplexity must
 parse into one of these schemas.
 """
+
 from enum import Enum
 
 from pydantic import BaseModel, Field, field_validator
@@ -37,7 +38,9 @@ class ThesisReviewOutput(BaseModel):
     """Structured output from ThesisReviewAgent."""
 
     verdict: Verdict
-    confidence: float = Field(ge=0.0, le=1.0, description="0.0 = no confidence, 1.0 = very confident")
+    confidence: float = Field(
+        ge=0.0, le=1.0, description="0.0 = no confidence, 1.0 = very confident"
+    )
     risk_signals: list[str] = Field(default_factory=list, description="Key risks detected")
     next_watch_items: list[str] = Field(default_factory=list, description="What to monitor next")
     reasoning: str = Field(description="Natural language explanation of the verdict")

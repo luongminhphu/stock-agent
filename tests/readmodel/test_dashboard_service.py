@@ -4,6 +4,7 @@ Uses in-memory SQLite via session fixture (tests/conftest.py).
 No HTTP calls, no AI calls.
 Verifies read queries against real ORM models.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -27,9 +28,7 @@ async def test_dashboard_empty_user(session):
 
 async def test_dashboard_counts_one_active(session):
     thesis_svc = ThesisService(session)
-    await thesis_svc.create(
-        CreateThesisInput(user_id=USER, ticker="HPG", title="Steel play")
-    )
+    await thesis_svc.create(CreateThesisInput(user_id=USER, ticker="HPG", title="Steel play"))
     await session.flush()
 
     svc = DashboardService(session)
@@ -96,20 +95,20 @@ async def test_dashboard_last_verdict_populated(session):
     from tests.ai.conftest import MockPerplexityClient
 
     thesis_svc = ThesisService(session)
-    thesis = await thesis_svc.create(
-        CreateThesisInput(user_id=USER, ticker="MWG", title="Retail")
-    )
+    thesis = await thesis_svc.create(CreateThesisInput(user_id=USER, ticker="MWG", title="Retail"))
     await session.flush()
 
-    mock = MockPerplexityClient({
-        "verdict": "BULLISH",
-        "confidence": 0.9,
-        "risk_signals": [],
-        "next_watch_items": [],
-        "reasoning": "Strong thesis.",
-        "assumption_updates": [],
-        "catalyst_status": [],
-    })
+    mock = MockPerplexityClient(
+        {
+            "verdict": "BULLISH",
+            "confidence": 0.9,
+            "risk_signals": [],
+            "next_watch_items": [],
+            "reasoning": "Strong thesis.",
+            "assumption_updates": [],
+            "catalyst_status": [],
+        }
+    )
     review_svc = ReviewService(session=session, agent=ThesisReviewAgent(mock))
     await review_svc.review_thesis(thesis_id=thesis.id, user_id=USER)
     await session.flush()

@@ -3,6 +3,7 @@
 Owner: platform segment.
 Single source of truth for all settings. All segments import from here.
 """
+
 from __future__ import annotations
 
 from pydantic_settings import BaseSettings, SettingsConfigDict

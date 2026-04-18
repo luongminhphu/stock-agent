@@ -14,6 +14,7 @@ Note:
     user_id for scheduled briefs uses SCHEDULER_USER_ID from settings
     (a service account / admin user that has a populated watchlist).
 """
+
 from __future__ import annotations
 
 import datetime
@@ -33,7 +34,7 @@ logger = get_logger(__name__)
 
 # Weekdays only, ICT = UTC+7
 _MORNING_TIME = datetime.time(hour=1, minute=45, tzinfo=datetime.timezone.utc)  # 08:45 ICT
-_EOD_TIME     = datetime.time(hour=8,  minute=5,  tzinfo=datetime.timezone.utc)  # 15:05 ICT
+_EOD_TIME = datetime.time(hour=8, minute=5, tzinfo=datetime.timezone.utc)  # 15:05 ICT
 
 
 class BriefingScheduler:
@@ -64,8 +65,10 @@ class BriefingScheduler:
         self,
         phase: str,
     ) -> None:
-        channel_id = getattr(settings, "morning_channel_id" if phase == "morning" else "eod_channel_id", None)
-        user_id    = getattr(settings, "scheduler_user_id", None)
+        channel_id = getattr(
+            settings, "morning_channel_id" if phase == "morning" else "eod_channel_id", None
+        )
+        user_id = getattr(settings, "scheduler_user_id", None)
 
         if not channel_id or not user_id:
             logger.warning(

@@ -3,6 +3,7 @@
 Owner: api segment.
 No SQLAlchemy objects cross this boundary.
 """
+
 from __future__ import annotations
 
 import json

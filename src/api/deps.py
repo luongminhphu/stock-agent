@@ -3,6 +3,7 @@
 Owner: api segment.
 Provides reusable Depends() callables for all routes.
 """
+
 from __future__ import annotations
 
 from typing import AsyncGenerator

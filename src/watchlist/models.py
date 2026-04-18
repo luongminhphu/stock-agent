@@ -4,6 +4,7 @@ Owner: watchlist segment only.
 Other segments access watchlist data through WatchlistService,
 never by importing these models directly.
 """
+
 from __future__ import annotations
 
 import enum
@@ -59,9 +60,7 @@ class ReminderFrequency(str, enum.Enum):
 
 class WatchlistItem(Base):
     __tablename__ = "watchlist_items"
-    __table_args__ = (
-        UniqueConstraint("user_id", "ticker", name="uq_watchlist_user_ticker"),
-    )
+    __table_args__ = (UniqueConstraint("user_id", "ticker", name="uq_watchlist_user_ticker"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)

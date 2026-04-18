@@ -3,6 +3,7 @@
 Uses httpx ASGITransport + MockAdapter via dependency override.
 No real HTTP to VCI or VNDirect.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -54,8 +55,10 @@ async def test_quote_502_when_adapter_fails() -> None:
     # Temporarily register FAIL ticker so registry passes
     try:
         registry._symbols["FAIL"] = SymbolInfo(
-            ticker="FAIL", name="Fail Corp",
-            exchange=Exchange.HOSE, sector=Sector.UNKNOWN,
+            ticker="FAIL",
+            name="Fail Corp",
+            exchange=Exchange.HOSE,
+            sector=Sector.UNKNOWN,
         )
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get("/api/v1/market/quote/FAIL")
@@ -76,8 +79,10 @@ async def test_quote_response_shape() -> None:
     app.dependency_overrides[get_quote_service] = lambda: mock_svc
 
     registry._symbols["TEST"] = SymbolInfo(
-        ticker="TEST", name="Test Corp",
-        exchange=Exchange.HOSE, sector=Sector.UNKNOWN,
+        ticker="TEST",
+        name="Test Corp",
+        exchange=Exchange.HOSE,
+        sector=Sector.UNKNOWN,
     )
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

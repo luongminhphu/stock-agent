@@ -19,6 +19,7 @@ Endpoints:
     GET /readmodel/leaderboard/{user_id}                 — ranked leaderboard
     GET /readmodel/thesis/{thesis_id}/timeline           — event timeline
 """
+
 from __future__ import annotations
 
 from typing import Annotated, Any, Literal
@@ -103,7 +104,9 @@ async def get_stats(
 async def get_theses_list(
     user_id: str,
     session: Annotated[AsyncSession, Depends(get_session)],
-    status: Annotated[str, Query(description="active | invalidated | closed | paused | all")] = "active",
+    status: Annotated[
+        str, Query(description="active | invalidated | closed | paused | all")
+    ] = "active",
     ticker: Annotated[str | None, Query(description="Filter theo ticker, e.g. VNM")] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 200,
 ) -> list[dict[str, Any]]:
@@ -183,9 +186,7 @@ async def get_brief_latest(
     svc = DashboardService(session)
     result = await svc.get_brief_latest(user_id, phase=phase)
     if result is None:
-        raise HTTPException(
-            status_code=404, detail=f"No {phase} brief snapshot found"
-        )
+        raise HTTPException(status_code=404, detail=f"No {phase} brief snapshot found")
     return result
 
 

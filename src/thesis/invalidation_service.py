@@ -3,6 +3,7 @@
 Owner: thesis segment.
 Rules live here. Bot/scheduler triggers a check; they don't own the rules.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,8 +14,8 @@ from src.platform.logging import get_logger
 logger = get_logger(__name__)
 
 # Thresholds — adjust as product matures
-_MAX_INVALID_ASSUMPTION_RATIO = 0.5   # >50% assumptions invalid → invalidate
-_MIN_SCORE_THRESHOLD = 20.0           # score below 20 → warn
+_MAX_INVALID_ASSUMPTION_RATIO = 0.5  # >50% assumptions invalid → invalidate
+_MIN_SCORE_THRESHOLD = 20.0  # score below 20 → warn
 
 
 @dataclass
@@ -34,9 +35,7 @@ class InvalidationService:
 
     def check(self, thesis: Thesis, current_score: float) -> InvalidationCheckResult:
         invalid_assumptions = [
-            a.description
-            for a in thesis.assumptions
-            if a.status == AssumptionStatus.INVALID
+            a.description for a in thesis.assumptions if a.status == AssumptionStatus.INVALID
         ]
 
         # Rule 1: too many invalid assumptions

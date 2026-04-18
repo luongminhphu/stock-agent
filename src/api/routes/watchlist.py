@@ -3,6 +3,7 @@
 Owner: api segment.
 Exposes watchlist CRUD via WatchlistService.
 """
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -32,11 +33,13 @@ async def add_to_watchlist(
 ) -> WatchlistItemResponse:
     svc = WatchlistService(db)
     try:
-        item = await svc.add(AddToWatchlistInput(
-            user_id=user_id,
-            ticker=body.ticker.upper(),
-            note=body.note,
-        ))
+        item = await svc.add(
+            AddToWatchlistInput(
+                user_id=user_id,
+                ticker=body.ticker.upper(),
+                note=body.note,
+            )
+        )
     except WatchlistItemAlreadyExistsError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

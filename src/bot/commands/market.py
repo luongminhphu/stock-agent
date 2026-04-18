@@ -7,6 +7,7 @@ Commands:
 
 No business logic. Delegates to QuoteService (market segment).
 """
+
 from __future__ import annotations
 
 import discord
@@ -20,9 +21,9 @@ from src.platform.logging import get_logger
 logger = get_logger(__name__)
 
 _EXCHANGE_COLOUR = {
-    "HOSE": discord.Color.from_rgb(255, 165, 0),   # orange
-    "HNX":  discord.Color.from_rgb(0, 120, 215),   # blue
-    "UPCOM": discord.Color.from_rgb(100, 180, 100), # green
+    "HOSE": discord.Color.from_rgb(255, 165, 0),  # orange
+    "HNX": discord.Color.from_rgb(0, 120, 215),  # blue
+    "UPCOM": discord.Color.from_rgb(100, 180, 100),  # green
 }
 
 
@@ -62,9 +63,7 @@ class MarketCog(BaseCog):
     # ------------------------------------------------------------------
 
     @app_commands.command(name="quote_bulk", description="Get quotes for multiple tickers")
-    @app_commands.describe(
-        tickers="Comma-separated tickers (e.g. HPG,VNM,FPT — max 10)"
-    )
+    @app_commands.describe(tickers="Comma-separated tickers (e.g. HPG,VNM,FPT — max 10)")
     async def quote_bulk(
         self,
         interaction: discord.Interaction,
@@ -105,7 +104,7 @@ class MarketCog(BaseCog):
         for q in quotes:
             change_icon = "🔺" if q.change >= 0 else "🔻"
             ceiling_flag = " 🏆" if q.is_ceiling else ""
-            floor_flag   = " 🚨" if q.is_floor   else ""
+            floor_flag = " 🚨" if q.is_floor else ""
             lines.append(
                 f"**{q.ticker}** {q.price:,.0f} VND "
                 f"{change_icon}{q.change_pct:+.1f}% "
@@ -131,13 +130,13 @@ def _build_quote_embed(q: object) -> discord.Embed:  # type: ignore[type-arg]
     change = getattr(q, "change", 0.0)
     change_pct = getattr(q, "change_pct", 0.0)
     is_ceiling = getattr(q, "is_ceiling", False)
-    is_floor   = getattr(q, "is_floor", False)
+    is_floor = getattr(q, "is_floor", False)
 
     if is_ceiling:
         colour = discord.Color.from_rgb(180, 0, 200)  # purple — ceiling
         status = "🏆 Ceiling"
     elif is_floor:
-        colour = discord.Color.from_rgb(50, 50, 50)   # dark — floor
+        colour = discord.Color.from_rgb(50, 50, 50)  # dark — floor
         status = "🚨 Floor"
     elif change >= 0:
         colour = discord.Color.green()
@@ -147,20 +146,20 @@ def _build_quote_embed(q: object) -> discord.Embed:  # type: ignore[type-arg]
         status = "🔻"
 
     ticker = getattr(q, "ticker", "?")
-    price  = getattr(q, "price", 0.0)
+    price = getattr(q, "price", 0.0)
 
     embed = discord.Embed(
         title=f"{status} {ticker}  {price:,.0f} VND",
         color=colour,
     )
-    embed.add_field(name="Change",    value=f"{change:+,.0f} ({change_pct:+.2f}%)", inline=True)
-    embed.add_field(name="Volume",    value=f"{getattr(q, 'volume', 0):,}",          inline=True)
-    embed.add_field(name="Open",      value=f"{getattr(q, 'open', 0):,.0f}",         inline=True)
-    embed.add_field(name="High",      value=f"{getattr(q, 'high', 0):,.0f}",         inline=True)
-    embed.add_field(name="Low",       value=f"{getattr(q, 'low', 0):,.0f}",          inline=True)
-    embed.add_field(name="Ref Price", value=f"{getattr(q, 'ref_price', 0):,.0f}",    inline=True)
-    embed.add_field(name="Ceiling",   value=f"{getattr(q, 'ceiling', 0):,.0f}",      inline=True)
-    embed.add_field(name="Floor",     value=f"{getattr(q, 'floor', 0):,.0f}",        inline=True)
+    embed.add_field(name="Change", value=f"{change:+,.0f} ({change_pct:+.2f}%)", inline=True)
+    embed.add_field(name="Volume", value=f"{getattr(q, 'volume', 0):,}", inline=True)
+    embed.add_field(name="Open", value=f"{getattr(q, 'open', 0):,.0f}", inline=True)
+    embed.add_field(name="High", value=f"{getattr(q, 'high', 0):,.0f}", inline=True)
+    embed.add_field(name="Low", value=f"{getattr(q, 'low', 0):,.0f}", inline=True)
+    embed.add_field(name="Ref Price", value=f"{getattr(q, 'ref_price', 0):,.0f}", inline=True)
+    embed.add_field(name="Ceiling", value=f"{getattr(q, 'ceiling', 0):,.0f}", inline=True)
+    embed.add_field(name="Floor", value=f"{getattr(q, 'floor', 0):,.0f}", inline=True)
 
     ts = getattr(q, "timestamp", None)
     ts_str = ts.strftime("%H:%M:%S %d/%m/%Y") if ts else "N/A"

@@ -19,6 +19,7 @@ Design rules:
 - Scoring logic delegates to src.thesis.scoring (not duplicated here).
 - All public methods are async and accept an AsyncSession.
 """
+
 from __future__ import annotations
 
 import json
@@ -61,12 +62,15 @@ class DashboardService:
         )
 
         # open thesis count
-        open_count = await self._session.scalar(
-            select(func.count(Thesis.id)).where(
-                Thesis.user_id == user_id,
-                Thesis.status == ThesisStatus.ACTIVE,
+        open_count = (
+            await self._session.scalar(
+                select(func.count(Thesis.id)).where(
+                    Thesis.user_id == user_id,
+                    Thesis.status == ThesisStatus.ACTIVE,
+                )
             )
-        ) or 0
+            or 0
+        )
 
         # verdict distribution on latest review per thesis
         latest_review_subq = (
@@ -102,42 +106,54 @@ class DashboardService:
         # catalysts upcoming within 7 days
         now_vn = _now_vn()
         in_7d = now_vn + timedelta(days=7)
-        upcoming_7d = await self._session.scalar(
-            select(func.count(Catalyst.id))
-            .join(Thesis, Thesis.id == Catalyst.thesis_id)
-            .where(
-                Thesis.user_id == user_id,
-                Thesis.status == ThesisStatus.ACTIVE,
-                Catalyst.status == CatalystStatus.PENDING,
-                Catalyst.expected_date.between(now_vn, in_7d),
+        upcoming_7d = (
+            await self._session.scalar(
+                select(func.count(Catalyst.id))
+                .join(Thesis, Thesis.id == Catalyst.thesis_id)
+                .where(
+                    Thesis.user_id == user_id,
+                    Thesis.status == ThesisStatus.ACTIVE,
+                    Catalyst.status == CatalystStatus.PENDING,
+                    Catalyst.expected_date.between(now_vn, in_7d),
+                )
             )
-        ) or 0
+            or 0
+        )
 
         # total reviews & reviews today
-        total_reviews = await self._session.scalar(
-            select(func.count(ThesisReview.id))
-            .join(Thesis, Thesis.id == ThesisReview.thesis_id)
-            .where(Thesis.user_id == user_id)
-        ) or 0
+        total_reviews = (
+            await self._session.scalar(
+                select(func.count(ThesisReview.id))
+                .join(Thesis, Thesis.id == ThesisReview.thesis_id)
+                .where(Thesis.user_id == user_id)
+            )
+            or 0
+        )
 
         today_start = now_vn.replace(hour=0, minute=0, second=0, microsecond=0)
-        reviews_today = await self._session.scalar(
-            select(func.count(ThesisReview.id))
-            .join(Thesis, Thesis.id == ThesisReview.thesis_id)
-            .where(
-                Thesis.user_id == user_id,
-                ThesisReview.reviewed_at >= today_start,
+        reviews_today = (
+            await self._session.scalar(
+                select(func.count(ThesisReview.id))
+                .join(Thesis, Thesis.id == ThesisReview.thesis_id)
+                .where(
+                    Thesis.user_id == user_id,
+                    ThesisReview.reviewed_at >= today_start,
+                )
             )
-        ) or 0
+            or 0
+        )
 
         # risky theses: score < 40
-        risky = await self._session.scalar(
-            select(func.count(Thesis.id)).where(
-                Thesis.user_id == user_id,
-                Thesis.status == ThesisStatus.ACTIVE,
-                Thesis.score < 40,
+        risky = (
+            await self._session.scalar(
+                select(func.count(Thesis.id)).where(
+                    Thesis.user_id == user_id,
+                    Thesis.status == ThesisStatus.ACTIVE,
+                    Thesis.score < 40,
+                )
             )
-        ) or 0
+            or 0
+        )
 
         return {
             "open_theses": open_count,
@@ -182,21 +198,19 @@ class DashboardService:
         if ticker:
             filters.append(Thesis.ticker == ticker.upper())
 
-        latest_review_subq = (
-            select(
-                ThesisReview.thesis_id,
-                ThesisReview.verdict,
-                ThesisReview.confidence,
-                ThesisReview.reasoning,
-                ThesisReview.reviewed_at,
-                func.row_number()
-                .over(
-                    partition_by=ThesisReview.thesis_id,
-                    order_by=ThesisReview.reviewed_at.desc(),
-                )
-                .label("rn"),
-            ).subquery()
-        )
+        latest_review_subq = select(
+            ThesisReview.thesis_id,
+            ThesisReview.verdict,
+            ThesisReview.confidence,
+            ThesisReview.reasoning,
+            ThesisReview.reviewed_at,
+            func.row_number()
+            .over(
+                partition_by=ThesisReview.thesis_id,
+                order_by=ThesisReview.reviewed_at.desc(),
+            )
+            .label("rn"),
+        ).subquery()
 
         n_assumptions_subq = (
             select(
@@ -256,7 +270,9 @@ class DashboardService:
                     "updated_at": t.updated_at.isoformat() if t.updated_at else None,
                     "last_verdict": str(r.last_verdict) if r.last_verdict else None,
                     "last_confidence": r.last_confidence,
-                    "last_reviewed_at": r.last_reviewed_at.isoformat() if r.last_reviewed_at else None,
+                    "last_reviewed_at": r.last_reviewed_at.isoformat()
+                    if r.last_reviewed_at
+                    else None,
                     "n_assumptions": r.n_assumptions,
                     "n_catalysts": r.n_catalysts,
                 }
@@ -267,9 +283,7 @@ class DashboardService:
     # 3. Thesis detail
     # ------------------------------------------------------------------
 
-    async def get_thesis_detail(
-        self, user_id: str, thesis_id: int
-    ) -> dict[str, Any] | None:
+    async def get_thesis_detail(self, user_id: str, thesis_id: int) -> dict[str, Any] | None:
         """Tuong duong GET /api/theses/<id>."""
         from src.thesis.models import (
             Assumption,
@@ -283,29 +297,41 @@ class DashboardService:
             return None
 
         reviews_rows = (
-            await self._session.execute(
-                select(ThesisReview)
-                .where(ThesisReview.thesis_id == thesis_id)
-                .order_by(ThesisReview.reviewed_at.desc())
-                .limit(20)
+            (
+                await self._session.execute(
+                    select(ThesisReview)
+                    .where(ThesisReview.thesis_id == thesis_id)
+                    .order_by(ThesisReview.reviewed_at.desc())
+                    .limit(20)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         assumptions_rows = (
-            await self._session.execute(
-                select(Assumption)
-                .where(Assumption.thesis_id == thesis_id)
-                .order_by(Assumption.id.asc())
+            (
+                await self._session.execute(
+                    select(Assumption)
+                    .where(Assumption.thesis_id == thesis_id)
+                    .order_by(Assumption.id.asc())
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         catalysts_rows = (
-            await self._session.execute(
-                select(Catalyst)
-                .where(Catalyst.thesis_id == thesis_id)
-                .order_by(Catalyst.expected_date.asc())
+            (
+                await self._session.execute(
+                    select(Catalyst)
+                    .where(Catalyst.thesis_id == thesis_id)
+                    .order_by(Catalyst.expected_date.asc())
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         def _review_dict(r: ThesisReview) -> dict:
             return {
@@ -368,9 +394,7 @@ class DashboardService:
     # 4. Upcoming catalysts
     # ------------------------------------------------------------------
 
-    async def get_upcoming_catalysts(
-        self, user_id: str, days: int = 30
-    ) -> list[dict[str, Any]]:
+    async def get_upcoming_catalysts(self, user_id: str, days: int = 30) -> list[dict[str, Any]]:
         """Tuong duong GET /api/catalysts/upcoming."""
         from src.thesis.models import Catalyst, CatalystStatus, Thesis, ThesisStatus
 
@@ -449,9 +473,7 @@ class DashboardService:
     # 6. Latest brief snapshot
     # ------------------------------------------------------------------
 
-    async def get_brief_latest(
-        self, user_id: str, phase: str = "morning"
-    ) -> dict[str, Any] | None:
+    async def get_brief_latest(self, user_id: str, phase: str = "morning") -> dict[str, Any] | None:
         """Tuong duong GET /api/brief/latest."""
         try:
             from src.briefing.models import BriefSnapshot
@@ -485,9 +507,7 @@ class DashboardService:
     # 7. Backtesting — verdict accuracy
     # ------------------------------------------------------------------
 
-    async def get_verdict_accuracy(
-        self, user_id: str
-    ) -> list[dict[str, Any]]:
+    async def get_verdict_accuracy(self, user_id: str) -> list[dict[str, Any]]:
         """Tuong duong GET /api/backtesting/verdict-accuracy.
 
         Dung ThesisSnapshot: so sanh verdict cua review truoc snapshot
@@ -515,19 +535,17 @@ class DashboardService:
         )
 
         # review ngay truoc moi snapshot
-        review_before_subq = (
-            select(
-                ThesisReview.thesis_id,
-                ThesisReview.verdict,
-                ThesisReview.reviewed_at,
-                func.row_number()
-                .over(
-                    partition_by=ThesisReview.thesis_id,
-                    order_by=ThesisReview.reviewed_at.desc(),
-                )
-                .label("rn"),
-            ).subquery()
-        )
+        review_before_subq = select(
+            ThesisReview.thesis_id,
+            ThesisReview.verdict,
+            ThesisReview.reviewed_at,
+            func.row_number()
+            .over(
+                partition_by=ThesisReview.thesis_id,
+                order_by=ThesisReview.reviewed_at.desc(),
+            )
+            .label("rn"),
+        ).subquery()
 
         rows = (
             await self._session.execute(
@@ -542,7 +560,9 @@ class DashboardService:
                                 case(
                                     (
                                         and_(
-                                            review_before_subq.c.verdict.in_(["BULLISH", "WATCHLIST"]),
+                                            review_before_subq.c.verdict.in_(
+                                                ["BULLISH", "WATCHLIST"]
+                                            ),
                                             snap_subq.c.pnl_pct >= 0,
                                         ),
                                         1,
@@ -650,9 +670,7 @@ class DashboardService:
     # 9. Backtesting — price snapshots (chart data)
     # ------------------------------------------------------------------
 
-    async def get_price_snapshots(
-        self, user_id: str, thesis_id: int
-    ) -> dict[str, Any] | None:
+    async def get_price_snapshots(self, user_id: str, thesis_id: int) -> dict[str, Any] | None:
         """Tuong duong GET /api/backtesting/price-snapshots/<id>."""
         from src.thesis.models import Thesis, ThesisReview, ThesisSnapshot
 
@@ -661,21 +679,29 @@ class DashboardService:
             return None
 
         snapshots = (
-            await self._session.execute(
-                select(ThesisSnapshot)
-                .where(ThesisSnapshot.thesis_id == thesis_id)
-                .order_by(ThesisSnapshot.snapshotted_at.asc())
+            (
+                await self._session.execute(
+                    select(ThesisSnapshot)
+                    .where(ThesisSnapshot.thesis_id == thesis_id)
+                    .order_by(ThesisSnapshot.snapshotted_at.asc())
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         # Review tai thoi diem gan nhat truoc moi snapshot
         reviews = (
-            await self._session.execute(
-                select(ThesisReview)
-                .where(ThesisReview.thesis_id == thesis_id)
-                .order_by(ThesisReview.reviewed_at.asc())
+            (
+                await self._session.execute(
+                    select(ThesisReview)
+                    .where(ThesisReview.thesis_id == thesis_id)
+                    .order_by(ThesisReview.reviewed_at.asc())
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         def _verdict_at(snap_time: datetime) -> str | None:
             """Binary search-style: last review before snap_time."""
@@ -727,9 +753,7 @@ class DashboardService:
             theses=rows,
         )
 
-    async def get_watchlist_snapshot(
-        self, user_id: str
-    ) -> list[WatchlistSnapshotRow]:
+    async def get_watchlist_snapshot(self, user_id: str) -> list[WatchlistSnapshotRow]:
         """Watchlist items joined with linked thesis summary (legacy)."""
         from src.thesis.models import Thesis
         from src.watchlist.models import WatchlistItem
@@ -766,9 +790,7 @@ class DashboardService:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    async def _thesis_summary_rows(
-        self, user_id: str
-    ) -> list[ThesisSummaryRow]:
+    async def _thesis_summary_rows(self, user_id: str) -> list[ThesisSummaryRow]:
         from src.thesis.models import (
             Assumption,
             AssumptionStatus,
@@ -796,11 +818,9 @@ class DashboardService:
             select(
                 Assumption.thesis_id,
                 func.count(Assumption.id).label("total"),
-                func.sum(
-                    func.cast(
-                        Assumption.status == AssumptionStatus.INVALID, Integer
-                    )
-                ).label("invalid"),
+                func.sum(func.cast(Assumption.status == AssumptionStatus.INVALID, Integer)).label(
+                    "invalid"
+                ),
             )
             .group_by(Assumption.thesis_id)
             .subquery("assumption_counts")
@@ -810,11 +830,9 @@ class DashboardService:
             select(
                 Catalyst.thesis_id,
                 func.count(Catalyst.id).label("total"),
-                func.sum(
-                    func.cast(
-                        Catalyst.status == CatalystStatus.TRIGGERED, Integer
-                    )
-                ).label("triggered"),
+                func.sum(func.cast(Catalyst.status == CatalystStatus.TRIGGERED, Integer)).label(
+                    "triggered"
+                ),
             )
             .group_by(Catalyst.thesis_id)
             .subquery("catalyst_counts")
@@ -834,9 +852,13 @@ class DashboardService:
                 latest_review_subq.c.verdict.label("last_verdict"),
                 latest_review_subq.c.reviewed_at.label("last_reviewed_at"),
                 func.coalesce(total_assumptions_subq.c.total, 0).label("assumption_count"),
-                func.coalesce(total_assumptions_subq.c.invalid, 0).label("invalid_assumption_count"),
+                func.coalesce(total_assumptions_subq.c.invalid, 0).label(
+                    "invalid_assumption_count"
+                ),
                 func.coalesce(total_catalysts_subq.c.total, 0).label("catalyst_count"),
-                func.coalesce(total_catalysts_subq.c.triggered, 0).label("triggered_catalyst_count"),
+                func.coalesce(total_catalysts_subq.c.triggered, 0).label(
+                    "triggered_catalyst_count"
+                ),
             )
             .outerjoin(latest_review_subq, latest_review_subq.c.thesis_id == Thesis.id)
             .outerjoin(total_assumptions_subq, total_assumptions_subq.c.thesis_id == Thesis.id)
@@ -854,12 +876,7 @@ class DashboardService:
             risk_reward: float | None = None
             if r.entry_price and r.target_price and r.entry_price > 0:
                 upside_pct = (r.target_price - r.entry_price) / r.entry_price * 100
-            if (
-                r.entry_price
-                and r.target_price
-                and r.stop_loss
-                and r.entry_price > r.stop_loss
-            ):
+            if r.entry_price and r.target_price and r.stop_loss and r.entry_price > r.stop_loss:
                 upside = r.target_price - r.entry_price
                 downside = r.entry_price - r.stop_loss
                 if downside > 0:

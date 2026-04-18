@@ -3,6 +3,7 @@
 All tests use ENVIRONMENT=test so build_adapter() returns MockAdapter
 and no real HTTP clients are created.
 """
+
 from __future__ import annotations
 
 import pytest

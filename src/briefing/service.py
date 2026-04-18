@@ -11,6 +11,7 @@ Non-responsibilities:
 - no HTTP route logic
 - no scheduler logic
 """
+
 from __future__ import annotations
 
 from datetime import datetime
