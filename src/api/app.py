@@ -5,9 +5,9 @@ This module wires the HTTP layer only.
 No business logic — all domain work is delegated to segment services.
 
 Route groups:
-    /health          — liveness + readiness probes
-    /api/v1/market   — quote, OHLCV (readmodel)
-    /api/v1/thesis   — thesis CRUD + review
+    /health           — liveness + readiness probes
+    /api/v1/market    — quote, OHLCV (readmodel)
+    /api/v1/thesis    — thesis CRUD + review
     /api/v1/watchlist — watchlist management
     /api/v1/briefing  — on-demand brief generation
 """
@@ -23,6 +23,7 @@ from fastapi.responses import JSONResponse
 from src.platform.bootstrap import bootstrap
 from src.platform.config import settings
 from src.platform.logging import get_logger
+from src.api.routes.briefing import router as briefing_router
 from src.api.routes.health import router as health_router
 from src.api.routes.market import router as market_router
 from src.api.routes.thesis import router as thesis_router
@@ -50,7 +51,6 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # CORS — tighten in production via settings
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -64,6 +64,7 @@ def create_app() -> FastAPI:
     app.include_router(market_router, prefix="/api/v1")
     app.include_router(thesis_router, prefix="/api/v1")
     app.include_router(watchlist_router, prefix="/api/v1")
+    app.include_router(briefing_router, prefix="/api/v1")  # wave 2b
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request, exc: Exception) -> JSONResponse:
