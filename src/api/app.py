@@ -5,11 +5,12 @@ This module wires the HTTP layer only.
 No business logic — all domain work is delegated to segment services.
 
 Route groups:
-    /health           — liveness + readiness probes
-    /api/v1/market    — quote, OHLCV (readmodel)
-    /api/v1/thesis    — thesis CRUD + review
-    /api/v1/watchlist — watchlist management
-    /api/v1/briefing  — on-demand brief generation
+    /health                — liveness + readiness probes
+    /api/v1/market         — quote, OHLCV
+    /api/v1/thesis         — thesis CRUD + review
+    /api/v1/watchlist      — watchlist management
+    /api/v1/briefing       — on-demand brief generation
+    /api/v1/readmodel      — dashboard, leaderboard, thesis timeline (wave 3)
 """
 from __future__ import annotations
 
@@ -26,6 +27,7 @@ from src.platform.logging import get_logger
 from src.api.routes.briefing import router as briefing_router
 from src.api.routes.health import router as health_router
 from src.api.routes.market import router as market_router
+from src.api.routes.readmodel import router as readmodel_router
 from src.api.routes.thesis import router as thesis_router
 from src.api.routes.watchlist import router as watchlist_router
 
@@ -59,12 +61,13 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Register routers
+    # Register routers — order matters for OpenAPI grouping
     app.include_router(health_router)
-    app.include_router(market_router, prefix="/api/v1")
-    app.include_router(thesis_router, prefix="/api/v1")
+    app.include_router(market_router,    prefix="/api/v1")
+    app.include_router(thesis_router,    prefix="/api/v1")
     app.include_router(watchlist_router, prefix="/api/v1")
-    app.include_router(briefing_router, prefix="/api/v1")  # wave 2b
+    app.include_router(briefing_router,  prefix="/api/v1")   # wave 2b
+    app.include_router(readmodel_router, prefix="/api/v1")   # wave 3
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request, exc: Exception) -> JSONResponse:
