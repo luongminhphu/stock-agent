@@ -13,19 +13,12 @@ from src.watchlist.models import (
     Alert,
     AlertConditionType,
     AlertStatus,
-    Reminder,
-    ReminderFrequency,
     WatchlistItem,
 )
 from src.watchlist.repository import WatchlistRepository
 from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Input DTOs
-# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -47,9 +40,7 @@ class CreateAlertInput:
     watchlist_item_id: int | None = None
 
 
-# ---------------------------------------------------------------------------
-# Exceptions
-# ---------------------------------------------------------------------------
+AddAlertInput = CreateAlertInput
 
 
 class WatchlistItemNotFoundError(Exception): ...
@@ -57,18 +48,11 @@ class WatchlistItemAlreadyExistsError(Exception): ...
 class AlertNotFoundError(Exception): ...
 
 
-# ---------------------------------------------------------------------------
-# Service
-# ---------------------------------------------------------------------------
-
-
 class WatchlistService:
     """Manage watchlist items and alerts for a user."""
 
     def __init__(self, session: AsyncSession) -> None:
         self._repo = WatchlistRepository(session)
-
-    # ---- Watchlist CRUD ----
 
     async def add(self, inp: AddToWatchlistInput) -> WatchlistItem:
         existing = await self._repo.get_item(inp.user_id, inp.ticker)
@@ -111,11 +95,15 @@ class WatchlistService:
         await self._repo.save_item(item)
         return item
 
-    # ---- Alert CRUD ----
+    async def create_alert(self, inp: CreateAlertInput) -> Alert:
+        if inp.watchlist_item_id is None:
+            item = await self._repo.get_item(inp.user_id, inp.ticker)
+            if item is None:
+                raise WatchlistItemNotFoundError(
+                    f"{inp.ticker} not found in watchlist for user {inp.user_id}"
+                )
+            inp.watchlist_item_id = item.id
 
-    async def create_alert(
-        self, inp: CreateAlertInput
-    ) -> Alert:
         alert = Alert(
             user_id=inp.user_id,
             ticker=inp.ticker.upper(),
@@ -134,6 +122,9 @@ class WatchlistService:
             threshold=inp.threshold,
         )
         return alert
+
+    async def add_alert(self, inp: AddAlertInput) -> Alert:
+        return await self.create_alert(inp)
 
     async def dismiss_alert(self, alert_id: int, user_id: str) -> None:
         alerts = await self._repo.list_active_alerts(user_id)

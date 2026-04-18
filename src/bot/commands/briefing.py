@@ -1,66 +1,40 @@
 """Briefing commands cog.
 
 Owner: bot segment.
-Commands:
-    /morning_brief  — generate and display morning market brief
-    /eod_brief      — generate and display end-of-day brief
-
-No business logic — call BriefingService, format embed, done.
+Adapter only: parse Discord interaction → call BriefingService → format embed.
 """
 from __future__ import annotations
 
 import discord
 from discord import app_commands
-from discord.ext import commands
 
 from src.bot.commands.base import BaseCog
+from src.briefing.models import MarketBrief
 from src.briefing.service import BriefingService
-from src.ai.schemas import MarketSentiment
 from src.platform.bootstrap import get_briefing_agent, get_quote_service
-from src.platform.db import AsyncSessionLocal
 from src.platform.logging import get_logger
 from src.watchlist.service import WatchlistService
 
 logger = get_logger(__name__)
 
-_SENTIMENT_ICON: dict[MarketSentiment, str] = {
-    MarketSentiment.RISK_ON:    "🟢",
-    MarketSentiment.RISK_OFF:   "🔴",
-    MarketSentiment.MIXED:      "🟡",
-    MarketSentiment.UNCERTAIN:  "⚪",
-}
-
-_SENTIMENT_COLOUR: dict[MarketSentiment, discord.Color] = {
-    MarketSentiment.RISK_ON:    discord.Color.green(),
-    MarketSentiment.RISK_OFF:   discord.Color.red(),
-    MarketSentiment.MIXED:      discord.Color.yellow(),
-    MarketSentiment.UNCERTAIN:  discord.Color.greyple(),
-}
-
 
 class BriefingCog(BaseCog):
-    """Slash commands: /morning_brief, /eod_brief"""
+    """Slash commands for market briefs."""
 
-    @app_commands.command(
-        name="morning_brief",
-        description="Nhận morning brief thị trường cho watchlist của bạn",
-    )
+    @app_commands.command(name="morning_brief", description="Generate your morning market brief")
     async def morning_brief(self, interaction: discord.Interaction) -> None:
         await self._run_brief(interaction, phase="morning")
 
-    @app_commands.command(
-        name="eod_brief",
-        description="Nhận end-of-day brief tóm tắt phiên giao dịch",
-    )
+    @app_commands.command(name="eod_brief", description="Generate your end-of-day market brief")
     async def eod_brief(self, interaction: discord.Interaction) -> None:
         await self._run_brief(interaction, phase="eod")
 
     async def _run_brief(self, interaction: discord.Interaction, phase: str) -> None:
-        await interaction.response.defer(ephemeral=True)
-        user_id = str(interaction.user.id)
+        await interaction.response.defer(ephemeral=False)
+        user_id = self.user_id(interaction)
 
         try:
-            async with AsyncSessionLocal() as session:
+            async with self.db_session() as session:
                 svc = BriefingService(
                     watchlist_service=WatchlistService(session=session),
                     quote_service=get_quote_service(),
@@ -70,59 +44,37 @@ class BriefingCog(BaseCog):
                     brief = await svc.generate_morning_brief(user_id=user_id)
                 else:
                     brief = await svc.generate_eod_brief(user_id=user_id)
-                await session.commit()
         except Exception as exc:
-            logger.error(f"bot.{phase}_brief.error", user_id=user_id, error=str(exc))
+            logger.error("briefing.command.error", phase=phase, error=str(exc))
             await self.send_error(
                 interaction,
                 title="Brief generation failed",
-                description=f"Không thể tạo {phase} brief.\nError: `{exc}`",
+                description=f"Could not generate {phase} brief.\n`{exc}`",
             )
             return
 
-        embed = _build_brief_embed(brief, phase=phase)
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=_build_brief_embed(brief, phase=phase), ephemeral=False)
 
 
-def _build_brief_embed(brief: object, phase: str) -> discord.Embed:
-    from src.ai.schemas import BriefOutput
-    assert isinstance(brief, BriefOutput)
-
-    try:
-        sentiment = MarketSentiment(brief.sentiment)
-    except ValueError:
-        sentiment = MarketSentiment.UNCERTAIN
-
-    icon   = _SENTIMENT_ICON.get(sentiment, "⚪")
-    colour = _SENTIMENT_COLOUR.get(sentiment, discord.Color.greyple())
-    phase_label = "Morning Brief" if phase == "morning" else "EOD Brief"
+def _build_brief_embed(brief: MarketBrief, phase: str) -> discord.Embed:
+    title = "🌅 Morning Brief" if phase == "morning" else "🌇 End-of-Day Brief"
+    colour = discord.Color.gold() if phase == "morning" else discord.Color.orange()
 
     embed = discord.Embed(
-        title=f"{icon} {phase_label} — {brief.headline}",
-        description=brief.summary,
-        colour=colour,
+        title=title,
+        description=brief.summary[:1000] if brief.summary else "No summary available.",
+        color=colour,
     )
 
-    if brief.key_movers:
-        embed.add_field(
-            name="📊 Key Movers",
-            value="\n".join(f"• {m}" for m in brief.key_movers[:6]),
-            inline=False,
-        )
-
-    if brief.watchlist_alerts:
-        embed.add_field(
-            name="👁️ Watchlist Alerts",
-            value="\n".join(f"• {a}" for a in brief.watchlist_alerts[:5]),
-            inline=False,
-        )
-
+    if brief.market_view:
+        embed.add_field(name="Market View", value=brief.market_view[:500], inline=False)
+    if brief.watchlist_focus:
+        embed.add_field(name="Watchlist Focus", value=brief.watchlist_focus[:500], inline=False)
     if brief.action_items:
-        embed.add_field(
-            name="✅ Action Items",
-            value="\n".join(f"• {a}" for a in brief.action_items[:5]),
-            inline=False,
-        )
+        action_text = "\n".join(f"• {item}" for item in brief.action_items[:5])
+        embed.add_field(name="Action Items", value=action_text, inline=False)
 
-    embed.set_footer(text=f"Sentiment: {sentiment.value} • stock-agent AI")
+    ts = getattr(brief, "generated_at", None)
+    ts_str = ts.strftime("%H:%M %d/%m/%Y") if ts else "N/A"
+    embed.set_footer(text=f"Generated at {ts_str} · stock-agent")
     return embed

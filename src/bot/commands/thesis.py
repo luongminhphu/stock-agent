@@ -12,52 +12,46 @@ No business logic — parse input → call domain service → format embed.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 
 import discord
 from discord import app_commands
-from discord.ext import commands
 
 from src.bot.commands.base import BaseCog
 from src.platform.bootstrap import get_quote_service, get_thesis_review_agent
 from src.platform.logging import get_logger
 from src.thesis.models import ReviewVerdict, ThesisStatus
 from src.thesis.review_service import ReviewNotAllowedError, ReviewService
-from src.thesis.service import ThesisNotFoundError, ThesisService
+from src.thesis.service import CreateThesisInput, ThesisNotFoundError, ThesisService
 
 logger = get_logger(__name__)
 
 _VERDICT_COLOUR = {
-    ReviewVerdict.BULLISH:   discord.Color.green(),
-    ReviewVerdict.BEARISH:   discord.Color.red(),
-    ReviewVerdict.NEUTRAL:   discord.Color.yellow(),
+    ReviewVerdict.BULLISH: discord.Color.green(),
+    ReviewVerdict.BEARISH: discord.Color.red(),
+    ReviewVerdict.NEUTRAL: discord.Color.yellow(),
     ReviewVerdict.WATCHLIST: discord.Color.blue(),
 }
 _VERDICT_ICON = {
-    ReviewVerdict.BULLISH:   "🟢",
-    ReviewVerdict.BEARISH:   "🔴",
-    ReviewVerdict.NEUTRAL:   "🟡",
+    ReviewVerdict.BULLISH: "🟢",
+    ReviewVerdict.BEARISH: "🔴",
+    ReviewVerdict.NEUTRAL: "🟡",
     ReviewVerdict.WATCHLIST: "🔵",
 }
 _STATUS_ICON = {
-    ThesisStatus.ACTIVE:      "🟢",
-    ThesisStatus.PAUSED:      "⏸️",
+    ThesisStatus.ACTIVE: "🟢",
+    ThesisStatus.PAUSED: "⏸️",
     ThesisStatus.INVALIDATED: "❌",
-    ThesisStatus.CLOSED:      "✅",
+    ThesisStatus.CLOSED: "✅",
 }
 
 
 class ThesisCog(BaseCog):
-    """Slash commands: /thesis group + /review_thesis"""
+    """Slash commands: /thesis group + /review_thesis."""
 
     group = app_commands.Group(
         name="thesis",
         description="Manage your investment theses",
     )
-
-    # ------------------------------------------------------------------
-    # /thesis add
-    # ------------------------------------------------------------------
 
     @group.command(name="add", description="Create a new investment thesis")
     @app_commands.describe(
@@ -85,13 +79,15 @@ class ThesisCog(BaseCog):
             async with self.db_session() as session:
                 svc = ThesisService(session)
                 thesis = await svc.create(
-                    user_id=user_id,
-                    ticker=ticker.upper(),
-                    title=title,
-                    entry_price=entry_price,
-                    target_price=target_price,
-                    stop_loss=stop_loss,
-                    summary=summary or None,
+                    CreateThesisInput(
+                        user_id=user_id,
+                        ticker=ticker.upper(),
+                        title=title,
+                        summary=summary,
+                        entry_price=entry_price,
+                        target_price=target_price,
+                        stop_loss=stop_loss,
+                    )
                 )
         except Exception as exc:
             logger.error("thesis_add.error", ticker=ticker, error=str(exc))
@@ -123,20 +119,14 @@ class ThesisCog(BaseCog):
         embed.set_footer(text="Use /review_thesis to run AI review")
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    # ------------------------------------------------------------------
-    # /thesis list
-    # ------------------------------------------------------------------
-
     @group.command(name="list", description="Show all your investment theses")
-    @app_commands.describe(
-        status="Filter by status (default: active)",
-    )
+    @app_commands.describe(status="Filter by status (default: active)")
     @app_commands.choices(status=[
-        app_commands.Choice(name="Active",      value="active"),
-        app_commands.Choice(name="Paused",      value="paused"),
-        app_commands.Choice(name="Closed",      value="closed"),
+        app_commands.Choice(name="Active", value="active"),
+        app_commands.Choice(name="Paused", value="paused"),
+        app_commands.Choice(name="Closed", value="closed"),
         app_commands.Choice(name="Invalidated", value="invalidated"),
-        app_commands.Choice(name="All",         value="all"),
+        app_commands.Choice(name="All", value="all"),
     ])
     async def thesis_list(
         self,
@@ -168,9 +158,9 @@ class ThesisCog(BaseCog):
             return
 
         lines = []
-        for t in theses[:20]:  # Discord embed limit
+        for t in theses[:20]:
             icon = _STATUS_ICON.get(t.status, "⚪")
-            upside = f"+{t.upside_pct:.0f}%" if t.upside_pct is not None else ""
+            upside = f" · +{t.upside_pct:.0f}%" if t.upside_pct is not None else ""
             score = f" · Score {t.score:.0f}" if t.score is not None else ""
             lines.append(f"{icon} **#{t.id} {t.ticker}** — {t.title[:40]}{upside}{score}")
 
@@ -182,10 +172,6 @@ class ThesisCog(BaseCog):
         embed.set_footer(text=f"{len(theses)} thesis(es) · /review_thesis <id> to run AI review")
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    # ------------------------------------------------------------------
-    # /thesis close
-    # ------------------------------------------------------------------
-
     @group.command(name="close", description="Close or invalidate a thesis")
     @app_commands.describe(
         thesis_id="Thesis ID to close (from /thesis list)",
@@ -193,7 +179,7 @@ class ThesisCog(BaseCog):
     )
     @app_commands.choices(reason=[
         app_commands.Choice(name="Closed (target reached / exit)", value="closed"),
-        app_commands.Choice(name="Invalidated (thesis broken)",    value="invalidated"),
+        app_commands.Choice(name="Invalidated (thesis broken)", value="invalidated"),
     ])
     async def thesis_close(
         self,
@@ -203,16 +189,14 @@ class ThesisCog(BaseCog):
     ) -> None:
         await interaction.response.defer(ephemeral=True)
         user_id = self.user_id(interaction)
-        new_status = ThesisStatus(reason)
 
         try:
             async with self.db_session() as session:
                 svc = ThesisService(session)
-                await svc.update_status(
-                    thesis_id=thesis_id,
-                    user_id=user_id,
-                    new_status=new_status,
-                )
+                if reason == "invalidated":
+                    await svc.invalidate(thesis_id=thesis_id, user_id=user_id)
+                else:
+                    await svc.close(thesis_id=thesis_id, user_id=user_id)
         except ThesisNotFoundError:
             await self.send_error(
                 interaction,
@@ -225,16 +209,12 @@ class ThesisCog(BaseCog):
             await self.send_error(interaction, title="Error", description=str(exc))
             return
 
-        icon = "✅" if new_status == ThesisStatus.CLOSED else "❌"
+        icon = "✅" if reason == "closed" else "❌"
         await self.send_ok(
             interaction,
             title=f"{icon} Thesis #{thesis_id} {reason}",
             description=f"Status updated to **{reason}**.",
         )
-
-    # ------------------------------------------------------------------
-    # /review_thesis  (top-level, not in group — quick access)
-    # ------------------------------------------------------------------
 
     @app_commands.command(
         name="review_thesis",
@@ -256,11 +236,7 @@ class ThesisCog(BaseCog):
                     agent=get_thesis_review_agent(),
                     quote_service=get_quote_service(),
                 )
-                review = await svc.review_thesis(
-                    thesis_id=thesis_id,
-                    user_id=user_id,
-                )
-                await session.commit()
+                review = await svc.review_thesis(thesis_id=thesis_id, user_id=user_id)
         except ThesisNotFoundError:
             await self.send_error(
                 interaction,
@@ -291,15 +267,10 @@ class ThesisCog(BaseCog):
         await interaction.followup.send(embed=embed, ephemeral=True)
 
 
-# ---------------------------------------------------------------------------
-# Embed builders
-# ---------------------------------------------------------------------------
-
-
 def _build_review_embed(review: object) -> discord.Embed:
     verdict = ReviewVerdict(review.verdict)  # type: ignore[attr-defined]
-    colour  = _VERDICT_COLOUR.get(verdict, discord.Color.greyple())
-    icon    = _VERDICT_ICON.get(verdict, "⚪")
+    colour = _VERDICT_COLOUR.get(verdict, discord.Color.greyple())
+    icon = _VERDICT_ICON.get(verdict, "⚪")
 
     embed = discord.Embed(
         title=f"{icon} Thesis #{review.thesis_id} — {verdict.value}",  # type: ignore[attr-defined]
@@ -334,11 +305,7 @@ def _build_review_embed(review: object) -> discord.Embed:
             inline=False,
         )
 
-    price_str = (
-        f"{review.reviewed_price:,.0f} VND"  # type: ignore[attr-defined]
-        if review.reviewed_price
-        else "N/A"
-    )
+    price_str = f"{review.reviewed_price:,.0f} VND" if review.reviewed_price else "N/A"  # type: ignore[attr-defined]
     reviewed_at = getattr(review, "reviewed_at", None)
     ts_str = reviewed_at.strftime("%H:%M %d/%m/%Y") if reviewed_at else "N/A"
     embed.set_footer(text=f"Price at review: {price_str} • {ts_str} • stock-agent AI")
