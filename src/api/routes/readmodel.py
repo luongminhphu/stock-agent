@@ -11,9 +11,9 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.market.price_enrichment import PriceEnrichmentService
 from src.platform.bootstrap import get_quote_service
 from src.platform.db import get_session
-from src.market.price_enrichment import PriceEnrichmentService
 from src.readmodel.dashboard_service import DashboardService
 from src.readmodel.leaderboard_service import LeaderboardService
 from src.readmodel.schemas import (
@@ -30,6 +30,7 @@ router = APIRouter(prefix="/readmodel", tags=["readmodel"])
 def _enrichment() -> PriceEnrichmentService:
     """Dependency: PriceEnrichmentService wired to the bootstrapped QuoteService."""
     from src.market.quote_service import QuoteService
+
     qs: QuoteService = get_quote_service()  # type: ignore[assignment]
     return PriceEnrichmentService(qs)
 
@@ -71,9 +72,9 @@ async def get_watchlist_snapshot(
 @router.get("/leaderboard/{user_id}", response_model=LeaderboardResponse)
 async def get_leaderboard(
     user_id: str,
+    session: Annotated[AsyncSession, Depends(get_session)],
     sort_by: Annotated[Literal["score", "pnl"], Query()] = "score",
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
-    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> LeaderboardResponse:
     """Ranked thesis leaderboard. sort_by=score|pnl."""
     svc = LeaderboardService(session)
