@@ -1,0 +1,80 @@
+"""FastAPI application factory.
+
+Owner: api segment.
+This module wires the HTTP layer only.
+No business logic — all domain work is delegated to segment services.
+
+Route groups:
+    /health          — liveness + readiness probes
+    /api/v1/market   — quote, OHLCV (readmodel)
+    /api/v1/thesis   — thesis CRUD + review
+    /api/v1/watchlist — watchlist management
+    /api/v1/briefing  — on-demand brief generation
+"""
+from __future__ import annotations
+
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+from src.platform.bootstrap import bootstrap
+from src.platform.config import settings
+from src.platform.logging import get_logger
+from src.api.routes.health import router as health_router
+from src.api.routes.market import router as market_router
+from src.api.routes.thesis import router as thesis_router
+from src.api.routes.watchlist import router as watchlist_router
+
+logger = get_logger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Run startup/shutdown logic around the app lifetime."""
+    await bootstrap()
+    logger.info("api.startup", env=settings.environment)
+    yield
+    logger.info("api.shutdown")
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(
+        title="stock-agent",
+        version="0.1.0",
+        description="AI-native stock analysis platform for HOSE, HNX, UPCoM.",
+        docs_url="/docs" if settings.environment != "production" else None,
+        redoc_url=None,
+        lifespan=lifespan,
+    )
+
+    # CORS — tighten in production via settings
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # Register routers
+    app.include_router(health_router)
+    app.include_router(market_router, prefix="/api/v1")
+    app.include_router(thesis_router, prefix="/api/v1")
+    app.include_router(watchlist_router, prefix="/api/v1")
+
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(request, exc: Exception) -> JSONResponse:
+        logger.error("api.unhandled_exception", path=str(request.url), error=str(exc))
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error"},
+        )
+
+    return app
+
+
+# ASGI entry point: uvicorn src.api.app:app
+app = create_app()
