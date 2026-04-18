@@ -1,8 +1,11 @@
 """Base cog with shared helpers for all command cogs.
 
 Owner: bot segment.
-Provides DB session injection and user_id resolution.
-No business logic — only adapter plumbing.
+Provides:
+  - db_session()    async context manager for DB sessions
+  - user_id()       extract Discord user ID string
+  - send_ok()       success embed shortcut
+  - send_error()    error embed shortcut
 """
 from __future__ import annotations
 
@@ -11,30 +14,23 @@ from typing import AsyncGenerator
 
 import discord
 from discord.ext import commands
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.db import AsyncSessionLocal
-from src.platform.logging import get_logger
-
-logger = get_logger(__name__)
 
 
 class BaseCog(commands.Cog):
-    """Base class for all stock-agent cogs.
-
-    Provides:
-        db_session()  — async context manager yielding an AsyncSession
-        user_id()     — extract stable user identifier from interaction
-        send_error()  — standardised error embed reply
-        send_ok()     — standardised success embed reply
-    """
+    """Shared utilities for all command cogs."""
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
+    # ------------------------------------------------------------------
+    # DB helper
+    # ------------------------------------------------------------------
+
     @asynccontextmanager
-    async def db_session(self) -> AsyncGenerator[AsyncSession, None]:
-        """Provide a DB session for the duration of a command handler."""
+    async def db_session(self) -> AsyncGenerator:  # type: ignore[type-arg]
+        """Async context manager: yield session, auto-commit on success, rollback on error."""
         async with AsyncSessionLocal() as session:
             try:
                 yield session
@@ -43,26 +39,13 @@ class BaseCog(commands.Cog):
                 await session.rollback()
                 raise
 
-    @staticmethod
-    def user_id(interaction: discord.Interaction) -> str:
-        """Return a stable string user ID from a Discord interaction."""
-        return str(interaction.user.id)
+    # ------------------------------------------------------------------
+    # Discord helpers
+    # ------------------------------------------------------------------
 
     @staticmethod
-    async def send_error(
-        interaction: discord.Interaction,
-        title: str,
-        description: str,
-    ) -> None:
-        embed = discord.Embed(
-            title=f"\u274c {title}",
-            description=description,
-            color=discord.Color.red(),
-        )
-        if interaction.response.is_done():
-            await interaction.followup.send(embed=embed, ephemeral=True)
-        else:
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+    def user_id(interaction: discord.Interaction) -> str:
+        return str(interaction.user.id)
 
     @staticmethod
     async def send_ok(
@@ -71,11 +54,21 @@ class BaseCog(commands.Cog):
         description: str,
     ) -> None:
         embed = discord.Embed(
-            title=f"\u2705 {title}",
+            title=title,
             description=description,
             color=discord.Color.green(),
         )
-        if interaction.response.is_done():
-            await interaction.followup.send(embed=embed, ephemeral=True)
-        else:
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @staticmethod
+    async def send_error(
+        interaction: discord.Interaction,
+        title: str,
+        description: str,
+    ) -> None:
+        embed = discord.Embed(
+            title=f"❌ {title}",
+            description=description,
+            color=discord.Color.red(),
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
