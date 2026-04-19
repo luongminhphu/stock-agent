@@ -233,19 +233,28 @@ async function loadDashboard() {
   const base = apiBase(userId);
   el('errorBanner').classList.add('hidden');
   try {
-    const [summary, theses, verdicts, catalysts, snapshots] = await Promise.all([
-      getJson(`${base}/summary`).catch(() => null),
+    const [stats, theses, verdictAccuracy, catalysts, latestScan, latestMorningBrief, latestEodBrief] = await Promise.all([
+      getJson(`${base}/stats`).catch(() => null),
       getJson(`${base}/theses?status=${status}`).catch(() => []),
-      getJson(`${base}/verdicts`).catch(() => []),
-      getJson(`${base}/catalysts?horizon_days=30`).catch(() => []),
-      getJson(`${base}/snapshots`).catch(() => null),
+      getJson(`${base}/backtesting/verdict-accuracy`).catch(() => []),
+      getJson(`${base}/catalysts/upcoming?days=30`).catch(() => []),
+      getJson(`${base}/scan/latest`).catch(() => null),
+      getJson(`${base}/brief/latest?phase=morning`).catch(() => null),
+      getJson(`${base}/brief/latest?phase=eod`).catch(() => null),
     ]);
-    renderSummary(summary);
+    renderSummary(stats);
     _theses = Array.isArray(theses) ? theses : (theses?.items ?? []);
     renderThesesTable(_theses);
-    renderVerdicts(verdicts);
+    renderVerdicts(verdictAccuracy);
     renderCatalystList(catalysts);
-    renderSnapshots(snapshots);
+    renderSnapshots({
+      latest_scan_at: latestScan?.created_at ?? latestScan?.generated_at ?? null,
+      latest_scan_summary: latestScan?.summary ?? latestScan?.headline ?? latestScan?.notes ?? null,
+      latest_morning_brief_at: latestMorningBrief?.created_at ?? latestMorningBrief?.generated_at ?? null,
+      latest_morning_brief_summary: latestMorningBrief?.summary ?? latestMorningBrief?.headline ?? latestMorningBrief?.content ?? null,
+      latest_eod_brief_at: latestEodBrief?.created_at ?? latestEodBrief?.generated_at ?? null,
+      latest_eod_brief_summary: latestEodBrief?.summary ?? latestEodBrief?.headline ?? latestEodBrief?.content ?? null,
+    });
     if (_selectedThesisId) {
       const t = _theses.find(x => x.id === _selectedThesisId);
       if (t) loadThesisDetail(t.id);
@@ -259,12 +268,12 @@ async function loadDashboard() {
 
 function renderSummary(s) {
   if (!s) return;
-  el('openTheses').textContent = s.open_theses ?? '—';
-  el('riskyTheses').textContent = s.risky_theses ?? '—';
-  el('upcoming7d').textContent = s.upcoming_catalysts_7d ?? '—';
-  el('reviewsToday').textContent = s.reviews_today ?? '—';
-  el('totalReviewsHero').textContent = s.total_reviews ?? '—';
-  el('upcoming7dHero').textContent = s.upcoming_catalysts_7d ?? '—';
+  el('openTheses').textContent = s.open_theses ?? s.open_thesis_count ?? '—';
+  el('riskyTheses').textContent = s.risky_theses ?? s.risky_thesis_count ?? '—';
+  el('upcoming7d').textContent = s.upcoming_catalysts_7d ?? s.upcoming_7d ?? '—';
+  el('reviewsToday').textContent = s.reviews_today ?? s.review_count_today ?? '—';
+  el('totalReviewsHero').textContent = s.total_reviews ?? s.review_count_total ?? '—';
+  el('upcoming7dHero').textContent = s.upcoming_catalysts_7d ?? s.upcoming_7d ?? '—';
 }
 
 function renderThesesTable(list) {
@@ -442,13 +451,11 @@ el('thesisForm')?.addEventListener('submit', async e => {
       const created = await sendJson(`${thesisApiBase()}/`, 'POST', payload);
       thesisId = created?.id ?? null;
       _selectedThesisId = thesisId;
-      showToast('✅ Đã tạo thesis mới');
-    }
-    if (thesisId) {
-      if (!id) {
+      if (thesisId) {
         for (const a of assumptions) await sendJson(`${thesisApiBase()}/${thesisId}/assumptions`, 'POST', { ...a, status: 'pending', confidence: null });
         for (const c of catalysts) await sendJson(`${thesisApiBase()}/${thesisId}/catalysts`, 'POST', { ...c, status: 'pending' });
       }
+      showToast('✅ Đã tạo thesis mới');
     }
     closeModal('thesisModal');
     await loadDashboard();
@@ -688,8 +695,9 @@ el('catalystAiSuggestBtn')?.addEventListener('click', async () => {
 
 function renderVerdicts(list) {
   const wrap = el('verdictList');
-  if (!list?.length) { wrap.innerHTML = '<p class="empty-state">Chưa có dữ liệu.</p>'; return; }
-  wrap.innerHTML = list.map(v => `<div class="row-item"><div><div class="row-title">${badge(v.verdict)}</div><div class="row-subtitle">${v.count ?? 0} review · ${v.pct != null ? v.pct + '%' : ''}</div></div></div>`).join('');
+  const rows = Array.isArray(list) ? list : (list?.items ?? []);
+  if (!rows.length) { wrap.innerHTML = '<p class="empty-state">Chưa có dữ liệu.</p>'; return; }
+  wrap.innerHTML = rows.map(v => `<div class="row-item"><div><div class="row-title">${badge(v.verdict)}</div><div class="row-subtitle">${v.count ?? v.total ?? 0} review · ${v.pct != null ? v.pct + '%' : v.accuracy != null ? (v.accuracy * 100).toFixed(1) + '%' : ''}</div></div></div>`).join('');
 }
 
 function renderCatalystList(list) {
@@ -702,7 +710,7 @@ function renderCatalystList(list) {
 function renderSnapshots(s) {
   if (!s) return;
   el('latestScanAt').textContent = fmtDate(s.latest_scan_at);
-  el('latestScanSummary').textContent = s.latest_scan_summary ?? 'Chưa có scan.';
+  el('latestScanSummary').textContent = s.latest_scan_summary ?? 'Chưa có scan snapshot.';
   el('latestMorningBriefAt').textContent = fmtDate(s.latest_morning_brief_at);
   el('latestMorningBriefSummary').textContent = s.latest_morning_brief_summary ?? 'Chưa có morning brief.';
   el('latestEodBriefAt').textContent = fmtDate(s.latest_eod_brief_at);
@@ -714,8 +722,8 @@ async function loadBacktesting() {
   const base = apiBase(userId);
   try {
     const [acc, perf] = await Promise.all([
-      getJson(`${base}/accuracy`).catch(() => []),
-      getJson(`${base}/performance`).catch(() => []),
+      getJson(`${base}/backtesting/verdict-accuracy`).catch(() => []),
+      getJson(`${base}/backtesting/thesis-performances`).catch(() => []),
     ]);
     renderAccuracy(acc);
     renderPerformance(perf);
