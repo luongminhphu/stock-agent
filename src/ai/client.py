@@ -2,7 +2,6 @@ from typing import Any
 
 import httpx
 from tenacity import (
-    RetryError,
     retry,
     retry_if_exception_type,
     stop_after_attempt,
@@ -37,6 +36,19 @@ class PerplexityClient:
 
     Owner: ai segment only. No other segment instantiates this directly;
     they call agent facades in src/ai/agents/.
+
+    Lifecycle:
+        Designed to be used as a long-lived singleton (bootstrap pattern).
+        httpx.AsyncClient is created eagerly in __init__ — no need to wrap
+        in `async with` at the call site.
+
+        async with PerplexityClient(...) as c:  # still supported
+            ...
+
+        # OR as singleton (preferred for bootstrap):
+        client = PerplexityClient(api_key)
+        await client.chat_completion(...)
+        await client.aclose()  # call once on shutdown
     """
 
     BASE_URL = "https://api.perplexity.ai"
@@ -48,10 +60,8 @@ class PerplexityClient:
     def __init__(self, api_key: str, timeout: float = 30.0) -> None:
         self._api_key = api_key
         self._timeout = timeout
-        self._client: httpx.AsyncClient | None = None
-
-    async def __aenter__(self) -> "PerplexityClient":
-        self._client = httpx.AsyncClient(
+        # Eager init — safe for singleton use without async with
+        self._client: httpx.AsyncClient | None = httpx.AsyncClient(
             base_url=self.BASE_URL,
             headers={
                 "Authorization": f"Bearer {self._api_key}",
@@ -59,10 +69,18 @@ class PerplexityClient:
             },
             timeout=self._timeout,
         )
+
+    async def __aenter__(self) -> "PerplexityClient":
+        # Client already created in __init__; nothing to do.
+        # Kept for backward compatibility with `async with` usage.
         return self
 
     async def __aexit__(self, *_: Any) -> None:
-        if self._client:
+        await self.aclose()
+
+    async def aclose(self) -> None:
+        """Close the underlying httpx client. Call once on application shutdown."""
+        if self._client is not None:
             await self._client.aclose()
             self._client = None
 
@@ -87,18 +105,24 @@ class PerplexityClient:
             model: Override default model.
             temperature: Sampling temperature (lower = more deterministic).
             max_tokens: Max tokens in response.
-            response_format: e.g. {"type": "text"} — only 'text', 'json_schema',
-                             'regex' are supported by Perplexity API.
+            response_format: e.g. {"type": "json_object"} — only 'text',
+                             'json_object', 'json_schema', 'regex' are
+                             supported by Perplexity API.
 
         Returns:
             Raw API response dict.
 
         Raises:
+            RuntimeError: If called after aclose().
             PerplexityRateLimitError: On HTTP 429.
             PerplexityUnavailableError: On HTTP 5xx.
             PerplexityError: On other API errors.
         """
-        assert self._client is not None, "Use as async context manager"
+        if self._client is None:
+            raise RuntimeError(
+                "PerplexityClient has been closed. "
+                "Do not call chat_completion() after aclose()."
+            )
 
         payload: dict[str, Any] = {
             "model": model or self.DEFAULT_MODEL,
