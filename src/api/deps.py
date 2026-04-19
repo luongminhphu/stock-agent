@@ -16,6 +16,7 @@ from src.platform.bootstrap import (
     get_briefing_agent as _get_briefing_agent,
     get_quote_service as _get_qs,
     get_thesis_review_agent as _get_agent,
+    get_thesis_suggest_agent as _get_suggest_agent,
 )
 
 
@@ -46,6 +47,11 @@ def get_quote_service() -> object:
 
 def get_thesis_review_agent() -> object:
     return _get_agent()
+
+
+def get_thesis_suggest_agent() -> object:
+    """Return the ThesisSuggestAgent singleton (initialised at bootstrap)."""
+    return _get_suggest_agent()
 
 
 def get_briefing_agent() -> object:
