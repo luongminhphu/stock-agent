@@ -18,6 +18,7 @@ logger = get_logger(__name__)
 _quote_service: object | None = None
 _perplexity_client: object | None = None
 _thesis_review_agent: object | None = None
+_thesis_suggest_agent: object | None = None
 _briefing_agent: object | None = None
 _snapshot_scheduler: object | None = None
 
@@ -27,7 +28,7 @@ async def bootstrap() -> None:
     configure_logging()
 
     global _quote_service, _perplexity_client, _thesis_review_agent
-    global _briefing_agent, _snapshot_scheduler
+    global _thesis_suggest_agent, _briefing_agent, _snapshot_scheduler
 
     if _quote_service is None:
         from src.market.adapters.factory import build_adapter
@@ -49,6 +50,12 @@ async def bootstrap() -> None:
         _thesis_review_agent = ThesisReviewAgent(client=_perplexity_client)  # type: ignore[arg-type]
         logger.info("platform.bootstrap.thesis_review_agent_ready")
 
+    if _thesis_suggest_agent is None:
+        from src.ai.agents.suggest_agent import ThesisSuggestAgent
+
+        _thesis_suggest_agent = ThesisSuggestAgent(client=_perplexity_client)  # type: ignore[arg-type]
+        logger.info("platform.bootstrap.thesis_suggest_agent_ready")
+
     if _briefing_agent is None:
         from src.ai.agents.briefing import BriefingAgent
 
@@ -61,10 +68,11 @@ async def bootstrap() -> None:
 def reset_singletons() -> None:
     """Reset all singletons — for use in tests only."""
     global _quote_service, _perplexity_client, _thesis_review_agent
-    global _briefing_agent, _snapshot_scheduler
+    global _thesis_suggest_agent, _briefing_agent, _snapshot_scheduler
     _quote_service = None
     _perplexity_client = None
     _thesis_review_agent = None
+    _thesis_suggest_agent = None
     _briefing_agent = None
     _snapshot_scheduler = None
 
@@ -85,6 +93,12 @@ def get_thesis_review_agent() -> object:
     if _thesis_review_agent is None:
         raise RuntimeError("ThesisReviewAgent not initialised — call bootstrap() first.")
     return _thesis_review_agent
+
+
+def get_thesis_suggest_agent() -> object:
+    if _thesis_suggest_agent is None:
+        raise RuntimeError("ThesisSuggestAgent not initialised — call bootstrap() first.")
+    return _thesis_suggest_agent
 
 
 def get_briefing_agent() -> object:
