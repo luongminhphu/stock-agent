@@ -40,7 +40,10 @@ class PerplexityClient:
     """
 
     BASE_URL = "https://api.perplexity.ai"
-    DEFAULT_MODEL = "llama-3.1-sonar-large-128k-online"
+    # sonar-pro: advanced search model with grounding (current as of 2026-04)
+    # Replaces deprecated llama-3.1-sonar-large-128k-online
+    # Ref: https://docs.perplexity.ai/docs/getting-started/models
+    DEFAULT_MODEL = "sonar-pro"
 
     def __init__(self, api_key: str, timeout: float = 30.0) -> None:
         self._api_key = api_key
@@ -84,7 +87,8 @@ class PerplexityClient:
             model: Override default model.
             temperature: Sampling temperature (lower = more deterministic).
             max_tokens: Max tokens in response.
-            response_format: e.g. {"type": "json_object"} for structured output.
+            response_format: e.g. {"type": "text"} — only 'text', 'json_schema',
+                             'regex' are supported by Perplexity API.
 
         Returns:
             Raw API response dict.
