@@ -14,9 +14,11 @@ Endpoints:
     POST   /thesis/{thesis_id}/close                      — close thesis
     POST   /thesis/{thesis_id}/invalidate                 — invalidate thesis
     GET    /thesis/{thesis_id}/score                      — health score breakdown
+    GET    /thesis/{thesis_id}/assumptions                — list assumptions
     POST   /thesis/{thesis_id}/assumptions                — add assumption
     PATCH  /thesis/{thesis_id}/assumptions/{id}           — update assumption
     DELETE /thesis/{thesis_id}/assumptions/{id}           — delete assumption
+    GET    /thesis/{thesis_id}/catalysts                  — list catalysts
     POST   /thesis/{thesis_id}/catalysts                  — add catalyst
     PATCH  /thesis/{thesis_id}/catalysts/{id}             — update catalyst
     DELETE /thesis/{thesis_id}/catalysts/{id}             — delete catalyst
@@ -42,9 +44,11 @@ from src.api.deps import (
 )
 from src.api.dto.thesis import (
     AssumptionCreateRequest,
+    AssumptionListResponse,
     AssumptionResponse,
     AssumptionUpdateRequest,
     CatalystCreateRequest,
+    CatalystListResponse,
     CatalystResponse,
     CatalystUpdateRequest,
     HealthScoreBreakdown,
@@ -295,6 +299,24 @@ async def get_health_score(
 # ---------------------------------------------------------------------------
 
 
+@router.get("/{thesis_id}/assumptions", response_model=AssumptionListResponse)
+async def list_assumptions(
+    thesis_id: int,
+    user_id: str = Depends(get_current_user_id),
+    svc: ThesisService = Depends(get_thesis_service),
+) -> AssumptionListResponse:
+    """List all assumptions for a thesis."""
+    try:
+        thesis = await svc.get(thesis_id, user_id)
+    except ThesisNotFoundError as exc:
+        raise _not_found(exc)
+    items = thesis.assumptions or []
+    return AssumptionListResponse(
+        items=[AssumptionResponse.model_validate(a) for a in items],
+        total=len(items),
+    )
+
+
 @router.post(
     "/{thesis_id}/assumptions",
     response_model=AssumptionResponse,
@@ -376,6 +398,24 @@ async def delete_assumption(
 # ---------------------------------------------------------------------------
 # Catalyst CRUD
 # ---------------------------------------------------------------------------
+
+
+@router.get("/{thesis_id}/catalysts", response_model=CatalystListResponse)
+async def list_catalysts(
+    thesis_id: int,
+    user_id: str = Depends(get_current_user_id),
+    svc: ThesisService = Depends(get_thesis_service),
+) -> CatalystListResponse:
+    """List all catalysts for a thesis."""
+    try:
+        thesis = await svc.get(thesis_id, user_id)
+    except ThesisNotFoundError as exc:
+        raise _not_found(exc)
+    items = thesis.catalysts or []
+    return CatalystListResponse(
+        items=[CatalystResponse.model_validate(c) for c in items],
+        total=len(items),
+    )
 
 
 @router.post(

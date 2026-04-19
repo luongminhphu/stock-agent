@@ -25,10 +25,17 @@ class AssumptionResponse(BaseModel):
     thesis_id: int
     description: str
     status: str
+    rationale: Optional[str] = None
+    confidence: Optional[float] = None
     note: Optional[str] = None
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class AssumptionListResponse(BaseModel):
+    items: list[AssumptionResponse]
+    total: int
 
 
 class AssumptionCreateRequest(BaseModel):
@@ -53,11 +60,18 @@ class CatalystResponse(BaseModel):
     thesis_id: int
     description: str
     status: str
+    rationale: Optional[str] = None
+    expected_timeline: Optional[str] = None
     expected_date: Optional[datetime] = None
     triggered_at: Optional[datetime] = None
     note: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class CatalystListResponse(BaseModel):
+    items: list[CatalystResponse]
+    total: int
 
 
 class CatalystCreateRequest(BaseModel):
