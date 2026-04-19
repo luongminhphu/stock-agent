@@ -89,13 +89,19 @@ class ThesisSuggestAgent:
         logger.info("suggest_agent.start", ticker=ticker)
 
         try:
-            response = await self._client.chat_completion(
-                messages=messages,
-                temperature=0.2,
-                max_tokens=2048,
-                response_format={"type": "json_object"},
-            )
-            raw_text = self._client.extract_text(response)
+            # PerplexityClient requires async context manager to initialise
+            # the underlying httpx.AsyncClient. Each suggest() call opens and
+            # closes its own connection — acceptable for low-frequency suggest
+            # calls; no connection pooling needed at this scale.
+            async with self._client as client:
+                response = await client.chat_completion(
+                    messages=messages,
+                    temperature=0.2,
+                    max_tokens=2048,
+                    response_format={"type": "json_object"},
+                )
+                raw_text = client.extract_text(response)
+
             data = json.loads(raw_text)
 
             # Ensure ticker field is normalised even if AI returned lowercase
