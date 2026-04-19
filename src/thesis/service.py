@@ -8,7 +8,7 @@ Bot commands and API routes call this; they do not import models directly.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -172,7 +172,7 @@ class ThesisService:
         thesis = await self._get_owned(thesis_id, user_id)
         self._assert_mutable(thesis)
         thesis.status = ThesisStatus.CLOSED
-        thesis.closed_at = datetime.utcnow()
+        thesis.closed_at = datetime.now(timezone.utc)
         await self._repo.save(thesis)
         logger.info("thesis.closed", thesis_id=thesis_id)
         return thesis
@@ -181,7 +181,7 @@ class ThesisService:
         thesis = await self._get_owned(thesis_id, user_id)
         self._assert_mutable(thesis)
         thesis.status = ThesisStatus.INVALIDATED
-        thesis.closed_at = datetime.utcnow()
+        thesis.closed_at = datetime.now(timezone.utc)
         await self._repo.save(thesis)
         logger.info("thesis.invalidated", thesis_id=thesis_id)
         return thesis
