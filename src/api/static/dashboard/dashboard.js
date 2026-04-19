@@ -1,11 +1,21 @@
 'use strict';
 
-const DASHBOARD_USER_ID = '1490204869418684536';
+
+let _currentUserId = null;
+
+async function initUserId() {
+  const data = await fetch('/api/v1/me').then(r => r.json());
+  _currentUserId = data.user_id;
+}
+
+function currentUserId() {
+  if (!_currentUserId) throw new Error('User ID chưa được load');
+  return _currentUserId;
+}
 
 function el(id) { return document.getElementById(id); }
 function apiBase(userId) { return `/api/v1/readmodel/dashboard/${encodeURIComponent(userId)}`; }
 function thesisApiBase() { return '/api/v1/thesis'; }
-function currentUserId() { return DASHBOARD_USER_ID; }
 function authHeaders() { return { 'Content-Type': 'application/json', 'X-User-Id': currentUserId() }; }
 
 async function getJson(url, options = {}) {
@@ -753,6 +763,7 @@ document.addEventListener('DOMContentLoaded', () => {
   el('addFormAssumptionBtn')?.addEventListener('click', () => el('thesisFormAssumptionRows')?.appendChild(makeAssumptionRow()));
   el('addFormCatalystBtn')?.addEventListener('click', () => el('thesisFormCatalystRows')?.appendChild(makeCatalystRow()));
   seedBlankFormRows();
+  await initUserId();
   loadDashboard();
   loadBacktesting();
 });
