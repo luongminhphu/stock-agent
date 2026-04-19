@@ -474,11 +474,13 @@ function confirmDeleteThesis(thesisId) {
 }
 
 async function openAssumptionModal(thesisId, assumId) {
+  const ticker = _theses.find(t => t.id === thesisId)?.ticker ?? '';
   el('assumptionThesisId').value = thesisId;
   el('assumptionIdField').value = assumId ?? '';
   el('assumptionModalTitle').textContent = assumId ? 'Chỉnh sửa Assumption' : 'Thêm Assumption';
   el('assumptionForm').reset();
-  el('assumptionSuggestTicker').value = _theses.find(t => t.id === thesisId)?.ticker ?? '';
+  el('assumptionSuggestTicker').value = ticker;
+  if (el('assumptionTickerDisplay')) el('assumptionTickerDisplay').textContent = ticker || '—';
   el('assumptionSuggestResult').classList.add('hidden');
   el('assumptionSuggestLoading').classList.add('hidden');
   if (assumId) {
@@ -533,11 +535,13 @@ function confirmDeleteAssumption(thesisId, assumId) {
 }
 
 async function openCatalystModal(thesisId, catId) {
+  const ticker = _theses.find(t => t.id === thesisId)?.ticker ?? '';
   el('catalystThesisId').value = thesisId;
   el('catalystIdField').value = catId ?? '';
   el('catalystModalTitle').textContent = catId ? 'Chỉnh sửa Catalyst' : 'Thêm Catalyst';
   el('catalystForm').reset();
-  el('catalystSuggestTicker').value = _theses.find(t => t.id === thesisId)?.ticker ?? '';
+  el('catalystSuggestTicker').value = ticker;
+  if (el('catalystTickerDisplay')) el('catalystTickerDisplay').textContent = ticker || '—';
   el('catalystSuggestResult').classList.add('hidden');
   el('catalystSuggestLoading').classList.add('hidden');
   if (catId) {
@@ -630,7 +634,7 @@ el('aiSuggestBtn')?.addEventListener('click', async () => {
 
 el('assumptionAiSuggestBtn')?.addEventListener('click', async () => {
   const ticker = el('assumptionSuggestTicker')?.value?.trim().toUpperCase();
-  if (!ticker) { showToast('Nhập mã cổ phiếu trước', 'error'); return; }
+  if (!ticker) { showToast('Không xác định được mã cổ phiếu cho assumption này', 'error'); return; }
   const loading = el('assumptionSuggestLoading');
   const result = el('assumptionSuggestResult');
   loading.classList.remove('hidden');
@@ -656,7 +660,7 @@ el('assumptionAiSuggestBtn')?.addEventListener('click', async () => {
 
 el('catalystAiSuggestBtn')?.addEventListener('click', async () => {
   const ticker = el('catalystSuggestTicker')?.value?.trim().toUpperCase();
-  if (!ticker) { showToast('Nhập mã cổ phiếu trước', 'error'); return; }
+  if (!ticker) { showToast('Không xác định được mã cổ phiếu cho catalyst này', 'error'); return; }
   const loading = el('catalystSuggestLoading');
   const result = el('catalystSuggestResult');
   loading.classList.remove('hidden');
