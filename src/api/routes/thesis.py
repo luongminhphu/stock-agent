@@ -16,10 +16,12 @@ Endpoints:
     GET    /thesis/{thesis_id}/score                      — health score breakdown
     GET    /thesis/{thesis_id}/assumptions                — list assumptions
     POST   /thesis/{thesis_id}/assumptions                — add assumption
+    GET    /thesis/{thesis_id}/assumptions/{id}           — get assumption
     PATCH  /thesis/{thesis_id}/assumptions/{id}           — update assumption
     DELETE /thesis/{thesis_id}/assumptions/{id}           — delete assumption
     GET    /thesis/{thesis_id}/catalysts                  — list catalysts
     POST   /thesis/{thesis_id}/catalysts                  — add catalyst
+    GET    /thesis/{thesis_id}/catalysts/{id}             — get catalyst
     PATCH  /thesis/{thesis_id}/catalysts/{id}             — update catalyst
     DELETE /thesis/{thesis_id}/catalysts/{id}             — delete catalyst
     POST   /thesis/{thesis_id}/review                     — trigger AI review
@@ -346,6 +348,30 @@ async def add_assumption(
     return AssumptionResponse.model_validate(assumption)
 
 
+@router.get(
+    "/{thesis_id}/assumptions/{assumption_id}",
+    response_model=AssumptionResponse,
+)
+async def get_assumption(
+    thesis_id: int,
+    assumption_id: int,
+    user_id: str = Depends(get_current_user_id),
+    svc: ThesisService = Depends(get_thesis_service),
+) -> AssumptionResponse:
+    """Get a single assumption by id."""
+    try:
+        thesis = await svc.get(thesis_id, user_id)
+    except ThesisNotFoundError as exc:
+        raise _not_found(exc)
+    assumption = next((a for a in thesis.assumptions if a.id == assumption_id), None)
+    if assumption is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Assumption {assumption_id} not found in thesis {thesis_id}.",
+        )
+    return AssumptionResponse.model_validate(assumption)
+
+
 @router.patch(
     "/{thesis_id}/assumptions/{assumption_id}",
     response_model=AssumptionResponse,
@@ -445,6 +471,30 @@ async def add_catalyst(
         raise _not_found(exc)
     except ThesisAlreadyClosedError as exc:
         raise _conflict(exc)
+    return CatalystResponse.model_validate(catalyst)
+
+
+@router.get(
+    "/{thesis_id}/catalysts/{catalyst_id}",
+    response_model=CatalystResponse,
+)
+async def get_catalyst(
+    thesis_id: int,
+    catalyst_id: int,
+    user_id: str = Depends(get_current_user_id),
+    svc: ThesisService = Depends(get_thesis_service),
+) -> CatalystResponse:
+    """Get a single catalyst by id."""
+    try:
+        thesis = await svc.get(thesis_id, user_id)
+    except ThesisNotFoundError as exc:
+        raise _not_found(exc)
+    catalyst = next((c for c in thesis.catalysts if c.id == catalyst_id), None)
+    if catalyst is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Catalyst {catalyst_id} not found in thesis {thesis_id}.",
+        )
     return CatalystResponse.model_validate(catalyst)
 
 
