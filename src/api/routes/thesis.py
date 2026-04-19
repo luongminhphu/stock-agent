@@ -1,24 +1,428 @@
-"""Thesis routes — review endpoints.
+"""Thesis routes — CRUD for thesis, assumption, catalyst + AI review endpoints.
 
 Owner: api segment.
-No business logic here — delegates entirely to ReviewService.
+No business logic here — delegates entirely to ThesisService, ScoringService, ReviewService.
 
 Endpoints:
-    POST /thesis/{thesis_id}/review         — trigger AI review
-    GET  /thesis/{thesis_id}/reviews        — list past reviews
-    GET  /thesis/{thesis_id}/reviews/latest — latest review only
+    POST   /thesis                                        — create thesis
+    GET    /thesis                                        — list thesis
+    GET    /thesis/{thesis_id}                            — get thesis detail
+    PATCH  /thesis/{thesis_id}                            — update thesis
+    DELETE /thesis/{thesis_id}                            — delete thesis (hard)
+    POST   /thesis/{thesis_id}/close                      — close thesis
+    POST   /thesis/{thesis_id}/invalidate                 — invalidate thesis
+    GET    /thesis/{thesis_id}/score                      — health score breakdown
+    POST   /thesis/{thesis_id}/assumptions                — add assumption
+    PATCH  /thesis/{thesis_id}/assumptions/{id}           — update assumption
+    DELETE /thesis/{thesis_id}/assumptions/{id}           — delete assumption
+    POST   /thesis/{thesis_id}/catalysts                  — add catalyst
+    PATCH  /thesis/{thesis_id}/catalysts/{id}             — update catalyst
+    DELETE /thesis/{thesis_id}/catalysts/{id}             — delete catalyst
+    POST   /thesis/{thesis_id}/review                     — trigger AI review
+    GET    /thesis/{thesis_id}/reviews                    — list past reviews
+    GET    /thesis/{thesis_id}/reviews/latest             — latest review only
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.deps import get_current_user_id, get_review_service
-from src.api.dto.thesis import ThesisReviewListResponse, ThesisReviewResponse
+from src.api.deps import (
+    get_current_user_id,
+    get_db,
+    get_review_service,
+    get_thesis_service,
+)
+from src.api.dto.thesis import (
+    AssumptionCreateRequest,
+    AssumptionResponse,
+    AssumptionUpdateRequest,
+    CatalystCreateRequest,
+    CatalystResponse,
+    CatalystUpdateRequest,
+    HealthScoreBreakdown,
+    HealthScoreResponse,
+    ThesisCreateRequest,
+    ThesisListResponse,
+    ThesisResponse,
+    ThesisReviewListResponse,
+    ThesisReviewResponse,
+    ThesisUpdateRequest,
+)
+from src.thesis.models import ThesisStatus
 from src.thesis.review_service import ReviewNotAllowedError, ReviewService
-from src.thesis.service import ThesisNotFoundError
+from src.thesis.scoring_service import ScoringService
+from src.thesis.service import (
+    AddAssumptionInput,
+    AddCatalystInput,
+    AssumptionNotFoundError,
+    CatalystNotFoundError,
+    CreateThesisInput,
+    ThesisAlreadyClosedError,
+    ThesisNotFoundError,
+    ThesisService,
+    UpdateAssumptionInput,
+    UpdateCatalystInput,
+    UpdateThesisInput,
+)
 
 router = APIRouter(prefix="/thesis", tags=["thesis"])
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _not_found(exc: Exception) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+
+def _conflict(exc: Exception) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# Thesis CRUD
+# ---------------------------------------------------------------------------
+
+
+@router.post("", response_model=ThesisResponse, status_code=status.HTTP_201_CREATED)
+async def create_thesis(
+    body: ThesisCreateRequest,
+    user_id: str = Depends(get_current_user_id),
+    svc: ThesisService = Depends(get_thesis_service),
+) -> ThesisResponse:
+    """Create a new thesis with optional initial assumptions and catalysts."""
+    thesis = await svc.create(
+        CreateThesisInput(
+            user_id=user_id,
+            ticker=body.ticker,
+            title=body.title,
+            summary=body.summary,
+            entry_price=body.entry_price,
+            target_price=body.target_price,
+            stop_loss=body.stop_loss,
+            assumptions=body.assumptions,
+            catalysts=body.catalysts,
+        )
+    )
+    return ThesisResponse.model_validate(thesis)
+
+
+@router.get("", response_model=ThesisListResponse)
+async def list_theses(
+    status_filter: str | None = Query(default=None, alias="status"),
+    user_id: str = Depends(get_current_user_id),
+    svc: ThesisService = Depends(get_thesis_service),
+) -> ThesisListResponse:
+    """List all theses for the current user, optionally filtered by status."""
+    status_enum: ThesisStatus | None = None
+    if status_filter:
+        try:
+            status_enum = ThesisStatus(status_filter.lower())
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid status: {status_filter}. Valid: {[s.value for s in ThesisStatus]}",
+            )
+    items = await svc.list_for_user(user_id, status_enum)
+    return ThesisListResponse(
+        items=[ThesisResponse.model_validate(t) for t in items],
+        total=len(items),
+    )
+
+
+@router.get("/{thesis_id}", response_model=ThesisResponse)
+async def get_thesis(
+    thesis_id: int,
+    user_id: str = Depends(get_current_user_id),
+    svc: ThesisService = Depends(get_thesis_service),
+) -> ThesisResponse:
+    """Get full thesis detail including assumptions and catalysts."""
+    try:
+        thesis = await svc.get(thesis_id, user_id)
+    except ThesisNotFoundError as exc:
+        raise _not_found(exc)
+    return ThesisResponse.model_validate(thesis)
+
+
+@router.patch("/{thesis_id}", response_model=ThesisResponse)
+async def update_thesis(
+    thesis_id: int,
+    body: ThesisUpdateRequest,
+    user_id: str = Depends(get_current_user_id),
+    svc: ThesisService = Depends(get_thesis_service),
+) -> ThesisResponse:
+    """Partially update thesis header fields (title, summary, prices)."""
+    try:
+        thesis = await svc.update(
+            thesis_id,
+            user_id,
+            UpdateThesisInput(
+                title=body.title,
+                summary=body.summary,
+                entry_price=body.entry_price,
+                target_price=body.target_price,
+                stop_loss=body.stop_loss,
+            ),
+        )
+    except ThesisNotFoundError as exc:
+        raise _not_found(exc)
+    except ThesisAlreadyClosedError as exc:
+        raise _conflict(exc)
+    return ThesisResponse.model_validate(thesis)
+
+
+@router.delete("/{thesis_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_thesis(
+    thesis_id: int,
+    user_id: str = Depends(get_current_user_id),
+    svc: ThesisService = Depends(get_thesis_service),
+) -> None:
+    """Hard delete a thesis and all its children."""
+    try:
+        await svc.delete(thesis_id, user_id)
+    except ThesisNotFoundError as exc:
+        raise _not_found(exc)
+
+
+@router.post("/{thesis_id}/close", response_model=ThesisResponse)
+async def close_thesis(
+    thesis_id: int,
+    user_id: str = Depends(get_current_user_id),
+    svc: ThesisService = Depends(get_thesis_service),
+) -> ThesisResponse:
+    """Mark thesis as closed."""
+    try:
+        thesis = await svc.close(thesis_id, user_id)
+    except ThesisNotFoundError as exc:
+        raise _not_found(exc)
+    except ThesisAlreadyClosedError as exc:
+        raise _conflict(exc)
+    return ThesisResponse.model_validate(thesis)
+
+
+@router.post("/{thesis_id}/invalidate", response_model=ThesisResponse)
+async def invalidate_thesis(
+    thesis_id: int,
+    user_id: str = Depends(get_current_user_id),
+    svc: ThesisService = Depends(get_thesis_service),
+) -> ThesisResponse:
+    """Mark thesis as invalidated."""
+    try:
+        thesis = await svc.invalidate(thesis_id, user_id)
+    except ThesisNotFoundError as exc:
+        raise _not_found(exc)
+    except ThesisAlreadyClosedError as exc:
+        raise _conflict(exc)
+    return ThesisResponse.model_validate(thesis)
+
+
+# ---------------------------------------------------------------------------
+# Health Score
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{thesis_id}/score", response_model=HealthScoreResponse)
+async def get_health_score(
+    thesis_id: int,
+    user_id: str = Depends(get_current_user_id),
+    svc: ThesisService = Depends(get_thesis_service),
+) -> HealthScoreResponse:
+    """Return composite health score (0-100) with 4-dimension breakdown."""
+    try:
+        thesis = await svc.get(thesis_id, user_id)
+    except ThesisNotFoundError as exc:
+        raise _not_found(exc)
+
+    scoring = ScoringService()
+    total, breakdown = scoring.compute_with_breakdown(thesis)
+    return HealthScoreResponse(
+        thesis_id=thesis_id,
+        total=total,
+        breakdown=HealthScoreBreakdown(
+            assumption_health=breakdown["assumption_health"],
+            catalyst_progress=breakdown["catalyst_progress"],
+            risk_reward=breakdown["risk_reward"],
+            review_confidence=breakdown["review_confidence"],
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Assumption CRUD
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/{thesis_id}/assumptions",
+    response_model=AssumptionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_assumption(
+    thesis_id: int,
+    body: AssumptionCreateRequest,
+    user_id: str = Depends(get_current_user_id),
+    svc: ThesisService = Depends(get_thesis_service),
+) -> AssumptionResponse:
+    """Add a new assumption to a thesis."""
+    try:
+        assumption = await svc.add_assumption(
+            thesis_id,
+            user_id,
+            AddAssumptionInput(
+                description=body.description,
+                status=body.status,
+                note=body.note,
+            ),
+        )
+    except ThesisNotFoundError as exc:
+        raise _not_found(exc)
+    except ThesisAlreadyClosedError as exc:
+        raise _conflict(exc)
+    return AssumptionResponse.model_validate(assumption)
+
+
+@router.patch(
+    "/{thesis_id}/assumptions/{assumption_id}",
+    response_model=AssumptionResponse,
+)
+async def update_assumption(
+    thesis_id: int,
+    assumption_id: int,
+    body: AssumptionUpdateRequest,
+    user_id: str = Depends(get_current_user_id),
+    svc: ThesisService = Depends(get_thesis_service),
+) -> AssumptionResponse:
+    """Update description, status, or note of an assumption."""
+    try:
+        assumption = await svc.update_assumption(
+            thesis_id,
+            assumption_id,
+            user_id,
+            UpdateAssumptionInput(
+                description=body.description,
+                status=body.status,
+                note=body.note,
+            ),
+        )
+    except ThesisNotFoundError as exc:
+        raise _not_found(exc)
+    except AssumptionNotFoundError as exc:
+        raise _not_found(exc)
+    return AssumptionResponse.model_validate(assumption)
+
+
+@router.delete(
+    "/{thesis_id}/assumptions/{assumption_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_assumption(
+    thesis_id: int,
+    assumption_id: int,
+    user_id: str = Depends(get_current_user_id),
+    svc: ThesisService = Depends(get_thesis_service),
+) -> None:
+    """Delete an assumption from a thesis."""
+    try:
+        await svc.delete_assumption(thesis_id, assumption_id, user_id)
+    except ThesisNotFoundError as exc:
+        raise _not_found(exc)
+    except AssumptionNotFoundError as exc:
+        raise _not_found(exc)
+
+
+# ---------------------------------------------------------------------------
+# Catalyst CRUD
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/{thesis_id}/catalysts",
+    response_model=CatalystResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_catalyst(
+    thesis_id: int,
+    body: CatalystCreateRequest,
+    user_id: str = Depends(get_current_user_id),
+    svc: ThesisService = Depends(get_thesis_service),
+) -> CatalystResponse:
+    """Add a new catalyst to a thesis."""
+    try:
+        catalyst = await svc.add_catalyst(
+            thesis_id,
+            user_id,
+            AddCatalystInput(
+                description=body.description,
+                status=body.status,
+                expected_date=body.expected_date,
+                note=body.note,
+            ),
+        )
+    except ThesisNotFoundError as exc:
+        raise _not_found(exc)
+    except ThesisAlreadyClosedError as exc:
+        raise _conflict(exc)
+    return CatalystResponse.model_validate(catalyst)
+
+
+@router.patch(
+    "/{thesis_id}/catalysts/{catalyst_id}",
+    response_model=CatalystResponse,
+)
+async def update_catalyst(
+    thesis_id: int,
+    catalyst_id: int,
+    body: CatalystUpdateRequest,
+    user_id: str = Depends(get_current_user_id),
+    svc: ThesisService = Depends(get_thesis_service),
+) -> CatalystResponse:
+    """Update description, status, dates, or note of a catalyst."""
+    try:
+        catalyst = await svc.update_catalyst(
+            thesis_id,
+            catalyst_id,
+            user_id,
+            UpdateCatalystInput(
+                description=body.description,
+                status=body.status,
+                expected_date=body.expected_date,
+                triggered_at=body.triggered_at,
+                note=body.note,
+            ),
+        )
+    except ThesisNotFoundError as exc:
+        raise _not_found(exc)
+    except CatalystNotFoundError as exc:
+        raise _not_found(exc)
+    return CatalystResponse.model_validate(catalyst)
+
+
+@router.delete(
+    "/{thesis_id}/catalysts/{catalyst_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_catalyst(
+    thesis_id: int,
+    catalyst_id: int,
+    user_id: str = Depends(get_current_user_id),
+    svc: ThesisService = Depends(get_thesis_service),
+) -> None:
+    """Delete a catalyst from a thesis."""
+    try:
+        await svc.delete_catalyst(thesis_id, catalyst_id, user_id)
+    except ThesisNotFoundError as exc:
+        raise _not_found(exc)
+    except CatalystNotFoundError as exc:
+        raise _not_found(exc)
+
+
+# ---------------------------------------------------------------------------
+# AI Review endpoints (preserved from original)
+# ---------------------------------------------------------------------------
 
 
 @router.post(
@@ -31,25 +435,18 @@ async def trigger_review(
     user_id: str = Depends(get_current_user_id),
     review_svc: ReviewService = Depends(get_review_service),
 ) -> ThesisReviewResponse:
-    """Trigger an AI review for a thesis. Returns the new review record."""
+    """Trigger an AI review for a thesis."""
     try:
-        review = await review_svc.review_thesis(
-            thesis_id=thesis_id,
-            user_id=user_id,
-        )
+        review = await review_svc.review_thesis(thesis_id=thesis_id, user_id=user_id)
     except ThesisNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+        raise _not_found(exc)
     except ReviewNotAllowedError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
-    except ValueError as exc:
-        # AI parse failure
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+        raise _conflict(exc)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"AI review failed: {exc}",
         )
-
     return ThesisReviewResponse.model_validate(review)
 
 
@@ -63,13 +460,10 @@ async def list_reviews(
     """Return recent AI reviews for a thesis."""
     try:
         reviews = await review_svc.list_reviews(
-            thesis_id=thesis_id,
-            user_id=user_id,
-            limit=min(limit, 50),
+            thesis_id=thesis_id, user_id=user_id, limit=min(limit, 50)
         )
     except ThesisNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
-
+        raise _not_found(exc)
     return ThesisReviewListResponse(
         thesis_id=thesis_id,
         reviews=[ThesisReviewResponse.model_validate(r) for r in reviews],
@@ -83,16 +477,13 @@ async def get_latest_review(
     user_id: str = Depends(get_current_user_id),
     review_svc: ReviewService = Depends(get_review_service),
 ) -> ThesisReviewResponse:
-    """Return only the most recent AI review for a thesis."""
+    """Return the most recent AI review for a thesis."""
     try:
         reviews = await review_svc.list_reviews(
-            thesis_id=thesis_id,
-            user_id=user_id,
-            limit=1,
+            thesis_id=thesis_id, user_id=user_id, limit=1
         )
     except ThesisNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
-
+        raise _not_found(exc)
     if not reviews:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -52,6 +52,14 @@ def get_briefing_agent() -> object:
     return _get_briefing_agent()
 
 
+async def get_thesis_service(
+    session: AsyncSession = Depends(get_db),
+) -> "ThesisService":  # type: ignore[name-defined]  # noqa: F821
+    from src.thesis.service import ThesisService
+
+    return ThesisService(session=session)
+
+
 async def get_review_service(
     session: AsyncSession = Depends(get_db),
     agent: object = Depends(get_thesis_review_agent),
