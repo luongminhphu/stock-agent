@@ -12,12 +12,10 @@ function apiBase(userId) {
 
 function thesisApiBase() { return '/api/v1/thesis'; }
 
-/** Current user id from the input field — used as Wave-1 auth header. */
 function currentUserId() {
   return (el('userId')?.value?.trim()) || 'iobox';
 }
 
-/** Base headers injected into every request. */
 function authHeaders() {
   return {
     'Content-Type': 'application/json',
@@ -85,7 +83,6 @@ function closeModal(id) {
   if (d) d.close();
 }
 
-// Wire close buttons & backdrop click
 document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('[data-close]').forEach(btn => {
     btn.addEventListener('click', () => closeModal(btn.dataset.close));
@@ -105,15 +102,8 @@ let _selectedThesisId = null;
 let _theses = [];
 let _deleteCallback = null;
 
-/**
- * Pending AI-suggested assumptions + catalysts to bulk-create after a new
- * thesis is saved. Cleared on modal open and after successful creation.
- * Shape: { assumptions: [{description, rationale}], catalysts: [{description, rationale, expected_timeline}] }
- */
-let _pendingSuggestData = null;
-
 /* =========================================================
-   LOAD DASHBOARD (read model)
+   LOAD DASHBOARD
    ========================================================= */
 
 async function loadDashboard() {
@@ -385,7 +375,6 @@ function openNewThesisModal() {
   el('thesisForm').reset();
   el('suggestResult').classList.add('hidden');
   el('suggestLoading').classList.add('hidden');
-  _pendingSuggestData = null;
   openModal('thesisModal');
 }
 
@@ -393,7 +382,6 @@ async function openEditThesisModal(thesisId) {
   el('thesisModalTitle').textContent = 'Chỉnh sửa Thesis';
   el('suggestResult').classList.add('hidden');
   el('suggestLoading').classList.add('hidden');
-  _pendingSuggestData = null;
   try {
     const t = await getJson(`${thesisApiBase()}/${thesisId}`);
     el('thesisIdField').value = t.id;
@@ -433,26 +421,15 @@ el('thesisForm')?.addEventListener('submit', async e => {
 
   try {
     if (id) {
-      // Edit — just update thesis header, no assumption/catalyst bulk-create
       await sendJson(`${thesisApiBase()}/${id}`, 'PUT', payload);
       showToast('✅ Đã cập nhật thesis');
-      closeModal('thesisModal');
-      await loadDashboard();
     } else {
-      // Create — then bulk-create AI-suggested assumptions + catalysts if any
       const created = await sendJson(`${thesisApiBase()}/`, 'POST', payload);
-      const newId = created?.id;
-      _selectedThesisId = newId ?? null;
-
-      if (newId && _pendingSuggestData) {
-        await _bulkCreateSuggestedItems(newId, _pendingSuggestData);
-        _pendingSuggestData = null;
-      }
-
+      _selectedThesisId = created?.id ?? null;
       showToast('✅ Đã tạo thesis mới');
-      closeModal('thesisModal');
-      await loadDashboard();
     }
+    closeModal('thesisModal');
+    await loadDashboard();
   } catch (err) {
     showToast(`Lỗi: ${err.message}`, 'error');
   } finally {
@@ -460,35 +437,6 @@ el('thesisForm')?.addEventListener('submit', async e => {
     btn.textContent = 'Lưu Thesis';
   }
 });
-
-/**
- * Bulk-create AI-suggested assumptions and catalysts for a newly created thesis.
- * Fires requests in parallel. Silently skips items that fail (non-blocking).
- */
-async function _bulkCreateSuggestedItems(thesisId, suggestData) {
-  const assumPromises = (suggestData.assumptions ?? []).map(a =>
-    sendJson(`${thesisApiBase()}/${thesisId}/assumptions`, 'POST', {
-      description: a.description,
-      note: a.rationale || null,
-      status: 'pending',
-    }).catch(() => null)
-  );
-
-  const catPromises = (suggestData.catalysts ?? []).map(c =>
-    sendJson(`${thesisApiBase()}/${thesisId}/catalysts`, 'POST', {
-      description: c.description,
-      note: c.rationale || null,
-      status: 'pending',
-      // expected_timeline is a free-text hint from AI, store in note if no date field
-    }).catch(() => null)
-  );
-
-  const results = await Promise.all([...assumPromises, ...catPromises]);
-  const created = results.filter(Boolean).length;
-  if (created > 0) {
-    showToast(`✨ Đã tạo ${(suggestData.assumptions ?? []).length} assumptions + ${(suggestData.catalysts ?? []).length} catalysts từ AI`, 'success', 4000);
-  }
-}
 
 /* =========================================================
    THESIS DELETE
@@ -650,7 +598,7 @@ el('deleteConfirmBtn')?.addEventListener('click', async () => {
 });
 
 /* =========================================================
-   AI SUGGEST
+   AI SUGGEST — fills form fields only, no auto-create
    ========================================================= */
 
 el('aiSuggestBtn')?.addEventListener('click', async () => {
@@ -664,7 +612,6 @@ el('aiSuggestBtn')?.addEventListener('click', async () => {
   btn.disabled = true;
   loading.classList.remove('hidden');
   result.classList.add('hidden');
-  _pendingSuggestData = null;
 
   try {
     const data = await sendJson(
@@ -675,8 +622,8 @@ el('aiSuggestBtn')?.addEventListener('click', async () => {
     result.innerHTML = renderSuggestResult(data);
     result.classList.remove('hidden');
 
-    // "Áp dụng" button: fill form fields AND store assumptions/catalysts
-    // so they get bulk-created after the thesis is saved.
+    // "Áp dụng" fills form fields only — assumptions/catalysts are shown as
+    // reference and must be added manually via the detail panel after saving.
     result.querySelector('.apply-suggest-btn')?.addEventListener('click', () => {
       el('thesisTickerField').value = data.ticker ?? ticker;
       el('thesisTitleField').value = data.thesis_title ?? '';
@@ -684,15 +631,7 @@ el('aiSuggestBtn')?.addEventListener('click', async () => {
       if (data.entry_price_hint) el('thesisEntryField').value = data.entry_price_hint;
       if (data.target_price_hint) el('thesisTargetField').value = data.target_price_hint;
       if (data.stop_loss_hint) el('thesisStopField').value = data.stop_loss_hint;
-
-      // Store pending assumptions + catalysts for bulk-create on form submit
-      _pendingSuggestData = {
-        assumptions: data.assumptions ?? [],
-        catalysts: data.catalysts ?? [],
-      };
-
-      const n = (data.assumptions?.length ?? 0) + (data.catalysts?.length ?? 0);
-      showToast(`✨ Đã điền form — ${n} assumptions/catalysts sẽ được tạo khi lưu thesis`);
+      showToast('✨ Đã điền form — tham khảo assumptions/catalysts bên dưới để nhập thủ công');
     });
   } catch (err) {
     result.innerHTML = `<div class="error-banner" style="margin:0;">AI suggest lỗi: ${err.message}</div>`;
@@ -719,7 +658,7 @@ function renderSuggestResult(d) {
   return `
     <div class="suggest-result-header">
       <strong>✨ AI gợi ý cho ${d.ticker}</strong>
-      <button class="apply-suggest-btn">↓ Áp dụng vào form</button>
+      <button class="apply-suggest-btn">↓ Điền vào form</button>
     </div>
     <div class="suggest-body">
       <p style="font-weight:600;margin-bottom:4px;">${d.thesis_title ?? ''}</p>
@@ -732,8 +671,8 @@ function renderSuggestResult(d) {
           ${d.stop_loss_hint ? `<span class="badge bearish">Stop: ${fmt(d.stop_loss_hint)}₫</span>` : ''}
         </div>` : ''}
 
-      ${assumes ? `<div><p class="suggest-section-title">Assumptions (${d.assumptions?.length ?? 0}) — sẽ được tạo tự động khi lưu</p>${assumes}</div>` : ''}
-      ${cats ? `<div><p class="suggest-section-title">Catalysts (${d.catalysts?.length ?? 0}) — sẽ được tạo tự động khi lưu</p>${cats}</div>` : ''}
+      ${assumes ? `<div><p class="suggest-section-title">Assumptions gợi ý — nhập thủ công sau khi lưu thesis</p>${assumes}</div>` : ''}
+      ${cats ? `<div><p class="suggest-section-title">Catalysts gợi ý — nhập thủ công sau khi lưu thesis</p>${cats}</div>` : ''}
 
       <div class="suggest-confidence">
         <span>Độ tin cậy AI: ${confPct}%</span>
