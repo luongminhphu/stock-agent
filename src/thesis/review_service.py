@@ -9,7 +9,8 @@ Flow:
     2. Optionally fetch current price (injected, not fetched internally)
     3. Call ThesisReviewAgent.review() → ThesisReviewOutput
     4. Persist ThesisReview ORM record
-    5. Return ThesisReview
+    5. Reload thesis (with new review) → recompute score → persist
+    6. Return ThesisReview
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ from src.thesis.models import (
     ThesisStatus,
 )
 from src.thesis.repository import ThesisRepository
+from src.thesis.scoring_service import ScoringService
 from src.thesis.service import ThesisNotFoundError
 
 logger = get_logger(__name__)
@@ -58,6 +60,7 @@ class ReviewService:
         self._repo = ThesisRepository(session)
         self._agent = agent
         self._quote_service = quote_service
+        self._scoring = ScoringService()
 
     # ------------------------------------------------------------------
     # Public API
@@ -167,7 +170,20 @@ class ReviewService:
         output: ThesisReviewOutput,
         reviewed_price: float | None,
     ) -> ThesisReview:
-        """Map ThesisReviewOutput → ThesisReview ORM and save."""
+        """Map ThesisReviewOutput → ThesisReview ORM, save, then recompute score.
+
+        Score recompute flow:
+            1. save_review (flush) → review gets a DB id.
+            2. Reload thesis via get_by_id → session-fresh object with the
+               new review already included in thesis.reviews (selectinload).
+            3. ScoringService.compute(thesis) → new_score.
+            4. Persist thesis.score only if it changed (avoids redundant flush).
+
+        We reload instead of appending in-memory to avoid:
+            - SQLAlchemy InvalidRequestError (appending a tracked object to a
+              collection that already knows about it after flush).
+            - Stale in-memory state if the session expired attributes on flush.
+        """
         review = ThesisReview(
             thesis_id=thesis.id,
             verdict=ReviewVerdict(output.verdict.value),
@@ -179,17 +195,20 @@ class ReviewService:
             reviewed_price=reviewed_price,
         )
         await self._repo.save_review(review)
-        # Recompute thesis health score now that a new review exists.
-        # thesis.reviews is already loaded (selectinload in get_by_id),
-        # append in-memory so ScoringService sees the new review immediately.
-        thesis.reviews.append(review)
-        new_score = self._scoring.compute(thesis)
-        thesis.score = new_score
-        await self._repo.save(thesis)
 
-        logger.info(
-            "review_service.score_updated",
-            thesis_id=thesis.id,
-            score=new_score,
-        )
+        # Reload thesis so thesis.reviews includes the new review just persisted.
+        # get_by_id uses selectinload for assumptions, catalysts, reviews —
+        # guarantees ScoringService sees the complete, up-to-date state.
+        fresh_thesis = await self._repo.get_by_id(thesis.id)
+        if fresh_thesis is not None:
+            new_score = self._scoring.compute(fresh_thesis)
+            if fresh_thesis.score != new_score:
+                fresh_thesis.score = new_score
+                await self._repo.save(fresh_thesis)
+                logger.info(
+                    "review_service.score_updated",
+                    thesis_id=thesis.id,
+                    score=new_score,
+                )
+
         return review
