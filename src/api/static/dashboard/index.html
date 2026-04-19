@@ -37,6 +37,7 @@
             </select>
           </label>
           <button id="reloadBtn" class="primary-btn" type="button">Reload</button>
+          <button id="newThesisBtn" class="primary-btn" type="button" style="background: linear-gradient(135deg,#a78bfa,#7c3aed); color:#fff;">+ Thesis mới</button>
         </div>
       </header>
 
@@ -88,7 +89,7 @@
               <p class="eyebrow">Portfolio theses</p>
               <h2>Thesis board</h2>
             </div>
-            <div class="panel-actions muted">Nhấn vào một thesis để xem assumptions, catalysts và review history</div>
+            <div class="panel-actions muted">Nhấn vào một thesis để xem chi tiết, sửa hoặc xóa</div>
           </div>
           <div id="thesesTableWrap" class="empty-state">Chưa tải dữ liệu…</div>
           <div id="thesisDetail" class="detail-shell empty-detail">
@@ -173,6 +174,194 @@
         Static shell tại <code>/dashboard</code>; mọi business data đi qua <code>/api/v1/readmodel/dashboard/{user_id}/...</code>.
       </footer>
     </div>
+
+    <!-- =====================================================
+         MODAL: NEW / EDIT THESIS
+         ===================================================== -->
+    <dialog id="thesisModal" aria-labelledby="thesisModalTitle">
+      <div class="modal-inner">
+        <div class="modal-header">
+          <h2 id="thesisModalTitle">Tạo Thesis mới</h2>
+          <button class="modal-close" data-close="thesisModal" aria-label="Đóng">&#x2715;</button>
+        </div>
+
+        <!-- AI Suggest bar -->
+        <div class="suggest-bar">
+          <div class="form-field">
+            <label for="suggestTicker">✨ AI Gợi ý theo mã CK</label>
+            <input id="suggestTicker" placeholder="VNM, HPG, VIC…" style="text-transform:uppercase;" />
+          </div>
+          <button type="button" id="aiSuggestBtn" class="suggest-btn">
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 2l2.09 6.26L20 10l-5.91 1.74L12 18l-2.09-6.26L4 10l5.91-1.74L12 2z"/></svg>
+            Phân tích
+          </button>
+        </div>
+        <div id="suggestLoading" class="suggest-loading hidden">
+          <div class="spinner"></div>
+          AI đang phân tích thị trường…
+        </div>
+        <div id="suggestResult" class="suggest-result hidden"></div>
+
+        <!-- Thesis form -->
+        <form id="thesisForm" class="form-grid" novalidate>
+          <input type="hidden" id="thesisIdField" />
+          <div class="form-row">
+            <div class="form-field">
+              <label for="thesisTickerField">Mã CK *</label>
+              <input id="thesisTickerField" name="ticker" placeholder="VNM" required style="text-transform:uppercase;" />
+            </div>
+            <div class="form-field">
+              <label for="thesisStatusField">Status</label>
+              <select id="thesisStatusField" name="status">
+                <option value="active">active</option>
+                <option value="paused">paused</option>
+                <option value="invalidated">invalidated</option>
+                <option value="closed">closed</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-field">
+            <label for="thesisTitleField">Tiêu đề *</label>
+            <input id="thesisTitleField" name="title" placeholder="VD: VNM hưởng lợi chu kỳ tiêu dùng phục hồi" required />
+          </div>
+          <div class="form-field">
+            <label for="thesisSummaryField">Mô tả</label>
+            <textarea id="thesisSummaryField" name="summary" placeholder="Mô tả ngắn về luận điểm đầu tư…"></textarea>
+          </div>
+          <div class="form-row">
+            <div class="form-field">
+              <label for="thesisEntryField">Giá vào (VNĐ)</label>
+              <input id="thesisEntryField" name="entry_price" type="number" placeholder="85000" />
+            </div>
+            <div class="form-field">
+              <label for="thesisTargetField">Giá mục tiêu (VNĐ)</label>
+              <input id="thesisTargetField" name="target_price" type="number" placeholder="105000" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-field">
+              <label for="thesisStopField">Stop loss (VNĐ)</label>
+              <input id="thesisStopField" name="stop_loss" type="number" placeholder="76000" />
+            </div>
+            <div class="form-field">
+              <label for="thesisDirectionField">Hướng</label>
+              <select id="thesisDirectionField" name="direction">
+                <option value="bullish">bullish</option>
+                <option value="bearish">bearish</option>
+                <option value="neutral">neutral</option>
+              </select>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="ghost-btn" data-close="thesisModal">Hủy</button>
+            <button type="submit" class="primary-btn" id="thesisSubmitBtn">Lưu Thesis</button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+
+    <!-- =====================================================
+         MODAL: NEW / EDIT ASSUMPTION
+         ===================================================== -->
+    <dialog id="assumptionModal" aria-labelledby="assumptionModalTitle">
+      <div class="modal-inner">
+        <div class="modal-header">
+          <h2 id="assumptionModalTitle">Thêm Assumption</h2>
+          <button class="modal-close" data-close="assumptionModal" aria-label="Đóng">&#x2715;</button>
+        </div>
+        <form id="assumptionForm" class="form-grid" novalidate>
+          <input type="hidden" id="assumptionThesisId" />
+          <input type="hidden" id="assumptionIdField" />
+          <div class="form-field">
+            <label for="assumptionDescField">Nội dung giả định *</label>
+            <textarea id="assumptionDescField" name="description" placeholder="VD: Biên lợi nhuận gộp duy trì >30% trong 4Q tới" required></textarea>
+          </div>
+          <div class="form-field">
+            <label for="assumptionRationaleField">Lý do / Cơ sở</label>
+            <textarea id="assumptionRationaleField" name="rationale" placeholder="Tại sao giả định này quan trọng?"></textarea>
+          </div>
+          <div class="form-row">
+            <div class="form-field">
+              <label for="assumptionStatusField">Status</label>
+              <select id="assumptionStatusField" name="status">
+                <option value="valid">valid</option>
+                <option value="invalid">invalid</option>
+                <option value="pending">pending</option>
+                <option value="uncertain">uncertain</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="assumptionConfidenceField">Confidence (0–1)</label>
+              <input id="assumptionConfidenceField" name="confidence" type="number" min="0" max="1" step="0.05" placeholder="0.75" />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="ghost-btn" data-close="assumptionModal">Hủy</button>
+            <button type="submit" class="primary-btn">Lưu Assumption</button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+
+    <!-- =====================================================
+         MODAL: NEW / EDIT CATALYST
+         ===================================================== -->
+    <dialog id="catalystModal" aria-labelledby="catalystModalTitle">
+      <div class="modal-inner">
+        <div class="modal-header">
+          <h2 id="catalystModalTitle">Thêm Catalyst</h2>
+          <button class="modal-close" data-close="catalystModal" aria-label="Đóng">&#x2715;</button>
+        </div>
+        <form id="catalystForm" class="form-grid" novalidate>
+          <input type="hidden" id="catalystThesisId" />
+          <input type="hidden" id="catalystIdField" />
+          <div class="form-field">
+            <label for="catalystDescField">Mô tả catalyst *</label>
+            <textarea id="catalystDescField" name="description" placeholder="VD: KQKD Q2/2025 vượt kỳ vọng, EPS tăng 18% YoY" required></textarea>
+          </div>
+          <div class="form-field">
+            <label for="catalystRationaleField">Tác động kỳ vọng</label>
+            <textarea id="catalystRationaleField" name="rationale" placeholder="Catalyst này ảnh hưởng thế nào đến thesis?"></textarea>
+          </div>
+          <div class="form-row">
+            <div class="form-field">
+              <label for="catalystStatusField">Status</label>
+              <select id="catalystStatusField" name="status">
+                <option value="pending">pending</option>
+                <option value="triggered">triggered</option>
+                <option value="expired">expired</option>
+                <option value="cancelled">cancelled</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="catalystTimelineField">Timeline</label>
+              <input id="catalystTimelineField" name="expected_timeline" placeholder="Q3 2025" />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="ghost-btn" data-close="catalystModal">Hủy</button>
+            <button type="submit" class="primary-btn">Lưu Catalyst</button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+
+    <!-- =====================================================
+         MODAL: CONFIRM DELETE
+         ===================================================== -->
+    <dialog id="deleteModal" aria-labelledby="deleteModalTitle">
+      <div class="modal-inner">
+        <div class="modal-header">
+          <h2 id="deleteModalTitle" style="color:var(--danger);">Xác nhận xóa</h2>
+          <button class="modal-close" data-close="deleteModal" aria-label="Đóng">&#x2715;</button>
+        </div>
+        <p id="deleteModalMsg" style="color:var(--muted); line-height:1.6;"></p>
+        <div class="modal-footer">
+          <button type="button" class="ghost-btn" data-close="deleteModal">Hủy</button>
+          <button type="button" id="deleteConfirmBtn" class="danger-btn" style="min-height:46px; padding:0 20px; font-size:1rem;">Xóa</button>
+        </div>
+      </div>
+    </dialog>
 
     <script src="/static/dashboard/dashboard.js" defer></script>
   </body>
