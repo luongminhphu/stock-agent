@@ -617,7 +617,13 @@ el('aiSuggestBtn')?.addEventListener('click', async () => {
   result.classList.add('hidden');
 
   try {
-    const data = await getJson(`${thesisApiBase()}/suggest?ticker=${encodeURIComponent(ticker)}`);
+    // FIX: /thesis/suggest is POST, not GET — using GET caused FastAPI to
+    // match the /{thesis_id} route and fail with 422 int_parsing error.
+    const data = await sendJson(
+      `${thesisApiBase()}/suggest?ticker=${encodeURIComponent(ticker)}`,
+      'POST',
+      null,
+    );
     result.innerHTML = renderSuggestResult(data);
     result.classList.remove('hidden');
 
