@@ -44,7 +44,38 @@ ruff check .    # lint
 mypy src/       # type check
 ```
 
-## Waves
+## Discord Commands
+
+All commands are Discord slash commands. Bot responds ephemerally (private) unless noted.
+
+### Market
+| Command | Description |
+|---|---|
+| `/quote <ticker>` | Live quote for a single ticker (public response) |
+| `/quote_bulk <tickers>` | Quotes for up to 10 comma-separated tickers (public) |
+
+### Watchlist
+| Command | Description |
+|---|---|
+| `/watchlist add <ticker> [note]` | Add ticker to your watchlist |
+| `/watchlist remove <ticker>` | Remove ticker from your watchlist |
+| `/watchlist list` | Show watchlist with live prices |
+| `/watchlist scan` | Run signal + alert scan across watchlist |
+| `/watchlist alert <ticker> <condition> <threshold>` | Set price/volume/change alert |
+
+### Thesis
+| Command | Description |
+|---|---|
+| `/thesis add <ticker> <title> <entry> <target> <stop>` | Create investment thesis |
+| `/thesis list [status]` | List theses (active / paused / closed / invalidated / all) |
+| `/thesis close <id> <reason>` | Close or invalidate a thesis |
+| `/review_thesis <id>` | Run AI review on a thesis (verdict + risks + confidence) |
+
+### Briefing
+| Command | Description |
+|---|---|
+| `/morning_brief` | Generate morning market brief (public, watchlist-aware) |
+| `/eod_brief` | Generate end-of-day brief (public, watchlist-aware) |
 
 - **Wave 1** (current): Scaffold + platform + ai client + domain model skeletons
 - **Wave 2**: Market adapters + thesis CRUD + watchlist CRUD + bot commands
