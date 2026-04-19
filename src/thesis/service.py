@@ -21,6 +21,7 @@ from src.thesis.models import (
     ThesisStatus,
 )
 from src.thesis.repository import ThesisRepository
+from src.thesis.scoring_service import ScoringService
 from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
@@ -202,6 +203,17 @@ class ThesisService:
     ) -> list[Thesis]:
         return await self._repo.list_by_user(user_id, status)
 
+    async def _recompute_score(self, thesis_id: int) -> None:
+        """Reload thesis (with relationships) và persist lại score mới."""
+        thesis = await self._repo.get_by_id(thesis_id)
+        if thesis is None:
+            return
+        new_score = ScoringService().compute(thesis)
+        if thesis.score != new_score:
+            thesis.score = new_score
+            await self._repo.save(thesis)
+            logger.info("thesis.score_recomputed", thesis_id=thesis_id, score=new_score)
+    
     # ------------------------------------------------------------------
     # Assumption CRUD
     # ------------------------------------------------------------------
@@ -245,6 +257,7 @@ class ThesisService:
 
         await self._repo.save_assumption(assumption)
         logger.info("assumption.updated", assumption_id=assumption_id)
+        await self._recompute_score(thesis_id)
         return assumption
 
     async def delete_assumption(
@@ -258,6 +271,7 @@ class ThesisService:
             )
         await self._repo.delete_assumption(assumption)
         logger.info("assumption.deleted", assumption_id=assumption_id, thesis_id=thesis_id)
+        await self._recompute_score(thesis_id)
 
     # ------------------------------------------------------------------
     # Catalyst CRUD
@@ -307,6 +321,7 @@ class ThesisService:
 
         await self._repo.save_catalyst(catalyst)
         logger.info("catalyst.updated", catalyst_id=catalyst_id)
+        await self._recompute_score(thesis_id)
         return catalyst
 
     async def delete_catalyst(
@@ -320,6 +335,7 @@ class ThesisService:
             )
         await self._repo.delete_catalyst(catalyst)
         logger.info("catalyst.deleted", catalyst_id=catalyst_id, thesis_id=thesis_id)
+        await self._recompute_score(thesis_id)
 
     # ------------------------------------------------------------------
     # Private helpers
