@@ -72,7 +72,7 @@ class ScoringService:
 
         # 4. Latest review confidence (10%)
         if thesis.reviews:
-            latest = max(thesis.reviews, key=lambda r: r.reviewed_at)
+            latest = max(thesis.reviews, key=lambda r: (r.reviewed_at, r.id))
             breakdown["review_confidence"] = round(
                 latest.confidence * _WEIGHTS["review_confidence"] * 100, 2
             )
