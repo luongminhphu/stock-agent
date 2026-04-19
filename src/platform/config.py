@@ -63,6 +63,10 @@ class Settings(BaseSettings):
         """True only when all three scheduler fields are configured."""
         return bool(self.morning_channel_id or self.eod_channel_id) and bool(self.scheduler_user_id)
 
+    @property
+    def is_single_user(self) -> bool:
+        """True khi app chạy single-owner mode (no multi-user auth)."""
+        return bool(self.owner_user_id)
 
 # Singleton — imported directly by most modules
 settings = Settings()
