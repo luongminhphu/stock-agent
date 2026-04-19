@@ -175,9 +175,6 @@
       </footer>
     </div>
 
-    <!-- =====================================================
-         MODAL: NEW / EDIT THESIS
-         ===================================================== -->
     <dialog id="thesisModal" aria-labelledby="thesisModalTitle">
       <div class="modal-inner">
         <div class="modal-header">
@@ -185,7 +182,6 @@
           <button class="modal-close" data-close="thesisModal" aria-label="Đóng">&#x2715;</button>
         </div>
 
-        <!-- AI Suggest bar -->
         <div class="suggest-bar">
           <div class="form-field">
             <label for="suggestTicker">✨ AI Gợi ý theo mã CK</label>
@@ -202,7 +198,6 @@
         </div>
         <div id="suggestResult" class="suggest-result hidden"></div>
 
-        <!-- Thesis form -->
         <form id="thesisForm" class="form-grid" novalidate>
           <input type="hidden" id="thesisIdField" />
           <div class="form-row">
@@ -252,6 +247,23 @@
               </select>
             </div>
           </div>
+
+          <section class="detail-section" style="margin-top:4px;">
+            <div class="detail-section-header">
+              <h3>Assumptions trong form</h3>
+              <button type="button" class="ghost-btn" id="addFormAssumptionBtn" style="min-height:34px;padding:0 12px;font-size:.82rem;">+ Thêm dòng</button>
+            </div>
+            <div id="thesisFormAssumptionRows" class="form-stack"></div>
+          </section>
+
+          <section class="detail-section" style="margin-top:4px;">
+            <div class="detail-section-header">
+              <h3>Catalysts trong form</h3>
+              <button type="button" class="ghost-btn" id="addFormCatalystBtn" style="min-height:34px;padding:0 12px;font-size:.82rem;">+ Thêm dòng</button>
+            </div>
+            <div id="thesisFormCatalystRows" class="form-stack"></div>
+          </section>
+
           <div class="modal-footer">
             <button type="button" class="ghost-btn" data-close="thesisModal">Hủy</button>
             <button type="submit" class="primary-btn" id="thesisSubmitBtn">Lưu Thesis</button>
@@ -260,15 +272,24 @@
       </div>
     </dialog>
 
-    <!-- =====================================================
-         MODAL: NEW / EDIT ASSUMPTION
-         ===================================================== -->
     <dialog id="assumptionModal" aria-labelledby="assumptionModalTitle">
       <div class="modal-inner">
         <div class="modal-header">
           <h2 id="assumptionModalTitle">Thêm Assumption</h2>
           <button class="modal-close" data-close="assumptionModal" aria-label="Đóng">&#x2715;</button>
         </div>
+        <div class="suggest-bar">
+          <div class="form-field">
+            <label for="assumptionSuggestTicker">✨ AI gợi ý assumption theo mã CK</label>
+            <input id="assumptionSuggestTicker" placeholder="VNM, HPG, VIC…" style="text-transform:uppercase;" />
+          </div>
+          <button type="button" id="assumptionAiSuggestBtn" class="suggest-btn">AI gợi ý</button>
+        </div>
+        <div id="assumptionSuggestLoading" class="suggest-loading hidden">
+          <div class="spinner"></div>
+          AI đang gợi ý assumptions…
+        </div>
+        <div id="assumptionSuggestResult" class="suggest-result hidden"></div>
         <form id="assumptionForm" class="form-grid" novalidate>
           <input type="hidden" id="assumptionThesisId" />
           <input type="hidden" id="assumptionIdField" />
@@ -303,15 +324,24 @@
       </div>
     </dialog>
 
-    <!-- =====================================================
-         MODAL: NEW / EDIT CATALYST
-         ===================================================== -->
     <dialog id="catalystModal" aria-labelledby="catalystModalTitle">
       <div class="modal-inner">
         <div class="modal-header">
           <h2 id="catalystModalTitle">Thêm Catalyst</h2>
           <button class="modal-close" data-close="catalystModal" aria-label="Đóng">&#x2715;</button>
         </div>
+        <div class="suggest-bar">
+          <div class="form-field">
+            <label for="catalystSuggestTicker">✨ AI gợi ý catalyst theo mã CK</label>
+            <input id="catalystSuggestTicker" placeholder="VNM, HPG, VIC…" style="text-transform:uppercase;" />
+          </div>
+          <button type="button" id="catalystAiSuggestBtn" class="suggest-btn">AI gợi ý</button>
+        </div>
+        <div id="catalystSuggestLoading" class="suggest-loading hidden">
+          <div class="spinner"></div>
+          AI đang gợi ý catalysts…
+        </div>
+        <div id="catalystSuggestResult" class="suggest-result hidden"></div>
         <form id="catalystForm" class="form-grid" novalidate>
           <input type="hidden" id="catalystThesisId" />
           <input type="hidden" id="catalystIdField" />
@@ -346,9 +376,6 @@
       </div>
     </dialog>
 
-    <!-- =====================================================
-         MODAL: CONFIRM DELETE
-         ===================================================== -->
     <dialog id="deleteModal" aria-labelledby="deleteModalTitle">
       <div class="modal-inner">
         <div class="modal-header">
