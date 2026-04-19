@@ -103,3 +103,66 @@ class StockAnalysisOutput(BaseModel):
     key_positives: list[str] = Field(default_factory=list)
     key_negatives: list[str] = Field(default_factory=list)
     summary: str
+
+
+# ---------------------------------------------------------------------------
+# Thesis Suggestion  (used by ThesisSuggestAgent)
+# ---------------------------------------------------------------------------
+
+
+class SuggestedAssumption(BaseModel):
+    """A single AI-suggested assumption for a thesis."""
+
+    description: str = Field(description="Nội dung giả định then chốt")
+    rationale: str = Field(description="Lý do vì sao đây là giả định quan trọng")
+
+
+class SuggestedCatalyst(BaseModel):
+    """A single AI-suggested catalyst for a thesis."""
+
+    description: str = Field(description="Sự kiện / catalyst cụ thể")
+    expected_timeline: str = Field(description="Khung thời gian dự kiến, VD: Q3 2025, H1 2026")
+    rationale: str = Field(description="Tại sao catalyst này có thể thúc đẩy giá")
+
+
+class ThesisSuggestionResult(BaseModel):
+    """Structured output from ThesisSuggestAgent.
+
+    This is a *draft* — the investor must review and confirm before saving.
+    entry_price_hint / target_price_hint / stop_loss_hint are AI estimates
+    and should NEVER be auto-saved without user confirmation.
+    """
+
+    ticker: str = Field(description="Mã cổ phiếu (uppercase)")
+    thesis_title: str = Field(description="Tiêu đề luận điểm đầu tư ngắn gọn")
+    thesis_summary: str = Field(description="Mô tả thesis 2-3 câu")
+    entry_price_hint: float | None = Field(
+        default=None, description="Giá vào gợi ý (VNĐ). Chỉ là hint — cần user xác nhận."
+    )
+    target_price_hint: float | None = Field(
+        default=None, description="Giá mục tiêu gợi ý (VNĐ). Chỉ là hint."
+    )
+    stop_loss_hint: float | None = Field(
+        default=None, description="Stop loss gợi ý (VNĐ). Chỉ là hint."
+    )
+    assumptions: list[SuggestedAssumption] = Field(
+        default_factory=list,
+        description="Danh sách 3-5 giả định then chốt",
+    )
+    catalysts: list[SuggestedCatalyst] = Field(
+        default_factory=list,
+        description="Danh sách 2-4 catalyst tiềm năng",
+    )
+    confidence: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Mức độ tin cậy tổng thể của AI với gợi ý này (0.0-1.0)",
+    )
+    reasoning: str = Field(description="Lý do tổng thể vì sao AI đề xuất thesis này")
+
+    @field_validator("assumptions", "catalysts", mode="before")
+    @classmethod
+    def ensure_list(cls, v: object) -> list[object]:
+        if isinstance(v, str):
+            return []
+        return v  # type: ignore[return-value]
