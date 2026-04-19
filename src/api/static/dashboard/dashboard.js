@@ -130,6 +130,28 @@ function collectFormCatalysts() {
     .filter(x => x.description);
 }
 
+async function syncNewDetailItems(thesisId, assumptions, catalysts) {
+  const [existingAssums, existingCats] = await Promise.all([
+    getJson(`${thesisApiBase()}/${thesisId}/assumptions`).catch(() => []),
+    getJson(`${thesisApiBase()}/${thesisId}/catalysts`).catch(() => []),
+  ]);
+  const assumList = Array.isArray(existingAssums) ? existingAssums : (existingAssums?.items ?? []);
+  const catList = Array.isArray(existingCats) ? existingCats : (existingCats?.items ?? []);
+  const existingAssumDescs = new Set(assumList.map(a => (a.description ?? '').trim()));
+  const existingCatDescs = new Set(catList.map(c => (c.description ?? '').trim()));
+
+  for (const a of assumptions) {
+    if (!existingAssumDescs.has(a.description)) {
+      await sendJson(`${thesisApiBase()}/${thesisId}/assumptions`, 'POST', { ...a, status: 'pending', confidence: null });
+    }
+  }
+  for (const c of catalysts) {
+    if (!existingCatDescs.has(c.description)) {
+      await sendJson(`${thesisApiBase()}/${thesisId}/catalysts`, 'POST', { ...c, status: 'pending' });
+    }
+  }
+}
+
 function applySuggestToThesisForm(data, fallbackTicker) {
   el('thesisTickerField').value = data.ticker ?? fallbackTicker;
   el('thesisTitleField').value = data.thesis_title ?? '';
@@ -412,6 +434,7 @@ el('thesisForm')?.addEventListener('submit', async e => {
     let thesisId = id;
     if (id) {
       await sendJson(`${thesisApiBase()}/${id}`, 'PUT', payload);
+      await syncNewDetailItems(id, assumptions, catalysts);
       showToast('✅ Đã cập nhật thesis');
       thesisId = id;
     } else {
