@@ -65,8 +65,19 @@ class ThesisRepository:
         return list(result.scalars().all())
 
     async def save(self, thesis: Thesis) -> Thesis:
+        """Persist (insert or update) a thesis and eager-reload relationships.
+
+        SQLAlchemy expires all attributes after flush(). Any access to
+        lazy-loaded relationships (assumptions, catalysts) outside the
+        session context will raise MissingGreenlet. We refresh explicitly
+        here so that Pydantic serialization in the API layer is safe.
+        """
         self._session.add(thesis)
         await self._session.flush()
+        await self._session.refresh(
+            thesis,
+            attribute_names=["assumptions", "catalysts", "reviews"],
+        )
         return thesis
 
     async def delete(self, thesis: Thesis) -> None:
@@ -92,6 +103,7 @@ class ThesisRepository:
     async def save_assumption(self, assumption: Assumption) -> Assumption:
         self._session.add(assumption)
         await self._session.flush()
+        await self._session.refresh(assumption)
         return assumption
 
     async def delete_assumption(self, assumption: Assumption) -> None:
@@ -117,6 +129,7 @@ class ThesisRepository:
     async def save_catalyst(self, catalyst: Catalyst) -> Catalyst:
         self._session.add(catalyst)
         await self._session.flush()
+        await self._session.refresh(catalyst)
         return catalyst
 
     async def delete_catalyst(self, catalyst: Catalyst) -> None:
@@ -131,6 +144,7 @@ class ThesisRepository:
         """Persist a ThesisReview record."""
         self._session.add(review)
         await self._session.flush()
+        await self._session.refresh(review)
         return review
 
     async def list_reviews_by_thesis(
