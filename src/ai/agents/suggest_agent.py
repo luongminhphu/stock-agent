@@ -51,6 +51,8 @@ Yêu cầu output JSON với cấu trúc chính xác sau:
 }
 
 Quy tắc bắt buộc:
+- TOÀN BỘ nội dung text (thesis_title, thesis_summary, assumptions, catalysts, reasoning) PHẢI viết bằng tiếng Việt
+- Đây là hệ thống phân tích TTCK Việt Nam (HOSE/HNX/UPCoM), không dùng tiếng Anh trong output
 - assumptions và catalysts PHẢI là array of objects có các field trên, KHÔNG được là array of string
 - Chỉ dùng dữ liệu thực tế, không suy diễn quá mức
 - Nếu không đủ thông tin về giá, đặt các trường price = null
@@ -64,6 +66,7 @@ def _build_user_prompt(ticker: str) -> str:
         f"Hãy đề xuất một investment thesis cho mã cổ phiếu **{ticker}** "
         f"niêm yết tại HOSE/HNX/UPCoM Việt Nam.\n\n"
         f"Trả về JSON theo đúng cấu trúc đã mô tả trong system prompt. "
+        f"Tất cả nội dung phải bằng tiếng Việt. "
         f"Field `ticker` phải là '{ticker.upper()}'. "
         f"assumptions và catalysts phải là array of objects, không phải array of string."
     )
