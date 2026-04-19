@@ -179,4 +179,17 @@ class ReviewService:
             reviewed_price=reviewed_price,
         )
         await self._repo.save_review(review)
+        # Recompute thesis health score now that a new review exists.
+        # thesis.reviews is already loaded (selectinload in get_by_id),
+        # append in-memory so ScoringService sees the new review immediately.
+        thesis.reviews.append(review)
+        new_score = self._scoring.compute(thesis)
+        thesis.score = new_score
+        await self._repo.save(thesis)
+
+        logger.info(
+            "review_service.score_updated",
+            thesis_id=thesis.id,
+            score=new_score,
+        )
         return review
