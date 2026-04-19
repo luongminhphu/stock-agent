@@ -11,12 +11,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.thesis.models import Thesis, ThesisReview, ThesisStatus
+from src.thesis.models import Assumption, Catalyst, Thesis, ThesisReview, ThesisStatus
 
 
 class ThesisRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
+
+    # ------------------------------------------------------------------
+    # Thesis queries
+    # ------------------------------------------------------------------
 
     async def get_by_id(self, thesis_id: int) -> Thesis | None:
         stmt = (
@@ -62,11 +66,61 @@ class ThesisRepository:
 
     async def save(self, thesis: Thesis) -> Thesis:
         self._session.add(thesis)
-        await self._session.flush()  # get generated id without full commit
+        await self._session.flush()
         return thesis
 
     async def delete(self, thesis: Thesis) -> None:
         await self._session.delete(thesis)
+        await self._session.flush()
+
+    # ------------------------------------------------------------------
+    # Assumption queries
+    # ------------------------------------------------------------------
+
+    async def get_assumption_by_id(
+        self, assumption_id: int, thesis_id: int
+    ) -> Assumption | None:
+        """Fetch an assumption, scoped to a specific thesis for safety."""
+        stmt = (
+            select(Assumption)
+            .where(Assumption.id == assumption_id)
+            .where(Assumption.thesis_id == thesis_id)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def save_assumption(self, assumption: Assumption) -> Assumption:
+        self._session.add(assumption)
+        await self._session.flush()
+        return assumption
+
+    async def delete_assumption(self, assumption: Assumption) -> None:
+        await self._session.delete(assumption)
+        await self._session.flush()
+
+    # ------------------------------------------------------------------
+    # Catalyst queries
+    # ------------------------------------------------------------------
+
+    async def get_catalyst_by_id(
+        self, catalyst_id: int, thesis_id: int
+    ) -> Catalyst | None:
+        """Fetch a catalyst, scoped to a specific thesis for safety."""
+        stmt = (
+            select(Catalyst)
+            .where(Catalyst.id == catalyst_id)
+            .where(Catalyst.thesis_id == thesis_id)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def save_catalyst(self, catalyst: Catalyst) -> Catalyst:
+        self._session.add(catalyst)
+        await self._session.flush()
+        return catalyst
+
+    async def delete_catalyst(self, catalyst: Catalyst) -> None:
+        await self._session.delete(catalyst)
         await self._session.flush()
 
     # ------------------------------------------------------------------
