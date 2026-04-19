@@ -64,7 +64,6 @@ class ThesisReviewAgent:
             response = await self._client.chat_completion(
                 messages=messages,
                 temperature=0.1,  # Low temp for consistent structured output
-                response_format={"type": "json_object"},
             )
             raw_text = self._client.extract_text(response)
             data = json.loads(raw_text)
