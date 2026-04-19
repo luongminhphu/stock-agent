@@ -285,7 +285,12 @@ class DashboardService:
             ThesisReview,
         )
 
-        thesis = await self._session.get(Thesis, thesis_id)
+        # Use explicit SELECT to avoid lazy-load trap in async context
+        thesis = (
+            await self._session.execute(
+                select(Thesis).where(Thesis.id == thesis_id)
+            )
+        ).scalar_one_or_none()
         if thesis is None or thesis.user_id != user_id:
             return None
 
@@ -654,7 +659,6 @@ class DashboardService:
         ).all()
 
         # --- Pure-Python aggregation per thesis ---
-        # thesis_id -> {pnl_values, last_snapshot_at}
         agg: dict[int, dict] = defaultdict(
             lambda: {"pnl_values": [], "last_snapshot_at": None}
         )
@@ -703,7 +707,12 @@ class DashboardService:
     async def get_price_snapshots(self, user_id: str, thesis_id: int) -> dict[str, Any] | None:
         from src.thesis.models import Thesis, ThesisReview, ThesisSnapshot
 
-        thesis = await self._session.get(Thesis, thesis_id)
+        # Use explicit SELECT to avoid lazy-load trap in async context
+        thesis = (
+            await self._session.execute(
+                select(Thesis).where(Thesis.id == thesis_id)
+            )
+        ).scalar_one_or_none()
         if thesis is None or thesis.user_id != user_id:
             return None
 
@@ -825,16 +834,20 @@ class DashboardService:
             ThesisReview,
         )
 
+        # Use row_number() instead of DISTINCT ON to guarantee deterministic
+        # latest-review-per-thesis selection (DISTINCT behavior is non-deterministic
+        # without a proper window function).
         latest_review_subq = (
             select(
                 ThesisReview.thesis_id,
                 ThesisReview.verdict,
                 ThesisReview.reviewed_at,
-            )
-            .distinct(ThesisReview.thesis_id)
-            .order_by(
-                ThesisReview.thesis_id,
-                ThesisReview.reviewed_at.desc(),
+                func.row_number()
+                .over(
+                    partition_by=ThesisReview.thesis_id,
+                    order_by=ThesisReview.reviewed_at.desc(),
+                )
+                .label("rn"),
             )
             .subquery("latest_review")
         )
@@ -885,7 +898,13 @@ class DashboardService:
                     "triggered_catalyst_count"
                 ),
             )
-            .outerjoin(latest_review_subq, latest_review_subq.c.thesis_id == Thesis.id)
+            .outerjoin(
+                latest_review_subq,
+                and_(
+                    latest_review_subq.c.thesis_id == Thesis.id,
+                    latest_review_subq.c.rn == 1,
+                ),
+            )
             .outerjoin(total_assumptions_subq, total_assumptions_subq.c.thesis_id == Thesis.id)
             .outerjoin(total_catalysts_subq, total_catalysts_subq.c.thesis_id == Thesis.id)
             .where(Thesis.user_id == user_id)
