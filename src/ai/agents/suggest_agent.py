@@ -16,6 +16,7 @@ those belong to the thesis segment.
 from __future__ import annotations
 
 import json
+import re
 
 from pydantic import ValidationError
 
@@ -38,10 +39,11 @@ Yêu cầu output:
 - confidence: 0.0-1.0
 - reasoning: lý do tổng thể
 
-Quy tắc:
+Quy tắc bắt buộc:
 - Chỉ dùng dữ liệu thực tế, không suy diễn quá mức
 - Nếu không đủ thông tin về giá, đặt các trường price = null
-- Output phải là JSON thuần, không có markdown
+- QUAN TRỌNG: chỉ trả về raw JSON object, không bọc trong markdown, không có ```json, không có giải thích thêm
+- Dòng đầu tiên phải là dấu '{', dòng cuối phải là dấu '}'
 """
 
 
@@ -50,8 +52,24 @@ def _build_user_prompt(ticker: str) -> str:
         f"Hãy đề xuất một investment thesis cho mã cổ phiếu **{ticker}** "
         f"niêm yết tại HOSE/HNX/UPCoM Việt Nam.\n\n"
         f"Trả về JSON theo schema đã mô tả trong system prompt. "
-        f"Field `ticker` phải là '{ticker.upper()}'."
+        f"Field `ticker` phải là '{ticker.upper()}'. "
+        f"Chỉ trả về JSON thuần, bắt đầu bằng '{{' và kết thúc bằng '}}'."
     )
+
+
+def _extract_json(text: str) -> str:
+    """Strip markdown code fences if present, return raw JSON string."""
+    # Remove ```json ... ``` or ``` ... ``` wrappers
+    text = text.strip()
+    match = re.search(r"```(?:json)?\s*([\s\S]+?)\s*```", text)
+    if match:
+        return match.group(1).strip()
+    # Fallback: find first '{' to last '}'
+    start = text.find('{')
+    end = text.rfind('}')
+    if start != -1 and end != -1 and end > start:
+        return text[start:end + 1]
+    return text
 
 
 class ThesisSuggestAgent:
@@ -93,16 +111,21 @@ class ThesisSuggestAgent:
             # the underlying httpx.AsyncClient. Each suggest() call opens and
             # closes its own connection — acceptable for low-frequency suggest
             # calls; no connection pooling needed at this scale.
+            #
+            # NOTE: Perplexity API does NOT support response_format={"type": "json_object"}.
+            # Valid values are only: 'text', 'json_schema', 'regex'.
+            # We enforce JSON output via explicit system prompt instructions instead.
             async with self._client as client:
                 response = await client.chat_completion(
                     messages=messages,
                     temperature=0.2,
                     max_tokens=2048,
-                    response_format={"type": "json_object"},
+                    # No response_format — rely on prompt instruction for JSON
                 )
                 raw_text = client.extract_text(response)
 
-            data = json.loads(raw_text)
+            json_str = _extract_json(raw_text)
+            data = json.loads(json_str)
 
             # Ensure ticker field is normalised even if AI returned lowercase
             data["ticker"] = ticker
