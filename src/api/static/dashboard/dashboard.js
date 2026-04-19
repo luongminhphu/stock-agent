@@ -12,8 +12,24 @@ function apiBase(userId) {
 
 function thesisApiBase() { return '/api/v1/thesis'; }
 
+/** Current user id from the input field — used as Wave-1 auth header. */
+function currentUserId() {
+  return (el('userId')?.value?.trim()) || 'demo-user';
+}
+
+/** Base headers injected into every request. */
+function authHeaders() {
+  return {
+    'Content-Type': 'application/json',
+    'X-User-Id': currentUserId(),
+  };
+}
+
 async function getJson(url, options = {}) {
-  const r = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...options });
+  const r = await fetch(url, {
+    ...options,
+    headers: { ...authHeaders(), ...(options.headers ?? {}) },
+  });
   if (!r.ok) {
     const msg = await r.text().catch(() => r.statusText);
     throw new Error(`${r.status} ${msg}`);
@@ -94,7 +110,7 @@ let _deleteCallback = null;
    ========================================================= */
 
 async function loadDashboard() {
-  const userId = el('userId').value.trim() || 'demo-user';
+  const userId = currentUserId();
   const status = el('statusFilter').value;
   const base = apiBase(userId);
 
@@ -336,25 +352,18 @@ function renderCatItem(c) {
 }
 
 function wireDetailActions(thesisId, wrap) {
-  // Edit / delete thesis from detail
   wrap.querySelector('#detailEditBtn')?.addEventListener('click', () => openEditThesisModal(thesisId));
   wrap.querySelector('#detailDeleteBtn')?.addEventListener('click', () => confirmDeleteThesis(thesisId));
 
-  // Add assumption
   wrap.querySelector('#addAssumBtn')?.addEventListener('click', () => openAssumptionModal(thesisId, null));
-  // Edit assumption
   wrap.querySelectorAll('.edit-assum-btn').forEach(btn =>
     btn.addEventListener('click', () => openAssumptionModal(thesisId, btn.dataset.id)));
-  // Delete assumption
   wrap.querySelectorAll('.delete-assum-btn').forEach(btn =>
     btn.addEventListener('click', () => confirmDeleteAssumption(thesisId, btn.dataset.id)));
 
-  // Add catalyst
   wrap.querySelector('#addCatBtn')?.addEventListener('click', () => openCatalystModal(thesisId, null));
-  // Edit catalyst
   wrap.querySelectorAll('.edit-cat-btn').forEach(btn =>
     btn.addEventListener('click', () => openCatalystModal(thesisId, btn.dataset.id)));
-  // Delete catalyst
   wrap.querySelectorAll('.delete-cat-btn').forEach(btn =>
     btn.addEventListener('click', () => confirmDeleteCatalyst(thesisId, btn.dataset.id)));
 }
@@ -410,7 +419,7 @@ el('thesisForm')?.addEventListener('submit', async e => {
     stop_loss: el('thesisStopField').value ? Number(el('thesisStopField').value) : null,
     status: el('thesisStatusField').value,
     direction: el('thesisDirectionField').value,
-    user_id: el('userId').value.trim() || 'demo-user',
+    user_id: currentUserId(),
   };
 
   try {
@@ -596,7 +605,7 @@ el('deleteConfirmBtn')?.addEventListener('click', async () => {
    ========================================================= */
 
 el('aiSuggestBtn')?.addEventListener('click', async () => {
-  const ticker = el('suggestTicker').value.trim().toUpperCase();
+  const ticker = (el('suggestTicker')?.value ?? el('thesisTickerField')?.value ?? '').trim().toUpperCase();
   if (!ticker) { showToast('Nhập mã cổ phiếu trước', 'error'); return; }
 
   const btn = el('aiSuggestBtn');
@@ -612,7 +621,6 @@ el('aiSuggestBtn')?.addEventListener('click', async () => {
     result.innerHTML = renderSuggestResult(data);
     result.classList.remove('hidden');
 
-    // Wire "Apply" button
     result.querySelector('.apply-suggest-btn')?.addEventListener('click', () => {
       el('thesisTickerField').value = data.ticker ?? ticker;
       el('thesisTitleField').value = data.thesis_title ?? '';
@@ -723,7 +731,7 @@ function renderSnapshots(s) {
    ========================================================= */
 
 async function loadBacktesting() {
-  const userId = el('userId').value.trim() || 'demo-user';
+  const userId = currentUserId();
   const base = apiBase(userId);
   try {
     const [acc, perf] = await Promise.all([
