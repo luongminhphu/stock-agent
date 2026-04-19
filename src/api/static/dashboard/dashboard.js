@@ -454,7 +454,7 @@ el('thesisForm')?.addEventListener('submit', async e => {
   try {
     let thesisId = id;
     if (id) {
-      await sendJson(`${thesisApiBase()}/${id}`, 'PUT', payload);
+      await sendJson(`${thesisApiBase()}/${id}`, 'PATCH', payload);
       await syncNewDetailItems(id, assumptions, catalysts);
       showToast('✅ Đã cập nhật thesis');
       thesisId = id;
