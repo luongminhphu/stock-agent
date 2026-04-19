@@ -30,19 +30,31 @@ _SYSTEM_PROMPT = """\
 Bạn là chuyên gia phân tích đầu tư chứng khoán Việt Nam với 15 năm kinh nghiệm.
 Nhiệm vụ: xây dựng luận điểm đầu tư có cấu trúc cho cổ phiếu HOSE/HNX/UPCoM.
 
-Yêu cầu output:
-- thesis_title: tiêu đề ngắn, súc tích, nắm được luận điểm chính
-- thesis_summary: 2-3 câu mô tả luận điểm, bao gồm business model đang hoạt động tốt và điều gì sẽ thay đổi
-- entry_price_hint, target_price_hint, stop_loss_hint: ước lượng giá bằng VNĐ, null nếu không đủ thông tin
-- assumptions: 3-5 giả định then chốt mà thesis phụ thuộc vào (description + rationale)
-- catalysts: 2-4 sự kiện có thể thúc đẩy giá (description + expected_timeline + rationale)
-- confidence: 0.0-1.0
-- reasoning: lý do tổng thể
+Yêu cầu output JSON với cấu trúc chính xác sau:
+{
+  "ticker": "<MÃ_CỔ_PHIẼU>",
+  "thesis_title": "<tiêu đề ngắn súc tích>",
+  "thesis_summary": "<2-3 câu mô tả luận điểm>",
+  "entry_price_hint": <số hoặc null>,
+  "target_price_hint": <số hoặc null>,
+  "stop_loss_hint": <số hoặc null>,
+  "assumptions": [
+    {"description": "<giả định>", "rationale": "<lý do>"},
+    ...
+  ],
+  "catalysts": [
+    {"description": "<sự kiện>", "expected_timeline": "<VD: Q3 2025>", "rationale": "<lý do>"},
+    ...
+  ],
+  "confidence": <0.0 — 1.0>,
+  "reasoning": "<lý do tổng thể>"
+}
 
 Quy tắc bắt buộc:
+- assumptions và catalysts PHẢI là array of objects có các field trên, KHÔNG được là array of string
 - Chỉ dùng dữ liệu thực tế, không suy diễn quá mức
 - Nếu không đủ thông tin về giá, đặt các trường price = null
-- QUAN TRỌNG: chỉ trả về raw JSON object, không bọc trong markdown, không có ```json, không có giải thích thêm
+- Chỉ trả về raw JSON object, không bọc trong markdown, không có ```json
 - Dòng đầu tiên phải là dấu '{', dòng cuối phải là dấu '}'
 """
 
@@ -51,25 +63,91 @@ def _build_user_prompt(ticker: str) -> str:
     return (
         f"Hãy đề xuất một investment thesis cho mã cổ phiếu **{ticker}** "
         f"niêm yết tại HOSE/HNX/UPCoM Việt Nam.\n\n"
-        f"Trả về JSON theo schema đã mô tả trong system prompt. "
+        f"Trả về JSON theo đúng cấu trúc đã mô tả trong system prompt. "
         f"Field `ticker` phải là '{ticker.upper()}'. "
-        f"Chỉ trả về JSON thuần, bắt đầu bằng '{{' và kết thúc bằng '}}'."
+        f"assumptions và catalysts phải là array of objects, không phải array of string."
     )
 
 
 def _extract_json(text: str) -> str:
     """Strip markdown code fences if present, return raw JSON string."""
-    # Remove ```json ... ``` or ``` ... ``` wrappers
     text = text.strip()
     match = re.search(r"```(?:json)?\s*([\s\S]+?)\s*```", text)
     if match:
         return match.group(1).strip()
-    # Fallback: find first '{' to last '}'
     start = text.find('{')
     end = text.rfind('}')
     if start != -1 and end != -1 and end > start:
         return text[start:end + 1]
     return text
+
+
+def _strip_citations(text: str) -> str:
+    """Remove citation markers like [1], [2] that sonar-pro injects."""
+    return re.sub(r"\[\d+\]", "", text).strip()
+
+
+def _normalize_list(
+    items: list,
+    description_key: str = "description",
+    extra_keys: list[str] | None = None,
+) -> list[dict]:
+    """Coerce a list of strings OR dicts into a list of dicts.
+
+    sonar-pro sometimes returns assumptions/catalysts as plain strings
+    instead of {description, rationale} objects. This normalizer handles
+    both shapes so Pydantic validation never sees a bare string.
+    """
+    result = []
+    for item in items:
+        if isinstance(item, str):
+            cleaned = _strip_citations(item)
+            obj: dict = {description_key: cleaned, "rationale": ""}
+            if extra_keys:
+                for k in extra_keys:
+                    obj.setdefault(k, "")
+            result.append(obj)
+        elif isinstance(item, dict):
+            # Strip citations from all string values
+            normalized = {
+                k: _strip_citations(v) if isinstance(v, str) else v
+                for k, v in item.items()
+            }
+            result.append(normalized)
+        # skip None / unexpected types
+    return result
+
+
+def _normalize_data(data: dict, ticker: str) -> dict:
+    """Normalise raw AI JSON dict before Pydantic validation.
+
+    Handles:
+    - assumptions as list[str] → list[{description, rationale}]
+    - catalysts as list[str] → list[{description, expected_timeline, rationale}]
+    - citation markers stripped from all string fields
+    - ticker forced to uppercase
+    """
+    data["ticker"] = ticker
+
+    if isinstance(data.get("assumptions"), list):
+        data["assumptions"] = _normalize_list(
+            data["assumptions"],
+            description_key="description",
+        )
+
+    if isinstance(data.get("catalysts"), list):
+        data["catalysts"] = _normalize_list(
+            data["catalysts"],
+            description_key="description",
+            extra_keys=["expected_timeline"],
+        )
+
+    # Strip citations from top-level string fields
+    for field in ("thesis_title", "thesis_summary", "reasoning"):
+        if isinstance(data.get(field), str):
+            data[field] = _strip_citations(data[field])
+
+    return data
 
 
 class ThesisSuggestAgent:
@@ -108,28 +186,21 @@ class ThesisSuggestAgent:
 
         try:
             # PerplexityClient requires async context manager to initialise
-            # the underlying httpx.AsyncClient. Each suggest() call opens and
-            # closes its own connection — acceptable for low-frequency suggest
-            # calls; no connection pooling needed at this scale.
-            #
-            # NOTE: Perplexity API does NOT support response_format={"type": "json_object"}.
-            # Valid values are only: 'text', 'json_schema', 'regex'.
-            # We enforce JSON output via explicit system prompt instructions instead.
+            # the underlying httpx.AsyncClient.
+            # NOTE: Perplexity API only supports response_format types:
+            # 'text', 'json_schema', 'regex' — NOT 'json_object'.
+            # JSON output is enforced via prompt instructions.
             async with self._client as client:
                 response = await client.chat_completion(
                     messages=messages,
                     temperature=0.2,
                     max_tokens=2048,
-                    # No response_format — rely on prompt instruction for JSON
                 )
                 raw_text = client.extract_text(response)
 
             json_str = _extract_json(raw_text)
             data = json.loads(json_str)
-
-            # Ensure ticker field is normalised even if AI returned lowercase
-            data["ticker"] = ticker
-
+            data = _normalize_data(data, ticker)
             result = ThesisSuggestionResult.model_validate(data)
 
         except (json.JSONDecodeError, ValidationError) as exc:
