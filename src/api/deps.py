@@ -30,15 +30,20 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             raise
 
 
-async def get_current_user_id(
-    x_user_id: str | None = Header(default=None, alias="X-User-Id"),
-) -> str:
-    if not x_user_id:
+async def get_current_user_id() -> str:
+    """Return the single owner's user_id from settings.
+
+    Single-user app: no session/auth needed.
+    OWNER_USER_ID in .env must match the Discord user ID of the owner.
+    """
+    from src.platform.config import settings
+
+    if not settings.owner_user_id:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="X-User-Id header is required (Wave 1 auth).",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="OWNER_USER_ID not configured. Set it in .env.",
         )
-    return x_user_id
+    return settings.owner_user_id
 
 
 def get_quote_service() -> object:
