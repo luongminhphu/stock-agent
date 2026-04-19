@@ -1,4 +1,5 @@
 import json
+import re
 
 from pydantic import ValidationError
 
@@ -8,6 +9,18 @@ from src.ai.schemas import ThesisReviewOutput
 from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
+
+# Matches ```json ... ``` or ``` ... ``` fences that sonar-pro wraps output in
+_JSON_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.IGNORECASE)
+
+
+def _extract_json(text: str) -> str:
+    """Strip markdown code fences if present, else return text as-is."""
+    text = text.strip()
+    match = _JSON_FENCE_RE.search(text)
+    if match:
+        return match.group(1).strip()
+    return text
 
 
 class ThesisReviewAgent:
@@ -66,10 +79,22 @@ class ThesisReviewAgent:
                 temperature=0.1,  # Low temp for consistent structured output
             )
             raw_text = self._client.extract_text(response)
-            data = json.loads(raw_text)
+            clean_text = _extract_json(raw_text)
+            logger.debug(
+                "thesis_review_agent.raw_response",
+                ticker=ticker,
+                raw_length=len(raw_text),
+                clean_length=len(clean_text),
+            )
+            data = json.loads(clean_text)
             result = ThesisReviewOutput.model_validate(data)
         except (json.JSONDecodeError, ValidationError) as exc:
-            logger.error("thesis_review_agent.parse_error", ticker=ticker, error=str(exc))
+            logger.error(
+                "thesis_review_agent.parse_error",
+                ticker=ticker,
+                error=str(exc),
+                raw_text=raw_text[:500] if "raw_text" in dir() else "unavailable",
+            )
             raise ValueError(f"Failed to parse AI response for {ticker}: {exc}") from exc
         except PerplexityError:
             logger.error("thesis_review_agent.api_error", ticker=ticker)
