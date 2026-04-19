@@ -54,11 +54,13 @@ async def _register_cogs(bot: commands.Bot) -> None:
     from src.bot.commands.market import MarketCog
     from src.bot.commands.thesis import ThesisCog
     from src.bot.commands.watchlist import WatchlistCog
+    from src.bot.commands.help import HelpCog
 
     await bot.add_cog(WatchlistCog(bot))
     await bot.add_cog(ThesisCog(bot))
     await bot.add_cog(MarketCog(bot))
     await bot.add_cog(BriefingCog(bot))
+    await bot.add_cog(HelpCog(bot))
     logger.info(
         "bot.cogs_loaded",
         cogs=["WatchlistCog", "ThesisCog", "MarketCog", "BriefingCog"],
