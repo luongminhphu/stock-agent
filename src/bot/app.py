@@ -63,7 +63,7 @@ async def _register_cogs(bot: commands.Bot) -> None:
     await bot.add_cog(HelpCog(bot))
     logger.info(
         "bot.cogs_loaded",
-        cogs=["WatchlistCog", "ThesisCog", "MarketCog", "BriefingCog"],
+        cogs=["WatchlistCog", "ThesisCog", "MarketCog", "BriefingCog", "HelpCog"],
     )
 
 
