@@ -1,9 +1,11 @@
 'use strict';
 
+const DASHBOARD_USER_ID = '1490204869418684536';
+
 function el(id) { return document.getElementById(id); }
 function apiBase(userId) { return `/api/v1/readmodel/dashboard/${encodeURIComponent(userId)}`; }
 function thesisApiBase() { return '/api/v1/thesis'; }
-function currentUserId() { return (el('userId')?.value?.trim()) || 'iobox'; }
+function currentUserId() { return DASHBOARD_USER_ID; }
 function authHeaders() { return { 'Content-Type': 'application/json', 'X-User-Id': currentUserId() }; }
 
 async function getJson(url, options = {}) {
@@ -436,7 +438,6 @@ el('thesisForm')?.addEventListener('submit', async e => {
     stop_loss: el('thesisStopField').value ? Number(el('thesisStopField').value) : null,
     status: el('thesisStatusField').value,
     direction: el('thesisDirectionField').value,
-    user_id: currentUserId(),
   };
   const assumptions = collectFormAssumptions();
   const catalysts = collectFormCatalysts();
