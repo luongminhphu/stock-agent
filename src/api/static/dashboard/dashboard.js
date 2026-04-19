@@ -12,6 +12,7 @@ async function getJson(url, options = {}) {
     const msg = await r.text().catch(() => r.statusText);
     throw new Error(`${r.status} ${msg}`);
   }
+  if (r.status === 204 || r.headers.get('content-length') === '0') return null;
   return r.json();
 }
 
