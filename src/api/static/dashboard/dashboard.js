@@ -755,7 +755,7 @@ function renderPerformance(list) {
   wrap.innerHTML = `<table><thead><tr><th>Mã</th><th>PnL%</th><th>Điểm</th><th>Status</th></tr></thead><tbody>${rows.map(r => `<tr><td class="ticker-cell"><strong>${esc(r.ticker)}</strong></td><td class="${r.pnl_pct >= 0 ? 'pnl-pos' : 'pnl-neg'}">${r.pnl_pct != null ? (r.pnl_pct > 0 ? '+' : '') + r.pnl_pct.toFixed(2) + '%' : '—'}</td><td class="${scoreClass(r.score)}">${r.score ?? '—'}</td><td>${badge(r.status)}</td></tr>`).join('')}</tbody></table>`;
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   document.querySelectorAll('[data-close]').forEach(btn => btn.addEventListener('click', () => closeModal(btn.dataset.close)));
   document.querySelectorAll('dialog').forEach(dlg => dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); }));
   el('reloadBtn')?.addEventListener('click', () => { loadDashboard(); loadBacktesting(); });
