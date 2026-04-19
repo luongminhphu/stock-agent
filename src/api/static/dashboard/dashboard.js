@@ -493,7 +493,7 @@ function confirmDeleteThesis(thesisId) {
 }
 
 async function openAssumptionModal(thesisId, assumId) {
-  const ticker = _theses.find(t => t.id === thesisId)?.ticker ?? '';
+  const ticker = _theses.find(t => String(t.id) === String(thesisId))?.ticker ?? '';
   el('assumptionThesisId').value = thesisId;
   el('assumptionIdField').value = assumId ?? '';
   el('assumptionModalTitle').textContent = assumId ? 'Chỉnh sửa Assumption' : 'Thêm Assumption';
@@ -554,7 +554,7 @@ function confirmDeleteAssumption(thesisId, assumId) {
 }
 
 async function openCatalystModal(thesisId, catId) {
-  const ticker = _theses.find(t => t.id === thesisId)?.ticker ?? '';
+  const ticker = _theses.find(t => String(t.id) === String(thesisId))?.ticker ?? '';
   el('catalystThesisId').value = thesisId;
   el('catalystIdField').value = catId ?? '';
   el('catalystModalTitle').textContent = catId ? 'Chỉnh sửa Catalyst' : 'Thêm Catalyst';
