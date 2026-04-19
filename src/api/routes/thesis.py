@@ -1,9 +1,11 @@
-"""Thesis routes — CRUD for thesis, assumption, catalyst + AI review endpoints.
+"""Thesis routes — CRUD for thesis, assumption, catalyst + AI review + AI suggest.
 
 Owner: api segment.
-No business logic here — delegates entirely to ThesisService, ScoringService, ReviewService.
+No business logic here — delegates entirely to ThesisService, ScoringService,
+ReviewService, ThesisSuggestAgent.
 
 Endpoints:
+    POST   /thesis/suggest                                — AI draft thesis for a ticker (no persist)
     POST   /thesis                                        — create thesis
     GET    /thesis                                        — list thesis
     GET    /thesis/{thesis_id}                            — get thesis detail
@@ -28,11 +30,15 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.ai.agents.suggest_agent import ThesisSuggestAgent
+from src.ai.client import PerplexityError
+from src.ai.schemas import ThesisSuggestionResult
 from src.api.deps import (
     get_current_user_id,
     get_db,
     get_review_service,
     get_thesis_service,
+    get_thesis_suggest_agent,
 )
 from src.api.dto.thesis import (
     AssumptionCreateRequest,
@@ -81,6 +87,39 @@ def _not_found(exc: Exception) -> HTTPException:
 
 def _conflict(exc: Exception) -> HTTPException:
     return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# AI Suggest (must be declared BEFORE /{thesis_id} routes to avoid conflict)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/suggest", response_model=ThesisSuggestionResult)
+async def suggest_thesis(
+    ticker: str = Query(..., description="Mã cổ phiếu, VD: VNM, HPG, MWG"),
+    _user_id: str = Depends(get_current_user_id),
+    agent: ThesisSuggestAgent = Depends(get_thesis_suggest_agent),  # type: ignore[type-arg]
+) -> ThesisSuggestionResult:
+    """Ask AI to draft an investment thesis for a ticker.
+
+    Returns a ThesisSuggestionResult — a *draft* for the investor to review.
+    Nothing is persisted. The investor must confirm and call POST /thesis to save.
+
+    Price hints (entry_price_hint, target_price_hint, stop_loss_hint) are
+    AI estimates only — do NOT auto-save without user confirmation.
+    """
+    try:
+        return await agent.suggest(ticker)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"AI response could not be parsed: {exc}",
+        )
+    except PerplexityError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"AI suggest failed: {exc}",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -421,7 +460,7 @@ async def delete_catalyst(
 
 
 # ---------------------------------------------------------------------------
-# AI Review endpoints (preserved from original)
+# AI Review endpoints
 # ---------------------------------------------------------------------------
 
 
