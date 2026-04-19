@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     # Discord bot
     discord_token: str = ""
 
+    # Owner User ID
+    owner_user_id: str = ""
+
     # Perplexity AI
     perplexity_api_key: str = ""
 
