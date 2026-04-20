@@ -40,6 +40,17 @@ class ThesisSummaryRow(BaseModel):
     title: str
     status: str
     score: float | None
+
+    # Score context — populated by dashboard_service, sourced from thesis.scoring_service
+    # score_tier:      e.g. "Critical" / "Weak" / "Moderate" / "Healthy" / "Strong"
+    # score_tier_icon: matching emoji e.g. "🔴" / "🟠" / "🟡" / "🟢" / "💎"
+    # score_breakdown: per-dimension contributions, keys match ScoringService.compute_with_breakdown()
+    #                  Only populated when full ORM graph is loaded (e.g. thesis detail).
+    #                  None in list views where we avoid loading assumptions/catalysts.
+    score_tier: str | None = None
+    score_tier_icon: str | None = None
+    score_breakdown: dict[str, float] | None = None
+
     entry_price: float | None
     target_price: float | None
     stop_loss: float | None
