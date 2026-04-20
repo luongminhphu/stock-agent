@@ -64,7 +64,7 @@ from src.api.dto.thesis import (
 )
 from src.thesis.models import ThesisStatus
 from src.thesis.review_service import ReviewNotAllowedError, ReviewService
-from src.thesis.scoring_service import ScoringService
+from src.thesis.scoring_service import ScoringService, score_tier
 from src.thesis.service import (
     AddAssumptionInput,
     AddCatalystInput,
