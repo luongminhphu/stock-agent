@@ -257,8 +257,8 @@ async function loadDashboard() {
     renderSummary(stats);
     _theses = theses?.items ?? [];
     renderThesesTable(_theses);
-    renderVerdicts(verdictAccuracy);
-    renderCatalystList(catalysts);
+    renderVerdicts(verdictAccuracy?.items ?? []);
+    renderCatalystList(catalysts?.items ?? []);
     renderSnapshots({
       latest_scan_at: latestScan?.created_at ?? latestScan?.generated_at ?? null,
       latest_scan_summary: latestScan?.summary ?? latestScan?.headline ?? latestScan?.notes ?? null,
@@ -707,6 +707,7 @@ el('catalystAiSuggestBtn')?.addEventListener('click', async () => {
 function renderVerdicts(list) {
   const wrap = el('verdictList');
   const rows = Array.isArray(list) ? list : (list?.items ?? []);
+  const list = Array.isArray(data) ? data : (data?.items ?? []);
   if (!rows.length) { wrap.innerHTML = '<p class="empty-state">Chưa có dữ liệu.</p>'; return; }
   wrap.innerHTML = rows.map(v => `<div class="row-item"><div><div class="row-title">${badge(v.verdict)}</div><div class="row-subtitle">${v.count ?? v.total ?? 0} review · ${v.pct != null ? v.pct + '%' : v.accuracy != null ? (v.accuracy * 100).toFixed(1) + '%' : ''}</div></div></div>`).join('');
 }
@@ -714,6 +715,7 @@ function renderVerdicts(list) {
 function renderCatalystList(list) {
   const wrap = el('catalystList');
   const items = Array.isArray(list) ? list : (list?.items ?? []);
+  const list = Array.isArray(data) ? data : (data?.items ?? []);
   if (!items.length) { wrap.innerHTML = '<p class="empty-state">Không có catalyst sắp tới.</p>'; return; }
   wrap.innerHTML = items.slice(0, 8).map(c => `<div class="row-item"><div><div class="row-title">${esc(c.ticker ?? '')} — ${esc(c.description ?? '')}</div><div class="row-subtitle">${esc(c.expected_timeline ?? '')} · ${badge(c.status)}</div></div></div>`).join('');
 }
