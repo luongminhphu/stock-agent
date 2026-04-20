@@ -105,6 +105,9 @@ class ThesisResponse(BaseModel):
     target_price: Optional[float] = None
     stop_loss: Optional[float] = None
     score: Optional[float] = None
+    score_tier: Optional[str] = None
+    score_tier_icon: Optional[str] = None
+    score_breakdown: Optional[HealthScoreBreakdown] = None
     created_at: datetime
     updated_at: datetime
     closed_at: Optional[datetime] = None
