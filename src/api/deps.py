@@ -94,4 +94,5 @@ async def get_briefing_service(
         watchlist_service=watchlist_service,
         quote_service=quote_svc,
         briefing_agent=briefing_agent,
+        session=session,
     )
