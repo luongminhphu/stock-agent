@@ -194,12 +194,12 @@ class ThesisSuggestAgent:
             # 'text', 'json_schema', 'regex' — NOT 'json_object'.
             # JSON output is enforced via prompt instructions.
             async with self._client as client:
-                response = await client.chat_completion(
+                response = await self._client.chat_completion(
                     messages=messages,
                     temperature=0.2,
                     max_tokens=2048,
                 )
-                raw_text = client.extract_text(response)
+                raw_text = self._client.extract_text(response)
 
             json_str = _extract_json(raw_text)
             data = json.loads(json_str)
