@@ -20,6 +20,41 @@ _WEIGHTS = {
     "review_confidence": 0.10,
 }
 
+# ---------------------------------------------------------------------------
+# Score tier — contextual label for a 0-100 health score
+# ---------------------------------------------------------------------------
+
+# Each entry: (lo_inclusive, hi_inclusive, label, icon)
+SCORE_TIERS: list[tuple[int, int, str, str]] = [
+    (0,  30,  "Critical",  "🔴"),
+    (31, 50,  "Weak",      "🟠"),
+    (51, 70,  "Moderate",  "🟡"),
+    (71, 85,  "Healthy",   "🟢"),
+    (86, 100, "Strong",    "💎"),
+]
+
+# Max possible contribution per dimension (for display purposes)
+SCORE_MAX: dict[str, float] = {
+    "assumption_health": _WEIGHTS["assumption_health"] * 100,   # 40
+    "catalyst_progress": _WEIGHTS["catalyst_progress"] * 100,   # 30
+    "risk_reward":       _WEIGHTS["risk_reward"] * 100,         # 20
+    "review_confidence": _WEIGHTS["review_confidence"] * 100,   # 10
+}
+
+
+def score_tier(score: float) -> tuple[str, str]:
+    """Return (label, icon) for a given 0-100 score.
+
+    Examples:
+        score_tier(20.1) → ("Critical", "🔴")
+        score_tier(75.0) → ("Healthy",  "🟢")
+    """
+    s = int(score)
+    for lo, hi, label, icon in SCORE_TIERS:
+        if lo <= s <= hi:
+            return label, icon
+    return "Unknown", "⚪"
+
 
 class ScoringService:
     """Compute a composite thesis health score (0–100).
