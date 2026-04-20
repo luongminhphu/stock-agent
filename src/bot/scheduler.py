@@ -89,6 +89,7 @@ class BriefingScheduler:
                     watchlist_service=WatchlistService(session=session),
                     quote_service=get_quote_service(),
                     briefing_agent=get_briefing_agent(),
+                    session=session,
                 )
                 if phase == "morning":
                     brief = await svc.generate_morning_brief(user_id=str(user_id))
