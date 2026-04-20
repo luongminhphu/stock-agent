@@ -159,13 +159,9 @@ async def get_upcoming_catalysts(
 async def get_scan_latest(
     user_id: str,
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> dict[str, Any]:
-    """WatchlistScan snapshot gan nhat cua user."""
+) -> dict[str, Any] | None:
     svc = DashboardService(session)
-    result = await svc.get_scan_latest(user_id)
-    if result is None:
-        raise HTTPException(status_code=404, detail="No scan snapshot found")
-    return result
+    return await svc.get_scan_latest(user_id)
 
 
 # ---------------------------------------------------------------------------
@@ -177,17 +173,10 @@ async def get_scan_latest(
 async def get_brief_latest(
     user_id: str,
     session: Annotated[AsyncSession, Depends(get_session)],
-    phase: Annotated[
-        Literal["morning", "eod"],
-        Query(description="morning | eod"),
-    ] = "morning",
-) -> dict[str, Any]:
-    """BriefSnapshot gan nhat theo phase (morning / eod)."""
+    phase: Annotated[Literal["morning", "eod"], Query(...)] = "morning",
+) -> dict[str, Any] | None:
     svc = DashboardService(session)
-    result = await svc.get_brief_latest(user_id, phase=phase)
-    if result is None:
-        raise HTTPException(status_code=404, detail=f"No {phase} brief snapshot found")
-    return result
+    return await svc.get_brief_latest(user_id, phase=phase)
 
 
 # ---------------------------------------------------------------------------
