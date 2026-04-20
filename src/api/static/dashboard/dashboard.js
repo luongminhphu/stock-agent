@@ -255,7 +255,7 @@ async function loadDashboard() {
       getJson(`${base}/brief/latest?phase=eod`).catch(() => null),
     ]);
     renderSummary(stats);
-    _theses = Array.isArray(theses) ? theses : (theses?.items ?? []);
+    _theses = theses?.items ?? [];
     renderThesesTable(_theses);
     renderVerdicts(verdictAccuracy);
     renderCatalystList(catalysts);
