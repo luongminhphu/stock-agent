@@ -63,9 +63,52 @@ let _deleteCallback = null;
 
 function scoreClass(s) {
   if (s == null) return '';
-  if (s >= 7) return 'score-high';
-  if (s >= 4) return 'score-mid';
+  if (s >= 86) return 'score-high';
+  if (s >= 71) return 'score-good';
+  if (s >= 51) return 'score-mid';
+  if (s >= 31) return 'score-warn';
   return 'score-low';
+}
+
+function fmtScore(s) {
+  return s == null ? '—' : Math.round(Number(s));
+}
+
+function pct(value, max) {
+  if (value == null || !max) return 0;
+  return Math.max(0, Math.min(100, (Number(value) / Number(max)) * 100));
+}
+
+function renderScoreBreakdown(breakdown) {
+  if (!breakdown) return '';
+
+  const rows = [
+    { key: 'assumption_health', label: 'Assumptions', value: breakdown.assumption_health, max: 40 },
+    { key: 'catalyst_progress', label: 'Catalysts', value: breakdown.catalyst_progress, max: 30 },
+    { key: 'risk_reward', label: 'Risk / Reward', value: breakdown.risk_reward, max: 20 },
+    { key: 'review_confidence', label: 'Review confidence', value: breakdown.review_confidence, max: 10 },
+  ];
+
+  return `
+    <div class="detail-section">
+      <div class="detail-section-header">
+        <h3>Score breakdown</h3>
+        <span style="color:var(--muted);font-size:.82rem;">4 thành phần đóng góp vào health score</span>
+      </div>
+      <div class="detail-list">
+        ${rows.map(r => `
+          <div class="detail-item">
+            <div class="detail-item-row">
+              <span style="font-weight:600;font-size:.9rem;">${r.label}</span>
+              <span class="${scoreClass((Number(r.value || 0) / r.max) * 100)}" style="font-weight:700;">${fmtScore(r.value)}/${r.max}</span>
+            </div>
+            <div style="margin-top:8px;height:8px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden;">
+              <div class="${scoreClass((Number(r.value || 0) / r.max) * 100)}" style="height:100%;width:${pct(r.value, r.max)}%;border-radius:999px;background:currentColor;"></div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>`;
 }
 
 function makeAssumptionRow(data = {}) {
@@ -302,7 +345,12 @@ function renderThesesTable(list) {
           <tr data-id="${t.id}" class="${t.id === _selectedThesisId ? 'is-selected' : ''}">
             <td class="ticker-cell"><strong>${esc(t.ticker)}</strong><span>${badge(t.direction)}</span></td>
             <td>${esc(t.title ?? '—')}</td>
-            <td class="${scoreClass(t.score)}">${t.score != null ? t.score : '—'}</td>
+            <td class="${scoreClass(t.score)}">
+              <div style="display:flex;flex-direction:column;gap:2px;">
+                <strong>${fmtScore(t.score)}</strong>
+                ${(t.score_tier || t.score_tier_icon) ? `<span style="font-size:.78rem;color:var(--muted);">${esc(t.score_tier_icon ?? '')} ${esc(t.score_tier ?? '')}</span>` : ''}
+              </div>
+            </td>
             <td>${badge(t.status)}</td>
             <td style="color:var(--muted);font-size:.82rem;">${fmtDate(t.updated_at)}</td>
             <td><div style="display:flex;gap:6px;"><button class="icon-btn edit-thesis-btn" data-id="${t.id}" title="Sửa thesis">✏️</button><button class="icon-btn danger delete-thesis-btn" data-id="${t.id}" title="Xóa thesis">🗑</button></div></td>
@@ -350,12 +398,24 @@ function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
   const revList = Array.isArray(reviews) ? reviews : (reviews?.items ?? []);
   return `
     <div class="detail-head">
-      <div><div class="detail-meta"><span class="badge" style="font-size:.9rem;padding:6px 12px;">${esc(t.ticker)}</span>${badge(t.direction)} ${badge(t.status)}</div><h2 style="margin-top:10px;">${esc(t.title ?? '—')}</h2></div>
+      <div>
+        <div class="detail-meta">
+          <span class="badge" style="font-size:.9rem;padding:6px 12px;">${esc(t.ticker)}</span>
+          ${badge(t.direction)}
+          ${badge(t.status)}
+          ${t.score_tier ? `<span class="badge ${scoreClass(t.score)}">${esc(t.score_tier_icon ?? '')} ${esc(t.score_tier)}</span>` : ''}
+        </div>
+        <h2 style="margin-top:10px;">${esc(t.title ?? '—')}</h2>
+      </div>
       <div class="detail-head-actions"><button class="ghost-btn" id="detailEditBtn">✏️ Sửa</button><button class="danger-btn" id="detailDeleteBtn">🗑 Xóa thesis</button></div>
     </div>
     ${t.summary ? `<p class="detail-summary">${esc(t.summary)}</p>` : ''}
     <div class="detail-grid">
-      <div class="detail-stat"><span>Score</span><strong class="${scoreClass(t.score)}">${t.score ?? '—'}</strong></div>
+      <div class="detail-stat">
+        <span>Score</span>
+        <strong class="${scoreClass(t.score)}">${fmtScore(t.score)}/100</strong>
+        ${t.score_tier ? `<span style="color:var(--muted);font-size:.82rem;">${esc(t.score_tier_icon ?? '')} ${esc(t.score_tier)}</span>` : ''}
+      </div>
       <div class="detail-stat"><span>Entry</span><strong>${t.entry_price ? fmt(t.entry_price) + '₫' : '—'}</strong></div>
       <div class="detail-stat"><span>Target</span><strong>${t.target_price ? fmt(t.target_price) + '₫' : '—'}</strong></div>
       <div class="detail-stat"><span>Stop loss</span><strong>${t.stop_loss ? fmt(t.stop_loss) + '₫' : '—'}</strong></div>
