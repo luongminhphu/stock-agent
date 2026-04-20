@@ -60,6 +60,9 @@ def create_app() -> FastAPI:
         docs_url="/docs" if settings.environment != "production" else None,
         redoc_url=None,
         lifespan=lifespan,
+        # Disable automatic trailing-slash redirect so POST/PUT/PATCH requests
+        # with a body are never silently redirected (307 drops the body in most clients).
+        redirect_slashes=False,
     )
 
     app.add_middleware(
