@@ -188,11 +188,6 @@ class ThesisSuggestAgent:
         logger.info("suggest_agent.start", ticker=ticker)
 
         try:
-            # PerplexityClient requires async context manager to initialise
-            # the underlying httpx.AsyncClient.
-            # NOTE: Perplexity API only supports response_format types:
-            # 'text', 'json_schema', 'regex' — NOT 'json_object'.
-            # JSON output is enforced via prompt instructions.
             async with self._client as client:
                 response = await self._client.chat_completion(
                     messages=messages,
