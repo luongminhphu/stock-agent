@@ -42,6 +42,13 @@ from src.readmodel.timeline_service import ThesisTimelineService
 
 router = APIRouter(prefix="/readmodel", tags=["readmodel"])
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _paginated(items: list) -> dict[str, Any]:
+    """Wrap list thành shape nhất quán: {items, total}."""
+    return {"items": items, "total": len(items)}
 
 def _enrichment() -> PriceEnrichmentService:
     """Dependency: PriceEnrichmentService wired to the bootstrapped QuoteService."""
@@ -104,15 +111,13 @@ async def get_stats(
 async def get_theses_list(
     user_id: str,
     session: Annotated[AsyncSession, Depends(get_session)],
-    status: Annotated[
-        str, Query(description="active | invalidated | closed | paused | all")
-    ] = "active",
-    ticker: Annotated[str | None, Query(description="Filter theo ticker, e.g. VNM")] = None,
+    status: Annotated[str, Query(...)] = "active",
+    ticker: Annotated[str | None, Query(...)] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 200,
-) -> list[dict[str, Any]]:
-    """List thesis voi last review, assumption/catalyst counts. Filter theo status va ticker."""
+) -> dict[str, Any]:
     svc = DashboardService(session)
-    return await svc.get_theses_list(user_id, status=status, ticker=ticker, limit=limit)
+    items = await svc.get_theses_list(user_id, status=status, ticker=ticker, limit=limit)
+    return _paginated(items)
 
 
 # ---------------------------------------------------------------------------
@@ -143,11 +148,10 @@ async def get_thesis_detail(
 async def get_upcoming_catalysts(
     user_id: str,
     session: Annotated[AsyncSession, Depends(get_session)],
-    days: Annotated[int, Query(ge=1, le=90, description="So ngay tiep theo can xem")] = 30,
-) -> list[dict[str, Any]]:
-    """Catalysts dang PENDING trong vong <days> ngay toi, chi thesis ACTIVE."""
+    days: Annotated[int, Query(ge=1, le=90)] = 30,
+) -> dict[str, Any]:
     svc = DashboardService(session)
-    return await svc.get_upcoming_catalysts(user_id, days=days)
+    return _paginated(await svc.get_upcoming_catalysts(user_id, days=days))
 
 
 # ---------------------------------------------------------------------------
@@ -188,10 +192,9 @@ async def get_brief_latest(
 async def get_verdict_accuracy(
     user_id: str,
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> list[dict[str, Any]]:
-    """Accuracy theo verdict: BULLISH/BEARISH/NEUTRAL/WATCHLIST vs pnl_pct thuc te."""
+) -> dict[str, Any]:
     svc = DashboardService(session)
-    return await svc.get_verdict_accuracy(user_id)
+    return _paginated(await svc.get_verdict_accuracy(user_id))
 
 
 # ---------------------------------------------------------------------------
