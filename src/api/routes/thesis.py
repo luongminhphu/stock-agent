@@ -185,12 +185,29 @@ async def get_thesis(
     user_id: str = Depends(get_current_user_id),
     svc: ThesisService = Depends(get_thesis_service),
 ) -> ThesisResponse:
-    """Get full thesis detail including assumptions and catalysts."""
+    """Get full thesis detail including assumptions and catalysts + health score."""
     try:
         thesis = await svc.get(thesis_id, user_id)
     except ThesisNotFoundError as exc:
         raise _not_found(exc)
-    return ThesisResponse.model_validate(thesis)
+
+    # Nếu đã có thesis.score, dùng luôn; nếu chưa, fallback tính lại
+    scoring = ScoringService()
+    total, breakdown = scoring.compute_with_breakdown(thesis)
+    tier_label, tier_icon = score_tier(total)
+
+    # Build DTO bằng tay để fill thêm trường mới
+    base = ThesisResponse.model_validate(thesis)
+    base.score = thesis.score if thesis.score is not None else total
+    base.score_tier = tier_label
+    base.score_tier_icon = tier_icon
+    base.score_breakdown = HealthScoreBreakdown(
+        assumption_health=breakdown["assumption_health"],
+        catalyst_progress=breakdown["catalyst_progress"],
+        risk_reward=breakdown["risk_reward"],
+        review_confidence=breakdown["review_confidence"],
+    )
+    return base
 
 
 @router.patch("/{thesis_id}", response_model=ThesisResponse)
