@@ -16,7 +16,7 @@ Endpoints served (via src/api/routes/dashboard.py):
 Design rules:
 - SELECT only columns needed; never load full ORM graphs.
 - No writes. No business logic. No AI calls.
-- Scoring logic delegates to src.thesis.scoring (not duplicated here).
+- Scoring logic delegates to src.thesis.scoring_service (not duplicated here).
 - All public methods are async and accept an AsyncSession.
 """
 
@@ -35,6 +35,7 @@ from src.readmodel.schemas import (
     ThesisSummaryRow,
     WatchlistSnapshotRow,
 )
+from src.thesis.scoring_service import score_tier
 
 # Vietnam timezone offset (UTC+7)
 _VN_OFFSET = timedelta(hours=7)
@@ -250,6 +251,7 @@ class DashboardService:
         result = []
         for r in rows:
             t = r.Thesis
+            tier_label, tier_icon = score_tier(t.score) if t.score is not None else (None, None)
             result.append(
                 {
                     "id": t.id,
@@ -257,6 +259,8 @@ class DashboardService:
                     "title": t.title,
                     "status": str(t.status.value),
                     "score": t.score,
+                    "score_tier": tier_label,
+                    "score_tier_icon": tier_icon,
                     "entry_price": t.entry_price,
                     "target_price": t.target_price,
                     "stop_loss": t.stop_loss,
@@ -285,7 +289,6 @@ class DashboardService:
             ThesisReview,
         )
 
-        # Use explicit SELECT to avoid lazy-load trap in async context
         thesis = (
             await self._session.execute(
                 select(Thesis).where(Thesis.id == thesis_id)
@@ -363,6 +366,7 @@ class DashboardService:
             }
 
         last_review = reviews_rows[0] if reviews_rows else None
+        tier_label, tier_icon = score_tier(thesis.score) if thesis.score is not None else (None, None)
 
         return {
             "thesis": {
@@ -372,6 +376,8 @@ class DashboardService:
                 "summary": thesis.summary,
                 "status": str(thesis.status.value),
                 "score": thesis.score,
+                "score_tier": tier_label,
+                "score_tier_icon": tier_icon,
                 "entry_price": thesis.entry_price,
                 "target_price": thesis.target_price,
                 "stop_loss": thesis.stop_loss,
@@ -503,18 +509,8 @@ class DashboardService:
     # ------------------------------------------------------------------
 
     async def get_verdict_accuracy(self, user_id: str) -> list[dict[str, Any]]:
-        """Tinh accuracy theo verdict bang 2 query don gian + Python aggregation.
-
-        Query 1: latest verdict per thesis (1 row / thesis).
-        Query 2: tat ca snapshots co pnl_pct cua user.
-        Join trong Python, tinh accuracy directional:
-          BULLISH / WATCHLIST → dung neu pnl_pct >= 0
-          BEARISH             → dung neu pnl_pct < 0
-          NEUTRAL             → khong co directional edge, accuracy = None
-        """
         from src.thesis.models import Thesis, ThesisReview, ThesisSnapshot
 
-        # --- Query 1: latest review per thesis ---
         latest_review_subq = (
             select(
                 ThesisReview.thesis_id,
@@ -547,7 +543,6 @@ class DashboardService:
         if not thesis_verdict:
             return []
 
-        # --- Query 2: all snapshots with pnl_pct for this user ---
         snap_rows = (
             await self._session.execute(
                 select(
@@ -562,7 +557,6 @@ class DashboardService:
             )
         ).all()
 
-        # --- Pure-Python aggregation ---
         stats: dict[str, dict] = defaultdict(lambda: {"total": 0, "hits": 0, "pnl_sum": 0.0})
 
         for snap in snap_rows:
@@ -607,16 +601,8 @@ class DashboardService:
         ticker: str | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
-        """Tinh performance per thesis bang 2 query don gian + Python aggregation.
-
-        Query 1: tat ca theses cua user (co filter ticker neu co).
-        Query 2: tat ca snapshots co pnl_pct cua nhung thesis do.
-        Aggregation trong Python: count, avg, max, min pnl_pct, last_snapshot_at.
-        Khong dung func.round() de tranh round(double precision, integer) trap cua Postgres.
-        """
         from src.thesis.models import Thesis, ThesisSnapshot
 
-        # --- Query 1: theses ---
         filters = [Thesis.user_id == user_id]
         if ticker:
             filters.append(Thesis.ticker == ticker.upper())
@@ -643,7 +629,6 @@ class DashboardService:
         thesis_ids = [r.id for r in thesis_rows]
         thesis_map = {r.id: r for r in thesis_rows}
 
-        # --- Query 2: snapshots for those theses ---
         snap_rows = (
             await self._session.execute(
                 select(
@@ -658,7 +643,6 @@ class DashboardService:
             )
         ).all()
 
-        # --- Pure-Python aggregation per thesis ---
         agg: dict[int, dict] = defaultdict(
             lambda: {"pnl_values": [], "last_snapshot_at": None}
         )
@@ -669,7 +653,6 @@ class DashboardService:
             if bucket["last_snapshot_at"] is None or s.snapshotted_at > bucket["last_snapshot_at"]:
                 bucket["last_snapshot_at"] = s.snapshotted_at
 
-        # --- Build result, preserve thesis ordering from query 1 ---
         result = []
         for thesis_id in thesis_ids:
             t = thesis_map[thesis_id]
@@ -707,7 +690,6 @@ class DashboardService:
     async def get_price_snapshots(self, user_id: str, thesis_id: int) -> dict[str, Any] | None:
         from src.thesis.models import Thesis, ThesisReview, ThesisSnapshot
 
-        # Use explicit SELECT to avoid lazy-load trap in async context
         thesis = (
             await self._session.execute(
                 select(Thesis).where(Thesis.id == thesis_id)
@@ -834,9 +816,6 @@ class DashboardService:
             ThesisReview,
         )
 
-        # Use row_number() instead of DISTINCT ON to guarantee deterministic
-        # latest-review-per-thesis selection (DISTINCT behavior is non-deterministic
-        # without a proper window function).
         latest_review_subq = (
             select(
                 ThesisReview.thesis_id,
@@ -926,6 +905,8 @@ class DashboardService:
                 if downside > 0:
                     risk_reward = upside / downside
 
+            tier_label, tier_icon = score_tier(r.score) if r.score is not None else (None, None)
+
             out.append(
                 ThesisSummaryRow(
                     id=r.id,
@@ -933,6 +914,9 @@ class DashboardService:
                     title=r.title,
                     status=str(r.status.value if hasattr(r.status, "value") else r.status),
                     score=r.score,
+                    score_tier=tier_label,
+                    score_tier_icon=tier_icon,
+                    score_breakdown=None,  # not loaded in list view — avoid N+1 ORM graph
                     entry_price=r.entry_price,
                     target_price=r.target_price,
                     stop_loss=r.stop_loss,
