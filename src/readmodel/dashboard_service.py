@@ -35,7 +35,7 @@ from src.readmodel.schemas import (
     ThesisSummaryRow,
     WatchlistSnapshotRow,
 )
-from src.thesis.scoring_service import ScoringService, score_tier
+from src.thesis.scoring_service import score_tier
 
 # Vietnam timezone offset (UTC+7)
 _VN_OFFSET = timedelta(hours=7)
@@ -249,21 +249,16 @@ class DashboardService:
 
         rows = (await self._session.execute(stmt)).all()
         result = []
-        scoring = ScoringService()
-        
         for r in rows:
             t = r.Thesis
-            score_value = t.score
-            if score_value is None:
-                score_value, _ = scoring.compute_with_breakdown(t)
-            tier_label, tier_icon = score_tier(score_value) if score_value is not None else (None, None)
+            tier_label, tier_icon = score_tier(t.score) if t.score is not None else (None, None)
             result.append(
                 {
                     "id": t.id,
                     "ticker": t.ticker,
                     "title": t.title,
                     "status": str(t.status.value),
-                    "score": score_value,
+                    "score": t.score,
                     "score_tier": tier_label,
                     "score_tier_icon": tier_icon,
                     "entry_price": t.entry_price,
