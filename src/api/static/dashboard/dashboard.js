@@ -459,7 +459,7 @@ el('thesisForm')?.addEventListener('submit', async e => {
       showToast('✅ Đã cập nhật thesis');
       thesisId = id;
     } else {
-      const created = await sendJson(`${thesisApiBase()}/`, 'POST', payload);
+      const created = await sendJson(`${thesisApiBase()}`, 'POST', payload);
       thesisId = created?.id ?? null;
       _selectedThesisId = thesisId;
       if (thesisId) {
