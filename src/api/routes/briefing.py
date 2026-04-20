@@ -39,6 +39,6 @@ async def get_eod_brief(
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Morning brief failed: {exc}",
+            detail=f"EOD brief failed: {exc}",
         ) from exc
     return BriefResponse.model_validate(brief.model_dump())
