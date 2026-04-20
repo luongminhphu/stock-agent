@@ -529,7 +529,7 @@ el('assumptionForm')?.addEventListener('submit', async e => {
   };
   try {
     if (assumId) {
-      await sendJson(`${thesisApiBase()}/${thesisId}/assumptions/${assumId}`, 'PUT', payload);
+      await sendJson(`${thesisApiBase()}/${thesisId}/assumptions/${assumId}`, 'PATCH', payload);
       showToast('✅ Đã cập nhật assumption');
     } else {
       await sendJson(`${thesisApiBase()}/${thesisId}/assumptions`, 'POST', payload);
@@ -590,7 +590,7 @@ el('catalystForm')?.addEventListener('submit', async e => {
   };
   try {
     if (catId) {
-      await sendJson(`${thesisApiBase()}/${thesisId}/catalysts/${catId}`, 'PUT', payload);
+      await sendJson(`${thesisApiBase()}/${thesisId}/catalysts/${catId}`, 'PATCH', payload);
       showToast('✅ Đã cập nhật catalyst');
     } else {
       await sendJson(`${thesisApiBase()}/${thesisId}/catalysts`, 'POST', payload);
