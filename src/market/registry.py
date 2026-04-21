@@ -64,6 +64,8 @@ _REGISTRY: dict[str, SymbolInfo] = {
     "SSI": SymbolInfo("SSI", "SSI Securities", Exchange.HOSE, Sector.FINANCIALS),
     "VND": SymbolInfo("VND", "VNDIRECT", Exchange.HOSE, Sector.FINANCIALS),
     "HDB": SymbolInfo("HDB", "HDBank", Exchange.HOSE, Sector.BANKING),
+    "TCX": SymbolInfo("TCX", "TCBS (Techcom Securities)", Exchange.HOSE, Sector.FINANCIALS),
+    "DGC":  SymbolInfo("DGC",  "Duc Giang Chemicals", Exchange.HOSE, Sector.MATERIALS),
     # HNX
     "SHB": SymbolInfo("SHB", "SHB Bank", Exchange.HNX, Sector.BANKING),
     "NVB": SymbolInfo("NVB", "NVB Bank", Exchange.HNX, Sector.BANKING),
