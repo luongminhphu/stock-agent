@@ -9,8 +9,9 @@ Flow:
     2. Optionally fetch current price (injected, not fetched internally)
     3. Call ThesisReviewAgent.review() → ThesisReviewOutput
     4. Persist ThesisReview ORM record
-    5. Reload thesis (with new review) → recompute score → persist
-    6. Return ThesisReview
+    5. Persist ReviewRecommendation records (PENDING) từ AI output
+    6. Reload thesis (with new review) → recompute score → persist
+    7. Return ThesisReview
 """
 
 from __future__ import annotations
@@ -26,6 +27,8 @@ from src.platform.logging import get_logger
 from src.thesis.models import (
     AssumptionStatus,
     CatalystStatus,
+    RecommendationStatus,
+    ReviewRecommendation,
     ReviewVerdict,
     Thesis,
     ThesisReview,
@@ -110,20 +113,20 @@ class ReviewService:
                     error=str(exc),
                 )
 
-        # Build context lists
-        assumptions = [
-            a.description for a in thesis.assumptions if a.status != AssumptionStatus.INVALID
+        # Build context lists — truyền đủ id + description để AI có thể
+        # populate AssumptionRecommendation.target_id chính xác.
+        assumptions_ctx = [
+            {"id": a.id, "description": a.description}
+            for a in thesis.assumptions
+            if a.status != AssumptionStatus.INVALID
         ]
-
-        # Tách rõ PENDING (sắp tới) vs TRIGGERED (đã kích hoạt).
-        # EXPIRED/CANCELLED bị loại — không còn relevance với AI review.
-        pending_catalysts = [
-            c.description
+        pending_catalysts_ctx = [
+            {"id": c.id, "description": c.description}
             for c in thesis.catalysts
             if c.status == CatalystStatus.PENDING
         ]
-        triggered_catalysts = [
-            c.description
+        triggered_catalysts_ctx = [
+            {"id": c.id, "description": c.description}
             for c in thesis.catalysts
             if c.status == CatalystStatus.TRIGGERED
         ]
@@ -132,18 +135,21 @@ class ReviewService:
             "review_service.calling_agent",
             thesis_id=thesis_id,
             ticker=thesis.ticker,
-            assumptions_count=len(assumptions),
-            pending_catalysts_count=len(pending_catalysts),
-            triggered_catalysts_count=len(triggered_catalysts),
+            assumptions_count=len(assumptions_ctx),
+            pending_catalysts_count=len(pending_catalysts_ctx),
+            triggered_catalysts_count=len(triggered_catalysts_ctx),
         )
 
         output: ThesisReviewOutput = await self._agent.review(
             ticker=thesis.ticker,
             thesis_title=thesis.title,
             thesis_summary=thesis.summary or "",
-            assumptions=assumptions,
-            catalysts=pending_catalysts,
-            triggered_catalysts=triggered_catalysts,
+            assumptions=[a["description"] for a in assumptions_ctx],
+            assumptions_with_ids=assumptions_ctx,
+            catalysts=[c["description"] for c in pending_catalysts_ctx],
+            catalysts_with_ids=pending_catalysts_ctx,
+            triggered_catalysts=[c["description"] for c in triggered_catalysts_ctx],
+            triggered_catalysts_with_ids=triggered_catalysts_ctx,
             current_price=current_price,
             entry_price=thesis.entry_price,
             target_price=thesis.target_price,
@@ -155,6 +161,10 @@ class ReviewService:
             thesis_id=thesis_id,
             verdict=review.verdict,
             confidence=review.confidence,
+            recommendation_count=(
+                len(output.assumption_recommendations)
+                + len(output.catalyst_recommendations)
+            ),
         )
         return review
 
@@ -170,6 +180,20 @@ class ReviewService:
             raise ThesisNotFoundError(f"Thesis {thesis_id} not found for user {user_id}")
         return await self._repo.list_reviews_by_thesis(thesis_id, limit=limit)
 
+    async def list_pending_recommendations(
+        self,
+        thesis_id: int,
+        user_id: str,
+    ) -> list[ReviewRecommendation]:
+        """Trả danh sách recommendations PENDING cho một thesis.
+
+        Bot/API gọi method này để hiển thị cho user xác nhận.
+        """
+        thesis = await self._repo.get_by_id(thesis_id)
+        if thesis is None or thesis.user_id != user_id:
+            raise ThesisNotFoundError(f"Thesis {thesis_id} not found for user {user_id}")
+        return await self._repo.list_pending_recommendations(thesis_id)
+
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
@@ -180,14 +204,15 @@ class ReviewService:
         output: ThesisReviewOutput,
         reviewed_price: float | None,
     ) -> ThesisReview:
-        """Map ThesisReviewOutput → ThesisReview ORM, save, then recompute score.
+        """Map ThesisReviewOutput → ThesisReview ORM, save, then persist
+        AI recommendations (PENDING) và recompute score.
 
         Score recompute flow:
             1. save_review (flush) → review gets a DB id.
-            2. Reload thesis via get_by_id → session-fresh object with the
-               new review already included in thesis.reviews (selectinload).
-            3. ScoringService.compute(thesis) → new_score.
-            4. Persist thesis.score only if it changed (avoids redundant flush).
+            2. _persist_recommendations → bulk insert ReviewRecommendation rows.
+            3. Reload thesis via get_by_id → session-fresh object.
+            4. ScoringService.compute(thesis) → new_score.
+            5. Persist thesis.score only if it changed.
 
         We reload instead of appending in-memory to avoid:
             - SQLAlchemy InvalidRequestError (appending a tracked object to a
@@ -206,9 +231,11 @@ class ReviewService:
         )
         await self._repo.save_review(review)
 
+        # Persist AI recommendations — trạng thái PENDING, chờ user xác nhận.
+        # Không tự apply bất kỳ status nào lên assumption/catalyst.
+        await self._persist_recommendations(review.id, output)
+
         # Reload thesis so thesis.reviews includes the new review just persisted.
-        # get_by_id uses selectinload for assumptions, catalysts, reviews —
-        # guarantees ScoringService sees the complete, up-to-date state.
         fresh_thesis = await self._repo.get_by_id(thesis.id)
         if fresh_thesis is not None:
             new_score = self._scoring.compute(fresh_thesis)
@@ -222,3 +249,50 @@ class ReviewService:
                 )
 
         return review
+
+    async def _persist_recommendations(
+        self,
+        review_id: int,
+        output: ThesisReviewOutput,
+    ) -> None:
+        """Bulk-insert ReviewRecommendation rows từ AI output.
+
+        Mỗi row có status=PENDING. Không raise nếu list rỗng.
+        target_id không được validate ở đây — caller (review_thesis) đã đảm bảo
+        chỉ truyền assumptions/catalysts thuộc đúng thesis.
+        """
+        recs: list[ReviewRecommendation] = []
+
+        for rec in output.assumption_recommendations:
+            recs.append(
+                ReviewRecommendation(
+                    review_id=review_id,
+                    target_type="assumption",
+                    target_id=rec.target_id,
+                    target_description=rec.description,
+                    recommended_status=rec.recommended_status,
+                    reason=rec.reason,
+                    status=RecommendationStatus.PENDING,
+                )
+            )
+
+        for rec in output.catalyst_recommendations:
+            recs.append(
+                ReviewRecommendation(
+                    review_id=review_id,
+                    target_type="catalyst",
+                    target_id=rec.target_id,
+                    target_description=rec.description,
+                    recommended_status=rec.recommended_status,
+                    reason=rec.reason,
+                    status=RecommendationStatus.PENDING,
+                )
+            )
+
+        if recs:
+            await self._repo.save_recommendations(recs)
+            logger.info(
+                "review_service.recommendations_persisted",
+                review_id=review_id,
+                count=len(recs),
+            )
