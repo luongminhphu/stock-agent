@@ -23,7 +23,7 @@ case "$CMD" in
 
   migrate)
     echo "[entrypoint] Running Alembic migrations..."
-    exec alembic upgrade head
+    exec alembic upgrade heads
     ;;
 
   shell)
