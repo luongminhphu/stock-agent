@@ -26,6 +26,7 @@ from src.thesis.models import (
 )
 from src.thesis.repository import ThesisRepository
 from src.thesis.scoring_service import ScoringService
+from src.thesis.invalidation_service import InvalidationService
 from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
@@ -314,6 +315,34 @@ class ThesisService:
             await self._repo.save(thesis)
             logger.info("thesis.score_recomputed", thesis_id=thesis_id, score=new_score)
 
+    async def _auto_invalidate_if_needed(self, thesis_id: int) -> None:
+        """Sau khi score recompute, kiểm tra invalidation conditions.
+    
+        Nếu InvalidationService.check() trả should_invalidate=True
+        → tự chuyển thesis sang INVALIDATED trong cùng transaction.
+        Không raise — failure ở đây không nên block caller.
+        """
+        thesis = await self._repo.get_by_id(thesis_id)
+        if thesis is None:
+            return
+        if thesis.status != ThesisStatus.ACTIVE:
+            return  # chỉ check thesis đang active
+    
+        current_score = thesis.score or 0.0
+        result = InvalidationService().check(thesis, current_score)
+    
+        if result.should_invalidate:
+            thesis.status = ThesisStatus.INVALIDATED
+            thesis.closed_at = datetime.now(timezone.utc)
+            await self._repo.save(thesis)
+            logger.warning(
+                "thesis.auto_invalidated",
+                thesis_id=thesis_id,
+                reason=result.reason,
+                invalid_assumptions=result.invalid_assumptions,
+                score=result.score,
+            )
+    
     # ------------------------------------------------------------------
     # Assumption CRUD
     # ------------------------------------------------------------------
@@ -358,6 +387,7 @@ class ThesisService:
         await self._repo.save_assumption(assumption)
         logger.info("assumption.updated", assumption_id=assumption_id)
         await self._recompute_score(thesis_id)
+        await self._auto_invalidate_if_needed(thesis_id)  # Wave 3
         return assumption
 
     async def delete_assumption(
