@@ -9,11 +9,11 @@ then returns structured scan result for bot/api adapters.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.watchlist.models import Alert, AlertStatus
+from src.watchlist.models import Alert, AlertStatus, WatchlistScan
 from src.watchlist.repository import WatchlistRepository
 from src.platform.logging import get_logger
 
@@ -72,6 +72,17 @@ class ScanResult:
             alerts.extend(signal.triggered_alerts)
         return alerts
 
+    def build_summary(self) -> str:
+        """Build a human-readable summary string for persisting to WatchlistScan."""
+        if not self.signals:
+            return "Không có tín hiệu đáng chú ý."
+        parts = []
+        for s in self.signals:
+            parts.append(f"{s.ticker}: {s.description} ({s.change_pct:+.1f}%)")
+        if self.errors:
+            parts.append(f"Lỗi fetch: {', '.join(self.errors.keys())}")
+        return "; ".join(parts)
+
 
 class ScanService:
     """Scan all watchlist tickers and evaluate alert conditions."""
@@ -81,6 +92,7 @@ class ScanService:
         session: AsyncSession,
         quote_service: object | None = None,
     ) -> None:
+        self._session = session
         self._repo = WatchlistRepository(session)
         self._quote_service = quote_service
 
@@ -90,7 +102,7 @@ class ScanService:
 
         items = await self._repo.list_for_user(user_id)
         tickers = sorted({i.ticker for i in items})
-        result = ScanResult(scanned_at=datetime.utcnow())
+        result = ScanResult(scanned_at=datetime.now(timezone.utc))
 
         for ticker in tickers:
             try:
@@ -107,6 +119,8 @@ class ScanService:
             scanned=len(tickers),
             triggered=result.triggered_count,
         )
+
+        await self._persist_snapshot(user_id, result)
         return result
 
     async def scan_for_user(self, user_id: str) -> ScanResult:
@@ -137,6 +151,25 @@ class ScanService:
                 alert.mark_triggered()
 
         return signal
+
+    async def _persist_snapshot(self, user_id: str, result: ScanResult) -> None:
+        """Persist a WatchlistScan snapshot so the dashboard can display it.
+
+        Failures are logged and swallowed — a DB error must never block
+        scan result delivery to the caller.
+        """
+        try:
+            snapshot = WatchlistScan(
+                user_id=user_id,
+                summary=result.build_summary(),
+                scanned_at=result.scanned_at,
+            )
+            self._session.add(snapshot)
+            await self._session.commit()
+            logger.info("scan.snapshot_saved", user_id=user_id, snapshot_id=snapshot.id)
+        except Exception as exc:
+            logger.error("scan.snapshot_save_failed", user_id=user_id, error=str(exc))
+            await self._session.rollback()
 
 
 class ScanServiceNotConfiguredError(Exception):
