@@ -100,12 +100,16 @@ class BriefingAgent:
 
         try:
             response = await self._client.chat_completion(
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt},
-                ],
+                messages=[...],
                 temperature=0.3,
-                response_format={"type": "json_object"},
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "BriefOutput",
+                        "schema": BriefOutput.model_json_schema(),
+                        "strict": True,
+                    },
+                },
             )
             raw_text = self._client.extract_text(response)
             data = json.loads(raw_text)
