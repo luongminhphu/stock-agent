@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from src.platform.db import Base  # noqa: F401 — registers Base.metadata
 import src.thesis.models  # noqa: F401
 import src.watchlist.models  # noqa: F401
+import src.briefing.models
 
 from src.platform.config import settings
 
