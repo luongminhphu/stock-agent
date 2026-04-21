@@ -21,6 +21,7 @@ _thesis_review_agent: object | None = None
 _thesis_suggest_agent: object | None = None
 _briefing_agent: object | None = None
 _snapshot_scheduler: object | None = None
+_why_agent: object | None = None
 
 
 async def bootstrap() -> None:
@@ -28,7 +29,7 @@ async def bootstrap() -> None:
     configure_logging()
 
     global _quote_service, _perplexity_client, _thesis_review_agent
-    global _thesis_suggest_agent, _briefing_agent, _snapshot_scheduler
+    global _thesis_suggest_agent, _briefing_agent, _snapshot_scheduler, _why_agent
 
     if _quote_service is None:
         from src.market.adapters.factory import build_adapter
@@ -62,19 +63,26 @@ async def bootstrap() -> None:
         _briefing_agent = BriefingAgent(client=_perplexity_client)  # type: ignore[arg-type]
         logger.info("platform.bootstrap.briefing_agent_ready")
 
+    if _why_agent is None:
+        from src.ai.agents.why import WhyAgent
+    
+        _why_agent = WhyAgent(client=_perplexity_client)  # type: ignore[arg-type]
+        logger.info("platform.bootstrap.why_agent_ready")
+
     logger.info("platform.bootstrap.ok")
 
 
 def reset_singletons() -> None:
     """Reset all singletons — for use in tests only."""
     global _quote_service, _perplexity_client, _thesis_review_agent
-    global _thesis_suggest_agent, _briefing_agent, _snapshot_scheduler
+    global _thesis_suggest_agent, _briefing_agent, _snapshot_scheduler, _why_agent
     _quote_service = None
     _perplexity_client = None
     _thesis_review_agent = None
     _thesis_suggest_agent = None
     _briefing_agent = None
     _snapshot_scheduler = None
+    _why_agent = None
 
 
 def get_quote_service() -> object:
@@ -106,6 +114,10 @@ def get_briefing_agent() -> object:
         raise RuntimeError("BriefingAgent not initialised — call bootstrap() first.")
     return _briefing_agent
 
+def get_why_agent() -> object:
+    if _why_agent is None:
+        raise RuntimeError("WhyAgent not initialised — call bootstrap() first.")
+    return _why_agent
 
 def get_snapshot_scheduler() -> object:
     """Returns the SnapshotScheduler singleton (market segment).
