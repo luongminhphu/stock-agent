@@ -31,6 +31,8 @@ from src.platform.db import Base
 # Enums
 # ---------------------------------------------------------------------------
 
+_values = lambda x: [e.value for e in x]  # noqa: E731
+
 
 class AlertConditionType(str, enum.Enum):
     PRICE_ABOVE = "price_above"
@@ -106,12 +108,24 @@ class Alert(Base):
         Integer, ForeignKey("watchlist_items.id", ondelete="CASCADE"), index=True
     )
     condition_type: Mapped[AlertConditionType] = mapped_column(
-        SAEnum(AlertConditionType, values_callable=lambda x: [e.value for e in x]),
+        SAEnum(
+            AlertConditionType,
+            name="alertconditiontype",
+            create_constraint=False,
+            values_callable=_values,
+        ),
         nullable=False,
     )
     threshold: Mapped[float] = mapped_column(Float, nullable=False)
     status: Mapped[AlertStatus] = mapped_column(
-        SAEnum(AlertStatus), nullable=False, default=AlertStatus.ACTIVE
+        SAEnum(
+            AlertStatus,
+            name="alertstatus",
+            create_constraint=False,
+            values_callable=_values,
+        ),
+        nullable=False,
+        default=AlertStatus.ACTIVE,
     )
     triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     triggered_price: Mapped[float | None] = mapped_column(Float)
@@ -128,10 +142,6 @@ class Alert(Base):
             f"condition={self.condition_type} threshold={self.threshold} "
             f"status={self.status}>"
         )
-
-    # ------------------------------------------------------------------
-    # Domain helpers
-    # ------------------------------------------------------------------
 
     def is_triggered_by(
         self,
@@ -179,7 +189,14 @@ class Reminder(Base):
         Integer, ForeignKey("watchlist_items.id", ondelete="CASCADE"), nullable=False
     )
     frequency: Mapped[ReminderFrequency] = mapped_column(
-        SAEnum(ReminderFrequency), nullable=False, default=ReminderFrequency.ON_SIGNAL
+        SAEnum(
+            ReminderFrequency,
+            name="reminderfrequency",
+            create_constraint=False,
+            values_callable=_values,
+        ),
+        nullable=False,
+        default=ReminderFrequency.ON_SIGNAL,
     )
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
