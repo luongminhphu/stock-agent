@@ -451,3 +451,32 @@ class ThesisService:
             raise ThesisAlreadyClosedError(
                 f"Thesis {thesis.id} is already {thesis.status} and cannot be modified."
             )
+
+
+    async def apply_recommendation(
+        self,
+        thesis_id: int,
+        recommendation_id: int,
+        user_id: str,
+        accept: bool,  # True = apply, False = reject
+    ) -> None:
+        await self._get_owned(thesis_id, user_id)
+        rec = await self._repo.get_recommendation_by_id(recommendation_id)
+        if rec is None:
+            raise ValueError(f"Recommendation {recommendation_id} not found")
+    
+        if not accept:
+            rec.status = RecommendationStatus.REJECTED
+            await self._repo.save_recommendation(rec)
+            return
+    
+        # Apply status change
+        if rec.target_type == "assumption":
+            inp = UpdateAssumptionInput(status=AssumptionStatus(rec.recommended_status))
+            await self.update_assumption(thesis_id, rec.target_id, user_id, inp)
+        elif rec.target_type == "catalyst":
+            inp = UpdateCatalystInput(status=CatalystStatus(rec.recommended_status))
+            await self.update_catalyst(thesis_id, rec.target_id, user_id, inp)
+    
+        rec.status = RecommendationStatus.ACCEPTED
+        await self._repo.save_recommendation(rec)
