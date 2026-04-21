@@ -99,6 +99,8 @@ class WatchlistService:
         return item
 
     async def create_alert(self, inp: CreateAlertInput) -> Alert:
+        if isinstance(inp.condition_type, str):
+            inp.condition_type = AlertConditionType(inp.condition_type.lower())
         if inp.watchlist_item_id is None:
             item = await self._repo.get_item(inp.user_id, inp.ticker)
             if item is None:
