@@ -95,7 +95,7 @@ class BriefingService:
         if self._repo is None:
             return
         try:
-            content = getattr(output, "narrative", None) or str(output)
+            content = output.summary or str(output)
             snapshot = BriefSnapshot(
                 user_id=user_id,
                 phase=phase,
