@@ -43,8 +43,8 @@ _HEADERS = {
     "Origin": "https://trading.vietcap.com.vn",
     "Referer": "https://trading.vietcap.com.vn/",
 }
-_TIMEOUT = 10.0  # seconds
-_BULK_CHUNK_SIZE = 50  # VCI handles ~50 symbols per request comfortably
+_TIMEOUT = 10.0
+_BULK_CHUNK_SIZE = 50
 
 
 class VCIAdapter(MarketDataAdapter):
@@ -119,15 +119,22 @@ def _parse_item(item: dict[str, Any]) -> Quote:
     match = item["matchPrice"]
 
     ticker = listing["symbol"]
-    price = float(match.get("matchPrice") or match.get("refPrice") or listing["refPrice"])
+    ref_price = float(listing["refPrice"])
+    price = float(match.get("matchPrice") or match.get("refPrice") or ref_price)
     change = float(match.get("priceChange") or 0)
-    change_pct = float(match.get("priceChangePercent") or 0)
+
+    # Fix: không dùng `or 0` vì 0.0 là falsy — tính lại từ change/ref_price khi thiếu
+    change_pct_raw = match.get("priceChangePercent")
+    if change_pct_raw is None:
+        change_pct = (change / ref_price * 100) if ref_price else 0.0
+    else:
+        change_pct = float(change_pct_raw)
+
     volume = int(match.get("matchVolume") or 0)
     value = float(match.get("matchValue") or 0)
     open_ = float(match.get("open") or listing.get("refPrice", price))
     high = float(match.get("highest") or price)
     low = float(match.get("lowest") or price)
-    ref_price = float(listing["refPrice"])
     ceiling = float(listing["ceiling"])
     floor_ = float(listing["floor"])
 
