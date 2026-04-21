@@ -454,7 +454,6 @@ class ThesisService:
                 f"Thesis {thesis.id} is already {thesis.status} and cannot be modified."
             )
 
-
     async def apply_recommendation(
         self,
         thesis_id: int,
@@ -473,6 +472,11 @@ class ThesisService:
         if rec is None:
             raise ValueError(f"Recommendation {recommendation_id} not found")
 
+        if rec.review.thesis_id != thesis_id:
+            raise ValueError(
+                f"Recommendation {recommendation_id} does not belong to thesis {thesis_id}"
+            )
+        
         now = datetime.now(timezone.utc)
 
         if not accept:
