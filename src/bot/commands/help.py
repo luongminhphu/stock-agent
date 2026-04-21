@@ -135,6 +135,22 @@ HELP_DATA: dict[str, GroupEntry] = {
             },
         ],
     },
+    "analysis": {
+        "label": "Analysis · Phân tích biến động",
+        "emoji": "🔍",
+        "colour": 0xE8534A,
+        "intro": "AI phân tích nguyên nhân tăng/giảm đột biến của một mã cổ phiếu.",
+        "commands": [
+            {
+                "usage": "/why <ticker>",
+                "description": (
+                    "Giải thích nguyên nhân tăng/giảm đột biến: "
+                    "nguyên nhân kỹ thuật, cơ bản, macro context, risk flags và độ tin cậy phân tích."
+                ),
+                "example": "/why HPG",
+            },
+        ],
+    },
 }
 
 _OVERVIEW_COLOUR = 0x4F8EF7
