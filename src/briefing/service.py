@@ -27,6 +27,7 @@ from src.briefing.models import BriefSnapshot
 from src.briefing.repository import BriefSnapshotRepository
 from src.platform.logging import get_logger
 from src.watchlist.service import WatchlistService
+from src.market.registry import registry as symbol_registry
 
 logger = get_logger(__name__)
 
@@ -125,28 +126,35 @@ class BriefingService:
         now = datetime.now().strftime("%H:%M %d/%m/%Y")
         if not tickers:
             return (
-                f"Th\u1eddi \u0111i\u1ec3m: {now}. Kh\u00f4ng c\u00f3 m\u00e3 n\u00e0o trong watchlist. "
-                f"H\u00e3y vi\u1ebft {phase} brief \u1edf m\u1ee9c th\u1ecb tr\u01b0\u1eddng chung, nh\u1ea5n m\u1ea1nh qu\u1ea3n tr\u1ecb r\u1ee7i ro."
+                f"Thời điểm: {now}. Không có mã nào trong watchlist. "
+                f"Hãy viết {phase} brief ở mức thị trường chung, nhấn mạnh quản trị rủi ro."
             )
-
+    
         try:
             quotes = await self._quote_service.get_bulk_quotes(tickers)  # type: ignore[attr-defined]
         except Exception as exc:
             logger.warning("briefing.quote_fetch_failed", tickers=tickers, error=str(exc))
             return (
-                f"Th\u1eddi \u0111i\u1ec3m: {now}. Kh\u00f4ng l\u1ea5y \u0111\u01b0\u1ee3c quote cho watchlist {', '.join(tickers)}. "
-                f"H\u00e3y vi\u1ebft {phase} brief th\u1eadn tr\u1ecdng, n\u00eau r\u00f5 thi\u1ebfu d\u1eef li\u1ec7u gi\u00e1 realtime."
+                f"Thời điểm: {now}. Không lấy được quote cho watchlist {', '.join(tickers)}. "
+                f"Hãy viết {phase} brief thận trọng, nêu rõ thiếu dữ liệu giá realtime."
             )
-
-        lines = [f"Th\u1eddi \u0111i\u1ec3m: {now}. Pha: {phase}.", "Watchlist snapshot:"]
+    
+        lines = [f"Thời điểm: {now}. Pha: {phase}.", "Watchlist snapshot:"]
         for q in quotes:
+            # Inject tên công ty + sector từ registry — fallback silent nếu không có
+            try:
+                info = symbol_registry.resolve(q.ticker)
+                meta = f" | {info.name} | Ngành: {info.sector}"
+            except Exception:
+                meta = ""
+    
             volume = getattr(q, "volume", None)
             volume_text = f", volume={volume:,}" if volume is not None else ""
             lines.append(
-                f"- {q.ticker}: gi\u00e1={q.price:,.0f}, change={q.change:,.0f}, "
+                f"- {q.ticker}{meta}: giá={q.price:,.0f}, change={q.change:,.0f}, "
                 f"change_pct={q.change_pct:.2f}%{volume_text}"
             )
         lines.append(
-            "T\u1eadp trung v\u00e0o m\u00e3 bi\u1ebfn \u0111\u1ed9ng m\u1ea1nh, t\u00edn hi\u1ec7u risk-on/risk-off, v\u00e0 watchlist-specific alerts."
+            "Tập trung vào mã biến động mạnh, tín hiệu risk-on/risk-off, và watchlist-specific alerts."
         )
         return "\n".join(lines)
