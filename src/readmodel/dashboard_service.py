@@ -2,7 +2,7 @@
 
 Owner: readmodel segment.
 
-Endpoints served (via src/api/routes/dashboard.py):
+Endpoints served (via src/api/routes/readmodel.py):
     get_stats()                  — KPI tong quan (open theses, verdict dist, risky count)
     get_theses_list()            — list thesis + last review + health score
     get_thesis_detail()          — full detail + assumption history + score series
@@ -30,12 +30,15 @@ from typing import Any
 from sqlalchemy import Integer, and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.platform.logging import get_logger
 from src.readmodel.schemas import (
     DashboardResponse,
     ThesisSummaryRow,
     WatchlistSnapshotRow,
 )
 from src.thesis.scoring_service import score_tier
+
+logger = get_logger(__name__)
 
 # Vietnam timezone offset (UTC+7)
 _VN_OFFSET = timedelta(hours=7)
@@ -297,18 +300,26 @@ class DashboardService:
         if thesis is None or thesis.user_id != user_id:
             return None
 
+        # FIX(Wave 5a): SELECT explicit columns only — avoids triggering the
+        # selectin `recommendations` relationship on ThesisReview, which would
+        # fire 1 extra query per review row (N+1).
         reviews_rows = (
-            (
-                await self._session.execute(
-                    select(ThesisReview)
-                    .where(ThesisReview.thesis_id == thesis_id)
-                    .order_by(ThesisReview.reviewed_at.desc())
-                    .limit(20)
+            await self._session.execute(
+                select(
+                    ThesisReview.id,
+                    ThesisReview.verdict,
+                    ThesisReview.confidence,
+                    ThesisReview.reasoning,
+                    ThesisReview.risk_signals,
+                    ThesisReview.next_watch_items,
+                    ThesisReview.reviewed_at,
+                    ThesisReview.reviewed_price,
                 )
+                .where(ThesisReview.thesis_id == thesis_id)
+                .order_by(ThesisReview.reviewed_at.desc())
+                .limit(20)
             )
-            .scalars()
-            .all()
-        )
+        ).all()
 
         assumptions_rows = (
             (
@@ -334,10 +345,10 @@ class DashboardService:
             .all()
         )
 
-        def _review_dict(r: ThesisReview) -> dict:
+        def _review_dict(r: Any) -> dict:
             return {
                 "id": r.id,
-                "verdict": str(r.verdict.value),
+                "verdict": str(r.verdict.value) if hasattr(r.verdict, "value") else str(r.verdict),
                 "confidence": r.confidence,
                 "reasoning": r.reasoning,
                 "risk_signals": _parse_json_field(r.risk_signals),
@@ -383,7 +394,7 @@ class DashboardService:
                 "stop_loss": thesis.stop_loss,
                 "created_at": thesis.created_at.isoformat() if thesis.created_at else None,
                 "updated_at": thesis.updated_at.isoformat() if thesis.updated_at else None,
-                "last_verdict": str(last_review.verdict.value) if last_review else None,
+                "last_verdict": str(last_review.verdict.value if hasattr(last_review.verdict, "value") else last_review.verdict) if last_review else None,
                 "last_confidence": last_review.confidence if last_review else None,
                 "n_assumptions": len(assumptions_rows),
                 "n_catalysts": len(catalysts_rows),
@@ -447,9 +458,15 @@ class DashboardService:
     # ------------------------------------------------------------------
 
     async def get_scan_latest(self, user_id: str) -> dict[str, Any] | None:
+        # FIX(Wave 5a): catch specific exceptions — ImportError when watchlist
+        # models are not yet migrated, and log warnings instead of silent swallow.
         try:
             from src.watchlist.models import WatchlistScan
+        except ImportError:
+            logger.warning("get_scan_latest.import_error", detail="WatchlistScan model not available")
+            return None
 
+        try:
             row = (
                 await self._session.execute(
                     select(WatchlistScan)
@@ -468,7 +485,8 @@ class DashboardService:
                 "summary": row.summary,
                 "scanned_at": row.scanned_at.isoformat() if row.scanned_at else None,
             }
-        except Exception:
+        except Exception as exc:
+            logger.warning("get_scan_latest.db_error", error=str(exc))
             return None
 
     # ------------------------------------------------------------------
@@ -476,9 +494,15 @@ class DashboardService:
     # ------------------------------------------------------------------
 
     async def get_brief_latest(self, user_id: str, phase: str = "morning") -> dict[str, Any] | None:
+        # FIX(Wave 5a): same pattern — split ImportError from runtime DB errors,
+        # log both instead of silently returning None.
         try:
             from src.briefing.models import BriefSnapshot
+        except ImportError:
+            logger.warning("get_brief_latest.import_error", detail="BriefSnapshot model not available")
+            return None
 
+        try:
             row = (
                 await self._session.execute(
                     select(BriefSnapshot)
@@ -501,7 +525,8 @@ class DashboardService:
                 "content": row.content,
                 "created_at": row.created_at.isoformat() if row.created_at else None,
             }
-        except Exception:
+        except Exception as exc:
+            logger.warning("get_brief_latest.db_error", error=str(exc))
             return None
 
     # ------------------------------------------------------------------
@@ -916,7 +941,7 @@ class DashboardService:
                     score=r.score,
                     score_tier=tier_label,
                     score_tier_icon=tier_icon,
-                    score_breakdown=None,  # not loaded in list view — avoid N+1 ORM graph
+                    score_breakdown=None,
                     entry_price=r.entry_price,
                     target_price=r.target_price,
                     stop_loss=r.stop_loss,
