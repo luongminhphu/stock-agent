@@ -79,20 +79,27 @@ class ScoringService:
         """
         breakdown: dict[str, float] = {}
 
-        # 1. Assumption health (40%)
+        # 1. Assumption health (40%) — chỉ tính evaluated, bỏ penalty *2
         if thesis.assumptions:
-            valid = sum(1 for a in thesis.assumptions if a.status == AssumptionStatus.VALID)
-            invalid = sum(1 for a in thesis.assumptions if a.status == AssumptionStatus.INVALID)
-            total_a = len(thesis.assumptions)
-            raw = max(0.0, (valid - invalid * 2) / total_a)
+            evaluated = [a for a in thesis.assumptions
+                         if a.status != AssumptionStatus.PENDING]
+            if evaluated:
+                valid = sum(1 for a in evaluated if a.status == AssumptionStatus.VALID)
+                invalid = sum(1 for a in evaluated if a.status == AssumptionStatus.INVALID)
+                raw = max(0.0, (valid - invalid) / len(evaluated))
+            else:
+                raw = 0.5  # chưa evaluate → neutral
             breakdown["assumption_health"] = round(raw * _WEIGHTS["assumption_health"] * 100, 2)
         else:
             breakdown["assumption_health"] = round(50 * _WEIGHTS["assumption_health"], 2)
 
-        # 2. Catalyst progress (30%)
+        # 2. Catalyst progress (30%) — PENDING = neutral, MISSED = trừ điểm
         if thesis.catalysts:
+            n = len(thesis.catalysts)
             triggered = sum(1 for c in thesis.catalysts if c.status == CatalystStatus.TRIGGERED)
-            raw = triggered / len(thesis.catalysts)
+            missed = sum(1 for c in thesis.catalysts if c.status == CatalystStatus.MISSED)
+            pending = n - triggered - missed
+            raw = max(0.0, (triggered * 1.0 + pending * 0.5 - missed * 0.5) / n)
             breakdown["catalyst_progress"] = round(raw * _WEIGHTS["catalyst_progress"] * 100, 2)
         else:
             breakdown["catalyst_progress"] = round(50 * _WEIGHTS["catalyst_progress"], 2)
