@@ -34,22 +34,34 @@ def create_bot() -> commands.Bot:
         await _register_cogs(bot)
         _start_briefing_scheduler(bot)
         _start_snapshot_scheduler()
-    
-        # Guild sync = instant. Global sync = ~1 giờ.
-        if settings.discord_guild_id:
-            guild = discord.Object(id=int(settings.discord_guild_id))
-            bot.tree.copy_global_to(guild=guild)
-            await bot.tree.sync(guild=guild)
-            logger.info("bot.tree.synced", mode="guild", guild_id=settings.discord_guild_id)
-        else:
-            await bot.tree.sync()
-            logger.info("bot.tree.synced", mode="global")
+        await _sync_tree(bot)
+        logger.info(
+            "bot.ready",
+            user=str(bot.user),
+            guild_count=len(bot.guilds),
+        )
 
     @bot.event
     async def on_error(event: str, *args: object, **kwargs: object) -> None:
         logger.error("bot.event_error", event=event)
 
     return bot
+
+
+async def _sync_tree(bot: commands.Bot) -> None:
+    """Sync slash commands.
+
+    Guild sync = instant (dùng khi DISCORD_GUILD_ID được set).
+    Global sync = ~1 giờ để Discord propagate (fallback khi không có guild ID).
+    """
+    if settings.discord_guild_id:
+        guild = discord.Object(id=int(settings.discord_guild_id))
+        bot.tree.copy_global_to(guild=guild)
+        await bot.tree.sync(guild=guild)
+        logger.info("bot.tree.synced", mode="guild", guild_id=settings.discord_guild_id)
+    else:
+        await bot.tree.sync()
+        logger.info("bot.tree.synced", mode="global")
 
 
 async def _register_cogs(bot: commands.Bot) -> None:

@@ -20,7 +20,8 @@ class Settings(BaseSettings):
 
     # Discord bot
     discord_token: str = ""
-    discord_guild_id: str = ""
+    discord_guild_id: str = ""  # Set để sync slash commands tức thì (guild-specific)
+                                # Bỏ trống = global sync (~1 giờ)
 
     # Owner User ID
     owner_user_id: str = ""
@@ -68,6 +69,7 @@ class Settings(BaseSettings):
     def is_single_user(self) -> bool:
         """True khi app chạy single-owner mode (no multi-user auth)."""
         return bool(self.owner_user_id)
+
 
 # Singleton — imported directly by most modules
 settings = Settings()
