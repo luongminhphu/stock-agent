@@ -62,6 +62,17 @@ def format_brief(brief: BriefOutput, brief_type: str = "brief") -> str:
         for item in brief.action_items:
             lines.append(f"\u2022 {item}")
 
+    if brief.ticker_summaries:
+        lines += ["", "**📊 Watchlist Summary**"]
+        for ts in brief.ticker_summaries:
+            signal_emoji = {"bullish": "🟢", "bearish": "🔴", "neutral": "🟡"}.get(ts.signal, "⚪")
+            pct = f"+{ts.change_pct:.2f}%" if ts.change_pct >= 0 else f"{ts.change_pct:.2f}%"
+            lines.append(
+                f"{signal_emoji} **{ts.ticker}** `{ts.price:,.0f}` ({pct}) — {ts.one_line}"
+            )
+            if ts.watch_reason:
+                lines.append(f"  ↳ _{ts.watch_reason}_")
+
     return "\n".join(lines)
 
 
