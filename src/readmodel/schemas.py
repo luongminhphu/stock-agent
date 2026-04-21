@@ -56,15 +56,20 @@ class ThesisSummaryRow(BaseModel):
     stop_loss: float | None
     upside_pct: float | None
     risk_reward: float | None
-    current_price: float | None  # injected from market segment
-    pnl_pct: float | None  # (current - entry) / entry * 100
-    last_verdict: str | None  # latest ThesisReview.verdict
+    current_price: float | None
+    pnl_pct: float | None
+    last_verdict: str | None
     last_reviewed_at: datetime | None
     created_at: datetime
     assumption_count: int
     invalid_assumption_count: int
     catalyst_count: int
     triggered_catalyst_count: int
+    change: float | None = None       # thay đổi tuyệt đối so với hôm qua (VND)
+    change_pct: float | None = None   # thay đổi % so với ref_price
+    volume: int | None = None         # khối lượng khớp
+    is_ceiling: bool | None = None    # đang trần?
+    is_floor: bool | None = None      # đang sàn?
 
 
 class DashboardResponse(BaseModel):
