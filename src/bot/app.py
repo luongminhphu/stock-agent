@@ -34,12 +34,16 @@ def create_bot() -> commands.Bot:
         await _register_cogs(bot)
         _start_briefing_scheduler(bot)
         _start_snapshot_scheduler()
-        await bot.tree.sync()
-        logger.info(
-            "bot.ready",
-            user=str(bot.user),
-            guild_count=len(bot.guilds),
-        )
+    
+        # Guild sync = instant. Global sync = ~1 giờ.
+        if settings.discord_guild_id:
+            guild = discord.Object(id=int(settings.discord_guild_id))
+            bot.tree.copy_global_to(guild=guild)
+            await bot.tree.sync(guild=guild)
+            logger.info("bot.tree.synced", mode="guild", guild_id=settings.discord_guild_id)
+        else:
+            await bot.tree.sync()
+            logger.info("bot.tree.synced", mode="global")
 
     @bot.event
     async def on_error(event: str, *args: object, **kwargs: object) -> None:
