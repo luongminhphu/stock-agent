@@ -19,6 +19,8 @@ from src.thesis.models import (
     AssumptionStatus,
     Catalyst,
     CatalystStatus,
+    RecommendationStatus,
+    ReviewRecommendation,
     Thesis,
     ThesisStatus,
 )
@@ -458,25 +460,47 @@ class ThesisService:
         thesis_id: int,
         recommendation_id: int,
         user_id: str,
-        accept: bool,  # True = apply, False = reject
+        accept: bool,
     ) -> None:
+        """Apply hoặc reject một AI recommendation.
+
+        - accept=True  → apply status change lên assumption/catalyst, mark ACCEPTED
+        - accept=False → mark REJECTED, không thay đổi gì khác
+        acted_at được set trong cả 2 nhánh để đảm bảo audit trail đầy đủ.
+        """
         await self._get_owned(thesis_id, user_id)
         rec = await self._repo.get_recommendation_by_id(recommendation_id)
         if rec is None:
             raise ValueError(f"Recommendation {recommendation_id} not found")
-    
+
+        now = datetime.now(timezone.utc)
+
         if not accept:
             rec.status = RecommendationStatus.REJECTED
+            rec.acted_at = now                          # 👈 fix bug 2
             await self._repo.save_recommendation(rec)
+            logger.info(
+                "recommendation.rejected",
+                recommendation_id=recommendation_id,
+                thesis_id=thesis_id,
+            )
             return
-    
-        # Apply status change
+
         if rec.target_type == "assumption":
             inp = UpdateAssumptionInput(status=AssumptionStatus(rec.recommended_status))
             await self.update_assumption(thesis_id, rec.target_id, user_id, inp)
         elif rec.target_type == "catalyst":
             inp = UpdateCatalystInput(status=CatalystStatus(rec.recommended_status))
             await self.update_catalyst(thesis_id, rec.target_id, user_id, inp)
-    
+
         rec.status = RecommendationStatus.ACCEPTED
+        rec.acted_at = now                              # 👈 fix bug 2
         await self._repo.save_recommendation(rec)
+        logger.info(
+            "recommendation.accepted",
+            recommendation_id=recommendation_id,
+            target_type=rec.target_type,
+            target_id=rec.target_id,
+            recommended_status=rec.recommended_status,
+            thesis_id=thesis_id,
+        )
