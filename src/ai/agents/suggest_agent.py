@@ -85,11 +85,28 @@ def _extract_json(text: str) -> str:
     return text
 
 
-def _escape_newlines_in_strings(text: str) -> str:
-    """Escape literal newlines/tabs bên trong JSON string values.
+def _pre_clean(text: str) -> str:
+    """Clean AI artifacts TRƯỚC json.loads() để tránh parse error.
 
-    sonar-pro đôi khi sinh ra newline thật thay vì \\n trong string,
-    làm JSON invalid. Scan từng char để track in/out-of-string context.
+    Handles:
+    - Citation markers: , ,  — sonar-pro inject vào giữa string[1]
+    - Trailing commas trước } hoặc ] — sonar thỉnh thoảng sinh ra
+    - Literal newlines bên trong JSON string values — gây JSONDecodeError
+    """
+    # Strip citations
+    text = re.sub(r"\[\d+\]", "", text)
+    # Trailing commas: ,\n} hoặc ,\n]
+    text = re.sub(r",\s*(\n\s*[}\]])", r"\1", text)
+    # Escape literal newlines inside string values
+    text = _escape_newlines_in_strings(text)
+    return text
+
+
+def _escape_newlines_in_strings(text: str) -> str:
+    """Escape literal newlines that appear inside JSON string values.
+
+    json.loads() rejects raw newline characters inside strings.
+    This replaces them with \\n so the JSON is valid.
     """
     result = []
     in_string = False
@@ -98,35 +115,23 @@ def _escape_newlines_in_strings(text: str) -> str:
         if escape_next:
             result.append(ch)
             escape_next = False
-        elif ch == '\\' and in_string:
+            continue
+        if ch == '\\':
             result.append(ch)
             escape_next = True
-        elif ch == '"':
+            continue
+        if ch == '"':
             in_string = not in_string
             result.append(ch)
-        elif in_string and ch == '\n':
+            continue
+        if in_string and ch == '\n':
             result.append('\\n')
-        elif in_string and ch == '\r':
+            continue
+        if in_string and ch == '\r':
             result.append('\\r')
-        elif in_string and ch == '\t':
-            result.append('\\t')
-        else:
-            result.append(ch)
+            continue
+        result.append(ch)
     return ''.join(result)
-
-
-def _pre_clean(text: str) -> str:
-    """Clean AI artifacts TRƯỚC json.loads() để tránh parse error.
-
-    Handles:
-    - Citation markers: , ,  — sonar-pro inject vào giữa string[1]
-    - Trailing commas trước } hoặc ] — sonar thỉnh thoảng sinh ra
-    - Literal newlines bên trong string values — sonar-pro không escape
-    """
-    text = re.sub(r"\[\d+\]", "", text)
-    text = re.sub(r",\s*(\n\s*[}\]])", r"\1", text)
-    text = _escape_newlines_in_strings(text)
-    return text
 
 
 def _strip_citations(text: str) -> str:
@@ -139,12 +144,7 @@ def _normalize_list(
     description_key: str = "description",
     extra_keys: list[str] | None = None,
 ) -> list[dict]:
-    """Coerce a list of strings OR dicts into a list of dicts.
-
-    sonar-pro sometimes returns assumptions/catalysts as plain strings
-    instead of {description, rationale} objects. This normalizer handles
-    both shapes so Pydantic validation never sees a bare string.
-    """
+    """Coerce a list of strings OR dicts into a list of dicts."""
     result = []
     for item in items:
         if isinstance(item, str):
@@ -164,14 +164,7 @@ def _normalize_list(
 
 
 def _normalize_data(data: dict, ticker: str) -> dict:
-    """Normalise raw AI JSON dict before Pydantic validation.
-
-    Handles:
-    - assumptions as list[str] → list[{description, rationale}]
-    - catalysts as list[str] → list[{description, expected_timeline, rationale}]
-    - citation markers stripped from all string fields
-    - ticker forced to uppercase
-    """
+    """Normalise raw AI JSON dict before Pydantic validation."""
     data["ticker"] = ticker
 
     if isinstance(data.get("assumptions"), list):
@@ -228,15 +221,17 @@ class ThesisSuggestAgent:
 
         logger.info("suggest_agent.start", ticker=ticker)
 
-        json_str = ""  # init trước try để tránh UnboundLocalError trong except
+        json_str = ""
         try:
-            async with self._client as client:
-                response = await self._client.chat_completion(
-                    messages=messages,
-                    temperature=0.2,
-                    max_tokens=2048,
-                )
-                raw_text = self._client.extract_text(response)
+            # Gọi trực tiếp — KHÔNG dùng `async with self._client`
+            # vì client là singleton được quản lý bởi bootstrap/shutdown.
+            # async with sẽ gọi aclose() và phá singleton sau request đầu tiên.
+            response = await self._client.chat_completion(
+                messages=messages,
+                temperature=0.2,
+                max_tokens=2048,
+            )
+            raw_text = self._client.extract_text(response)
 
             json_str = _extract_json(raw_text)
             json_str = _pre_clean(json_str)
