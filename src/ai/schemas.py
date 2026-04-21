@@ -92,7 +92,10 @@ class BriefOutput(BaseModel):
         description="Watchlist-specific observations",
     )
     action_items: list[str] = Field(default_factory=list, description="Suggested actions to review")
-
+    ticker_summaries: list[WatchlistTickerSummary] = Field(
+        default_factory=list,
+        description="Per-ticker summary for each watchlist item",
+    )
 
 # ---------------------------------------------------------------------------
 # Stock Analysis
