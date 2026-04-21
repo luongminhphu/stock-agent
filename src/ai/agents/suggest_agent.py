@@ -85,17 +85,47 @@ def _extract_json(text: str) -> str:
     return text
 
 
+def _escape_newlines_in_strings(text: str) -> str:
+    """Escape literal newlines/tabs bên trong JSON string values.
+
+    sonar-pro đôi khi sinh ra newline thật thay vì \\n trong string,
+    làm JSON invalid. Scan từng char để track in/out-of-string context.
+    """
+    result = []
+    in_string = False
+    escape_next = False
+    for ch in text:
+        if escape_next:
+            result.append(ch)
+            escape_next = False
+        elif ch == '\\' and in_string:
+            result.append(ch)
+            escape_next = True
+        elif ch == '"':
+            in_string = not in_string
+            result.append(ch)
+        elif in_string and ch == '\n':
+            result.append('\\n')
+        elif in_string and ch == '\r':
+            result.append('\\r')
+        elif in_string and ch == '\t':
+            result.append('\\t')
+        else:
+            result.append(ch)
+    return ''.join(result)
+
+
 def _pre_clean(text: str) -> str:
     """Clean AI artifacts TRƯỚC json.loads() để tránh parse error.
 
     Handles:
-    - Citation markers: [1], [2], [12] — sonar-pro inject vào giữa string
+    - Citation markers: , ,  — sonar-pro inject vào giữa string[1]
     - Trailing commas trước } hoặc ] — sonar thỉnh thoảng sinh ra
+    - Literal newlines bên trong string values — sonar-pro không escape
     """
-    # Strip citations
     text = re.sub(r"\[\d+\]", "", text)
-    # Trailing commas: ,\n} hoặc ,\n]
     text = re.sub(r",\s*(\n\s*[}\]])", r"\1", text)
+    text = _escape_newlines_in_strings(text)
     return text
 
 
@@ -125,13 +155,11 @@ def _normalize_list(
                     obj.setdefault(k, "")
             result.append(obj)
         elif isinstance(item, dict):
-            # Strip citations from all string values
             normalized = {
                 k: _strip_citations(v) if isinstance(v, str) else v
                 for k, v in item.items()
             }
             result.append(normalized)
-        # skip None / unexpected types
     return result
 
 
@@ -159,7 +187,6 @@ def _normalize_data(data: dict, ticker: str) -> dict:
             extra_keys=["expected_timeline"],
         )
 
-    # Strip citations from top-level string fields
     for field in ("thesis_title", "thesis_summary", "reasoning"):
         if isinstance(data.get(field), str):
             data[field] = _strip_citations(data[field])
@@ -201,6 +228,7 @@ class ThesisSuggestAgent:
 
         logger.info("suggest_agent.start", ticker=ticker)
 
+        json_str = ""  # init trước try để tránh UnboundLocalError trong except
         try:
             async with self._client as client:
                 response = await self._client.chat_completion(
@@ -211,13 +239,18 @@ class ThesisSuggestAgent:
                 raw_text = self._client.extract_text(response)
 
             json_str = _extract_json(raw_text)
-            json_str = _pre_clean(json_str) 
+            json_str = _pre_clean(json_str)
             data = json.loads(json_str)
             data = _normalize_data(data, ticker)
             result = ThesisSuggestionResult.model_validate(data)
 
         except (json.JSONDecodeError, ValidationError) as exc:
-            logger.error("suggest_agent.parse_error", ticker=ticker, error=str(exc), raw_json=json_str[:500])
+            logger.error(
+                "suggest_agent.parse_error",
+                ticker=ticker,
+                error=str(exc),
+                raw_json=json_str[:500],
+            )
             raise ValueError(
                 f"AI response for {ticker} could not be parsed: {exc}"
             ) from exc
