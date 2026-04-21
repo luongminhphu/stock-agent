@@ -16,20 +16,21 @@ from src.platform.logging import configure_logging, get_logger
 logger = get_logger(__name__)
 
 _quote_service: object | None = None
+_ohlcv_service: object | None = None
 _perplexity_client: object | None = None
 _thesis_review_agent: object | None = None
 _thesis_suggest_agent: object | None = None
 _briefing_agent: object | None = None
-_snapshot_scheduler: object | None = None
 _why_agent: object | None = None
+_snapshot_scheduler: object | None = None
 
 
 async def bootstrap() -> None:
     """Initialise all application singletons. Idempotent."""
     configure_logging()
 
-    global _quote_service, _perplexity_client, _thesis_review_agent
-    global _thesis_suggest_agent, _briefing_agent, _snapshot_scheduler, _why_agent
+    global _quote_service, _ohlcv_service, _perplexity_client, _thesis_review_agent
+    global _thesis_suggest_agent, _briefing_agent, _why_agent, _snapshot_scheduler
 
     if _quote_service is None:
         from src.market.adapters.factory import build_adapter
@@ -37,6 +38,14 @@ async def bootstrap() -> None:
 
         _quote_service = QuoteService(build_adapter())
         logger.info("platform.bootstrap.quote_service_ready")
+
+    if _ohlcv_service is None:
+        from src.market.ohlcv_service import OHLCVService
+
+        # Wave 1: no adapter yet — OHLCVService stubs will raise OHLCVServiceNotConfiguredError
+        # Wave 2: pass an OHLCVAdapter implementation here
+        _ohlcv_service = OHLCVService(adapter=None)
+        logger.info("platform.bootstrap.ohlcv_service_ready")
 
     if _perplexity_client is None:
         from src.ai.client import PerplexityClient
@@ -65,30 +74,51 @@ async def bootstrap() -> None:
 
     if _why_agent is None:
         from src.ai.agents.why import WhyAgent
-    
+
         _why_agent = WhyAgent(client=_perplexity_client)  # type: ignore[arg-type]
         logger.info("platform.bootstrap.why_agent_ready")
 
     logger.info("platform.bootstrap.ok")
 
 
+async def shutdown() -> None:
+    """Graceful shutdown — close long-lived clients.
+
+    Call on FastAPI lifespan teardown and bot on_close.
+    """
+    global _perplexity_client
+    if _perplexity_client is not None:
+        from src.ai.client import PerplexityClient
+
+        if isinstance(_perplexity_client, PerplexityClient):
+            await _perplexity_client.aclose()
+            logger.info("platform.shutdown.perplexity_client_closed")
+
+
 def reset_singletons() -> None:
     """Reset all singletons — for use in tests only."""
-    global _quote_service, _perplexity_client, _thesis_review_agent
-    global _thesis_suggest_agent, _briefing_agent, _snapshot_scheduler, _why_agent
+    global _quote_service, _ohlcv_service, _perplexity_client, _thesis_review_agent
+    global _thesis_suggest_agent, _briefing_agent, _why_agent, _snapshot_scheduler
     _quote_service = None
+    _ohlcv_service = None
     _perplexity_client = None
     _thesis_review_agent = None
     _thesis_suggest_agent = None
     _briefing_agent = None
-    _snapshot_scheduler = None
     _why_agent = None
+    _snapshot_scheduler = None
 
 
 def get_quote_service() -> object:
     if _quote_service is None:
         raise RuntimeError("QuoteService not initialised — call bootstrap() first.")
     return _quote_service
+
+
+def get_ohlcv_service() -> object:
+    if _ohlcv_service is None:
+        raise RuntimeError("OHLCVService not initialised — call bootstrap() first.")
+    return _ohlcv_service
 
 
 def get_perplexity_client() -> object:
@@ -114,10 +144,12 @@ def get_briefing_agent() -> object:
         raise RuntimeError("BriefingAgent not initialised — call bootstrap() first.")
     return _briefing_agent
 
+
 def get_why_agent() -> object:
     if _why_agent is None:
         raise RuntimeError("WhyAgent not initialised — call bootstrap() first.")
     return _why_agent
+
 
 def get_snapshot_scheduler() -> object:
     """Returns the SnapshotScheduler singleton (market segment).
