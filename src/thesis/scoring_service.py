@@ -90,9 +90,11 @@ class ScoringService:
         if thesis.catalysts:
             n = len(thesis.catalysts)
             triggered = sum(1 for c in thesis.catalysts if c.status == CatalystStatus.TRIGGERED)
-            missed = sum(1 for c in thesis.catalysts if c.status == CatalystStatus.MISSED)
-            pending = n - triggered - missed
-            raw = min(1.0, max(0.0, (triggered * 1.0 + pending * 0.5 - missed * 0.5) / n))  # ← thêm min(1.0,...)
+            expired   = sum(1 for c in thesis.catalysts if c.status == CatalystStatus.EXPIRED)
+            cancelled = sum(1 for c in thesis.catalysts if c.status == CatalystStatus.CANCELLED)
+            negative  = expired + cancelled          # cả 2 đều là tín hiệu xấu
+            pending   = n - triggered - negative
+            raw = min(1.0, max(0.0, (triggered * 1.0 + pending * 0.5 - negative * 0.5) / n))
             breakdown["catalyst_progress"] = round(raw * _WEIGHTS["catalyst_progress"] * 100, 2)
         else:
             breakdown["catalyst_progress"] = round(50 * _WEIGHTS["catalyst_progress"], 2)
