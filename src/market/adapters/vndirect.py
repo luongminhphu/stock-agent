@@ -120,15 +120,28 @@ def _parse_stocks(data: list[dict[str, Any]]) -> list[Quote]:
 
 def _parse_item(item: dict[str, Any]) -> Quote:
     ticker = item["code"]
-    price = float(item.get("close") or item.get("refPrice", 0))
-    change = float(item.get("priceChange") or 0)
-    change_pct = float(item.get("pctPriceChange") or 0)
+
+    # ref_price phải lấy trước vì dùng làm fallback cho price
+    ref_price = float(item.get("refPrice") or 0)
+    price = float(item.get("close") or ref_price)
+
+    # Fix: không dùng `or 0` — 0.0 là falsy nên bị override nhầm
+    # Tính lại change từ price - ref_price khi API trả None
+    change_raw = item.get("priceChange")
+    change = float(change_raw) if change_raw is not None else (price - ref_price)
+
+    # Tính lại change_pct từ change/ref_price khi API trả None
+    change_pct_raw = item.get("pctPriceChange")
+    if change_pct_raw is None:
+        change_pct = (change / ref_price * 100) if ref_price else 0.0
+    else:
+        change_pct = float(change_pct_raw)
+
     volume = int(item.get("nmVolume") or 0)
     value = float(item.get("nmValue") or 0)
     open_ = float(item.get("open") or price)
     high = float(item.get("high") or price)
     low = float(item.get("low") or price)
-    ref_price = float(item.get("refPrice") or price)
     ceiling = float(item.get("ceiling") or price * 1.07)
     floor_ = float(item.get("floor") or price * 0.93)
 
