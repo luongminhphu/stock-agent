@@ -11,7 +11,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.thesis.models import Assumption, Catalyst, Thesis, ThesisReview, ThesisStatus
+from src.thesis.models import (
+    Assumption,
+    Catalyst,
+    RecommendationStatus,
+    ReviewRecommendation,
+    Thesis,
+    ThesisReview,
+    ThesisStatus,
+)
 
 
 class ThesisRepository:
@@ -84,6 +92,10 @@ class ThesisRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one()
 
+    async def delete(self, thesis: Thesis) -> None:
+        await self._session.delete(thesis)
+        await self._session.flush()
+
     # ------------------------------------------------------------------
     # Assumption queries
     # ------------------------------------------------------------------
@@ -137,7 +149,7 @@ class ThesisRepository:
         await self._session.flush()
 
     # ------------------------------------------------------------------
-    # Review-specific queries
+    # Review queries
     # ------------------------------------------------------------------
 
     async def save_review(self, review: ThesisReview) -> ThesisReview:
@@ -172,3 +184,60 @@ class ThesisRepository:
         )
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
+
+    # ------------------------------------------------------------------
+    # Recommendation queries  (Wave 2)
+    # ------------------------------------------------------------------
+
+    async def save_recommendations(
+        self, recs: list[ReviewRecommendation]
+    ) -> None:
+        """Bulk-insert một batch ReviewRecommendation records.
+
+        Dùng add_all + flush thay vì loop save_recommendation để giảm
+        round-trips. Caller đảm bảo list không rỗng trước khi gọi.
+        """
+        self._session.add_all(recs)
+        await self._session.flush()
+        for rec in recs:
+            await self._session.refresh(rec)
+
+    async def get_recommendation_by_id(
+        self, recommendation_id: int
+    ) -> ReviewRecommendation | None:
+        """Fetch a single recommendation by PK, eager-load review để validate
+        thesis ownership trong ThesisService.apply_recommendation."""
+        stmt = (
+            select(ReviewRecommendation)
+            .where(ReviewRecommendation.id == recommendation_id)
+            .options(selectinload(ReviewRecommendation.review))
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def list_pending_recommendations(
+        self, thesis_id: int
+    ) -> list[ReviewRecommendation]:
+        """Trả tất cả recommendations PENDING thuộc các reviews của thesis_id.
+
+        JOIN qua ThesisReview để scoped đúng thesis mà không cần subquery phức tạp.
+        Sắp xếp theo review mới nhất trước, rồi theo id để stable sort.
+        """
+        stmt = (
+            select(ReviewRecommendation)
+            .join(ReviewRecommendation.review)
+            .where(ThesisReview.thesis_id == thesis_id)
+            .where(ReviewRecommendation.status == RecommendationStatus.PENDING)
+            .order_by(ThesisReview.reviewed_at.desc(), ReviewRecommendation.id.asc())
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def save_recommendation(
+        self, rec: ReviewRecommendation
+    ) -> ReviewRecommendation:
+        """Persist (update) một recommendation — dùng khi accept/reject."""
+        self._session.add(rec)
+        await self._session.flush()
+        await self._session.refresh(rec)
+        return rec
