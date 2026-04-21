@@ -3,15 +3,17 @@ Owner: market segment.
 Caller: bot/commands/why.py (adapter only).
 """
 from __future__ import annotations
+
 from src.ai.agents.why import WhyAgent
 from src.ai.schemas import WhyOutput
-from src.market.ohlcv_service import OHLCVService
+from src.market.ohlcv_service import OHLCVService, OHLCVServiceNotConfiguredError
 from src.market.quote_service import QuoteService
 from src.market.registry import SymbolNotFoundError, registry
 from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
-_OHLCV_DAYS = 5  # 5 phiên gần nhất đủ để thấy context
+_OHLCV_CANDLES = 5  # 5 phiên gần nhất đủ để thấy context
+_MIN_CHANGE_PCT = 0.01  # bỏ qua nếu biến động quá nhỏ
 
 
 class WhyService:
@@ -48,7 +50,14 @@ class WhyService:
             logger.warning("why_service.quote_failed", ticker=ticker, error=str(exc))
             raise ValueError(f"Không lấy được giá hiện tại cho {ticker}: {exc}") from exc
 
-        # 3. OHLCV 5 phiên — build context string
+        # 3. Guard — không phân tích khi không có biến động
+        if abs(change_pct) < _MIN_CHANGE_PCT:
+            raise ValueError(
+                f"{ticker} không có biến động đáng kể hôm nay ({change_pct:+.2f}%). "
+                "Thử lại khi mã có biến động rõ hơn."
+            )
+
+        # 4. OHLCV 5 phiên — build context string
         ohlcv_summary = await self._build_ohlcv_summary(ticker)
 
         return await self._agent.explain(
@@ -63,7 +72,8 @@ class WhyService:
 
     async def _build_ohlcv_summary(self, ticker: str) -> str:
         try:
-            bars = await self._ohlcv.get_history(ticker, days=_OHLCV_DAYS)
+            # get_latest_candles() — đúng method name theo OHLCVService API
+            bars = await self._ohlcv.get_latest_candles(ticker, n=_OHLCV_CANDLES)
             if not bars:
                 return ""
             lines = ["Ngày       | Mở       | Cao      | Thấp     | Đóng     | Volume"]
@@ -73,6 +83,10 @@ class WhyService:
                     f"{b.low:>8,.0f} | {b.close:>8,.0f} | {b.volume:>10,}"
                 )
             return "\n".join(lines)
+        except OHLCVServiceNotConfiguredError:
+            # Wave 1: adapter chưa có — fallback silent, AI chạy với data_quality note
+            logger.info("why_service.ohlcv_not_configured", ticker=ticker)
+            return ""
         except Exception as exc:
             logger.warning("why_service.ohlcv_failed", ticker=ticker, error=str(exc))
             return ""  # fallback silent — AI vẫn chạy, ghi vào data_quality
