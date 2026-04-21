@@ -5,28 +5,30 @@ No business logic here — delegates entirely to ThesisService, ScoringService,
 ReviewService, ThesisSuggestAgent.
 
 Endpoints:
-    POST   /thesis/suggest                                — AI draft thesis for a ticker (no persist)
-    POST   /thesis                                        — create thesis
-    GET    /thesis                                        — list thesis
-    GET    /thesis/{thesis_id}                            — get thesis detail
-    PATCH  /thesis/{thesis_id}                            — update thesis
-    DELETE /thesis/{thesis_id}                            — delete thesis (hard)
-    POST   /thesis/{thesis_id}/close                      — close thesis
-    POST   /thesis/{thesis_id}/invalidate                 — invalidate thesis
-    GET    /thesis/{thesis_id}/score                      — health score breakdown
-    GET    /thesis/{thesis_id}/assumptions                — list assumptions
-    POST   /thesis/{thesis_id}/assumptions                — add assumption
-    GET    /thesis/{thesis_id}/assumptions/{id}           — get assumption
-    PATCH  /thesis/{thesis_id}/assumptions/{id}           — update assumption
-    DELETE /thesis/{thesis_id}/assumptions/{id}           — delete assumption
-    GET    /thesis/{thesis_id}/catalysts                  — list catalysts
-    POST   /thesis/{thesis_id}/catalysts                  — add catalyst
-    GET    /thesis/{thesis_id}/catalysts/{id}             — get catalyst
-    PATCH  /thesis/{thesis_id}/catalysts/{id}             — update catalyst
-    DELETE /thesis/{thesis_id}/catalysts/{id}             — delete catalyst
-    POST   /thesis/{thesis_id}/review                     — trigger AI review
-    GET    /thesis/{thesis_id}/reviews                    — list past reviews
-    GET    /thesis/{thesis_id}/reviews/latest             — latest review only
+    POST   /thesis/suggest                                        — AI draft thesis for a ticker (no persist)
+    POST   /thesis                                                — create thesis
+    GET    /thesis                                                — list thesis
+    GET    /thesis/{thesis_id}                                    — get thesis detail
+    PATCH  /thesis/{thesis_id}                                    — update thesis
+    DELETE /thesis/{thesis_id}                                    — delete thesis (hard)
+    POST   /thesis/{thesis_id}/close                              — close thesis
+    POST   /thesis/{thesis_id}/invalidate                         — invalidate thesis
+    GET    /thesis/{thesis_id}/score                              — health score breakdown
+    GET    /thesis/{thesis_id}/assumptions                        — list assumptions
+    POST   /thesis/{thesis_id}/assumptions                        — add assumption
+    GET    /thesis/{thesis_id}/assumptions/{id}                   — get assumption
+    PATCH  /thesis/{thesis_id}/assumptions/{id}                   — update assumption
+    DELETE /thesis/{thesis_id}/assumptions/{id}                   — delete assumption
+    GET    /thesis/{thesis_id}/catalysts                          — list catalysts
+    POST   /thesis/{thesis_id}/catalysts                          — add catalyst
+    GET    /thesis/{thesis_id}/catalysts/{id}                     — get catalyst
+    PATCH  /thesis/{thesis_id}/catalysts/{id}                     — update catalyst
+    DELETE /thesis/{thesis_id}/catalysts/{id}                     — delete catalyst
+    POST   /thesis/{thesis_id}/review                             — trigger AI review
+    GET    /thesis/{thesis_id}/reviews                            — list past reviews
+    GET    /thesis/{thesis_id}/reviews/latest                     — latest review only
+    GET    /thesis/{thesis_id}/recommendations                    — list PENDING AI recommendations
+    POST   /thesis/{thesis_id}/recommendations/{rec_id}/apply     — accept or reject a recommendation
 """
 
 from __future__ import annotations
@@ -45,6 +47,7 @@ from src.api.deps import (
     get_thesis_suggest_agent,
 )
 from src.api.dto.thesis import (
+    ApplyRecommendationRequest,
     AssumptionCreateRequest,
     AssumptionListResponse,
     AssumptionResponse,
@@ -55,6 +58,8 @@ from src.api.dto.thesis import (
     CatalystUpdateRequest,
     HealthScoreBreakdown,
     HealthScoreResponse,
+    RecommendationListResponse,
+    RecommendationResponse,
     ThesisCreateRequest,
     ThesisListResponse,
     ThesisResponse,
@@ -651,3 +656,67 @@ async def get_latest_review(
             detail=f"No reviews found for thesis {thesis_id}.",
         )
     return ThesisReviewResponse.model_validate(reviews[0])
+
+
+# ---------------------------------------------------------------------------
+# AI Recommendations — Wave 1
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{thesis_id}/recommendations", response_model=RecommendationListResponse)
+async def list_recommendations(
+    thesis_id: int,
+    user_id: str = Depends(get_current_user_id),
+    review_svc: ReviewService = Depends(get_review_service),
+) -> RecommendationListResponse:
+    """Trả danh sách AI recommendations đang PENDING cho một thesis.
+
+    Dashboard gọi endpoint này để hiển thị card Accept/Reject cho user.
+    Chỉ trả recommendations có status=PENDING — đã accepted/rejected không xuất hiện.
+    """
+    try:
+        recs = await review_svc.list_pending_recommendations(
+            thesis_id=thesis_id, user_id=user_id
+        )
+    except ThesisNotFoundError as exc:
+        raise _not_found(exc)
+    return RecommendationListResponse(
+        thesis_id=thesis_id,
+        items=[RecommendationResponse.model_validate(r) for r in recs],
+        total=len(recs),
+    )
+
+
+@router.post(
+    "/{thesis_id}/recommendations/{recommendation_id}/apply",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def apply_recommendation(
+    thesis_id: int,
+    recommendation_id: int,
+    body: ApplyRecommendationRequest,
+    user_id: str = Depends(get_current_user_id),
+    svc: ThesisService = Depends(get_thesis_service),
+) -> None:
+    """Accept hoặc reject một AI recommendation.
+
+    - action="accept" → áp dụng recommended_status lên assumption/catalyst thật,
+                        mark recommendation ACCEPTED, recompute score.
+    - action="reject" → mark recommendation REJECTED, không thay đổi gì khác.
+
+    Sau khi apply/reject, recommendation sẽ không còn xuất hiện trong GET /recommendations.
+    """
+    try:
+        await svc.apply_recommendation(
+            thesis_id=thesis_id,
+            recommendation_id=recommendation_id,
+            user_id=user_id,
+            accept=(body.action == "accept"),
+        )
+    except ThesisNotFoundError as exc:
+        raise _not_found(exc)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        )
