@@ -65,20 +65,23 @@ class ThesisRepository:
         return list(result.scalars().all())
 
     async def save(self, thesis: Thesis) -> Thesis:
-        """Persist (insert or update) a thesis and eager-reload relationships.
-
-        SQLAlchemy expires all attributes after flush(). Any access to
-        lazy-loaded relationships (assumptions, catalysts) outside the
-        session context will raise MissingGreenlet. We refresh explicitly
-        here so that Pydantic serialization in the API layer is safe.
-        """
         self._session.add(thesis)
         await self._session.flush()
-        await self._session.refresh(
-            thesis,
-            attribute_names=["assumptions", "catalysts", "reviews"],
+        # Refresh toàn bộ — reload scalar fields (updated_at, id, status...)
+        # VÀ relationships (assumptions, catalysts, reviews)
+        await self._session.refresh(thesis)
+        # Relationships cần selectinload riêng vì refresh() không load lazy collections
+        stmt = (
+            select(Thesis)
+            .where(Thesis.id == thesis.id)
+            .options(
+                selectinload(Thesis.assumptions),
+                selectinload(Thesis.catalysts),
+                selectinload(Thesis.reviews),
+            )
         )
-        return thesis
+        result = await self._session.execute(stmt)
+        return result.scalar_one()
 
     async def delete(self, thesis: Thesis) -> None:
         await self._session.delete(thesis)
