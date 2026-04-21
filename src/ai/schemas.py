@@ -28,7 +28,6 @@ class RiskLevel(str, Enum):
     HIGH = "HIGH"
     CRITICAL = "CRITICAL"
 
-
 # ---------------------------------------------------------------------------
 # Thesis Review
 # ---------------------------------------------------------------------------
@@ -176,3 +175,21 @@ class ThesisSuggestionResult(BaseModel):
         if isinstance(v, str):
             return []
         return v  # type: ignore[return-value]
+
+class MovementDirection(str, Enum):
+    UP = "UP"
+    DOWN = "DOWN"
+    FLAT = "FLAT"
+
+class WhyOutput(BaseModel):
+    """Structured output from WhyAgent."""
+    ticker: str
+    direction: MovementDirection
+    change_pct: float = Field(description="% thay đổi thực tế")
+    headline: str = Field(description="1 câu tóm tắt nguyên nhân chính")
+    causes: list[str] = Field(description="2-4 nguyên nhân cụ thể, theo thứ tự quan trọng")
+    macro_context: str = Field(default="", description="Yếu tố vĩ mô liên quan nếu có")
+    risk_flags: list[str] = Field(default_factory=list, description="Rủi ro cần theo dõi tiếp")
+    confidence: float = Field(ge=0.0, le=1.0, description="Độ tin cậy phân tích")
+    data_quality: str = Field(default="", description="Ghi chú về chất lượng dữ liệu đầu vào")
+
