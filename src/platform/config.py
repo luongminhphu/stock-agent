@@ -20,6 +20,7 @@ class Settings(BaseSettings):
 
     # Discord bot
     discord_token: str = ""
+    discord_guild_id: str = ""
 
     # Owner User ID
     owner_user_id: str = ""
