@@ -16,7 +16,6 @@ Design rules:
 from __future__ import annotations
 
 import asyncio
-from typing import TypeVar
 
 from src.market.quote_service import QuoteService
 from src.platform.logging import get_logger
@@ -60,18 +59,21 @@ class PriceEnrichmentService:
         return response
 
     async def enrich_watchlist(self, rows: list) -> list:
-        """Mutate WatchlistSnapshotRow.current_price in-place."""
+        """Mutate WatchlistSnapshotRow với live price + change/volume/ceiling/floor."""
         if not rows:
             return rows
         tickers = list({r.ticker for r in rows})
-        price_map = await self._bulk_fetch(tickers)
+        quote_map = await self._bulk_fetch_quotes(tickers)
         for row in rows:
-            row.current_price = price_map.get(row.ticker)
+            q = quote_map.get(row.ticker)
+            if q is not None:
+                row.current_price = q.price
+                row.change        = q.change
+                row.change_pct    = q.change_pct
+                row.volume        = q.volume
+                row.is_ceiling    = q.is_ceiling
+                row.is_floor      = q.is_floor
         return rows
-
-    async def get_prices(self, tickers: list[str]) -> dict[str, float]:
-        """Raw bulk price fetch — returns {ticker: price}."""
-        return await self._bulk_fetch(tickers)
 
     # ------------------------------------------------------------------
     # Internal
@@ -106,6 +108,38 @@ class PriceEnrichmentService:
         except Exception as exc:
             logger.warning(
                 "market.price_enrichment.single_fetch_failed",
+                ticker=ticker,
+                error=str(exc),
+            )
+            return None
+
+    async def _bulk_fetch_quotes(self, tickers: list[str]) -> dict[str, object]:
+        """Bulk fetch → {ticker: Quote}. Dùng cho enrich_watchlist."""
+        if not tickers:
+            return {}
+        try:
+            quotes = await self._qs.get_bulk_quotes(tickers)
+            return {q.ticker: q for q in quotes}
+        except Exception as exc:
+            logger.warning(
+                "market.price_enrichment.bulk_fetch_quotes_failed",
+                tickers=tickers,
+                error=str(exc),
+            )
+            results: dict[str, object] = {}
+            tasks = {t: asyncio.create_task(self._safe_single_quote(t)) for t in tickers}
+            for ticker, task in tasks.items():
+                q = await task
+                if q is not None:
+                    results[ticker] = q
+            return results
+    
+    async def _safe_single_quote(self, ticker: str) -> object | None:
+        try:
+            return await self._qs.get_quote(ticker)
+        except Exception as exc:
+            logger.warning(
+                "market.price_enrichment.single_quote_failed",
                 ticker=ticker,
                 error=str(exc),
             )
