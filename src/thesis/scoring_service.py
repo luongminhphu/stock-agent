@@ -70,16 +70,9 @@ class ScoringService:
     def compute_with_breakdown(
         self, thesis: Thesis
     ) -> tuple[float, dict[str, float]]:
-        """Return (total_score, breakdown_dict) where breakdown shows
-        the weighted contribution of each dimension (sums to total).
-
-        Breakdown keys: assumption_health, catalyst_progress,
-                        risk_reward, review_confidence.
-        Each value is the score contribution (0 to weight*100).
-        """
         breakdown: dict[str, float] = {}
 
-        # 1. Assumption health (40%) — chỉ tính evaluated, bỏ penalty *2
+        # 1. Assumption health (40%)
         if thesis.assumptions:
             evaluated = [a for a in thesis.assumptions
                          if a.status != AssumptionStatus.PENDING]
@@ -88,18 +81,18 @@ class ScoringService:
                 invalid = sum(1 for a in evaluated if a.status == AssumptionStatus.INVALID)
                 raw = max(0.0, (valid - invalid) / len(evaluated))
             else:
-                raw = 0.5  # chưa evaluate → neutral
+                raw = 0.5
             breakdown["assumption_health"] = round(raw * _WEIGHTS["assumption_health"] * 100, 2)
         else:
             breakdown["assumption_health"] = round(50 * _WEIGHTS["assumption_health"], 2)
 
-        # 2. Catalyst progress (30%) — PENDING = neutral, MISSED = trừ điểm
+        # 2. Catalyst progress (30%)
         if thesis.catalysts:
             n = len(thesis.catalysts)
             triggered = sum(1 for c in thesis.catalysts if c.status == CatalystStatus.TRIGGERED)
             missed = sum(1 for c in thesis.catalysts if c.status == CatalystStatus.MISSED)
             pending = n - triggered - missed
-            raw = max(0.0, (triggered * 1.0 + pending * 0.5 - missed * 0.5) / n)
+            raw = min(1.0, max(0.0, (triggered * 1.0 + pending * 0.5 - missed * 0.5) / n))  # ← thêm min(1.0,...)
             breakdown["catalyst_progress"] = round(raw * _WEIGHTS["catalyst_progress"] * 100, 2)
         else:
             breakdown["catalyst_progress"] = round(50 * _WEIGHTS["catalyst_progress"], 2)
@@ -115,15 +108,16 @@ class ScoringService:
         # 4. Latest review confidence (10%)
         if thesis.reviews:
             latest = max(thesis.reviews, key=lambda r: (r.reviewed_at, r.id))
+            confidence = latest.confidence
+            if confidence is not None and confidence > 1.0:  # ← normalize 0-100 → 0-1
+                confidence = confidence / 100.0
             breakdown["review_confidence"] = round(
-                latest.confidence * _WEIGHTS["review_confidence"] * 100, 2
+                (confidence or 0.5) * _WEIGHTS["review_confidence"] * 100, 2
             )
         else:
             breakdown["review_confidence"] = round(50 * _WEIGHTS["review_confidence"], 2)
 
-        total = round(
-            min(max(sum(breakdown.values()), 0.0), 100.0), 2
-        )
+        total = round(min(max(sum(breakdown.values()), 0.0), 100.0), 2)
         logger.debug(
             "thesis.health_score_computed",
             thesis_id=thesis.id,
