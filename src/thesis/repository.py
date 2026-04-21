@@ -65,12 +65,13 @@ class ThesisRepository:
         return list(result.scalars().all())
 
     async def save(self, thesis: Thesis) -> Thesis:
+        """Persist (insert or update) a thesis.
+    
+        flush() → expire all attrs → re-fetch với selectinload để
+        Pydantic serialization ngoài session không bị MissingGreenlet.
+        """
         self._session.add(thesis)
         await self._session.flush()
-        # Refresh toàn bộ — reload scalar fields (updated_at, id, status...)
-        # VÀ relationships (assumptions, catalysts, reviews)
-        await self._session.refresh(thesis)
-        # Relationships cần selectinload riêng vì refresh() không load lazy collections
         stmt = (
             select(Thesis)
             .where(Thesis.id == thesis.id)
@@ -82,10 +83,6 @@ class ThesisRepository:
         )
         result = await self._session.execute(stmt)
         return result.scalar_one()
-
-    async def delete(self, thesis: Thesis) -> None:
-        await self._session.delete(thesis)
-        await self._session.flush()
 
     # ------------------------------------------------------------------
     # Assumption queries
