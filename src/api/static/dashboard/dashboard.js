@@ -111,6 +111,62 @@ function renderScoreBreakdown(breakdown) {
     </div>`;
 }
 
+// ─── AI Review Recommendation ────────────────────────────────────────────────
+function renderReviewRecommendSection(thesisId) {
+  return `
+    <div class="detail-section" id="reviewRecommendSection-${thesisId}">
+      <div class="detail-section-header">
+        <h3>🔮 AI Review Recommendation</h3>
+        <button class="suggest-btn" id="aiReviewBtn-${thesisId}" style="min-height:34px;padding:0 14px;font-size:.82rem;">
+          Xin AI review
+        </button>
+      </div>
+      <div id="aiReviewLoading-${thesisId}" class="suggest-loading hidden">
+        <div class="spinner"></div> AI đang phân tích thesis…
+      </div>
+      <div id="aiReviewResult-${thesisId}" class="suggest-result hidden"></div>
+    </div>`;
+}
+
+function renderReviewRecommendResult(thesisId, d) {
+  const confPct = Math.round((d.confidence ?? 0) * 100);
+  const verdictCls = { bullish: 'bullish', bearish: 'bearish', hold: '', neutral: '' }[
+    String(d.verdict ?? '').toLowerCase()
+  ] ?? '';
+  const risks = (d.risk_signals ?? []).map(r => `<li>${esc(r)}</li>`).join('');
+  const watches = (d.next_watch_items ?? []).map(w => `<li>${esc(w)}</li>`).join('');
+
+  return `
+    <div class="suggest-body">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+        <span class="badge ${verdictCls}" style="font-size:.95rem;padding:6px 14px;">
+          ${esc(String(d.verdict ?? '—').toUpperCase())}
+        </span>
+        <span style="color:var(--muted);font-size:.85rem;">Confidence: ${confPct}%</span>
+      </div>
+      <div class="confidence-bar" style="margin-bottom:12px;">
+        <div class="confidence-fill" style="width:${confPct}%;"></div>
+      </div>
+      ${d.reasoning ? `<p style="line-height:1.65;margin-bottom:10px;">${esc(d.reasoning)}</p>` : ''}
+      ${risks ? `<div><p class="suggest-section-title">⚠️ Risk signals</p><ul style="padding-left:1.2em;color:var(--muted);font-size:.88rem;">${risks}</ul></div>` : ''}
+      ${watches ? `<div style="margin-top:10px;"><p class="suggest-section-title">👁 Next watch items</p><ul style="padding-left:1.2em;color:var(--muted);font-size:.88rem;">${watches}</ul></div>` : ''}
+      <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;">
+        <button class="primary-btn approve-review-btn"
+          data-thesis-id="${thesisId}"
+          data-verdict="${esc(d.verdict ?? '')}"
+          data-reasoning="${esc(d.reasoning ?? '')}"
+          data-confidence="${d.confidence ?? ''}"
+          style="background:#16a34a;min-height:38px;padding:0 16px;font-size:.88rem;">
+          ✅ Approve & lưu review
+        </button>
+        <button class="ghost-btn reject-review-btn" data-thesis-id="${thesisId}"
+          style="min-height:38px;padding:0 14px;font-size:.88rem;">
+          ❌ Bỏ qua
+        </button>
+      </div>
+    </div>`;
+}
+
 function makeAssumptionRow(data = {}) {
   const wrap = document.createElement('div');
   wrap.className = 'detail-item form-row-item';
@@ -427,8 +483,12 @@ function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
       <div class="detail-section"><div class="detail-section-header"><h3>Catalysts (${catList.length})</h3><button class="ghost-btn" style="min-height:34px;padding:0 12px;font-size:.82rem;" id="addCatBtn">+ Thêm</button></div><div class="detail-list" id="catalystDetailList">${catList.length ? catList.map(c => renderCatItem(c)).join('') : '<p class="empty-state">Chưa có catalyst.</p>'}</div></div>
     </div>
     ${revList.length ? `<div style="margin-top:18px;"><h3 style="margin-bottom:12px;">Review gần nhất</h3>${revList.slice(0, 3).map(r => `<div class="review-card"><div class="review-head"><span class="review-meta">${fmtDate(r.reviewed_at)}</span>${badge(r.verdict)}<span style="color:var(--muted);font-size:.82rem;">Conf: ${r.confidence ?? '—'}</span></div><p class="review-reasoning">${esc(r.reasoning ?? '')}</p></div>`).join('')}</div>` : ''}
+    ${renderScoreBreakdown(t.score_breakdown)}
+    ${renderReviewRecommendSection(t.id)}
   `;
 }
+
+
 
 function renderAssumItem(a) {
   return `<div class="detail-item" data-assum-id="${a.id}"><div class="detail-item-row"><span style="font-weight:600;font-size:.9rem;">${esc(a.description)}</span><div class="detail-item-actions">${badge(a.status)}<button class="icon-btn edit-assum-btn" data-id="${a.id}" title="Sửa">✏️</button><button class="icon-btn danger delete-assum-btn" data-id="${a.id}" title="Xóa">🗑</button></div></div>${a.rationale ? `<p>${esc(a.rationale)}</p>` : ''}</div>`;
@@ -446,6 +506,18 @@ function wireDetailActions(thesisId, wrap) {
   wrap.querySelector('#addCatBtn')?.addEventListener('click', () => openCatalystModal(thesisId, null));
   wrap.querySelectorAll('.edit-cat-btn').forEach(btn => btn.addEventListener('click', () => openCatalystModal(thesisId, btn.dataset.id)));
   wrap.querySelectorAll('.delete-cat-btn').forEach(btn => btn.addEventListener('click', () => confirmDeleteCatalyst(thesisId, btn.dataset.id)));
+  wrap.querySelector(`#aiReviewBtn-${thesisId}`)?.addEventListener('click', () => triggerAiReview(thesisId));
+  wrap.addEventListener('click', async e => {
+    if (e.target.closest('.approve-review-btn')) {
+      const btn = e.target.closest('.approve-review-btn');
+      await approveReview(btn.dataset.thesisId, btn.dataset.verdict, btn.dataset.reasoning, Number(btn.dataset.confidence) || null);
+    }
+    if (e.target.closest('.reject-review-btn')) {
+      const tid = e.target.closest('.reject-review-btn').dataset.thesisId;
+      const r = wrap.querySelector(`#aiReviewResult-${tid}`);
+      if (r) { r.classList.add('hidden'); r.innerHTML = ''; }
+    }
+  });
 }
 
 function openNewThesisModal() {
@@ -813,6 +885,55 @@ function renderPerformance(list) {
   const rows = Array.isArray(list) ? list : (list?.items ?? []);
   if (!rows.length) { wrap.innerHTML = '<p class="empty-state">Chưa có dữ liệu.</p>'; return; }
   wrap.innerHTML = `<table><thead><tr><th>Mã</th><th>PnL%</th><th>Điểm</th><th>Status</th></tr></thead><tbody>${rows.map(r => `<tr><td class="ticker-cell"><strong>${esc(r.ticker)}</strong></td><td class="${r.pnl_pct >= 0 ? 'pnl-pos' : 'pnl-neg'}">${r.pnl_pct != null ? (r.pnl_pct > 0 ? '+' : '') + r.pnl_pct.toFixed(2) + '%' : '—'}</td><td class="${scoreClass(r.score)}">${r.score ?? '—'}</td><td>${badge(r.status)}</td></tr>`).join('')}</tbody></table>`;
+}
+
+async function triggerAiReview(thesisId) {
+  const loading = el(`aiReviewLoading-${thesisId}`);
+  const result  = el(`aiReviewResult-${thesisId}`);
+  const btn     = el(`aiReviewBtn-${thesisId}`);
+  if (!loading || !result) return;
+  btn && (btn.disabled = true);
+  loading.classList.remove('hidden');
+  result.classList.add('hidden');
+  result.innerHTML = '';
+  try {
+    // Gọi recommend endpoint — nếu chưa có, fallback sang suggest với context thesis
+    const data = await sendJson(
+      `${thesisApiBase()}/${thesisId}/reviews/recommend`, 'POST', null
+    ).catch(async () => {
+      // Fallback: dùng suggest endpoint với ticker của thesis
+      const t = _theses.find(x => String(x.id) === String(thesisId));
+      if (!t) throw new Error('Không tìm thấy thesis trong cache');
+      return sendJson(`${thesisApiBase()}/suggest?ticker=${encodeURIComponent(t.ticker)}`, 'POST', null);
+    });
+    result.innerHTML = renderReviewRecommendResult(thesisId, data);
+    result.classList.remove('hidden');
+  } catch (err) {
+    result.innerHTML = `<div class="error-banner" style="margin:0;">AI review lỗi: ${esc(err.message)}</div>`;
+    result.classList.remove('hidden');
+  } finally {
+    loading.classList.add('hidden');
+    btn && (btn.disabled = false);
+  }
+}
+
+async function approveReview(thesisId, verdict, reasoning, confidence) {
+  try {
+    await sendJson(`${thesisApiBase()}/${thesisId}/reviews`, 'POST', {
+      verdict,
+      reasoning: reasoning || null,
+      confidence: confidence || null,
+    });
+    showToast(`✅ Đã lưu review: ${verdict.toUpperCase()}`);
+    // Ẩn recommendation section sau khi approve
+    const result = el(`aiReviewResult-${thesisId}`);
+    if (result) { result.classList.add('hidden'); result.innerHTML = ''; }
+    // Reload detail để thấy review mới trong history
+    await loadThesisDetail(thesisId);
+    await loadDashboard();
+  } catch (err) {
+    showToast(`Lỗi lưu review: ${err.message}`, 'error');
+  }
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
