@@ -205,3 +205,28 @@ class Reminder(Base):
 
     def __repr__(self) -> str:
         return f"<Reminder freq={self.frequency} enabled={self.enabled}>"
+
+# ---------------------------------------------------------------------------
+# WatchlistScan
+# ---------------------------------------------------------------------------
+
+
+class WatchlistScan(Base):
+    """Snapshot of a watchlist scan — persisted by ScanService._persist_snapshot().
+
+    Owner: watchlist segment.
+    Used by: readmodel/dashboard for displaying scan history.
+    """
+
+    __tablename__ = "watchlist_scans"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    scanned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    def __repr__(self) -> str:
+        return f"<WatchlistScan user={self.user_id} at={self.scanned_at}>"
