@@ -72,7 +72,14 @@ class MarketSentiment(str, Enum):
     MIXED = "MIXED"
     UNCERTAIN = "UNCERTAIN"
 
-
+class WatchlistTickerSummary(BaseModel):
+    ticker: str
+    price: float
+    change_pct: float
+    signal: str
+    one_line: str
+    watch_reason: str
+    
 class BriefOutput(BaseModel):
     """Structured output from BriefingAgent (morning or EOD)."""
 
