@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -198,3 +198,46 @@ class ThesisReviewListResponse(BaseModel):
     thesis_id: int
     reviews: list[ThesisReviewResponse]
     total: int
+
+
+# ---------------------------------------------------------------------------
+# AI Recommendations (Wave 1)
+# ---------------------------------------------------------------------------
+
+
+class RecommendationResponse(BaseModel):
+    """Response for a single ReviewRecommendation record.
+
+    target_type: "assumption" | "catalyst"
+    status:      "pending" | "accepted" | "rejected"
+    """
+
+    id: int
+    review_id: int
+    target_type: str
+    target_id: int
+    target_description: str
+    recommended_status: str
+    reason: str
+    status: str
+    acted_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class RecommendationListResponse(BaseModel):
+    thesis_id: int
+    items: list[RecommendationResponse]
+    total: int
+
+
+class ApplyRecommendationRequest(BaseModel):
+    """Body for POST /thesis/{id}/recommendations/{rec_id}/apply.
+
+    action = "accept"  → apply recommended_status lên assumption/catalyst, mark ACCEPTED
+    action = "reject"  → mark REJECTED, không thay đổi gì khác
+    """
+
+    action: Literal["accept", "reject"] = Field(
+        ..., description="'accept' để áp dụng đề xuất, 'reject' để bỏ qua"
+    )
