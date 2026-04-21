@@ -5,8 +5,6 @@ Delegates 100% to readmodel services + price enrichment from market segment.
 No business logic here.
 
 Endpoints:
-    GET /readmodel/dashboard/{user_id}                   — legacy full dashboard (DashboardResponse)
-    GET /readmodel/dashboard/{user_id}/watchlist         — legacy watchlist snapshot
     GET /readmodel/dashboard/{user_id}/stats             — KPI tong quan
     GET /readmodel/dashboard/{user_id}/theses            — list thesis + filter
     GET /readmodel/dashboard/{user_id}/theses/{id}       — thesis detail
@@ -27,64 +25,25 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.market.price_enrichment import PriceEnrichmentService
-from src.platform.bootstrap import get_quote_service
 from src.platform.db import get_session
 from src.readmodel.dashboard_service import DashboardService
 from src.readmodel.leaderboard_service import LeaderboardService
 from src.readmodel.schemas import (
-    DashboardResponse,
     LeaderboardResponse,
     ThesisTimelineResponse,
-    WatchlistSnapshotRow,
 )
 from src.readmodel.timeline_service import ThesisTimelineService
 
 router = APIRouter(prefix="/readmodel", tags=["readmodel"])
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 def _paginated(items: list) -> dict[str, Any]:
-    """Wrap list thành shape nhất quán: {items, total}."""
+    """Wrap list thanh shape nhat quan: {items, total}."""
     return {"items": items, "total": len(items)}
-
-def _enrichment() -> PriceEnrichmentService:
-    """Dependency: PriceEnrichmentService wired to the bootstrapped QuoteService."""
-    from src.market.quote_service import QuoteService
-
-    qs: QuoteService = get_quote_service()  # type: ignore[assignment]
-    return PriceEnrichmentService(qs)
-
-
-# ---------------------------------------------------------------------------
-# Legacy endpoints — backward compat
-# ---------------------------------------------------------------------------
-
-
-@router.get("/dashboard/{user_id}", response_model=DashboardResponse)
-async def get_dashboard(
-    user_id: str,
-    session: Annotated[AsyncSession, Depends(get_session)],
-    enrichment: Annotated[PriceEnrichmentService, Depends(_enrichment)],
-) -> DashboardResponse:
-    """Full dashboard payload with live prices injected (legacy)."""
-    svc = DashboardService(session)
-    response = await svc.get_dashboard(user_id)
-    return await enrichment.enrich_dashboard(response)  # type: ignore[return-value]
-
-
-@router.get("/dashboard/{user_id}/watchlist", response_model=list[WatchlistSnapshotRow])
-async def get_watchlist_snapshot(
-    user_id: str,
-    session: Annotated[AsyncSession, Depends(get_session)],
-    enrichment: Annotated[PriceEnrichmentService, Depends(_enrichment)],
-) -> list[WatchlistSnapshotRow]:
-    """Watchlist items enriched with thesis summary + live prices (legacy)."""
-    svc = DashboardService(session)
-    rows = await svc.get_watchlist_snapshot(user_id)
-    return await enrichment.enrich_watchlist(rows)  # type: ignore[return-value]
 
 
 # ---------------------------------------------------------------------------

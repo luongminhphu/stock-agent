@@ -31,11 +31,6 @@ from sqlalchemy import Integer, and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.logging import get_logger
-from src.readmodel.schemas import (
-    DashboardResponse,
-    ThesisSummaryRow,
-    WatchlistSnapshotRow,
-)
 from src.thesis.scoring_service import score_tier
 
 logger = get_logger(__name__)
@@ -300,9 +295,8 @@ class DashboardService:
         if thesis is None or thesis.user_id != user_id:
             return None
 
-        # FIX(Wave 5a): SELECT explicit columns only — avoids triggering the
-        # selectin `recommendations` relationship on ThesisReview, which would
-        # fire 1 extra query per review row (N+1).
+        # SELECT explicit columns only — avoids triggering the
+        # selectin `recommendations` relationship on ThesisReview (N+1 fix, Wave 5a).
         reviews_rows = (
             await self._session.execute(
                 select(
@@ -458,8 +452,6 @@ class DashboardService:
     # ------------------------------------------------------------------
 
     async def get_scan_latest(self, user_id: str) -> dict[str, Any] | None:
-        # FIX(Wave 5a): catch specific exceptions — ImportError when watchlist
-        # models are not yet migrated, and log warnings instead of silent swallow.
         try:
             from src.watchlist.models import WatchlistScan
         except ImportError:
@@ -494,8 +486,6 @@ class DashboardService:
     # ------------------------------------------------------------------
 
     async def get_brief_latest(self, user_id: str, phase: str = "morning") -> dict[str, Any] | None:
-        # FIX(Wave 5a): same pattern — split ImportError from runtime DB errors,
-        # log both instead of silently returning None.
         try:
             from src.briefing.models import BriefSnapshot
         except ImportError:
@@ -772,193 +762,6 @@ class DashboardService:
                 for s in snapshots
             ],
         }
-
-    # ------------------------------------------------------------------
-    # Legacy compatibility
-    # ------------------------------------------------------------------
-
-    async def get_dashboard(self, user_id: str) -> DashboardResponse:
-        rows = await self._thesis_summary_rows(user_id)
-        active = sum(1 for r in rows if r.status == "active")
-        invalidated = sum(1 for r in rows if r.status == "invalidated")
-        closed = sum(1 for r in rows if r.status == "closed")
-        scores = [r.score for r in rows if r.score is not None]
-        avg_score = sum(scores) / len(scores) if scores else None
-        return DashboardResponse(
-            user_id=user_id,
-            generated_at=datetime.now(timezone.utc),
-            total_theses=len(rows),
-            active_count=active,
-            invalidated_count=invalidated,
-            closed_count=closed,
-            avg_score=avg_score,
-            theses=rows,
-        )
-
-    async def get_watchlist_snapshot(self, user_id: str) -> list[WatchlistSnapshotRow]:
-        from src.thesis.models import Thesis
-        from src.watchlist.models import WatchlistItem
-
-        stmt = (
-            select(
-                WatchlistItem.ticker,
-                WatchlistItem.note,
-                WatchlistItem.thesis_id,
-                WatchlistItem.added_at,
-                Thesis.title.label("thesis_title"),
-                Thesis.status.label("thesis_status"),
-            )
-            .outerjoin(Thesis, Thesis.id == WatchlistItem.thesis_id)
-            .where(WatchlistItem.user_id == user_id)
-            .order_by(WatchlistItem.added_at.desc())
-        )
-        result = await self._session.execute(stmt)
-        rows = result.all()
-        return [
-            WatchlistSnapshotRow(
-                ticker=r.ticker,
-                note=r.note,
-                thesis_id=r.thesis_id,
-                thesis_title=r.thesis_title,
-                thesis_status=str(r.thesis_status) if r.thesis_status else None,
-                current_price=None,
-                added_at=r.added_at,
-            )
-            for r in rows
-        ]
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
-    async def _thesis_summary_rows(self, user_id: str) -> list[ThesisSummaryRow]:
-        from src.thesis.models import (
-            Assumption,
-            AssumptionStatus,
-            Catalyst,
-            CatalystStatus,
-            Thesis,
-            ThesisReview,
-        )
-
-        latest_review_subq = (
-            select(
-                ThesisReview.thesis_id,
-                ThesisReview.verdict,
-                ThesisReview.reviewed_at,
-                func.row_number()
-                .over(
-                    partition_by=ThesisReview.thesis_id,
-                    order_by=ThesisReview.reviewed_at.desc(),
-                )
-                .label("rn"),
-            )
-            .subquery("latest_review")
-        )
-
-        total_assumptions_subq = (
-            select(
-                Assumption.thesis_id,
-                func.count(Assumption.id).label("total"),
-                func.sum(func.cast(Assumption.status == AssumptionStatus.INVALID, Integer)).label(
-                    "invalid"
-                ),
-            )
-            .group_by(Assumption.thesis_id)
-            .subquery("assumption_counts")
-        )
-
-        total_catalysts_subq = (
-            select(
-                Catalyst.thesis_id,
-                func.count(Catalyst.id).label("total"),
-                func.sum(func.cast(Catalyst.status == CatalystStatus.TRIGGERED, Integer)).label(
-                    "triggered"
-                ),
-            )
-            .group_by(Catalyst.thesis_id)
-            .subquery("catalyst_counts")
-        )
-
-        stmt = (
-            select(
-                Thesis.id,
-                Thesis.ticker,
-                Thesis.title,
-                Thesis.status,
-                Thesis.score,
-                Thesis.entry_price,
-                Thesis.target_price,
-                Thesis.stop_loss,
-                Thesis.created_at,
-                latest_review_subq.c.verdict.label("last_verdict"),
-                latest_review_subq.c.reviewed_at.label("last_reviewed_at"),
-                func.coalesce(total_assumptions_subq.c.total, 0).label("assumption_count"),
-                func.coalesce(total_assumptions_subq.c.invalid, 0).label(
-                    "invalid_assumption_count"
-                ),
-                func.coalesce(total_catalysts_subq.c.total, 0).label("catalyst_count"),
-                func.coalesce(total_catalysts_subq.c.triggered, 0).label(
-                    "triggered_catalyst_count"
-                ),
-            )
-            .outerjoin(
-                latest_review_subq,
-                and_(
-                    latest_review_subq.c.thesis_id == Thesis.id,
-                    latest_review_subq.c.rn == 1,
-                ),
-            )
-            .outerjoin(total_assumptions_subq, total_assumptions_subq.c.thesis_id == Thesis.id)
-            .outerjoin(total_catalysts_subq, total_catalysts_subq.c.thesis_id == Thesis.id)
-            .where(Thesis.user_id == user_id)
-            .order_by(Thesis.created_at.desc())
-        )
-
-        result = await self._session.execute(stmt)
-        rows = result.all()
-
-        out: list[ThesisSummaryRow] = []
-        for r in rows:
-            upside_pct: float | None = None
-            risk_reward: float | None = None
-            if r.entry_price and r.target_price and r.entry_price > 0:
-                upside_pct = (r.target_price - r.entry_price) / r.entry_price * 100
-            if r.entry_price and r.target_price and r.stop_loss and r.entry_price > r.stop_loss:
-                upside = r.target_price - r.entry_price
-                downside = r.entry_price - r.stop_loss
-                if downside > 0:
-                    risk_reward = upside / downside
-
-            tier_label, tier_icon = score_tier(r.score) if r.score is not None else (None, None)
-
-            out.append(
-                ThesisSummaryRow(
-                    id=r.id,
-                    ticker=r.ticker,
-                    title=r.title,
-                    status=str(r.status.value if hasattr(r.status, "value") else r.status),
-                    score=r.score,
-                    score_tier=tier_label,
-                    score_tier_icon=tier_icon,
-                    score_breakdown=None,
-                    entry_price=r.entry_price,
-                    target_price=r.target_price,
-                    stop_loss=r.stop_loss,
-                    upside_pct=upside_pct,
-                    risk_reward=risk_reward,
-                    current_price=None,
-                    pnl_pct=None,
-                    last_verdict=str(r.last_verdict) if r.last_verdict else None,
-                    last_reviewed_at=r.last_reviewed_at,
-                    created_at=r.created_at,
-                    assumption_count=r.assumption_count or 0,
-                    invalid_assumption_count=r.invalid_assumption_count or 0,
-                    catalyst_count=r.catalyst_count or 0,
-                    triggered_catalyst_count=r.triggered_catalyst_count or 0,
-                )
-            )
-        return out
 
 
 # ---------------------------------------------------------------------------
