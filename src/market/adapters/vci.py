@@ -24,7 +24,6 @@ Response shape (per symbol):
 
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime
 from typing import Any
 
@@ -45,6 +44,16 @@ _HEADERS = {
 }
 _TIMEOUT = 10.0
 _BULK_CHUNK_SIZE = 50
+
+
+def _safe_float(val: Any, fallback: float = 0.0) -> float:
+    """Parse float an toàn — trả fallback nếu None, '', hoặc không parse được."""
+    if val is None:
+        return fallback
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return fallback
 
 
 class VCIAdapter(MarketDataAdapter):
@@ -120,21 +129,19 @@ def _parse_item(item: dict[str, Any]) -> Quote:
 
     ticker = listing["symbol"]
     ref_price = float(listing["refPrice"])
-    price = float(match.get("matchPrice") or match.get("refPrice") or ref_price)
-    change = float(match.get("priceChange") or 0)
+    price = _safe_float(match.get("matchPrice") or match.get("refPrice"), fallback=ref_price)
 
-    # Fix: không dùng `or 0` vì 0.0 là falsy — tính lại từ change/ref_price khi thiếu
-    change_pct_raw = match.get("priceChangePercent")
-    if change_pct_raw is None:
-        change_pct = (change / ref_price * 100) if ref_price else 0.0
-    else:
-        change_pct = float(change_pct_raw)
+    change = _safe_float(match.get("priceChange"), fallback=price - ref_price)
+    change_pct = _safe_float(
+        match.get("priceChangePercent"),
+        fallback=(change / ref_price * 100) if ref_price else 0.0,
+    )
 
-    volume = int(match.get("matchVolume") or 0)
-    value = float(match.get("matchValue") or 0)
-    open_ = float(match.get("open") or listing.get("refPrice", price))
-    high = float(match.get("highest") or price)
-    low = float(match.get("lowest") or price)
+    volume = int(_safe_float(match.get("matchVolume"), fallback=0.0))
+    value = _safe_float(match.get("matchValue"))
+    open_ = _safe_float(match.get("open") or listing.get("refPrice"), fallback=price)
+    high = _safe_float(match.get("highest"), fallback=price)
+    low = _safe_float(match.get("lowest"), fallback=price)
     ceiling = float(listing["ceiling"])
     floor_ = float(listing["floor"])
 

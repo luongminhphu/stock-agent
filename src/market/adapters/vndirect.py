@@ -48,6 +48,16 @@ _TIMEOUT = 10.0
 _BULK_CHUNK_SIZE = 20  # VNDirect query string limit
 
 
+def _safe_float(val: Any, fallback: float = 0.0) -> float:
+    """Parse float an toàn — trả fallback nếu None, '', hoặc không parse được."""
+    if val is None:
+        return fallback
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return fallback
+
+
 class VNDirectAdapter(MarketDataAdapter):
     """Fetch real-time quotes from VNDirect public finfo API."""
 
@@ -64,7 +74,7 @@ class VNDirectAdapter(MarketDataAdapter):
             raise ValueError(f"VNDirect returned no data for ticker '{ticker}'.")
         return results[0]
 
-    async def fetch_bulk_quotes(self, tickers: list[str]) -> list[Quote]:
+    async def fetch_bulk_quotes(self, tickers: list[str]) -> list[Quote]:        
         chunks = [
             tickers[i : i + _BULK_CHUNK_SIZE] for i in range(0, len(tickers), _BULK_CHUNK_SIZE)
         ]
@@ -120,23 +130,22 @@ def _parse_stocks(data: list[dict[str, Any]]) -> list[Quote]:
 
 def _parse_item(item: dict[str, Any]) -> Quote:
     ticker = item["code"]
-    ref_price = float(item.get("refPrice") or 0)
-    price = float(item.get("close") or ref_price)
-    change_raw = item.get("priceChange")
-    change = float(change_raw) if change_raw is not None else (price - ref_price)
-    change_pct_raw = item.get("pctPriceChange")
-    if change_pct_raw is None:
-        change_pct = (change / ref_price * 100) if ref_price else 0.0
-    else:
-        change_pct = float(change_pct_raw)
+    ref_price = _safe_float(item.get("refPrice"))
+    price = _safe_float(item.get("close"), fallback=ref_price)
 
-    volume = int(item.get("nmVolume") or 0)
-    value = float(item.get("nmValue") or 0)
-    open_ = float(item.get("open") or price)
-    high = float(item.get("high") or price)
-    low = float(item.get("low") or price)
-    ceiling = float(item.get("ceiling") or price * 1.07)
-    floor_ = float(item.get("floor") or price * 0.93)
+    change = _safe_float(item.get("priceChange"), fallback=price - ref_price)
+    change_pct = _safe_float(
+        item.get("pctPriceChange"),
+        fallback=(change / ref_price * 100) if ref_price else 0.0,
+    )
+
+    volume = int(_safe_float(item.get("nmVolume")))
+    value = _safe_float(item.get("nmValue"))
+    open_ = _safe_float(item.get("open"), fallback=price)
+    high = _safe_float(item.get("high"), fallback=price)
+    low = _safe_float(item.get("low"), fallback=price)
+    ceiling = _safe_float(item.get("ceiling"), fallback=price * 1.07)
+    floor_ = _safe_float(item.get("floor"), fallback=price * 0.93)
 
     raw_date = item.get("date")
     try:
