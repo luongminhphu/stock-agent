@@ -452,6 +452,7 @@ class ThesisService:
         await self._repo.save_catalyst(catalyst)
         logger.info("catalyst.updated", catalyst_id=catalyst_id)
         await self._recompute_score(thesis_id)
+        await self._auto_invalidate_if_needed(thesis_id)
         return catalyst
 
     async def delete_catalyst(
