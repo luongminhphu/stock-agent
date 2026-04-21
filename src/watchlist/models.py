@@ -106,7 +106,8 @@ class Alert(Base):
         Integer, ForeignKey("watchlist_items.id", ondelete="CASCADE"), index=True
     )
     condition_type: Mapped[AlertConditionType] = mapped_column(
-        SAEnum(AlertConditionType), nullable=False
+        SAEnum(AlertConditionType, values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
     )
     threshold: Mapped[float] = mapped_column(Float, nullable=False)
     status: Mapped[AlertStatus] = mapped_column(
