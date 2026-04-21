@@ -28,6 +28,42 @@ class RiskLevel(str, Enum):
     HIGH = "HIGH"
     CRITICAL = "CRITICAL"
 
+
+# ---------------------------------------------------------------------------
+# Thesis Review — AI recommendations (user must confirm before applying)
+# ---------------------------------------------------------------------------
+
+
+class AssumptionRecommendation(BaseModel):
+    """AI gợi ý cập nhật status cho một assumption cụ thể.
+
+    target_id phải khớp với Assumption.id trong DB.
+    Chỉ là đề xuất — không tự apply, cần user xác nhận.
+    """
+
+    target_id: int = Field(description="Assumption.id cần cập nhật")
+    description: str = Field(description="Mô tả assumption để user nhận diện")
+    recommended_status: str = Field(
+        description="Status đề xuất: valid | invalid | uncertain"
+    )
+    reason: str = Field(description="Lý do AI đề xuất status này")
+
+
+class CatalystRecommendation(BaseModel):
+    """AI gợi ý cập nhật status cho một catalyst cụ thể.
+
+    target_id phải khớp với Catalyst.id trong DB.
+    Chỉ là đề xuất — không tự apply, cần user xác nhận.
+    """
+
+    target_id: int = Field(description="Catalyst.id cần cập nhật")
+    description: str = Field(description="Mô tả catalyst để user nhận diện")
+    recommended_status: str = Field(
+        description="Status đề xuất: triggered | expired | cancelled"
+    )
+    reason: str = Field(description="Lý do AI đề xuất status này")
+
+
 # ---------------------------------------------------------------------------
 # Thesis Review
 # ---------------------------------------------------------------------------
@@ -43,13 +79,21 @@ class ThesisReviewOutput(BaseModel):
     risk_signals: list[str] = Field(default_factory=list, description="Key risks detected")
     next_watch_items: list[str] = Field(default_factory=list, description="What to monitor next")
     reasoning: str = Field(description="Natural language explanation of the verdict")
-    assumption_updates: list[str] = Field(
+    assumption_recommendations: list[AssumptionRecommendation] = Field(
         default_factory=list,
-        description="Assumptions that may need revision",
+        description=(
+            "AI gợi ý cập nhật status cho từng assumption. "
+            "Chỉ là đề xuất — ReviewService persist dưới dạng PENDING, "
+            "user phải xác nhận trước khi apply."
+        ),
     )
-    catalyst_status: list[str] = Field(
+    catalyst_recommendations: list[CatalystRecommendation] = Field(
         default_factory=list,
-        description="Status update on active catalysts",
+        description=(
+            "AI gợi ý cập nhật status cho từng catalyst. "
+            "Chỉ là đề xuất — ReviewService persist dưới dạng PENDING, "
+            "user phải xác nhận trước khi apply."
+        ),
     )
 
     @field_validator("risk_signals", "next_watch_items", mode="before")
@@ -57,6 +101,13 @@ class ThesisReviewOutput(BaseModel):
     def ensure_list(cls, v: object) -> list[object]:
         if isinstance(v, str):
             return [v]
+        return v  # type: ignore[return-value]
+
+    @field_validator("assumption_recommendations", "catalyst_recommendations", mode="before")
+    @classmethod
+    def ensure_rec_list(cls, v: object) -> list[object]:
+        if not isinstance(v, list):
+            return []
         return v  # type: ignore[return-value]
 
 
@@ -71,6 +122,7 @@ class MarketSentiment(str, Enum):
     MIXED = "MIXED"
     UNCERTAIN = "UNCERTAIN"
 
+
 class WatchlistTickerSummary(BaseModel):
     ticker: str
     price: float
@@ -78,7 +130,8 @@ class WatchlistTickerSummary(BaseModel):
     signal: str
     one_line: str
     watch_reason: str
-    
+
+
 class BriefOutput(BaseModel):
     """Structured output from BriefingAgent (morning or EOD)."""
 
@@ -95,6 +148,7 @@ class BriefOutput(BaseModel):
         default_factory=list,
         description="Per-ticker summary for each watchlist item",
     )
+
 
 # ---------------------------------------------------------------------------
 # Stock Analysis
@@ -176,13 +230,16 @@ class ThesisSuggestionResult(BaseModel):
             return []
         return v  # type: ignore[return-value]
 
+
 class MovementDirection(str, Enum):
     UP = "UP"
     DOWN = "DOWN"
     FLAT = "FLAT"
 
+
 class WhyOutput(BaseModel):
     """Structured output from WhyAgent."""
+
     ticker: str
     direction: MovementDirection
     change_pct: float = Field(description="% thay đổi thực tế")
@@ -192,4 +249,3 @@ class WhyOutput(BaseModel):
     risk_flags: list[str] = Field(default_factory=list, description="Rủi ro cần theo dõi tiếp")
     confidence: float = Field(ge=0.0, le=1.0, description="Độ tin cậy phân tích")
     data_quality: str = Field(default="", description="Ghi chú về chất lượng dữ liệu đầu vào")
-
