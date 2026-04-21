@@ -402,6 +402,7 @@ class ThesisService:
         await self._repo.delete_assumption(assumption)
         logger.info("assumption.deleted", assumption_id=assumption_id, thesis_id=thesis_id)
         await self._recompute_score(thesis_id)
+        await self._auto_invalidate_if_needed(thesis_id)
 
     # ------------------------------------------------------------------
     # Catalyst CRUD
@@ -467,6 +468,7 @@ class ThesisService:
         await self._repo.delete_catalyst(catalyst)
         logger.info("catalyst.deleted", catalyst_id=catalyst_id, thesis_id=thesis_id)
         await self._recompute_score(thesis_id)
+        await self._auto_invalidate_if_needed(thesis_id)
 
     # ------------------------------------------------------------------
     # Private helpers
