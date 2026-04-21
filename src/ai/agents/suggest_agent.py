@@ -217,7 +217,7 @@ class ThesisSuggestAgent:
             result = ThesisSuggestionResult.model_validate(data)
 
         except (json.JSONDecodeError, ValidationError) as exc:
-            logger.error("suggest_agent.parse_error", ticker=ticker, error=str(exc))
+            logger.error("suggest_agent.parse_error", ticker=ticker, error=str(exc), raw_json=json_str[:500])
             raise ValueError(
                 f"AI response for {ticker} could not be parsed: {exc}"
             ) from exc
