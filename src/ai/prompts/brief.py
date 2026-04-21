@@ -14,6 +14,7 @@ Quy tắc:
 - Ngôn ngữ: tiếng Việt, giọng chuyên nghiệp nhưng dễ hiểu.
 - Tập trung vào thông tin actionable, không lan man.
 - Với watchlist: chỉ đề cập ticker nếu có điều đáng chú ý thực sự.
+- ticker_summaries: bắt buộc điền đầy đủ cho MỖI ticker trong watchlist, không được bỏ sót.
 
 JSON schema:
 {
@@ -22,7 +23,17 @@ JSON schema:
   "summary": "string — 2-3 câu narrative",
   "key_movers": ["ticker hoặc ngành đáng chú ý"],
   "watchlist_alerts": ["quan sát cụ thể về watchlist"],
-  "action_items": ["gợi ý hành động cụ thể cho nhà đầu tư"]
+  "action_items": ["gợi ý hành động cụ thể cho nhà đầu tư"],
+  "ticker_summaries": [
+    {
+      "ticker": "string — mã CK viết hoa, VD: VNM",
+      "price": "number — giá đóng cửa / hiện tại",
+      "change_pct": "number — % thay đổi so với phiên trước, VD: -1.25",
+      "signal": "bullish | bearish | neutral",
+      "one_line": "string — 1 câu nhận định ngắn gọn về mã này hôm nay",
+      "watch_reason": "string — lý do cần theo dõi mã này trong phiên tới"
+    }
+  ]
 }
 """
 
@@ -32,7 +43,6 @@ def build_morning_prompt(
     watchlist_tickers: list[str],
     extra_context: str = "",
 ) -> str:
-    """Build user message for morning brief."""
     ticker_str = ", ".join(watchlist_tickers) if watchlist_tickers else "(không có watchlist)"
     prompt = f"""[MORNING BRIEF — Phiên hôm nay]
 
@@ -44,16 +54,19 @@ Watchlist cần theo dõi: {ticker_str}
     if extra_context:
         prompt += f"\nThông tin bổ sung:\n{extra_context}\n"
 
-    prompt += "\nTạo morning brief theo JSON schema đã được định nghĩa."
+    prompt += (
+        "\nTạo morning brief theo JSON schema đã được định nghĩa."
+        "\nLưu ý: ticker_summaries phải có entry cho TẤT CẢ các ticker trong watchlist."
+        " Với mỗi ticker, dùng dữ liệu giá từ phần 'Dữ liệu thị trường' ở trên."
+        " Nếu không có giá, đặt price=0, change_pct=0 và ghi rõ trong one_line là thiếu dữ liệu."
+    )
     return prompt
-
 
 def build_eod_prompt(
     market_context: str,
     watchlist_tickers: list[str],
     extra_context: str = "",
 ) -> str:
-    """Build user message for end-of-day brief."""
     ticker_str = ", ".join(watchlist_tickers) if watchlist_tickers else "(không có watchlist)"
     prompt = f"""[EOD BRIEF — Tổng kết phiên]
 
@@ -65,5 +78,10 @@ Watchlist cần review: {ticker_str}
     if extra_context:
         prompt += f"\nThông tin bổ sung:\n{extra_context}\n"
 
-    prompt += "\nTạo EOD brief theo JSON schema đã được định nghĩa."
+    prompt += (
+        "\nTạo EOD brief theo JSON schema đã được định nghĩa."
+        "\nLưu ý: ticker_summaries phải có entry cho TẤT CẢ các ticker trong watchlist."
+        " Tổng kết hiệu suất từng mã trong phiên: giá đóng cửa, % thay đổi, tín hiệu kỹ thuật."
+        " watch_reason là điểm cần chú ý cho phiên TIẾP THEO."
+    )
     return prompt
