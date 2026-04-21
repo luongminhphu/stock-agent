@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import calendar
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
