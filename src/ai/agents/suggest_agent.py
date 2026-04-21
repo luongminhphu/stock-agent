@@ -85,6 +85,20 @@ def _extract_json(text: str) -> str:
     return text
 
 
+def _pre_clean(text: str) -> str:
+    """Clean AI artifacts TRƯỚC json.loads() để tránh parse error.
+
+    Handles:
+    - Citation markers: [1], [2], [12] — sonar-pro inject vào giữa string
+    - Trailing commas trước } hoặc ] — sonar thỉnh thoảng sinh ra
+    """
+    # Strip citations
+    text = re.sub(r"\[\d+\]", "", text)
+    # Trailing commas: ,\n} hoặc ,\n]
+    text = re.sub(r",\s*(\n\s*[}\]])", r"\1", text)
+    return text
+
+
 def _strip_citations(text: str) -> str:
     """Remove citation markers like [1], [2] that sonar-pro injects."""
     return re.sub(r"\[\d+\]", "", text).strip()
@@ -197,6 +211,7 @@ class ThesisSuggestAgent:
                 raw_text = self._client.extract_text(response)
 
             json_str = _extract_json(raw_text)
+            json_str = _pre_clean(json_str) 
             data = json.loads(json_str)
             data = _normalize_data(data, ticker)
             result = ThesisSuggestionResult.model_validate(data)
