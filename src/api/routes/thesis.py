@@ -77,6 +77,7 @@ from src.thesis.service import (
     UpdateAssumptionInput,
     UpdateCatalystInput,
     UpdateThesisInput,
+    parse_timeline_to_date,
 )
 
 router = APIRouter(prefix="/thesis", tags=["thesis"])
@@ -139,7 +140,21 @@ async def create_thesis(
     user_id: str = Depends(get_current_user_id),
     svc: ThesisService = Depends(get_thesis_service),
 ) -> ThesisResponse:
-    """Create a new thesis with optional initial assumptions and catalysts."""
+    """Create a new thesis with optional initial assumptions and catalysts.
+
+    ThesisCreateRequest.catalysts is list[str] (plain descriptions).
+    We map each string → AddCatalystInput here at the route boundary so the
+    service layer never has to deal with raw strings.
+
+    If the DTO later evolves to carry expected_timeline strings (e.g. from
+    the AI suggest confirm flow), parse_timeline_to_date is already imported
+    and can be wired in without touching the service.
+    """
+    catalyst_inputs: list[AddCatalystInput] = [
+        AddCatalystInput(description=desc)
+        for desc in (body.catalysts or [])
+    ]
+
     thesis = await svc.create(
         CreateThesisInput(
             user_id=user_id,
@@ -149,8 +164,8 @@ async def create_thesis(
             entry_price=body.entry_price,
             target_price=body.target_price,
             stop_loss=body.stop_loss,
-            assumptions=body.assumptions,
-            catalysts=body.catalysts,
+            assumptions=body.assumptions or None,
+            catalysts=catalyst_inputs or None,
         )
     )
     return ThesisResponse.model_validate(thesis)
