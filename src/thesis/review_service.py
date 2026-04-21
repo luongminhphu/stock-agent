@@ -114,10 +114,18 @@ class ReviewService:
         assumptions = [
             a.description for a in thesis.assumptions if a.status != AssumptionStatus.INVALID
         ]
-        catalysts = [
+
+        # Tách rõ PENDING (sắp tới) vs TRIGGERED (đã kích hoạt).
+        # EXPIRED/CANCELLED bị loại — không còn relevance với AI review.
+        pending_catalysts = [
             c.description
             for c in thesis.catalysts
-            if c.status in (CatalystStatus.PENDING, CatalystStatus.TRIGGERED)
+            if c.status == CatalystStatus.PENDING
+        ]
+        triggered_catalysts = [
+            c.description
+            for c in thesis.catalysts
+            if c.status == CatalystStatus.TRIGGERED
         ]
 
         logger.info(
@@ -125,7 +133,8 @@ class ReviewService:
             thesis_id=thesis_id,
             ticker=thesis.ticker,
             assumptions_count=len(assumptions),
-            catalysts_count=len(catalysts),
+            pending_catalysts_count=len(pending_catalysts),
+            triggered_catalysts_count=len(triggered_catalysts),
         )
 
         output: ThesisReviewOutput = await self._agent.review(
@@ -133,7 +142,8 @@ class ReviewService:
             thesis_title=thesis.title,
             thesis_summary=thesis.summary or "",
             assumptions=assumptions,
-            catalysts=catalysts,
+            catalysts=pending_catalysts,
+            triggered_catalysts=triggered_catalysts,
             current_price=current_price,
             entry_price=thesis.entry_price,
             target_price=thesis.target_price,

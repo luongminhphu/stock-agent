@@ -16,7 +16,7 @@ Quy tắc:
 - risk_signals: danh sách rủi ro cụ thể, có thể đo lường.
 - next_watch_items: sự kiện/data point cần theo dõi tiếp.
 - assumption_updates: assumptions nào cần được revisit.
-- catalyst_status: update về tiến độ của từng catalyst.
+- catalyst_status: update về tiến độ của từng catalyst còn PENDING.
 - reasoning: giải thích ngắn gọn, rõ ràng bằng tiếng Việt.
 
 JSON schema:
@@ -38,11 +38,17 @@ def build_review_prompt(
     thesis_summary: str,
     assumptions: list[str],
     catalysts: list[str],
+    triggered_catalysts: list[str] | None = None,
     current_price: float | None = None,
     entry_price: float | None = None,
     target_price: float | None = None,
 ) -> str:
-    """Build the user message for a thesis review."""
+    """Build the user message for a thesis review.
+
+    Args:
+        catalysts:           PENDING catalysts — chưa xảy ra, sắp tới.
+        triggered_catalysts: TRIGGERED catalysts — đã kích hoạt/xảy ra.
+    """
     lines = [
         f"**Thesis Review: {ticker} — {thesis_title}**",
         "",
@@ -57,8 +63,14 @@ def build_review_prompt(
         lines.append("")
 
     if catalysts:
-        lines.append("Catalysts:")
+        lines.append("Catalysts sắp tới (PENDING — chưa xảy ra):")
         for i, c in enumerate(catalysts, 1):
+            lines.append(f"  {i}. {c}")
+        lines.append("")
+
+    if triggered_catalysts:
+        lines.append("Catalysts đã kích hoạt (TRIGGERED — đã xảy ra):")
+        for i, c in enumerate(triggered_catalysts, 1):
             lines.append(f"  {i}. {c}")
         lines.append("")
 

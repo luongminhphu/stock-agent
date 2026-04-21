@@ -44,11 +44,17 @@ class ThesisReviewAgent:
         thesis_summary: str,
         assumptions: list[str],
         catalysts: list[str],
+        triggered_catalysts: list[str] | None = None,
         current_price: float | None = None,
         entry_price: float | None = None,
         target_price: float | None = None,
     ) -> ThesisReviewOutput:
         """Run a thesis review and return structured output.
+
+        Args:
+            catalysts:            PENDING catalysts — chưa xảy ra, sắp tới.
+            triggered_catalysts:  TRIGGERED catalysts — đã kích hoạt/xảy ra.
+                                  Mặc định None (tương đương list rỗng).
 
         Raises:
             PerplexityError: If the API call fails after retries.
@@ -64,6 +70,7 @@ class ThesisReviewAgent:
                     thesis_summary=thesis_summary,
                     assumptions=assumptions,
                     catalysts=catalysts,
+                    triggered_catalysts=triggered_catalysts or [],
                     current_price=current_price,
                     entry_price=entry_price,
                     target_price=target_price,
