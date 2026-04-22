@@ -40,11 +40,11 @@ async def add_to_watchlist(
                 note=body.note,
             )
         )
-    except WatchlistItemAlreadyExistsError:
+    except WatchlistItemAlreadyExistsError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"'{body.ticker.upper()}' is already in your watchlist.",
-        )
+        ) from exc
     return WatchlistItemResponse.model_validate(item)
 
 
@@ -67,8 +67,8 @@ async def remove_from_watchlist(
     svc = WatchlistService(db)
     try:
         await svc.remove(user_id=user_id, ticker=ticker.upper())
-    except WatchlistItemNotFoundError:
+    except WatchlistItemNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"'{ticker.upper()}' not found in your watchlist.",
-        )
+        ) from exc
