@@ -228,7 +228,8 @@ class ThesisSuggestAgent:
             response = await self._client.chat_completion(
                 messages=messages,
                 temperature=0.2,
-                max_tokens=2048,
+                max_tokens=3072,
+                response_format={"type": "json_object"},
             )
             raw_text = self._client.extract_text(response)
 
