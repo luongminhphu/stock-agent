@@ -156,8 +156,7 @@ async def create_thesis(
     and can be wired in without touching the service.
     """
     catalyst_inputs: list[AddCatalystInput] = [
-        AddCatalystInput(description=desc)
-        for desc in (body.catalysts or [])
+        AddCatalystInput(description=desc) for desc in (body.catalysts or [])
     ]
 
     thesis = await svc.create(
@@ -645,9 +644,7 @@ async def get_latest_review(
 ) -> ThesisReviewResponse:
     """Return the most recent AI review for a thesis."""
     try:
-        reviews = await review_svc.list_reviews(
-            thesis_id=thesis_id, user_id=user_id, limit=1
-        )
+        reviews = await review_svc.list_reviews(thesis_id=thesis_id, user_id=user_id, limit=1)
     except ThesisNotFoundError as exc:
         raise _not_found(exc)
     if not reviews:
@@ -675,9 +672,7 @@ async def list_recommendations(
     Chỉ trả recommendations có status=PENDING — đã accepted/rejected không xuất hiện.
     """
     try:
-        recs = await review_svc.list_pending_recommendations(
-            thesis_id=thesis_id, user_id=user_id
-        )
+        recs = await review_svc.list_pending_recommendations(thesis_id=thesis_id, user_id=user_id)
     except ThesisNotFoundError as exc:
         raise _not_found(exc)
     return RecommendationListResponse(

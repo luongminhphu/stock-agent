@@ -141,7 +141,7 @@ class BaseCog(commands.Cog):
         shown = lines[:max_items]
         body = "\n".join(shown)
         if len(body) > max_chars:
-            body = body[:max_chars - 3] + "..."
+            body = body[: max_chars - 3] + "..."
         hidden = len(lines) - len(shown)
         footer = f"Showing {len(shown)} of {len(lines)}" if hidden > 0 else ""
         return body, footer

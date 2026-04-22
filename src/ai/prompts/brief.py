@@ -62,6 +62,7 @@ Watchlist cần theo dõi: {ticker_str}
     )
     return prompt
 
+
 def build_eod_prompt(
     market_context: str,
     watchlist_tickers: list[str],

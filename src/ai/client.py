@@ -120,8 +120,7 @@ class PerplexityClient:
         """
         if self._client is None:
             raise RuntimeError(
-                "PerplexityClient has been closed. "
-                "Do not call chat_completion() after aclose()."
+                "PerplexityClient has been closed. Do not call chat_completion() after aclose()."
             )
 
         payload: dict[str, Any] = {

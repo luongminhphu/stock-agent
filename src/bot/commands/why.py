@@ -1,6 +1,7 @@
 """Why command — /why <ticker>
 Owner: bot segment. Adapter only — no domain logic.
 """
+
 from __future__ import annotations
 import discord
 from discord import app_commands
@@ -13,12 +14,12 @@ from src.platform.logging import get_logger
 logger = get_logger(__name__)
 
 _DIR_EMOJI = {
-    MovementDirection.UP:   "📈",
+    MovementDirection.UP: "📈",
     MovementDirection.DOWN: "📉",
     MovementDirection.FLAT: "➡️",
 }
 _DIR_COLOR = {
-    MovementDirection.UP:   discord.Color.green(),
+    MovementDirection.UP: discord.Color.green(),
     MovementDirection.DOWN: discord.Color.red(),
     MovementDirection.FLAT: discord.Color.greyple(),
 }

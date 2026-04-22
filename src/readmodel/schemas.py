@@ -65,11 +65,11 @@ class ThesisSummaryRow(BaseModel):
     invalid_assumption_count: int
     catalyst_count: int
     triggered_catalyst_count: int
-    change: float | None = None       # thay đổi tuyệt đối so với hôm qua (VND)
-    change_pct: float | None = None   # thay đổi % so với ref_price
-    volume: int | None = None         # khối lượng khớp
-    is_ceiling: bool | None = None    # đang trần?
-    is_floor: bool | None = None      # đang sàn?
+    change: float | None = None  # thay đổi tuyệt đối so với hôm qua (VND)
+    change_pct: float | None = None  # thay đổi % so với ref_price
+    volume: int | None = None  # khối lượng khớp
+    is_ceiling: bool | None = None  # đang trần?
+    is_floor: bool | None = None  # đang sàn?
 
 
 class DashboardResponse(BaseModel):

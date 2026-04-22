@@ -288,9 +288,7 @@ class DashboardService:
         )
 
         thesis = (
-            await self._session.execute(
-                select(Thesis).where(Thesis.id == thesis_id)
-            )
+            await self._session.execute(select(Thesis).where(Thesis.id == thesis_id))
         ).scalar_one_or_none()
         if thesis is None or thesis.user_id != user_id:
             return None
@@ -371,7 +369,9 @@ class DashboardService:
             }
 
         last_review = reviews_rows[0] if reviews_rows else None
-        tier_label, tier_icon = score_tier(thesis.score) if thesis.score is not None else (None, None)
+        tier_label, tier_icon = (
+            score_tier(thesis.score) if thesis.score is not None else (None, None)
+        )
 
         return {
             "thesis": {
@@ -388,7 +388,13 @@ class DashboardService:
                 "stop_loss": thesis.stop_loss,
                 "created_at": thesis.created_at.isoformat() if thesis.created_at else None,
                 "updated_at": thesis.updated_at.isoformat() if thesis.updated_at else None,
-                "last_verdict": str(last_review.verdict.value if hasattr(last_review.verdict, "value") else last_review.verdict) if last_review else None,
+                "last_verdict": str(
+                    last_review.verdict.value
+                    if hasattr(last_review.verdict, "value")
+                    else last_review.verdict
+                )
+                if last_review
+                else None,
                 "last_confidence": last_review.confidence if last_review else None,
                 "n_assumptions": len(assumptions_rows),
                 "n_catalysts": len(catalysts_rows),
@@ -455,7 +461,9 @@ class DashboardService:
         try:
             from src.watchlist.models import WatchlistScan
         except ImportError:
-            logger.warning("get_scan_latest.import_error", detail="WatchlistScan model not available")
+            logger.warning(
+                "get_scan_latest.import_error", detail="WatchlistScan model not available"
+            )
             return None
 
         try:
@@ -489,7 +497,9 @@ class DashboardService:
         try:
             from src.briefing.models import BriefSnapshot
         except ImportError:
-            logger.warning("get_brief_latest.import_error", detail="BriefSnapshot model not available")
+            logger.warning(
+                "get_brief_latest.import_error", detail="BriefSnapshot model not available"
+            )
             return None
 
         try:
@@ -551,9 +561,7 @@ class DashboardService:
             )
         ).all()
 
-        thesis_verdict: dict[int, str] = {
-            r.thesis_id: str(r.verdict) for r in review_rows
-        }
+        thesis_verdict: dict[int, str] = {r.thesis_id: str(r.verdict) for r in review_rows}
 
         if not thesis_verdict:
             return []
@@ -592,8 +600,10 @@ class DashboardService:
             b = stats[verdict]
             total = b["total"]
             avg_pnl = round(b["pnl_sum"] / total, 2) if total else None
-            accuracy_pct = None if verdict == "NEUTRAL" else (
-                round(b["hits"] / total * 100, 2) if total else None
+            accuracy_pct = (
+                None
+                if verdict == "NEUTRAL"
+                else (round(b["hits"] / total * 100, 2) if total else None)
             )
             result.append(
                 {
@@ -650,17 +660,14 @@ class DashboardService:
                     ThesisSnapshot.thesis_id,
                     ThesisSnapshot.pnl_pct,
                     ThesisSnapshot.snapshotted_at,
-                )
-                .where(
+                ).where(
                     ThesisSnapshot.thesis_id.in_(thesis_ids),
                     ThesisSnapshot.pnl_pct.isnot(None),
                 )
             )
         ).all()
 
-        agg: dict[int, dict] = defaultdict(
-            lambda: {"pnl_values": [], "last_snapshot_at": None}
-        )
+        agg: dict[int, dict] = defaultdict(lambda: {"pnl_values": [], "last_snapshot_at": None})
 
         for s in snap_rows:
             bucket = agg[s.thesis_id]
@@ -706,9 +713,7 @@ class DashboardService:
         from src.thesis.models import Thesis, ThesisReview, ThesisSnapshot
 
         thesis = (
-            await self._session.execute(
-                select(Thesis).where(Thesis.id == thesis_id)
-            )
+            await self._session.execute(select(Thesis).where(Thesis.id == thesis_id))
         ).scalar_one_or_none()
         if thesis is None or thesis.user_id != user_id:
             return None

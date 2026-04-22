@@ -2,6 +2,7 @@
 Owner: ai segment.
 Caller: market segment's WhyService.
 """
+
 from __future__ import annotations
 import json
 from pydantic import ValidationError

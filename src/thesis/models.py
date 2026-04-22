@@ -263,7 +263,7 @@ class ThesisReview(Base):
     )
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
     reasoning: Mapped[str] = mapped_column(Text, nullable=False)
-    risk_signals: Mapped[str | None] = mapped_column(Text)      # JSON list stored as text
+    risk_signals: Mapped[str | None] = mapped_column(Text)  # JSON list stored as text
     next_watch_items: Mapped[str | None] = mapped_column(Text)  # JSON list
     reviewed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -366,7 +366,7 @@ class ThesisSnapshot(Base):
         Integer, ForeignKey("theses.id", ondelete="CASCADE"), nullable=False, index=True
     )
     price_at_snapshot: Mapped[float] = mapped_column(Float, nullable=False)
-    pnl_pct: Mapped[float | None] = mapped_column(Float)       # vs entry_price
+    pnl_pct: Mapped[float | None] = mapped_column(Float)  # vs entry_price
     score_at_snapshot: Mapped[float | None] = mapped_column(Float)
     snapshotted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

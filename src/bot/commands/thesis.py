@@ -304,9 +304,7 @@ class ThesisCog(BaseCog):
                     agent=get_thesis_review_agent(),
                     quote_service=get_quote_service(),
                 )
-                recs = await svc.list_pending_recommendations(
-                    thesis_id=thesis_id, user_id=user_id
-                )
+                recs = await svc.list_pending_recommendations(thesis_id=thesis_id, user_id=user_id)
         except ThesisNotFoundError:
             await self.send_error(
                 interaction,
@@ -340,7 +338,9 @@ class ThesisCog(BaseCog):
         )
         for rec in recs[:10]:
             icon = _TARGET_ICON.get(rec.target_type, "•")
-            field_name = f"{icon} #{rec.id} · {rec.target_type.capitalize()} → `{rec.recommended_status}`"
+            field_name = (
+                f"{icon} #{rec.id} · {rec.target_type.capitalize()} → `{rec.recommended_status}`"
+            )
             field_value = (
                 f"**{rec.target_description[:80]}**\n"
                 f"_{rec.reason[:120] if rec.reason else 'No reason provided'}_"

@@ -206,6 +206,7 @@ class Reminder(Base):
     def __repr__(self) -> str:
         return f"<Reminder freq={self.frequency} enabled={self.enabled}>"
 
+
 # ---------------------------------------------------------------------------
 # WatchlistScan
 # ---------------------------------------------------------------------------

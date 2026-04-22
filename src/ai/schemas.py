@@ -43,9 +43,7 @@ class AssumptionRecommendation(BaseModel):
 
     target_id: int = Field(description="Assumption.id cần cập nhật")
     description: str = Field(description="Mô tả assumption để user nhận diện")
-    recommended_status: str = Field(
-        description="Status đề xuất: valid | invalid | uncertain"
-    )
+    recommended_status: str = Field(description="Status đề xuất: valid | invalid | uncertain")
     reason: str = Field(description="Lý do AI đề xuất status này")
 
 
@@ -58,9 +56,7 @@ class CatalystRecommendation(BaseModel):
 
     target_id: int = Field(description="Catalyst.id cần cập nhật")
     description: str = Field(description="Mô tả catalyst để user nhận diện")
-    recommended_status: str = Field(
-        description="Status đề xuất: triggered | expired | cancelled"
-    )
+    recommended_status: str = Field(description="Status đề xuất: triggered | expired | cancelled")
     reason: str = Field(description="Lý do AI đề xuất status này")
 
 

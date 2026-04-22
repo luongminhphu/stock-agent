@@ -22,17 +22,20 @@ from src.bot.commands.base import BaseCog
 # Help data — update này khi thêm/bớt command
 # ---------------------------------------------------------------------------
 
+
 class CommandEntry(TypedDict):
     usage: str
     description: str
     example: str | None
 
+
 class GroupEntry(TypedDict):
-    label: str       # tên hiển thị trên dropdown
+    label: str  # tên hiển thị trên dropdown
     emoji: str
-    colour: int      # discord.Color int
-    intro: str       # 1-line mô tả nhóm
+    colour: int  # discord.Color int
+    intro: str  # 1-line mô tả nhóm
     commands: list[CommandEntry]
+
 
 HELP_DATA: dict[str, GroupEntry] = {
     "market": {
@@ -160,6 +163,7 @@ _OVERVIEW_COLOUR = 0x4F8EF7
 # Dropdown View
 # ---------------------------------------------------------------------------
 
+
 class _GroupSelect(discord.ui.Select):
     """Dropdown chọn nhóm command."""
 
@@ -202,6 +206,7 @@ class HelpView(discord.ui.View):
 # Embed builders
 # ---------------------------------------------------------------------------
 
+
 def _build_overview_embed() -> discord.Embed:
     """Embed tổng quan khi mới gõ /help."""
     lines = []
@@ -213,8 +218,7 @@ def _build_overview_embed() -> discord.Embed:
         title="📖 stock-agent — Danh sách lệnh",
         description=(
             "AI-native platform phân tích chứng khoán Việt Nam.\n"
-            "Chọn nhóm lệnh từ dropdown bên dưới để xem chi tiết.\n\n"
-            + "\n".join(lines)
+            "Chọn nhóm lệnh từ dropdown bên dưới để xem chi tiết.\n\n" + "\n".join(lines)
         ),
         color=_OVERVIEW_COLOUR,
     )
@@ -246,6 +250,7 @@ def _build_group_embed(group_key: str) -> discord.Embed:
 # ---------------------------------------------------------------------------
 # Cog
 # ---------------------------------------------------------------------------
+
 
 class HelpCog(BaseCog):
     """Slash command: /help"""

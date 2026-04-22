@@ -162,8 +162,7 @@ class ReviewService:
             verdict=review.verdict,
             confidence=review.confidence,
             recommendation_count=(
-                len(output.assumption_recommendations)
-                + len(output.catalyst_recommendations)
+                len(output.assumption_recommendations) + len(output.catalyst_recommendations)
             ),
         )
         return review

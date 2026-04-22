@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     # Discord bot
     discord_token: str = ""
     discord_guild_id: str = ""  # Set để sync slash commands tức thì (guild-specific)
-                                # Bỏ trống = global sync (~1 giờ)
+    # Bỏ trống = global sync (~1 giờ)
 
     # Owner User ID
     owner_user_id: str = ""

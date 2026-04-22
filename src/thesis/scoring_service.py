@@ -26,19 +26,19 @@ _WEIGHTS = {
 
 # Each entry: (lo_inclusive, hi_inclusive, label, icon)
 SCORE_TIERS: list[tuple[int, int, str, str]] = [
-    (0,  30,  "Critical",  "🔴"),
-    (31, 50,  "Weak",      "🟠"),
-    (51, 70,  "Moderate",  "🟡"),
-    (71, 85,  "Healthy",   "🟢"),
-    (86, 100, "Strong",    "💎"),
+    (0, 30, "Critical", "🔴"),
+    (31, 50, "Weak", "🟠"),
+    (51, 70, "Moderate", "🟡"),
+    (71, 85, "Healthy", "🟢"),
+    (86, 100, "Strong", "💎"),
 ]
 
 # Max possible contribution per dimension (for display purposes)
 SCORE_MAX: dict[str, float] = {
-    "assumption_health": _WEIGHTS["assumption_health"] * 100,   # 40
-    "catalyst_progress": _WEIGHTS["catalyst_progress"] * 100,   # 30
-    "risk_reward":       _WEIGHTS["risk_reward"] * 100,         # 20
-    "review_confidence": _WEIGHTS["review_confidence"] * 100,   # 10
+    "assumption_health": _WEIGHTS["assumption_health"] * 100,  # 40
+    "catalyst_progress": _WEIGHTS["catalyst_progress"] * 100,  # 30
+    "risk_reward": _WEIGHTS["risk_reward"] * 100,  # 20
+    "review_confidence": _WEIGHTS["review_confidence"] * 100,  # 10
 }
 
 
@@ -67,15 +67,12 @@ class ScoringService:
         total, _ = self.compute_with_breakdown(thesis)
         return total
 
-    def compute_with_breakdown(
-        self, thesis: Thesis
-    ) -> tuple[float, dict[str, float]]:
+    def compute_with_breakdown(self, thesis: Thesis) -> tuple[float, dict[str, float]]:
         breakdown: dict[str, float] = {}
 
         # 1. Assumption health (40%)
         if thesis.assumptions:
-            evaluated = [a for a in thesis.assumptions
-                         if a.status != AssumptionStatus.PENDING]
+            evaluated = [a for a in thesis.assumptions if a.status != AssumptionStatus.PENDING]
             if evaluated:
                 valid = sum(1 for a in evaluated if a.status == AssumptionStatus.VALID)
                 invalid = sum(1 for a in evaluated if a.status == AssumptionStatus.INVALID)
@@ -90,10 +87,10 @@ class ScoringService:
         if thesis.catalysts:
             n = len(thesis.catalysts)
             triggered = sum(1 for c in thesis.catalysts if c.status == CatalystStatus.TRIGGERED)
-            expired   = sum(1 for c in thesis.catalysts if c.status == CatalystStatus.EXPIRED)
+            expired = sum(1 for c in thesis.catalysts if c.status == CatalystStatus.EXPIRED)
             cancelled = sum(1 for c in thesis.catalysts if c.status == CatalystStatus.CANCELLED)
-            negative  = expired + cancelled          # cả 2 đều là tín hiệu xấu
-            pending   = n - triggered - negative
+            negative = expired + cancelled  # cả 2 đều là tín hiệu xấu
+            pending = n - triggered - negative
             raw = min(1.0, max(0.0, (triggered * 1.0 + pending * 0.5 - negative * 0.5) / n))
             breakdown["catalyst_progress"] = round(raw * _WEIGHTS["catalyst_progress"] * 100, 2)
         else:

@@ -74,7 +74,7 @@ class VNDirectAdapter(MarketDataAdapter):
             raise ValueError(f"VNDirect returned no data for ticker '{ticker}'.")
         return results[0]
 
-    async def fetch_bulk_quotes(self, tickers: list[str]) -> list[Quote]:        
+    async def fetch_bulk_quotes(self, tickers: list[str]) -> list[Quote]:
         chunks = [
             tickers[i : i + _BULK_CHUNK_SIZE] for i in range(0, len(tickers), _BULK_CHUNK_SIZE)
         ]

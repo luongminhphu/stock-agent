@@ -78,10 +78,10 @@ def _extract_json(text: str) -> str:
     match = re.search(r"```(?:json)?\s*([\s\S]+?)\s*```", text)
     if match:
         return match.group(1).strip()
-    start = text.find('{')
-    end = text.rfind('}')
+    start = text.find("{")
+    end = text.rfind("}")
     if start != -1 and end != -1 and end > start:
-        return text[start:end + 1]
+        return text[start : end + 1]
     return text
 
 
@@ -116,7 +116,7 @@ def _escape_newlines_in_strings(text: str) -> str:
             result.append(ch)
             escape_next = False
             continue
-        if ch == '\\':
+        if ch == "\\":
             result.append(ch)
             escape_next = True
             continue
@@ -124,14 +124,14 @@ def _escape_newlines_in_strings(text: str) -> str:
             in_string = not in_string
             result.append(ch)
             continue
-        if in_string and ch == '\n':
-            result.append('\\n')
+        if in_string and ch == "\n":
+            result.append("\\n")
             continue
-        if in_string and ch == '\r':
-            result.append('\\r')
+        if in_string and ch == "\r":
+            result.append("\\r")
             continue
         result.append(ch)
-    return ''.join(result)
+    return "".join(result)
 
 
 def _strip_citations(text: str) -> str:
@@ -156,8 +156,7 @@ def _normalize_list(
             result.append(obj)
         elif isinstance(item, dict):
             normalized = {
-                k: _strip_citations(v) if isinstance(v, str) else v
-                for k, v in item.items()
+                k: _strip_citations(v) if isinstance(v, str) else v for k, v in item.items()
             }
             result.append(normalized)
     return result
@@ -246,9 +245,7 @@ class ThesisSuggestAgent:
                 error=str(exc),
                 raw_json=json_str[:500],
             )
-            raise ValueError(
-                f"AI response for {ticker} could not be parsed: {exc}"
-            ) from exc
+            raise ValueError(f"AI response for {ticker} could not be parsed: {exc}") from exc
         except PerplexityError:
             logger.error("suggest_agent.api_error", ticker=ticker)
             raise

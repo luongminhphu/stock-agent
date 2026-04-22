@@ -129,7 +129,7 @@ class BriefingService:
                 f"Thời điểm: {now}. Không có mã nào trong watchlist. "
                 f"Hãy viết {phase} brief ở mức thị trường chung, nhấn mạnh quản trị rủi ro."
             )
-    
+
         try:
             quotes = await self._quote_service.get_bulk_quotes(tickers)  # type: ignore[attr-defined]
         except Exception as exc:
@@ -138,7 +138,7 @@ class BriefingService:
                 f"Thời điểm: {now}. Không lấy được quote cho watchlist {', '.join(tickers)}. "
                 f"Hãy viết {phase} brief thận trọng, nêu rõ thiếu dữ liệu giá realtime."
             )
-    
+
         lines = [f"Thời điểm: {now}. Pha: {phase}.", "Watchlist snapshot:"]
         for q in quotes:
             # Inject tên công ty + sector từ registry — fallback silent nếu không có
@@ -147,7 +147,7 @@ class BriefingService:
                 meta = f" | {info.name} | Ngành: {info.sector}"
             except Exception:
                 meta = ""
-    
+
             volume = getattr(q, "volume", None)
             volume_text = f", volume={volume:,}" if volume is not None else ""
             lines.append(

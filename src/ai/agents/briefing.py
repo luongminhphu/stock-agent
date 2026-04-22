@@ -97,7 +97,7 @@ class BriefingAgent:
     async def _run_brief(self, brief_type: str, prompt: str) -> BriefOutput:
         """Shared execution path for both brief types."""
         logger.info("briefing_agent.start", brief_type=brief_type)
-    
+
         try:
             response = await self._client.chat_completion(
                 messages=[
@@ -123,7 +123,7 @@ class BriefingAgent:
         except PerplexityError:
             logger.error("briefing_agent.api_error", brief_type=brief_type)
             raise
-    
+
         logger.info(
             "briefing_agent.complete",
             brief_type=brief_type,

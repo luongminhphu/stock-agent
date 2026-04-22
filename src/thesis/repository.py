@@ -74,7 +74,7 @@ class ThesisRepository:
 
     async def save(self, thesis: Thesis) -> Thesis:
         """Persist (insert or update) a thesis.
-    
+
         flush() → expire all attrs → re-fetch với selectinload để
         Pydantic serialization ngoài session không bị MissingGreenlet.
         """
@@ -100,9 +100,7 @@ class ThesisRepository:
     # Assumption queries
     # ------------------------------------------------------------------
 
-    async def get_assumption_by_id(
-        self, assumption_id: int, thesis_id: int
-    ) -> Assumption | None:
+    async def get_assumption_by_id(self, assumption_id: int, thesis_id: int) -> Assumption | None:
         """Fetch an assumption, scoped to a specific thesis for safety."""
         stmt = (
             select(Assumption)
@@ -126,9 +124,7 @@ class ThesisRepository:
     # Catalyst queries
     # ------------------------------------------------------------------
 
-    async def get_catalyst_by_id(
-        self, catalyst_id: int, thesis_id: int
-    ) -> Catalyst | None:
+    async def get_catalyst_by_id(self, catalyst_id: int, thesis_id: int) -> Catalyst | None:
         """Fetch a catalyst, scoped to a specific thesis for safety."""
         stmt = (
             select(Catalyst)
@@ -189,9 +185,7 @@ class ThesisRepository:
     # Recommendation queries  (Wave 2)
     # ------------------------------------------------------------------
 
-    async def save_recommendations(
-        self, recs: list[ReviewRecommendation]
-    ) -> None:
+    async def save_recommendations(self, recs: list[ReviewRecommendation]) -> None:
         """Bulk-insert một batch ReviewRecommendation records.
 
         Dùng add_all + flush thay vì loop save_recommendation để giảm
@@ -202,9 +196,7 @@ class ThesisRepository:
         for rec in recs:
             await self._session.refresh(rec)
 
-    async def get_recommendation_by_id(
-        self, recommendation_id: int
-    ) -> ReviewRecommendation | None:
+    async def get_recommendation_by_id(self, recommendation_id: int) -> ReviewRecommendation | None:
         """Fetch a single recommendation by PK, eager-load review để validate
         thesis ownership trong ThesisService.apply_recommendation."""
         stmt = (
@@ -215,9 +207,7 @@ class ThesisRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def list_pending_recommendations(
-        self, thesis_id: int
-    ) -> list[ReviewRecommendation]:
+    async def list_pending_recommendations(self, thesis_id: int) -> list[ReviewRecommendation]:
         """Trả tất cả recommendations PENDING thuộc các reviews của thesis_id.
 
         JOIN qua ThesisReview để scoped đúng thesis mà không cần subquery phức tạp.
@@ -233,9 +223,7 @@ class ThesisRepository:
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
-    async def save_recommendation(
-        self, rec: ReviewRecommendation
-    ) -> ReviewRecommendation:
+    async def save_recommendation(self, rec: ReviewRecommendation) -> ReviewRecommendation:
         """Persist (update) một recommendation — dùng khi accept/reject."""
         self._session.add(rec)
         await self._session.flush()

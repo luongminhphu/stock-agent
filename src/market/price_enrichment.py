@@ -68,11 +68,11 @@ class PriceEnrichmentService:
             q = quote_map.get(row.ticker)
             if q is not None:
                 row.current_price = q.price
-                row.change        = q.change
-                row.change_pct    = q.change_pct
-                row.volume        = q.volume
-                row.is_ceiling    = q.is_ceiling
-                row.is_floor      = q.is_floor
+                row.change = q.change
+                row.change_pct = q.change_pct
+                row.volume = q.volume
+                row.is_ceiling = q.is_ceiling
+                row.is_floor = q.is_floor
         return rows
 
     # ------------------------------------------------------------------
@@ -133,7 +133,7 @@ class PriceEnrichmentService:
                 if q is not None:
                     results[ticker] = q
             return results
-    
+
     async def _safe_single_quote(self, ticker: str) -> object | None:
         try:
             return await self._qs.get_quote(ticker)

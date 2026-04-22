@@ -37,15 +37,33 @@ logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 _MONTH_MAP = {
-    "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
-    "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12,
-    "JANUARY": 1, "FEBRUARY": 2, "MARCH": 3, "APRIL": 4, "JUNE": 6,
-    "JULY": 7, "AUGUST": 8, "SEPTEMBER": 9, "OCTOBER": 10,
-    "NOVEMBER": 11, "DECEMBER": 12,
+    "JAN": 1,
+    "FEB": 2,
+    "MAR": 3,
+    "APR": 4,
+    "MAY": 5,
+    "JUN": 6,
+    "JUL": 7,
+    "AUG": 8,
+    "SEP": 9,
+    "OCT": 10,
+    "NOV": 11,
+    "DEC": 12,
+    "JANUARY": 1,
+    "FEBRUARY": 2,
+    "MARCH": 3,
+    "APRIL": 4,
+    "JUNE": 6,
+    "JULY": 7,
+    "AUGUST": 8,
+    "SEPTEMBER": 9,
+    "OCTOBER": 10,
+    "NOVEMBER": 11,
+    "DECEMBER": 12,
 }
 
 _Q_END_MONTH = {1: 3, 2: 6, 3: 9, 4: 12}
-_Q_END_DAY   = {3: 31, 6: 30, 9: 30, 12: 31}
+_Q_END_DAY = {3: 31, 6: 30, 9: 30, 12: 31}
 
 
 def parse_timeline_to_date(timeline: str | None) -> datetime | None:
@@ -233,9 +251,7 @@ class ThesisService:
         )
 
         for desc in inp.assumptions or []:
-            thesis.assumptions.append(
-                Assumption(description=desc, status=AssumptionStatus.PENDING)
-            )
+            thesis.assumptions.append(Assumption(description=desc, status=AssumptionStatus.PENDING))
         # CHANGED: iterate AddCatalystInput objects, preserve expected_date
         for cat_inp in inp.catalysts or []:
             thesis.catalysts.append(
@@ -317,7 +333,7 @@ class ThesisService:
 
     async def _auto_invalidate_if_needed(self, thesis_id: int) -> None:
         """Sau khi score recompute, kiểm tra invalidation conditions.
-    
+
         Nếu InvalidationService.check() trả should_invalidate=True
         → tự chuyển thesis sang INVALIDATED trong cùng transaction.
         Không raise — failure ở đây không nên block caller.
@@ -327,10 +343,10 @@ class ThesisService:
             return
         if thesis.status != ThesisStatus.ACTIVE:
             return  # chỉ check thesis đang active
-    
+
         current_score = thesis.score or 0.0
         result = InvalidationService().check(thesis, current_score)
-    
+
         if result.should_invalidate:
             thesis.status = ThesisStatus.INVALIDATED
             thesis.closed_at = datetime.now(timezone.utc)
@@ -342,7 +358,7 @@ class ThesisService:
                 invalid_assumptions=result.invalid_assumptions,
                 score=result.score,
             )
-    
+
     # ------------------------------------------------------------------
     # Assumption CRUD
     # ------------------------------------------------------------------
@@ -390,9 +406,7 @@ class ThesisService:
         await self._auto_invalidate_if_needed(thesis_id)  # Wave 3
         return assumption
 
-    async def delete_assumption(
-        self, thesis_id: int, assumption_id: int, user_id: str
-    ) -> None:
+    async def delete_assumption(self, thesis_id: int, assumption_id: int, user_id: str) -> None:
         await self._get_owned(thesis_id, user_id)
         assumption = await self._repo.get_assumption_by_id(assumption_id, thesis_id)
         if assumption is None:
@@ -408,9 +422,7 @@ class ThesisService:
     # Catalyst CRUD
     # ------------------------------------------------------------------
 
-    async def add_catalyst(
-        self, thesis_id: int, user_id: str, inp: AddCatalystInput
-    ) -> Catalyst:
+    async def add_catalyst(self, thesis_id: int, user_id: str, inp: AddCatalystInput) -> Catalyst:
         thesis = await self._get_owned(thesis_id, user_id)
         self._assert_mutable(thesis)
 
@@ -435,9 +447,7 @@ class ThesisService:
         await self._get_owned(thesis_id, user_id)
         catalyst = await self._repo.get_catalyst_by_id(catalyst_id, thesis_id)
         if catalyst is None:
-            raise CatalystNotFoundError(
-                f"Catalyst {catalyst_id} not found in thesis {thesis_id}"
-            )
+            raise CatalystNotFoundError(f"Catalyst {catalyst_id} not found in thesis {thesis_id}")
 
         if inp.description is not None:
             catalyst.description = inp.description
@@ -456,15 +466,11 @@ class ThesisService:
         await self._auto_invalidate_if_needed(thesis_id)
         return catalyst
 
-    async def delete_catalyst(
-        self, thesis_id: int, catalyst_id: int, user_id: str
-    ) -> None:
+    async def delete_catalyst(self, thesis_id: int, catalyst_id: int, user_id: str) -> None:
         await self._get_owned(thesis_id, user_id)
         catalyst = await self._repo.get_catalyst_by_id(catalyst_id, thesis_id)
         if catalyst is None:
-            raise CatalystNotFoundError(
-                f"Catalyst {catalyst_id} not found in thesis {thesis_id}"
-            )
+            raise CatalystNotFoundError(f"Catalyst {catalyst_id} not found in thesis {thesis_id}")
         await self._repo.delete_catalyst(catalyst)
         logger.info("catalyst.deleted", catalyst_id=catalyst_id, thesis_id=thesis_id)
         await self._recompute_score(thesis_id)
@@ -509,12 +515,12 @@ class ThesisService:
             raise ValueError(
                 f"Recommendation {recommendation_id} does not belong to thesis {thesis_id}"
             )
-        
+
         now = datetime.now(timezone.utc)
 
         if not accept:
             rec.status = RecommendationStatus.REJECTED
-            rec.acted_at = now                          # 👈 fix bug 2
+            rec.acted_at = now  # 👈 fix bug 2
             await self._repo.save_recommendation(rec)
             logger.info(
                 "recommendation.rejected",
@@ -531,7 +537,7 @@ class ThesisService:
             await self.update_catalyst(thesis_id, rec.target_id, user_id, inp)
 
         rec.status = RecommendationStatus.ACCEPTED
-        rec.acted_at = now                              # 👈 fix bug 2
+        rec.acted_at = now  # 👈 fix bug 2
         await self._repo.save_recommendation(rec)
         logger.info(
             "recommendation.accepted",

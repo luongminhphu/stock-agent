@@ -150,7 +150,9 @@ class HealthScoreBreakdown(BaseModel):
     assumption_health: float = Field(..., description="Score contribution from assumptions (0-40)")
     catalyst_progress: float = Field(..., description="Score contribution from catalysts (0-30)")
     risk_reward: float = Field(..., description="Score contribution from R/R ratio (0-20)")
-    review_confidence: float = Field(..., description="Score contribution from latest AI review (0-10)")
+    review_confidence: float = Field(
+        ..., description="Score contribution from latest AI review (0-10)"
+    )
 
 
 class HealthScoreResponse(BaseModel):

@@ -41,6 +41,7 @@ router = APIRouter(prefix="/readmodel", tags=["readmodel"])
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _paginated(items: list) -> dict[str, Any]:
     """Wrap list thanh shape nhat quan: {items, total}."""
     return {"items": items, "total": len(items)}

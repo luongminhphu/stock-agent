@@ -2,6 +2,7 @@
 Owner: market segment.
 Caller: bot/commands/why.py (adapter only).
 """
+
 from __future__ import annotations
 
 from src.ai.agents.why import WhyAgent
