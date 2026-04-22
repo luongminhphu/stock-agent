@@ -25,10 +25,11 @@ from __future__ import annotations
 import contextlib
 import json
 from collections import defaultdict
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import Date as SADate
+from sqlalchemy import and_, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.logging import get_logger
@@ -42,6 +43,11 @@ _VN_OFFSET = timedelta(hours=7)
 
 def _now_vn() -> datetime:
     return datetime.now(UTC).astimezone(timezone(_VN_OFFSET))
+
+
+def _today_utc() -> date:
+    """Current date in UTC — for calendar-day comparisons against expected_date."""
+    return datetime.now(UTC).date()
 
 
 class DashboardService:
@@ -101,11 +107,11 @@ class DashboardService:
         ).all()
         verdict_map: dict[str, int] = {str(r.verdict): r.cnt for r in verdict_rows}
 
-        # Use UTC for all datetime comparisons — DB stores timestamps as UTC.
-        # Using timezone-aware VN datetimes against a UTC-naive DB causes mismatch
-        # (especially on SQLite which has no timezone support).
-        now_utc = datetime.now(UTC)
-        in_7d_utc = now_utc + timedelta(days=7)
+        # Compare by calendar DATE, not DATETIME — investors think in days, not hours.
+        # e.g. a catalyst on 2026-04-30 is within 7 days of today 2026-04-23
+        # regardless of the time component (17:00 UTC) stored in DB.
+        today = _today_utc()
+        in_7d = today + timedelta(days=7)
         upcoming_7d = (
             await self._session.scalar(
                 select(func.count(Catalyst.id))
@@ -114,7 +120,8 @@ class DashboardService:
                     Thesis.user_id == user_id,
                     Thesis.status == ThesisStatus.ACTIVE,
                     Catalyst.status == CatalystStatus.PENDING,
-                    Catalyst.expected_date.between(now_utc, in_7d_utc),
+                    Catalyst.expected_date.isnot(None),
+                    cast(Catalyst.expected_date, SADate).between(today, in_7d),
                 )
             )
             or 0
@@ -129,6 +136,8 @@ class DashboardService:
             or 0
         )
 
+        # reviews_today: use UTC midnight as boundary (consistent with DB storage)
+        now_utc = datetime.now(UTC)
         today_start_utc = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
         reviews_today = (
             await self._session.scalar(
@@ -414,8 +423,9 @@ class DashboardService:
     async def get_upcoming_catalysts(self, user_id: str, days: int = 30) -> list[dict[str, Any]]:
         from src.thesis.models import Catalyst, CatalystStatus, Thesis, ThesisStatus
 
-        now_vn = _now_vn()
-        end = now_vn + timedelta(days=days)
+        # Compare by calendar DATE for consistency with get_stats() upcoming_catalysts_7d.
+        today = _today_utc()
+        end_date = today + timedelta(days=days)
 
         rows = (
             await self._session.execute(
@@ -434,7 +444,8 @@ class DashboardService:
                     Thesis.user_id == user_id,
                     Thesis.status == ThesisStatus.ACTIVE,
                     Catalyst.status == CatalystStatus.PENDING,
-                    Catalyst.expected_date.between(now_vn, end),
+                    Catalyst.expected_date.isnot(None),
+                    cast(Catalyst.expected_date, SADate).between(today, end_date),
                 )
                 .order_by(Catalyst.expected_date.asc())
                 .limit(100)
