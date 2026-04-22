@@ -101,8 +101,11 @@ class DashboardService:
         ).all()
         verdict_map: dict[str, int] = {str(r.verdict): r.cnt for r in verdict_rows}
 
-        now_vn = _now_vn()
-        in_7d = now_vn + timedelta(days=7)
+        # Use UTC for all datetime comparisons — DB stores timestamps as UTC.
+        # Using timezone-aware VN datetimes against a UTC-naive DB causes mismatch
+        # (especially on SQLite which has no timezone support).
+        now_utc = datetime.now(UTC)
+        in_7d_utc = now_utc + timedelta(days=7)
         upcoming_7d = (
             await self._session.scalar(
                 select(func.count(Catalyst.id))
@@ -111,7 +114,7 @@ class DashboardService:
                     Thesis.user_id == user_id,
                     Thesis.status == ThesisStatus.ACTIVE,
                     Catalyst.status == CatalystStatus.PENDING,
-                    Catalyst.expected_date.between(now_vn, in_7d),
+                    Catalyst.expected_date.between(now_utc, in_7d_utc),
                 )
             )
             or 0
@@ -126,14 +129,14 @@ class DashboardService:
             or 0
         )
 
-        today_start = now_vn.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_start_utc = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
         reviews_today = (
             await self._session.scalar(
                 select(func.count(ThesisReview.id))
                 .join(Thesis, Thesis.id == ThesisReview.thesis_id)
                 .where(
                     Thesis.user_id == user_id,
-                    ThesisReview.reviewed_at >= today_start,
+                    ThesisReview.reviewed_at >= today_start_utc,
                 )
             )
             or 0
