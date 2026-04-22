@@ -128,7 +128,7 @@ async def suggest_thesis(
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"AI suggest failed: {exc}",
-        )
+        ) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -205,7 +205,7 @@ async def get_thesis(
     try:
         thesis = await svc.get(thesis_id, user_id)
     except ThesisNotFoundError as exc:
-        raise _not_found(exc)
+        raise _not_found(exc) from exc
 
     # Nếu đã có thesis.score, dùng luôn; nếu chưa, fallback tính lại
     scoring = ScoringService()
@@ -249,7 +249,7 @@ async def update_thesis(
     except ThesisNotFoundError as exc:
         raise _not_found(exc)
     except ThesisAlreadyClosedError as exc:
-        raise _conflict(exc)
+        raise _conflict(exc) from exc
     return ThesisResponse.model_validate(thesis)
 
 
@@ -431,7 +431,7 @@ async def update_assumption(
     except ThesisNotFoundError as exc:
         raise _not_found(exc)
     except AssumptionNotFoundError as exc:
-        raise _not_found(exc)
+        raise _not_found(exc) from exc
     return AssumptionResponse.model_validate(assumption)
 
 
@@ -559,7 +559,7 @@ async def update_catalyst(
     except ThesisNotFoundError as exc:
         raise _not_found(exc)
     except CatalystNotFoundError as exc:
-        raise _not_found(exc)
+        raise _not_found(exc) from exc
     return CatalystResponse.model_validate(catalyst)
 
 
@@ -603,12 +603,12 @@ async def trigger_review(
     except ThesisNotFoundError as exc:
         raise _not_found(exc)
     except ReviewNotAllowedError as exc:
-        raise _conflict(exc)
+        raise _conflict(exc) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"AI review failed: {exc}",
-        )
+        ) from exc
     return ThesisReviewResponse.model_validate(review)
 
 
