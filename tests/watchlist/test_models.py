@@ -1,7 +1,5 @@
 """Unit tests for watchlist domain model helpers (no DB required)."""
 
-import pytest
-
 from src.watchlist.models import Alert, AlertConditionType, AlertStatus
 
 

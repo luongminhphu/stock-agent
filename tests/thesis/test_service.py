@@ -89,7 +89,7 @@ async def test_list_for_user_returns_only_own(session):
 async def test_list_for_user_filter_by_status(session):
     svc = ThesisService(session)
     t1 = await svc.create(_inp(ticker="HPG"))
-    t2 = await svc.create(_inp(ticker="VNM"))
+    await svc.create(_inp(ticker="VNM"))
     await session.flush()
 
     await svc.close(thesis_id=t1.id, user_id=USER_A)

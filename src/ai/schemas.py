@@ -9,7 +9,6 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field, field_validator
 
-
 # ---------------------------------------------------------------------------
 # Shared enums
 # ---------------------------------------------------------------------------
@@ -22,7 +21,7 @@ class Verdict(StrEnum):
     WATCHLIST = "WATCHLIST"
 
 
-class RiskLevel(str, Enum):
+class RiskLevel(StrEnum):
     LOW = "LOW"
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"
@@ -112,7 +111,7 @@ class ThesisReviewOutput(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class MarketSentiment(str, Enum):
+class MarketSentiment(StrEnum):
     RISK_ON = "RISK_ON"
     RISK_OFF = "RISK_OFF"
     MIXED = "MIXED"
@@ -227,7 +226,7 @@ class ThesisSuggestionResult(BaseModel):
         return v  # type: ignore[return-value]
 
 
-class MovementDirection(str, Enum):
+class MovementDirection(StrEnum):
     UP = "UP"
     DOWN = "DOWN"
     FLAT = "FLAT"

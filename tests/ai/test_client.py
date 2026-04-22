@@ -1,12 +1,8 @@
-from unittest.mock import AsyncMock, MagicMock, patch
-
 import pytest
 
 from src.ai.client import (
     PerplexityClient,
     PerplexityError,
-    PerplexityRateLimitError,
-    PerplexityUnavailableError,
 )
 
 

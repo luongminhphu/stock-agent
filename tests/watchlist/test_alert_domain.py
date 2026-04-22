@@ -6,14 +6,8 @@ All 5 AlertConditionType variants tested.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
-import pytest
-
-from src.watchlist.models import Alert, AlertConditionType, AlertStatus
-
+from src.watchlist.models import AlertConditionType, AlertStatus
 from tests.watchlist.conftest import make_alert
-
 
 # ---------------------------------------------------------------------------
 # is_triggered_by — PRICE_ABOVE

@@ -7,7 +7,7 @@ Price enrichment is also patched to return input unchanged.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 

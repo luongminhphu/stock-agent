@@ -23,7 +23,6 @@ from src.watchlist.scan_service import (
     ScanServiceNotConfiguredError,
     ScanSignal,
 )
-
 from tests.watchlist.conftest import make_alert, make_item
 
 

@@ -28,9 +28,9 @@ def build_adapter() -> MarketDataAdapter:
         logger.info("market.adapter", provider="mock")
         return MockAdapter()
 
+    from src.market.adapters.chained import ChainedAdapter
     from src.market.adapters.vci import VCIAdapter
     from src.market.adapters.vndirect import VNDirectAdapter
-    from src.market.adapters.chained import ChainedAdapter
 
     primary = VCIAdapter()
     secondary = VNDirectAdapter()

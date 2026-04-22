@@ -7,8 +7,8 @@ Wave 3: enrich with AI-assisted scoring signals.
 
 from __future__ import annotations
 
-from src.thesis.models import AssumptionStatus, CatalystStatus, Thesis
 from src.platform.logging import get_logger
+from src.thesis.models import AssumptionStatus, CatalystStatus, Thesis
 
 logger = get_logger(__name__)
 

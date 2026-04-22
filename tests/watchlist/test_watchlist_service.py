@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from src.watchlist.models import AlertConditionType, AlertStatus
 from src.watchlist.service import (
     AddToWatchlistInput,
     AlertNotFoundError,
@@ -18,8 +19,6 @@ from src.watchlist.service import (
     WatchlistItemNotFoundError,
     WatchlistService,
 )
-from src.watchlist.models import AlertConditionType, AlertStatus
-
 from tests.watchlist.conftest import make_alert, make_item
 
 

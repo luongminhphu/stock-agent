@@ -11,20 +11,20 @@ import enum
 from datetime import datetime
 
 from sqlalchemy import (
-    Boolean,
     DateTime,
-    Enum as SAEnum,
     Float,
     ForeignKey,
     Integer,
     String,
     Text,
 )
+from sqlalchemy import (
+    Enum as SAEnum,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from src.platform.db import Base
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -41,35 +41,35 @@ def _enum_values(x):
 # ---------------------------------------------------------------------------
 
 
-class ThesisStatus(str, enum.Enum):
+class ThesisStatus(enum.StrEnum):
     ACTIVE = "active"
     INVALIDATED = "invalidated"
     CLOSED = "closed"
     PAUSED = "paused"
 
 
-class AssumptionStatus(str, enum.Enum):
+class AssumptionStatus(enum.StrEnum):
     VALID = "valid"
     INVALID = "invalid"
     UNCERTAIN = "uncertain"
     PENDING = "pending"  # not yet assessed
 
 
-class CatalystStatus(str, enum.Enum):
+class CatalystStatus(enum.StrEnum):
     PENDING = "pending"
     TRIGGERED = "triggered"
     EXPIRED = "expired"
     CANCELLED = "cancelled"
 
 
-class ReviewVerdict(str, enum.Enum):
+class ReviewVerdict(enum.StrEnum):
     BULLISH = "BULLISH"
     BEARISH = "BEARISH"
     NEUTRAL = "NEUTRAL"
     WATCHLIST = "WATCHLIST"
 
 
-class RecommendationStatus(str, enum.Enum):
+class RecommendationStatus(enum.StrEnum):
     """Lifecycle của một AI recommendation.
 
     PENDING   — AI vừa tạo, chờ user xác nhận.
@@ -84,7 +84,7 @@ class RecommendationStatus(str, enum.Enum):
     EXPIRED = "expired"
 
 
-class RecommendationTargetType(str, enum.Enum):
+class RecommendationTargetType(enum.StrEnum):
     ASSUMPTION = "assumption"
     CATALYST = "catalyst"
 

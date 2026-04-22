@@ -6,16 +6,16 @@ Wave 3 will load this from a CSV/DB instead of hardcode.
 """
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 
-class Exchange(str, Enum):
+class Exchange(StrEnum):
     HOSE = "HOSE"
     HNX = "HNX"
     UPCOM = "UPCOM"
 
 
-class Sector(str, Enum):
+class Sector(StrEnum):
     BANKING = "Banking"
     REAL_ESTATE = "Real Estate"
     CONSUMER_GOODS = "Consumer Goods"

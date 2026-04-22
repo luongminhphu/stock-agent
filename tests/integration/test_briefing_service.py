@@ -11,8 +11,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-import pytest
-
 from src.ai.agents.briefing import BriefingAgent
 from src.ai.schemas import MarketSentiment
 from src.briefing.service import BriefingService

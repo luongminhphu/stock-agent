@@ -8,9 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from src.thesis.models import AssumptionStatus, CatalystStatus, ReviewVerdict
+from src.thesis.models import AssumptionStatus, CatalystStatus
 from src.thesis.scoring_service import ScoringService
-
 from tests.thesis.conftest import make_assumption, make_catalyst, make_review, make_thesis
 
 

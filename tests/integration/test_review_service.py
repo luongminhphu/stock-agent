@@ -14,8 +14,7 @@ from __future__ import annotations
 import pytest
 
 from src.ai.agents.thesis_review import ThesisReviewAgent
-from src.ai.schemas import Verdict
-from src.thesis.models import ReviewVerdict, ThesisStatus
+from src.thesis.models import ReviewVerdict
 from src.thesis.review_service import ReviewNotAllowedError, ReviewService
 from src.thesis.service import CreateThesisInput, ThesisNotFoundError, ThesisService
 from tests.ai.conftest import MockPerplexityClient

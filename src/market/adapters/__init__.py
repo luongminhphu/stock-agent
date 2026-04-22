@@ -12,11 +12,11 @@ Usage:
     quote_service = QuoteService(adapter)
 """
 
+from src.market.adapters.chained import ChainedAdapter
+from src.market.adapters.factory import build_adapter
+from src.market.adapters.mock import MockAdapter
 from src.market.adapters.vci import VCIAdapter
 from src.market.adapters.vndirect import VNDirectAdapter
-from src.market.adapters.chained import ChainedAdapter
-from src.market.adapters.mock import MockAdapter
-from src.market.adapters.factory import build_adapter
 
 __all__ = [
     "VCIAdapter",

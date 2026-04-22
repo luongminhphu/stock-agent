@@ -7,10 +7,10 @@ Wave 2: implement adapter backed by real data provider.
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import date
-from enum import Enum
+from enum import StrEnum
 
 
-class Interval(str, Enum):
+class Interval(StrEnum):
     D1 = "1D"
     W1 = "1W"
     M1 = "1M"

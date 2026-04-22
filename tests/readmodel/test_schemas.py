@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
-import pytest
-from pydantic import ValidationError
+from datetime import UTC, datetime
 
 from src.readmodel.schemas import (
     DashboardResponse,
@@ -17,8 +14,7 @@ from src.readmodel.schemas import (
     WatchlistSnapshotRow,
 )
 
-
-_NOW = datetime.now(timezone.utc)
+_NOW = datetime.now(UTC)
 
 
 def _summary_row(**kwargs) -> ThesisSummaryRow:
@@ -134,13 +130,13 @@ def test_timeline_events_ordered():
     events = [
         TimelineEvent(
             kind="created",
-            ts=datetime(2025, 1, 1, tzinfo=timezone.utc),
+            ts=datetime(2025, 1, 1, tzinfo=UTC),
             summary="Thesis created",
             detail=None,
         ),
         TimelineEvent(
             kind="reviewed",
-            ts=datetime(2025, 3, 1, tzinfo=timezone.utc),
+            ts=datetime(2025, 3, 1, tzinfo=UTC),
             summary="AI review: BULLISH",
             detail={"verdict": "BULLISH"},
         ),

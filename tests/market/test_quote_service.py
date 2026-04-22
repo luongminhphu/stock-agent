@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+from src.market.adapters.mock import _make_mock_quote
 from src.market.quote_service import Quote, QuoteService, QuoteServiceNotConfiguredError
-from src.market.adapters.mock import MockAdapter, _make_mock_quote
-
 
 # ---------------------------------------------------------------------------
 # MockAdapter

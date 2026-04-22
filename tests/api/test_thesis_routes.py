@@ -10,8 +10,8 @@ We test:
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime, timezone
 
 import pytest
 
@@ -26,7 +26,7 @@ def _make_mock_review(thesis_id: int = 1) -> MagicMock:
     r.reasoning = "Solid fundamentals, watch iron ore price."
     r.risk_signals = '["iron ore price drop", "credit tightening"]'
     r.next_watch_items = '["Q2 earnings", "steel export volume"]'
-    r.reviewed_at = datetime(2026, 4, 18, 10, 0, tzinfo=timezone.utc)
+    r.reviewed_at = datetime(2026, 4, 18, 10, 0, tzinfo=UTC)
     r.reviewed_price = 27500.0
     return r
 

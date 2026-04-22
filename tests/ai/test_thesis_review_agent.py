@@ -5,8 +5,6 @@ All tests use MockPerplexityClient — no HTTP, no API key required.
 
 from __future__ import annotations
 
-from typing import Any
-
 import pytest
 
 from src.ai.agents.thesis_review import ThesisReviewAgent

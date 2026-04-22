@@ -9,7 +9,7 @@ Strategy:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -24,7 +24,6 @@ from src.thesis.models import (
     ThesisReview,
     ThesisStatus,
 )
-
 
 # ---------------------------------------------------------------------------
 # Builder helpers — construct ORM-like objects without a DB session
@@ -42,7 +41,7 @@ def make_assumption(
     )
     a.id = 1
     a.thesis_id = thesis_id
-    a.updated_at = datetime.now(timezone.utc)
+    a.updated_at = datetime.now(UTC)
     return a
 
 
@@ -72,7 +71,7 @@ def make_review(
         reasoning="Strong fundamentals",
         risk_signals='["iron ore price"]',
         next_watch_items='["Q2 earnings"]',
-        reviewed_at=datetime.now(timezone.utc),
+        reviewed_at=datetime.now(UTC),
         reviewed_price=27000.0,
     )
     r.id = 1
@@ -107,8 +106,8 @@ def make_thesis(
     t.catalysts = catalysts or []
     t.reviews = reviews or []
     t.snapshots = []
-    t.created_at = datetime.now(timezone.utc)
-    t.updated_at = datetime.now(timezone.utc)
+    t.created_at = datetime.now(UTC)
+    t.updated_at = datetime.now(UTC)
     t.closed_at = None
     return t
 

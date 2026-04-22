@@ -10,24 +10,23 @@ from __future__ import annotations
 import calendar
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.platform.logging import get_logger
+from src.thesis.invalidation_service import InvalidationService
 from src.thesis.models import (
     Assumption,
     AssumptionStatus,
     Catalyst,
     CatalystStatus,
     RecommendationStatus,
-    ReviewRecommendation,
     Thesis,
     ThesisStatus,
 )
 from src.thesis.repository import ThesisRepository
 from src.thesis.scoring_service import ScoringService
-from src.thesis.invalidation_service import InvalidationService
-from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -89,14 +88,14 @@ def parse_timeline_to_date(timeline: str | None) -> datetime | None:
 
     def _eom(year: int, month: int) -> datetime:
         last = calendar.monthrange(year, month)[1]
-        return datetime(year, month, last, tzinfo=timezone.utc)
+        return datetime(year, month, last, tzinfo=UTC)
 
     # Q1-Q4 YYYY  (separator: space, /, -)
     m = re.search(r"Q([1-4])[\s/\-]*(\d{4})", t)
     if m:
         q, y = int(m.group(1)), int(m.group(2))
         em = _Q_END_MONTH[q]
-        return datetime(y, em, _Q_END_DAY[em], tzinfo=timezone.utc)
+        return datetime(y, em, _Q_END_DAY[em], tzinfo=UTC)
 
     # H1 / H2 YYYY
     m = re.search(r"H([12])[\s/\-]*(\d{4})", t)
@@ -127,12 +126,12 @@ def parse_timeline_to_date(timeline: str | None) -> datetime | None:
     # "cuối năm 2026" / "end of year 2026" / "end 2026"
     m = re.search(r"(?:CUỐI\s*NĂM|END\s*OF\s*YEAR?|END)\s*(\d{4})", t)
     if m:
-        return datetime(int(m.group(1)), 12, 31, tzinfo=timezone.utc)
+        return datetime(int(m.group(1)), 12, 31, tzinfo=UTC)
 
     # Bare year fallback: "2026"
     m = re.search(r"\b(20\d{2})\b", t)
     if m:
-        return datetime(int(m.group(1)), 12, 31, tzinfo=timezone.utc)
+        return datetime(int(m.group(1)), 12, 31, tzinfo=UTC)
 
     logger.warning("parse_timeline_to_date.unmatched", raw=timeline)
     return None
@@ -290,7 +289,7 @@ class ThesisService:
         thesis = await self._get_owned(thesis_id, user_id)
         self._assert_mutable(thesis)
         thesis.status = ThesisStatus.CLOSED
-        thesis.closed_at = datetime.now(timezone.utc)
+        thesis.closed_at = datetime.now(UTC)
         await self._repo.save(thesis)
         logger.info("thesis.closed", thesis_id=thesis_id)
         return thesis
@@ -299,7 +298,7 @@ class ThesisService:
         thesis = await self._get_owned(thesis_id, user_id)
         self._assert_mutable(thesis)
         thesis.status = ThesisStatus.INVALIDATED
-        thesis.closed_at = datetime.now(timezone.utc)
+        thesis.closed_at = datetime.now(UTC)
         await self._repo.save(thesis)
         logger.info("thesis.invalidated", thesis_id=thesis_id)
         return thesis
@@ -349,7 +348,7 @@ class ThesisService:
 
         if result.should_invalidate:
             thesis.status = ThesisStatus.INVALIDATED
-            thesis.closed_at = datetime.now(timezone.utc)
+            thesis.closed_at = datetime.now(UTC)
             await self._repo.save(thesis)
             logger.warning(
                 "thesis.auto_invalidated",
@@ -516,7 +515,7 @@ class ThesisService:
                 f"Recommendation {recommendation_id} does not belong to thesis {thesis_id}"
             )
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         if not accept:
             rec.status = RecommendationStatus.REJECTED

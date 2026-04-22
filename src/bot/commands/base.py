@@ -16,14 +16,13 @@ Provides:
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator, Sequence
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, Sequence
 
 import discord
 from discord.ext import commands
 
 from src.platform.db import AsyncSessionLocal
-
 
 _MAX_EMBED_DESC = 4096  # Discord limit
 

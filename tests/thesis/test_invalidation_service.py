@@ -8,11 +8,10 @@ from __future__ import annotations
 import pytest
 
 from src.thesis.invalidation_service import (
-    InvalidationService,
     _MAX_INVALID_ASSUMPTION_RATIO,
+    InvalidationService,
 )
 from src.thesis.models import AssumptionStatus
-
 from tests.thesis.conftest import make_assumption, make_thesis
 
 

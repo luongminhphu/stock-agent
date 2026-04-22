@@ -1,9 +1,8 @@
 """Unit tests for BaseCog helpers (no Discord connection required)."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import discord
-import pytest
 
 from src.bot.commands.base import BaseCog
 

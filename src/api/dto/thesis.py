@@ -8,12 +8,11 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from src.thesis.models import AssumptionStatus, CatalystStatus, ThesisStatus
-
+from src.thesis.models import AssumptionStatus, CatalystStatus
 
 # ---------------------------------------------------------------------------
 # Assumption
@@ -25,9 +24,9 @@ class AssumptionResponse(BaseModel):
     thesis_id: int
     description: str
     status: str
-    rationale: Optional[str] = None
-    confidence: Optional[float] = None
-    note: Optional[str] = None
+    rationale: str | None = None
+    confidence: float | None = None
+    note: str | None = None
     updated_at: datetime
 
     model_config = {"from_attributes": True}
@@ -41,13 +40,13 @@ class AssumptionListResponse(BaseModel):
 class AssumptionCreateRequest(BaseModel):
     description: str = Field(..., min_length=1, max_length=1000)
     status: AssumptionStatus = AssumptionStatus.PENDING
-    note: Optional[str] = Field(default=None, max_length=2000)
+    note: str | None = Field(default=None, max_length=2000)
 
 
 class AssumptionUpdateRequest(BaseModel):
-    description: Optional[str] = Field(default=None, min_length=1, max_length=1000)
-    status: Optional[AssumptionStatus] = None
-    note: Optional[str] = Field(default=None, max_length=2000)
+    description: str | None = Field(default=None, min_length=1, max_length=1000)
+    status: AssumptionStatus | None = None
+    note: str | None = Field(default=None, max_length=2000)
 
 
 # ---------------------------------------------------------------------------
@@ -60,11 +59,11 @@ class CatalystResponse(BaseModel):
     thesis_id: int
     description: str
     status: str
-    rationale: Optional[str] = None
-    expected_timeline: Optional[str] = None
-    expected_date: Optional[datetime] = None
-    triggered_at: Optional[datetime] = None
-    note: Optional[str] = None
+    rationale: str | None = None
+    expected_timeline: str | None = None
+    expected_date: datetime | None = None
+    triggered_at: datetime | None = None
+    note: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -77,16 +76,16 @@ class CatalystListResponse(BaseModel):
 class CatalystCreateRequest(BaseModel):
     description: str = Field(..., min_length=1, max_length=1000)
     status: CatalystStatus = CatalystStatus.PENDING
-    expected_date: Optional[datetime] = None
-    note: Optional[str] = Field(default=None, max_length=2000)
+    expected_date: datetime | None = None
+    note: str | None = Field(default=None, max_length=2000)
 
 
 class CatalystUpdateRequest(BaseModel):
-    description: Optional[str] = Field(default=None, min_length=1, max_length=1000)
-    status: Optional[CatalystStatus] = None
-    expected_date: Optional[datetime] = None
-    triggered_at: Optional[datetime] = None
-    note: Optional[str] = Field(default=None, max_length=2000)
+    description: str | None = Field(default=None, min_length=1, max_length=1000)
+    status: CatalystStatus | None = None
+    expected_date: datetime | None = None
+    triggered_at: datetime | None = None
+    note: str | None = Field(default=None, max_length=2000)
 
 
 # ---------------------------------------------------------------------------
@@ -99,18 +98,18 @@ class ThesisResponse(BaseModel):
     user_id: str
     ticker: str
     title: str
-    summary: Optional[str] = None
+    summary: str | None = None
     status: str
-    entry_price: Optional[float] = None
-    target_price: Optional[float] = None
-    stop_loss: Optional[float] = None
-    score: Optional[float] = None
-    score_tier: Optional[str] = None
-    score_tier_icon: Optional[str] = None
-    score_breakdown: Optional[HealthScoreBreakdown] = None
+    entry_price: float | None = None
+    target_price: float | None = None
+    stop_loss: float | None = None
+    score: float | None = None
+    score_tier: str | None = None
+    score_tier_icon: str | None = None
+    score_breakdown: HealthScoreBreakdown | None = None
     created_at: datetime
     updated_at: datetime
-    closed_at: Optional[datetime] = None
+    closed_at: datetime | None = None
     assumptions: list[AssumptionResponse] = []
     catalysts: list[CatalystResponse] = []
 
@@ -126,19 +125,19 @@ class ThesisCreateRequest(BaseModel):
     ticker: str = Field(..., min_length=1, max_length=10)
     title: str = Field(..., min_length=1, max_length=256)
     summary: str = Field(default="", max_length=4000)
-    entry_price: Optional[float] = Field(default=None, gt=0)
-    target_price: Optional[float] = Field(default=None, gt=0)
-    stop_loss: Optional[float] = Field(default=None, gt=0)
+    entry_price: float | None = Field(default=None, gt=0)
+    target_price: float | None = Field(default=None, gt=0)
+    stop_loss: float | None = Field(default=None, gt=0)
     assumptions: list[str] = Field(default_factory=list)
     catalysts: list[str] = Field(default_factory=list)
 
 
 class ThesisUpdateRequest(BaseModel):
-    title: Optional[str] = Field(default=None, min_length=1, max_length=256)
-    summary: Optional[str] = Field(default=None, max_length=4000)
-    entry_price: Optional[float] = Field(default=None, gt=0)
-    target_price: Optional[float] = Field(default=None, gt=0)
-    stop_loss: Optional[float] = Field(default=None, gt=0)
+    title: str | None = Field(default=None, min_length=1, max_length=256)
+    summary: str | None = Field(default=None, max_length=4000)
+    entry_price: float | None = Field(default=None, gt=0)
+    target_price: float | None = Field(default=None, gt=0)
+    stop_loss: float | None = Field(default=None, gt=0)
 
 
 # ---------------------------------------------------------------------------
@@ -177,7 +176,7 @@ class ThesisReviewResponse(BaseModel):
     risk_signals: list[str]
     next_watch_items: list[str]
     reviewed_at: datetime
-    reviewed_price: Optional[float] = None
+    reviewed_price: float | None = None
 
     @field_validator("risk_signals", "next_watch_items", mode="before")
     @classmethod
@@ -222,7 +221,7 @@ class RecommendationResponse(BaseModel):
     recommended_status: str
     reason: str
     status: str
-    acted_at: Optional[datetime] = None
+    acted_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

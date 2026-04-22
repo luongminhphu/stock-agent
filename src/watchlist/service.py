@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.platform.logging import get_logger
 from src.watchlist.models import (
     Alert,
     AlertConditionType,
@@ -17,7 +18,6 @@ from src.watchlist.models import (
     WatchlistItem,
 )
 from src.watchlist.repository import WatchlistRepository
-from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
 

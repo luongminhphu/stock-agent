@@ -6,11 +6,7 @@ No real HTTP to VCI or VNDirect.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from unittest.mock import patch
-
-import pytest
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 
 from src.market.adapters.mock import MockAdapter
 from src.market.quote_service import QuoteService
@@ -46,7 +42,7 @@ async def test_quote_404_for_unknown_ticker() -> None:
 async def test_quote_502_when_adapter_fails() -> None:
     from src.api.app import create_app
     from src.api.deps import get_quote_service
-    from src.market.registry import registry, SymbolInfo, Exchange, Sector
+    from src.market.registry import Exchange, Sector, SymbolInfo, registry
 
     app = create_app()
     failing_svc = QuoteService(MockAdapter(fail_tickers={"FAIL"}))
@@ -72,7 +68,7 @@ async def test_quote_response_shape() -> None:
     """Verify response has all expected fields when mock data is returned."""
     from src.api.app import create_app
     from src.api.deps import get_quote_service
-    from src.market.registry import registry, SymbolInfo, Exchange, Sector
+    from src.market.registry import Exchange, Sector, SymbolInfo, registry
 
     app = create_app()
     mock_svc = QuoteService(MockAdapter())

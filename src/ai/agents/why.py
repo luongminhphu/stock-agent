@@ -4,8 +4,11 @@ Caller: market segment's WhyService.
 """
 
 from __future__ import annotations
+
 import json
+
 from pydantic import ValidationError
+
 from src.ai.client import PerplexityClient, PerplexityError
 from src.ai.prompts.why import SYSTEM_PROMPT, build_why_prompt
 from src.ai.schemas import WhyOutput

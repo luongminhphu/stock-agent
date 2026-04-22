@@ -34,14 +34,12 @@ Endpoints:
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.ai.agents.suggest_agent import ThesisSuggestAgent
 from src.ai.client import PerplexityError
 from src.ai.schemas import ThesisSuggestionResult
 from src.api.deps import (
     get_current_user_id,
-    get_db,
     get_review_service,
     get_thesis_service,
     get_thesis_suggest_agent,
@@ -82,7 +80,6 @@ from src.thesis.service import (
     UpdateAssumptionInput,
     UpdateCatalystInput,
     UpdateThesisInput,
-    parse_timeline_to_date,
 )
 
 router = APIRouter(prefix="/thesis", tags=["thesis"])

@@ -14,8 +14,7 @@ Design rules:
 
 from __future__ import annotations
 
-import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from discord.ext import tasks
 
@@ -55,10 +54,11 @@ class SnapshotScheduler:
 
     async def _run_snapshot(self) -> None:
         """Fetch active thesis tickers, get prices, write snapshots."""
+        from sqlalchemy import select
+
         from src.platform.bootstrap import get_quote_service
         from src.platform.db import AsyncSessionLocal
         from src.thesis.models import Thesis, ThesisSnapshot, ThesisStatus
-        from sqlalchemy import select
 
         logger.info("market.snapshot_scheduler.run_start")
         qs = get_quote_service()  # type: ignore[assignment]
@@ -87,7 +87,7 @@ class SnapshotScheduler:
                 return
 
             # 3. Write snapshots
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             written = 0
             for thesis in theses:
                 price = price_map.get(thesis.ticker)

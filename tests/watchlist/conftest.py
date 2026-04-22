@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -13,7 +13,6 @@ from src.watchlist.models import (
     AlertStatus,
     WatchlistItem,
 )
-
 
 # ---------------------------------------------------------------------------
 # Builder helpers
@@ -35,8 +34,8 @@ def make_item(
         priority=100,
     )
     item.id = item_id
-    item.added_at = datetime.now(timezone.utc)
-    item.updated_at = datetime.now(timezone.utc)
+    item.added_at = datetime.now(UTC)
+    item.updated_at = datetime.now(UTC)
     item.alerts = []
     item.reminder = None
     return item
@@ -63,7 +62,7 @@ def make_alert(
     alert.triggered_at = None
     alert.triggered_price = None
     alert.note = None
-    alert.created_at = datetime.now(timezone.utc)
+    alert.created_at = datetime.now(UTC)
     return alert
 
 

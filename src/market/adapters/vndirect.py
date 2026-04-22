@@ -111,7 +111,7 @@ class VNDirectAdapter(MarketDataAdapter):
     async def close(self) -> None:
         await self._client.aclose()
 
-    async def __aenter__(self) -> "VNDirectAdapter":
+    async def __aenter__(self) -> VNDirectAdapter:
         return self
 
     async def __aexit__(self, *_: object) -> None:

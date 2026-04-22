@@ -67,10 +67,10 @@ async def _sync_tree(bot: commands.Bot) -> None:
 async def _register_cogs(bot: commands.Bot) -> None:
     """Load all command cogs. Add new cogs here only — no logic."""
     from src.bot.commands.briefing import BriefingCog
+    from src.bot.commands.help import HelpCog
     from src.bot.commands.market import MarketCog
     from src.bot.commands.thesis import ThesisCog
     from src.bot.commands.watchlist import WatchlistCog
-    from src.bot.commands.help import HelpCog
     from src.bot.commands.why import WhyCog
 
     await bot.add_cog(WatchlistCog(bot))
@@ -118,8 +118,8 @@ def _start_snapshot_scheduler() -> None:
         logger.info("bot.snapshot_scheduler.skipped", reason="test environment")
         return
 
-    from src.platform.bootstrap import get_snapshot_scheduler
     from src.market.snapshot_scheduler import SnapshotScheduler
+    from src.platform.bootstrap import get_snapshot_scheduler
 
     scheduler: SnapshotScheduler = get_snapshot_scheduler()  # type: ignore[assignment]
     scheduler.start()

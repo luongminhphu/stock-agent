@@ -8,12 +8,11 @@ never by importing these models directly.
 from __future__ import annotations
 
 import enum
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import (
     Boolean,
     DateTime,
-    Enum as SAEnum,
     Float,
     ForeignKey,
     Integer,
@@ -21,11 +20,13 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy import (
+    Enum as SAEnum,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from src.platform.db import Base
-
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -34,7 +35,7 @@ from src.platform.db import Base
 _values = lambda x: [e.value for e in x]  # noqa: E731
 
 
-class AlertConditionType(str, enum.Enum):
+class AlertConditionType(enum.StrEnum):
     PRICE_ABOVE = "price_above"
     PRICE_BELOW = "price_below"
     CHANGE_PCT_UP = "change_pct_up"
@@ -42,14 +43,14 @@ class AlertConditionType(str, enum.Enum):
     VOLUME_SPIKE = "volume_spike"
 
 
-class AlertStatus(str, enum.Enum):
+class AlertStatus(enum.StrEnum):
     ACTIVE = "active"
     TRIGGERED = "triggered"
     DISMISSED = "dismissed"
     EXPIRED = "expired"
 
 
-class ReminderFrequency(str, enum.Enum):
+class ReminderFrequency(enum.StrEnum):
     DAILY = "daily"
     WEEKLY = "weekly"
     ON_SIGNAL = "on_signal"
@@ -170,7 +171,7 @@ class Alert(Base):
         """Transition alert to TRIGGERED state. Idempotent if already triggered."""
         if self.status == AlertStatus.ACTIVE:
             self.status = AlertStatus.TRIGGERED
-            self.triggered_at = datetime.now(tz=timezone.utc)
+            self.triggered_at = datetime.now(tz=UTC)
             if price is not None:
                 self.triggered_price = price
 

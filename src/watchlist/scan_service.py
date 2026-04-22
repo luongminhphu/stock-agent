@@ -9,13 +9,13 @@ then returns structured scan result for bot/api adapters.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.platform.logging import get_logger
 from src.watchlist.models import Alert, AlertStatus, WatchlistScan
 from src.watchlist.repository import WatchlistRepository
-from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -102,7 +102,7 @@ class ScanService:
 
         items = await self._repo.list_for_user(user_id)
         tickers = sorted({i.ticker for i in items})
-        result = ScanResult(scanned_at=datetime.now(timezone.utc))
+        result = ScanResult(scanned_at=datetime.now(UTC))
 
         for ticker in tickers:
             try:

@@ -9,7 +9,7 @@ Readiness : checks DB connectivity AND whether bootstrap singletons are up.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 
 from sqlalchemy import text
 
@@ -19,7 +19,7 @@ from src.platform.logging import get_logger
 logger = get_logger(__name__)
 
 
-class HealthStatus(str, Enum):
+class HealthStatus(StrEnum):
     OK = "ok"
     DEGRADED = "degraded"
     DOWN = "down"

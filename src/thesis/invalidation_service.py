@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.thesis.models import AssumptionStatus, Thesis
 from src.platform.logging import get_logger
+from src.thesis.models import AssumptionStatus, Thesis
 
 logger = get_logger(__name__)
 

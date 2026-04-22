@@ -3,8 +3,10 @@ Owner: bot segment. Adapter only — no domain logic.
 """
 
 from __future__ import annotations
+
 import discord
 from discord import app_commands
+
 from src.ai.schemas import MovementDirection
 from src.bot.commands.base import BaseCog
 from src.market.why_service import WhyService

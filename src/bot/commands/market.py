@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import discord
 from discord import app_commands
-from discord.ext import commands
 
 from src.bot.commands.base import BaseCog
 from src.platform.bootstrap import get_quote_service

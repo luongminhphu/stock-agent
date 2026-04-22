@@ -17,7 +17,7 @@ Flow:
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -225,7 +225,7 @@ class ReviewService:
             reasoning=output.reasoning,
             risk_signals=json.dumps(output.risk_signals, ensure_ascii=False),
             next_watch_items=json.dumps(output.next_watch_items, ensure_ascii=False),
-            reviewed_at=datetime.now(timezone.utc),
+            reviewed_at=datetime.now(UTC),
             reviewed_price=reviewed_price,
         )
         await self._repo.save_review(review)

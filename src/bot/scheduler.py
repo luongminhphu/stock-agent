@@ -33,8 +33,8 @@ from src.watchlist.service import WatchlistService
 logger = get_logger(__name__)
 
 # Weekdays only, ICT = UTC+7
-_MORNING_TIME = datetime.time(hour=1, minute=45, tzinfo=datetime.timezone.utc)  # 08:45 ICT
-_EOD_TIME = datetime.time(hour=8, minute=5, tzinfo=datetime.timezone.utc)  # 15:05 ICT
+_MORNING_TIME = datetime.time(hour=1, minute=45, tzinfo=datetime.UTC)  # 08:45 ICT
+_EOD_TIME = datetime.time(hour=8, minute=5, tzinfo=datetime.UTC)  # 15:05 ICT
 
 
 class BriefingScheduler:

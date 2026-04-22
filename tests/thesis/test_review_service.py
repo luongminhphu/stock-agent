@@ -6,8 +6,7 @@ No DB, no HTTP.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -20,7 +19,6 @@ from src.thesis.models import (
 )
 from src.thesis.review_service import ReviewNotAllowedError, ReviewService
 from src.thesis.service import ThesisNotFoundError
-
 from tests.thesis.conftest import make_assumption, make_catalyst, make_review, make_thesis
 
 

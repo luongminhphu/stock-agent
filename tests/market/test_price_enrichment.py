@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 
 import pytest
 
+from src.market.adapters.mock import MockAdapter, _make_mock_quote
 from src.market.price_enrichment import PriceEnrichmentService
 from src.market.quote_service import QuoteService
-from src.market.adapters.mock import MockAdapter, _make_mock_quote
 from src.readmodel.schemas import DashboardResponse, ThesisSummaryRow, WatchlistSnapshotRow
 
 
@@ -29,7 +29,7 @@ def _make_summary_row(ticker: str, entry_price: float | None = 50_000.0) -> Thes
         pnl_pct=None,
         last_verdict="BULLISH",
         last_reviewed_at=None,
-        created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        created_at=datetime(2025, 1, 1, tzinfo=UTC),
         assumption_count=2,
         invalid_assumption_count=0,
         catalyst_count=1,
@@ -40,7 +40,7 @@ def _make_summary_row(ticker: str, entry_price: float | None = 50_000.0) -> Thes
 def _make_dashboard(rows: list[ThesisSummaryRow]) -> DashboardResponse:
     return DashboardResponse(
         user_id="user_001",
-        generated_at=datetime.now(timezone.utc),
+        generated_at=datetime.now(UTC),
         total_theses=len(rows),
         active_count=len(rows),
         invalidated_count=0,
@@ -125,7 +125,7 @@ async def test_enrich_watchlist_fills_price():
             thesis_title=None,
             thesis_status=None,
             current_price=None,
-            added_at=datetime.now(timezone.utc),
+            added_at=datetime.now(UTC),
         )
     ]
     result = await svc.enrich_watchlist(rows)

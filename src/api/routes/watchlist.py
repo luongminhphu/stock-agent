@@ -9,7 +9,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.deps import get_db, get_current_user_id
+from src.api.deps import get_current_user_id, get_db
 from src.api.dto.watchlist import (
     AddWatchlistItemRequest,
     WatchlistItemResponse,

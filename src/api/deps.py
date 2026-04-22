@@ -6,18 +6,24 @@ Provides reusable Depends() callables for all routes.
 
 from __future__ import annotations
 
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.platform.db import AsyncSessionLocal
 from src.platform.bootstrap import (
     get_briefing_agent as _get_briefing_agent,
+)
+from src.platform.bootstrap import (
     get_quote_service as _get_qs,
+)
+from src.platform.bootstrap import (
     get_thesis_review_agent as _get_agent,
+)
+from src.platform.bootstrap import (
     get_thesis_suggest_agent as _get_suggest_agent,
 )
+from src.platform.db import AsyncSessionLocal
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -65,7 +71,7 @@ def get_briefing_agent() -> object:
 
 async def get_thesis_service(
     session: AsyncSession = Depends(get_db),
-) -> "ThesisService":  # type: ignore[name-defined]  # noqa: F821
+) -> ThesisService:  # type: ignore[name-defined]  # noqa: F821
     from src.thesis.service import ThesisService
 
     return ThesisService(session=session)
@@ -75,7 +81,7 @@ async def get_review_service(
     session: AsyncSession = Depends(get_db),
     agent: object = Depends(get_thesis_review_agent),
     quote_svc: object = Depends(get_quote_service),
-) -> "ReviewService":  # type: ignore[name-defined]  # noqa: F821
+) -> ReviewService:  # type: ignore[name-defined]  # noqa: F821
     from src.thesis.review_service import ReviewService
 
     return ReviewService(session=session, agent=agent, quote_service=quote_svc)  # type: ignore[arg-type]
@@ -85,7 +91,7 @@ async def get_briefing_service(
     session: AsyncSession = Depends(get_db),
     quote_svc: object = Depends(get_quote_service),
     briefing_agent: object = Depends(get_briefing_agent),
-) -> "BriefingService":  # type: ignore[name-defined]  # noqa: F821
+) -> BriefingService:  # type: ignore[name-defined]  # noqa: F821
     from src.briefing.service import BriefingService
     from src.watchlist.service import WatchlistService
 

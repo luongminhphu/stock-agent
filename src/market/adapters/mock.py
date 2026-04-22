@@ -19,7 +19,7 @@ Usage:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from src.market.quote_service import MarketDataAdapter, Quote
 
@@ -65,5 +65,5 @@ def _make_mock_quote(ticker: str) -> Quote:
         ref_price=ref_price,
         ceiling=ceiling,
         floor=floor_,
-        timestamp=datetime.now(tz=timezone.utc),
+        timestamp=datetime.now(tz=UTC),
     )

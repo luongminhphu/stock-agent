@@ -22,9 +22,9 @@ from src.watchlist.models import (
 from src.watchlist.repository import WatchlistRepository
 from src.watchlist.scan_service import (
     ScanResult,
+    ScanService,
     ScanServiceNotConfiguredError,
     ScanSignal,
-    ScanService,
 )
 from src.watchlist.service import (
     AddToWatchlistInput,

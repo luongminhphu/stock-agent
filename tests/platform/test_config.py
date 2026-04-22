@@ -5,7 +5,6 @@ import pytest
 
 from src.platform.config import Settings
 
-
 MINIMAL_ENV = {
     "DATABASE_URL": "postgresql+asyncpg://test:test@localhost/test",
     "PERPLEXITY_API_KEY": "pplx-test",
@@ -36,6 +35,5 @@ def test_is_development_flag() -> None:
 
 
 def test_missing_required_fields_raises() -> None:
-    with patch.dict(os.environ, {}, clear=True):
-        with pytest.raises(Exception):
-            Settings()
+    with patch.dict(os.environ, {}, clear=True), pytest.raises(Exception):
+        Settings()

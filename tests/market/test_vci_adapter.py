@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import datetime
 
 import httpx
-import pytest
 
 from src.market.adapters.vci import VCIAdapter, _parse_item
-from src.market.quote_service import Quote
 
 
 def _vci_item(
@@ -89,7 +86,6 @@ async def test_fetch_quote_calls_post_and_returns_quote() -> None:
 
     class MockTransport(httpx.AsyncBaseTransport):
         async def handle_async_request(self, request):
-            import json as _json
 
             return httpx.Response(200, json=raw_response)
 

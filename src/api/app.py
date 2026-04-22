@@ -17,24 +17,24 @@ Route groups:
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from src.platform.bootstrap import bootstrap
-from src.platform.config import settings
-from src.platform.logging import get_logger
 from src.api.routes.briefing import router as briefing_router
 from src.api.routes.health import router as health_router
 from src.api.routes.market import router as market_router
 from src.api.routes.readmodel import router as readmodel_router
 from src.api.routes.thesis import router as thesis_router
 from src.api.routes.watchlist import router as watchlist_router
+from src.platform.bootstrap import bootstrap
+from src.platform.config import settings
+from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
 

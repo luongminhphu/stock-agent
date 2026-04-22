@@ -25,9 +25,9 @@ from src.ai.agents.briefing import BriefingAgent
 from src.ai.schemas import BriefOutput
 from src.briefing.models import BriefSnapshot
 from src.briefing.repository import BriefSnapshotRepository
+from src.market.registry import registry as symbol_registry
 from src.platform.logging import get_logger
 from src.watchlist.service import WatchlistService
-from src.market.registry import registry as symbol_registry
 
 logger = get_logger(__name__)
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
+from datetime import UTC
 
 from src.thesis.models import (
     Assumption,
@@ -15,7 +15,7 @@ from src.thesis.models import (
 
 
 def make_thesis(**kwargs) -> Thesis:
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     defaults = dict(
         id=1,
@@ -27,8 +27,8 @@ def make_thesis(**kwargs) -> Thesis:
         target_price=65_000.0,
         stop_loss=45_000.0,
         score=75.0,
-        created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
-        updated_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
+        created_at=datetime(2025, 1, 1, tzinfo=UTC),
+        updated_at=datetime(2025, 6, 1, tzinfo=UTC),
     )
     defaults.update(kwargs)
     t = Thesis.__new__(Thesis)

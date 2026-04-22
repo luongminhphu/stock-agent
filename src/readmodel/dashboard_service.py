@@ -22,12 +22,13 @@ Design rules:
 
 from __future__ import annotations
 
+import contextlib
 import json
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import Integer, and_, desc, func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.logging import get_logger
@@ -40,7 +41,7 @@ _VN_OFFSET = timedelta(hours=7)
 
 
 def _now_vn() -> datetime:
-    return datetime.now(timezone.utc).astimezone(timezone(_VN_OFFSET))
+    return datetime.now(UTC).astimezone(timezone(_VN_OFFSET))
 
 
 class DashboardService:
@@ -184,10 +185,8 @@ class DashboardService:
 
         filters = [Thesis.user_id == user_id]
         if status and status != "all":
-            try:
+            with contextlib.suppress(ValueError):
                 filters.append(Thesis.status == ThesisStatus(status))
-            except ValueError:
-                pass
         if ticker:
             filters.append(Thesis.ticker == ticker.upper())
 
@@ -590,9 +589,7 @@ class DashboardService:
             bucket = stats[verdict]
             bucket["total"] += 1
             bucket["pnl_sum"] += pnl
-            if verdict in ("BULLISH", "WATCHLIST") and pnl >= 0:
-                bucket["hits"] += 1
-            elif verdict == "BEARISH" and pnl < 0:
+            if verdict in ("BULLISH", "WATCHLIST") and pnl >= 0 or verdict == "BEARISH" and pnl < 0:
                 bucket["hits"] += 1
 
         result = []

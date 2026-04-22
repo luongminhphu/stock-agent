@@ -14,7 +14,6 @@ from typing import TypedDict
 
 import discord
 from discord import app_commands
-from discord.ext import commands
 
 from src.bot.commands.base import BaseCog
 
@@ -210,7 +209,7 @@ class HelpView(discord.ui.View):
 def _build_overview_embed() -> discord.Embed:
     """Embed tổng quan khi mới gõ /help."""
     lines = []
-    for key, data in HELP_DATA.items():
+    for _key, data in HELP_DATA.items():
         count = len(data["commands"])
         lines.append(f"{data['emoji']} **{data['label']}** — {count} lệnh")
 

@@ -41,7 +41,7 @@ async def test_dashboard_counts_one_active(session):
 
 async def test_dashboard_counts_mixed_statuses(session):
     thesis_svc = ThesisService(session)
-    t1 = await thesis_svc.create(CreateThesisInput(user_id=USER, ticker="VCB", title="Bank"))
+    await thesis_svc.create(CreateThesisInput(user_id=USER, ticker="VCB", title="Bank"))
     t2 = await thesis_svc.create(CreateThesisInput(user_id=USER, ticker="FPT", title="Tech"))
     t3 = await thesis_svc.create(CreateThesisInput(user_id=USER, ticker="VNM", title="Dairy"))
     await session.flush()
