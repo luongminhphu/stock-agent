@@ -72,3 +72,18 @@ async def remove_from_watchlist(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"'{ticker.upper()}' not found in your watchlist.",
         ) from exc
+
+@router.post("/scan", status_code=status.HTTP_200_OK)
+async def trigger_scan(
+    user_id: str = Depends(get_current_user_id),
+    scan_svc=Depends(get_scan_service),
+) -> dict:
+    """Trigger watchlist scan thủ công, persist snapshot vào DB."""
+    from src.api.deps import get_scan_service as _  # noqa — import để deps resolve
+    result = await scan_svc.scan_user(user_id=user_id)
+    return {
+        "status": "ok",
+        "scanned_tickers": len(result.signals) + len(result.errors),
+        "triggered": result.triggered_count,
+        "summary": result.build_summary(),
+    }
