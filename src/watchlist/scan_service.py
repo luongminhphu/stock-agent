@@ -9,7 +9,7 @@ then returns structured scan result for bot/api adapters.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -125,6 +125,26 @@ class ScanService:
 
     async def scan_for_user(self, user_id: str) -> ScanResult:
         return await self.scan_user(user_id)
+
+    async def get_latest_snapshot(self, user_id: str) -> WatchlistScan | None:
+        return await self._repo.get_latest_scan(user_id)
+
+    async def scan_user_if_stale(self, user_id: str, max_age_minutes: int = 30) -> WatchlistScan | None:
+        latest = await self.get_latest_snapshot(user_id)
+        now = datetime.now(UTC)
+
+        if latest is not None and latest.scanned_at is not None:
+            if (now - latest.scanned_at) < timedelta(minutes=max_age_minutes):
+                logger.info(
+                    "scan.reuse_latest_snapshot",
+                    user_id=user_id,
+                    snapshot_id=latest.id,
+                    scanned_at=latest.scanned_at.isoformat(),
+                )
+                return latest
+
+        await self.scan_user(user_id)
+        return await self.get_latest_snapshot(user_id)
 
     async def _scan_ticker(self, ticker: str, items: list) -> ScanSignal:
         quote = await self._quote_service.get_quote(ticker)  # type: ignore[union-attr]
