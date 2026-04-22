@@ -102,3 +102,10 @@ async def get_briefing_service(
         briefing_agent=briefing_agent,
         session=session,
     )
+
+async def get_scan_service(
+    session: AsyncSession = Depends(get_db),
+    quote_svc: object = Depends(get_quote_service),
+) -> "ScanService":
+    from src.watchlist.scan_service import ScanService
+    return ScanService(session=session, quote_service=quote_svc)
