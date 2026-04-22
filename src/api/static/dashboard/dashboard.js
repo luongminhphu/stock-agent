@@ -1,22 +1,10 @@
 'use strict';
 
 
-let _currentUserId = null;
-
-async function initUserId() {
-  const data = await fetch('/api/v1/me').then(r => r.json());
-  _currentUserId = data.user_id;
-}
-
-function currentUserId() {
-  if (!_currentUserId) throw new Error('User ID chưa được load');
-  return _currentUserId;
-}
-
 function el(id) { return document.getElementById(id); }
-function apiBase(userId) { return `/api/v1/readmodel/dashboard/${encodeURIComponent(userId)}`; }
+function apiBase() { return '/api/v1/readmodel/dashboard'; }
 function thesisApiBase() { return '/api/v1/thesis'; }
-function authHeaders() { return { 'Content-Type': 'application/json', 'X-User-Id': currentUserId() }; }
+function authHeaders() { return { 'Content-Type': 'application/json' }; }
 
 async function getJson(url, options = {}) {
   const r = await fetch(url, { ...options, headers: { ...authHeaders(), ...(options.headers ?? {}) } });
@@ -339,9 +327,8 @@ function renderCatalystSuggestResult(items) {
 }
 
 async function loadDashboard() {
-  const userId = currentUserId();
   const status = el('statusFilter').value;
-  const base = apiBase(userId);
+  const base = apiBase();
   el('errorBanner').classList.add('hidden');
   try {
     const [stats, theses, verdictAccuracy, catalysts, latestScan, latestMorningBrief, latestEodBrief] = await Promise.all([
@@ -861,8 +848,7 @@ function renderSnapshots(s) {
 }
 
 async function loadBacktesting() {
-  const userId = currentUserId();
-  const base = apiBase(userId);
+  const base = apiBase();
   try {
     const [acc, perf] = await Promise.all([
       getJson(`${base}/backtesting/verdict-accuracy`).catch(() => []),
@@ -944,7 +930,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   el('addFormAssumptionBtn')?.addEventListener('click', () => el('thesisFormAssumptionRows')?.appendChild(makeAssumptionRow()));
   el('addFormCatalystBtn')?.addEventListener('click', () => el('thesisFormCatalystRows')?.appendChild(makeCatalystRow()));
   seedBlankFormRows();
-  await initUserId();
   loadDashboard();
   loadBacktesting();
 });
