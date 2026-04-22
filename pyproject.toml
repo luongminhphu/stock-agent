@@ -65,6 +65,9 @@ addopts = "-v --tb=short"
 python_version = "3.12"
 strict = true
 exclude = ["tests/"]
+namespace_packages = true
+explicit_package_bases = true
+mypy_path = "."
 
 [[tool.mypy.overrides]]
 module = [
