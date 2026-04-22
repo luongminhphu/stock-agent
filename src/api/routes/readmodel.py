@@ -2,20 +2,12 @@
 
 Owner: api segment — thin adapter only.
 Delegates 100% to readmodel services + price enrichment from market segment.
-No business logic here.
+No heavy business logic here.
 
-Endpoints:
-    GET /readmodel/dashboard/{user_id}/stats             — KPI tong quan
-    GET /readmodel/dashboard/{user_id}/theses            — list thesis + filter
-    GET /readmodel/dashboard/{user_id}/theses/{id}       — thesis detail
-    GET /readmodel/dashboard/{user_id}/catalysts/upcoming — upcoming catalysts
-    GET /readmodel/dashboard/{user_id}/scan/latest       — latest scan snapshot
-    GET /readmodel/dashboard/{user_id}/brief/latest      — latest brief snapshot
-    GET /readmodel/dashboard/{user_id}/backtesting/verdict-accuracy    — verdict accuracy
-    GET /readmodel/dashboard/{user_id}/backtesting/thesis-performances — PnL per thesis
-    GET /readmodel/dashboard/{user_id}/backtesting/price-snapshots/{id} — chart data
-    GET /readmodel/leaderboard/{user_id}                 — ranked leaderboard
-    GET /readmodel/thesis/{thesis_id}/timeline           — event timeline
+Single-user mode:
+- If owner_user_id is configured, the alias endpoints without /{user_id}
+  will automatically use that user id.
+- Multi-user endpoints remain intact for backward compatibility.
 """
 
 from __future__ import annotations
@@ -25,6 +17,8 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.platform.bootstrap import get_quote_service
+from src.platform.config import settings
 from src.platform.db import get_session
 from src.readmodel.dashboard_service import DashboardService
 from src.readmodel.leaderboard_service import LeaderboardService
@@ -33,6 +27,7 @@ from src.readmodel.schemas import (
     ThesisTimelineResponse,
 )
 from src.readmodel.timeline_service import ThesisTimelineService
+from src.watchlist.scan_service import ScanService
 
 router = APIRouter(prefix="/readmodel", tags=["readmodel"])
 
@@ -47,6 +42,32 @@ def _paginated(items: list) -> dict[str, Any]:
     return {"items": items, "total": len(items)}
 
 
+def _default_user_id() -> str:
+    if not settings.owner_user_id:
+        raise HTTPException(
+            status_code=500,
+            detail="owner_user_id is not configured. Set it in .env for single-user mode.",
+        )
+    return settings.owner_user_id
+
+
+async def _ensure_scan_snapshot(
+    session: AsyncSession,
+    user_id: str,
+) -> dict[str, Any] | None:
+    svc = DashboardService(session)
+    latest = await svc.get_scan_latest(user_id)
+    if latest is not None:
+        return latest
+
+    scan_svc = ScanService(
+        session=session,
+        quote_service=get_quote_service(),
+    )
+    await scan_svc.scan_user_if_stale(user_id=user_id, max_age_minutes=30)
+    return await svc.get_scan_latest(user_id)
+
+
 # ---------------------------------------------------------------------------
 # 1. Stats — KPI tong quan
 # ---------------------------------------------------------------------------
@@ -57,9 +78,16 @@ async def get_stats(
     user_id: str,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> dict[str, Any]:
-    """KPI tong quan: open theses, verdict distribution, risky count, upcoming catalysts."""
     svc = DashboardService(session)
     return await svc.get_stats(user_id)
+
+
+@router.get("/dashboard/stats")
+async def get_stats_single_user(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> dict[str, Any]:
+    svc = DashboardService(session)
+    return await svc.get_stats(_default_user_id())
 
 
 # ---------------------------------------------------------------------------
@@ -71,12 +99,29 @@ async def get_stats(
 async def get_theses_list(
     user_id: str,
     session: Annotated[AsyncSession, Depends(get_session)],
-    status: Annotated[str, Query(...)] = "active",
-    ticker: Annotated[str | None, Query(...)] = None,
+    status: Annotated[str, Query()] = "active",
+    ticker: Annotated[str | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 200,
 ) -> dict[str, Any]:
     svc = DashboardService(session)
     items = await svc.get_theses_list(user_id, status=status, ticker=ticker, limit=limit)
+    return _paginated(items)
+
+
+@router.get("/dashboard/theses")
+async def get_theses_list_single_user(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    status: Annotated[str, Query()] = "active",
+    ticker: Annotated[str | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 200,
+) -> dict[str, Any]:
+    svc = DashboardService(session)
+    items = await svc.get_theses_list(
+        _default_user_id(),
+        status=status,
+        ticker=ticker,
+        limit=limit,
+    )
     return _paginated(items)
 
 
@@ -91,9 +136,20 @@ async def get_thesis_detail(
     thesis_id: int,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> dict[str, Any]:
-    """Full thesis detail: thesis + reviews + assumptions + catalysts."""
     svc = DashboardService(session)
     result = await svc.get_thesis_detail(user_id, thesis_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Thesis {thesis_id} not found")
+    return result
+
+
+@router.get("/dashboard/theses/{thesis_id}")
+async def get_thesis_detail_single_user(
+    thesis_id: int,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> dict[str, Any]:
+    svc = DashboardService(session)
+    result = await svc.get_thesis_detail(_default_user_id(), thesis_id)
     if result is None:
         raise HTTPException(status_code=404, detail=f"Thesis {thesis_id} not found")
     return result
@@ -114,6 +170,15 @@ async def get_upcoming_catalysts(
     return _paginated(await svc.get_upcoming_catalysts(user_id, days=days))
 
 
+@router.get("/dashboard/catalysts/upcoming")
+async def get_upcoming_catalysts_single_user(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    days: Annotated[int, Query(ge=1, le=90)] = 30,
+) -> dict[str, Any]:
+    svc = DashboardService(session)
+    return _paginated(await svc.get_upcoming_catalysts(_default_user_id(), days=days))
+
+
 # ---------------------------------------------------------------------------
 # 5. Latest scan snapshot
 # ---------------------------------------------------------------------------
@@ -124,8 +189,14 @@ async def get_scan_latest(
     user_id: str,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> dict[str, Any] | None:
-    svc = DashboardService(session)
-    return await svc.get_scan_latest(user_id)
+    return await _ensure_scan_snapshot(session, user_id)
+
+
+@router.get("/dashboard/scan/latest")
+async def get_scan_latest_single_user(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> dict[str, Any] | None:
+    return await _ensure_scan_snapshot(session, _default_user_id())
 
 
 # ---------------------------------------------------------------------------
@@ -137,10 +208,19 @@ async def get_scan_latest(
 async def get_brief_latest(
     user_id: str,
     session: Annotated[AsyncSession, Depends(get_session)],
-    phase: Annotated[Literal["morning", "eod"], Query(...)] = "morning",
+    phase: Annotated[Literal["morning", "eod"], Query()] = "morning",
 ) -> dict[str, Any] | None:
     svc = DashboardService(session)
     return await svc.get_brief_latest(user_id, phase=phase)
+
+
+@router.get("/dashboard/brief/latest")
+async def get_brief_latest_single_user(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    phase: Annotated[Literal["morning", "eod"], Query()] = "morning",
+) -> dict[str, Any] | None:
+    svc = DashboardService(session)
+    return await svc.get_brief_latest(_default_user_id(), phase=phase)
 
 
 # ---------------------------------------------------------------------------
@@ -157,6 +237,14 @@ async def get_verdict_accuracy(
     return _paginated(await svc.get_verdict_accuracy(user_id))
 
 
+@router.get("/dashboard/backtesting/verdict-accuracy")
+async def get_verdict_accuracy_single_user(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> dict[str, Any]:
+    svc = DashboardService(session)
+    return _paginated(await svc.get_verdict_accuracy(_default_user_id()))
+
+
 # ---------------------------------------------------------------------------
 # 8. Backtesting — thesis performances
 # ---------------------------------------------------------------------------
@@ -169,13 +257,26 @@ async def get_thesis_performances(
     ticker: Annotated[str | None, Query(description="Filter theo ticker")] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> list[dict[str, Any]]:
-    """Aggregate PnL per thesis tu ThesisSnapshot: avg/max/min pnl_pct."""
     svc = DashboardService(session)
     return await svc.get_thesis_performances(user_id, ticker=ticker, limit=limit)
 
 
+@router.get("/dashboard/backtesting/thesis-performances")
+async def get_thesis_performances_single_user(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    ticker: Annotated[str | None, Query(description="Filter theo ticker")] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+) -> list[dict[str, Any]]:
+    svc = DashboardService(session)
+    return await svc.get_thesis_performances(
+        _default_user_id(),
+        ticker=ticker,
+        limit=limit,
+    )
+
+
 # ---------------------------------------------------------------------------
-# 9. Backtesting — price snapshots (chart data)
+# 9. Backtesting — price snapshots
 # ---------------------------------------------------------------------------
 
 
@@ -185,9 +286,20 @@ async def get_price_snapshots(
     thesis_id: int,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> dict[str, Any]:
-    """Chuoi gia theo thoi gian cua mot thesis, kem verdict tai moi snapshot."""
     svc = DashboardService(session)
     result = await svc.get_price_snapshots(user_id, thesis_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Thesis {thesis_id} not found")
+    return result
+
+
+@router.get("/dashboard/backtesting/price-snapshots/{thesis_id}")
+async def get_price_snapshots_single_user(
+    thesis_id: int,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> dict[str, Any]:
+    svc = DashboardService(session)
+    result = await svc.get_price_snapshots(_default_user_id(), thesis_id)
     if result is None:
         raise HTTPException(status_code=404, detail=f"Thesis {thesis_id} not found")
     return result
@@ -205,9 +317,18 @@ async def get_leaderboard(
     sort_by: Annotated[Literal["score", "pnl"], Query()] = "score",
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> LeaderboardResponse:
-    """Ranked thesis leaderboard. sort_by=score|pnl."""
     svc = LeaderboardService(session)
     return await svc.get_leaderboard(user_id, sort_by=sort_by, limit=limit)
+
+
+@router.get("/leaderboard", response_model=LeaderboardResponse)
+async def get_leaderboard_single_user(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    sort_by: Annotated[Literal["score", "pnl"], Query()] = "score",
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> LeaderboardResponse:
+    svc = LeaderboardService(session)
+    return await svc.get_leaderboard(_default_user_id(), sort_by=sort_by, limit=limit)
 
 
 # ---------------------------------------------------------------------------
@@ -220,7 +341,6 @@ async def get_thesis_timeline(
     thesis_id: int,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ThesisTimelineResponse:
-    """Chronological event log for a single thesis."""
     svc = ThesisTimelineService(session)
     result = await svc.get_timeline(thesis_id)
     if result is None:
