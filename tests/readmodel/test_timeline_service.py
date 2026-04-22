@@ -95,7 +95,7 @@ async def test_timeline_no_cross_user_access(session):
     await session.flush()
 
     svc = TimelineService(session)
-    with pytest.raises(Exception):
+    with pytest.raises(ThesisNotFoundError):
         await svc.get_timeline(thesis_id=thesis.id, user_id=USER)
 
 
