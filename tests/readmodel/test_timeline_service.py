@@ -5,14 +5,14 @@ from __future__ import annotations
 import pytest
 
 from src.readmodel.timeline_service import TimelineService
-from src.thesis.service import CreateThesisInput, ThesisService
+from src.thesis.service import CreateThesisInput, ThesisService, ThesisNotFoundError
 
 USER = "tl_user"
 
 
 async def test_timeline_thesis_not_found_raises(session):
     svc = TimelineService(session)
-    with pytest.raises(Exception):
+    with pytest.raises(ThesisNotFoundError):
         await svc.get_timeline(thesis_id=99999, user_id=USER)
 
 
