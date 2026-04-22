@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from src.readmodel.timeline_service import TimelineService
-from src.thesis.service import CreateThesisInput, ThesisService, ThesisNotFoundError
+from src.thesis.service import CreateThesisInput, ThesisNotFoundError, ThesisService
 
 USER = "tl_user"
 
