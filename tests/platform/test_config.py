@@ -1,5 +1,6 @@
 import os
 from unittest.mock import patch
+from pydantic import ValidationError
 
 import pytest
 
@@ -35,5 +36,5 @@ def test_is_development_flag() -> None:
 
 
 def test_missing_required_fields_raises() -> None:
-    with patch.dict(os.environ, {}, clear=True), pytest.raises(Exception):
+    with patch.dict(os.environ, {}, clear=True), pytest.raises(ValidationError):
         Settings()
