@@ -61,7 +61,7 @@ jobs:
           pip install aiosqlite  # needed for test imports during mypy
 
       - name: Run mypy
-        run: mypy src/
+        run: mypy -p src
         env:
           ENVIRONMENT: test
           DATABASE_URL: "sqlite+aiosqlite:///:memory:"
