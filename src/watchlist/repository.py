@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.watchlist.models import Alert, AlertStatus, WatchlistItem
+from src.watchlist.models import Alert, AlertStatus, WatchlistItem, WatchlistScan
 
 
 class WatchlistRepository:
@@ -65,3 +65,13 @@ class WatchlistRepository:
         self._session.add(alert)
         await self._session.flush()
         return alert
+
+    async def get_latest_scan(self, user_id: str) -> WatchlistScan | None:
+        stmt = (
+            select(WatchlistScan)
+            .where(WatchlistScan.user_id == user_id)
+            .order_by(WatchlistScan.scanned_at.desc())
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
