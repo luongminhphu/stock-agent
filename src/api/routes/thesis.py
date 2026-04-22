@@ -123,7 +123,7 @@ async def suggest_thesis(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"AI response could not be parsed: {exc}",
-        )
+        ) from exc
     except PerplexityError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -711,4 +711,4 @@ async def apply_recommendation(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc),
-        )
+        ) from exc
