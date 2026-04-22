@@ -9,7 +9,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.deps import get_current_user_id, get_db
+from src.api.deps import get_current_user_id, get_db, get_scan_service
 from src.api.dto.watchlist import (
     AddWatchlistItemRequest,
     WatchlistItemResponse,
@@ -73,13 +73,13 @@ async def remove_from_watchlist(
             detail=f"'{ticker.upper()}' not found in your watchlist.",
         ) from exc
 
+
 @router.post("/scan", status_code=status.HTTP_200_OK)
 async def trigger_scan(
     user_id: str = Depends(get_current_user_id),
     scan_svc=Depends(get_scan_service),
 ) -> dict:
     """Trigger watchlist scan thủ công, persist snapshot vào DB."""
-    from src.api.deps import get_scan_service as _  # noqa — import để deps resolve
     result = await scan_svc.scan_user(user_id=user_id)
     return {
         "status": "ok",
