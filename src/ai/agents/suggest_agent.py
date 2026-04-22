@@ -32,7 +32,7 @@ Nhiệm vụ: xây dựng luận điểm đầu tư có cấu trúc cho cổ phi
 
 Yêu cầu output JSON với cấu trúc chính xác sau:
 {
-  "ticker": "<MÃ_CỔ_PHIẼU>",
+  "ticker": "<MÃ_CỔ_PHIẾU>",
   "thesis_title": "<tiêu đề ngắn súc tích>",
   "thesis_summary": "<2-3 câu mô tả luận điểm>",
   "entry_price_hint": <số hoặc null>,
@@ -59,6 +59,64 @@ Quy tắc bắt buộc:
 - Chỉ trả về raw JSON object, không bọc trong markdown, không có ```json
 - Dòng đầu tiên phải là dấu '{', dòng cuối phải là dấu '}'
 """
+
+_RESPONSE_SCHEMA = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "thesis_suggestion",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "ticker": {"type": "string"},
+                "thesis_title": {"type": "string"},
+                "thesis_summary": {"type": "string"},
+                "entry_price_hint": {"type": ["number", "null"]},
+                "target_price_hint": {"type": ["number", "null"]},
+                "stop_loss_hint": {"type": ["number", "null"]},
+                "assumptions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "description": {"type": "string"},
+                            "rationale": {"type": "string"},
+                        },
+                        "required": ["description", "rationale"],
+                        "additionalProperties": False,
+                    },
+                },
+                "catalysts": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "description": {"type": "string"},
+                            "expected_timeline": {"type": "string"},
+                            "rationale": {"type": "string"},
+                        },
+                        "required": ["description", "expected_timeline", "rationale"],
+                        "additionalProperties": False,
+                    },
+                },
+                "confidence": {"type": "number"},
+                "reasoning": {"type": "string"},
+            },
+            "required": [
+                "ticker",
+                "thesis_title",
+                "thesis_summary",
+                "entry_price_hint",
+                "target_price_hint",
+                "stop_loss_hint",
+                "assumptions",
+                "catalysts",
+                "confidence",
+                "reasoning",
+            ],
+            "additionalProperties": False,
+        },
+    },
+}
 
 
 def _build_user_prompt(ticker: str) -> str:
@@ -89,7 +147,7 @@ def _pre_clean(text: str) -> str:
     """Clean AI artifacts TRƯỚC json.loads() để tránh parse error.
 
     Handles:
-    - Citation markers: , ,  — sonar-pro inject vào giữa string[1]
+    - Citation markers: ,  — sonar-pro inject vào giữa string
     - Trailing commas trước } hoặc ] — sonar thỉnh thoảng sinh ra
     - Literal newlines bên trong JSON string values — gây JSONDecodeError
     """
@@ -156,7 +214,8 @@ def _normalize_list(
             result.append(obj)
         elif isinstance(item, dict):
             normalized = {
-                k: _strip_citations(v) if isinstance(v, str) else v for k, v in item.items()
+                k: _strip_citations(v) if isinstance(v, str) else v
+                for k, v in item.items()
             }
             result.append(normalized)
     return result
@@ -229,7 +288,7 @@ class ThesisSuggestAgent:
                 messages=messages,
                 temperature=0.2,
                 max_tokens=3072,
-                response_format={"type": "json_object"},
+                response_format=_RESPONSE_SCHEMA,
             )
             raw_text = self._client.extract_text(response)
 
