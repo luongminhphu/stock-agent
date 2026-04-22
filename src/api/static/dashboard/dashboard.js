@@ -832,9 +832,28 @@ function renderVerdicts(list) {
 
 function renderCatalystList(list) {
   const wrap = el('catalystList');
-  const items = list;
-  if (!items.length) { wrap.innerHTML = '<p class="empty-state">Không có catalyst sắp tới.</p>'; return; }
-  wrap.innerHTML = items.slice(0, 8).map(c => `<div class="row-item"><div><div class="row-title">${esc(c.ticker ?? '')} — ${esc(c.description ?? '')}</div><div class="row-subtitle">${esc(c.expected_timeline ?? '')} · ${badge(c.status)}</div></div></div>`).join('');
+  if (!wrap) return;
+  if (!list.length) {
+    wrap.innerHTML = '<p class="empty-state">Không có catalyst nào trong 30 ngày tới.</p>';
+    return;
+  }
+  wrap.innerHTML = list.map(item => `
+    <div class="catalyst-item">
+      <div class="catalyst-item-row">
+        ${item.thesis_ticker
+          ? `<span class="badge" style="font-size:.78rem;padding:2px 8px;letter-spacing:.04em;">${esc(item.thesis_ticker)}</span>`
+          : ''}
+        <span style="flex:1;font-weight:600;">— ${esc(item.description)}</span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap;">
+        ${item.expected_date
+          ? `<span style="font-size:.8rem;color:var(--muted);">📅 ${fmtDate(item.expected_date)}</span>`
+          : '<span style="font-size:.8rem;color:var(--muted);">· —</span>'}
+        ${item.thesis_title
+          ? `<span style="font-size:.78rem;color:var(--muted);font-style:italic;">${esc(item.thesis_title)}</span>`
+          : ''}
+      </div>
+    </div>`).join('<div class="catalyst-divider"></div>');
 }
 
 function renderSnapshots(s) {
