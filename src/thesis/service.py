@@ -344,30 +344,36 @@ class ThesisService:
 
     async def _auto_invalidate_if_needed(self, thesis_id: int) -> None:
         """Sau khi score recompute, kiểm tra invalidation conditions.
-
+    
         Nếu InvalidationService.check() trả should_invalidate=True
         → tự chuyển thesis sang INVALIDATED trong cùng transaction.
         Không raise — failure ở đây không nên block caller.
         """
-        thesis = await self._repo.get_by_id(thesis_id)
-        if thesis is None:
-            return
-        if thesis.status != ThesisStatus.ACTIVE:
-            return  # chỉ check thesis đang active
-
-        current_score = thesis.score or 0.0
-        result = InvalidationService().check(thesis, current_score)
-
-        if result.should_invalidate:
-            thesis.status = ThesisStatus.INVALIDATED
-            thesis.closed_at = datetime.now(UTC)
-            await self._repo.save(thesis)
-            logger.warning(
-                "thesis.auto_invalidated",
+        try:
+            thesis = await self._repo.get_by_id(thesis_id)
+            if thesis is None:
+                return
+            if thesis.status != ThesisStatus.ACTIVE:
+                return  # chỉ check thesis đang active
+    
+            current_score = thesis.score or 0.0
+            result = InvalidationService().check(thesis, current_score)
+    
+            if result.should_invalidate:
+                thesis.status = ThesisStatus.INVALIDATED
+                thesis.closed_at = datetime.now(UTC)
+                await self._repo.save(thesis)
+                logger.warning(
+                    "thesis.auto_invalidated",
+                    thesis_id=thesis_id,
+                    reason=result.reason,
+                    invalid_assumptions=result.invalid_assumptions,
+                    score=result.score,
+                )
+        except Exception:
+            logger.exception(
+                "thesis.auto_invalidate_failed",
                 thesis_id=thesis_id,
-                reason=result.reason,
-                invalid_assumptions=result.invalid_assumptions,
-                score=result.score,
             )
 
     # ------------------------------------------------------------------
@@ -388,6 +394,8 @@ class ThesisService:
         )
         await self._repo.save_assumption(assumption)
         logger.info("assumption.added", thesis_id=thesis_id, assumption_id=assumption.id)
+        await self._recompute_score(thesis_id)
+        await self._auto_invalidate_if_needed(thesis_id)
         return assumption
 
     async def update_assumption(
@@ -446,6 +454,8 @@ class ThesisService:
         )
         await self._repo.save_catalyst(catalyst)
         logger.info("catalyst.added", thesis_id=thesis_id, catalyst_id=catalyst.id)
+        await self._recompute_score(thesis_id)
+        await self._auto_invalidate_if_needed(thesis_id)
         return catalyst
 
     async def add_catalyst_from_timeline(
@@ -570,6 +580,10 @@ class ThesisService:
         elif rec.target_type == "catalyst":
             inp = UpdateCatalystInput(status=CatalystStatus(rec.recommended_status))
             await self.update_catalyst(thesis_id, rec.target_id, user_id, inp)
+        else:
+            logger.warning("recommendation.unknown_target_type", 
+                           target_type=rec.target_type, 
+                           recommendation_id=recommendation_id)
 
         rec.status = RecommendationStatus.ACCEPTED
         rec.acted_at = now  # 👈 fix bug 2
