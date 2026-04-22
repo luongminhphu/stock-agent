@@ -48,6 +48,7 @@ class ThesisReviewAgent:
         current_price: float | None = None,
         entry_price: float | None = None,
         target_price: float | None = None,
+        assumptions_with_ids: list[dict] | None = None,
     ) -> ThesisReviewOutput:
         """Run a thesis review and return structured output.
 
@@ -55,6 +56,8 @@ class ThesisReviewAgent:
             catalysts:            PENDING catalysts — chưa xảy ra, sắp tới.
             triggered_catalysts:  TRIGGERED catalysts — đã kích hoạt/xảy ra.
                                   Mặc định None (tương đương list rỗng).
+            assumptions_with_ids: Optional richer assumption payload from thesis segment.
+                                  Currently accepted for compatibility, not used by prompt yet.
 
         Raises:
             PerplexityError: If the API call fails after retries.
@@ -83,7 +86,7 @@ class ThesisReviewAgent:
         try:
             response = await self._client.chat_completion(
                 messages=messages,
-                temperature=0.1,  # Low temp for consistent structured output
+                temperature=0.1,
             )
             raw_text = self._client.extract_text(response)
             clean_text = _extract_json(raw_text)
