@@ -145,7 +145,6 @@ def parse_timeline_to_date(timeline: str | None) -> datetime | None:
 
 @dataclass
 class CreateThesisInput:
-    user_id: str | None = None
     ticker: str
     title: str
     summary: str = ""
@@ -153,9 +152,8 @@ class CreateThesisInput:
     target_price: float | None = None
     stop_loss: float | None = None
     assumptions: list[str] | None = None
-    # CHANGED: accepts AddCatalystInput list so expected_date is preserved.
-    # Callers passing list[str] must migrate to AddCatalystInput(description=...).
     catalysts: list[AddCatalystInput] | None = None
+    user_id: str | None = None
 
 
 @dataclass
