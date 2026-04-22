@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.platform.config import settings
 from src.platform.logging import get_logger
 from src.thesis.invalidation_service import InvalidationService
 from src.thesis.models import (
@@ -144,7 +145,7 @@ def parse_timeline_to_date(timeline: str | None) -> datetime | None:
 
 @dataclass
 class CreateThesisInput:
-    user_id: str
+    user_id: str | None = None
     ticker: str
     title: str
     summary: str = ""
@@ -222,6 +223,19 @@ class CatalystNotFoundError(Exception):
 # Service
 # ---------------------------------------------------------------------------
 
+def _resolve_user_id(user_id: str | None) -> str:
+    """Single-user friendly user resolver.
+
+    Priority:
+    1. explicit user_id from caller
+    2. owner_user_id from settings
+    """
+    resolved = user_id or settings.owner_user_id
+    if not resolved:
+        raise ValueError(
+            "user_id is required. Set owner_user_id in settings/.env for single-user mode."
+        )
+    return resolved
 
 class ThesisService:
     """Thesis lifecycle: create, update, close, invalidate, delete.
@@ -239,7 +253,7 @@ class ThesisService:
 
     async def create(self, inp: CreateThesisInput) -> Thesis:
         thesis = Thesis(
-            user_id=inp.user_id,
+            user_id=_resolve_user_id(inp.user_id),
             ticker=inp.ticker.upper(),
             title=inp.title,
             summary=inp.summary,
@@ -436,6 +450,27 @@ class ThesisService:
         logger.info("catalyst.added", thesis_id=thesis_id, catalyst_id=catalyst.id)
         return catalyst
 
+    async def add_catalyst_from_timeline(
+        self,
+        thesis_id: int,
+        user_id: str | None,
+        description: str,
+        timeline: str | None,
+        note: str | None = None,
+        status: CatalystStatus = CatalystStatus.PENDING,
+    ) -> Catalyst:
+        """Convenience helper for single-user + AI-generated timeline strings."""
+        return await self.add_catalyst(
+            thesis_id=thesis_id,
+            user_id=_resolve_user_id(user_id),
+            inp=AddCatalystInput(
+                description=description,
+                status=status,
+                expected_date=parse_timeline_to_date(timeline),
+                note=note,
+            ),
+        )
+    
     async def update_catalyst(
         self,
         thesis_id: int,
@@ -479,10 +514,13 @@ class ThesisService:
     # Private helpers
     # ------------------------------------------------------------------
 
-    async def _get_owned(self, thesis_id: int, user_id: str) -> Thesis:
+    async def _get_owned(self, thesis_id: int, user_id: str | None) -> Thesis:
+        resolved_user_id = _resolve_user_id(user_id)
         thesis = await self._repo.get_by_id(thesis_id)
-        if thesis is None or thesis.user_id != user_id:
-            raise ThesisNotFoundError(f"Thesis {thesis_id} not found for user {user_id}")
+        if thesis is None or thesis.user_id != resolved_user_id:
+            raise ThesisNotFoundError(
+                f"Thesis {thesis_id} not found for user {resolved_user_id}"
+            )
         return thesis
 
     @staticmethod
