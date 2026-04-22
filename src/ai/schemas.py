@@ -5,7 +5,7 @@ calling segments. All structured responses from Perplexity must
 parse into one of these schemas.
 """
 
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field, field_validator
 
