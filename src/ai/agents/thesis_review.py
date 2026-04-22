@@ -48,7 +48,7 @@ class ThesisReviewAgent:
         current_price: float | None = None,
         entry_price: float | None = None,
         target_price: float | None = None,
-        assumptions_with_ids: list[dict] | None = None,
+        **_: object,
     ) -> ThesisReviewOutput:
         """Run a thesis review and return structured output.
 
