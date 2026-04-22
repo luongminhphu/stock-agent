@@ -183,11 +183,11 @@ async def list_theses(
     if status_filter:
         try:
             status_enum = ThesisStatus(status_filter.lower())
-        except ValueError:
+        except ValueError as exc:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Invalid status: {status_filter}. Valid: {[s.value for s in ThesisStatus]}",
-            )
+            ) from exc
     items = await svc.list_for_user(user_id, status_enum)
     return ThesisListResponse(
         items=[ThesisResponse.model_validate(t) for t in items],
@@ -247,7 +247,7 @@ async def update_thesis(
             ),
         )
     except ThesisNotFoundError as exc:
-        raise _not_found(exc)
+        raise _not_found(exc) from exc
     except ThesisAlreadyClosedError as exc:
         raise _conflict(exc) from exc
     return ThesisResponse.model_validate(thesis)
@@ -263,7 +263,7 @@ async def delete_thesis(
     try:
         await svc.delete(thesis_id, user_id)
     except ThesisNotFoundError as exc:
-        raise _not_found(exc)
+        raise _not_found(exc) from exc
 
 
 @router.post("/{thesis_id}/close", response_model=ThesisResponse)
@@ -276,9 +276,9 @@ async def close_thesis(
     try:
         thesis = await svc.close(thesis_id, user_id)
     except ThesisNotFoundError as exc:
-        raise _not_found(exc)
+        raise _not_found(exc) from exc
     except ThesisAlreadyClosedError as exc:
-        raise _conflict(exc)
+        raise _conflict(exc) from exc
     return ThesisResponse.model_validate(thesis)
 
 
@@ -292,9 +292,9 @@ async def invalidate_thesis(
     try:
         thesis = await svc.invalidate(thesis_id, user_id)
     except ThesisNotFoundError as exc:
-        raise _not_found(exc)
+        raise _not_found(exc) from exc
     except ThesisAlreadyClosedError as exc:
-        raise _conflict(exc)
+        raise _conflict(exc) from exc
     return ThesisResponse.model_validate(thesis)
 
 
@@ -313,7 +313,7 @@ async def get_health_score(
     try:
         thesis = await svc.get(thesis_id, user_id)
     except ThesisNotFoundError as exc:
-        raise _not_found(exc)
+        raise _not_found(exc) from exc
 
     scoring = ScoringService()
     total, breakdown = scoring.compute_with_breakdown(thesis)
@@ -344,7 +344,7 @@ async def list_assumptions(
     try:
         thesis = await svc.get(thesis_id, user_id)
     except ThesisNotFoundError as exc:
-        raise _not_found(exc)
+        raise _not_found(exc) from exc
     items = thesis.assumptions or []
     return AssumptionListResponse(
         items=[AssumptionResponse.model_validate(a) for a in items],
@@ -375,9 +375,9 @@ async def add_assumption(
             ),
         )
     except ThesisNotFoundError as exc:
-        raise _not_found(exc)
+        raise _not_found(exc) from exc
     except ThesisAlreadyClosedError as exc:
-        raise _conflict(exc)
+        raise _conflict(exc) from exc
     return AssumptionResponse.model_validate(assumption)
 
 
@@ -395,7 +395,7 @@ async def get_assumption(
     try:
         thesis = await svc.get(thesis_id, user_id)
     except ThesisNotFoundError as exc:
-        raise _not_found(exc)
+        raise _not_found(exc) from exc
     assumption = next((a for a in thesis.assumptions if a.id == assumption_id), None)
     if assumption is None:
         raise HTTPException(
@@ -429,7 +429,7 @@ async def update_assumption(
             ),
         )
     except ThesisNotFoundError as exc:
-        raise _not_found(exc)
+        raise _not_found(exc) from exc
     except AssumptionNotFoundError as exc:
         raise _not_found(exc) from exc
     return AssumptionResponse.model_validate(assumption)
@@ -449,9 +449,9 @@ async def delete_assumption(
     try:
         await svc.delete_assumption(thesis_id, assumption_id, user_id)
     except ThesisNotFoundError as exc:
-        raise _not_found(exc)
+        raise _not_found(exc) from exc
     except AssumptionNotFoundError as exc:
-        raise _not_found(exc)
+        raise _not_found(exc) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -469,7 +469,7 @@ async def list_catalysts(
     try:
         thesis = await svc.get(thesis_id, user_id)
     except ThesisNotFoundError as exc:
-        raise _not_found(exc)
+        raise _not_found(exc) from exc
     items = thesis.catalysts or []
     return CatalystListResponse(
         items=[CatalystResponse.model_validate(c) for c in items],
@@ -501,9 +501,9 @@ async def add_catalyst(
             ),
         )
     except ThesisNotFoundError as exc:
-        raise _not_found(exc)
+        raise _not_found(exc) from exc
     except ThesisAlreadyClosedError as exc:
-        raise _conflict(exc)
+        raise _conflict(exc) from exc
     return CatalystResponse.model_validate(catalyst)
 
 
@@ -521,7 +521,7 @@ async def get_catalyst(
     try:
         thesis = await svc.get(thesis_id, user_id)
     except ThesisNotFoundError as exc:
-        raise _not_found(exc)
+        raise _not_found(exc) from exc
     catalyst = next((c for c in thesis.catalysts if c.id == catalyst_id), None)
     if catalyst is None:
         raise HTTPException(
@@ -557,7 +557,7 @@ async def update_catalyst(
             ),
         )
     except ThesisNotFoundError as exc:
-        raise _not_found(exc)
+        raise _not_found(exc) from exc
     except CatalystNotFoundError as exc:
         raise _not_found(exc) from exc
     return CatalystResponse.model_validate(catalyst)
@@ -577,9 +577,9 @@ async def delete_catalyst(
     try:
         await svc.delete_catalyst(thesis_id, catalyst_id, user_id)
     except ThesisNotFoundError as exc:
-        raise _not_found(exc)
+        raise _not_found(exc) from exc
     except CatalystNotFoundError as exc:
-        raise _not_found(exc)
+        raise _not_found(exc) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -601,7 +601,7 @@ async def trigger_review(
     try:
         review = await review_svc.review_thesis(thesis_id=thesis_id, user_id=user_id)
     except ThesisNotFoundError as exc:
-        raise _not_found(exc)
+        raise _not_found(exc) from exc
     except ReviewNotAllowedError as exc:
         raise _conflict(exc) from exc
     except Exception as exc:
@@ -625,7 +625,7 @@ async def list_reviews(
             thesis_id=thesis_id, user_id=user_id, limit=min(limit, 50)
         )
     except ThesisNotFoundError as exc:
-        raise _not_found(exc)
+        raise _not_found(exc) from exc
     return ThesisReviewListResponse(
         thesis_id=thesis_id,
         reviews=[ThesisReviewResponse.model_validate(r) for r in reviews],
@@ -643,7 +643,7 @@ async def get_latest_review(
     try:
         reviews = await review_svc.list_reviews(thesis_id=thesis_id, user_id=user_id, limit=1)
     except ThesisNotFoundError as exc:
-        raise _not_found(exc)
+        raise _not_found(exc) from exc
     if not reviews:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -671,7 +671,7 @@ async def list_recommendations(
     try:
         recs = await review_svc.list_pending_recommendations(thesis_id=thesis_id, user_id=user_id)
     except ThesisNotFoundError as exc:
-        raise _not_found(exc)
+        raise _not_found(exc) from exc
     return RecommendationListResponse(
         thesis_id=thesis_id,
         items=[RecommendationResponse.model_validate(r) for r in recs],
@@ -706,7 +706,7 @@ async def apply_recommendation(
             accept=(body.action == "accept"),
         )
     except ThesisNotFoundError as exc:
-        raise _not_found(exc)
+        raise _not_found(exc) from exc
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
