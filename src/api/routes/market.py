@@ -26,11 +26,11 @@ async def get_symbol_info(ticker: str) -> SymbolInfoResponse:
     """Return registry metadata for a ticker."""
     try:
         info = registry.resolve(ticker.upper())
-    except SymbolNotFoundError:
+    except SymbolNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Ticker '{ticker.upper()}' not found in registry.",
-        )
+        ) from exc
     return SymbolInfoResponse(
         ticker=info.ticker,
         name=info.name,
@@ -50,11 +50,11 @@ async def get_quote(
     # Validate ticker exists in registry before hitting external API
     try:
         info = registry.resolve(ticker)
-    except SymbolNotFoundError:
+    except SymbolNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Ticker '{ticker}' not found in registry.",
-        )
+        ) from exc
 
     try:
         quote = await quote_svc.get_quote(ticker)
@@ -62,7 +62,7 @@ async def get_quote(
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Market data unavailable for '{ticker}': {exc}",
-        )
+        ) from exc
 
     return QuoteResponse(
         ticker=quote.ticker,
