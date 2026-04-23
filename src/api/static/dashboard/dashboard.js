@@ -963,7 +963,7 @@ function openApplyAiReviewModal(thesisId) {
 
   body.innerHTML = `<p class="empty-state">Đang tải gợi ý từ AI...</p>`;
 
-  // Gọi đúng endpoint backend: /api/v1/thesis/{id}/recommendations
+  // ĐÚNG: /thesis/{id}/recommendations
   getJson(`${thesisApiBase()}/${thesisId}/recommendations`)
     .then((res) => {
       const items = Array.isArray(res) ? res : res?.items ?? [];
