@@ -107,9 +107,9 @@ function renderScoreBreakdown(breakdown) {
 function renderReviewRecommendSection(thesisId) {
   return `
     <div class="detail-section" id="reviewRecommendSection-${thesisId}">
-      <div class="detail-section-header">
-        <div>
-          <h3>AI kiểm tra &amp; gợi ý</h3>
+      <div class="detail-section-header" style="align-items:flex-end; gap:12px;">
+        <div style="max-width: 65%;">
+          <h3>Agent Suggestion</h3>
           <p class="muted" style="font-size: 0.78rem; margin-top: 2px;">
             Nhờ AI rà lại thesis, bạn vẫn là người xác nhận thay đổi.
           </p>
@@ -117,9 +117,14 @@ function renderReviewRecommendSection(thesisId) {
         <button
           class="suggest-btn"
           id="aiReviewBtn-${thesisId}"
-          style="min-height:34px;padding:0 14px;font-size:.82rem"
+          style="
+            min-height:30px;
+            padding:0 14px;
+            font-size:.8rem;
+            margin-left:auto;
+          "
         >
-          Nhờ AI kiểm tra
+          Verify
         </button>
       </div>
       <div id="aiReviewLoading-${thesisId}" class="suggest-loading hidden">
