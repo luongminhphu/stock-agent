@@ -372,6 +372,27 @@
       </div>
     </dialog>
 
+    <!-- Modal áp dụng gợi ý từ AI -->
+    <dialog id="aiApplyModal" aria-labelledby="aiApplyModalTitle">
+      <div class="modal-inner">
+        <div class="modal-header">
+          <h2 id="aiApplyModalTitle">Áp dụng gợi ý từ AI</h2>
+          <button class="modal-close" data-close="aiApplyModal" aria-label="Đóng">&#x2715;</button>
+        </div>
+
+        <p class="muted" style="font-size:0.82rem;">
+          Chọn những assumption/catalyst bạn muốn cập nhật theo gợi ý của AI.
+        </p>
+
+        <div id="aiApplyModalBody" class="review-columns" style="margin-top:10px;"></div>
+
+        <div class="modal-footer">
+          <button type="button" class="ghost-btn" data-close="aiApplyModal">Hủy</button>
+          <button type="button" class="primary-btn" id="aiApplyConfirmBtn">Xác nhận áp dụng</button>
+        </div>
+      </div>
+    </dialog>
+    
     <dialog id="deleteModal" aria-labelledby="deleteModalTitle">
       <div class="modal-inner">
         <div class="modal-header">
