@@ -46,6 +46,7 @@ from src.api.deps import (
 )
 from src.api.dto.thesis import (
     ApplyRecommendationRequest,
+    ApplyAiReviewRequest,
     AssumptionCreateRequest,
     AssumptionListResponse,
     AssumptionResponse,
@@ -710,5 +711,40 @@ async def apply_recommendation(
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+
+@router.post(
+    "/{thesis_id}/ai-review/apply",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def apply_ai_review_bulk(
+    thesis_id: int,
+    body: ApplyAiReviewRequest,
+    user_id: str = Depends(get_current_user_id),
+    review_svc: ReviewService = Depends(get_review_service),
+) -> None:
+    """Áp dụng nhiều AI recommendations cùng lúc cho một thesis.
+
+    Dùng cho flow 'AI check xong → Áp dụng gợi ý' trên UI:
+    - applied_recommendation_ids: list các ReviewRecommendation.id mà user đã tick.
+    - verdict / ai_confidence: optional snapshot để lưu lại trên thesis / log.
+    Business logic (update assumption/catalyst, mark ACCEPTED, recompute score)
+    nằm trong ReviewService/ThesisService, route chỉ forward.
+    """
+    try:
+        await review_svc.apply_bulk_recommendations(
+            thesis_id=thesis_id,
+            user_id=user_id,
+            applied_recommendation_ids=body.applied_recommendation_ids,
+            verdict=body.verdict,
+            ai_confidence=body.ai_confidence,
+        )
+    except ThesisNotFoundError as exc:
+        raise _not_found(exc) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         ) from exc
