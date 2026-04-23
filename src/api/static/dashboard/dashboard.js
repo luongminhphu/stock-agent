@@ -49,6 +49,11 @@ let _selectedThesisId = null;
 let _theses = [];
 let _deleteCallback = null;
 
+// NEW: cache review + selections cho AI apply flow
+let latestAiReviews = {};       // key: thesisId -> latest review payload
+let aiApplyThesisId = null;     // thesis đang mở modal AI apply
+let aiSelectedRecIds = [];      // rec ids user tick trong modal
+
 function scoreClass(s) {
   if (s == null) return '';
   if (s >= 86) return 'score-high';
@@ -99,60 +104,135 @@ function renderScoreBreakdown(breakdown) {
     </div>`;
 }
 
-// ─── AI Review Recommendation ────────────────────────────────────────────────
 function renderReviewRecommendSection(thesisId) {
   return `
     <div class="detail-section" id="reviewRecommendSection-${thesisId}">
       <div class="detail-section-header">
-        <h3>🔮 AI Review Recommendation</h3>
-        <button class="suggest-btn" id="aiReviewBtn-${thesisId}" style="min-height:34px;padding:0 14px;font-size:.82rem;">
-          Xin AI review
+        <div>
+          <h3>AI kiểm tra &amp; gợi ý</h3>
+          <p class="muted" style="font-size: 0.78rem; margin-top: 2px;">
+            Nhờ AI rà lại thesis, bạn vẫn là người xác nhận thay đổi.
+          </p>
+        </div>
+        <button
+          class="suggest-btn"
+          id="aiReviewBtn-${thesisId}"
+          style="min-height:34px;padding:0 14px;font-size:.82rem"
+        >
+          Nhờ AI kiểm tra
         </button>
       </div>
       <div id="aiReviewLoading-${thesisId}" class="suggest-loading hidden">
-        <div class="spinner"></div> AI đang phân tích thesis…
+        <div class="spinner"></div>
+        AI đang phân tích thesis...
       </div>
       <div id="aiReviewResult-${thesisId}" class="suggest-result hidden"></div>
-    </div>`;
+    </div>
+  `;
 }
 
 function renderReviewRecommendResult(thesisId, d) {
+  // cache lại latest review cho thesis này để dùng khi apply
+  latestAiReviews[thesisId] = d;
+
   const confPct = Math.round((d.confidence ?? 0) * 100);
-  const verdictCls = { bullish: 'bullish', bearish: 'bearish', hold: '', neutral: '' }[
-    String(d.verdict ?? '').toLowerCase()
-  ] ?? '';
-  const risks = (d.risk_signals ?? []).map(r => `<li>${esc(r)}</li>`).join('');
-  const watches = (d.next_watch_items ?? []).map(w => `<li>${esc(w)}</li>`).join('');
+  const verdictCls =
+    (String(d.verdict ?? "").toLowerCase() || "neutral") || "neutral";
+
+  const risks =
+    d.risk_signals ??
+    d.risks ??
+    d.risksignals ??
+    [];
+  const watches =
+    d.next_watch_items ??
+    d.nextwatchitems ??
+    [];
+
+  const riskItems = risks
+    .map((r) => `<li>${esc(r)}</li>`)
+    .join("");
+  const watchItems = watches
+    .map((w) => `<li>${esc(w)}</li>`)
+    .join("");
 
   return `
     <div class="suggest-body">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
         <span class="badge ${verdictCls}" style="font-size:.95rem;padding:6px 14px;">
-          ${esc(String(d.verdict ?? '—').toUpperCase())}
+          ${esc(String(d.verdict ?? "").toUpperCase())}
         </span>
-        <span style="color:var(--muted);font-size:.85rem;">Confidence: ${confPct}%</span>
+        <span style="color:var(--muted);font-size:.85rem;">
+          Confidence ${confPct}%
+        </span>
       </div>
+
       <div class="confidence-bar" style="margin-bottom:12px;">
         <div class="confidence-fill" style="width:${confPct}%;"></div>
       </div>
-      ${d.reasoning ? `<p style="line-height:1.65;margin-bottom:10px;">${esc(d.reasoning)}</p>` : ''}
-      ${risks ? `<div><p class="suggest-section-title">⚠️ Risk signals</p><ul style="padding-left:1.2em;color:var(--muted);font-size:.88rem;">${risks}</ul></div>` : ''}
-      ${watches ? `<div style="margin-top:10px;"><p class="suggest-section-title">👁 Next watch items</p><ul style="padding-left:1.2em;color:var(--muted);font-size:.88rem;">${watches}</ul></div>` : ''}
-      <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;">
-        <button class="primary-btn approve-review-btn"
-          data-thesis-id="${thesisId}"
-          data-verdict="${esc(d.verdict ?? '')}"
-          data-reasoning="${esc(d.reasoning ?? '')}"
-          data-confidence="${d.confidence ?? ''}"
-          style="background:#16a34a;min-height:38px;padding:0 16px;font-size:.88rem;">
-          ✅ Approve & lưu review
-        </button>
-        <button class="ghost-btn reject-review-btn" data-thesis-id="${thesisId}"
-          style="min-height:38px;padding:0 14px;font-size:.88rem;">
-          ❌ Bỏ qua
-        </button>
+
+      ${
+        d.reasoning
+          ? `<p style="line-height:1.65;margin-bottom:10px;">${esc(d.reasoning)}</p>`
+          : ""
+      }
+
+      ${
+        riskItems
+          ? `
+        <div>
+          <p class="suggest-section-title">Risk signals</p>
+          <ul style="padding-left:1.2em;color:var(--muted);font-size:.88rem;">
+            ${riskItems}
+          </ul>
+        </div>`
+          : ""
+      }
+
+      ${
+        watchItems
+          ? `
+        <div style="margin-top:10px;">
+          <p class="suggest-section-title">Next watch items</p>
+          <ul style="padding-left:1.2em;color:var(--muted);font-size:.88rem;">
+            ${watchItems}
+          </ul>
+        </div>`
+          : ""
+      }
+
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:14px;">
+        <div style="font-size:0.8rem;color:var(--muted);">
+          <strong>AI check xong — gợi ý của AI:</strong><br/>
+          • Verdict: ${esc(String(d.verdict ?? "").toUpperCase())}, confidence ${confPct}%<br/>
+          ${
+            risks[0]
+              ? `• Rủi ro chính: ${esc(risks[0])}`
+              : "• Rủi ro chính: Chưa có rủi ro nổi bật được nêu rõ."
+          }
+        </div>
+
+        <div style="display:flex;gap:10px;margin-top:6px;flex-wrap:wrap;">
+          <button
+            class="primary-btn apply-ai-review-btn"
+            data-thesis-id="${thesisId}"
+            data-verdict="${esc(d.verdict ?? "")}"
+            data-confidence="${d.confidence ?? ""}"
+            style="min-height:34px;padding:0 14px;font-size:.84rem"
+          >
+            Áp dụng gợi ý
+          </button>
+          <button
+            class="ghost-btn dismiss-ai-review-btn"
+            data-thesis-id="${thesisId}"
+            style="min-height:34px;padding:0 12px;font-size:.82rem"
+          >
+            Để sau
+          </button>
+        </div>
       </div>
-    </div>`;
+    </div>
+  `;
 }
 
 function makeAssumptionRow(data = {}) {
@@ -494,15 +574,24 @@ function wireDetailActions(thesisId, wrap) {
   wrap.querySelectorAll('.edit-cat-btn').forEach(btn => btn.addEventListener('click', () => openCatalystModal(thesisId, btn.dataset.id)));
   wrap.querySelectorAll('.delete-cat-btn').forEach(btn => btn.addEventListener('click', () => confirmDeleteCatalyst(thesisId, btn.dataset.id)));
   wrap.querySelector(`#aiReviewBtn-${thesisId}`)?.addEventListener('click', () => triggerAiReview(thesisId));
-  wrap.addEventListener('click', async e => {
-    if (e.target.closest('.approve-review-btn')) {
-      const btn = e.target.closest('.approve-review-btn');
-      await approveReview(btn.dataset.thesisId, btn.dataset.verdict, btn.dataset.reasoning, Number(btn.dataset.confidence) || null);
+  wrap.addEventListener("click", async (e) => {
+    // Mở modal "Áp dụng gợi ý"
+    if (e.target.closest(".apply-ai-review-btn")) {
+      const btn = e.target.closest(".apply-ai-review-btn");
+      const tid = btn.dataset.thesisId;
+      openApplyAiReviewModal(Number(tid));
+      return;
     }
-    if (e.target.closest('.reject-review-btn')) {
-      const tid = e.target.closest('.reject-review-btn').dataset.thesisId;
+  
+    // "Để sau" — chỉ ẩn card AI check
+    if (e.target.closest(".dismiss-ai-review-btn")) {
+      const tid = e.target.closest(".dismiss-ai-review-btn").dataset.thesisId;
       const r = wrap.querySelector(`#aiReviewResult-${tid}`);
-      if (r) { r.classList.add('hidden'); r.innerHTML = ''; }
+      if (r) {
+        r.classList.add("hidden");
+        r.innerHTML = "";
+      }
+      return;
     }
   });
 }
@@ -823,6 +912,107 @@ el('catalystAiSuggestBtn')?.addEventListener('click', async () => {
   }
 });
 
+function openApplyAiReviewModal(thesisId) {
+  aiApplyThesisId = thesisId;
+  aiSelectedRecIds = [];
+
+  const body = elid("aiApplyModalBody");
+  if (!body) return;
+
+  body.innerHTML = `<p class="empty-state">Đang tải gợi ý từ AI...</p>`;
+
+  getJson(`${thesisApiBase()}${thesisId}/recommendations`)
+    .then((res) => {
+      const items = Array.isArray(res) ? res : res?.items ?? [];
+      if (!items.length) {
+        body.innerHTML =
+          '<p class="empty-state">Không còn gợi ý nào đang chờ áp dụng.</p>';
+        return;
+      }
+
+      aiSelectedRecIds = items.map((r) => r.id); // tick sẵn tất cả
+
+      body.innerHTML = `
+        <div class="review-columns">
+          <div class="review-box">
+            <p class="suggest-section-title">Assumptions</p>
+            ${
+              items
+                .filter((r) => r.target_type === "assumption")
+                .map(
+                  (r) => `
+                  <label class="suggest-item">
+                    <div style="display:flex;align-items:flex-start;gap:8px;">
+                      <input
+                        type="checkbox"
+                        class="ai-rec-checkbox"
+                        data-rec-id="${r.id}"
+                        ${aiSelectedRecIds.includes(r.id) ? "checked" : ""}
+                      />
+                      <div>
+                        <strong>${esc(r.target_description ?? "")}</strong>
+                        <span>Đề xuất: ${esc(
+                          r.recommended_status ?? ""
+                        )} — ${esc(r.reason ?? "")}</span>
+                      </div>
+                    </div>
+                  </label>
+                `
+                )
+                .join("") || `<p class="empty-state">Không có assumption nào.</p>`
+            }
+          </div>
+          <div class="review-box">
+            <p class="suggest-section-title">Catalysts</p>
+            ${
+              items
+                .filter((r) => r.target_type === "catalyst")
+                .map(
+                  (r) => `
+                  <label class="suggest-item">
+                    <div style="display:flex;align-items:flex-start;gap:8px;">
+                      <input
+                        type="checkbox"
+                        class="ai-rec-checkbox"
+                        data-rec-id="${r.id}"
+                        ${aiSelectedRecIds.includes(r.id) ? "checked" : ""}
+                      />
+                      <div>
+                        <strong>${esc(r.target_description ?? "")}</strong>
+                        <span>Đề xuất: ${esc(
+                          r.recommended_status ?? ""
+                        )} — ${esc(r.reason ?? "")}</span>
+                      </div>
+                    </div>
+                  </label>
+                `
+                )
+                .join("") || `<p class="empty-state">Không có catalyst nào.</p>`
+            }
+          </div>
+        </div>
+      `;
+
+      body.querySelectorAll(".ai-rec-checkbox").forEach((cb) => {
+        cb.addEventListener("change", () => {
+          const id = Number(cb.dataset.recId);
+          if (cb.checked) {
+            if (!aiSelectedRecIds.includes(id)) aiSelectedRecIds.push(id);
+          } else {
+            aiSelectedRecIds = aiSelectedRecIds.filter((x) => x !== id);
+          }
+        });
+      });
+    })
+    .catch((err) => {
+      body.innerHTML = `<div class="error-banner" style="margin:0">Không tải được gợi ý: ${esc(
+        err.message
+      )}</div>`;
+    });
+
+  openModal("aiApplyModal");
+}
+
 function renderVerdicts(list) {
   const wrap = el('verdictList');
   const rows = list;
@@ -939,6 +1129,46 @@ async function approveReview(thesisId, verdict, reasoning, confidence) {
   } catch (err) {
     showToast(`Lỗi lưu review: ${err.message}`, 'error');
   }
+}
+
+const elAiApplyConfirmBtn = el('aiApplyConfirmBtn');
+if (elAiApplyConfirmBtn) {
+  elAiApplyConfirmBtn.addEventListener('click', async () => {
+    if (!aiApplyThesisId) {
+      showToast('Không xác định được thesis.', 'error');
+      return;
+    }
+    if (!aiSelectedRecIds.length) {
+      showToast('Chọn ít nhất 1 gợi ý để áp dụng.', 'error');
+      return;
+    }
+
+    const btn = elAiApplyConfirmBtn;
+    btn.classList.add('btn-loading');
+    btn.textContent = 'Đang áp dụng...';
+
+    try {
+      const latest = latestAiReviews[aiApplyThesisId] ?? {};
+      await sendJson(
+        `${thesisApiBase()}/${aiApplyThesisId}/ai-review/apply`,
+        'POST',
+        {
+          applied_recommendation_ids: aiSelectedRecIds,
+          verdict: latest.verdict ?? null,
+          ai_confidence: latest.confidence ?? null,
+        }
+      );
+
+      showToast('Đã áp dụng gợi ý từ AI.', 'success');
+      closeModal('aiApplyModal');
+      await loadThesisDetail(aiApplyThesisId);
+    } catch (err) {
+      showToast(`Lỗi khi áp dụng gợi ý: ${err.message}`, 'error');
+    } finally {
+      btn.classList.remove('btn-loading');
+      btn.textContent = 'Xác nhận áp dụng';
+    }
+  });
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
