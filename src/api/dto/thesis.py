@@ -242,3 +242,28 @@ class ApplyRecommendationRequest(BaseModel):
     action: Literal["accept", "reject"] = Field(
         ..., description="'accept' để áp dụng đề xuất, 'reject' để bỏ qua"
     )
+    
+class ApplyAiReviewRequest(BaseModel):
+    """Body cho POST /thesis/{thesis_id}/ai-review/apply (bulk apply).
+
+    Dùng khi user bấm 'Áp dụng gợi ý' trong modal:
+    - applied_recommendation_ids: danh sách recommendation mà user CHỌN áp dụng
+      (cả assumption lẫn catalyst).
+    - verdict / ai_confidence: snapshot verdict tổng thể của AI tại thời điểm này
+      (optional, để lưu vào thesis nếu cần).
+    """
+
+    applied_recommendation_ids: list[int] = Field(
+        default_factory=list,
+        description="Danh sách ReviewRecommendation.id được apply (assumption + catalyst)",
+    )
+    verdict: str | None = Field(
+        default=None,
+        description="Verdict tổng thể từ AI (BULLISH | BEARISH | NEUTRAL | WATCHLIST)",
+    )
+    ai_confidence: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Mức tin cậy của AI cho verdict (0.0-1.0)",
+    )
