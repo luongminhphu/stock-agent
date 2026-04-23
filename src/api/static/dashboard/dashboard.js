@@ -456,7 +456,6 @@ function renderSummary(s) {
   el('upcoming7d').textContent = s.upcoming_catalysts_7d ?? s.upcoming_7d ?? '—';
   el('reviewsToday').textContent = s.reviews_today ?? s.review_count_today ?? '—';
   el('totalReviewsHero').textContent = s.total_reviews ?? s.review_count_total ?? '—';
-  el('upcoming7dHero').textContent = s.upcoming_catalysts_7d ?? s.upcoming_7d ?? '—';
 }
 
 function renderThesesTable(list) {
