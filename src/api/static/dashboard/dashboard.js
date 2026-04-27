@@ -833,44 +833,6 @@ el('deleteConfirmBtn')?.addEventListener('click', async () => {
   }
 });
 
-el("aiApplyConfirmBtn")?.addEventListener("click", async () => {
-  if (!aiApplyThesisId) {
-    closeModal("aiApplyModal");
-    return;
-  }
-  const thesisId = aiApplyThesisId;
-  const selectedIds = aiSelectedRecIds.slice();
-
-  if (!selectedIds.length) {
-    showToast("Chưa chọn gợi ý nào để áp dụng", "error");
-    return;
-  }
-
-  const btn = el("aiApplyConfirmBtn");
-  btn.classList.add("btn-loading");
-  btn.textContent = "Đang áp dụng…";
-
-  try {
-    // backend implement: apply recommendations theo id
-    await sendJson(
-      `${thesisApiBase()}/${thesisId}/recommendations/apply`,
-      "POST",
-      { recommendation_ids: selectedIds }
-    );
-
-    showToast("✅ Đã áp dụng gợi ý từ AI");
-    closeModal("aiApplyModal");
-    await loadThesisDetail(thesisId);
-  } catch (err) {
-    showToast(`Lỗi áp dụng gợi ý: ${err.message}`, "error");
-  } finally {
-    btn.classList.remove("btn-loading");
-    btn.textContent = "Xác nhận áp dụng";
-    aiApplyThesisId = null;
-    aiSelectedRecIds = [];
-  }
-});
-
 el('aiSuggestBtn')?.addEventListener('click', async () => {
   const ticker = (el('suggestTicker')?.value ?? el('thesisTickerField')?.value ?? '').trim().toUpperCase();
   if (!ticker) { showToast('Nhập mã cổ phiếu trước', 'error'); return; }
