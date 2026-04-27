@@ -138,6 +138,7 @@ function renderReviewRecommendSection(thesisId) {
 
 function renderReviewRecommendResult(thesisId, d) {
   // cache lại latest review cho thesis này để dùng khi apply
+  console.log('[AI Review raw response]', JSON.stringify(d));
   latestAiReviews[thesisId] = d;
 
   const confPct = Math.round((d.confidence ?? 0) * 100);
@@ -202,7 +203,7 @@ function renderReviewRecommendResult(thesisId, d) {
       <div style="display:flex;flex-direction:column;gap:6px;margin-top:14px;">
         <div style="font-size:0.8rem;color:var(--muted);">
           <strong>AI check xong — gợi ý của AI:</strong><br/>
-          • Verdict: ${esc(String(d.verdict ?? "").toUpperCase())}, confidence ${confPct}%<br/>
+          • Verdict: ${esc(String(d.verdict ?? "").toUpperCase()) || "N/A"}, confidence ${confPct}%<br/>
           ${
             risks[0]
               ? `• Rủi ro chính: ${esc(risks[0])}`
