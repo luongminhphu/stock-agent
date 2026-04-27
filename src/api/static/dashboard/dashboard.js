@@ -1010,23 +1010,26 @@ function openApplyAiReviewModal(thesisId) {
 
 el('aiApplyConfirmBtn')?.addEventListener('click', async () => {
   if (!aiApplyThesisId) return;
-  if (!aiSelectedRecIds.length) { showToast('Chưa chọn gợi ý nào để áp dụng', 'error'); return; }
-
+  if (!aiSelectedRecIds.length) {
+    showToast('Chưa chọn gợi ý nào để áp dụng', 'error');
+    return;
+  }
   const btn = el('aiApplyConfirmBtn');
   btn.classList.add('btn-loading');
   btn.textContent = 'Đang áp dụng...';
-
   try {
-    await Promise.all(
-      aiSelectedRecIds.map(recId =>
-        sendJson(`${thesisApiBase()}${aiApplyThesisId}/recommendations/${recId}/apply`, 'POST', {
-          action: 'accept'   // ApplyRecommendationRequest
-        })
-      )
+    const latest = latestAiReviews[aiApplyThesisId];
+    // ✅ Dùng đúng bulk endpoint với ApplyAiReviewRequest
+    await sendJson(
+      `${thesisApiBase()}${aiApplyThesisId}/ai-review/apply`, 'POST', {
+        applied_recommendation_ids: aiSelectedRecIds,
+        verdict:        latest?.verdict       ?? null,
+        ai_confidence:  latest?.confidence    ?? null,
+      }
     );
     showToast('Đã áp dụng gợi ý từ AI');
     closeModal('aiApplyModal');
-    await loadThesisDetail(aiApplyThesisId);
+    await loadThesisDetail(aiApplyThesisId);  // ✅ Reload → health score cập nhật
   } catch (err) {
     showToast(`Lỗi khi áp dụng: ${err.message}`, 'error');
   } finally {
