@@ -947,107 +947,95 @@ el('catalystAiSuggestBtn')?.addEventListener('click', async () => {
   }
 });
 
+// ① openApplyAiReviewModal — giữ nguyên, đã đúng: gọi GET /recommendations
 function openApplyAiReviewModal(thesisId) {
   aiApplyThesisId = thesisId;
   aiSelectedRecIds = [];
-
-  const body = el("aiApplyModalBody");
+  const body = el('aiApplyModalBody');
   if (!body) return;
+  body.innerHTML = '<p class="empty-state">Đang tải gợi ý từ AI...</p>';
 
-  body.innerHTML = `<p class="empty-state">Đang tải gợi ý từ AI...</p>`;
-
-  // ĐÚNG: /thesis/{id}/recommendations
-  getJson(`${thesisApiBase()}/${thesisId}/recommendations`)
-    .then((res) => {
-      const items = Array.isArray(res) ? res : res?.items ?? [];
+  getJson(`${thesisApiBase()}${thesisId}/recommendations`)
+    .then(res => {
+      const items = Array.isArray(res) ? res : (res?.items ?? []);
       if (!items.length) {
-        body.innerHTML =
-          '<p class="empty-state">Không còn gợi ý nào đang chờ áp dụng.</p>';
+        body.innerHTML = '<p class="empty-state">Không còn gợi ý nào đang chờ áp dụng.</p>';
         return;
       }
-
-      aiSelectedRecIds = items.map((r) => r.id); // tick sẵn tất cả
-
+      // Tick sẵn tất cả
+      aiSelectedRecIds = items.map(r => r.id);
       body.innerHTML = `
         <div class="review-columns">
           <div class="review-box">
             <p class="suggest-section-title">Assumptions</p>
-            ${
-              items
-                .filter((r) => r.target_type === "assumption")
-                .map(
-                  (r) => `
-                  <label class="suggest-item">
-                    <div style="display:flex;align-items:flex-start;gap:8px;">
-                      <input
-                        type="checkbox"
-                        class="ai-rec-checkbox"
-                        data-rec-id="${r.id}"
-                        ${aiSelectedRecIds.includes(r.id) ? "checked" : ""}
-                      />
-                      <div>
-                        <strong>${esc(r.target_description ?? "")}</strong>
-                        <span>Đề xuất: ${esc(
-                          r.recommended_status ?? ""
-                        )} — ${esc(r.reason ?? "")}</span>
-                      </div>
-                    </div>
-                  </label>
-                `
-                )
-                .join("") || `<p class="empty-state">Không có assumption nào.</p>`
-            }
+            ${items.filter(r => r.target_type === 'assumption').map(r => `
+              <label class="suggest-item">
+                <div style="display:flex;align-items:flex-start;gap:8px">
+                  <input type="checkbox" class="ai-rec-checkbox" data-rec-id="${r.id}" checked>
+                  <div>
+                    <strong>${esc(r.target_description ?? '')}</strong>
+                    <span> → <b>${esc(r.recommended_status ?? '')}</b>: ${esc(r.reason ?? '')}</span>
+                  </div>
+                </div>
+              </label>`).join('') || '<p class="empty-state">Không có assumption nào.</p>'}
           </div>
           <div class="review-box">
             <p class="suggest-section-title">Catalysts</p>
-            ${
-              items
-                .filter((r) => r.target_type === "catalyst")
-                .map(
-                  (r) => `
-                  <label class="suggest-item">
-                    <div style="display:flex;align-items:flex-start;gap:8px;">
-                      <input
-                        type="checkbox"
-                        class="ai-rec-checkbox"
-                        data-rec-id="${r.id}"
-                        ${aiSelectedRecIds.includes(r.id) ? "checked" : ""}
-                      />
-                      <div>
-                        <strong>${esc(r.target_description ?? "")}</strong>
-                        <span>Đề xuất: ${esc(
-                          r.recommended_status ?? ""
-                        )} — ${esc(r.reason ?? "")}</span>
-                      </div>
-                    </div>
-                  </label>
-                `
-                )
-                .join("") || `<p class="empty-state">Không có catalyst nào.</p>`
-            }
+            ${items.filter(r => r.target_type === 'catalyst').map(r => `
+              <label class="suggest-item">
+                <div style="display:flex;align-items:flex-start;gap:8px">
+                  <input type="checkbox" class="ai-rec-checkbox" data-rec-id="${r.id}" checked>
+                  <div>
+                    <strong>${esc(r.target_description ?? '')}</strong>
+                    <span> → <b>${esc(r.recommended_status ?? '')}</b>: ${esc(r.reason ?? '')}</span>
+                  </div>
+                </div>
+              </label>`).join('') || '<p class="empty-state">Không có catalyst nào.</p>'}
           </div>
-        </div>
-      `;
-
-      body.querySelectorAll(".ai-rec-checkbox").forEach((cb) => {
-        cb.addEventListener("change", () => {
+        </div>`;
+      body.querySelectorAll('.ai-rec-checkbox').forEach(cb => {
+        cb.addEventListener('change', () => {
           const id = Number(cb.dataset.recId);
-          if (cb.checked) {
-            if (!aiSelectedRecIds.includes(id)) aiSelectedRecIds.push(id);
-          } else {
-            aiSelectedRecIds = aiSelectedRecIds.filter((x) => x !== id);
-          }
+          if (cb.checked) { if (!aiSelectedRecIds.includes(id)) aiSelectedRecIds.push(id); }
+          else { aiSelectedRecIds = aiSelectedRecIds.filter(x => x !== id); }
         });
       });
     })
-    .catch((err) => {
-      body.innerHTML = `<div class="error-banner" style="margin:0">Không tải được gợi ý: ${esc(
-        err.message
-      )}</div>`;
+    .catch(err => {
+      body.innerHTML = `<div class="error-banner" style="margin:0">Không tải được gợi ý: ${esc(err.message)}</div>`;
     });
 
-  openModal("aiApplyModal");
+  openModal('aiApplyModal');
 }
+
+el('aiApplyConfirmBtn')?.addEventListener('click', async () => {
+  if (!aiApplyThesisId) return;
+  if (!aiSelectedRecIds.length) { showToast('Chưa chọn gợi ý nào để áp dụng', 'error'); return; }
+
+  const btn = el('aiApplyConfirmBtn');
+  btn.classList.add('btn-loading');
+  btn.textContent = 'Đang áp dụng...';
+
+  try {
+    await Promise.all(
+      aiSelectedRecIds.map(recId =>
+        sendJson(`${thesisApiBase()}${aiApplyThesisId}/recommendations/${recId}/apply`, 'POST', {
+          action: 'accept'   // ApplyRecommendationRequest
+        })
+      )
+    );
+    showToast('Đã áp dụng gợi ý từ AI');
+    closeModal('aiApplyModal');
+    await loadThesisDetail(aiApplyThesisId);
+  } catch (err) {
+    showToast(`Lỗi khi áp dụng: ${err.message}`, 'error');
+  } finally {
+    btn.classList.remove('btn-loading');
+    btn.textContent = 'Xác nhận áp dụng';
+    aiApplyThesisId = null;
+    aiSelectedRecIds = [];
+  }
+});
 
 function renderVerdicts(list) {
   const wrap = el('verdictList');
