@@ -1,6 +1,1 @@
-use strict';
-
-
-function el(id) { return document.getElementById(id); }
-function apiBase() { return '/api/v1/readmodel/dashboard'; }
-function thesisApiBase() { return '/api/v1/thesis/'; }
+J3VzZSBzdHJpY3QnOwoKCmZ1bmN0aW9uIGVsKGlkKSB7IHJldHVybiBkb2N1bWVudC5nZXRFbGVtZW50QnlJZChpZCk7IH0KZnVuY3Rpb24gYXBpQmFzZSgpIHsgcmV0dXJuICcvYXBpL3YxL3JlYWRtb2RlbC9kYXNoYm9hcmQnOyB9CmZ1bmN0aW9uIHRoZXNpc0FwaUJhc2UoKSB7IHJldHVybiAnL2FwaS92MS90aGVzaXMvJzsgfQpmdW5jdGlvbiBhdXRoSGVhZGVycygpIHsgcmV0dXJuIHsgJ0NvbnRlbnQtVHlwZSc6ICdhcHBsaWNhdGlvbi9qc29uJyB9OyB9CgphbGVydCgndGVzdCcpOw==
