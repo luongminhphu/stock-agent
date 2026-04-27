@@ -144,15 +144,8 @@ function renderReviewRecommendResult(thesisId, d) {
   const verdictCls =
     (String(d.verdict ?? "").toLowerCase() || "neutral") || "neutral";
 
-  const risks =
-    d.risk_signals ??
-    d.risks ??
-    d.risksignals ??
-    [];
-  const watches =
-    d.next_watch_items ??
-    d.nextwatchitems ??
-    [];
+  const risks  = d.risk_signals ?? d.risks ?? [];
+  const watches = d.next_watch_items ?? d.nextwatchitems ?? [];
 
   const riskItems = risks
     .map((r) => `<li>${esc(r)}</li>`)
@@ -1130,28 +1123,30 @@ async function triggerAiReview(thesisId) {
   const result  = el(`aiReviewResult-${thesisId}`);
   const btn     = el(`aiReviewBtn-${thesisId}`);
   if (!loading || !result) return;
-  btn && (btn.disabled = true);
+  if (btn) btn.disabled = true;
   loading.classList.remove('hidden');
   result.classList.add('hidden');
   result.innerHTML = '';
+
   try {
-    // Gọi recommend endpoint — nếu chưa có, fallback sang suggest với context thesis
-    const data = await sendJson(
-      `${thesisApiBase()}/${thesisId}/reviews/recommend`, 'POST', null
-    ).catch(async () => {
-      // Fallback: dùng suggest endpoint với ticker của thesis
-      const t = _theses.find(x => String(x.id) === String(thesisId));
-      if (!t) throw new Error('Không tìm thấy thesis trong cache');
-      return sendJson(`${thesisApiBase()}/suggest?ticker=${encodeURIComponent(t.ticker)}`, 'POST', null);
-    });
-    result.innerHTML = renderReviewRecommendResult(thesisId, data);
-    result.classList.remove('hidden');
+    const data = await sendJson(`${thesisApiBase()}${thesisId}/review`, 'POST', null);
+    latestAiReviews[thesisId] = data;
+    const reviewHTML = renderReviewRecommendResult(thesisId, data);
+    await loadThesisDetail(thesisId);
+    const freshResult = el(`aiReviewResult-${thesisId}`);
+    if (freshResult) {
+      freshResult.innerHTML = reviewHTML;
+      freshResult.classList.remove('hidden');
+    }
   } catch (err) {
-    result.innerHTML = `<div class="error-banner" style="margin:0;">AI review lỗi: ${esc(err.message)}</div>`;
-    result.classList.remove('hidden');
+    const freshResult = el(`aiReviewResult-${thesisId}`) ?? result;
+    freshResult.innerHTML = `<div class="error-banner" style="margin:0">AI review lỗi: ${esc(err.message)}</div>`;
+    freshResult.classList.remove('hidden');
   } finally {
-    loading.classList.add('hidden');
-    btn && (btn.disabled = false);
+    const freshLoading = el(`aiReviewLoading-${thesisId}`);
+    const freshBtn     = el(`aiReviewBtn-${thesisId}`);
+    if (freshLoading) freshLoading.classList.add('hidden');
+    if (freshBtn) freshBtn.disabled = false;
   }
 }
 
