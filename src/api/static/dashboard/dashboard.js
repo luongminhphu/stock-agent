@@ -918,7 +918,7 @@ function openApplyAiReviewModal(thesisId) {
   if (!body) return;
   body.innerHTML = '<p class="empty-state">Đang tải gợi ý từ AI...</p>';
 
-  getJson(`${thesisApiBase()}${thesisId}/recommendations`)
+  getJson(`${thesisApiBase()}/${thesisId}/recommendations`)
     .then(res => {
       const items = Array.isArray(res) ? res : (res?.items ?? []);
       if (!items.length) {
@@ -984,7 +984,7 @@ el('aiApplyConfirmBtn')?.addEventListener('click', async () => {
     const latest = latestAiReviews[aiApplyThesisId];
     // ✅ Dùng đúng bulk endpoint với ApplyAiReviewRequest
     await sendJson(
-      `${thesisApiBase()}${aiApplyThesisId}/ai-review/apply`, 'POST', {
+      `${thesisApiBase()}/${aiApplyThesisId}/ai-review/apply`, 'POST', {
         applied_recommendation_ids: aiSelectedRecIds,
         verdict:        latest?.verdict       ?? null,
         ai_confidence:  latest?.confidence    ?? null,
@@ -1083,7 +1083,7 @@ async function triggerAiReview(thesisId) {
   result.innerHTML = '';
 
   try {
-    const data = await sendJson(`${thesisApiBase()}${thesisId}/review`, 'POST', null);
+    const data = await sendJson(`${thesisApiBase()}/${thesisId}/review`, 'POST', null);
     latestAiReviews[thesisId] = data;
     const reviewHTML = renderReviewRecommendResult(thesisId, data);
     await loadThesisDetail(thesisId);
