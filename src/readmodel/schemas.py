@@ -40,12 +40,6 @@ class ThesisSummaryRow(BaseModel):
     status: str
     score: float | None
 
-    # Score context — populated by dashboard_service, sourced from thesis.scoring_service
-    # score_tier:      e.g. "Critical" / "Weak" / "Moderate" / "Healthy" / "Strong"
-    # score_tier_icon: matching emoji e.g. "🔴" / "🟠" / "🟡" / "🟢" / "💎"
-    # score_breakdown: per-dimension contributions, keys match ScoringService.compute_with_breakdown()
-    #                  Only populated when full ORM graph is loaded (e.g. thesis detail).
-    #                  None in list views where we avoid loading assumptions/catalysts.
     score_tier: str | None = None
     score_tier_icon: str | None = None
     score_breakdown: dict[str, float] | None = None
@@ -64,11 +58,11 @@ class ThesisSummaryRow(BaseModel):
     invalid_assumption_count: int
     catalyst_count: int
     triggered_catalyst_count: int
-    change: float | None = None  # thay đổi tuyệt đối so với hôm qua (VND)
-    change_pct: float | None = None  # thay đổi % so với ref_price
-    volume: int | None = None  # khối lượng khớp
-    is_ceiling: bool | None = None  # đang trần?
-    is_floor: bool | None = None  # đang sàn?
+    change: float | None = None
+    change_pct: float | None = None
+    volume: int | None = None
+    is_ceiling: bool | None = None
+    is_floor: bool | None = None
 
 
 class DashboardResponse(BaseModel):
@@ -107,12 +101,12 @@ class LeaderboardEntry(BaseModel):
 
 class LeaderboardResponse(BaseModel):
     user_id: str
-    sort_by: Literal["score", "pnl"]  # which metric drives ranking
+    sort_by: Literal["score", "pnl"]
     entries: list[LeaderboardEntry]
 
 
 # ---------------------------------------------------------------------------
-# Thesis timeline
+# Thesis timeline (general event log)
 # ---------------------------------------------------------------------------
 
 
@@ -131,8 +125,8 @@ class TimelineEvent(BaseModel):
 
     kind: str
     ts: datetime
-    summary: str  # human-readable one-liner, built by query
-    detail: dict | None  # arbitrary extra payload (e.g. verdict, score)
+    summary: str
+    detail: dict | None
 
 
 class ThesisTimelineResponse(BaseModel):
@@ -140,6 +134,35 @@ class ThesisTimelineResponse(BaseModel):
     ticker: str
     title: str
     events: list[TimelineEvent]  # ordered oldest → newest
+
+
+# ---------------------------------------------------------------------------
+# Review timeline (focused: 5 AI reviews per thesis)
+# ---------------------------------------------------------------------------
+
+
+class ReviewTimelineItem(BaseModel):
+    """One AI review entry in the review timeline."""
+
+    review_id: int
+    reviewed_at: datetime
+    verdict: str                   # "bullish" | "bearish" | "neutral"
+    confidence: float              # 0.0 – 1.0
+    confidence_pct: int            # round(confidence * 100)
+    reasoning: str | None
+    risk_signals: list[str]        # parsed từ JSON string
+    next_watch_items: list[str]    # parsed từ JSON string
+    reviewed_price: float | None
+
+
+class ReviewTimelineResponse(BaseModel):
+    """5 AI reviews gần nhất của một thesis, sorted mới nhất trước."""
+
+    thesis_id: int
+    ticker: str
+    title: str
+    items: list[ReviewTimelineItem]
+    total: int
 
 
 # ---------------------------------------------------------------------------

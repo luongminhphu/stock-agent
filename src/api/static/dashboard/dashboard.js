@@ -4,6 +4,7 @@
 function el(id) { return document.getElementById(id); }
 function apiBase() { return '/api/v1/readmodel/dashboard'; }
 function thesisApiBase() { return '/api/v1/thesis'; }
+function readmodelBase() { return '/api/v1/readmodel'; }
 function authHeaders() { return { 'Content-Type': 'application/json' }; }
 
 async function getJson(url, options = {}) {
@@ -21,18 +22,23 @@ async function sendJson(url, method, body) {
 }
 
 function fmt(n, decimals = 0) {
-  if (n == null) return '—';
+  if (n == null) return '\u2014';
   return Number(n).toLocaleString('vi-VN', { maximumFractionDigits: decimals });
 }
 
 function fmtDate(d) {
-  if (!d) return '—';
+  if (!d) return '\u2014';
   return new Date(d).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function fmtDateTime(d) {
+  if (!d) return '\u2014';
+  return new Date(d).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 function badge(val) {
   const cls = String(val || '').toLowerCase();
-  return `<span class="badge ${cls}">${val || '—'}</span>`;
+  return `<span class="badge ${cls}">${val || '\u2014'}</span>`;
 }
 
 function esc(v) {
@@ -65,10 +71,10 @@ let _selectedThesisId = null;
 let _theses = [];
 let _deleteCallback = null;
 
-// NEW: cache review + selections cho AI apply flow
-let latestAiReviews = {};       // key: thesisId -> latest review payload
-let aiApplyThesisId = null;     // thesis đang mở modal AI apply
-let aiSelectedRecIds = [];      // rec ids user tick trong modal
+// Cache review + selections cho AI apply flow
+let latestAiReviews = {};
+let aiApplyThesisId = null;
+let aiSelectedRecIds = [];
 
 function scoreClass(s) {
   if (s == null) return '';
@@ -80,7 +86,7 @@ function scoreClass(s) {
 }
 
 function fmtScore(s) {
-  return s == null ? '—' : Math.round(Number(s));
+  return s == null ? '\u2014' : Math.round(Number(s));
 }
 
 function pct(value, max) {
@@ -102,7 +108,7 @@ function renderScoreBreakdown(breakdown) {
     <div class="detail-section">
       <div class="detail-section-header">
         <h3>Score breakdown</h3>
-        <span style="color:var(--muted);font-size:.82rem;">4 thành phần đóng góp vào health score</span>
+        <span style="color:var(--muted);font-size:.82rem;">4 th\u00e0nh ph\u1ea7n \u0111\u00f3ng g\u00f3p v\u00e0o health score</span>
       </div>
       <div class="detail-list">
         ${rows.map(r => `
@@ -120,6 +126,127 @@ function renderScoreBreakdown(breakdown) {
     </div>`;
 }
 
+// ---------------------------------------------------------------------------
+// Review Timeline
+// ---------------------------------------------------------------------------
+
+function verdictColor(verdict) {
+  const v = String(verdict || '').toLowerCase();
+  if (v === 'bullish') return '#4ade80';
+  if (v === 'bearish') return '#fb923c';
+  return '#94a3b8';
+}
+
+function renderReviewTimeline(thesisId) {
+  return `
+    <div class="detail-section" id="reviewTimelineSection-${thesisId}">
+      <div class="detail-section-header">
+        <h3>Review Timeline</h3>
+        <span style="color:var(--muted);font-size:.82rem;">5 AI review g\u1ea7n nh\u1ea5t</span>
+      </div>
+      <div id="reviewTimelineContent-${thesisId}">
+        <div style="display:flex;align-items:center;gap:8px;color:var(--muted);font-size:.85rem;padding:12px 0;">
+          <div class="spinner" style="width:16px;height:16px;"></div>
+          \u0110ang t\u1ea3i...
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function loadReviewTimeline(thesisId) {
+  const container = el(`reviewTimelineContent-${thesisId}`);
+  if (!container) return;
+  try {
+    const data = await getJson(`${readmodelBase()}/dashboard/theses/${thesisId}/review-timeline?limit=5`);
+    const items = data?.items ?? [];
+    if (!items.length) {
+      container.innerHTML = '<p class="empty-state" style="padding:12px 0;">Ch\u01b0a c\u00f3 AI review n\u00e0o.</p>';
+      return;
+    }
+    container.innerHTML = renderReviewTimelineItems(items);
+  } catch (err) {
+    container.innerHTML = `<p style="color:var(--muted);font-size:.82rem;padding:12px 0;">Kh\u00f4ng t\u1ea3i \u0111\u01b0\u1ee3c timeline: ${esc(err.message)}</p>`;
+  }
+}
+
+function renderReviewTimelineItems(items) {
+  return `
+    <div class="review-timeline" style="position:relative;padding-left:24px;">
+      <div style="
+        position:absolute;left:7px;top:8px;bottom:8px;width:2px;
+        background:rgba(255,255,255,.08);border-radius:2px;
+      "></div>
+      ${items.map((item, idx) => {
+        const color = verdictColor(item.verdict);
+        const isFirst = idx === 0;
+        return `
+          <div class="review-timeline-node" style="position:relative;margin-bottom:${isFirst ? '20px' : '16px'}">
+            <!-- dot -->
+            <div style="
+              position:absolute;left:-20px;top:4px;
+              width:10px;height:10px;border-radius:50%;
+              background:${color};
+              box-shadow:0 0 0 3px rgba(255,255,255,.06);
+              flex-shrink:0;
+            "></div>
+
+            <div class="detail-item" style="
+              border:1px solid rgba(255,255,255,.07);
+              border-left:3px solid ${color}20;
+              padding:12px 14px;
+              border-radius:8px;
+              background:rgba(255,255,255,.02);
+              ${isFirst ? 'background:rgba(255,255,255,.04);' : ''}
+            ">
+              <!-- header row -->
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+                <span class="badge ${esc(item.verdict.toLowerCase())}" style="font-size:.82rem;padding:3px 10px;">
+                  ${esc(item.verdict.toUpperCase())}
+                </span>
+                <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:120px;">
+                  <div style="flex:1;height:5px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden;">
+                    <div style="height:100%;width:${item.confidence_pct}%;background:${color};border-radius:999px;"></div>
+                  </div>
+                  <span style="font-size:.78rem;color:var(--muted);white-space:nowrap;">${item.confidence_pct}%</span>
+                </div>
+                <span style="font-size:.75rem;color:var(--muted);margin-left:auto;white-space:nowrap;">
+                  ${fmtDateTime(item.reviewed_at)}
+                </span>
+                ${item.reviewed_price ? `<span style="font-size:.75rem;color:var(--muted);">@ ${fmt(item.reviewed_price)}\u20ab</span>` : ''}
+              </div>
+
+              <!-- reasoning -->
+              ${item.reasoning ? `
+                <p style="font-size:.87rem;line-height:1.65;color:var(--text, #e2e8f0);margin-bottom:8px;">
+                  ${esc(item.reasoning)}
+                </p>` : ''}
+
+              <!-- risk signals -->
+              ${item.risk_signals.length ? `
+                <div style="margin-bottom:6px;">
+                  <p style="font-size:.75rem;font-weight:600;color:#fb923c;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">\u26a0 Risk signals</p>
+                  <ul style="padding-left:1.1em;margin:0;">
+                    ${item.risk_signals.map(r => `<li style="font-size:.82rem;color:var(--muted);line-height:1.55;">${esc(r)}</li>`).join('')}
+                  </ul>
+                </div>` : ''}
+
+              <!-- next watch items -->
+              ${item.next_watch_items.length ? `
+                <div>
+                  <p style="font-size:.75rem;font-weight:600;color:#7dd3fc;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">\ud83d\udc41 Watch</p>
+                  <ul style="padding-left:1.1em;margin:0;">
+                    ${item.next_watch_items.map(w => `<li style="font-size:.82rem;color:var(--muted);line-height:1.55;">${esc(w)}</li>`).join('')}
+                  </ul>
+                </div>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
 function renderReviewRecommendSection(thesisId) {
   return `
     <div class="detail-section" id="reviewRecommendSection-${thesisId}">
@@ -127,7 +254,7 @@ function renderReviewRecommendSection(thesisId) {
         <div style="max-width: 65%;">
           <h3>Agent Suggestion</h3>
           <p class="muted" style="font-size: 0.78rem; margin-top: 2px;">
-            Nhờ AI rà lại thesis, bạn vẫn là người xác nhận thay đổi.
+            Nh\u1edd AI r\u00e0 l\u1ea1i thesis, b\u1ea1n v\u1eabn l\u00e0 ng\u01b0\u1eddi x\u00e1c nh\u1eadn thay \u0111\u1ed5i.
           </p>
         </div>
         <button
@@ -145,7 +272,7 @@ function renderReviewRecommendSection(thesisId) {
       </div>
       <div id="aiReviewLoading-${thesisId}" class="suggest-loading hidden">
         <div class="spinner"></div>
-        AI đang phân tích thesis...
+        AI \u0111ang ph\u00e2n t\u00edch thesis...
       </div>
       <div id="aiReviewResult-${thesisId}" class="suggest-result hidden"></div>
     </div>
@@ -153,7 +280,6 @@ function renderReviewRecommendSection(thesisId) {
 }
 
 function renderReviewRecommendResult(thesisId, d) {
-  // cache lại latest review cho thesis này để dùng khi apply
   console.log('[AI Review raw response]', JSON.stringify(d));
   latestAiReviews[thesisId] = d;
 
@@ -164,12 +290,8 @@ function renderReviewRecommendResult(thesisId, d) {
   const risks  = d.risk_signals ?? d.risks ?? [];
   const watches = d.next_watch_items ?? d.nextwatchitems ?? [];
 
-  const riskItems = risks
-    .map((r) => `<li>${esc(r)}</li>`)
-    .join("");
-  const watchItems = watches
-    .map((w) => `<li>${esc(w)}</li>`)
-    .join("");
+  const riskItems = risks.map((r) => `<li>${esc(r)}</li>`).join("");
+  const watchItems = watches.map((w) => `<li>${esc(w)}</li>`).join("");
 
   return `
     <div class="suggest-body">
@@ -218,12 +340,12 @@ function renderReviewRecommendResult(thesisId, d) {
 
       <div style="display:flex;flex-direction:column;gap:6px;margin-top:14px;">
         <div style="font-size:0.8rem;color:var(--muted);">
-          <strong>AI check xong — gợi ý của AI:</strong><br/>
-          • Verdict: ${esc(String(d.verdict ?? "").toUpperCase()) || "N/A"}, confidence ${confPct}%<br/>
+          <strong>AI check xong \u2014 g\u1ee3i \u00fd c\u1ee7a AI:</strong><br/>
+          \u2022 Verdict: ${esc(String(d.verdict ?? "").toUpperCase()) || "N/A"}, confidence ${confPct}%<br/>
           ${
             risks[0]
-              ? `• Rủi ro chính: ${esc(risks[0])}`
-              : "• Rủi ro chính: Chưa có rủi ro nổi bật được nêu rõ."
+              ? `\u2022 R\u1ee7i ro ch\u00ednh: ${esc(risks[0])}`
+              : "\u2022 R\u1ee7i ro ch\u00ednh: Ch\u01b0a c\u00f3 r\u1ee7i ro n\u1ed5i b\u1eadt \u0111\u01b0\u1ee3c n\u00eau r\u00f5."
           }
         </div>
 
@@ -234,14 +356,14 @@ function renderReviewRecommendResult(thesisId, d) {
             border:1px solid rgba(109,170,69,.3);
             border-radius:999px;padding:4px 12px;font-size:.82rem;font-weight:600;
           ">
-            ✓ Đã áp dụng tự động
+            \u2713 \u0110\u00e3 \u00e1p d\u1ee5ng t\u1ef1 \u0111\u1ed9ng
           </span>
           <button
             class="ghost-btn dismiss-ai-review-btn"
             data-thesis-id="${thesisId}"
             style="min-height:30px;padding:0 10px;font-size:.8rem;"
           >
-            Đóng
+            \u0110\u00f3ng
           </button>
         </div>
       </div>
@@ -255,14 +377,14 @@ function makeAssumptionRow(data = {}) {
   wrap.innerHTML = `
     <div class="form-field" style="flex:1;">
       <label>Assumption</label>
-      <textarea class="form-assumption-description" placeholder="Nội dung assumption">${esc(data.description)}</textarea>
+      <textarea class="form-assumption-description" placeholder="N\u1ed9i dung assumption">${esc(data.description)}</textarea>
     </div>
     <div class="form-field" style="flex:1;">
       <label>Rationale</label>
-      <textarea class="form-assumption-rationale" placeholder="Cơ sở / logic">${esc(data.rationale)}</textarea>
+      <textarea class="form-assumption-rationale" placeholder="C\u01a1 s\u1edf / logic">${esc(data.rationale)}</textarea>
     </div>
     <div style="display:flex;align-items:flex-end;">
-      <button type="button" class="icon-btn danger remove-form-row-btn" title="Xóa dòng">🗑</button>
+      <button type="button" class="icon-btn danger remove-form-row-btn" title="X\u00f3a d\u00f2ng">\ud83d\uddd1</button>
     </div>`;
   wrap.querySelector('.remove-form-row-btn').addEventListener('click', () => wrap.remove());
   return wrap;
@@ -274,18 +396,18 @@ function makeCatalystRow(data = {}) {
   wrap.innerHTML = `
     <div class="form-field" style="flex:1;">
       <label>Catalyst</label>
-      <textarea class="form-catalyst-description" placeholder="Mô tả catalyst">${esc(data.description)}</textarea>
+      <textarea class="form-catalyst-description" placeholder="M\u00f4 t\u1ea3 catalyst">${esc(data.description)}</textarea>
     </div>
     <div class="form-field" style="flex:1;">
       <label>Rationale</label>
-      <textarea class="form-catalyst-rationale" placeholder="Tác động kỳ vọng">${esc(data.rationale)}</textarea>
+      <textarea class="form-catalyst-rationale" placeholder="T\u00e1c \u0111\u1ed9ng k\u1ef3 v\u1ecdng">${esc(data.rationale)}</textarea>
     </div>
     <div class="form-field" style="min-width:180px;">
       <label>Timeline</label>
       <input class="form-catalyst-timeline" placeholder="Q3 2025" value="${esc(data.expected_timeline)}" />
     </div>
     <div style="display:flex;align-items:flex-end;">
-      <button type="button" class="icon-btn danger remove-form-row-btn" title="Xóa dòng">🗑</button>
+      <button type="button" class="icon-btn danger remove-form-row-btn" title="X\u00f3a d\u00f2ng">\ud83d\uddd1</button>
     </div>`;
   wrap.querySelector('.remove-form-row-btn').addEventListener('click', () => wrap.remove());
   return wrap;
@@ -360,7 +482,7 @@ function applySuggestToThesisForm(data, fallbackTicker) {
   (data.assumptions ?? []).forEach(item => aWrap?.appendChild(makeAssumptionRow(item)));
   (data.catalysts ?? []).forEach(item => cWrap?.appendChild(makeCatalystRow(item)));
   seedBlankFormRows();
-  showToast('✨ Đã điền thesis form, assumptions và catalysts từ AI suggest');
+  showToast('\u2728 \u0110\u00e3 \u0111i\u1ec1n thesis form, assumptions v\u00e0 catalysts t\u1eeb AI suggest');
 }
 
 function renderSuggestResult(d) {
@@ -373,27 +495,27 @@ function renderSuggestResult(d) {
   const cats = (d.catalysts ?? []).map(c => `
     <div class="suggest-item">
       <strong>${esc(c.description)}</strong>
-      <span>${c.expected_timeline ? `📅 ${esc(c.expected_timeline)} — ` : ''}${esc(c.rationale ?? '')}</span>
+      <span>${c.expected_timeline ? `\ud83d\udcc5 ${esc(c.expected_timeline)} \u2014 ` : ''}${esc(c.rationale ?? '')}</span>
     </div>`).join('');
 
   return `
     <div class="suggest-result-header">
-      <strong>✨ AI gợi ý cho ${esc(d.ticker)}</strong>
-      <button class="apply-suggest-btn">↓ Điền vào form</button>
+      <strong>\u2728 AI g\u1ee3i \u00fd cho ${esc(d.ticker)}</strong>
+      <button class="apply-suggest-btn">\u2193 \u0110i\u1ec1n v\u00e0o form</button>
     </div>
     <div class="suggest-body">
       <p style="font-weight:600;margin-bottom:4px;">${esc(d.thesis_title ?? '')}</p>
       <p style="color:var(--muted);font-size:.88rem;line-height:1.6;">${esc(d.thesis_summary ?? '')}</p>
       ${d.entry_price_hint || d.target_price_hint || d.stop_loss_hint ? `
         <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;">
-          ${d.entry_price_hint ? `<span class="badge">Entry: ${fmt(d.entry_price_hint)}₫</span>` : ''}
-          ${d.target_price_hint ? `<span class="badge bullish">Target: ${fmt(d.target_price_hint)}₫</span>` : ''}
-          ${d.stop_loss_hint ? `<span class="badge bearish">Stop: ${fmt(d.stop_loss_hint)}₫</span>` : ''}
+          ${d.entry_price_hint ? `<span class="badge">Entry: ${fmt(d.entry_price_hint)}\u20ab</span>` : ''}
+          ${d.target_price_hint ? `<span class="badge bullish">Target: ${fmt(d.target_price_hint)}\u20ab</span>` : ''}
+          ${d.stop_loss_hint ? `<span class="badge bearish">Stop: ${fmt(d.stop_loss_hint)}\u20ab</span>` : ''}
         </div>` : ''}
-      ${assumes ? `<div><p class="suggest-section-title">Assumptions gợi ý</p>${assumes}</div>` : ''}
-      ${cats ? `<div><p class="suggest-section-title">Catalysts gợi ý</p>${cats}</div>` : ''}
+      ${assumes ? `<div><p class="suggest-section-title">Assumptions g\u1ee3i \u00fd</p>${assumes}</div>` : ''}
+      ${cats ? `<div><p class="suggest-section-title">Catalysts g\u1ee3i \u00fd</p>${cats}</div>` : ''}
       <div class="suggest-confidence">
-        <span>Độ tin cậy AI: ${confPct}%</span>
+        <span>\u0110\u1ed9 tin c\u1eady AI: ${confPct}%</span>
         <div class="confidence-bar"><div class="confidence-fill" style="width:${confPct}%"></div></div>
       </div>
       ${d.reasoning ? `<p style="color:var(--muted);font-size:.82rem;line-height:1.6;">${esc(d.reasoning)}</p>` : ''}
@@ -401,22 +523,22 @@ function renderSuggestResult(d) {
 }
 
 function renderAssumptionSuggestResult(items) {
-  if (!items.length) return '<p class="empty-state">AI không trả về assumption phù hợp.</p>';
+  if (!items.length) return '<p class="empty-state">AI kh\u00f4ng tr\u1ea3 v\u1ec1 assumption ph\u00f9 h\u1ee3p.</p>';
   return items.map((a, idx) => `
     <div class="suggest-item">
       <strong>${idx + 1}. ${esc(a.description)}</strong>
       ${a.rationale ? `<span>${esc(a.rationale)}</span>` : ''}
-      <button type="button" class="ghost-btn apply-assumption-suggest-btn" data-index="${idx}" style="margin-top:8px;min-height:32px;padding:0 10px;font-size:.8rem;">Điền vào form</button>
+      <button type="button" class="ghost-btn apply-assumption-suggest-btn" data-index="${idx}" style="margin-top:8px;min-height:32px;padding:0 10px;font-size:.8rem;">\u0110i\u1ec1n v\u00e0o form</button>
     </div>`).join('');
 }
 
 function renderCatalystSuggestResult(items) {
-  if (!items.length) return '<p class="empty-state">AI không trả về catalyst phù hợp.</p>';
+  if (!items.length) return '<p class="empty-state">AI kh\u00f4ng tr\u1ea3 v\u1ec1 catalyst ph\u00f9 h\u1ee3p.</p>';
   return items.map((c, idx) => `
     <div class="suggest-item">
       <strong>${idx + 1}. ${esc(c.description)}</strong>
-      <span>${c.expected_timeline ? `📅 ${esc(c.expected_timeline)} — ` : ''}${esc(c.rationale ?? '')}</span>
-      <button type="button" class="ghost-btn apply-catalyst-suggest-btn" data-index="${idx}" style="margin-top:8px;min-height:32px;padding:0 10px;font-size:.8rem;">Điền vào form</button>
+      <span>${c.expected_timeline ? `\ud83d\udcc5 ${esc(c.expected_timeline)} \u2014 ` : ''}${esc(c.rationale ?? '')}</span>
+      <button type="button" class="ghost-btn apply-catalyst-suggest-btn" data-index="${idx}" style="margin-top:8px;min-height:32px;padding:0 10px;font-size:.8rem;">\u0110i\u1ec1n v\u00e0o form</button>
     </div>`).join('');
 }
 
@@ -453,34 +575,34 @@ async function loadDashboard() {
       else el('thesisDetail').innerHTML = emptyDetailHTML();
     }
   } catch (err) {
-    el('errorBanner').textContent = `Lỗi tải dữ liệu: ${err.message}`;
+    el('errorBanner').textContent = `L\u1ed7i t\u1ea3i d\u1eef li\u1ec7u: ${err.message}`;
     el('errorBanner').classList.remove('hidden');
   }
 }
 
 function renderSummary(s) {
   if (!s) return;
-  el('openTheses').textContent = s.open_theses ?? s.open_thesis_count ?? '—';
-  el('riskyTheses').textContent = s.risky_theses ?? s.risky_thesis_count ?? '—';
-  el('upcoming7d').textContent = s.upcoming_catalysts_7d ?? s.upcoming_7d ?? '—';
-  el('reviewsToday').textContent = s.reviews_today ?? s.review_count_today ?? '—';
-  el('totalReviewsHero').textContent = s.total_reviews ?? s.review_count_total ?? '—';
+  el('openTheses').textContent = s.open_theses ?? s.open_thesis_count ?? '\u2014';
+  el('riskyTheses').textContent = s.risky_theses ?? s.risky_thesis_count ?? '\u2014';
+  el('upcoming7d').textContent = s.upcoming_catalysts_7d ?? s.upcoming_7d ?? '\u2014';
+  el('reviewsToday').textContent = s.reviews_today ?? s.review_count_today ?? '\u2014';
+  el('totalReviewsHero').textContent = s.total_reviews ?? s.review_count_total ?? '\u2014';
 }
 
 function renderThesesTable(list) {
   const wrap = el('thesesTableWrap');
   if (!list.length) {
-    wrap.innerHTML = '<p class="empty-state">Chưa có thesis nào. Nhấn <strong>+ Thesis mới</strong> để tạo.</p>';
+    wrap.innerHTML = '<p class="empty-state">Ch\u01b0a c\u00f3 thesis n\u00e0o. Nh\u1ea5n <strong>+ Thesis m\u1edbi</strong> \u0111\u1ec3 t\u1ea1o.</p>';
     return;
   }
   wrap.innerHTML = `
     <table>
-      <thead><tr><th>Mã / Hướng</th><th>Tiêu đề</th><th>Score</th><th>Status</th><th>Cập nhật</th><th></th></tr></thead>
+      <thead><tr><th>M\u00e3 / H\u01b0\u1edbng</th><th>Ti\u00eau \u0111\u1ec1</th><th>Score</th><th>Status</th><th>C\u1eadp nh\u1eadt</th><th></th></tr></thead>
       <tbody>
         ${list.map(t => `
           <tr data-id="${t.id}" class="${t.id === _selectedThesisId ? 'is-selected' : ''}">
             <td class="ticker-cell"><strong>${esc(t.ticker)}</strong><span>${badge(t.direction)}</span></td>
-            <td>${esc(t.title ?? '—')}</td>
+            <td>${esc(t.title ?? '\u2014')}</td>
             <td class="${scoreClass(t.score)}">
               <div style="display:flex;flex-direction:column;gap:2px;">
                 <strong>${fmtScore(t.score)}</strong>
@@ -489,7 +611,7 @@ function renderThesesTable(list) {
             </td>
             <td>${badge(t.status)}</td>
             <td style="color:var(--muted);font-size:.82rem;">${fmtDate(t.updated_at)}</td>
-            <td><div style="display:flex;gap:6px;"><button class="icon-btn edit-thesis-btn" data-id="${t.id}" title="Sửa thesis">✏️</button><button class="icon-btn danger delete-thesis-btn" data-id="${t.id}" title="Xóa thesis">🗑</button></div></td>
+            <td><div style="display:flex;gap:6px;"><button class="icon-btn edit-thesis-btn" data-id="${t.id}" title="S\u1eeda thesis">\u270f\ufe0f</button><button class="icon-btn danger delete-thesis-btn" data-id="${t.id}" title="X\u00f3a thesis">\ud83d\uddd1</button></div></td>
           </tr>`).join('')}
       </tbody>
     </table>`;
@@ -519,13 +641,15 @@ async function loadThesisDetail(thesisId) {
     ]);
     wrap.innerHTML = renderThesisDetailHTML(thesis, assumptions, catalysts, reviews);
     wireDetailActions(thesisId, wrap);
+    // Load review timeline sau khi DOM đã sẵn sàng
+    loadReviewTimeline(thesisId);
   } catch (err) {
-    wrap.innerHTML = `<div class="error-banner">Lỗi tải chi tiết: ${err.message}</div>${emptyDetailHTML()}`;
+    wrap.innerHTML = `<div class="error-banner">L\u1ed7i t\u1ea3i chi ti\u1ebft: ${err.message}</div>${emptyDetailHTML()}`;
   }
 }
 
 function emptyDetailHTML() {
-  return `<div class="empty-detail"><div class="empty-detail-copy"><h3>Chọn một thesis</h3><p>Xem assumptions, catalysts và review history.</p></div></div>`;
+  return `<div class="empty-detail"><div class="empty-detail-copy"><h3>Ch\u1ecdn m\u1ed9t thesis</h3><p>Xem assumptions, catalysts v\u00e0 review history.</p></div></div>`;
 }
 
 function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
@@ -541,9 +665,9 @@ function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
           ${badge(t.status)}
           ${t.score_tier ? `<span class="badge ${scoreClass(t.score)}">${esc(t.score_tier_icon ?? '')} ${esc(t.score_tier)}</span>` : ''}
         </div>
-        <h2 style="margin-top:10px;">${esc(t.title ?? '—')}</h2>
+        <h2 style="margin-top:10px;">${esc(t.title ?? '\u2014')}</h2>
       </div>
-      <div class="detail-head-actions"><button class="ghost-btn" id="detailEditBtn">✏️ Sửa</button><button class="danger-btn" id="detailDeleteBtn">🗑 Xóa thesis</button></div>
+      <div class="detail-head-actions"><button class="ghost-btn" id="detailEditBtn">\u270f\ufe0f S\u1eeda</button><button class="danger-btn" id="detailDeleteBtn">\ud83d\uddd1 X\u00f3a thesis</button></div>
     </div>
     ${t.summary ? `<p class="detail-summary">${esc(t.summary)}</p>` : ''}
     <div class="detail-grid">
@@ -552,29 +676,27 @@ function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
         <strong class="${scoreClass(t.score)}">${fmtScore(t.score)}/100</strong>
         ${t.score_tier ? `<span style="color:var(--muted);font-size:.82rem;">${esc(t.score_tier_icon ?? '')} ${esc(t.score_tier)}</span>` : ''}
       </div>
-      <div class="detail-stat"><span>Entry</span><strong>${t.entry_price ? fmt(t.entry_price) + '₫' : '—'}</strong></div>
-      <div class="detail-stat"><span>Target</span><strong>${t.target_price ? fmt(t.target_price) + '₫' : '—'}</strong></div>
-      <div class="detail-stat"><span>Stop loss</span><strong>${t.stop_loss ? fmt(t.stop_loss) + '₫' : '—'}</strong></div>
-      <div class="detail-stat"><span>Tạo lúc</span><strong style="font-size:.9rem;">${fmtDate(t.created_at)}</strong></div>
-      <div class="detail-stat"><span>Cập nhật</span><strong style="font-size:.9rem;">${fmtDate(t.updated_at)}</strong></div>
+      <div class="detail-stat"><span>Entry</span><strong>${t.entry_price ? fmt(t.entry_price) + '\u20ab' : '\u2014'}</strong></div>
+      <div class="detail-stat"><span>Target</span><strong>${t.target_price ? fmt(t.target_price) + '\u20ab' : '\u2014'}</strong></div>
+      <div class="detail-stat"><span>Stop loss</span><strong>${t.stop_loss ? fmt(t.stop_loss) + '\u20ab' : '\u2014'}</strong></div>
+      <div class="detail-stat"><span>T\u1ea1o l\u00fac</span><strong style="font-size:.9rem;">${fmtDate(t.created_at)}</strong></div>
+      <div class="detail-stat"><span>C\u1eadp nh\u1eadt</span><strong style="font-size:.9rem;">${fmtDate(t.updated_at)}</strong></div>
     </div>
     <div class="detail-columns">
-      <div class="detail-section"><div class="detail-section-header"><h3>Assumptions (${assumList.length})</h3><button class="ghost-btn" style="min-height:34px;padding:0 12px;font-size:.82rem;" id="addAssumBtn">+ Thêm</button></div><div class="detail-list" id="assumptionList">${assumList.length ? assumList.map(a => renderAssumItem(a)).join('') : '<p class="empty-state">Chưa có assumption.</p>'}</div></div>
-      <div class="detail-section"><div class="detail-section-header"><h3>Catalysts (${catList.length})</h3><button class="ghost-btn" style="min-height:34px;padding:0 12px;font-size:.82rem;" id="addCatBtn">+ Thêm</button></div><div class="detail-list" id="catalystDetailList">${catList.length ? catList.map(c => renderCatItem(c)).join('') : '<p class="empty-state">Chưa có catalyst.</p>'}</div></div>
+      <div class="detail-section"><div class="detail-section-header"><h3>Assumptions (${assumList.length})</h3><button class="ghost-btn" style="min-height:34px;padding:0 12px;font-size:.82rem;" id="addAssumBtn">+ Th\u00eam</button></div><div class="detail-list" id="assumptionList">${assumList.length ? assumList.map(a => renderAssumItem(a)).join('') : '<p class="empty-state">Ch\u01b0a c\u00f3 assumption.</p>'}</div></div>
+      <div class="detail-section"><div class="detail-section-header"><h3>Catalysts (${catList.length})</h3><button class="ghost-btn" style="min-height:34px;padding:0 12px;font-size:.82rem;" id="addCatBtn">+ Th\u00eam</button></div><div class="detail-list" id="catalystDetailList">${catList.length ? catList.map(c => renderCatItem(c)).join('') : '<p class="empty-state">Ch\u01b0a c\u00f3 catalyst.</p>'}</div></div>
     </div>
-    ${revList.length ? `<div style="margin-top:18px;"><h3 style="margin-bottom:12px;">Review gần nhất</h3>${revList.slice(0, 3).map(r => `<div class="review-card"><div class="review-head"><span class="review-meta">${fmtDate(r.reviewed_at)}</span>${badge(r.verdict)}<span style="color:var(--muted);font-size:.82rem;">Conf: ${r.confidence ?? '—'}</span></div><p class="review-reasoning">${esc(r.reasoning ?? '')}</p></div>`).join('')}</div>` : ''}
     ${renderScoreBreakdown(t.score_breakdown)}
+    ${renderReviewTimeline(t.id)}
     ${renderReviewRecommendSection(t.id)}
   `;
 }
 
-
-
 function renderAssumItem(a) {
-  return `<div class="detail-item" data-assum-id="${a.id}"><div class="detail-item-row"><span style="font-weight:600;font-size:.9rem;">${esc(a.description)}</span><div class="detail-item-actions">${badge(a.status)}<button class="icon-btn edit-assum-btn" data-id="${a.id}" title="Sửa">✏️</button><button class="icon-btn danger delete-assum-btn" data-id="${a.id}" title="Xóa">🗑</button></div></div>${a.rationale ? `<p>${esc(a.rationale)}</p>` : ''}</div>`;
+  return `<div class="detail-item" data-assum-id="${a.id}"><div class="detail-item-row"><span style="font-weight:600;font-size:.9rem;">${esc(a.description)}</span><div class="detail-item-actions">${badge(a.status)}<button class="icon-btn edit-assum-btn" data-id="${a.id}" title="S\u1eeda">\u270f\ufe0f</button><button class="icon-btn danger delete-assum-btn" data-id="${a.id}" title="X\u00f3a">\ud83d\uddd1</button></div></div>${a.rationale ? `<p>${esc(a.rationale)}</p>` : ''}</div>`;
 }
 function renderCatItem(c) {
-  return `<div class="detail-item" data-cat-id="${c.id}"><div class="detail-item-row"><span style="font-weight:600;font-size:.9rem;">${esc(c.description)}</span><div class="detail-item-actions">${badge(c.status)}<button class="icon-btn edit-cat-btn" data-id="${c.id}" title="Sửa">✏️</button><button class="icon-btn danger delete-cat-btn" data-id="${c.id}" title="Xóa">🗑</button></div></div>${c.expected_timeline ? `<p>📅 ${esc(c.expected_timeline)}</p>` : ''}${c.rationale ? `<p>${esc(c.rationale)}</p>` : ''}</div>`;
+  return `<div class="detail-item" data-cat-id="${c.id}"><div class="detail-item-row"><span style="font-weight:600;font-size:.9rem;">${esc(c.description)}</span><div class="detail-item-actions">${badge(c.status)}<button class="icon-btn edit-cat-btn" data-id="${c.id}" title="S\u1eeda">\u270f\ufe0f</button><button class="icon-btn danger delete-cat-btn" data-id="${c.id}" title="X\u00f3a">\ud83d\uddd1</button></div></div>${c.expected_timeline ? `<p>\ud83d\udcc5 ${esc(c.expected_timeline)}</p>` : ''}${c.rationale ? `<p>${esc(c.rationale)}</p>` : ''}</div>`;
 }
 
 function wireDetailActions(thesisId, wrap) {
@@ -587,22 +709,19 @@ function wireDetailActions(thesisId, wrap) {
   wrap.querySelectorAll('.edit-cat-btn').forEach(btn => btn.addEventListener('click', () => openCatalystModal(thesisId, btn.dataset.id)));
   wrap.querySelectorAll('.delete-cat-btn').forEach(btn => btn.addEventListener('click', () => confirmDeleteCatalyst(thesisId, btn.dataset.id)));
   wrap.querySelector(`#aiReviewBtn-${thesisId}`)?.addEventListener('click', () => triggerAiReview(thesisId));
-  wrap.addEventListener("click", async (e) => {
-    // Mở modal "Áp dụng gợi ý"
-    if (e.target.closest(".apply-ai-review-btn")) {
-      const btn = e.target.closest(".apply-ai-review-btn");
+  wrap.addEventListener('click', async (e) => {
+    if (e.target.closest('.apply-ai-review-btn')) {
+      const btn = e.target.closest('.apply-ai-review-btn');
       const tid = btn.dataset.thesisId;
       openApplyAiReviewModal(Number(tid));
       return;
     }
-  
-    // "Để sau" — chỉ ẩn card AI check
-    if (e.target.closest(".dismiss-ai-review-btn")) {
-      const tid = e.target.closest(".dismiss-ai-review-btn").dataset.thesisId;
+    if (e.target.closest('.dismiss-ai-review-btn')) {
+      const tid = e.target.closest('.dismiss-ai-review-btn').dataset.thesisId;
       const r = wrap.querySelector(`#aiReviewResult-${tid}`);
       if (r) {
-        r.classList.add("hidden");
-        r.innerHTML = "";
+        r.classList.add('hidden');
+        r.innerHTML = '';
       }
       return;
     }
@@ -610,7 +729,7 @@ function wireDetailActions(thesisId, wrap) {
 }
 
 function openNewThesisModal() {
-  el('thesisModalTitle').textContent = 'Tạo Thesis mới';
+  el('thesisModalTitle').textContent = 'T\u1ea1o Thesis m\u1edbi';
   el('thesisIdField').value = '';
   el('thesisForm').reset();
   clearFormRows();
@@ -621,7 +740,7 @@ function openNewThesisModal() {
 }
 
 async function openEditThesisModal(thesisId) {
-  el('thesisModalTitle').textContent = 'Chỉnh sửa Thesis';
+  el('thesisModalTitle').textContent = 'Ch\u1ec9nh s\u1eeda Thesis';
   el('suggestResult').classList.add('hidden');
   el('suggestLoading').classList.add('hidden');
   try {
@@ -650,7 +769,7 @@ async function openEditThesisModal(thesisId) {
     seedBlankFormRows();
     openModal('thesisModal');
   } catch (err) {
-    showToast(`Không tải được thesis: ${err.message}`, 'error');
+    showToast(`Kh\u00f4ng t\u1ea3i \u0111\u01b0\u1ee3c thesis: ${err.message}`, 'error');
   }
 }
 
@@ -658,7 +777,7 @@ el('thesisForm')?.addEventListener('submit', async e => {
   e.preventDefault();
   const btn = el('thesisSubmitBtn');
   btn.classList.add('btn-loading');
-  btn.textContent = 'Đang lưu…';
+  btn.textContent = '\u0110ang l\u01b0u\u2026';
   const id = el('thesisIdField').value;
   const payload = {
     ticker: el('thesisTickerField').value.trim().toUpperCase(),
@@ -677,7 +796,7 @@ el('thesisForm')?.addEventListener('submit', async e => {
     if (id) {
       await sendJson(`${thesisApiBase()}/${id}`, 'PATCH', payload);
       await syncNewDetailItems(id, assumptions, catalysts);
-      showToast('✅ Đã cập nhật thesis');
+      showToast('\u2705 \u0110\u00e3 c\u1eadp nh\u1eadt thesis');
       thesisId = id;
     } else {
       const created = await sendJson(`${thesisApiBase()}`, 'POST', payload);
@@ -687,27 +806,27 @@ el('thesisForm')?.addEventListener('submit', async e => {
         for (const a of assumptions) await sendJson(`${thesisApiBase()}/${thesisId}/assumptions`, 'POST', { ...a, status: 'pending', confidence: null });
         for (const c of catalysts) await sendJson(`${thesisApiBase()}/${thesisId}/catalysts`, 'POST', { ...c, status: 'pending' });
       }
-      showToast('✅ Đã tạo thesis mới');
+      showToast('\u2705 \u0110\u00e3 t\u1ea1o thesis m\u1edbi');
     }
     closeModal('thesisModal');
     await loadDashboard();
     if (thesisId) await loadThesisDetail(thesisId);
   } catch (err) {
-    showToast(`Lỗi: ${err.message}`, 'error');
+    showToast(`L\u1ed7i: ${err.message}`, 'error');
   } finally {
     btn.classList.remove('btn-loading');
-    btn.textContent = 'Lưu Thesis';
+    btn.textContent = 'L\u01b0u Thesis';
   }
 });
 
 function confirmDeleteThesis(thesisId) {
   const t = _theses.find(x => x.id === thesisId);
-  el('deleteModalMsg').textContent = `Bạn chắc chắn muốn xóa thesis "${t?.title ?? thesisId}" (${t?.ticker ?? ''})? Thao tác này không thể hoàn tác.`;
+  el('deleteModalMsg').textContent = `B\u1ea1n ch\u1eafc ch\u1eafn mu\u1ed1n x\u00f3a thesis "${t?.title ?? thesisId}" (${t?.ticker ?? ''})? Thao t\u00e1c n\u00e0y kh\u00f4ng th\u1ec3 ho\u00e0n t\u00e1c.`;
   _deleteCallback = async () => {
     await sendJson(`${thesisApiBase()}/${thesisId}`, 'DELETE');
     _selectedThesisId = null;
     closeModal('deleteModal');
-    showToast('🗑 Đã xóa thesis');
+    showToast('\ud83d\uddd1 \u0110\u00e3 x\u00f3a thesis');
     await loadDashboard();
   };
   openModal('deleteModal');
@@ -717,10 +836,10 @@ async function openAssumptionModal(thesisId, assumId) {
   const ticker = _theses.find(t => String(t.id) === String(thesisId))?.ticker ?? '';
   el('assumptionThesisId').value = thesisId;
   el('assumptionIdField').value = assumId ?? '';
-  el('assumptionModalTitle').textContent = assumId ? 'Chỉnh sửa Assumption' : 'Thêm Assumption';
+  el('assumptionModalTitle').textContent = assumId ? 'Ch\u1ec9nh s\u1eeda Assumption' : 'Th\u00eam Assumption';
   el('assumptionForm').reset();
   el('assumptionSuggestTicker').value = ticker;
-  if (el('assumptionTickerDisplay')) el('assumptionTickerDisplay').textContent = ticker || '—';
+  if (el('assumptionTickerDisplay')) el('assumptionTickerDisplay').textContent = ticker || '\u2014';
   el('assumptionSuggestResult').classList.add('hidden');
   el('assumptionSuggestLoading').classList.add('hidden');
   if (assumId) {
@@ -731,7 +850,7 @@ async function openAssumptionModal(thesisId, assumId) {
       el('assumptionStatusField').value = a.status ?? 'valid';
       el('assumptionConfidenceField').value = a.confidence ?? '';
     } catch (err) {
-      showToast(`Không tải được assumption: ${err.message}`, 'error');
+      showToast(`Kh\u00f4ng t\u1ea3i \u0111\u01b0\u1ee3c assumption: ${err.message}`, 'error');
       return;
     }
   }
@@ -751,24 +870,24 @@ el('assumptionForm')?.addEventListener('submit', async e => {
   try {
     if (assumId) {
       await sendJson(`${thesisApiBase()}/${thesisId}/assumptions/${assumId}`, 'PATCH', payload);
-      showToast('✅ Đã cập nhật assumption');
+      showToast('\u2705 \u0110\u00e3 c\u1eadp nh\u1eadt assumption');
     } else {
       await sendJson(`${thesisApiBase()}/${thesisId}/assumptions`, 'POST', payload);
-      showToast('✅ Đã thêm assumption');
+      showToast('\u2705 \u0110\u00e3 th\u00eam assumption');
     }
     closeModal('assumptionModal');
     await loadThesisDetail(thesisId);
   } catch (err) {
-    showToast(`Lỗi: ${err.message}`, 'error');
+    showToast(`L\u1ed7i: ${err.message}`, 'error');
   }
 });
 
 function confirmDeleteAssumption(thesisId, assumId) {
-  el('deleteModalMsg').textContent = 'Bạn chắc chắn muốn xóa assumption này?';
+  el('deleteModalMsg').textContent = 'B\u1ea1n ch\u1eafc ch\u1eafn mu\u1ed1n x\u00f3a assumption n\u00e0y?';
   _deleteCallback = async () => {
     await sendJson(`${thesisApiBase()}/${thesisId}/assumptions/${assumId}`, 'DELETE');
     closeModal('deleteModal');
-    showToast('🗑 Đã xóa assumption');
+    showToast('\ud83d\uddd1 \u0110\u00e3 x\u00f3a assumption');
     await loadThesisDetail(thesisId);
   };
   openModal('deleteModal');
@@ -778,10 +897,10 @@ async function openCatalystModal(thesisId, catId) {
   const ticker = _theses.find(t => String(t.id) === String(thesisId))?.ticker ?? '';
   el('catalystThesisId').value = thesisId;
   el('catalystIdField').value = catId ?? '';
-  el('catalystModalTitle').textContent = catId ? 'Chỉnh sửa Catalyst' : 'Thêm Catalyst';
+  el('catalystModalTitle').textContent = catId ? 'Ch\u1ec9nh s\u1eeda Catalyst' : 'Th\u00eam Catalyst';
   el('catalystForm').reset();
   el('catalystSuggestTicker').value = ticker;
-  if (el('catalystTickerDisplay')) el('catalystTickerDisplay').textContent = ticker || '—';
+  if (el('catalystTickerDisplay')) el('catalystTickerDisplay').textContent = ticker || '\u2014';
   el('catalystSuggestResult').classList.add('hidden');
   el('catalystSuggestLoading').classList.add('hidden');
   if (catId) {
@@ -792,397 +911,9 @@ async function openCatalystModal(thesisId, catId) {
       el('catalystStatusField').value = c.status ?? 'pending';
       el('catalystTimelineField').value = c.expected_timeline ?? '';
     } catch (err) {
-      showToast(`Không tải được catalyst: ${err.message}`, 'error');
+      showToast(`Kh\u00f4ng t\u1ea3i \u0111\u01b0\u1ee3c catalyst: ${err.message}`, 'error');
       return;
     }
   }
   openModal('catalystModal');
 }
-
-el('catalystForm')?.addEventListener('submit', async e => {
-  e.preventDefault();
-  const thesisId = el('catalystThesisId').value;
-  const catId = el('catalystIdField').value;
-  const payload = {
-    description: el('catalystDescField').value.trim(),
-    rationale: el('catalystRationaleField').value.trim() || null,
-    status: el('catalystStatusField').value,
-    expected_timeline: el('catalystTimelineField').value.trim() || null,
-  };
-  try {
-    if (catId) {
-      await sendJson(`${thesisApiBase()}/${thesisId}/catalysts/${catId}`, 'PATCH', payload);
-      showToast('✅ Đã cập nhật catalyst');
-    } else {
-      await sendJson(`${thesisApiBase()}/${thesisId}/catalysts`, 'POST', payload);
-      showToast('✅ Đã thêm catalyst');
-    }
-    closeModal('catalystModal');
-    await loadThesisDetail(thesisId);
-  } catch (err) {
-    showToast(`Lỗi: ${err.message}`, 'error');
-  }
-});
-
-function confirmDeleteCatalyst(thesisId, catId) {
-  el('deleteModalMsg').textContent = 'Bạn chắc chắn muốn xóa catalyst này?';
-  _deleteCallback = async () => {
-    await sendJson(`${thesisApiBase()}/${thesisId}/catalysts/${catId}`, 'DELETE');
-    closeModal('deleteModal');
-    showToast('🗑 Đã xóa catalyst');
-    await loadThesisDetail(thesisId);
-  };
-  openModal('deleteModal');
-}
-
-el('deleteConfirmBtn')?.addEventListener('click', async () => {
-  if (!_deleteCallback) return;
-  const btn = el('deleteConfirmBtn');
-  btn.classList.add('btn-loading');
-  btn.textContent = 'Đang xóa…';
-  try { await _deleteCallback(); }
-  catch (err) { showToast(`Lỗi xóa: ${err.message}`, 'error'); }
-  finally {
-    btn.classList.remove('btn-loading');
-    btn.textContent = 'Xóa';
-    _deleteCallback = null;
-  }
-});
-
-el('aiSuggestBtn')?.addEventListener('click', async () => {
-  const ticker = (el('suggestTicker')?.value ?? el('thesisTickerField')?.value ?? '').trim().toUpperCase();
-  if (!ticker) { showToast('Nhập mã cổ phiếu trước', 'error'); return; }
-  const btn = el('aiSuggestBtn');
-  const loading = el('suggestLoading');
-  const result = el('suggestResult');
-  btn.disabled = true;
-  loading.classList.remove('hidden');
-  result.classList.add('hidden');
-  try {
-    const data = await sendJson(`${thesisApiBase()}/suggest?ticker=${encodeURIComponent(ticker)}`, 'POST', null);
-    result.innerHTML = renderSuggestResult(data);
-    result.classList.remove('hidden');
-    result.querySelector('.apply-suggest-btn')?.addEventListener('click', () => applySuggestToThesisForm(data, ticker));
-  } catch (err) {
-    result.innerHTML = `<div class="error-banner" style="margin:0;">AI suggest lỗi: ${err.message}</div>`;
-    result.classList.remove('hidden');
-  } finally {
-    btn.disabled = false;
-    loading.classList.add('hidden');
-  }
-});
-
-el('assumptionAiSuggestBtn')?.addEventListener('click', async () => {
-  const ticker = el('assumptionSuggestTicker')?.value?.trim().toUpperCase();
-  if (!ticker) { showToast('Không xác định được mã cổ phiếu cho assumption này', 'error'); return; }
-  const loading = el('assumptionSuggestLoading');
-  const result = el('assumptionSuggestResult');
-  loading.classList.remove('hidden');
-  result.classList.add('hidden');
-  try {
-    const data = await sendJson(`${thesisApiBase()}/suggest?ticker=${encodeURIComponent(ticker)}`, 'POST', null);
-    const items = data.assumptions ?? [];
-    result.innerHTML = renderAssumptionSuggestResult(items);
-    result.classList.remove('hidden');
-    result.querySelectorAll('.apply-assumption-suggest-btn').forEach(btn => btn.addEventListener('click', () => {
-      const item = items[Number(btn.dataset.index)];
-      el('assumptionDescField').value = item?.description ?? '';
-      el('assumptionRationaleField').value = item?.rationale ?? '';
-      showToast('✨ Đã điền assumption từ AI');
-    }));
-  } catch (err) {
-    result.innerHTML = `<div class="error-banner" style="margin:0;">AI suggest lỗi: ${err.message}</div>`;
-    result.classList.remove('hidden');
-  } finally {
-    loading.classList.add('hidden');
-  }
-});
-
-el('catalystAiSuggestBtn')?.addEventListener('click', async () => {
-  const ticker = el('catalystSuggestTicker')?.value?.trim().toUpperCase();
-  if (!ticker) { showToast('Không xác định được mã cổ phiếu cho catalyst này', 'error'); return; }
-  const loading = el('catalystSuggestLoading');
-  const result = el('catalystSuggestResult');
-  loading.classList.remove('hidden');
-  result.classList.add('hidden');
-  try {
-    const data = await sendJson(`${thesisApiBase()}/suggest?ticker=${encodeURIComponent(ticker)}`, 'POST', null);
-    const items = data.catalysts ?? [];
-    result.innerHTML = renderCatalystSuggestResult(items);
-    result.classList.remove('hidden');
-    result.querySelectorAll('.apply-catalyst-suggest-btn').forEach(btn => btn.addEventListener('click', () => {
-      const item = items[Number(btn.dataset.index)];
-      el('catalystDescField').value = item?.description ?? '';
-      el('catalystRationaleField').value = item?.rationale ?? '';
-      el('catalystTimelineField').value = item?.expected_timeline ?? '';
-      showToast('✨ Đã điền catalyst từ AI');
-    }));
-  } catch (err) {
-    result.innerHTML = `<div class="error-banner" style="margin:0;">AI suggest lỗi: ${err.message}</div>`;
-    result.classList.remove('hidden');
-  } finally {
-    loading.classList.add('hidden');
-  }
-});
-
-async function openApplyAiReviewModal(thesisId) {
-  aiApplyThesisId = thesisId;
-  aiSelectedRecIds = [];
-
-  const body = el('aiApplyModalBody');
-  const confirmBtn = el('aiApplyConfirmBtn');
-  if (!body) return;
-
-  body.innerHTML = '<p class="empty-state">Đang tải gợi ý từ AI...</p>';
-  if (confirmBtn) {
-    confirmBtn.disabled = true;
-    confirmBtn.textContent = 'Đang tải...';
-  }
-
-  openModal('aiApplyModal');
-
-  try {
-    const res = await getJson(`${thesisApiBase()}/${thesisId}/recommendations`);
-    const items = Array.isArray(res) ? res : (res?.items ?? []);
-
-    if (!items.length) {
-      body.innerHTML = '<p class="empty-state">Không còn gợi ý nào đang chờ áp dụng.</p>';
-      return;
-    }
-
-    aiSelectedRecIds = items.map(r => r.id);
-
-    body.innerHTML = `
-      <div class="review-columns">
-        <div class="review-box">
-          <p class="suggest-section-title">Assumptions</p>
-          ${items.filter(r => r.target_type === 'assumption').map(r => `
-            <label class="suggest-item">
-              <div style="display:flex;align-items:flex-start;gap:8px">
-                <input type="checkbox" class="ai-rec-checkbox" data-rec-id="${r.id}" checked>
-                <div>
-                  <strong>${esc(r.target_description ?? '')}</strong>
-                  <span> → <b>${esc(r.recommended_status ?? '')}</b>: ${esc(r.reason ?? '')}</span>
-                </div>
-              </div>
-            </label>`).join('') || '<p class="empty-state">Không có assumption nào.</p>'}
-        </div>
-        <div class="review-box">
-          <p class="suggest-section-title">Catalysts</p>
-          ${items.filter(r => r.target_type === 'catalyst').map(r => `
-            <label class="suggest-item">
-              <div style="display:flex;align-items:flex-start;gap:8px">
-                <input type="checkbox" class="ai-rec-checkbox" data-rec-id="${r.id}" checked>
-                <div>
-                  <strong>${esc(r.target_description ?? '')}</strong>
-                  <span> → <b>${esc(r.recommended_status ?? '')}</b>: ${esc(r.reason ?? '')}</span>
-                </div>
-              </div>
-            </label>`).join('') || '<p class="empty-state">Không có catalyst nào.</p>'}
-        </div>
-      </div>`;
-
-    body.querySelectorAll('.ai-rec-checkbox').forEach(cb => {
-      cb.addEventListener('change', () => {
-        const id = Number(cb.dataset.recId);
-        if (cb.checked) {
-          if (!aiSelectedRecIds.includes(id)) aiSelectedRecIds.push(id);
-        } else {
-          aiSelectedRecIds = aiSelectedRecIds.filter(x => x !== id);
-        }
-      });
-    });
-
-  } catch (err) {
-    body.innerHTML = `<div class="error-banner" style="margin:0">Không tải được gợi ý: ${esc(err.message)}</div>`;
-  } finally {
-    if (confirmBtn && aiSelectedRecIds.length > 0) {
-      confirmBtn.disabled = false;
-      confirmBtn.textContent = 'Xác nhận áp dụng';
-    } else if (confirmBtn && !confirmBtn.disabled) {
-      confirmBtn.disabled = false;
-      confirmBtn.textContent = 'Xác nhận áp dụng';
-    }
-  }
-}
-
-function renderVerdicts(list) {
-  const wrap = el('verdictList');
-  const rows = list;
-  if (!rows.length) { wrap.innerHTML = '<p class="empty-state">Chưa có dữ liệu.</p>'; return; }
-  wrap.innerHTML = rows.map(v => `<div class="row-item"><div><div class="row-title">${badge(v.verdict)}</div><div class="row-subtitle">${v.count ?? v.total ?? 0} review · ${v.pct != null ? v.pct + '%' : v.accuracy != null ? (v.accuracy * 100).toFixed(1) + '%' : ''}</div></div></div>`).join('');
-}
-
-function renderCatalystList(list) {
-  const wrap = el('catalystList');
-  if (!wrap) return;
-  if (!list.length) {
-    wrap.innerHTML = '<p class="empty-state">Không có catalyst nào trong 30 ngày tới.</p>';
-    return;
-  }
-  wrap.innerHTML = list.map(item => `
-    <div class="catalyst-item">
-      <div class="catalyst-item-row">
-        ${item.thesis_ticker
-          ? `<span class="badge" style="font-size:.78rem;padding:2px 8px;letter-spacing:.04em;">${esc(item.thesis_ticker)}</span>`
-          : ''}
-        <span style="flex:1;font-weight:600;">— ${esc(item.description)}</span>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap;">
-        ${item.expected_date
-          ? `<span style="font-size:.8rem;color:var(--muted);">📅 ${fmtDate(item.expected_date)}</span>`
-          : '<span style="font-size:.8rem;color:var(--muted);">· —</span>'}
-        ${item.thesis_title
-          ? `<span style="font-size:.78rem;color:var(--muted);font-style:italic;">${esc(item.thesis_title)}</span>`
-          : ''}
-      </div>
-    </div>`).join('<div class="catalyst-divider"></div>');
-}
-
-function renderSnapshots(s) {
-  if (!s) return;
-  el('latestScanAt').textContent = fmtDate(s.latest_scan_at);
-  el('latestScanSummary').innerHTML = s.latest_scan_summary
-    ? highlightScanText(s.latest_scan_summary)
-    : '<span style="color:var(--muted)">Chưa có scan snapshot.</span>';
-  el('latestMorningBriefAt').textContent = fmtDate(s.latest_morning_brief_at);
-  el('latestMorningBriefSummary').innerHTML = s.latest_morning_brief_summary
-    ? highlightScanText(s.latest_morning_brief_summary)
-    : '<span style="color:var(--muted)">Chưa có morning brief.</span>';
-  el('latestEodBriefAt').textContent = fmtDate(s.latest_eod_brief_at);
-  el('latestEodBriefSummary').innerHTML = s.latest_eod_brief_summary
-    ? highlightScanText(s.latest_eod_brief_summary)
-    : '<span style="color:var(--muted)">Chưa có EOD brief.</span>';
-}
-
-async function loadBacktesting() {
-  const base = apiBase();
-  try {
-    const [acc, perf] = await Promise.all([
-      getJson(`${base}/backtesting/verdict-accuracy`).catch(() => []),
-      getJson(`${base}/backtesting/thesis-performances`).catch(() => []),
-    ]);
-    renderAccuracy(acc);
-    renderPerformance(perf);
-  } catch {}
-}
-
-function renderAccuracy(list) {
-  const wrap = el('accuracyWrap');
-  const rows = Array.isArray(list) ? list : (list?.items ?? []);
-  if (!rows.length) { wrap.innerHTML = '<p class="empty-state">Chưa có dữ liệu.</p>'; return; }
-  wrap.innerHTML = `<table><thead><tr><th>Verdict</th><th>Đúng</th><th>Sai</th><th>Accuracy</th></tr></thead><tbody>${rows.map(r => `<tr><td>${badge(r.verdict)}</td><td class="score-high">${r.correct ?? 0}</td><td class="score-low">${r.wrong ?? 0}</td><td>${r.accuracy != null ? (r.accuracy * 100).toFixed(1) + '%' : '—'}</td></tr>`).join('')}</tbody></table>`;
-}
-
-function renderPerformance(list) {
-  const wrap = el('performanceWrap');
-  const rows = Array.isArray(list) ? list : (list?.items ?? []);
-  if (!rows.length) { wrap.innerHTML = '<p class="empty-state">Chưa có dữ liệu.</p>'; return; }
-  wrap.innerHTML = `<table><thead><tr><th>Mã</th><th>PnL%</th><th>Điểm</th><th>Status</th></tr></thead><tbody>${rows.map(r => `<tr><td class="ticker-cell"><strong>${esc(r.ticker)}</strong></td><td class="${r.pnl_pct >= 0 ? 'pnl-pos' : 'pnl-neg'}">${r.pnl_pct != null ? (r.pnl_pct > 0 ? '+' : '') + r.pnl_pct.toFixed(2) + '%' : '—'}</td><td class="${scoreClass(r.score)}">${r.score ?? '—'}</td><td>${badge(r.status)}</td></tr>`).join('')}</tbody></table>`;
-}
-
-async function triggerAiReview(thesisId) {
-  const loading = el(`aiReviewLoading-${thesisId}`);
-  const result  = el(`aiReviewResult-${thesisId}`);
-  const btn     = el(`aiReviewBtn-${thesisId}`);
-  if (!loading || !result) return;
-  if (btn) btn.disabled = true;
-  loading.classList.remove('hidden');
-  result.classList.add('hidden');
-  result.innerHTML = '';
-
-  try {
-    const data = await sendJson(`${thesisApiBase()}/${thesisId}/review`, 'POST', null);
-    latestAiReviews[thesisId] = data;
-    const reviewHTML = renderReviewRecommendResult(thesisId, data);
-    await loadThesisDetail(thesisId);
-    const freshResult = el(`aiReviewResult-${thesisId}`);
-    if (freshResult) {
-      freshResult.innerHTML = reviewHTML;
-      freshResult.classList.remove('hidden');
-    }
-    showToast('✅ AI đã review & áp dụng gợi ý. Score đã được cập nhật.', 'success', 4000);
-  } catch (err) {
-    const freshResult = el(`aiReviewResult-${thesisId}`) ?? result;
-    freshResult.innerHTML = `<div class="error-banner" style="margin:0">AI review lỗi: ${esc(err.message)}</div>`;
-    freshResult.classList.remove('hidden');
-  } finally {
-    const freshLoading = el(`aiReviewLoading-${thesisId}`);
-    const freshBtn     = el(`aiReviewBtn-${thesisId}`);
-    if (freshLoading) freshLoading.classList.add('hidden');
-    if (freshBtn) freshBtn.disabled = false;
-  }
-}
-
-async function approveReview(thesisId, verdict, reasoning, confidence) {
-  try {
-    await sendJson(`${thesisApiBase()}/${thesisId}/reviews`, 'POST', {
-      verdict,
-      reasoning: reasoning || null,
-      confidence: confidence || null,
-    });
-    showToast(`✅ Đã lưu review: ${verdict.toUpperCase()}`);
-    // Ẩn recommendation section sau khi approve
-    const result = el(`aiReviewResult-${thesisId}`);
-    if (result) { result.classList.add('hidden'); result.innerHTML = ''; }
-    // Reload detail để thấy review mới trong history
-    await loadThesisDetail(thesisId);
-    await loadDashboard();
-  } catch (err) {
-    showToast(`Lỗi lưu review: ${err.message}`, 'error');
-  }
-}
-
-const elAiApplyConfirmBtn = el('aiApplyConfirmBtn');
-if (elAiApplyConfirmBtn) {
-  elAiApplyConfirmBtn.addEventListener('click', async () => {
-    if (!aiApplyThesisId) {
-      showToast('Không xác định được thesis.', 'error');
-      return;
-    }
-    if (!aiSelectedRecIds.length) {
-      showToast('Chọn ít nhất 1 gợi ý để áp dụng.', 'error');
-      return;
-    }
-
-    const btn = elAiApplyConfirmBtn;
-    btn.classList.add('btn-loading');
-    btn.textContent = 'Đang áp dụng...';
-
-    try {
-      const latest = latestAiReviews[aiApplyThesisId] ?? {};
-      await sendJson(
-        `${thesisApiBase()}/${aiApplyThesisId}/ai-review/apply`,
-        'POST',
-        {
-          applied_recommendation_ids: aiSelectedRecIds,
-          verdict: latest.verdict ?? null,
-          ai_confidence: latest.confidence ?? null,
-        }
-      );
-
-      showToast('Đã áp dụng gợi ý từ AI.', 'success');
-      closeModal('aiApplyModal');
-      await loadThesisDetail(aiApplyThesisId);
-    } catch (err) {
-      showToast(`Lỗi khi áp dụng gợi ý: ${err.message}`, 'error');
-    } finally {
-      btn.classList.remove('btn-loading');
-      btn.textContent = 'Xác nhận áp dụng';
-      aiApplyThesisId = null;
-      aiSelectedRecIds = [];
-    }
-  });
-}
-
-document.addEventListener('DOMContentLoaded', async () => {
-  document.querySelectorAll('[data-close]').forEach(btn => btn.addEventListener('click', () => closeModal(btn.dataset.close)));
-  document.querySelectorAll('dialog').forEach(dlg => dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); }));
-  el('reloadBtn')?.addEventListener('click', () => { loadDashboard(); loadBacktesting(); });
-  el('newThesisBtn')?.addEventListener('click', openNewThesisModal);
-  el('addFormAssumptionBtn')?.addEventListener('click', () => el('thesisFormAssumptionRows')?.appendChild(makeAssumptionRow()));
-  el('addFormCatalystBtn')?.addEventListener('click', () => el('thesisFormCatalystRows')?.appendChild(makeCatalystRow()));
-  seedBlankFormRows();
-  loadDashboard();
-  loadBacktesting();
-});

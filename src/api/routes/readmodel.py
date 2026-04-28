@@ -24,6 +24,7 @@ from src.readmodel.dashboard_service import DashboardService
 from src.readmodel.leaderboard_service import LeaderboardService
 from src.readmodel.schemas import (
     LeaderboardResponse,
+    ReviewTimelineResponse,
     ThesisTimelineResponse,
 )
 from src.readmodel.timeline_service import ThesisTimelineService
@@ -332,7 +333,7 @@ async def get_leaderboard_single_user(
 
 
 # ---------------------------------------------------------------------------
-# Thesis timeline
+# Thesis timeline (general event log)
 # ---------------------------------------------------------------------------
 
 
@@ -343,6 +344,27 @@ async def get_thesis_timeline(
 ) -> ThesisTimelineResponse:
     svc = ThesisTimelineService(session)
     result = await svc.get_timeline(thesis_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Thesis {thesis_id} not found")
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Review timeline — 5 AI reviews gần nhất (focused, sorted mới nhất trước)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/dashboard/theses/{thesis_id}/review-timeline",
+    response_model=ReviewTimelineResponse,
+)
+async def get_review_timeline(
+    thesis_id: int,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    limit: Annotated[int, Query(ge=1, le=20)] = 5,
+) -> ReviewTimelineResponse:
+    svc = ThesisTimelineService(session)
+    result = await svc.get_review_timeline(thesis_id, limit=limit)
     if result is None:
         raise HTTPException(status_code=404, detail=f"Thesis {thesis_id} not found")
     return result
