@@ -462,11 +462,11 @@ async function loadDashboard() {
 
 function renderSummary(s) {
   if (!s) return;
-  el('openTheses').textContent = s.open_theses ?? s.open_thesis_count ?? '—';
-  el('riskyTheses').textContent = s.risky_theses ?? s.risky_thesis_count ?? '—';
-  el('upcoming7d').textContent = s.upcoming_catalysts_7d ?? s.upcoming_7d ?? '—';
-  el('reviewsToday').textContent = s.reviews_today ?? s.review_count_today ?? '—';
-  el('totalReviewsHero').textContent = s.total_reviews ?? s.review_count_total ?? '—';
+  if (el('openTheses'))     el('openTheses').textContent     = s.open_theses ?? s.open_thesis_count ?? '—';
+  if (el('riskyTheses'))    el('riskyTheses').textContent    = s.risky_theses ?? s.risky_thesis_count ?? '—';
+  if (el('upcoming7d'))     el('upcoming7d').textContent     = s.upcoming_catalysts_7d ?? s.upcoming_7d ?? '—';
+  if (el('reviewsToday'))   el('reviewsToday').textContent   = s.reviews_today ?? s.review_count_today ?? '—';
+  if (el('totalReviewsHero')) el('totalReviewsHero').textContent = s.total_reviews ?? s.review_count_total ?? '—';
 }
 
 function renderThesesTable(list) {
@@ -1168,10 +1168,9 @@ function renderBriefCard(phase, brief, dateStr) {
 
 function renderSnapshots(s) {
   if (!s) return;
-
-  // Scan snapshot — giữ nguyên logic cũ
-  el('latestScanAt').textContent = fmtDate(s.latest_scan_at);
-  el('latestScanSummary').innerHTML = s.latest_scan_summary
+  if (el('latestScanAt'))      el('latestScanAt').textContent = fmtDate(s.latest_scan_at);
+  const scanSummaryEl = el('latestScanSummary');
+  if (scanSummaryEl) scanSummaryEl.innerHTML = s.latest_scan_summary
     ? highlightScanText(s.latest_scan_summary)
     : '<span style="color:var(--muted)">Chưa có scan snapshot.</span>';
 
