@@ -33,6 +33,7 @@ def create_bot() -> commands.Bot:
         await bootstrap()
         await _register_cogs(bot)
         _start_briefing_scheduler(bot)
+        _start_scan_scheduler(bot)
         _start_snapshot_scheduler()
         await _sync_tree(bot)
         logger.info(
@@ -103,6 +104,33 @@ def _start_briefing_scheduler(bot: commands.Bot) -> None:
         morning_channel=settings.morning_channel_id,
         eod_channel=settings.eod_channel_id,
         user=settings.scheduler_user_id,
+    )
+
+
+def _start_scan_scheduler(bot: commands.Bot) -> None:
+    """Attach WatchlistScanScheduler if required settings are configured."""
+    if settings.environment == "test":
+        logger.info("bot.scan_scheduler.skipped", reason="test environment")
+        return
+
+    user_id = getattr(settings, "scheduler_user_id", None)
+    channel_id = getattr(settings, "morning_channel_id", None)
+    if not user_id or not channel_id:
+        logger.info(
+            "bot.scan_scheduler.skipped",
+            reason="scheduler_user_id or morning_channel_id not configured",
+        )
+        return
+
+    from src.bot.scheduler import WatchlistScanScheduler
+
+    scheduler = WatchlistScanScheduler(client=bot)
+    scheduler.start()
+    logger.info(
+        "bot.scan_scheduler.started",
+        interval_minutes=5,
+        channel=channel_id,
+        user=user_id,
     )
 
 
