@@ -444,8 +444,10 @@ async function loadDashboard() {
       latest_scan_summary: latestScan?.summary ?? latestScan?.headline ?? latestScan?.notes ?? null,
       latest_morning_brief_at: latestMorningBrief?.created_at ?? latestMorningBrief?.generated_at ?? null,
       latest_morning_brief_summary: latestMorningBrief?.summary ?? latestMorningBrief?.headline ?? latestMorningBrief?.content ?? null,
+      latest_morning_brief_data: latestMorningBrief ?? null,
       latest_eod_brief_at: latestEodBrief?.created_at ?? latestEodBrief?.generated_at ?? null,
       latest_eod_brief_summary: latestEodBrief?.summary ?? latestEodBrief?.headline ?? latestEodBrief?.content ?? null,
+      latest_eod_brief_data: latestEodBrief ?? null,
     });
     if (_selectedThesisId) {
       const t = _theses.find(x => x.id === _selectedThesisId);
