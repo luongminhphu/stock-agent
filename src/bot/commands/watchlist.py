@@ -13,6 +13,8 @@ No business logic. All rules live in watchlist/market/scan segments.
 
 from __future__ import annotations
 
+from zoneinfo import ZoneInfo
+
 import discord
 from discord import app_commands
 
@@ -29,6 +31,8 @@ from src.watchlist.service import (
 )
 
 logger = get_logger(__name__)
+
+_VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 
 _CONDITION_LABEL = {
     AlertConditionType.PRICE_ABOVE: "Price ≥",
@@ -214,11 +218,13 @@ class WatchlistCog(BaseCog):
             )
             return
 
+        scanned_at_str = result.scanned_at.astimezone(_VN_TZ).strftime("%d/%m/%Y %H:%M")
+
         if not result.signals and not result.triggered_alerts:
             await self.send_ok(
                 interaction,
                 title="📡 Watchlist Scan",
-                description="No signals or triggered alerts at this time.",
+                description=f"No signals or triggered alerts at this time.\n🕐 Scanned at {scanned_at_str}",
             )
             return
 
@@ -249,7 +255,7 @@ class WatchlistCog(BaseCog):
                 inline=False,
             )
 
-        embed.set_footer(text="Scan complete · Use /watchlist alert to add price alerts")
+        embed.set_footer(text=f"🕐 Latest scan: {scanned_at_str} · /watchlist alert to add alerts")
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     # ------------------------------------------------------------------
