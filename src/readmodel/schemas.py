@@ -156,6 +156,12 @@ class WatchlistSnapshotRow(BaseModel):
     current_price: float | None
     added_at: datetime
 
+
+# ---------------------------------------------------------------------------
+# Review timeline (focused — 5 AI reviews gần nhất)
+# ---------------------------------------------------------------------------
+
+
 class ReviewTimelineItem(BaseModel):
     """Single AI review entry in the focused review timeline."""
 
