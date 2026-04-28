@@ -1,180 +1,72 @@
-"""Read-model DTOs — pure Pydantic, no ORM imports.
-
-Owner: readmodel segment.
-These are the output contracts for all dashboard / read queries.
-Write-side domain models (thesis.models) must NOT be imported here.
+"""WhyAgent — explains price movement for a single ticker.
+Owner: ai segment.
+Caller: market segment's WhyService.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Literal
+import json
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import ValidationError
 
-# ---------------------------------------------------------------------------
-# Shared primitives
-# ---------------------------------------------------------------------------
+from src.ai.client import PerplexityClient, PerplexityError
+from src.ai.prompts.why import SYSTEM_PROMPT, build_why_prompt
+from src.ai.schemas import WhyOutput
+from src.platform.logging import get_logger
 
-
-class PricePoint(BaseModel):
-    """Single price observation in a time series."""
-
-    ts: datetime
-    price: float
+logger = get_logger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Dashboard
-# ---------------------------------------------------------------------------
+class WhyAgent:
+    def __init__(self, client: PerplexityClient) -> None:
+        self._client = client
 
+    async def explain(
+        self,
+        ticker: str,
+        company_name: str,
+        sector: str,
+        change_pct: float,
+        price: float,
+        volume: int | None,
+        ohlcv_summary: str,
+        extra_context: str = "",
+    ) -> WhyOutput:
+        prompt = build_why_prompt(
+            ticker=ticker,
+            company_name=company_name,
+            sector=sector,
+            change_pct=change_pct,
+            price=price,
+            volume=volume,
+            ohlcv_summary=ohlcv_summary,
+            extra_context=extra_context,
+        )
+        logger.info("why_agent.start", ticker=ticker, change_pct=change_pct)
+        try:
+            response = await self._client.chat_completion(
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.2,
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "WhyOutput",
+                        "schema": WhyOutput.model_json_schema(),
+                        "strict": True,
+                    },
+                },
+            )
+            data = json.loads(self._client.extract_text(response))
+            result = WhyOutput.model_validate(data)
+        except (json.JSONDecodeError, ValidationError) as exc:
+            logger.error("why_agent.parse_error", ticker=ticker, error=str(exc))
+            raise ValueError(f"Failed to parse WhyAgent response: {exc}") from exc
+        except PerplexityError:
+            logger.error("why_agent.api_error", ticker=ticker)
+            raise
 
-class ThesisSummaryRow(BaseModel):
-    """One row in the dashboard thesis table."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    ticker: str
-    title: str
-    status: str
-    score: float | None
-
-    score_tier: str | None = None
-    score_tier_icon: str | None = None
-    score_breakdown: dict[str, float] | None = None
-
-    entry_price: float | None
-    target_price: float | None
-    stop_loss: float | None
-    upside_pct: float | None
-    risk_reward: float | None
-    current_price: float | None
-    pnl_pct: float | None
-    last_verdict: str | None
-    last_reviewed_at: datetime | None
-    created_at: datetime
-    assumption_count: int
-    invalid_assumption_count: int
-    catalyst_count: int
-    triggered_catalyst_count: int
-    change: float | None = None
-    change_pct: float | None = None
-    volume: int | None = None
-    is_ceiling: bool | None = None
-    is_floor: bool | None = None
-
-
-class DashboardResponse(BaseModel):
-    """Full dashboard payload."""
-
-    user_id: str
-    generated_at: datetime
-    total_theses: int
-    active_count: int
-    invalidated_count: int
-    closed_count: int
-    avg_score: float | None
-    theses: list[ThesisSummaryRow]
-
-
-# ---------------------------------------------------------------------------
-# Leaderboard
-# ---------------------------------------------------------------------------
-
-
-class LeaderboardEntry(BaseModel):
-    """One entry in the thesis leaderboard."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    rank: int
-    thesis_id: int
-    ticker: str
-    title: str
-    score: float | None
-    pnl_pct: float | None
-    last_verdict: str | None
-    status: str
-    created_at: datetime
-
-
-class LeaderboardResponse(BaseModel):
-    user_id: str
-    sort_by: Literal["score", "pnl"]
-    entries: list[LeaderboardEntry]
-
-
-# ---------------------------------------------------------------------------
-# Thesis timeline (general event log)
-# ---------------------------------------------------------------------------
-
-
-class TimelineEventKind(str):
-    CREATED = "created"
-    REVIEWED = "reviewed"
-    ASSUMPTION_UPDATED = "assumption_updated"
-    CATALYST_TRIGGERED = "catalyst_triggered"
-    INVALIDATED = "invalidated"
-    CLOSED = "closed"
-    SNAPSHOT = "snapshot"
-
-
-class TimelineEvent(BaseModel):
-    """Single event on a thesis timeline."""
-
-    kind: str
-    ts: datetime
-    summary: str
-    detail: dict | None
-
-
-class ThesisTimelineResponse(BaseModel):
-    thesis_id: int
-    ticker: str
-    title: str
-    events: list[TimelineEvent]  # ordered oldest → newest
-
-
-# ---------------------------------------------------------------------------
-# Review timeline (focused: 5 AI reviews per thesis)
-# ---------------------------------------------------------------------------
-
-
-class ReviewTimelineItem(BaseModel):
-    """One AI review entry in the review timeline."""
-
-    review_id: int
-    reviewed_at: datetime
-    verdict: str                   # "bullish" | "bearish" | "neutral"
-    confidence: float              # 0.0 – 1.0
-    confidence_pct: int            # round(confidence * 100)
-    reasoning: str | None
-    risk_signals: list[str]        # parsed từ JSON string
-    next_watch_items: list[str]    # parsed từ JSON string
-    reviewed_price: float | None
-
-
-class ReviewTimelineResponse(BaseModel):
-    """5 AI reviews gần nhất của một thesis, sorted mới nhất trước."""
-
-    thesis_id: int
-    ticker: str
-    title: str
-    items: list[ReviewTimelineItem]
-    total: int
-
-
-# ---------------------------------------------------------------------------
-# Watchlist snapshot (used by dashboard watchlist panel)
-# ---------------------------------------------------------------------------
-
-
-class WatchlistSnapshotRow(BaseModel):
-    ticker: str
-    note: str | None
-    thesis_id: int | None
-    thesis_title: str | None
-    thesis_status: str | None
-    current_price: float | None
-    added_at: datetime
+        logger.info("why_agent.complete", ticker=ticker, direction=result.direction)
+        return result
