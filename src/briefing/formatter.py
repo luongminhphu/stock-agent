@@ -9,6 +9,8 @@ It returns plain strings; bot/api layers decide how to send them.
 
 from __future__ import annotations
 
+import re
+
 from src.ai.schemas import BriefOutput, MarketSentiment
 
 _SENTIMENT_EMOJI = {
@@ -26,6 +28,14 @@ _SENTIMENT_LABEL = {
 }
 
 
+def _inline(text: str) -> str:
+    """Collapse stray single newlines to a space so tickers stay inline.
+
+    Double newlines (paragraph breaks) are preserved intentionally.
+    """
+    return re.sub(r"(?<!\n)\n(?!\n)", " ", text).strip()
+
+
 def format_brief(brief: BriefOutput, brief_type: str = "brief") -> str:
     """Format a BriefOutput as a Discord-ready markdown string.
 
@@ -40,33 +50,33 @@ def format_brief(brief: BriefOutput, brief_type: str = "brief") -> str:
     label = _SENTIMENT_LABEL.get(brief.sentiment, str(brief.sentiment))
 
     lines: list[str] = [
-        f"**📈 {brief_type.title()}** {emoji} `{label}`",
+        f"**📈 {brief_type.title()}** — {emoji} `{label}`",
         "",
         f"**{brief.headline}**",
         "",
-        brief.summary,
+        _inline(brief.summary),
     ]
 
     if brief.key_movers:
-        lines += ["", "**🔥 Key Movers**"]
-        for mover in brief.key_movers:
-            lines.append(f"\u2022 {mover}")
+        # Render inline with bullet separator — avoids each ticker on its own line
+        movers_inline = "  •  ".join(f"**{m}**" for m in brief.key_movers)
+        lines += ["", f"🔥 {movers_inline}"]
 
     if brief.watchlist_alerts:
         lines += ["", "**👁️ Watchlist**"]
         for alert in brief.watchlist_alerts:
-            lines.append(f"\u2022 {alert}")
+            lines.append(f"\u2022 {_inline(alert)}")
 
     if brief.action_items:
-        lines += ["", "**✅ Action Items**"]
+        lines += ["", "**✅ Actions**"]
         for item in brief.action_items:
-            lines.append(f"\u2022 {item}")
+            lines.append(f"\u2022 {_inline(item)}")
 
     if brief.ticker_summaries:
-        lines += ["", "**📊 Watchlist Summary**"]
+        lines += ["", "**📊 Ticker**"]
         for ts in brief.ticker_summaries:
             signal_emoji = {"bullish": "🟢", "bearish": "🔴", "neutral": "🟡"}.get(ts.signal, "⚪")
-            pct = f"+{ts.change_pct:.2f}%" if ts.change_pct >= 0 else f"{ts.change_pct:.2f}%"
+            pct = f"+{ts.change_pct:.1f}%" if ts.change_pct >= 0 else f"{ts.change_pct:.1f}%"
             lines.append(
                 f"{signal_emoji} **{ts.ticker}** `{ts.price:,.0f}` ({pct}) — {ts.one_line}"
             )
