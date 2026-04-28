@@ -37,8 +37,9 @@ class ThesisRepository:
             .options(
                 selectinload(Thesis.assumptions),
                 selectinload(Thesis.catalysts),
-                selectinload(Thesis.reviews),
+                selectinload(Thesis.reviews).selectinload(ThesisReview.recommendations),
             )
+            .execution_options(populate_existing=True)
         )
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
@@ -219,6 +220,7 @@ class ThesisRepository:
             .where(ThesisReview.thesis_id == thesis_id)
             .where(ReviewRecommendation.status == RecommendationStatus.PENDING)
             .order_by(ThesisReview.reviewed_at.desc(), ReviewRecommendation.id.asc())
+            .execution_options(populate_existing=True)
         )
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
