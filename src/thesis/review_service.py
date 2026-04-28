@@ -202,35 +202,33 @@ class ReviewService:
         ai_confidence: float | None = None,
     ) -> None:
         """Apply nhiều AI recommendations (PENDING) cho một thesis.
-
+    
         - Validate thesis thuộc về user_id.
         - Chỉ xử lý các recommendation có status=PENDING và id nằm trong applied_recommendation_ids.
         - Với mỗi rec:
-            + Nếu target_type='assumption'  → update Assumption.status.
-            + Nếu target_type='catalyst'    → update Catalyst.status.
+            + Nếu target_type='assumption'  → update Assumption.status → persist riêng.
+            + Nếu target_type='catalyst'    → update Catalyst.status   → persist riêng.
             + Mark ReviewRecommendation.status=ACCEPTED, acted_at=now.
-        - Recompute health score sau khi apply.
+        - Reload thesis fresh từ DB → recompute health score → persist.
         """
         if not applied_recommendation_ids:
             return
-
+    
         thesis = await self._repo.get_by_id(thesis_id)
         if thesis is None or thesis.user_id != user_id:
             raise ThesisNotFoundError(f"Thesis {thesis_id} not found for user {user_id}")
-
-        # Load PENDING recommendations cho thesis, filter theo id được chọn
+    
         pending_recs = await self._repo.list_pending_recommendations(thesis_id)
         id_set = set(applied_recommendation_ids)
         to_apply = [r for r in pending_recs if r.id in id_set]
         if not to_apply:
             return
-
+    
         now = datetime.now(UTC)
-
-        # Map assumptions/catalysts theo id để update nhanh
+    
         assumptions_by_id = {a.id: a for a in thesis.assumptions}
         catalysts_by_id = {c.id: c for c in thesis.catalysts}
-
+    
         for rec in to_apply:
             if rec.target_type == "assumption":
                 target = assumptions_by_id.get(rec.target_id)
@@ -242,14 +240,16 @@ class ReviewService:
                         target_id=rec.target_id,
                     )
                 else:
-                    # Áp dụng recommended_status lên Assumption.status
                     try:
                         target.status = AssumptionStatus(rec.recommended_status.lower())
+                        await self._repo.save_assumption(target)
                     except ValueError:
                         logger.warning(
                             "review_service.apply_bulk.invalid_assumption_status",
                             recommended_status=rec.recommended_status,
+                            recommendation_id=rec.id,
                         )
+    
             elif rec.target_type == "catalyst":
                 target = catalysts_by_id.get(rec.target_id)
                 if not target:
@@ -262,33 +262,35 @@ class ReviewService:
                 else:
                     try:
                         target.status = CatalystStatus(rec.recommended_status.lower())
+                        # FIX #1: persist riêng từng catalyst
+                        await self._repo.save_catalyst(target)
                     except ValueError:
                         logger.warning(
                             "review_service.apply_bulk.invalid_catalyst_status",
                             recommended_status=rec.recommended_status,
+                            recommendation_id=rec.id,
                         )
-
-            # Mark recommendation accepted
+    
             rec.status = RecommendationStatus.ACCEPTED
-            rec.acted_at = now  # field đã có trong model
-
-        # Optional: lưu snapshot verdict/confidence lên thesis nếu có
-        if verdict is not None and ai_confidence is not None:
-            try:
-                thesis.last_ai_verdict = ReviewVerdict(verdict)  # nếu anh có field này
-                thesis.last_ai_confidence = ai_confidence        # nếu anh có field này
-            except Exception:
-                # Nếu thesis chưa có 2 field trên thì bỏ qua, không raise
-                logger.debug("review_service.apply_bulk.verdict_snapshot_skip")
-
-        # Recompute score sau khi áp dụng
-        new_score = self._scoring.compute(thesis)
-        if thesis.score != new_score:
-            thesis.score = new_score
-
-        # Persist tất cả thay đổi
-        await self._repo.save(thesis)
+            rec.acted_at = now
+    
         await self._repo.save_recommendations(to_apply)
+    
+        fresh_thesis = await self._repo.get_by_id(thesis_id)
+        if fresh_thesis is None:
+            logger.error("review_service.apply_bulk.thesis_gone", thesis_id=thesis_id)
+            return
+    
+        new_score = self._scoring.compute(fresh_thesis)
+        if fresh_thesis.score != new_score:
+            fresh_thesis.score = new_score
+            await self._repo.save(fresh_thesis)
+            logger.info(
+                "review_service.apply_bulk.score_updated",
+                thesis_id=thesis_id,
+                new_score=new_score,
+            )
+    
         logger.info(
             "review_service.apply_bulk.done",
             thesis_id=thesis_id,
