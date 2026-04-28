@@ -40,12 +40,12 @@ async def bootstrap() -> None:
         logger.info("platform.bootstrap.quote_service_ready")
 
     if _ohlcv_service is None:
-        from src.market.adapters.tcbs_ohlcv import TCBSOHLCVAdapter
+        from src.market.adapters.vci_ohlcv import VCIOHLCVAdapter
         from src.market.ohlcv_service import OHLCVService
 
         # Wave 1: no adapter yet — OHLCVService stubs will raise OHLCVServiceNotConfiguredError
         # Wave 2: pass an OHLCVAdapter implementation here
-        _ohlcv_service = OHLCVService(adapter=TCBSOHLCVAdapter())
+        _ohlcv_service = OHLCVService(adapter=VCIOHLCVAdapter())
         logger.info("platform.bootstrap.ohlcv_service_ready")
 
     if _perplexity_client is None:
