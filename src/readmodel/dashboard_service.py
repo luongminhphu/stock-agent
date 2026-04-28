@@ -514,7 +514,7 @@ class DashboardService:
                 "get_brief_latest.import_error", detail="BriefSnapshot model not available"
             )
             return None
-
+    
         try:
             row = (
                 await self._session.execute(
@@ -527,22 +527,23 @@ class DashboardService:
                     .limit(1)
                 )
             ).scalar_one_or_none()
-
+    
             if not row:
                 return None
-
+    
             try:
                 parsed_content = json.loads(row.content)
             except (json.JSONDecodeError, TypeError):
-                parsed_content = {"summary": row.content}
-
+                # Legacy: content là plain text (trước khi serialize full JSON)
+                parsed_content = {"summary": row.content, "content": row.content}  # ← FIX
+    
             return {
                 "id": row.id,
                 "user_id": row.user_id,
                 "phase": row.phase,
                 "content": row.content,
                 "created_at": row.created_at.isoformat() if row.created_at else None,
-                **parsed_content,  # spread toàn bộ BriefOutput fields lên top-level
+                **parsed_content,
             }
         except Exception as exc:
             logger.warning("get_brief_latest.db_error", error=str(exc))
