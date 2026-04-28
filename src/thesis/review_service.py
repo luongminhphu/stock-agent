@@ -9,8 +9,8 @@ Flow:
     2. Optionally fetch current price (injected, not fetched internally)
     3. Call ThesisReviewAgent.review() → ThesisReviewOutput
     4. Persist ThesisReview ORM record
-    5. Persist ReviewRecommendation records (PENDING) từ AI output
-    6. Reload thesis (with new review) → recompute score → persist
+    5. Auto-apply AI recommendations (ACCEPTED) → update assumption/catalyst status
+    6. Reload thesis (fresh) → recompute full score → persist
     7. Return ThesisReview
 """
 
@@ -186,7 +186,9 @@ class ReviewService:
     ) -> list[ReviewRecommendation]:
         """Trả danh sách recommendations PENDING cho một thesis.
 
-        Bot/API gọi method này để hiển thị cho user xác nhận.
+        Kể từ khi auto-apply được bật, method này luôn trả về [] vì
+        tất cả recommendations được ACCEPTED ngay tại thời điểm Verify.
+        Giữ lại để backward compat với bot/API cũ.
         """
         thesis = await self._repo.get_by_id(thesis_id)
         if thesis is None or thesis.user_id != user_id:
@@ -201,103 +203,17 @@ class ReviewService:
         verdict: str | None = None,
         ai_confidence: float | None = None,
     ) -> None:
-        """Apply nhiều AI recommendations (PENDING) cho một thesis.
-    
-        - Validate thesis thuộc về user_id.
-        - Chỉ xử lý các recommendation có status=PENDING và id nằm trong applied_recommendation_ids.
-        - Với mỗi rec:
-            + Nếu target_type='assumption'  → update Assumption.status → persist riêng.
-            + Nếu target_type='catalyst'    → update Catalyst.status   → persist riêng.
-            + Mark ReviewRecommendation.status=ACCEPTED, acted_at=now.
-        - Reload thesis fresh từ DB → recompute health score → persist.
+        """No-op kể từ khi auto-apply được bật.
+
+        Recommendations được ACCEPTED ngay tại _persist_review → không còn
+        PENDING nào để apply. Giữ lại để backward compat với bot/API cũ.
         """
-        if not applied_recommendation_ids:
-            return
-    
-        thesis = await self._repo.get_by_id(thesis_id)
-        if thesis is None or thesis.user_id != user_id:
-            raise ThesisNotFoundError(f"Thesis {thesis_id} not found for user {user_id}")
-    
-        pending_recs = await self._repo.list_pending_recommendations(thesis_id)
-        id_set = set(applied_recommendation_ids)
-        to_apply = [r for r in pending_recs if r.id in id_set]
-        if not to_apply:
-            return
-    
-        now = datetime.now(UTC)
-    
-        assumptions_by_id = {a.id: a for a in thesis.assumptions}
-        catalysts_by_id = {c.id: c for c in thesis.catalysts}
-    
-        for rec in to_apply:
-            if rec.target_type == "assumption":
-                target = assumptions_by_id.get(rec.target_id)
-                if not target:
-                    logger.warning(
-                        "review_service.apply_bulk.missing_assumption",
-                        thesis_id=thesis_id,
-                        recommendation_id=rec.id,
-                        target_id=rec.target_id,
-                    )
-                else:
-                    try:
-                        target.status = AssumptionStatus(rec.recommended_status.lower())
-                        await self._repo.save_assumption(target)
-                    except ValueError:
-                        logger.warning(
-                            "review_service.apply_bulk.invalid_assumption_status",
-                            recommended_status=rec.recommended_status,
-                            recommendation_id=rec.id,
-                        )
-    
-            elif rec.target_type == "catalyst":
-                target = catalysts_by_id.get(rec.target_id)
-                if not target:
-                    logger.warning(
-                        "review_service.apply_bulk.missing_catalyst",
-                        thesis_id=thesis_id,
-                        recommendation_id=rec.id,
-                        target_id=rec.target_id,
-                    )
-                else:
-                    try:
-                        target.status = CatalystStatus(rec.recommended_status.lower())
-                        # FIX #1: persist riêng từng catalyst
-                        await self._repo.save_catalyst(target)
-                    except ValueError:
-                        logger.warning(
-                            "review_service.apply_bulk.invalid_catalyst_status",
-                            recommended_status=rec.recommended_status,
-                            recommendation_id=rec.id,
-                        )
-    
-            rec.status = RecommendationStatus.ACCEPTED
-            rec.acted_at = now
-    
-        await self._repo.save_recommendations(to_apply)
-    
-        fresh_thesis = await self._repo.get_by_id(thesis_id)
-        if fresh_thesis is None:
-            logger.error("review_service.apply_bulk.thesis_gone", thesis_id=thesis_id)
-            return
-    
-        new_score = self._scoring.compute(fresh_thesis)
-        if fresh_thesis.score != new_score:
-            fresh_thesis.score = new_score
-            await self._repo.save(fresh_thesis)
-            logger.info(
-                "review_service.apply_bulk.score_updated",
-                thesis_id=thesis_id,
-                new_score=new_score,
-            )
-    
         logger.info(
-            "review_service.apply_bulk.done",
+            "review_service.apply_bulk.skipped_auto_apply_enabled",
             thesis_id=thesis_id,
-            applied_count=len(to_apply),
-            new_score=new_score,
+            requested_ids=applied_recommendation_ids,
         )
-    
+
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
@@ -308,20 +224,18 @@ class ReviewService:
         output: ThesisReviewOutput,
         reviewed_price: float | None,
     ) -> ThesisReview:
-        """Map ThesisReviewOutput → ThesisReview ORM, save, then persist
-        AI recommendations (PENDING) và recompute score.
+        """Map ThesisReviewOutput → ThesisReview ORM, auto-apply recommendations,
+        reload thesis fresh, recompute full score.
 
-        Score recompute flow:
+        Auto-apply flow:
             1. save_review (flush) → review gets a DB id.
-            2. _persist_recommendations → bulk insert ReviewRecommendation rows.
-            3. Reload thesis via get_by_id → session-fresh object.
-            4. ScoringService.compute(thesis) → new_score.
+            2. _auto_apply_recommendations:
+               - Update Assumption/Catalyst status in DB (save riêng từng object).
+               - Insert ReviewRecommendation với status=ACCEPTED ngay lập tức.
+            3. Reload thesis via get_by_id (populate_existing) → session-fresh object
+               với assumption/catalyst status đã được update.
+            4. ScoringService.compute(thesis) → new_score (tất cả 4 components fresh).
             5. Persist thesis.score only if it changed.
-
-        We reload instead of appending in-memory to avoid:
-            - SQLAlchemy InvalidRequestError (appending a tracked object to a
-              collection that already knows about it after flush).
-            - Stale in-memory state if the session expired attributes on flush.
         """
         review = ThesisReview(
             thesis_id=thesis.id,
@@ -335,11 +249,10 @@ class ReviewService:
         )
         await self._repo.save_review(review)
 
-        # Persist AI recommendations — trạng thái PENDING, chờ user xác nhận.
-        # Không tự apply bất kỳ status nào lên assumption/catalyst.
-        await self._persist_recommendations(review.id, output)
+        # Auto-apply: update assumption/catalyst status + insert recs as ACCEPTED.
+        await self._auto_apply_recommendations(thesis, review.id, output)
 
-        # Reload thesis so thesis.reviews includes the new review just persisted.
+        # Reload fresh — assumptions/catalysts đã được update, reviews đã có review mới.
         fresh_thesis = await self._repo.get_by_id(thesis.id)
         if fresh_thesis is not None:
             new_score = self._scoring.compute(fresh_thesis)
@@ -354,20 +267,42 @@ class ReviewService:
 
         return review
 
-    async def _persist_recommendations(
+    async def _auto_apply_recommendations(
         self,
+        thesis: Thesis,
         review_id: int,
         output: ThesisReviewOutput,
     ) -> None:
-        """Bulk-insert ReviewRecommendation rows từ AI output.
+        """Auto-apply toàn bộ AI recommendations ngay tại thời điểm Verify.
 
-        Mỗi row có status=PENDING. Không raise nếu list rỗng.
-        target_id không được validate ở đây — caller (review_thesis) đã đảm bảo
-        chỉ truyền assumptions/catalysts thuộc đúng thesis.
+        - Update Assumption.status / Catalyst.status → persist riêng từng object.
+        - Insert ReviewRecommendation với status=ACCEPTED và acted_at=now.
+        - Không raise nếu target_id không tìm thấy — log warning và tiếp tục.
         """
+        now = datetime.now(UTC)
+        assumptions_by_id = {a.id: a for a in thesis.assumptions}
+        catalysts_by_id = {c.id: c for c in thesis.catalysts}
         recs: list[ReviewRecommendation] = []
 
         for rec in output.assumption_recommendations:
+            target = assumptions_by_id.get(rec.target_id)
+            if target:
+                try:
+                    target.status = AssumptionStatus(rec.recommended_status.lower())
+                    await self._repo.save_assumption(target)
+                except ValueError:
+                    logger.warning(
+                        "review_service.auto_apply.invalid_assumption_status",
+                        recommended_status=rec.recommended_status,
+                        target_id=rec.target_id,
+                        review_id=review_id,
+                    )
+            else:
+                logger.warning(
+                    "review_service.auto_apply.missing_assumption",
+                    target_id=rec.target_id,
+                    review_id=review_id,
+                )
             recs.append(
                 ReviewRecommendation(
                     review_id=review_id,
@@ -376,11 +311,30 @@ class ReviewService:
                     target_description=rec.description,
                     recommended_status=rec.recommended_status,
                     reason=rec.reason,
-                    status=RecommendationStatus.PENDING,
+                    status=RecommendationStatus.ACCEPTED,
+                    acted_at=now,
                 )
             )
 
         for rec in output.catalyst_recommendations:
+            target = catalysts_by_id.get(rec.target_id)
+            if target:
+                try:
+                    target.status = CatalystStatus(rec.recommended_status.lower())
+                    await self._repo.save_catalyst(target)
+                except ValueError:
+                    logger.warning(
+                        "review_service.auto_apply.invalid_catalyst_status",
+                        recommended_status=rec.recommended_status,
+                        target_id=rec.target_id,
+                        review_id=review_id,
+                    )
+            else:
+                logger.warning(
+                    "review_service.auto_apply.missing_catalyst",
+                    target_id=rec.target_id,
+                    review_id=review_id,
+                )
             recs.append(
                 ReviewRecommendation(
                     review_id=review_id,
@@ -389,14 +343,15 @@ class ReviewService:
                     target_description=rec.description,
                     recommended_status=rec.recommended_status,
                     reason=rec.reason,
-                    status=RecommendationStatus.PENDING,
+                    status=RecommendationStatus.ACCEPTED,
+                    acted_at=now,
                 )
             )
 
         if recs:
             await self._repo.save_recommendations(recs)
             logger.info(
-                "review_service.recommendations_persisted",
+                "review_service.auto_apply.done",
                 review_id=review_id,
                 count=len(recs),
             )
