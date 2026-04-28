@@ -155,3 +155,24 @@ class WatchlistSnapshotRow(BaseModel):
     thesis_status: str | None
     current_price: float | None
     added_at: datetime
+
+class ReviewTimelineItem(BaseModel):
+    """Single AI review entry in the focused review timeline."""
+
+    review_id: int
+    reviewed_at: datetime
+    verdict: str
+    confidence: float          # 0.0 – 1.0
+    confidence_pct: int        # round(confidence * 100)
+    reasoning: str | None = None
+    risk_signals: list[str] = []
+    next_watch_items: list[str] = []
+    reviewed_price: float | None = None
+
+
+class ReviewTimelineResponse(BaseModel):
+    thesis_id: int
+    ticker: str
+    title: str
+    items: list[ReviewTimelineItem]   # newest first
+    total: int
