@@ -144,6 +144,7 @@ _REGISTRY: dict[str, SymbolInfo] = {
     # ── UPCoM — Vốn hóa lớn, tiềm năng chuyển sàn ─────────────────────
     "ACV": SymbolInfo("ACV", "Airports Corporation of Vietnam", Exchange.UPCOM, Sector.INDUSTRIALS),
     "VGI": SymbolInfo("VGI", "Viettel Global", Exchange.UPCOM, Sector.TELECOMS),
+    "MSR": SymbolInfo("MSR", "Masan High-Tech Materials", Exchange.HOSE, Sector.MATERIALS),
     "MVN": SymbolInfo("MVN", "VIMC (Vietnam Maritime Corp)", Exchange.UPCOM, Sector.INDUSTRIALS),
     "VEA": SymbolInfo("VEA", "Vietnam Engine & Agricultural", Exchange.UPCOM, Sector.INDUSTRIALS),
     "VGT": SymbolInfo("VGT", "Vietnam National Textile", Exchange.UPCOM, Sector.INDUSTRIALS),
