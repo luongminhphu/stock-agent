@@ -38,7 +38,7 @@ class ScanSignal:
     def signal_type(self) -> str:
         if self.triggered_alerts:
             return "alert_triggered"
-        if abs(self.change_pct) >= 5:
+        if abs(self.change_pct) >= 3:  # lowered from 5 → 3 to catch intraday moves
             return "strong_move"
         return "watch"
 
@@ -107,7 +107,7 @@ class ScanService:
         for ticker in tickers:
             try:
                 signal = await self._scan_ticker(ticker, items)
-                if signal.has_alerts or abs(signal.change_pct) >= 5:
+                if signal.has_alerts or abs(signal.change_pct) >= 3:  # lowered from 5 → 3
                     result.signals.append(signal)
             except Exception as exc:
                 logger.warning("scan.ticker_error", ticker=ticker, error=str(exc))
@@ -168,7 +168,7 @@ class ScanService:
                 volume_ratio=volume_ratio,
             ):
                 signal.triggered_alerts.append(alert)
-                alert.mark_triggered()
+                alert.mark_triggered(price=quote.price)  # persist triggered_price in DB
 
         return signal
 
