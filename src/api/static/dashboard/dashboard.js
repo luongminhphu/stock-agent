@@ -1075,6 +1075,20 @@ function renderBriefCard(phase, brief, dateStr) {
       </div>`;
   }
 
+  // brief tồn tại nhưng thiếu structured fields (legacy data)
+  if (!brief.headline && !brief.ticker_summaries?.length && brief.content) {
+    return `<div class="brief-card ${phaseCls}">
+      <div class="brief-header">
+        <div class="brief-phase-icon">${phaseIcon}</div>
+        <div>
+          <div class="brief-phase-label">${phaseLabel}</div>
+          <div class="brief-date">${dateStr || '—'}</div>
+        </div>
+      </div>
+      <div class="brief-summary">${esc(brief.content)}</div>
+    </div>`;
+  }
+
   const sent  = SENTIMENT_META[brief.sentiment] ?? SENTIMENT_META.UNCERTAIN;
   const movers = (brief.key_movers ?? []).slice(0, 8);
   const tickers = brief.ticker_summaries ?? [];
