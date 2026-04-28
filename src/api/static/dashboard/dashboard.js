@@ -1039,20 +1039,159 @@ function renderCatalystList(list) {
     </div>`).join('<div class="catalyst-divider"></div>');
 }
 
+const SENTIMENT_META = {
+  RISK_ON:   { cls: 'sent-risk-on',  icon: '🟢', label: 'Risk-On'  },
+  RISK_OFF:  { cls: 'sent-risk-off', icon: '🔴', label: 'Risk-Off' },
+  MIXED:     { cls: 'sent-mixed',    icon: '⚡', label: 'Mixed'    },
+  UNCERTAIN: { cls: 'sent-uncertain',icon: '❓', label: 'Uncertain' },
+};
+
+const SIGNAL_CLS = {
+  breakout: 'breakout', 'risk-on': 'breakout',
+  bearish:  'bearish',  'risk-off': 'bearish',
+  pullback: 'pullback', neutral: 'watchlist',
+};
+
+function renderBriefCard(phase, brief, dateStr) {
+  // brief = full BriefOutput object hoặc null
+  const isEod    = phase === 'eod';
+  const phaseIcon = isEod ? '🌆' : '🌅';
+  const phaseLabel = isEod ? 'EOD brief' : 'Morning brief';
+  const phaseCls   = isEod ? 'phase-eod' : 'phase-morning';
+
+  if (!brief) {
+    return `
+      <div class="brief-card ${phaseCls}">
+        <div class="brief-header">
+          <div class="brief-phase-icon">${phaseIcon}</div>
+          <div>
+            <div class="brief-phase-label">${phaseLabel}</div>
+            <div class="brief-date">${dateStr || '—'}</div>
+          </div>
+        </div>
+        <div class="brief-empty">Chưa có ${phaseLabel.toLowerCase()}.</div>
+      </div>`;
+  }
+
+  const sent  = SENTIMENT_META[brief.sentiment] ?? SENTIMENT_META.UNCERTAIN;
+  const movers = (brief.key_movers ?? []).slice(0, 8);
+  const tickers = brief.ticker_summaries ?? [];
+  const alerts  = brief.watchlist_alerts ?? [];
+  const actions = brief.action_items ?? [];
+
+  const moverPills = movers.map(m => {
+    // m có thể là "NVL +5.4%" hoặc plain ticker
+    const upMatch   = m.match(/\+[\d.]+%/);
+    const downMatch = m.match(/-[\d.]+%/);
+    const cls = upMatch ? 'up' : downMatch ? 'down' : '';
+    const chgPart = (upMatch || downMatch)
+      ? `<span class="chg">${(upMatch || downMatch)[0]}</span>` : '';
+    const ticker = m.replace(/[+-][\d.]+%/g, '').trim();
+    return `<span class="mover-pill ${cls}">${esc(ticker)} ${chgPart}</span>`;
+  }).join('');
+
+  const tickerRows = tickers.map(t => {
+    const chgCls   = t.change_pct > 0 ? 'pos' : t.change_pct < 0 ? 'neg' : '';
+    const chgFmt   = t.change_pct != null
+      ? (t.change_pct > 0 ? '+' : '') + Number(t.change_pct).toFixed(2) + '%'
+      : '—';
+    const sigKey   = (t.signal ?? '').toLowerCase();
+    const sigCls   = SIGNAL_CLS[sigKey] ?? '';
+    return `
+      <tr>
+        <td class="t-ticker">${esc(t.ticker)}</td>
+        <td><span class="t-signal ${sigCls}">${esc(t.signal ?? '—')}</span></td>
+        <td class="t-chg ${chgCls}">${chgFmt}</td>
+        <td class="t-note">${esc(t.one_line ?? t.watch_reason ?? '')}</td>
+      </tr>`;
+  }).join('');
+
+  const alertItems  = alerts.map(a =>
+    `<div class="brief-item">  ${esc(a)}</div>`).join('');
+  const actionItems = actions.map(a =>
+    `<div class="brief-item action">  ${esc(a)}</div>`).join('');
+
+  return `
+    <div class="brief-card ${phaseCls}">
+      <div class="brief-header">
+        <div class="brief-phase-icon">${phaseIcon}</div>
+        <div>
+          <div class="brief-phase-label">${phaseLabel}</div>
+          <div class="brief-date">${dateStr || '—'}</div>
+        </div>
+        <span class="sentiment-badge ${sent.cls}">${sent.icon} ${sent.label}</span>
+      </div>
+
+      ${brief.headline ? `
+      <div class="brief-headline">${esc(brief.headline)}</div>` : ''}
+
+      <div class="brief-body">
+
+        ${moverPills ? `
+        <div class="brief-movers">
+          <span class="mover-label">Movers</span>
+          ${moverPills}
+        </div>` : ''}
+
+        ${tickerRows ? `
+        <div>
+          <div class="brief-section-title">Watchlist</div>
+          <table class="ticker-table">
+            <thead><tr>
+              <th>Mã</th><th>Tín hiệu</th>
+              <th style="text-align:right">±%</th><th>Ghi chú</th>
+            </tr></thead>
+            <tbody>${tickerRows}</tbody>
+          </table>
+        </div>` : ''}
+
+        ${alertItems ? `
+        <div class="brief-section">
+          <div class="brief-section-title">Cảnh báo watchlist</div>
+          ${alertItems}
+        </div>` : ''}
+
+        ${actionItems ? `
+        <div class="brief-section">
+          <div class="brief-section-title">Hành động đề xuất</div>
+          ${actionItems}
+        </div>` : ''}
+
+        ${brief.summary ? `
+        <div class="brief-summary">${esc(brief.summary)}</div>` : ''}
+
+      </div>
+    </div>`;
+}
+
 function renderSnapshots(s) {
   if (!s) return;
+
+  // Scan snapshot — giữ nguyên logic cũ
   el('latestScanAt').textContent = fmtDate(s.latest_scan_at);
   el('latestScanSummary').innerHTML = s.latest_scan_summary
     ? highlightScanText(s.latest_scan_summary)
     : '<span style="color:var(--muted)">Chưa có scan snapshot.</span>';
-  el('latestMorningBriefAt').textContent = fmtDate(s.latest_morning_brief_at);
-  el('latestMorningBriefSummary').innerHTML = s.latest_morning_brief_summary
-    ? highlightScanText(s.latest_morning_brief_summary)
-    : '<span style="color:var(--muted)">Chưa có morning brief.</span>';
-  el('latestEodBriefAt').textContent = fmtDate(s.latest_eod_brief_at);
-  el('latestEodBriefSummary').innerHTML = s.latest_eod_brief_summary
-    ? highlightScanText(s.latest_eod_brief_summary)
-    : '<span style="color:var(--muted)">Chưa có EOD brief.</span>';
+
+  // Morning brief — render structured card
+  const morningWrap = el('morningBriefWrap');
+  if (morningWrap) {
+    morningWrap.innerHTML = renderBriefCard(
+      'morning',
+      s.latest_morning_brief_data ?? null,
+      fmtDate(s.latest_morning_brief_at),
+    );
+  }
+
+  // EOD brief — render structured card
+  const eodWrap = el('eodBriefWrap');
+  if (eodWrap) {
+    eodWrap.innerHTML = renderBriefCard(
+      'eod',
+      s.latest_eod_brief_data ?? null,
+      fmtDate(s.latest_eod_brief_at),
+    );
+  }
 }
 
 async function loadBacktesting() {
