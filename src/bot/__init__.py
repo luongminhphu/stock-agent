@@ -9,8 +9,10 @@ Cogs (loaded via create_bot):
     ThesisCog     — /thesis add|list|close|invalidate
     MarketCog     — /quote <ticker>
 
-Scheduler:
-    Scheduler     — morning_brief (08:30), watchlist_scan (15 min)
+Schedulers:
+    BriefingScheduler       — morning brief (08:45 ICT), EOD brief (15:05 ICT)
+    WatchlistScanScheduler  — auto scan every 5 min, weekdays 09:00–15:00 ICT
+    Scheduler               — alias for BriefingScheduler (backward compat)
 
 Rule: No domain logic in this segment.
       Bot = parse input → call service → format output.
@@ -19,7 +21,7 @@ Rule: No domain logic in this segment.
 # Intentionally minimal — do NOT import app/run here to avoid double-import
 # when running `python -m src.bot`. Consumers should import directly:
 #   from src.bot.app import create_bot, run
-#   from src.bot.scheduler import BriefingScheduler, Scheduler
-from src.bot.scheduler import BriefingScheduler, Scheduler
+#   from src.bot.scheduler import BriefingScheduler, WatchlistScanScheduler, Scheduler
+from src.bot.scheduler import BriefingScheduler, Scheduler, WatchlistScanScheduler
 
-__all__ = ["BriefingScheduler", "Scheduler"]
+__all__ = ["BriefingScheduler", "Scheduler", "WatchlistScanScheduler"]
