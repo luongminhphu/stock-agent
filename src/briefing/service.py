@@ -95,7 +95,7 @@ class BriefingService:
         if self._repo is None:
             return
         try:
-            content = output.summary or str(output)
+            content = output.model_dump_json() if hasattr(output, "model_dump_json") else json.dumps(output.__dict__)
             snapshot = BriefSnapshot(
                 user_id=user_id,
                 phase=phase,
