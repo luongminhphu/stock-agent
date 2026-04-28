@@ -24,17 +24,32 @@ function fmt(n, decimals = 0) {
   if (n == null) return '—';
   return Number(n).toLocaleString('vi-VN', { maximumFractionDigits: decimals });
 }
+
 function fmtDate(d) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
+
 function badge(val) {
   const cls = String(val || '').toLowerCase();
   return `<span class="badge ${cls}">${val || '—'}</span>`;
 }
+
 function esc(v) {
   return String(v ?? '').replace(/[&<>'"]/g, s => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[s]));
 }
+
+function highlightScanText(text) {
+  if (!text) return esc(text);
+  return esc(text)
+    .replace(/\b([A-Z]{2,5})(?=:|\s|,|;)/g,
+      '<strong style="color:#7dd3fc;font-weight:800;letter-spacing:.04em;">$1</strong>')
+    .replace(/(-\d+(?:\.\d+)?%?)/g,
+      '<span style="color:#fb923c;font-weight:600;">$1</span>')
+    .replace(/(\+\d+(?:\.\d+)?%?)/g,
+      '<span style="color:#4ade80;font-weight:700;">$1</span>');
+}
+
 function showToast(msg, type = 'success', ms = 3000) {
   const t = document.createElement('div');
   t.className = `toast ${type}`;
@@ -42,6 +57,7 @@ function showToast(msg, type = 'success', ms = 3000) {
   document.body.appendChild(t);
   setTimeout(() => t.remove(), ms);
 }
+
 function openModal(id) { const d = el(id); if (d) d.showModal(); }
 function closeModal(id) { const d = el(id); if (d) d.close(); }
 
@@ -1026,11 +1042,17 @@ function renderCatalystList(list) {
 function renderSnapshots(s) {
   if (!s) return;
   el('latestScanAt').textContent = fmtDate(s.latest_scan_at);
-  el('latestScanSummary').textContent = s.latest_scan_summary ?? 'Chưa có scan snapshot.';
+  el('latestScanSummary').innerHTML = s.latest_scan_summary
+    ? highlightScanText(s.latest_scan_summary)
+    : '<span style="color:var(--muted)">Chưa có scan snapshot.</span>';
   el('latestMorningBriefAt').textContent = fmtDate(s.latest_morning_brief_at);
-  el('latestMorningBriefSummary').textContent = s.latest_morning_brief_summary ?? 'Chưa có morning brief.';
+  el('latestMorningBriefSummary').innerHTML = s.latest_morning_brief_summary
+    ? highlightScanText(s.latest_morning_brief_summary)
+    : '<span style="color:var(--muted)">Chưa có morning brief.</span>';
   el('latestEodBriefAt').textContent = fmtDate(s.latest_eod_brief_at);
-  el('latestEodBriefSummary').textContent = s.latest_eod_brief_summary ?? 'Chưa có EOD brief.';
+  el('latestEodBriefSummary').innerHTML = s.latest_eod_brief_summary
+    ? highlightScanText(s.latest_eod_brief_summary)
+    : '<span style="color:var(--muted)">Chưa có EOD brief.</span>';
 }
 
 async function loadBacktesting() {
