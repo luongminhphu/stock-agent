@@ -51,11 +51,13 @@ class BriefingCog(BaseCog):
                     watchlist_service=WatchlistService(session=session),
                     quote_service=get_quote_service(),
                     briefing_agent=get_briefing_agent(),
+                    session=session,
                 )
                 if phase == "morning":
                     brief: BriefOutput = await svc.generate_morning_brief(user_id=user_id)
                 else:
                     brief = await svc.generate_eod_brief(user_id=user_id)
+                await session.commit()
         except Exception as exc:
             logger.error("briefing.command.error", phase=phase, error=str(exc))
             await self.send_error(
