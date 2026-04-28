@@ -1079,6 +1079,7 @@ async function triggerAiReview(thesisId) {
       freshResult.innerHTML = reviewHTML;
       freshResult.classList.remove('hidden');
     }
+    showToast('✅ AI đã review & áp dụng gợi ý. Score đã được cập nhật.', 'success', 4000);
   } catch (err) {
     const freshResult = el(`aiReviewResult-${thesisId}`) ?? result;
     freshResult.innerHTML = `<div class="error-banner" style="margin:0">AI review lỗi: ${esc(err.message)}</div>`;
