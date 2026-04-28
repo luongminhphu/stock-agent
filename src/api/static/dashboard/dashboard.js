@@ -211,22 +211,21 @@ function renderReviewRecommendResult(thesisId, d) {
           }
         </div>
 
-        <div style="display:flex;gap:10px;margin-top:6px;flex-wrap:wrap;">
-          <button
-            class="primary-btn apply-ai-review-btn"
-            data-thesis-id="${thesisId}"
-            data-verdict="${esc(d.verdict ?? "")}"
-            data-confidence="${d.confidence ?? ""}"
-            style="min-height:34px;padding:0 14px;font-size:.84rem"
-          >
-            Áp dụng gợi ý
-          </button>
+        <div style="display:flex;gap:10px;margin-top:10px;align-items:center;flex-wrap:wrap;">
+          <span style="
+            display:inline-flex;align-items:center;gap:6px;
+            background:rgba(109,170,69,.15);color:#6daa45;
+            border:1px solid rgba(109,170,69,.3);
+            border-radius:999px;padding:4px 12px;font-size:.82rem;font-weight:600;
+          ">
+            ✓ Đã áp dụng tự động
+          </span>
           <button
             class="ghost-btn dismiss-ai-review-btn"
             data-thesis-id="${thesisId}"
-            style="min-height:34px;padding:0 12px;font-size:.82rem"
+            style="min-height:30px;padding:0 10px;font-size:.8rem;"
           >
-            Để sau
+            Đóng
           </button>
         </div>
       </div>
