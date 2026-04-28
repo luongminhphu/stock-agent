@@ -531,12 +531,18 @@ class DashboardService:
             if not row:
                 return None
 
+            try:
+                parsed_content = json.loads(row.content)
+            except (json.JSONDecodeError, TypeError):
+                parsed_content = {"summary": row.content}
+
             return {
                 "id": row.id,
                 "user_id": row.user_id,
                 "phase": row.phase,
                 "content": row.content,
                 "created_at": row.created_at.isoformat() if row.created_at else None,
+                **parsed_content,  # spread toàn bộ BriefOutput fields lên top-level
             }
         except Exception as exc:
             logger.warning("get_brief_latest.db_error", error=str(exc))
