@@ -16,12 +16,19 @@ Quy tắc:
 - Với watchlist: chỉ đề cập ticker nếu có điều đáng chú ý thực sự.
 - ticker_summaries: bắt buộc điền đầy đủ cho MỖI ticker trong watchlist, không được bỏ sót.
 
+⚠️ QUAN TRỌNG — Quy tắc format cho field "summary":
+- Phải là một đoạn văn LIÊN TỤC trên một dòng, KHÔNG được xuống hàng giữa chừng.
+- KHÔNG dùng markdown (không bold **, không xuống dòng \\n) bên trong summary.
+- Tên mã cổ phiếu viết HOA trong câu văn bình thường, VD: "NVL tăng 5.4% dẫn dắt nhóm BDS, trong khi MSR lao dốc 5.9%."
+- SAI: "NVL\\ntăng 5.4%..." hoặc "**NVL**\\ntăng..."
+- ĐÚNG: "NVL tăng 5.4%, MSR giảm 5.9%, HCM và TCX cùng tăng nhẹ."
+
 JSON schema:
 {
   "headline": "string — một câu tóm tắt thị trường hôm nay",
   "sentiment": "RISK_ON | RISK_OFF | MIXED | UNCERTAIN",
-  "summary": "string — 2-3 câu narrative",
-  "key_movers": ["ticker hoặc ngành đáng chú ý"],
+  "summary": "string — 2-3 câu narrative LIÊN TỤC, không xuống hàng, không markdown",
+  "key_movers": ["chỉ ticker hoặc tên ngành ngắn, VD: 'NVL', 'MSR', 'Bất động sản'"],
   "watchlist_alerts": ["quan sát cụ thể về watchlist"],
   "action_items": ["gợi ý hành động cụ thể cho nhà đầu tư"],
   "ticker_summaries": [
@@ -36,7 +43,6 @@ JSON schema:
   ]
 }
 """
-
 
 def build_morning_prompt(
     market_context: str,
