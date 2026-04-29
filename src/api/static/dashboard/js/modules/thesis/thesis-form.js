@@ -265,8 +265,9 @@ export function wireDetailActions(thesisId, wrap) {
 // ---------------------------------------------------------------------------
 // bindThesisFormEvents — đăng ký form submit + global delete confirm
 // Gọi 1 lần từ app.js khi DOMContentLoaded
+// FIX: thêm default = {} để tránh crash khi caller bị cache cũ hoặc truyền thiếu arg
 // ---------------------------------------------------------------------------
-export function bindThesisFormEvents({ onThesisSaved }) {
+export function bindThesisFormEvents({ onThesisSaved } = {}) {
   // Thesis form submit
   el('thesisForm')?.addEventListener('submit', async e => {
     e.preventDefault();
@@ -306,7 +307,7 @@ export function bindThesisFormEvents({ onThesisSaved }) {
         showToast('✅ Đã tạo thesis mới');
       }
       closeModal('thesisModal');
-      await onThesisSaved(thesisId);
+      await onThesisSaved?.(thesisId);
     } catch (err) {
       showToast(`Lỗi: ${err.message}`, 'error');
     } finally {
