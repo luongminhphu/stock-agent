@@ -2,7 +2,6 @@
  * render-brief.js
  * Owner: modules/briefing
  * Responsibility: render Catalyst calendar list, Snapshots panel, Brief cards.
- * Được tách từ dashboard.js (renderCatalystList, renderSnapshots, renderBriefCard).
  */
 
 import { el } from '../../utils/dom.js';
@@ -47,19 +46,16 @@ const SENTIMENT_META = {
   UNCERTAIN: { cls: 'sent-uncertain', icon: '❓',  label: 'Uncertain' },
 };
 
-const SIGNAL_CLS = {
-  breakout: 'breakout', 'risk-on': 'breakout',
-  bearish:  'bearish',  'risk-off': 'bearish',
-  pullback: 'pullback',  neutral:  'watchlist',
-};
-
 // ---------------------------------------------------------------------------
 // Brief card (morning / eod)
+// Maps đúng fields từ BriefOutput schema (src/ai/schemas.py):
+//   headline, sentiment, summary, key_movers[], watchlist_alerts[],
+//   action_items[], ticker_summaries[]
 // ---------------------------------------------------------------------------
 export function renderBriefCard(phase, brief, dateStr) {
-  const isEod   = phase === 'eod';
-  const label   = isEod ? 'End-of-Day Brief' : 'Morning Brief';
-  const icon    = isEod ? '🌙' : '🌅';
+  const isEod = phase === 'eod';
+  const label = isEod ? 'End-of-Day Brief' : 'Morning Brief';
+  const icon  = isEod ? '🌙' : '🌅';
 
   if (!brief) {
     return `
@@ -70,36 +66,83 @@ export function renderBriefCard(phase, brief, dateStr) {
       </div>`;
   }
 
-  const sentiment = brief.market_sentiment ?? brief.sentiment ?? null;
-  const smeta     = SENTIMENT_META[String(sentiment ?? '').toUpperCase()] ?? null;
-  const signals   = brief.top_signals ?? brief.signals ?? [];
-  const watchlist = brief.watchlist_verdicts ?? brief.watchlist ?? [];
-  const summary   = brief.summary ?? brief.headline ?? brief.content ?? null;
+  // Map đúng BriefOutput fields
+  const sentiment       = brief.sentiment ?? null;
+  const smeta           = SENTIMENT_META[String(sentiment ?? '').toUpperCase()] ?? null;
+  const headline        = brief.headline ?? null;
+  const summary         = brief.summary ?? brief.content ?? null;
+  const keyMovers       = Array.isArray(brief.key_movers)       ? brief.key_movers       : [];
+  const watchlistAlerts = Array.isArray(brief.watchlist_alerts) ? brief.watchlist_alerts : [];
+  const actionItems     = Array.isArray(brief.action_items)     ? brief.action_items     : [];
+  const tickerSummaries = Array.isArray(brief.ticker_summaries) ? brief.ticker_summaries : [];
 
   return `
     <div class="snapshot-card brief-card">
       <span class="snapshot-label">${icon} ${label}</span>
-      <strong>${dateStr ?? fmtDate(brief.created_at ?? brief.generated_at)}</strong>
+      <strong>${dateStr ?? fmtDate(brief.created_at)}</strong>
+
       ${smeta
         ? `<span class="badge ${smeta.cls}" style="margin-top:4px;font-size:.78rem;">${smeta.icon} ${smeta.label}</span>`
         : ''}
-      ${summary
-        ? `<p class="muted" style="font-size:.82rem;margin-top:6px;line-height:1.55;">${esc(String(summary).slice(0, 200))}${String(summary).length > 200 ? '…' : ''}</p>`
+
+      ${headline
+        ? `<p style="font-weight:600;font-size:.9rem;margin-top:8px;">${esc(headline)}</p>`
         : ''}
-      ${signals.length ? `
+
+      ${summary
+        ? `<p class="muted" style="font-size:.82rem;margin-top:4px;line-height:1.55;">${esc(summary)}</p>`
+        : ''}
+
+      ${keyMovers.length ? `
         <div style="margin-top:8px;">
-          <p class="suggest-section-title">Top signals</p>
-          ${signals.slice(0, 3).map(s => {
-            const cls = SIGNAL_CLS[String(s.signal_type ?? s.type ?? '').toLowerCase()] ?? 'watchlist';
-            return `<span class="badge ${cls}" style="font-size:.75rem;margin-right:4px;margin-bottom:4px;display:inline-block;">${esc(s.ticker ?? '')} ${esc(s.signal_type ?? s.type ?? '')}</span>`;
-          }).join('')}
+          <p class="suggest-section-title">📌 Key Movers</p>
+          ${keyMovers.map(s =>
+            `<span class="badge watchlist" style="font-size:.75rem;margin-right:4px;margin-bottom:4px;display:inline-block;">${esc(s)}</span>`
+          ).join('')}
         </div>` : ''}
-      ${watchlist.length ? `
-        <div style="margin-top:6px;">
-          <p class="suggest-section-title">Watchlist verdicts</p>
-          ${watchlist.slice(0, 4).map(w => `
-            <div style="font-size:.8rem;margin-bottom:2px;">
-              <strong>${esc(w.ticker ?? '')}</strong>: ${esc(w.verdict ?? '')} — ${esc(w.reasoning ? String(w.reasoning).slice(0, 60) : '')}
+
+      ${watchlistAlerts.length ? `
+        <div style="margin-top:8px;">
+          <p class="suggest-section-title">⚠️ Watchlist Alerts</p>
+          ${watchlistAlerts.map(a =>
+            `<div style="font-size:.8rem;margin-bottom:4px;padding-left:8px;border-left:2px solid var(--accent);">
+               ${esc(a)}
+             </div>`
+          ).join('')}
+        </div>` : ''}
+
+      ${actionItems.length ? `
+        <div style="margin-top:8px;">
+          <p class="suggest-section-title">✅ Action Items</p>
+          <ul style="margin:0;padding-left:16px;">
+            ${actionItems.map(a =>
+              `<li style="font-size:.8rem;margin-bottom:2px;">${esc(a)}</li>`
+            ).join('')}
+          </ul>
+        </div>` : ''}
+
+      ${tickerSummaries.length ? `
+        <div style="margin-top:8px;">
+          <p class="suggest-section-title">📊 Ticker Summaries</p>
+          ${tickerSummaries.map(t => `
+            <div style="font-size:.8rem;margin-bottom:6px;padding:4px 8px;background:var(--surface-alt,rgba(0,0,0,.04));border-radius:6px;">
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                <strong>${esc(t.ticker ?? '')}</strong>
+                ${t.change_pct !== undefined && t.change_pct !== null
+                  ? `<span style="color:${t.change_pct >= 0 ? 'var(--green,#22c55e)' : 'var(--red,#ef4444)'};">
+                       ${t.change_pct >= 0 ? '+' : ''}${Number(t.change_pct).toFixed(2)}%
+                     </span>`
+                  : ''}
+                ${t.signal
+                  ? `<span class="badge" style="font-size:.7rem;">${esc(t.signal)}</span>`
+                  : ''}
+              </div>
+              ${t.one_line
+                ? `<div style="color:var(--muted);margin-top:2px;">${esc(t.one_line)}</div>`
+                : ''}
+              ${t.watch_reason
+                ? `<div style="color:var(--muted);font-style:italic;font-size:.75rem;margin-top:1px;">${esc(t.watch_reason)}</div>`
+                : ''}
             </div>`).join('')}
         </div>` : ''}
     </div>`;
