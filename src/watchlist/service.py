@@ -26,6 +26,8 @@ from src.watchlist.models import (
 )
 from src.watchlist.repository import WatchlistRepository
 
+AddAlertInput = CreateAlertInput
+
 logger = get_logger(__name__)
 
 # Re-export để backward compat với code import từ service.py
@@ -33,6 +35,7 @@ __all__ = [
     "WatchlistService",
     "AddToWatchlistInput",
     "CreateAlertInput",
+    "AddAlertInput",
     "WatchlistItemNotFoundError",
     "WatchlistItemAlreadyExistsError",
     "AlertNotFoundError",
