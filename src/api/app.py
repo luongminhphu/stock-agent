@@ -20,10 +20,11 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from src.api.routes.briefing import router as briefing_router
@@ -41,6 +42,40 @@ logger = get_logger(__name__)
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 _DASHBOARD_DIR = _STATIC_DIR / "dashboard"
 _DASHBOARD_HTML = _DASHBOARD_DIR / "index.html"
+
+# Inline SVG favicon — no file needed, no 404.
+_FAVICON_SVG = (
+    b"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>"
+    b"<text y='.9em' font-size='90'>\xf0\x9f\x93\x88</text></svg>"
+)
+
+
+class _CacheBustedStaticFiles(StaticFiles):
+    """StaticFiles with explicit Cache-Control headers.
+
+    - JS / CSS: ``must-revalidate`` — browser revalidates every request via
+      ETag/Last-Modified.  If unchanged, server returns 304 (no body sent).
+      This ensures stale JS is never served after a deploy.
+    - Everything else: 10-minute cache — safe default for images/fonts.
+    """
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:  # type: ignore[override]
+        async def _send_with_cache_header(message: Any) -> None:
+            if message["type"] == "http.response.start":
+                path: str = scope.get("path", "")
+                if path.endswith(".js") or path.endswith(".css"):
+                    cache_value = b"no-cache, must-revalidate"
+                else:
+                    cache_value = b"public, max-age=600"
+                headers = list(message.get("headers", []))
+                headers = [
+                    (k, v) for k, v in headers if k.lower() != b"cache-control"
+                ]
+                headers.append((b"cache-control", cache_value))
+                message = {**message, "headers": headers}
+            await send(message)
+
+        await super().__call__(scope, receive, _send_with_cache_header)
 
 
 @asynccontextmanager
@@ -73,11 +108,19 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Mount static assets (CSS, JS, fonts, …)
-    # /static/dashboard/dashboard.css
-    # /static/dashboard/dashboard.js
+    # Favicon — inline SVG, never 404.
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon() -> Response:
+        return Response(
+            content=_FAVICON_SVG,
+            media_type="image/svg+xml",
+            headers={"cache-control": "public, max-age=86400"},
+        )
+
+    # Mount static assets with proper Cache-Control headers.
+    # JS/CSS use no-cache+must-revalidate so browsers always revalidate after deploy.
     if _STATIC_DIR.exists():
-        app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
+        app.mount("/static", _CacheBustedStaticFiles(directory=_STATIC_DIR), name="static")
 
     @app.get("/dashboard", include_in_schema=False)
     async def serve_dashboard() -> FileResponse:
