@@ -1,4 +1,5 @@
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -16,8 +17,6 @@ def _build_engine():
     is_sqlite = url.startswith("sqlite")
 
     if is_sqlite:
-        # SQLite does not support pool_size / max_overflow;
-        # use StaticPool so the same in-memory DB is shared across threads.
         return create_async_engine(
             url,
             echo=settings.is_development,
@@ -47,12 +46,11 @@ AsyncSessionLocal = async_sessionmaker(
 
 class Base(DeclarativeBase):
     """Base class for all SQLAlchemy ORM models. Import this in each segment's models.py."""
-
     pass
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
-    """FastAPI dependency / context manager for DB sessions."""
+    """FastAPI dependency-style session provider."""
     async with AsyncSessionLocal() as session:
         try:
             yield session
@@ -64,5 +62,15 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
-# Alias used by routes/readmodel.py and any other callers expecting `get_session`.
-get_session = get_db_session
+@asynccontextmanager
+async def get_session() -> AsyncGenerator[AsyncSession, None]:
+    """Async context manager for bot/services."""
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
