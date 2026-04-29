@@ -20,7 +20,7 @@ import datetime
 import discord
 from discord.ext import tasks
 
-from src.bot.commands.briefing import _build_brief_embed
+from src.bot.commands.briefing import build_brief_embed
 from src.briefing.service import BriefingService
 from src.platform.bootstrap import get_briefing_agent, get_quote_service
 from src.platform.config import settings
@@ -34,9 +34,8 @@ logger = get_logger(__name__)
 # BriefingScheduler
 # ---------------------------------------------------------------------------
 
-# Weekdays only, ICT = UTC+7
 _MORNING_TIME = datetime.time(hour=1, minute=45, tzinfo=datetime.UTC)  # 08:45 ICT
-_EOD_TIME = datetime.time(hour=8, minute=5, tzinfo=datetime.UTC)  # 15:05 ICT
+_EOD_TIME = datetime.time(hour=8, minute=5, tzinfo=datetime.UTC)       # 15:05 ICT
 
 
 class BriefingScheduler:
@@ -63,10 +62,7 @@ class BriefingScheduler:
     async def _eod_task(self) -> None:
         await self._send_brief(phase="eod")
 
-    async def _send_brief(
-        self,
-        phase: str,
-    ) -> None:
+    async def _send_brief(self, phase: str) -> None:
         channel_id = getattr(
             settings, "morning_channel_id" if phase == "morning" else "eod_channel_id", None
         )
@@ -99,7 +95,7 @@ class BriefingScheduler:
                     brief = await svc.generate_eod_brief(user_id=str(user_id))
                 await session.commit()
 
-            embed = _build_brief_embed(brief, phase=phase)
+            embed = build_brief_embed(brief, phase=phase)
             await channel.send(embed=embed)  # type: ignore[union-attr]
             logger.info("scheduler.briefing.sent", phase=phase, channel_id=channel_id)
 
@@ -112,8 +108,6 @@ class BriefingScheduler:
 # ---------------------------------------------------------------------------
 
 _SCAN_INTERVAL_MINUTES = 5
-
-# Market hours ICT (UTC+7) expressed in UTC
 _MARKET_OPEN_UTC = datetime.time(hour=2, minute=0)   # 09:00 ICT
 _MARKET_CLOSE_UTC = datetime.time(hour=8, minute=0)  # 15:00 ICT
 
@@ -141,10 +135,8 @@ class WatchlistScanScheduler:
     @tasks.loop(minutes=_SCAN_INTERVAL_MINUTES)
     async def _scan_task(self) -> None:
         now_utc = datetime.datetime.now(tz=datetime.UTC)
-        # Skip weekends
         if now_utc.weekday() >= 5:
             return
-        # Skip outside market hours
         now_time = now_utc.time().replace(tzinfo=datetime.UTC)
         if not (_MARKET_OPEN_UTC <= now_time.replace(tzinfo=None) <= _MARKET_CLOSE_UTC):
             return
@@ -167,6 +159,7 @@ class WatchlistScanScheduler:
                     quote_service=get_quote_service(),
                 )
                 result = await svc.scan_user(str(user_id))
+                await session.commit()
 
             if not result.signals:
                 return
@@ -209,5 +202,4 @@ class WatchlistScanScheduler:
 # Aliases
 # ---------------------------------------------------------------------------
 
-# src/bot/__init__.py imports `Scheduler` by this name
 Scheduler = BriefingScheduler

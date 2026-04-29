@@ -4,6 +4,8 @@ Owner: watchlist segment.
 Consumes QuoteService (market segment) via injection.
 Does NOT own alert-firing logic — calls alert.is_triggered_by() (domain helper)
 then returns structured scan result for bot/api adapters.
+
+Note: _persist_snapshot does NOT commit — caller is responsible for session lifecycle.
 """
 
 from __future__ import annotations
@@ -38,7 +40,7 @@ class ScanSignal:
     def signal_type(self) -> str:
         if self.triggered_alerts:
             return "alert_triggered"
-        if abs(self.change_pct) >= 3:  # lowered from 5 → 3 to catch intraday moves
+        if abs(self.change_pct) >= 3:
             return "strong_move"
         return "watch"
 
@@ -107,7 +109,7 @@ class ScanService:
         for ticker in tickers:
             try:
                 signal = await self._scan_ticker(ticker, items)
-                if signal.has_alerts or abs(signal.change_pct) >= 3:  # lowered from 5 → 3
+                if signal.has_alerts or abs(signal.change_pct) >= 3:
                     result.signals.append(signal)
             except Exception as exc:
                 logger.warning("scan.ticker_error", ticker=ticker, error=str(exc))
@@ -123,13 +125,12 @@ class ScanService:
         await self._persist_snapshot(user_id, result)
         return result
 
-    async def scan_for_user(self, user_id: str) -> ScanResult:
-        return await self.scan_user(user_id)
-
     async def get_latest_snapshot(self, user_id: str) -> WatchlistScan | None:
         return await self._repo.get_latest_scan(user_id)
 
-    async def scan_user_if_stale(self, user_id: str, max_age_minutes: int = 30) -> WatchlistScan | None:
+    async def scan_user_if_stale(
+        self, user_id: str, max_age_minutes: int = 30
+    ) -> WatchlistScan | None:
         latest = await self.get_latest_snapshot(user_id)
         now = datetime.now(UTC)
 
@@ -168,14 +169,14 @@ class ScanService:
                 volume_ratio=volume_ratio,
             ):
                 signal.triggered_alerts.append(alert)
-                alert.mark_triggered(price=quote.price)  # persist triggered_price in DB
+                alert.mark_triggered(price=quote.price)
 
         return signal
 
     async def _persist_snapshot(self, user_id: str, result: ScanResult) -> None:
-        """Persist a WatchlistScan snapshot so the dashboard can display it.
+        """Stage a WatchlistScan snapshot — caller must commit the session.
 
-        Failures are logged and swallowed — a DB error must never block
+        Failures are logged and swallowed so a DB error never blocks
         scan result delivery to the caller.
         """
         try:
@@ -185,11 +186,9 @@ class ScanService:
                 scanned_at=result.scanned_at,
             )
             self._session.add(snapshot)
-            await self._session.commit()
-            logger.info("scan.snapshot_saved", user_id=user_id, snapshot_id=snapshot.id)
+            logger.info("scan.snapshot_staged", user_id=user_id)
         except Exception as exc:
-            logger.error("scan.snapshot_save_failed", user_id=user_id, error=str(exc))
-            await self._session.rollback()
+            logger.error("scan.snapshot_stage_failed", user_id=user_id, error=str(exc))
 
 
 class ScanServiceNotConfiguredError(Exception):

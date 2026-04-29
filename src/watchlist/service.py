@@ -2,15 +2,22 @@
 
 Owner: watchlist segment.
 Bot commands and API routes use this; they do not import models directly.
+
+DTOs and Exceptions → dtos.py
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.logging import get_logger
+from src.watchlist.dtos import (
+    AddToWatchlistInput,
+    AlertNotFoundError,
+    CreateAlertInput,
+    WatchlistItemAlreadyExistsError,
+    WatchlistItemNotFoundError,
+)
 from src.watchlist.models import (
     Alert,
     AlertConditionType,
@@ -21,36 +28,15 @@ from src.watchlist.repository import WatchlistRepository
 
 logger = get_logger(__name__)
 
-
-@dataclass
-class AddToWatchlistInput:
-    user_id: str
-    ticker: str
-    note: str = ""
-    thesis_id: int | None = None
-    priority: int = 100
-
-
-@dataclass
-class CreateAlertInput:
-    user_id: str
-    ticker: str
-    condition_type: AlertConditionType
-    threshold: float
-    note: str = ""
-    watchlist_item_id: int | None = None
-
-
-AddAlertInput = CreateAlertInput
-
-
-class WatchlistItemNotFoundError(Exception): ...
-
-
-class WatchlistItemAlreadyExistsError(Exception): ...
-
-
-class AlertNotFoundError(Exception): ...
+# Re-export để backward compat với code import từ service.py
+__all__ = [
+    "WatchlistService",
+    "AddToWatchlistInput",
+    "CreateAlertInput",
+    "WatchlistItemNotFoundError",
+    "WatchlistItemAlreadyExistsError",
+    "AlertNotFoundError",
+]
 
 
 class WatchlistService:
@@ -79,7 +65,9 @@ class WatchlistService:
     async def remove(self, user_id: str, ticker: str) -> None:
         item = await self._repo.get_item(user_id, ticker)
         if item is None:
-            raise WatchlistItemNotFoundError(f"{ticker} not found in watchlist for user {user_id}")
+            raise WatchlistItemNotFoundError(
+                f"{ticker} not found in watchlist for user {user_id}"
+            )
         await self._repo.delete_item(item)
         logger.info("watchlist.removed", user_id=user_id, ticker=ticker)
 
@@ -127,9 +115,6 @@ class WatchlistService:
             threshold=inp.threshold,
         )
         return alert
-
-    async def add_alert(self, inp: AddAlertInput) -> Alert:
-        return await self.create_alert(inp)
 
     async def dismiss_alert(self, alert_id: int, user_id: str) -> None:
         alerts = await self._repo.list_active_alerts(user_id)

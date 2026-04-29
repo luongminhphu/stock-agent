@@ -67,22 +67,19 @@ class BriefingCog(BaseCog):
             )
             return
 
-        embed = _build_brief_embed(brief, phase=phase)
+        embed = build_brief_embed(brief, phase=phase)
         await interaction.followup.send(embed=embed, ephemeral=False)
 
 
-def _build_brief_embed(brief: BriefOutput, phase: str) -> discord.Embed:
+def build_brief_embed(brief: BriefOutput, phase: str) -> discord.Embed:
     """Convert BriefOutput → Discord Embed.
 
     Uses briefing.formatter for the text body, then wraps in Embed chrome.
-    Keeps all string-building logic inside formatter.py (single responsibility).
+    Public — importable by scheduler and other bot adapters.
     """
     title = "\U0001f305 Morning Brief" if phase == "morning" else "\U0001f307 End-of-Day Brief"
     colour = _SENTIMENT_COLOUR.get(brief.sentiment, discord.Color.blurple())
-
     formatted_text = format_morning_brief(brief) if phase == "morning" else format_eod_brief(brief)
-
-    # Discord embed description cap: 4096 chars
     embed = discord.Embed(
         title=title,
         description=formatted_text[:4096],
