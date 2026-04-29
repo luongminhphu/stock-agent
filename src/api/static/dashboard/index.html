@@ -10,7 +10,12 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/static/dashboard/dashboard.css" />
-    <!-- modulepreload: hint browser fetch ES module sớm, tránh 'preloaded but not used' warning -->
+    <!--
+      modulepreload: gợi ý browser fetch ES module sớm.
+      - Dùng rel="modulepreload" (không phải rel="preload" + as="script")
+      - Không cần as= attribute — modulepreload đã ngầm hiểu là script
+      - Chỉ khai báo entry point; browser tự crawl static import graph
+    -->
     <link rel="modulepreload" href="/static/dashboard/js/app.js" />
   </head>
   <body>
@@ -400,6 +405,10 @@
       </div>
     </dialog>
 
-    <script type="module" src="/static/dashboard/js/app.js"></script>
+    <!--
+      Cache bust: thêm ?v=2 vào app.js để browser fetch lại file mới nhất.
+      Tăng số version mỗi khi có breaking change ở JS modules.
+    -->
+    <script type="module" src="/static/dashboard/js/app.js?v=2"></script>
   </body>
 </html>
