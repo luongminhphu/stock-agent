@@ -244,3 +244,64 @@ class WhyOutput(BaseModel):
     risk_flags: list[str] = Field(default_factory=list, description="Rủi ro cần theo dõi tiếp")
     confidence: float = Field(ge=0.0, le=1.0, description="Độ tin cậy phân tích")
     data_quality: str = Field(default="", description="Ghi chú về chất lượng dữ liệu đầu vào")
+
+
+# ---------------------------------------------------------------------------
+# Pre-trade Check  (used by PreTradeAgent)
+# ---------------------------------------------------------------------------
+
+
+class TradeDecision(StrEnum):
+    GO = "GO"        # Tín hiệu đồng thuận, có thể vào lệnh
+    WAIT = "WAIT"    # Chưa đủ điều kiện, cần chờ thêm
+    AVOID = "AVOID"  # Tín hiệu xung đột hoặc rủi ro cao
+
+
+class AlignmentStatus(StrEnum):
+    SUPPORT = "SUPPORT"    # Nguồn này ủng hộ quyết định vào lệnh
+    NEUTRAL = "NEUTRAL"    # Nguồn này không có ý kiến rõ ràng
+    CONFLICT = "CONFLICT"  # Nguồn này mâu thuẫn với quyết định
+    NO_DATA = "NO_DATA"    # Không có dữ liệu từ nguồn này
+
+
+class PreTradeCheckOutput(BaseModel):
+    """Structured output from PreTradeAgent.
+
+    Tổng hợp verdict từ nhiều nguồn: thesis, watchlist signal, brief hôm nay.
+    decision là kết luận cuối; các *_alignment fields giải thích lý do.
+    """
+
+    ticker: str
+    decision: TradeDecision
+    confidence: float = Field(ge=0.0, le=1.0, description="Độ tin cậy tổng hợp")
+    thesis_alignment: AlignmentStatus = Field(
+        description="Thesis hiện tại có ủng hộ quyết định vào lệnh không?"
+    )
+    signal_alignment: AlignmentStatus = Field(
+        description="Watchlist scan signal có đồng thuận không?"
+    )
+    brief_alignment: AlignmentStatus = Field(
+        description="Brief hôm nay đề cập ticker này như thế nào?"
+    )
+    conflicts: list[str] = Field(
+        default_factory=list,
+        description="Mâu thuẫn cụ thể giữa các nguồn dữ liệu",
+    )
+    conditions: list[str] = Field(
+        default_factory=list,
+        description="Điều kiện cần thỏa trước khi GO (chỉ có nghĩa khi decision=WAIT)",
+    )
+    risk_flags: list[str] = Field(
+        default_factory=list,
+        description="Rủi ro cần theo dõi ngay cả khi GO",
+    )
+    reasoning: str = Field(description="Lý giải tổng hợp của AI về quyết định này")
+
+    @field_validator("conflicts", "conditions", "risk_flags", mode="before")
+    @classmethod
+    def ensure_list(cls, v: object) -> list[object]:
+        if isinstance(v, str):
+            return [v]
+        if not isinstance(v, list):
+            return []
+        return v  # type: ignore[return-value]
