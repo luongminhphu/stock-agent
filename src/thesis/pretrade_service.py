@@ -83,8 +83,14 @@ class PreTradeService:
     # ------------------------------------------------------------------
 
     async def _build_thesis_context(self, ticker: str, user_id: str) -> str:
+        """Return thesis context for ticker scoped to this user.
+
+        ThesisRepository.list_active_by_ticker() returns all users' theses
+        for a ticker, so we filter by user_id here.
+        """
         try:
-            theses = await self._thesis_repo.list_active_for_ticker(ticker, user_id)
+            all_theses = await self._thesis_repo.list_active_by_ticker(ticker)
+            theses = [t for t in all_theses if t.user_id == user_id]
             if not theses:
                 return ""
             parts = []
@@ -106,9 +112,8 @@ class PreTradeService:
             snapshot = await self._watchlist_repo.get_latest_scan(user_id)
             if not snapshot or not snapshot.summary:
                 return ""
-            # Extract mention of this ticker from the scan summary
             lines = snapshot.summary.split(";")
-            relevant = [l.strip() for l in lines if ticker in l.upper()]
+            relevant = [line.strip() for line in lines if ticker in line.upper()]
             if not relevant:
                 return f"Scan lúc {snapshot.scanned_at}: không có tín hiệu riêng cho {ticker}."
             return f"Scan lúc {snapshot.scanned_at}: " + "; ".join(relevant)
@@ -119,32 +124,25 @@ class PreTradeService:
     async def _build_brief_context(self, ticker: str, user_id: str) -> str:
         """Extract any mention of ticker from today's latest brief.
 
-        Best-effort: imports briefing repo lazily to avoid circular dependency.
-        Returns empty string if briefing segment is not available.
+        BriefSnapshot only stores plain `content` (Markdown text).
+        We search for ticker in content and return a 200-char snippet.
+        Tries morning brief first, falls back to EOD.
         """
         try:
-            from src.briefing.repository import BriefingRepository  # lazy import
+            from src.briefing.repository import BriefSnapshotRepository  # lazy to avoid circular
 
-            repo = BriefingRepository(self._session)
-            brief = await repo.get_latest_for_user(user_id)
-            if not brief:
+            repo = BriefSnapshotRepository(self._session)
+            brief = await repo.get_latest(user_id, "morning") or await repo.get_latest(
+                user_id, "eod"
+            )
+            if not brief or not brief.content:
                 return ""
-            # Search structured ticker_summaries first
-            if brief.ticker_summaries:
-                for ts in brief.ticker_summaries:
-                    if ts.get("ticker", "").upper() == ticker:
-                        return (
-                            f"{ts.get('signal', '')} | {ts.get('one_line', '')} "
-                            f"| {ts.get('change_pct', '')}%"
-                        )
-            # Fallback: scan plain summary text
-            summary = brief.summary or ""
-            if ticker in summary.upper():
-                # Return a 200-char window around the first mention
-                idx = summary.upper().find(ticker)
-                snippet = summary[max(0, idx - 50) : idx + 150].strip()
-                return snippet
-            return ""
+            content_upper = brief.content.upper()
+            if ticker not in content_upper:
+                return ""
+            idx = content_upper.find(ticker)
+            snippet = brief.content[max(0, idx - 50) : idx + 150].strip()
+            return f"[Brief {brief.phase} {brief.created_at.date()}] ...{snippet}..."
         except Exception as exc:
             logger.warning("pretrade_service.brief_context_error", ticker=ticker, error=str(exc))
             return ""
