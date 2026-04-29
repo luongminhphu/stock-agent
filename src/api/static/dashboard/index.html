@@ -8,6 +8,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/static/dashboard/dashboard.css" />
+    <!-- modulepreload: tối ưu load ES module, không gây 'preload but not used' warning -->
+    <link rel="modulepreload" href="/static/dashboard/js/app.js" />
   </head>
   <body>
     <div class="shell">
@@ -396,7 +398,6 @@
       </div>
     </dialog>
 
-    <!-- Entry point: ES module, thay thế dashboard.js monolith -->
     <script type="module" src="/static/dashboard/js/app.js"></script>
   </body>
 </html>
