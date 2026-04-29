@@ -207,7 +207,7 @@ class WatchlistCog(BaseCog):
                     session=session,
                     quote_service=get_quote_service(),
                 )
-                result = await svc.scan_for_user(user_id=user_id)
+                result = await svc.scan_user(user_id)
                 await session.commit()
         except Exception as exc:
             logger.error("watchlist_scan.error", user_id=user_id, error=str(exc))
