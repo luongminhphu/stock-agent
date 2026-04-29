@@ -7,6 +7,8 @@ readmodel segment uses its own optimized read queries.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -14,6 +16,7 @@ from sqlalchemy.orm import selectinload
 from src.thesis.models import (
     Assumption,
     Catalyst,
+    CatalystStatus,
     RecommendationStatus,
     ReviewRecommendation,
     Thesis,
@@ -69,6 +72,64 @@ class ThesisRepository:
             .where(Thesis.ticker == ticker.upper())
             .where(Thesis.status == ThesisStatus.ACTIVE)
             .options(selectinload(Thesis.assumptions), selectinload(Thesis.catalysts))
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def list_active_for_user(self, user_id: str) -> list[Thesis]:
+        """Return all ACTIVE theses for a user, with assumptions + catalysts loaded.
+
+        Used by auto_expire_overdue_catalysts — needs catalysts eager-loaded.
+        """
+        stmt = (
+            select(Thesis)
+            .where(Thesis.user_id == user_id)
+            .where(Thesis.status == ThesisStatus.ACTIVE)
+            .options(
+                selectinload(Thesis.assumptions),
+                selectinload(Thesis.catalysts),
+            )
+            .order_by(Thesis.created_at.desc())
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def list_stale_theses(self, user_id: str, stale_days: int = 3) -> list[Thesis]:
+        """Return ACTIVE theses that have not been reviewed in the last stale_days days.
+
+        A thesis is considered stale if:
+          - It has never been reviewed, OR
+          - Its most recent review is older than stale_days days.
+
+        Uses a correlated subquery to find the max reviewed_at per thesis.
+        Loads assumptions + catalysts so ReviewService can build context without
+        extra queries.
+        """
+        cutoff = datetime.now(UTC) - timedelta(days=stale_days)
+
+        # Subquery: latest reviewed_at per thesis
+        latest_review_sq = (
+            select(ThesisReview.reviewed_at)
+            .where(ThesisReview.thesis_id == Thesis.id)
+            .order_by(ThesisReview.reviewed_at.desc())
+            .limit(1)
+            .correlate(Thesis)
+            .scalar_subquery()
+        )
+
+        stmt = (
+            select(Thesis)
+            .where(Thesis.user_id == user_id)
+            .where(Thesis.status == ThesisStatus.ACTIVE)
+            .where(
+                # No review at all, OR latest review is older than cutoff
+                (latest_review_sq == None) | (latest_review_sq < cutoff)  # noqa: E711
+            )
+            .options(
+                selectinload(Thesis.assumptions),
+                selectinload(Thesis.catalysts),
+            )
+            .order_by(Thesis.created_at.asc())
         )
         result = await self._session.execute(stmt)
         return list(result.scalars().all())

@@ -240,6 +240,64 @@ class ComponentService:
         await self._auto_invalidate_if_needed(thesis_id)
 
     # ------------------------------------------------------------------
+    # Auto-maintenance (Wave 5)
+    # ------------------------------------------------------------------
+
+    async def auto_expire_overdue_catalysts(self, user_id: str) -> int:
+        """Chuyển catalyst PENDING đã qua expected_date → EXPIRED.
+
+        Chạy mỗi ngày lúc 08:30 ICT (trước morning brief) bởi
+        ThesisMaintenanceScheduler. Không raise — failure của từng
+        thesis được log và skip, không block các thesis khác.
+
+        Returns:
+            Số catalyst bị expire trong lần chạy này.
+        """
+        now = datetime.now(UTC)
+        theses = await self._repo.list_active_for_user(user_id)
+        expired_count = 0
+        affected_thesis_ids: set[int] = set()
+
+        for thesis in theses:
+            for catalyst in thesis.catalysts:
+                if (
+                    catalyst.status == CatalystStatus.PENDING
+                    and catalyst.expected_date is not None
+                    and catalyst.expected_date < now
+                ):
+                    catalyst.status = CatalystStatus.EXPIRED
+                    await self._repo.save_catalyst(catalyst)
+                    expired_count += 1
+                    affected_thesis_ids.add(thesis.id)
+                    logger.info(
+                        "catalyst.auto_expired",
+                        catalyst_id=catalyst.id,
+                        thesis_id=thesis.id,
+                        expected_date=catalyst.expected_date.isoformat(),
+                    )
+
+        # Recompute score + check invalidation cho các thesis bị ảnh hưởng
+        for thesis_id in affected_thesis_ids:
+            try:
+                await self._recompute_score(thesis_id)
+                await self._auto_invalidate_if_needed(thesis_id)
+            except Exception:
+                logger.exception(
+                    "catalyst.auto_expire.score_recompute_failed",
+                    thesis_id=thesis_id,
+                )
+
+        if expired_count:
+            logger.info(
+                "catalyst.auto_expire.done",
+                user_id=user_id,
+                expired_count=expired_count,
+                affected_theses=len(affected_thesis_ids),
+            )
+
+        return expired_count
+
+    # ------------------------------------------------------------------
     # Recommendation
     # ------------------------------------------------------------------
 
@@ -257,10 +315,9 @@ class ComponentService:
         """
         rec = await self._repo.get_recommendation_by_id(recommendation_id)
         if rec is None:
-            raise ValueError(f"Recommendation {recommendation_id} not found")
-        if rec.review.thesis_id != thesis_id:
-            raise ValueError(
-                f"Recommendation {recommendation_id} does not belong to thesis {thesis_id}"
+            from src.thesis.dtos import RecommendationNotFoundError
+            raise RecommendationNotFoundError(
+                f"Recommendation {recommendation_id} not found"
             )
 
         now = datetime.now(UTC)
@@ -269,34 +326,41 @@ class ComponentService:
             rec.status = RecommendationStatus.REJECTED
             rec.acted_at = now
             await self._repo.save_recommendation(rec)
-            logger.info(
-                "recommendation.rejected",
-                recommendation_id=recommendation_id,
-                thesis_id=thesis_id,
-            )
+            logger.info("recommendation.rejected", recommendation_id=recommendation_id)
             return
 
+        # Accept: apply status change
+        from src.thesis.models import Assumption, AssumptionStatus, Catalyst, CatalystStatus
+
         if rec.target_type == "assumption":
-            inp = UpdateAssumptionInput(status=AssumptionStatus(rec.recommended_status))
-            await self.update_assumption(thesis_id, rec.target_id, inp)
+            target = await self._repo.get_assumption_by_id(rec.target_id, thesis_id)
+            if target is not None:
+                try:
+                    target.status = AssumptionStatus(rec.recommended_status.lower())
+                    await self._repo.save_assumption(target)
+                except ValueError:
+                    logger.warning(
+                        "recommendation.apply.invalid_assumption_status",
+                        recommended_status=rec.recommended_status,
+                        recommendation_id=recommendation_id,
+                    )
         elif rec.target_type == "catalyst":
-            inp = UpdateCatalystInput(status=CatalystStatus(rec.recommended_status))
-            await self.update_catalyst(thesis_id, rec.target_id, inp)
-        else:
-            logger.warning(
-                "recommendation.unknown_target_type",
-                target_type=rec.target_type,
-                recommendation_id=recommendation_id,
-            )
+            target = await self._repo.get_catalyst_by_id(rec.target_id, thesis_id)
+            if target is not None:
+                try:
+                    target.status = CatalystStatus(rec.recommended_status.lower())
+                    await self._repo.save_catalyst(target)
+                except ValueError:
+                    logger.warning(
+                        "recommendation.apply.invalid_catalyst_status",
+                        recommended_status=rec.recommended_status,
+                        recommendation_id=recommendation_id,
+                    )
 
         rec.status = RecommendationStatus.ACCEPTED
         rec.acted_at = now
         await self._repo.save_recommendation(rec)
-        logger.info(
-            "recommendation.accepted",
-            recommendation_id=recommendation_id,
-            target_type=rec.target_type,
-            target_id=rec.target_id,
-            recommended_status=rec.recommended_status,
-            thesis_id=thesis_id,
-        )
+        logger.info("recommendation.accepted", recommendation_id=recommendation_id)
+
+        await self._recompute_score(thesis_id)
+        await self._auto_invalidate_if_needed(thesis_id)

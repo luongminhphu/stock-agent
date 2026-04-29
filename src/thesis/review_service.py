@@ -167,6 +167,71 @@ class ReviewService:
         )
         return review
 
+    async def review_stale_theses(
+        self,
+        user_id: str,
+        stale_days: int = 3,
+    ) -> list[ThesisReview]:
+        """Trigger AI review cho tất cả ACTIVE thesis chưa được review > stale_days ngày.
+
+        Chạy mỗi ngày lúc 08:30 ICT bởi ThesisMaintenanceScheduler, sau bước
+        auto_expire_overdue_catalysts. Loop tuần tự (không asyncio.gather) để
+        tránh rate limit AI. Lỗi từng thesis được log và skip — không block các
+        thesis còn lại.
+
+        Args:
+            user_id:    User sở hữu các thesis cần review.
+            stale_days: Số ngày không có review trước khi coi là stale. Default: 3.
+
+        Returns:
+            List ThesisReview vừa tạo (chỉ các thesis đã review thành công).
+        """
+        stale = await self._repo.list_stale_theses(user_id, stale_days=stale_days)
+        if not stale:
+            logger.info(
+                "review_service.stale_review.nothing_to_do",
+                user_id=user_id,
+                stale_days=stale_days,
+            )
+            return []
+
+        logger.info(
+            "review_service.stale_review.start",
+            user_id=user_id,
+            stale_days=stale_days,
+            thesis_count=len(stale),
+            thesis_ids=[t.id for t in stale],
+        )
+
+        results: list[ThesisReview] = []
+        for thesis in stale:
+            try:
+                review = await self.review_thesis(
+                    thesis_id=thesis.id,
+                    user_id=user_id,
+                )
+                results.append(review)
+                logger.info(
+                    "review_service.stale_review.thesis_done",
+                    thesis_id=thesis.id,
+                    ticker=thesis.ticker,
+                    verdict=review.verdict,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "review_service.stale_review.thesis_failed",
+                    thesis_id=thesis.id,
+                    ticker=thesis.ticker,
+                    error=str(exc),
+                )
+
+        logger.info(
+            "review_service.stale_review.done",
+            reviewed=len(results),
+            skipped=len(stale) - len(results),
+        )
+        return results
+
     async def list_reviews(
         self,
         thesis_id: int,

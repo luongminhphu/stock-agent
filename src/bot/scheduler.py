@@ -4,9 +4,10 @@ Owner: bot segment (adapter only).
 No business logic — calls domain services on schedule.
 
 Registered tasks:
-    BriefingScheduler.morning_brief_task  — weekdays 08:45 ICT
-    BriefingScheduler.eod_brief_task      — weekdays 15:05 ICT
-    WatchlistScanScheduler.scan_task      — every 5 min, weekdays 09:00–15:00 ICT
+    BriefingScheduler.morning_brief_task       — weekdays 08:45 ICT
+    BriefingScheduler.eod_brief_task           — weekdays 15:05 ICT
+    WatchlistScanScheduler.scan_task           — every 5 min, weekdays 09:00–15:00 ICT
+    ThesisMaintenanceScheduler.maintenance     — weekdays 08:30 ICT (before morning brief)
 
 Note:
     MORNING_CHANNEL_ID and EOD_CHANNEL_ID must be set in settings.
@@ -22,7 +23,7 @@ from discord.ext import tasks
 
 from src.bot.commands.briefing import build_brief_embed
 from src.briefing.service import BriefingService
-from src.platform.bootstrap import get_briefing_agent, get_quote_service
+from src.platform.bootstrap import get_briefing_agent, get_quote_service, get_thesis_review_agent
 from src.platform.config import settings
 from src.platform.db import AsyncSessionLocal
 from src.platform.logging import get_logger
@@ -195,6 +196,134 @@ class WatchlistScanScheduler:
 
     @_scan_task.before_loop
     async def _before_scan(self) -> None:
+        await self._client.wait_until_ready()
+
+
+# ---------------------------------------------------------------------------
+# ThesisMaintenanceScheduler  (Wave 5)
+# ---------------------------------------------------------------------------
+
+_MAINTENANCE_TIME = datetime.time(hour=1, minute=30, tzinfo=datetime.UTC)  # 08:30 ICT
+_MAINTENANCE_STALE_DAYS = 3
+
+
+class ThesisMaintenanceScheduler:
+    """Chạy lúc 08:30 ICT mỗi ngày làm việc — 15 phút trước morning brief.
+
+    Flow:
+        1. auto_expire_overdue_catalysts()  — không tốn token, chạy đầu tiên.
+        2. review_stale_theses()            — AI review, chỉ khi thesis stale > 3 ngày.
+        3. Discord notify nếu có thay đổi.
+
+    Hai bước dùng session riêng biệt — expire và review độc lập, bước 2
+    fail không rollback bước 1.
+    """
+
+    def __init__(self, client: discord.Client) -> None:
+        self._client = client
+
+    def start(self) -> None:
+        self._maintenance_task.start()
+        logger.info("scheduler.thesis_maintenance.started")
+
+    def stop(self) -> None:
+        self._maintenance_task.cancel()
+        logger.info("scheduler.thesis_maintenance.stopped")
+
+    @tasks.loop(time=_MAINTENANCE_TIME)
+    async def _maintenance_task(self) -> None:
+        now_utc = datetime.datetime.now(tz=datetime.UTC)
+        if now_utc.weekday() >= 5:  # Skip weekends
+            return
+
+        user_id = getattr(settings, "scheduler_user_id", None)
+        channel_id = getattr(settings, "morning_channel_id", None)
+        if not user_id:
+            logger.warning(
+                "scheduler.thesis_maintenance.skipped",
+                reason="scheduler_user_id not configured",
+            )
+            return
+
+        expired_count = 0
+        reviews: list = []
+
+        # ── Step 1: Auto-expire overdue catalysts (no AI, no token cost) ──
+        try:
+            from src.thesis.component_service import ComponentService
+
+            async with AsyncSessionLocal() as session:
+                svc = ComponentService(session)
+                expired_count = await svc.auto_expire_overdue_catalysts(str(user_id))
+                await session.commit()
+            logger.info(
+                "scheduler.thesis_maintenance.expire_done",
+                expired_count=expired_count,
+            )
+        except Exception as exc:
+            logger.error("scheduler.thesis_maintenance.expire_error", error=str(exc))
+
+        # ── Step 2: AI review for stale theses ──
+        try:
+            from src.thesis.review_service import ReviewService
+
+            async with AsyncSessionLocal() as session:
+                svc = ReviewService(
+                    session=session,
+                    agent=get_thesis_review_agent(),  # type: ignore[arg-type]
+                    quote_service=get_quote_service(),
+                )
+                reviews = await svc.review_stale_theses(
+                    user_id=str(user_id),
+                    stale_days=_MAINTENANCE_STALE_DAYS,
+                )
+                await session.commit()
+            logger.info(
+                "scheduler.thesis_maintenance.review_done",
+                reviewed_count=len(reviews),
+            )
+        except Exception as exc:
+            logger.error("scheduler.thesis_maintenance.review_error", error=str(exc))
+
+        # ── Step 3: Discord notify if anything changed ──
+        if not channel_id or (expired_count == 0 and not reviews):
+            return
+
+        channel = self._client.get_channel(int(channel_id))
+        if channel is None:
+            logger.warning(
+                "scheduler.thesis_maintenance.channel_not_found",
+                channel_id=channel_id,
+            )
+            return
+
+        try:
+            lines: list[str] = []
+            if expired_count:
+                lines.append(f"⏰ **{expired_count}** catalyst đã hết hạn → EXPIRED")
+            for r in reviews:
+                verdict_icon = {"bullish": "🟢", "bearish": "🔴", "neutral": "🟡"}.get(
+                    str(r.verdict).lower(), "⚪"
+                )
+                lines.append(
+                    f"{verdict_icon} Thesis #{r.thesis_id} — {r.verdict} "
+                    f"(confidence: {r.confidence:.0%})"
+                )
+
+            embed = discord.Embed(
+                title="🔧 Thesis Maintenance",
+                description="\n".join(lines),
+                color=0x4F98A3,
+            )
+            ict_time = (now_utc + datetime.timedelta(hours=7)).strftime("%H:%M ICT")
+            embed.set_footer(text=f"Auto-maintenance lúc {ict_time}")
+            await channel.send(embed=embed)  # type: ignore[union-attr]
+            logger.info("scheduler.thesis_maintenance.notified")
+        except Exception as exc:
+            logger.error("scheduler.thesis_maintenance.notify_error", error=str(exc))
+
+    @_maintenance_task.before_loop
+    async def _before_maintenance(self) -> None:
         await self._client.wait_until_ready()
 
 
