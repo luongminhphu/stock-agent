@@ -119,11 +119,14 @@ export function renderCatItem(c) {
 
 /**
  * Render bảng danh sách theses.
- * @param {Array}    list
- * @param {Object}   callbacks  - { onSelect, onEdit, onDelete } — tất cả optional
+ * @param {Array}  list
+ * @param {Object} callbacks  - { onSelect, onEdit, onDelete } — tất cả optional
+ *
+ * FIX: inline default trong destructure để tránh crash khi callbacks bị undefined
+ * (ví dụ do module cache cũ hoặc caller không truyền arg)
  */
 export function renderThesesTable(list, callbacks = {}) {
-  const { onSelect, onEdit, onDelete } = callbacks;
+  const { onSelect = null, onEdit = null, onDelete = null } = callbacks ?? {};
   const wrap = document.getElementById('thesesTableWrap');
   if (!list.length) {
     wrap.innerHTML = '<p class="empty-state">Chưa có thesis nào. Nhấn <strong>+ Thesis mới</strong> để tạo.</p>';
