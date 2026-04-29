@@ -4,19 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>stock-agent — Investor Dashboard</title>
-    <!-- Inline SVG favicon: không cần file, không bao giờ 404 -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>%F0%9F%93%88</text></svg>" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/static/dashboard/dashboard.css" />
     <!--
-      modulepreload: gợi ý browser fetch ES module sớm.
-      - Dùng rel="modulepreload" (không phải rel="preload" + as="script")
-      - Không cần as= attribute — modulepreload đã ngầm hiểu là script
-      - Chỉ khai báo entry point; browser tự crawl static import graph
+      NOTE: modulepreload bị xóa cố ý.
+      Cloudflare Rocket Loader rewrite <script type="module"> nhưng không touch
+      <link rel="modulepreload"> → credentials mode mâu thuẫn → warning + double-fetch.
+      Same-origin static không cần modulepreload — browser tự fetch nhanh.
     -->
-    <link rel="modulepreload" href="/static/dashboard/js/app.js" />
   </head>
   <body>
     <div class="shell">
@@ -406,9 +404,11 @@
     </dialog>
 
     <!--
-      Cache bust: thêm ?v=2 vào app.js để browser fetch lại file mới nhất.
-      Tăng số version mỗi khi có breaking change ở JS modules.
+      data-cfasync="false": tắt Cloudflare Rocket Loader cho tag này.
+      Rocket Loader không hiểu ES module native — nó rewrite script tag với
+      credentials mode khác, gây double-fetch và credentials mismatch.
+      type="module" đã defer implicitly — không cần Rocket Loader can thiệp.
     -->
-    <script type="module" src="/static/dashboard/js/app.js?v=2"></script>
+    <script data-cfasync="false" type="module" src="/static/dashboard/js/app.js?v=2"></script>
   </body>
 </html>
