@@ -3,66 +3,6 @@ import { fmt, fmtDate, badge, esc, highlightScanText, scoreClass, fmtScore, pct 
 import { apiBase, thesisApiBase, getJson, sendJson } from './js/api/client.js';
 
 
-function el(id) { return document.getElementById(id); }
-function apiBase() { return '/api/v1/readmodel/dashboard'; }
-function thesisApiBase() { return '/api/v1/thesis'; }
-function authHeaders() { return { 'Content-Type': 'application/json' }; }
-
-async function getJson(url, options = {}) {
-  const r = await fetch(url, { ...options, headers: { ...authHeaders(), ...(options.headers ?? {}) } });
-  if (!r.ok) {
-    const msg = await r.text().catch(() => r.statusText);
-    throw new Error(`${r.status} ${msg}`);
-  }
-  if (r.status === 204 || r.headers.get('content-length') === '0') return null;
-  return r.json();
-}
-
-async function sendJson(url, method, body) {
-  return getJson(url, { method, body: body != null ? JSON.stringify(body) : undefined });
-}
-
-function fmt(n, decimals = 0) {
-  if (n == null) return '—';
-  return Number(n).toLocaleString('vi-VN', { maximumFractionDigits: decimals });
-}
-
-function fmtDate(d) {
-  if (!d) return '—';
-  return new Date(d).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
-}
-
-function badge(val) {
-  const cls = String(val || '').toLowerCase();
-  return `<span class="badge ${cls}">${val || '—'}</span>`;
-}
-
-function esc(v) {
-  return String(v ?? '').replace(/[&<>'"]/g, s => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[s]));
-}
-
-function highlightScanText(text) {
-  if (!text) return esc(text);
-  return esc(text)
-    .replace(/\b([A-Z][A-Z0-9]{1,4})(?![A-Z0-9])(?=\s*[:;,]|\s+(?:Price|price|-|\+))/g,
-      '<strong style="color:#7dd3fc;font-weight:800;letter-spacing:.04em;">$1</strong>')
-    .replace(/(-\d+(?:\.\d+)?%?)/g,
-      '<span style="color:#fb923c;font-weight:600;">$1</span>')
-    .replace(/(\+\d+(?:\.\d+)?%?)/g,
-      '<span style="color:#4ade80;font-weight:700;">$1</span>');
-}
-
-function showToast(msg, type = 'success', ms = 3000) {
-  const t = document.createElement('div');
-  t.className = `toast ${type}`;
-  t.textContent = msg;
-  document.body.appendChild(t);
-  setTimeout(() => t.remove(), ms);
-}
-
-function openModal(id) { const d = el(id); if (d) d.showModal(); }
-function closeModal(id) { const d = el(id); if (d) d.close(); }
-
 let _selectedThesisId = null;
 let _theses = [];
 let _deleteCallback = null;
@@ -71,24 +11,6 @@ let _deleteCallback = null;
 let latestAiReviews = {};       // key: thesisId -> latest review payload
 let aiApplyThesisId = null;     // thesis đang mở modal AI apply
 let aiSelectedRecIds = [];      // rec ids user tick trong modal
-
-function scoreClass(s) {
-  if (s == null) return '';
-  if (s >= 86) return 'score-high';
-  if (s >= 71) return 'score-good';
-  if (s >= 51) return 'score-mid';
-  if (s >= 31) return 'score-warn';
-  return 'score-low';
-}
-
-function fmtScore(s) {
-  return s == null ? '—' : Math.round(Number(s));
-}
-
-function pct(value, max) {
-  if (value == null || !max) return 0;
-  return Math.max(0, Math.min(100, (Number(value) / Number(max)) * 100));
-}
 
 function renderScoreBreakdown(breakdown) {
   if (!breakdown) return '';
