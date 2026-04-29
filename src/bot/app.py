@@ -34,6 +34,7 @@ def create_bot() -> commands.Bot:
         await _register_cogs(bot)
         _start_briefing_scheduler(bot)
         _start_scan_scheduler(bot)
+        _start_thesis_maintenance_scheduler(bot)
         _start_snapshot_scheduler()
         await _sync_tree(bot)
         logger.info(
@@ -141,6 +142,36 @@ def _start_scan_scheduler(bot: commands.Bot) -> None:
         interval_minutes=5,
         channel=channel_id,
         user=user_id,
+    )
+
+
+def _start_thesis_maintenance_scheduler(bot: commands.Bot) -> None:
+    """Attach ThesisMaintenanceScheduler if required settings are configured.
+
+    Runs at 08:30 ICT on weekdays — 15 minutes before morning brief.
+    Requires same settings as briefing scheduler: scheduler_user_id + morning_channel_id.
+    Skipped silently in test environment.
+    """
+    if settings.environment == "test":
+        logger.info("bot.thesis_maintenance_scheduler.skipped", reason="test environment")
+        return
+
+    if not settings.briefing_scheduler_enabled:
+        logger.info(
+            "bot.thesis_maintenance_scheduler.skipped",
+            reason="scheduler_user_id or morning_channel_id not configured",
+        )
+        return
+
+    from src.bot.scheduler import ThesisMaintenanceScheduler
+
+    scheduler = ThesisMaintenanceScheduler(client=bot)
+    scheduler.start()
+    logger.info(
+        "bot.thesis_maintenance_scheduler.started",
+        time_ict="08:30",
+        channel=settings.morning_channel_id,
+        user=settings.scheduler_user_id,
     )
 
 
