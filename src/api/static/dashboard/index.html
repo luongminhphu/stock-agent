@@ -124,17 +124,38 @@
             <div class="panel-header">
               <div>
                 <p class="eyebrow">Automation</p>
-                <h2>Latest scan & briefs</h2>
+                <h2>Latest scan &amp; briefs</h2>
               </div>
             </div>
             <div class="snapshot-grid">
+              <!-- Scan snapshot -->
               <div class="snapshot-card">
                 <span class="snapshot-label">Latest scan</span>
                 <strong id="latestScanAt">-</strong>
                 <p id="latestScanSummary" class="muted">Chưa có scan snapshot.</p>
               </div>
-              <div id="morningBriefWrap"></div>
-              <div id="eodBriefWrap"></div>
+
+              <!-- Brief tab widget -->
+              <div class="brief-tabs">
+                <div class="brief-tab-bar" role="tablist" aria-label="Briefs">
+                  <button
+                    class="brief-tab active"
+                    role="tab"
+                    aria-selected="true"
+                    aria-controls="morningBriefWrap"
+                    data-brief-tab="morning"
+                  >🌅 Morning</button>
+                  <button
+                    class="brief-tab"
+                    role="tab"
+                    aria-selected="false"
+                    aria-controls="eodBriefWrap"
+                    data-brief-tab="eod"
+                  >🌙 EOD</button>
+                </div>
+                <div id="morningBriefWrap" class="brief-tab-pane" role="tabpanel"></div>
+                <div id="eodBriefWrap"     class="brief-tab-pane hidden" role="tabpanel"></div>
+              </div>
             </div>
           </section>
         </aside>
@@ -144,7 +165,7 @@
         <div class="panel-header split-header">
           <div>
             <p class="eyebrow">Backtesting</p>
-            <h2>Review accuracy & thesis performance</h2>
+            <h2>Review accuracy &amp; thesis performance</h2>
           </div>
           <p class="muted">Đo độ đúng của verdict và xem aggregate PnL theo từng thesis.</p>
         </div>
@@ -409,6 +430,6 @@
       credentials mode khác, gây double-fetch và credentials mismatch.
       type="module" đã defer implicitly — không cần Rocket Loader can thiệp.
     -->
-    <script data-cfasync="false" type="module" src="/static/dashboard/js/app.js?v=2"></script>
+    <script data-cfasync="false" type="module" src="/static/dashboard/js/app.js?v=3"></script>
   </body>
 </html>

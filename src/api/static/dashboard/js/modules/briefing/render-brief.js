@@ -48,9 +48,7 @@ const SENTIMENT_META = {
 
 // ---------------------------------------------------------------------------
 // Brief card (morning / eod)
-// Maps đúng fields từ BriefOutput schema (src/ai/schemas.py):
-//   headline, sentiment, summary, key_movers[], watchlist_alerts[],
-//   action_items[], ticker_summaries[]
+// Maps đúng fields từ BriefOutput schema (src/ai/schemas.py)
 // ---------------------------------------------------------------------------
 export function renderBriefCard(phase, brief, dateStr) {
   const isEod = phase === 'eod';
@@ -58,15 +56,9 @@ export function renderBriefCard(phase, brief, dateStr) {
   const icon  = isEod ? '🌙' : '🌅';
 
   if (!brief) {
-    return `
-      <div class="snapshot-card">
-        <span class="snapshot-label">${icon} ${label}</span>
-        <strong>—</strong>
-        <p class="muted">Chưa có brief.</p>
-      </div>`;
+    return `<div class="brief-empty">Chưa có brief.</div>`;
   }
 
-  // Map đúng BriefOutput fields
   const sentiment       = brief.sentiment ?? null;
   const smeta           = SENTIMENT_META[String(sentiment ?? '').toUpperCase()] ?? null;
   const headline        = brief.headline ?? null;
@@ -77,75 +69,123 @@ export function renderBriefCard(phase, brief, dateStr) {
   const tickerSummaries = Array.isArray(brief.ticker_summaries) ? brief.ticker_summaries : [];
 
   return `
-    <div class="snapshot-card brief-card">
-      <span class="snapshot-label">${icon} ${label}</span>
-      <strong>${dateStr ?? fmtDate(brief.created_at)}</strong>
-
-      ${smeta
-        ? `<span class="badge ${smeta.cls}" style="margin-top:4px;font-size:.78rem;">${smeta.icon} ${smeta.label}</span>`
-        : ''}
+    <div class="brief-card phase-${isEod ? 'eod' : 'morning'}">
+      <div class="brief-header">
+        <div class="brief-phase-icon">${icon}</div>
+        <div>
+          <div class="brief-phase-label">${label}</div>
+          <div class="brief-date">${dateStr ?? fmtDate(brief.created_at)}</div>
+        </div>
+        ${smeta
+          ? `<span class="sentiment-badge ${smeta.cls}">${smeta.icon} ${smeta.label}</span>`
+          : ''}
+      </div>
 
       ${headline
-        ? `<p style="font-weight:600;font-size:.9rem;margin-top:8px;">${esc(headline)}</p>`
+        ? `<div class="brief-headline">${esc(headline)}</div>`
         : ''}
 
-      ${summary
-        ? `<p class="muted" style="font-size:.82rem;margin-top:4px;line-height:1.55;">${esc(summary)}</p>`
-        : ''}
+      <div class="brief-body">
+        ${summary
+          ? `<div class="brief-summary">${esc(summary)}</div>`
+          : ''}
 
-      ${keyMovers.length ? `
-        <div style="margin-top:8px;">
-          <p class="suggest-section-title">📌 Key Movers</p>
-          ${keyMovers.map(s =>
-            `<span class="badge watchlist" style="font-size:.75rem;margin-right:4px;margin-bottom:4px;display:inline-block;">${esc(s)}</span>`
-          ).join('')}
-        </div>` : ''}
+        ${keyMovers.length ? `
+          <div class="brief-section">
+            <div class="brief-section-title">📌 Key Movers</div>
+            <div class="brief-movers">
+              ${keyMovers.map(s => {
+                const isStr = typeof s === 'string';
+                const ticker = isStr ? s : (s.ticker ?? s);
+                const chg    = isStr ? null : s.change_pct;
+                const cls    = chg == null ? '' : chg >= 0 ? 'up' : 'down';
+                return `<span class="mover-pill ${cls}">
+                  <strong>${esc(String(ticker))}</strong>
+                  ${chg != null ? `<span class="chg">${chg >= 0 ? '+' : ''}${Number(chg).toFixed(1)}%</span>` : ''}
+                </span>`;
+              }).join('')}
+            </div>
+          </div>` : ''}
 
-      ${watchlistAlerts.length ? `
-        <div style="margin-top:8px;">
-          <p class="suggest-section-title">⚠️ Watchlist Alerts</p>
-          ${watchlistAlerts.map(a =>
-            `<div style="font-size:.8rem;margin-bottom:4px;padding-left:8px;border-left:2px solid var(--accent);">
-               ${esc(a)}
-             </div>`
-          ).join('')}
-        </div>` : ''}
-
-      ${actionItems.length ? `
-        <div style="margin-top:8px;">
-          <p class="suggest-section-title">✅ Action Items</p>
-          <ul style="margin:0;padding-left:16px;">
-            ${actionItems.map(a =>
-              `<li style="font-size:.8rem;margin-bottom:2px;">${esc(a)}</li>`
+        ${watchlistAlerts.length ? `
+          <div class="brief-section">
+            <div class="brief-section-title">⚠️ Watchlist Alerts</div>
+            ${watchlistAlerts.map(a =>
+              `<div class="brief-item">${esc(a)}</div>`
             ).join('')}
-          </ul>
-        </div>` : ''}
+          </div>` : ''}
 
-      ${tickerSummaries.length ? `
-        <div style="margin-top:8px;">
-          <p class="suggest-section-title">📊 Ticker Summaries</p>
-          ${tickerSummaries.map(t => `
-            <div style="font-size:.8rem;margin-bottom:6px;padding:4px 8px;background:var(--surface-alt,rgba(0,0,0,.04));border-radius:6px;">
-              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                <strong>${esc(t.ticker ?? '')}</strong>
-                ${t.change_pct !== undefined && t.change_pct !== null
-                  ? `<span style="color:${t.change_pct >= 0 ? 'var(--green,#22c55e)' : 'var(--red,#ef4444)'};">
-                       ${t.change_pct >= 0 ? '+' : ''}${Number(t.change_pct).toFixed(2)}%
-                     </span>`
-                  : ''}
-                ${t.signal
-                  ? `<span class="badge" style="font-size:.7rem;">${esc(t.signal)}</span>`
-                  : ''}
-              </div>
-              ${t.one_line
-                ? `<div style="color:var(--muted);margin-top:2px;">${esc(t.one_line)}</div>`
-                : ''}
-              ${t.watch_reason
-                ? `<div style="color:var(--muted);font-style:italic;font-size:.75rem;margin-top:1px;">${esc(t.watch_reason)}</div>`
-                : ''}
-            </div>`).join('')}
-        </div>` : ''}
+        ${actionItems.length ? `
+          <div class="brief-section">
+            <div class="brief-section-title">✅ Action Items</div>
+            ${actionItems.map(a =>
+              `<div class="brief-item action">${esc(a)}</div>`
+            ).join('')}
+          </div>` : ''}
+
+        ${tickerSummaries.length ? `
+          <div class="brief-section">
+            <div class="brief-section-title">📊 Ticker Summaries</div>
+            <table class="brief-ticker-table">
+              <thead>
+                <tr>
+                  <th>Mã</th>
+                  <th>Signal</th>
+                  <th style="text-align:right;">Chg%</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${tickerSummaries.map(t => {
+                  const chg = t.change_pct;
+                  const cls = chg == null ? '' : chg >= 0 ? 'pos' : 'neg';
+                  const sigCls = t.signal ? t.signal.toLowerCase().replace(/\s+/g, '-') : '';
+                  return `<tr>
+                    <td>
+                      <div class="bt-ticker">${esc(t.ticker ?? '')}</div>
+                      ${t.one_line
+                        ? `<div class="bt-note">${esc(t.one_line)}</div>`
+                        : ''}
+                      ${t.watch_reason
+                        ? `<div class="bt-note" style="font-style:italic;">${esc(t.watch_reason)}</div>`
+                        : ''}
+                    </td>
+                    <td>${t.signal ? `<span class="bt-signal ${sigCls}">${esc(t.signal)}</span>` : '—'}</td>
+                    <td class="bt-chg ${cls}">${chg != null ? (chg >= 0 ? '+' : '') + Number(chg).toFixed(2) + '%' : '—'}</td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>` : ''}
+      </div>
     </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Wire brief tab switching
+// ---------------------------------------------------------------------------
+function wireBriefTabs() {
+  const tabBar = document.querySelector('.brief-tab-bar');
+  if (!tabBar) return;
+
+  tabBar.addEventListener('click', e => {
+    const btn = e.target.closest('[data-brief-tab]');
+    if (!btn) return;
+
+    const target = btn.dataset.briefTab;
+
+    // Update tab buttons
+    tabBar.querySelectorAll('.brief-tab').forEach(t => {
+      const active = t.dataset.briefTab === target;
+      t.classList.toggle('active', active);
+      t.setAttribute('aria-selected', String(active));
+    });
+
+    // Show / hide panes
+    const morningPane = el('morningBriefWrap');
+    const eodPane     = el('eodBriefWrap');
+    if (morningPane) morningPane.classList.toggle('hidden', target !== 'morning');
+    if (eodPane)     eodPane.classList.toggle('hidden',    target !== 'eod');
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -177,4 +217,12 @@ export function renderSnapshots(data) {
       data.latest_eod_brief_at ? fmtDate(data.latest_eod_brief_at) : null,
     );
   }
+
+  // Wire tab clicks (idempotent — listener is on parent, safe to re-attach)
+  wireBriefTabs();
 }
+
+// ---------------------------------------------------------------------------
+// Snapshots (alias for renderSnapshots)
+// ---------------------------------------------------------------------------
+export function renderSnapshots_alias(data) { return renderSnapshots(data); }
