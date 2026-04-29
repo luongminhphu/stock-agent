@@ -66,7 +66,7 @@ class PretradeCog(BaseCog):
             await self.send_error(
                 interaction,
                 title="Pre-trade check th\u1ea5t b\u1ea1i",
-                description=f"Kh\u00f4ng th\u1ec3 ph\u00e2n t\u00edch `{ticker.upper()}`.\ n`{exc}`",
+                description=f"Kh\u00f4ng th\u1ec3 ph\u00e2n t\u00edch `{ticker.upper()}`.\n`{exc}`",
             )
             return
 
@@ -89,7 +89,7 @@ def _build_pretrade_embed(result) -> discord.Embed:
     s_icon = _ALIGNMENT_ICON.get(result.signal_alignment, "\u2753")
     b_icon = _ALIGNMENT_ICON.get(result.brief_alignment, "\u2753")
     embed.add_field(
-        name="\ud83d\udcca Đồng thuận nguồn",
+        name="\ud83d\udcca \u0110\u1ed3ng thu\u1eadn ngu\u1ed3n",
         value=(
             f"{t_icon} **Thesis**: {result.thesis_alignment.value}\n"
             f"{s_icon} **Scan signal**: {result.signal_alignment.value}\n"
@@ -100,26 +100,26 @@ def _build_pretrade_embed(result) -> discord.Embed:
 
     if result.conflicts:
         embed.add_field(
-            name="\u26a0\ufe0f Xung đột",
+            name="\u26a0\ufe0f Xung \u0111\u1ed9t",
             value="\n".join(f"\u2022 {c}" for c in result.conflicts),
             inline=False,
         )
 
     if result.conditions:
         embed.add_field(
-            name="\u23f3 Điều kiện cần thỏa (WAIT)",
+            name="\u23f3 \u0110i\u1ec1u ki\u1ec7n c\u1ea7n th\u1ecfa (WAIT)",
             value="\n".join(f"\u2022 {c}" for c in result.conditions),
             inline=False,
         )
 
     if result.risk_flags:
         embed.add_field(
-            name="\ud83d\udea8 Rủi ro theo dõi",
+            name="\ud83d\udea8 R\u1ee7i ro theo d\u00f5i",
             value="\n".join(f"\u2022 {r}" for r in result.risk_flags),
             inline=False,
         )
 
     embed.set_footer(
-        text=f"\u0110ộ tin cậy: {conf_bar} {result.confidence:.0%}  \u00b7  stock-agent pre-trade"
+        text=f"\u0110\u1ed9 tin c\u1eady: {conf_bar} {result.confidence:.0%}  \u00b7  stock-agent pre-trade"
     )
     return embed
