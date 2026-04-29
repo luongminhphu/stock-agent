@@ -159,6 +159,7 @@
       </footer>
     </div>
 
+    <!-- Thesis modal -->
     <dialog id="thesisModal" aria-labelledby="thesisModalTitle">
       <div class="modal-inner">
         <div class="modal-header">
@@ -256,6 +257,7 @@
       </div>
     </dialog>
 
+    <!-- Assumption modal -->
     <dialog id="assumptionModal" aria-labelledby="assumptionModalTitle">
       <div class="modal-inner">
         <div class="modal-header">
@@ -308,6 +310,7 @@
       </div>
     </dialog>
 
+    <!-- Catalyst modal -->
     <dialog id="catalystModal" aria-labelledby="catalystModalTitle">
       <div class="modal-inner">
         <div class="modal-header">
@@ -360,27 +363,25 @@
       </div>
     </dialog>
 
-    <!-- Modal áp dụng gợi ý từ AI -->
+    <!-- AI Apply modal -->
     <dialog id="aiApplyModal" aria-labelledby="aiApplyModalTitle">
       <div class="modal-inner">
         <div class="modal-header">
           <h2 id="aiApplyModalTitle">Áp dụng gợi ý từ AI</h2>
           <button class="modal-close" data-close="aiApplyModal" aria-label="Đóng">&#x2715;</button>
         </div>
-
         <p class="muted" style="font-size:0.82rem;">
           Chọn những assumption/catalyst bạn muốn cập nhật theo gợi ý của AI.
         </p>
-
         <div id="aiApplyModalBody" class="review-columns" style="margin-top:10px;"></div>
-
         <div class="modal-footer">
           <button type="button" class="ghost-btn" data-close="aiApplyModal">Hủy</button>
           <button type="button" class="primary-btn" id="aiApplyConfirmBtn">Xác nhận áp dụng</button>
         </div>
       </div>
     </dialog>
-    
+
+    <!-- Delete confirm modal -->
     <dialog id="deleteModal" aria-labelledby="deleteModalTitle">
       <div class="modal-inner">
         <div class="modal-header">
@@ -395,6 +396,7 @@
       </div>
     </dialog>
 
-    <script type="module" src="/static/dashboard/dashboard.js"></script>
+    <!-- Entry point: ES module, thay thế dashboard.js monolith -->
+    <script type="module" src="/static/dashboard/js/app.js"></script>
   </body>
 </html>
