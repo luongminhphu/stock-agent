@@ -1,4 +1,6 @@
-'use strict';
+import { el, showToast, openModal, closeModal } from './js/utils/dom.js';
+import { fmt, fmtDate, badge, esc, highlightScanText, scoreClass, fmtScore, pct } from './js/utils/format.js';
+import { apiBase, thesisApiBase, getJson, sendJson } from './js/api/client.js';
 
 
 function el(id) { return document.getElementById(id); }
