@@ -135,23 +135,23 @@
                 <p id="latestScanSummary" class="muted">Chưa có scan snapshot.</p>
               </div>
 
-              <!-- Brief tab widget -->
+              <!-- Brief tabs: Morning / EOD -->
               <div class="brief-tabs">
-                <div class="brief-tab-bar" role="tablist" aria-label="Briefs">
+                <div class="brief-tab-bar" role="tablist" aria-label="Brief phase">
                   <button
                     class="brief-tab active"
                     role="tab"
                     aria-selected="true"
                     aria-controls="morningBriefWrap"
-                    data-brief-tab="morning"
+                    data-tab="morning"
                   >🌅 Morning</button>
                   <button
                     class="brief-tab"
                     role="tab"
                     aria-selected="false"
                     aria-controls="eodBriefWrap"
-                    data-brief-tab="eod"
-                  >🌙 EOD</button>
+                    data-tab="eod"
+                  >🌙 End-of-Day</button>
                 </div>
                 <div id="morningBriefWrap" class="brief-tab-pane" role="tabpanel"></div>
                 <div id="eodBriefWrap"     class="brief-tab-pane hidden" role="tabpanel"></div>
@@ -424,12 +424,6 @@
       </div>
     </dialog>
 
-    <!--
-      data-cfasync="false": tắt Cloudflare Rocket Loader cho tag này.
-      Rocket Loader không hiểu ES module native — nó rewrite script tag với
-      credentials mode khác, gây double-fetch và credentials mismatch.
-      type="module" đã defer implicitly — không cần Rocket Loader can thiệp.
-    -->
     <script data-cfasync="false" type="module" src="/static/dashboard/js/app.js?v=3"></script>
   </body>
 </html>
