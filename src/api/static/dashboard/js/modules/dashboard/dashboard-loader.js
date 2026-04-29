@@ -10,7 +10,7 @@ import { state }               from '../../state/dashboard-state.js';
 import { renderThesesTable }   from '../thesis/render-thesis-table.js';
 import { loadThesisDetail }    from '../thesis/thesis-service.js';
 import { openEditThesisModal } from '../thesis/thesis-form.js';
-import { renderVerdicts }      from '../backtesting/render-backtesting.js';
+import { renderVerdicts, renderAccuracy, renderPerformance } from '../backtesting/render-backtesting.js';
 import { renderCatalystList, renderSnapshots } from '../briefing/render-brief.js';
 
 // ---------------------------------------------------------------------------
@@ -21,7 +21,6 @@ function wireDeleteThesis(id) {
   const btn = el('deleteConfirmBtn');
   if (msg) msg.textContent = `Bạn có chắc muốn xóa thesis này không? Hành động không thể hoàn tác.`;
   if (btn) {
-    // clone để xóa listener cũ
     const fresh = btn.cloneNode(true);
     btn.parentNode.replaceChild(fresh, btn);
     fresh.addEventListener('click', async () => {
@@ -90,7 +89,6 @@ export async function loadDashboard() {
       latest_eod_brief_data:       latestEodBrief ?? null,
     });
 
-    // Re-render detail nếu đang có thesis được chọn
     if (state.selectedThesisId) {
       const t = state.theses.find(x => x.id === state.selectedThesisId);
       if (t) await loadThesisDetail(t.id);
@@ -107,6 +105,39 @@ export async function loadDashboard() {
       banner.classList.remove('hidden');
     }
     console.error('[dashboard-loader] loadDashboard error:', err);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Backtesting loader — verdict accuracy + thesis performances
+// ---------------------------------------------------------------------------
+export async function loadBacktesting() {
+  const base = apiBase();
+
+  const accuracyWrap     = el('accuracyWrap');
+  const performanceWrap  = el('performanceWrap');
+
+  if (accuracyWrap)    accuracyWrap.innerHTML    = '<p class="muted">Đang tải...</p>';
+  if (performanceWrap) performanceWrap.innerHTML = '<p class="muted">Đang tải...</p>';
+
+  try {
+    const [accuracyRes, performanceRes] = await Promise.all([
+      getJson(`${base}/backtesting/verdict-accuracy`).catch(() => null),
+      getJson(`${base}/backtesting/thesis-performances`).catch(() => null),
+    ]);
+
+    // verdict-accuracy trả về { items: [...] } hoặc array trực tiếp
+    const accuracyRows = accuracyRes?.items ?? (Array.isArray(accuracyRes) ? accuracyRes : []);
+    renderAccuracy(accuracyRows);
+
+    // thesis-performances trả về array trực tiếp
+    const performanceRows = Array.isArray(performanceRes) ? performanceRes : (performanceRes?.items ?? []);
+    renderPerformance(performanceRows);
+
+  } catch (err) {
+    console.error('[dashboard-loader] loadBacktesting error:', err);
+    if (accuracyWrap)    accuracyWrap.innerHTML    = '<p class="empty-state">Lỗi tải dữ liệu accuracy.</p>';
+    if (performanceWrap) performanceWrap.innerHTML = '<p class="empty-state">Lỗi tải dữ liệu performance.</p>';
   }
 }
 
