@@ -5,7 +5,7 @@
  */
 
 import { el, openModal, closeModal } from './utils/dom.js';
-import { loadDashboard }        from './modules/dashboard/dashboard-loader.js';
+import { loadDashboard, loadBacktesting } from './modules/dashboard/dashboard-loader.js';
 import { loadThesisDetail }     from './modules/thesis/thesis-service.js';
 import {
   openNewThesisModal,
@@ -33,7 +33,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 3. Toolbar buttons
   el('newThesisBtn')?.addEventListener('click', openNewThesisModal);
-  el('reloadBtn')?.addEventListener('click', loadDashboard);
+  el('reloadBtn')?.addEventListener('click', async () => {
+    await loadDashboard();
+    await loadBacktesting();
+  });
   el('statusFilter')?.addEventListener('change', loadDashboard);
 
   // 4. Form row add buttons (inline trong modal)
@@ -83,4 +86,5 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 7. Initial load
   await loadDashboard();
+  await loadBacktesting();
 });
