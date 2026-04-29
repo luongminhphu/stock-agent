@@ -135,6 +135,23 @@ HELP_DATA: dict[str, GroupEntry] = {
             },
         ],
     },
+    "pretrade": {
+        "label": "Pre-trade · Kiểm tra trước khi vào lệnh",
+        "emoji": "🎯",
+        "colour": 0x01696F,
+        "intro": "AI kiểm tra thesis, tín hiệu, và brief trước khi bạn vào lệnh.",
+        "commands": [
+            {
+                "usage": "/pretrade <ticker>",
+                "description": (
+                    "Kiểm tra toàn diện trước khi đặt lệnh: alignment với thesis đang active, "
+                    "tín hiệu scan watchlist, đề cập trong brief gần nhất. "
+                    "Output: verdict (BUY / HOLD / AVOID / REVIEW) + risk flags + confidence."
+                ),
+                "example": "/pretrade VCB",
+            },
+        ],
+    },
     "analysis": {
         "label": "Analysis · Phân tích biến động",
         "emoji": "🔍",
