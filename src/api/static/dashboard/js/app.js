@@ -16,11 +16,44 @@ import { bindSuggestEvents }    from './modules/thesis/thesis-suggest.js';
 import { state }                from './state/dashboard-state.js';
 
 // ---------------------------------------------------------------------------
+// Brief tab switching
+// ---------------------------------------------------------------------------
+function bindBriefTabs() {
+  const tabBar = document.querySelector('.brief-tab-bar');
+  if (!tabBar) return;
+
+  tabBar.addEventListener('click', e => {
+    const btn = e.target.closest('.brief-tab');
+    if (!btn) return;
+
+    const targetId = btn.getAttribute('aria-controls');
+    if (!targetId) return;
+
+    // Deactivate all tabs + hide all panes
+    tabBar.querySelectorAll('.brief-tab').forEach(t => {
+      t.classList.remove('active');
+      t.setAttribute('aria-selected', 'false');
+    });
+    document.querySelectorAll('.brief-tab-pane').forEach(p => {
+      p.classList.add('hidden');
+    });
+
+    // Activate clicked tab + show target pane
+    btn.classList.add('active');
+    btn.setAttribute('aria-selected', 'true');
+    document.getElementById(targetId)?.classList.remove('hidden');
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Bootstrap
 // ---------------------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', async () => {
 
-  // 1. Bind thesis form + delete confirm (submit handlers)
+  // 1. Bind brief tab switcher
+  bindBriefTabs();
+
+  // 2. Bind thesis form + delete confirm (submit handlers)
   bindThesisFormEvents({
     onThesisSaved: async (thesisId) => {
       await loadDashboard();
@@ -28,10 +61,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     },
   });
 
-  // 2. Bind AI suggest buttons (thesis / assumption / catalyst modals)
+  // 3. Bind AI suggest buttons (thesis / assumption / catalyst modals)
   bindSuggestEvents();
 
-  // 3. Toolbar buttons
+  // 4. Toolbar buttons
   el('newThesisBtn')?.addEventListener('click', openNewThesisModal);
   el('reloadBtn')?.addEventListener('click', async () => {
     await loadDashboard();
@@ -39,7 +72,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   el('statusFilter')?.addEventListener('change', loadDashboard);
 
-  // 4. Form row add buttons (inline trong modal)
+  // 5. Form row add buttons (inline trong modal)
   el('addFormAssumptionBtn')?.addEventListener('click', () => {
     import('./modules/thesis/thesis-form.js').then(({ makeAssumptionRow }) => {
       el('thesisFormAssumptionRows')?.appendChild(makeAssumptionRow());
@@ -51,13 +84,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
 
-  // 5. Modal close buttons (data-close attribute pattern)
+  // 6. Modal close buttons (data-close attribute pattern)
   document.addEventListener('click', e => {
     const btn = e.target.closest('[data-close]');
     if (btn) closeModal(btn.dataset.close);
   });
 
-  // 6. AI Apply confirm
+  // 7. AI Apply confirm
   el('aiApplyConfirmBtn')?.addEventListener('click', async () => {
     const { thesisApiBase, sendJson } = await import('./api/client.js');
     const { showToast } = await import('./utils/dom.js');
@@ -84,7 +117,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // 7. Initial load
+  // 8. Initial load
   await loadDashboard();
   await loadBacktesting();
 });
