@@ -29,6 +29,11 @@ export async function loadThesisDetail(thesisId) {
       getJson(`${thesisApiBase()}/${thesisId}/catalysts`).catch(() => []),
       getJson(`${thesisApiBase()}/${thesisId}/reviews`).catch(() => []),
     ]);
+    // FIX: guard thesis null/undefined — có thể xảy ra khi API trả 204 hoặc null
+    if (!thesis) {
+      wrap.innerHTML = emptyDetailHTML();
+      return;
+    }
     wrap.innerHTML = renderThesisDetailHTML(thesis, assumptions, catalysts, reviews);
     wireDetailActions(thesisId, wrap);
   } catch (err) {
@@ -51,6 +56,12 @@ export async function triggerAiReview(thesisId) {
 
   try {
     const data = await sendJson(`${thesisApiBase()}/${thesisId}/review`, 'POST', null);
+    // FIX: guard data null/undefined — AI endpoint đôi khi trả về null khi lỗi upstream
+    if (!data) {
+      result.innerHTML = `<div class="error-banner" style="margin:0;">AI review không trả về kết quả.</div>`;
+      result.classList.remove('hidden');
+      return;
+    }
     result.innerHTML = renderReviewRecommendResult(thesisId, data);
     result.classList.remove('hidden');
   } catch (err) {

@@ -39,8 +39,15 @@ export function renderReviewRecommendSection(thesisId) {
  * @param {string|number} thesisId
  * @param {object} d  - response payload từ AI review endpoint
  * @returns {string} HTML string
+ *
+ * FIX: guard d null/undefined — tránh '(destructured parameter) is undefined' từ V8
  */
 export function renderReviewRecommendResult(thesisId, d) {
+  // Guard: nếu response rỗng, trả về error state thay vì crash
+  if (!d || typeof d !== 'object') {
+    return `<div class="error-banner" style="margin:0;">AI review không trả về kết quả hợp lệ.</div>`;
+  }
+
   console.log('[AI Review raw response]', JSON.stringify(d));
   state.latestAiReviews[thesisId] = d;
 
