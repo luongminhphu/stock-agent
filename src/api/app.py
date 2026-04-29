@@ -49,13 +49,24 @@ _FAVICON_SVG = (
     b"<text y='.9em' font-size='90'>\xf0\x9f\x93\x88</text></svg>"
 )
 
+# Cache-Control values
+# - HTML entry point: no-store so Cloudflare/browser always fetches fresh.
+#   This is the anchor of the cache busting strategy: when index.html is fresh,
+#   the JS/CSS ?v= query strings change per deploy, forcing sub-resource refetch.
+# - JS / CSS: no-cache + must-revalidate — browser revalidates every request
+#   via ETag/Last-Modified. 304 if unchanged (no body sent).
+# - Everything else (images, fonts): 10-minute cache — safe default.
+_CACHE_NO_STORE       = "no-store, no-cache, must-revalidate"
+_CACHE_MUST_REVALIDATE = "no-cache, must-revalidate"
+_CACHE_SHORT           = "public, max-age=600"
+
 
 class _CacheBustedStaticFiles(StaticFiles):
     """StaticFiles with explicit Cache-Control headers.
 
-    - JS / CSS: ``must-revalidate`` — browser revalidates every request via
-      ETag/Last-Modified.  If unchanged, server returns 304 (no body sent).
-      This ensures stale JS is never served after a deploy.
+    - JS / CSS / HTML: ``no-cache, must-revalidate`` — browser revalidates
+      every request via ETag/Last-Modified. If unchanged, server returns 304.
+      This ensures stale JS/CSS/HTML is never served after a deploy.
     - Everything else: 10-minute cache — safe default for images/fonts.
     """
 
@@ -63,10 +74,10 @@ class _CacheBustedStaticFiles(StaticFiles):
         async def _send_with_cache_header(message: Any) -> None:
             if message["type"] == "http.response.start":
                 path: str = scope.get("path", "")
-                if path.endswith(".js") or path.endswith(".css"):
-                    cache_value = b"no-cache, must-revalidate"
+                if path.endswith((".js", ".css", ".html")):
+                    cache_value = _CACHE_MUST_REVALIDATE.encode()
                 else:
-                    cache_value = b"public, max-age=600"
+                    cache_value = _CACHE_SHORT.encode()
                 headers = list(message.get("headers", []))
                 headers = [
                     (k, v) for k, v in headers if k.lower() != b"cache-control"
@@ -118,18 +129,25 @@ def create_app() -> FastAPI:
         )
 
     # Mount static assets with proper Cache-Control headers.
-    # JS/CSS use no-cache+must-revalidate so browsers always revalidate after deploy.
+    # JS/CSS/HTML use no-cache+must-revalidate so browsers always revalidate after deploy.
     if _STATIC_DIR.exists():
         app.mount("/static", _CacheBustedStaticFiles(directory=_STATIC_DIR), name="static")
 
     @app.get("/dashboard", include_in_schema=False)
     async def serve_dashboard() -> FileResponse:
-        """Serve static dashboard shell.
+        """Serve static dashboard shell with no-store cache header.
+
+        no-store prevents Cloudflare and the browser from caching index.html.
+        This is the anchor: fresh HTML means the browser sees updated JS ?v= URLs
+        on every deploy, so stale sub-resources are never silently reused.
 
         HTML is at src/api/static/dashboard/index.html.
         API data is fetched client-side from /api/v1/readmodel/dashboard/{user_id}/...
         """
-        return FileResponse(_DASHBOARD_HTML)
+        return FileResponse(
+            _DASHBOARD_HTML,
+            headers={"cache-control": _CACHE_NO_STORE},
+        )
 
     # Register routers — order matters for OpenAPI grouping
     app.include_router(health_router)
