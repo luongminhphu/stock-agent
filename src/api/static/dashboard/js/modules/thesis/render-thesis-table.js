@@ -119,13 +119,11 @@ export function renderCatItem(c) {
 
 /**
  * Render bảng danh sách theses.
- * Wires click/edit/delete events internally.
- * @param {Array} list
- * @param {Function} onSelect    - (id) => void
- * @param {Function} onEdit      - (id) => void
- * @param {Function} onDelete    - (id) => void
+ * @param {Array}    list
+ * @param {Object}   callbacks  - { onSelect, onEdit, onDelete } — tất cả optional
  */
-export function renderThesesTable(list, { onSelect, onEdit, onDelete }) {
+export function renderThesesTable(list, callbacks = {}) {
+  const { onSelect, onEdit, onDelete } = callbacks;
   const wrap = document.getElementById('thesesTableWrap');
   if (!list.length) {
     wrap.innerHTML = '<p class="empty-state">Chưa có thesis nào. Nhấn <strong>+ Thesis mới</strong> để tạo.</p>';

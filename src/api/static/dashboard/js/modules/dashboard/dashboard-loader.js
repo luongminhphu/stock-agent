@@ -2,32 +2,52 @@
  * dashboard-loader.js
  * Owner: modules/dashboard
  * Responsibility: orchestrate data fetching + render calls cho màn hình chính.
- * - loadDashboard()   — fetch stats, theses, backtesting, briefs, scan
- * - renderSummary()   — KPI cards
- * - loadBacktesting() — fetch + render backtesting section
- *
- * NOTE: renderVerdicts, renderCatalystList, renderSnapshots, renderBriefCard
- *       được import từ các render modules tương ứng (Wave 3).
- *       renderThesesTable import từ render-thesis-table.js.
  */
 
-import { el } from '../../utils/dom.js';
-import { esc } from '../../utils/format.js';
-import { apiBase, getJson } from '../../api/client.js';
-import { state } from '../../state/dashboard-state.js';
-import { renderThesesTable } from '../thesis/render-thesis-table.js';
-import { loadThesisDetail } from '../thesis/thesis-service.js';
-import { renderVerdicts }     from '../backtesting/render-backtesting.js';
-import { renderCatalystList } from '../briefing/render-brief.js';
-import { renderSnapshots }    from '../briefing/render-brief.js';
+import { el }                  from '../../utils/dom.js';
+import { apiBase, getJson }    from '../../api/client.js';
+import { state }               from '../../state/dashboard-state.js';
+import { renderThesesTable }   from '../thesis/render-thesis-table.js';
+import { loadThesisDetail }    from '../thesis/thesis-service.js';
+import { openEditThesisModal } from '../thesis/thesis-form.js';
+import { renderVerdicts }      from '../backtesting/render-backtesting.js';
+import { renderCatalystList, renderSnapshots } from '../briefing/render-brief.js';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function wireDeleteThesis(id) {
+  const msg = el('deleteModalMsg');
+  const btn = el('deleteConfirmBtn');
+  if (msg) msg.textContent = `Bạn có chắc muốn xóa thesis này không? Hành động không thể hoàn tác.`;
+  if (btn) {
+    // clone để xóa listener cũ
+    const fresh = btn.cloneNode(true);
+    btn.parentNode.replaceChild(fresh, btn);
+    fresh.addEventListener('click', async () => {
+      const { thesisApiBase, sendJson } = await import('../../api/client.js');
+      const { showToast, closeModal }   = await import('../../utils/dom.js');
+      try {
+        await sendJson(`${thesisApiBase()}/${id}`, 'DELETE');
+        closeModal('deleteModal');
+        showToast('🗑 Đã xóa thesis');
+        state.selectedThesisId = null;
+        await loadDashboard();
+      } catch (err) {
+        showToast(`Lỗi xóa: ${err.message}`, 'error');
+      }
+    });
+  }
+  import('../../utils/dom.js').then(({ openModal }) => openModal('deleteModal'));
+}
 
 // ---------------------------------------------------------------------------
 // Main loader
 // ---------------------------------------------------------------------------
 export async function loadDashboard() {
-  const status = el('statusFilter').value;
+  const status = el('statusFilter')?.value ?? 'active';
   const base   = apiBase();
-  el('errorBanner').classList.add('hidden');
+  el('errorBanner')?.classList.add('hidden');
 
   try {
     const [
@@ -50,35 +70,43 @@ export async function loadDashboard() {
 
     renderSummary(stats);
 
-    state.theses = theses?.items ?? [];
-    renderThesesTable(state.theses);
+    state.theses = theses?.items ?? theses ?? [];
 
-    renderVerdicts(verdictAccuracy?.items ?? []);
-    renderCatalystList(catalysts?.items ?? []);
+    renderThesesTable(state.theses, {
+      onSelect: (id) => loadThesisDetail(id),
+      onEdit:   (id) => openEditThesisModal(id, state.theses.find(t => t.id === id)),
+      onDelete: (id) => wireDeleteThesis(id),
+    });
+
+    renderVerdicts(verdictAccuracy?.items ?? verdictAccuracy ?? []);
+    renderCatalystList(catalysts?.items ?? catalysts ?? []);
 
     renderSnapshots({
       latest_scan_at:              latestScan?.created_at ?? latestScan?.generated_at ?? null,
-      latest_scan_summary:         latestScan?.summary ?? latestScan?.headline ?? latestScan?.notes ?? null,
+      latest_scan_summary:         latestScan?.summary ?? latestScan?.headline ?? null,
       latest_morning_brief_at:     latestMorningBrief?.created_at ?? latestMorningBrief?.generated_at ?? null,
-      latest_morning_brief_summary: latestMorningBrief?.summary ?? latestMorningBrief?.headline ?? latestMorningBrief?.content ?? null,
       latest_morning_brief_data:   latestMorningBrief ?? null,
       latest_eod_brief_at:         latestEodBrief?.created_at ?? latestEodBrief?.generated_at ?? null,
-      latest_eod_brief_summary:    latestEodBrief?.summary ?? latestEodBrief?.headline ?? latestEodBrief?.content ?? null,
       latest_eod_brief_data:       latestEodBrief ?? null,
     });
 
-    // Re-render detail panel nếu đang có thesis được chọn
+    // Re-render detail nếu đang có thesis được chọn
     if (state.selectedThesisId) {
       const t = state.theses.find(x => x.id === state.selectedThesisId);
       if (t) await loadThesisDetail(t.id);
       else {
         const { emptyDetailHTML } = await import('../thesis/render-thesis-table.js');
-        el('thesisDetail').innerHTML = emptyDetailHTML();
+        const detail = el('thesisDetail');
+        if (detail) detail.innerHTML = emptyDetailHTML();
       }
     }
   } catch (err) {
-    el('errorBanner').textContent = `Lỗi tải dữ liệu: ${err.message}`;
-    el('errorBanner').classList.remove('hidden');
+    const banner = el('errorBanner');
+    if (banner) {
+      banner.textContent = `Lỗi tải dữ liệu: ${err.message}`;
+      banner.classList.remove('hidden');
+    }
+    console.error('[dashboard-loader] loadDashboard error:', err);
   }
 }
 
