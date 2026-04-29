@@ -42,7 +42,7 @@ function esc(v) {
 function highlightScanText(text) {
   if (!text) return esc(text);
   return esc(text)
-    .replace(/\b([A-Z]{2,5})(?=:|\s|,|;)/g,
+    .replace(/\b([A-Z][A-Z0-9]{1,4})(?=:|\s|,|;)/g,
       '<strong style="color:#7dd3fc;font-weight:800;letter-spacing:.04em;">$1</strong>')
     .replace(/(-\d+(?:\.\d+)?%?)/g,
       '<span style="color:#fb923c;font-weight:600;">$1</span>')
