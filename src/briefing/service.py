@@ -14,10 +14,10 @@ Non-responsibilities:
 - no HTTP route logic
 - no scheduler logic
 """
-import json
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -142,7 +142,6 @@ class BriefingService:
 
         lines = [f"Thời điểm: {now}. Pha: {phase}.", "Watchlist snapshot:"]
         for q in quotes:
-            # Inject tên công ty + sector từ registry — fallback silent nếu không có
             try:
                 info = symbol_registry.resolve(q.ticker)
                 meta = f" | {info.name} | Ngành: {info.sector}"
