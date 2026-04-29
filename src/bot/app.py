@@ -44,7 +44,7 @@ def create_bot() -> commands.Bot:
 
     @bot.event
     async def on_error(event: str, *args: object, **kwargs: object) -> None:
-        logger.error("bot.event_error", event=event)
+        logger.exception("bot.event_error", event_name=event)
 
     return bot
 
