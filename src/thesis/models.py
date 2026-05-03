@@ -113,6 +113,14 @@ class Thesis(Base):
     target_price: Mapped[float | None] = mapped_column(Float)
     stop_loss: Mapped[float | None] = mapped_column(Float)
 
+    # Position size — số lượng cổ phiếu nắm giữ (nullable: user có thể không nhập)
+    # Dùng để tính cost_basis, market_value, pnl_abs trong portfolio view.
+    quantity: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        comment="Số lượng CP nắm giữ. None = chỉ track thesis, không track position size.",
+    )
+
     # Scoring (0-100, computed by ScoringService)
     score: Mapped[float | None] = mapped_column(Float)
 
@@ -183,6 +191,34 @@ class Thesis(Base):
                 return upside / downside
         return None
 
+    @property
+    def cost_basis(self) -> float | None:
+        """Tổng vốn đầu tư (VND) = entry_price * quantity."""
+        if self.entry_price and self.quantity:
+            return self.entry_price * self.quantity
+        return None
+
+    @property
+    def market_value(self, current_price: float | None = None) -> float | None:
+        """Market value tại current_price. Cần truyền current_price từ ngoài vào.
+
+        Dùng trong portfolio service: thesis.market_value_at(price).
+        Property này chỉ placeholder — dùng market_value_at() thay thế.
+        """
+        return None
+
+    def market_value_at(self, current_price: float) -> float | None:
+        """Tính market value tại một mức giá cụ thể."""
+        if self.quantity:
+            return current_price * self.quantity
+        return None
+
+    def pnl_abs_at(self, current_price: float) -> float | None:
+        """P&L tuyệt đối (VND) tại current_price."""
+        if self.entry_price and self.quantity:
+            return (current_price - self.entry_price) * self.quantity
+        return None
+
 
 # ---------------------------------------------------------------------------
 # Assumption
@@ -231,7 +267,7 @@ class Catalyst(Base):
     )
     description: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[CatalystStatus] = mapped_column(
-        SAEnum(CatalystStatus, values_callable=_enum_values),
+        SAEnum(CatalystStatus, values_callable=True),
         nullable=False,
         default=CatalystStatus.PENDING,
     )
