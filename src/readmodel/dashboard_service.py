@@ -12,6 +12,7 @@ Endpoints served (via src/api/routes/readmodel.py):
     get_verdict_accuracy()       — backtesting: accuracy per verdict
     get_thesis_performances()    — backtesting: performance per thesis
     get_price_snapshots()        — backtesting: price chart data for one thesis
+    get_portfolio()              — portfolio view: positions + aggregate P&L
 
 Design rules:
 - SELECT only columns needed; never load full ORM graphs.
@@ -107,9 +108,6 @@ class DashboardService:
         ).all()
         verdict_map: dict[str, int] = {str(r.verdict): r.cnt for r in verdict_rows}
 
-        # Compare by calendar DATE, not DATETIME — investors think in days, not hours.
-        # e.g. a catalyst on 2026-04-30 is within 7 days of today 2026-04-23
-        # regardless of the time component (17:00 UTC) stored in DB.
         today = _today_utc()
         in_7d = today + timedelta(days=7)
         upcoming_7d = (
@@ -136,7 +134,6 @@ class DashboardService:
             or 0
         )
 
-        # reviews_today: use UTC midnight as boundary (consistent with DB storage)
         now_utc = datetime.now(UTC)
         today_start_utc = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
         reviews_today = (
@@ -304,8 +301,6 @@ class DashboardService:
         if thesis is None or thesis.user_id != user_id:
             return None
 
-        # SELECT explicit columns only — avoids triggering the
-        # selectin `recommendations` relationship on ThesisReview (N+1 fix, Wave 5a).
         reviews_rows = (
             await self._session.execute(
                 select(
@@ -423,7 +418,6 @@ class DashboardService:
     async def get_upcoming_catalysts(self, user_id: str, days: int = 30) -> list[dict[str, Any]]:
         from src.thesis.models import Catalyst, CatalystStatus, Thesis, ThesisStatus
 
-        # Compare by calendar DATE for consistency with get_stats() upcoming_catalysts_7d.
         today = _today_utc()
         end_date = today + timedelta(days=days)
 
@@ -514,7 +508,7 @@ class DashboardService:
                 "get_brief_latest.import_error", detail="BriefSnapshot model not available"
             )
             return None
-    
+
         try:
             row = (
                 await self._session.execute(
@@ -527,16 +521,15 @@ class DashboardService:
                     .limit(1)
                 )
             ).scalar_one_or_none()
-    
+
             if not row:
                 return None
-    
+
             try:
                 parsed_content = json.loads(row.content)
             except (json.JSONDecodeError, TypeError):
-                # Legacy: content là plain text (trước khi serialize full JSON)
-                parsed_content = {"summary": row.content, "content": row.content}  # ← FIX
-    
+                parsed_content = {"summary": row.content, "content": row.content}
+
             return {
                 "id": row.id,
                 "user_id": row.user_id,
@@ -550,7 +543,7 @@ class DashboardService:
             return None
 
     # ------------------------------------------------------------------
-    # 7. Backtesting — verdict accuracy  (pure-Python aggregation)
+    # 7. Backtesting — verdict accuracy
     # ------------------------------------------------------------------
 
     async def get_verdict_accuracy(self, user_id: str) -> list[dict[str, Any]]:
@@ -635,7 +628,7 @@ class DashboardService:
         return result
 
     # ------------------------------------------------------------------
-    # 8. Backtesting — thesis performances  (pure-Python aggregation)
+    # 8. Backtesting — thesis performances
     # ------------------------------------------------------------------
 
     async def get_thesis_performances(
@@ -784,6 +777,171 @@ class DashboardService:
                 }
                 for s in snapshots
             ],
+        }
+
+    # ------------------------------------------------------------------
+    # 10. Portfolio — positions + aggregate P&L
+    # ------------------------------------------------------------------
+
+    async def get_portfolio(
+        self,
+        user_id: str,
+        price_map: dict[str, float] | None = None,
+    ) -> dict[str, Any]:
+        """Tổng hợp portfolio từ các thesis active.
+
+        price_map: {ticker: current_price} — do caller inject từ QuoteService.
+                   Nếu None hoặc thiếu ticker, pnl_abs và market_value sẽ None.
+
+        Trả về dict tương thích với PortfolioSummary schema.
+        weight_pct được tính theo market_value; nếu không có market_value thì None.
+        Positions được sắp xếp: có pnl_abs trước (giảm dần), None pnl_abs đẩy xuống cuối.
+        """
+        from src.thesis.models import Thesis, ThesisReview, ThesisStatus
+
+        price_map = price_map or {}
+
+        # Query thesis active + latest review trong 1 round trip
+        latest_review_subq = (
+            select(
+                ThesisReview.thesis_id,
+                ThesisReview.verdict,
+                func.row_number()
+                .over(
+                    partition_by=ThesisReview.thesis_id,
+                    order_by=ThesisReview.reviewed_at.desc(),
+                )
+                .label("rn"),
+            )
+            .subquery()
+        )
+
+        rows = (
+            await self._session.execute(
+                select(
+                    Thesis.id,
+                    Thesis.ticker,
+                    Thesis.title,
+                    Thesis.status,
+                    Thesis.entry_price,
+                    Thesis.quantity,
+                    Thesis.score,
+                    latest_review_subq.c.verdict.label("last_verdict"),
+                )
+                .outerjoin(
+                    latest_review_subq,
+                    and_(
+                        latest_review_subq.c.thesis_id == Thesis.id,
+                        latest_review_subq.c.rn == 1,
+                    ),
+                )
+                .where(
+                    Thesis.user_id == user_id,
+                    Thesis.status == ThesisStatus.ACTIVE,
+                )
+                .order_by(Thesis.updated_at.desc())
+            )
+        ).all()
+
+        positions = []
+        total_cost_basis = 0.0
+        total_market_value = 0.0
+        has_cost_data = False
+        has_market_data = False
+        has_quantity_data = False
+        winning = losing = neutral = 0
+
+        for r in rows:
+            current_price = price_map.get(r.ticker)
+            tier_label, tier_icon = score_tier(r.score) if r.score is not None else (None, None)
+
+            # P&L %
+            pnl_pct: float | None = None
+            if r.entry_price and current_price and r.entry_price > 0:
+                pnl_pct = (current_price - r.entry_price) / r.entry_price * 100
+
+            # Position size metrics
+            quantity = r.quantity
+            if quantity:
+                has_quantity_data = True
+
+            cost_basis: float | None = None
+            if r.entry_price and quantity:
+                cost_basis = r.entry_price * quantity
+                total_cost_basis += cost_basis
+                has_cost_data = True
+
+            market_value: float | None = None
+            if current_price and quantity:
+                market_value = current_price * quantity
+                total_market_value += market_value
+                has_market_data = True
+
+            pnl_abs: float | None = None
+            if cost_basis is not None and market_value is not None:
+                pnl_abs = market_value - cost_basis
+
+            # Win/lose counts
+            if pnl_pct is not None:
+                if pnl_pct > 0:
+                    winning += 1
+                elif pnl_pct < 0:
+                    losing += 1
+                else:
+                    neutral += 1
+            else:
+                neutral += 1
+
+            positions.append({
+                "thesis_id": r.id,
+                "ticker": r.ticker,
+                "title": r.title,
+                "status": str(r.status.value),
+                "quantity": quantity,
+                "entry_price": r.entry_price,
+                "current_price": current_price,
+                "pnl_pct": round(pnl_pct, 2) if pnl_pct is not None else None,
+                "pnl_abs": round(pnl_abs, 0) if pnl_abs is not None else None,
+                "cost_basis": round(cost_basis, 0) if cost_basis is not None else None,
+                "market_value": round(market_value, 0) if market_value is not None else None,
+                "weight_pct": None,  # được fill sau khi có total_market_value
+                "last_verdict": str(r.last_verdict) if r.last_verdict else None,
+                "score": r.score,
+                "score_tier": tier_label,
+                "score_tier_icon": tier_icon,
+                "change_pct": None,  # caller có thể enrich sau nếu có intraday data
+            })
+
+        # Fill weight_pct sau khi có total
+        for pos in positions:
+            mv = pos["market_value"]
+            if mv is not None and has_market_data and total_market_value > 0:
+                pos["weight_pct"] = round(mv / total_market_value * 100, 2)
+
+        # Sort: pnl_abs desc, None đẩy xuống cuối
+        positions.sort(
+            key=lambda p: (p["pnl_abs"] is None, -(p["pnl_abs"] or 0))
+        )
+
+        # Aggregate P&L % bình quân gia quyền (theo cost_basis)
+        total_pnl_abs = (total_market_value - total_cost_basis) if (has_cost_data and has_market_data) else None
+        total_pnl_pct: float | None = None
+        if total_cost_basis > 0 and total_pnl_abs is not None:
+            total_pnl_pct = round(total_pnl_abs / total_cost_basis * 100, 2)
+
+        return {
+            "user_id": user_id,
+            "generated_at": datetime.now(UTC).isoformat(),
+            "total_cost_basis": round(total_cost_basis, 0) if has_cost_data else None,
+            "total_market_value": round(total_market_value, 0) if has_market_data else None,
+            "total_pnl_abs": round(total_pnl_abs, 0) if total_pnl_abs is not None else None,
+            "total_pnl_pct": total_pnl_pct,
+            "position_count": len(positions),
+            "winning_count": winning,
+            "losing_count": losing,
+            "neutral_count": neutral,
+            "has_quantity_data": has_quantity_data,
+            "positions": positions,
         }
 
 
