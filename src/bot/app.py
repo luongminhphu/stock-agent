@@ -74,6 +74,7 @@ async def _register_cogs(bot: commands.Bot) -> None:
     from src.bot.commands.conviction_timeline import ConvictionTimelineCog
     from src.bot.commands.help import HelpCog
     from src.bot.commands.market import MarketCog
+    from src.bot.commands.portfolio import PortfolioCog
     from src.bot.commands.pretrade import PretradeCog
     from src.bot.commands.thesis_crud import ThesisCrudCog
     from src.bot.commands.thesis_review import ThesisReviewCog
@@ -89,6 +90,7 @@ async def _register_cogs(bot: commands.Bot) -> None:
     await bot.add_cog(WhyCog(bot))
     await bot.add_cog(PretradeCog(bot))
     await bot.add_cog(ConvictionTimelineCog(bot))
+    await bot.add_cog(PortfolioCog(bot))
     logger.info(
         "bot.cogs_loaded",
         cogs=[
@@ -101,6 +103,7 @@ async def _register_cogs(bot: commands.Bot) -> None:
             "WhyCog",
             "PretradeCog",
             "ConvictionTimelineCog",
+            "PortfolioCog",
         ],
     )
 
