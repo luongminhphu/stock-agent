@@ -4,11 +4,19 @@ Owner: watchlist segment.
 Consumes QuoteService (market segment) via injection.
 
 Responsibility boundary:
-  ScanService  → detect which alerts are triggered, build ScanSignal/ScanResult
-  AlertService → mutate alert state (mark_triggered), persist fired alerts
+  ScanService     → detect which alerts are triggered, build ScanSignal/ScanResult
+  AlertService    → mutate alert state (mark_triggered), persist fired alerts
+  ReminderService → owns cooldown logic for ON_SIGNAL reminders
 
 ScanService calls AlertService.process_triggered() after collecting all
 triggered alerts for a ticker. It does NOT call alert.mark_triggered() directly.
+
+For ON_SIGNAL reminders, ScanService calls:
+    ReminderService.list_due_for_signal(tickers)
+    ReminderService.mark_sent(reminder)
+and returns the fired reminders as part of ScanResult.on_signal_reminders so
+the bot adapter (WatchlistScanScheduler) can dispatch Discord notifications.
+ScanService itself NEVER sends Discord messages.
 
 Note: _persist_snapshot does NOT commit — caller is responsible for session lifecycle.
 """
@@ -22,7 +30,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.logging import get_logger
 from src.watchlist.alert_service import AlertService
-from src.watchlist.models import Alert, AlertStatus, WatchlistScan
+from src.watchlist.models import Alert, AlertStatus, Reminder, WatchlistScan
+from src.watchlist.reminder_service import ReminderService
 from src.watchlist.repository import WatchlistRepository
 
 logger = get_logger(__name__)
@@ -64,6 +73,8 @@ class ScanResult:
     scanned_at: datetime
     signals: list[ScanSignal] = field(default_factory=list)
     errors: dict[str, str] = field(default_factory=dict)
+    # ON_SIGNAL reminders that fired this tick — bot adapter dispatches Discord
+    on_signal_reminders: list[Reminder] = field(default_factory=list)
 
     @property
     def triggered_count(self) -> int:
@@ -95,7 +106,8 @@ class ScanResult:
 class ScanService:
     """Scan all watchlist tickers and evaluate alert conditions.
 
-    Detects signals only — delegates alert state mutation to AlertService.
+    Detects signals only — delegates alert state mutation to AlertService
+    and reminder cooldown logic to ReminderService.
     """
 
     def __init__(
@@ -106,6 +118,7 @@ class ScanService:
         self._session = session
         self._repo = WatchlistRepository(session)
         self._alert_service = AlertService(session)
+        self._reminder_service = ReminderService(session)
         self._quote_service = quote_service
 
     async def scan_user(self, user_id: str) -> ScanResult:
@@ -129,16 +142,23 @@ class ScanService:
                 logger.warning("scan.ticker_error", ticker=ticker, error=str(exc))
                 result.errors[ticker] = str(exc)
 
-        # Delegate state mutation to AlertService — ScanService never calls mark_triggered
+        # Delegate alert state mutation to AlertService
         all_triggered = result.triggered_alerts
         if all_triggered:
             await self._alert_service.process_triggered(all_triggered, price_map)
+
+        # Fire ON_SIGNAL reminders for tickers that had any signal this tick
+        # ReminderService.list_due_for_signal() owns the 1h cooldown logic
+        if result.signals:
+            signal_tickers = [s.ticker for s in result.signals]
+            result.on_signal_reminders = await self._fire_on_signal_reminders(signal_tickers)
 
         logger.info(
             "scan.complete",
             user_id=user_id,
             scanned=len(tickers),
             triggered=result.triggered_count,
+            on_signal_reminders=len(result.on_signal_reminders),
         )
 
         await self._persist_snapshot(user_id, result)
@@ -192,6 +212,39 @@ class ScanService:
                 signal.triggered_alerts.append(alert)
 
         return signal
+
+    async def _fire_on_signal_reminders(self, tickers: list[str]) -> list[Reminder]:
+        """Query and mark ON_SIGNAL reminders due for the given tickers.
+
+        Delegates cooldown logic entirely to ReminderService — ScanService
+        has no knowledge of frequency deltas.
+
+        Returns the list of fired Reminder objects so WatchlistScanScheduler
+        can include them in the Discord notification embed.
+
+        Failures are swallowed so a reminder error never blocks scan delivery.
+        """
+        try:
+            due = await self._reminder_service.list_due_for_signal(tickers)
+            for reminder in due:
+                try:
+                    await self._reminder_service.mark_sent(reminder)
+                except Exception as exc:
+                    logger.error(
+                        "scan.on_signal_reminder_mark_sent_failed",
+                        reminder_id=reminder.id,
+                        error=str(exc),
+                    )
+            if due:
+                logger.info(
+                    "scan.on_signal_reminders_fired",
+                    count=len(due),
+                    tickers=tickers,
+                )
+            return due
+        except Exception as exc:
+            logger.error("scan.on_signal_reminders_error", tickers=tickers, error=str(exc))
+            return []
 
     async def _persist_snapshot(self, user_id: str, result: ScanResult) -> None:
         """Stage a WatchlistScan snapshot — caller must commit the session.
