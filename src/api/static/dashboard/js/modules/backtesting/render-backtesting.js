@@ -9,29 +9,41 @@ import { el } from '../../utils/dom.js';
 import { badge, esc, fmt, fmtDate } from '../../utils/format.js';
 
 // ---------------------------------------------------------------------------
+// Normalize helpers — chuẩn hóa field names từ API (count/total, accuracy/pct)
+// ---------------------------------------------------------------------------
+function normalizeCount(r) {
+  return r.count ?? r.total ?? 0;
+}
+
+function normalizeAccuracy(r) {
+  if (r.accuracy != null) return (r.accuracy * 100).toFixed(1) + '%';
+  if (r.pct      != null) return r.pct + '%';
+  return null; // chưa có data
+}
+
+// ---------------------------------------------------------------------------
 // Verdict distribution (sidebar)
 // ---------------------------------------------------------------------------
 export function renderVerdicts(list) {
   const wrap = el('verdictList');
   if (!wrap) return;
-  if (!list.length) {
+  if (!list || !list.length) {
     wrap.innerHTML = '<p class="empty-state">Chưa có dữ liệu.</p>';
     return;
   }
-  wrap.innerHTML = list.map(v => `
+  wrap.innerHTML = list.map(v => {
+    const count    = normalizeCount(v);
+    const accuracy = normalizeAccuracy(v);
+    return `
     <div class="row-item">
       <div>
         <div class="row-title">${badge(v.verdict)}</div>
         <div class="row-subtitle">
-          ${v.count ?? v.total ?? 0} review
-          · ${v.pct != null
-              ? v.pct + '%'
-              : v.accuracy != null
-                ? (v.accuracy * 100).toFixed(1) + '%'
-                : ''}
+          ${count} review${accuracy ? ` · ${accuracy} accuracy` : ''}
         </div>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 // ---------------------------------------------------------------------------
@@ -54,12 +66,18 @@ export function renderAccuracy(rows) {
         </tr>
       </thead>
       <tbody>
-        ${rows.map(r => `
+        ${rows.map(r => {
+          const count    = normalizeCount(r);
+          const accuracy = normalizeAccuracy(r);
+          return `
           <tr>
             <td>${badge(r.verdict)}</td>
-            <td>${r.count ?? r.total ?? '—'}</td>
-            <td>${r.accuracy != null ? (r.accuracy * 100).toFixed(1) + '%' : r.pct != null ? r.pct + '%' : '—'}</td>
-          </tr>`).join('')}
+            <td>${count}</td>
+            <td title="${accuracy ? '' : 'Backend chưa tính accuracy cho verdict này'}">
+              ${accuracy ?? '<span class="text-muted" style="font-size:.82rem;">N/A</span>'}
+            </td>
+          </tr>`;
+        }).join('')}
       </tbody>
     </table>`;
 }
@@ -86,16 +104,23 @@ export function renderPerformance(rows) {
         </tr>
       </thead>
       <tbody>
-        ${rows.map(r => `
+        ${rows.map(r => {
+          const pnl     = r.pnl_pct ?? r.pnl ?? null;
+          const pnlText = pnl != null
+            ? `${pnl > 0 ? '+' : ''}${Number(pnl).toFixed(1)}%`
+            : '<span class="text-muted" style="font-size:.82rem;" title="Chưa có dữ liệu giá">N/A</span>';
+          const pnlClass = pnl != null
+            ? (pnl > 0 ? 'score-high' : pnl < 0 ? 'score-low' : '')
+            : '';
+          return `
           <tr>
             <td><strong>${esc(r.ticker ?? '—')}</strong></td>
             <td style="max-width:200px;">${esc(r.title ?? '—')}</td>
-            <td class="${r.pnl_pct > 0 ? 'score-high' : r.pnl_pct < 0 ? 'score-low' : ''}">
-              ${r.pnl_pct != null ? (r.pnl_pct > 0 ? '+' : '') + r.pnl_pct.toFixed(1) + '%' : '—'}
-            </td>
-            <td>${r.review_count ?? '—'}</td>
+            <td class="${pnlClass}">${pnlText}</td>
+            <td>${r.review_count ?? r.reviews ?? '—'}</td>
             <td style="color:var(--muted);font-size:.82rem;">${fmtDate(r.updated_at)}</td>
-          </tr>`).join('')}
+          </tr>`;
+        }).join('')}
       </tbody>
     </table>`;
 }
