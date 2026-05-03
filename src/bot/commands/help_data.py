@@ -89,6 +89,43 @@ HELP_DATA: dict[str, GroupEntry] = {
             },
         ],
     },
+    "portfolio": {
+        "label": "Portfolio · Danh mục đầu tư",
+        "emoji": "💼",
+        "colour": 0x2ECC71,
+        "intro": "Ghi nhận giao dịch, theo dõi P&L realtime và conviction từ thesis.",
+        "commands": [
+            {
+                "usage": "/buy <ticker> <qty> <price> [note]",
+                "description": "Ghi nhận lệnh mua vào portfolio. Tự động tính giá vốn trung bình khi mua thêm.",
+                "example": "/buy VCB 1000 85000",
+            },
+            {
+                "usage": "/sell <ticker> <qty> <price> [note]",
+                "description": "Ghi nhận lệnh bán. Hiển thị realized P&L ngay sau khi bán.",
+                "example": "/sell VCB 500 92000",
+            },
+            {
+                "usage": "/portfolio [ticker] [view]",
+                "description": (
+                    "Xem danh mục hiện tại. "
+                    "**view=trades** (mặc định): P&L unrealized theo giao dịch thực tế, "
+                    "có thể lọc theo `ticker` cụ thể. "
+                    "**view=thesis**: góc nhìn conviction — verdict AI (🐂 BULLISH / 🐻 BEARISH / ⚖️ NEUTRAL / 👁 WATCHLIST), "
+                    "health score, P&L tính từ entry_price thesis và giá realtime."
+                ),
+                "example": "/portfolio view:thesis",
+            },
+            {
+                "usage": "/history [ticker]",
+                "description": (
+                    "Lịch sử giao dịch đã thực hiện (20 lệnh gần nhất). "
+                    "Kèm tổng kết realized P&L và win rate."
+                ),
+                "example": "/history VCB",
+            },
+        ],
+    },
     "thesis": {
         "label": "Thesis · Investment thesis",
         "emoji": "📝",
@@ -107,7 +144,7 @@ HELP_DATA: dict[str, GroupEntry] = {
             },
             {
                 "usage": "/thesis close <thesis_id> <reason>",
-                "description": "Đóng thesis (`closed` = đạt target/exit) hoặc huỷ (`invalidated` = thesis không còn valid).",
+                "description": "Dóng thesis (`closed` = đạt target/exit) hoặc huỷ (`invalidated` = thesis không còn valid).",
                 "example": "/thesis close 12 closed",
             },
             {
@@ -130,7 +167,7 @@ HELP_DATA: dict[str, GroupEntry] = {
     },
     "briefing": {
         "label": "Briefing · Bản tin thị trường",
-        "emoji": "🗞️",
+        "emoji": "🗉️",
         "colour": 0xF5A623,
         "intro": "Bản tin AI tổng hợp thị trường, cá nhân hoá theo watchlist của bạn.",
         "commands": [
