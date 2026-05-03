@@ -57,7 +57,7 @@ class PerplexityClient:
     # Ref: https://docs.perplexity.ai/docs/getting-started/models
     DEFAULT_MODEL = "sonar-pro"
 
-    def __init__(self, api_key: str, timeout: float = 30.0) -> None:
+    def __init__(self, api_key: str, timeout: float = 60.0) -> None:
         self._api_key = api_key
         self._timeout = timeout
         # Eager init — safe for singleton use without async with
@@ -86,8 +86,8 @@ class PerplexityClient:
 
     @retry(
         retry=retry_if_exception_type((PerplexityRateLimitError, PerplexityUnavailableError)),
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(2),
+        wait=wait_exponential(multiplier=1, min=2, max=8),
         reraise=True,
     )
     async def chat_completion(

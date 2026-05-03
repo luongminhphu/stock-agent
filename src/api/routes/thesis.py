@@ -131,7 +131,7 @@ async def suggest_thesis(
         ) from exc
     except PerplexityError as exc:
         raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"AI suggest failed: {exc}",
         ) from exc
 
@@ -638,7 +638,7 @@ async def trigger_review(
         raise _conflict(exc) from exc
     except Exception as exc:
         raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"AI review failed: {exc}",
         ) from exc
     return ThesisReviewResponse.model_validate(review)
