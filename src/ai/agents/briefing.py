@@ -41,13 +41,16 @@ class BriefingAgent:
         market_context: str,
         watchlist_tickers: list[str],
         extra_context: str = "",
+        portfolio_context: str = "",
     ) -> BriefOutput:
         """Generate a pre-market morning brief.
 
         Args:
-            market_context: Overnight/pre-market price summary string.
+            market_context:    Overnight/pre-market price summary string.
             watchlist_tickers: Tickers from user's watchlist to focus on.
-            extra_context: Optional free-text context (news, macro events).
+            extra_context:     Optional free-text context (news, macro events).
+            portfolio_context: Optional P&L snapshot from PnlService.
+                               Empty string = skip portfolio section gracefully.
 
         Returns:
             Typed BriefOutput.
@@ -62,6 +65,7 @@ class BriefingAgent:
                 market_context=market_context,
                 watchlist_tickers=watchlist_tickers,
                 extra_context=extra_context,
+                portfolio_context=portfolio_context,
             ),
         )
 
@@ -74,9 +78,9 @@ class BriefingAgent:
         """Generate an end-of-day brief.
 
         Args:
-            market_context: Intraday summary, net foreign flow, index performance.
+            market_context:    Intraday summary, net foreign flow, index performance.
             watchlist_tickers: Tickers to review for the day.
-            extra_context: Optional free-text context.
+            extra_context:     Optional free-text context.
 
         Returns:
             Typed BriefOutput.
