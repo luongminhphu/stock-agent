@@ -13,6 +13,7 @@ import {
   bindThesisFormEvents,
 } from './modules/thesis/thesis-form.js';
 import { bindSuggestEvents }    from './modules/thesis/thesis-suggest.js';
+import { loadPortfolio }        from './modules/portfolio/portfolio-loader.js';
 import { state }                from './state/dashboard-state.js';
 
 // ---------------------------------------------------------------------------
@@ -58,6 +59,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     onThesisSaved: async (thesisId) => {
       await loadDashboard();
       if (thesisId) await loadThesisDetail(thesisId);
+      // Reload portfolio khi thesis thay đổi (có thể ảnh hưởng view=thesis)
+      await loadPortfolio();
     },
   });
 
@@ -69,6 +72,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   el('reloadBtn')?.addEventListener('click', async () => {
     await loadDashboard();
     await loadBacktesting();
+    await loadPortfolio();
   });
   el('statusFilter')?.addEventListener('change', loadDashboard);
 
@@ -120,4 +124,5 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 8. Initial load
   await loadDashboard();
   await loadBacktesting();
+  await loadPortfolio();
 });
