@@ -5,6 +5,7 @@ Owner: briefing segment.
 Responsibilities:
 - collect watchlist tickers from watchlist segment
 - collect market context from market segment (quotes)
+- collect portfolio P&L snapshot from portfolio segment (optional)
 - call BriefingAgent for morning/EOD narrative
 - persist BriefSnapshot via BriefSnapshotRepository
 - return structured BriefOutput to adapters
@@ -40,6 +41,8 @@ class BriefingService:
         watchlist_service:  reads user watchlist tickers.
         quote_service:      fetches bulk market quotes.
         briefing_agent:     AI agent that writes the brief narrative.
+        pnl_service:        optional — reads open position P&L for portfolio context.
+                            Pass None to skip portfolio section gracefully.
         session:            AsyncSession for persisting BriefSnapshot.
                             Pass None to skip persistence (e.g. in tests).
     """
@@ -49,21 +52,30 @@ class BriefingService:
         watchlist_service: WatchlistService,
         quote_service: object,
         briefing_agent: BriefingAgent,
+        pnl_service: object | None = None,
         session: AsyncSession | None = None,
     ) -> None:
         self._watchlist_service = watchlist_service
         self._quote_service = quote_service
         self._agent = briefing_agent
+        self._pnl_service = pnl_service
         self._session = session
         self._repo = BriefSnapshotRepository(session) if session is not None else None
 
     async def generate_morning_brief(self, user_id: str) -> BriefOutput:
         tickers = await self._get_watchlist_tickers(user_id)
         market_context = await self._build_market_context(tickers, phase="morning")
-        logger.info("briefing.generate_morning", user_id=user_id, tickers=tickers)
+        portfolio_context = await self._build_portfolio_context(user_id)
+        logger.info(
+            "briefing.generate_morning",
+            user_id=user_id,
+            tickers=tickers,
+            has_portfolio=bool(portfolio_context),
+        )
         result = await self._agent.morning_brief(
             market_context=market_context,
             watchlist_tickers=tickers,
+            portfolio_context=portfolio_context,
         )
         await self._persist(user_id=user_id, phase="morning", output=result, tickers=tickers)
         return result
@@ -158,3 +170,42 @@ class BriefingService:
             "Tập trung vào mã biến động mạnh, tín hiệu risk-on/risk-off, và watchlist-specific alerts."
         )
         return "\n".join(lines)
+
+    async def _build_portfolio_context(self, user_id: str) -> str:
+        """Build portfolio P&L snapshot string for AI context injection.
+
+        Returns empty string if pnl_service is not injected, portfolio is
+        empty, or any error occurs — brief generation must never be blocked
+        by portfolio data unavailability.
+        """
+        if self._pnl_service is None:
+            return ""
+        try:
+            pnl = await self._pnl_service.get_portfolio_pnl(user_id)  # type: ignore[attr-defined]
+            if not pnl.positions:
+                return ""
+
+            lines = [
+                f"Portfolio: {len(pnl.positions)} vị thế đang mở, "
+                f"tổng giá trị thị trường={pnl.total_market_value:,.0f} VNĐ, "
+                f"lãi/lỗ chưa thực hiện={pnl.total_unrealized_pnl:+,.0f} VNĐ "
+                f"({pnl.total_unrealized_pct:+.2f}%).",
+                "Chi tiết từng vị thế:",
+            ]
+            for pos in pnl.positions:
+                pct_str = f"{pos.unrealized_pct:+.2f}%"
+                pnl_str = f"{pos.unrealized_pnl:+,.0f} VNĐ"
+                lines.append(
+                    f"- {pos.ticker}: giá vốn={pos.avg_cost:,.0f}, "
+                    f"giá hiện tại={pos.current_price:,.0f}, "
+                    f"lãi/lỗ={pnl_str} ({pct_str}), "
+                    f"khối lượng={pos.qty:,.0f}"
+                )
+            if pnl.errors:
+                lines.append(
+                    f"Lưu ý: không lấy được giá cho {', '.join(pnl.errors.keys())} — bỏ qua các mã này."
+                )
+            return "\n".join(lines)
+        except Exception as exc:
+            logger.warning("briefing.portfolio_context_failed", user_id=user_id, error=str(exc))
+            return ""

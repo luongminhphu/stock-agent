@@ -58,7 +58,6 @@ def format_brief(brief: BriefOutput, brief_type: str = "brief") -> str:
     ]
 
     if brief.key_movers:
-        # Render inline with bullet separator — avoids each ticker on its own line
         movers_inline = "  •  ".join(f"**{m}**" for m in brief.key_movers)
         lines += ["", f"🔥 {movers_inline}"]
 
@@ -82,6 +81,11 @@ def format_brief(brief: BriefOutput, brief_type: str = "brief") -> str:
             )
             if ts.watch_reason:
                 lines.append(f"  ↳ _{ts.watch_reason}_")
+
+    if brief.portfolio_summary:
+        lines += ["", "**💼 Portfolio**"]
+        for item in brief.portfolio_summary:
+            lines.append(f"\u2022 {_inline(item)}")
 
     return "\n".join(lines)
 

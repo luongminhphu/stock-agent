@@ -15,6 +15,9 @@ Quy tắc chung:
 - Tập trung vào thông tin actionable, không lan man.
 - Với watchlist: chỉ đề cập ticker nếu có điều đáng chú ý thực sự.
 - ticker_summaries: bắt buộc điền đầy đủ cho MỖI ticker trong watchlist, không được bỏ sót.
+- portfolio_summary: chỉ điền khi có dữ liệu portfolio. Nhận xét alignment giữa portfolio
+  hiện tại với market sentiment hôm nay — rủi ro tập trung, position nổi bật cần chú ý.
+  Nếu không có portfolio data thì để mảng rỗng [].
 
 ⚠️ QUAN TRỌNG — Quy tắc format (áp dụng cho MỌI string field):
 - KHÔNG dùng markdown bên trong bất kỳ string field nào (không ** bold, không xuống hàng).
@@ -40,6 +43,11 @@ JSON schema:
       "one_line": "string — 1 câu liên tục, không markdown",
       "watch_reason": "string — 1 câu liên tục, không markdown"
     }
+  ],
+  "portfolio_summary": [
+    "string — mỗi item là 1 nhận xét portfolio liên tục, không markdown, không xuống hàng."
+    " VD: 'VCB đang lãi +8.2%, phiên hôm nay sentiment RISK_OFF — cân nhắc chốt một phần.'"
+    " Rỗng nếu không có portfolio data."
   ]
 }
 """
@@ -49,6 +57,7 @@ def build_morning_prompt(
     market_context: str,
     watchlist_tickers: list[str],
     extra_context: str = "",
+    portfolio_context: str = "",
 ) -> str:
     ticker_str = ", ".join(watchlist_tickers) if watchlist_tickers else "(không có watchlist)"
     prompt = f"""[MORNING BRIEF — Phiên hôm nay]
@@ -58,6 +67,9 @@ Dữ liệu thị trường:
 
 Watchlist cần theo dõi: {ticker_str}
 """
+    if portfolio_context:
+        prompt += f"\nPortfolio hiện tại:\n{portfolio_context}\n"
+
     if extra_context:
         prompt += f"\nThông tin bổ sung:\n{extra_context}\n"
 
@@ -67,6 +79,11 @@ Watchlist cần theo dõi: {ticker_str}
         " Với mỗi ticker, dùng dữ liệu giá từ phần 'Dữ liệu thị trường' ở trên."
         " Nếu không có giá, đặt price=0, change_pct=0 và ghi rõ trong one_line là thiếu dữ liệu."
     )
+    if portfolio_context:
+        prompt += (
+            " Điền portfolio_summary dựa trên dữ liệu portfolio ở trên:"
+            " nhận xét alignment với market sentiment hôm nay, position nào cần chú ý."
+        )
     return prompt
 
 

@@ -127,6 +127,19 @@ class WatchlistTickerSummary(BaseModel):
     watch_reason: str
 
 
+class PortfolioPositionBrief(BaseModel):
+    """Snapshot P&L của một position để inject vào morning brief.
+
+    Chỉ dùng cho briefing context — không phải full PositionPnl.
+    AI dùng để nhận xét portfolio alignment với market sentiment.
+    """
+
+    ticker: str
+    unrealized_pct: float = Field(description="% lãi/lỗ chưa thực hiện")
+    unrealized_pnl: float = Field(description="Lãi/lỗ tuyệt đối (VNĐ)")
+    signal: str = Field(description="bullish | bearish | neutral — từ watchlist scan nếu có")
+
+
 class BriefOutput(BaseModel):
     """Structured output from BriefingAgent (morning or EOD)."""
 
@@ -142,6 +155,14 @@ class BriefOutput(BaseModel):
     ticker_summaries: list[WatchlistTickerSummary] = Field(
         default_factory=list,
         description="Per-ticker summary for each watchlist item",
+    )
+    portfolio_summary: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Nhận xét portfolio alignment với market hôm nay. "
+            "Mỗi item là 1 câu liên tục: rủi ro tập trung, position nổi bật, "
+            "hoặc gợi ý cần chú ý. Rỗng nếu không có portfolio data."
+        ),
     )
 
 
