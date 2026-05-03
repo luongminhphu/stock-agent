@@ -9,6 +9,7 @@ Outputs:
   PositionPnl       — unrealized P&L for a single open position
   PortfolioPnl      — aggregated view of all open positions
   RealizedSummary   — realized P&L stats from trade history
+  TradeSnapshot     — plain dataclass snapshot of a Trade row (safe outside session)
 """
 
 from __future__ import annotations
@@ -33,10 +34,10 @@ class PositionPnl:
     qty: float
     avg_cost: float
     current_price: float
-    unrealized_pnl: float       # (current_price - avg_cost) * qty
-    unrealized_pct: float       # unrealized_pnl / (avg_cost * qty) * 100
-    market_value: float         # current_price * qty
-    cost_basis: float           # avg_cost * qty
+    unrealized_pnl: float
+    unrealized_pct: float
+    market_value: float
+    cost_basis: float
     thesis_id: int | None
 
 
@@ -45,7 +46,7 @@ class PortfolioPnl:
     """Aggregated P&L across all open positions."""
 
     positions: list[PositionPnl] = field(default_factory=list)
-    errors: dict[str, str] = field(default_factory=dict)   # ticker → error msg
+    errors: dict[str, str] = field(default_factory=dict)
 
     @property
     def total_cost_basis(self) -> float:
@@ -82,10 +83,28 @@ class RealizedSummary:
 
     @property
     def win_rate(self) -> float | None:
-        """Win rate as a fraction (0.0–1.0). None if no trades."""
         if self.total_trades == 0:
             return None
         return self.win_trades / self.total_trades
+
+
+@dataclass
+class TradeSnapshot:
+    """Plain-data snapshot of a Trade row.
+
+    Copied from the ORM object while the session is still open,
+    so callers can safely access all fields after session close
+    without risking DetachedInstanceError or lazy-load failures.
+    """
+
+    id: int
+    ticker: str
+    trade_type: str          # "buy" or "sell" (raw string, always lowercase)
+    qty: float
+    price: float
+    realized_pnl: float | None
+    traded_at: datetime | None
+    note: str | None
 
 
 class PnlService:
@@ -153,9 +172,26 @@ class PnlService:
         user_id: str,
         ticker: str | None = None,
         limit: int = 20,
-    ) -> list:
-        """Return recent trade history for display. Newest first."""
-        return await self._repo.list_trades(user_id, ticker=ticker, limit=limit)
+    ) -> list[TradeSnapshot]:
+        """Return recent trade history as plain TradeSnapshot objects.
+
+        Snapshots all columns eagerly while the session is open so callers
+        can safely iterate after session close without DetachedInstanceError.
+        """
+        trades = await self._repo.list_trades(user_id, ticker=ticker, limit=limit)
+        return [
+            TradeSnapshot(
+                id=t.id,
+                ticker=t.ticker,
+                trade_type=str(t.trade_type).lower(),
+                qty=t.qty,
+                price=t.price,
+                realized_pnl=t.realized_pnl,
+                traded_at=t.traded_at,
+                note=t.note,
+            )
+            for t in trades
+        ]
 
     # ------------------------------------------------------------------
     # Internal
