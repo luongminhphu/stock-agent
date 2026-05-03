@@ -1,7 +1,7 @@
-"""ThesisTimelineService — ordered event log + focused review timeline.
+"""ThesisTimelineService — ordered event log + focused review timeline + conviction timeline.
 
 Owner: readmodel segment.
-Builds a chronological list of significant events from multiple tables.
+Builds chronological views from multiple tables.
 Read-only. No writes. No AI calls.
 """
 
@@ -13,6 +13,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.readmodel.schemas import (
+    ConvictionBreakdown,
+    ConvictionPoint,
+    ConvictionTimelineResponse,
+    ConvictionTrend,
     ReviewTimelineItem,
     ReviewTimelineResponse,
     ThesisTimelineResponse,
@@ -216,6 +220,102 @@ class ThesisTimelineService:
             total=len(items),
         )
 
+    # ------------------------------------------------------------------
+    # Conviction Score Timeline
+    # ------------------------------------------------------------------
+
+    async def get_conviction_timeline(
+        self,
+        thesis_id: int,
+        limit: int = 20,
+    ) -> ConvictionTimelineResponse | None:
+        """Trả về cỗ conviction score theo thời gian cho một thesis.
+
+        Mỗi point ướng với một ThesisSnapshot. Verdict + confidence được lấy
+        từ ThesisReview gần nhất trước (hoặc đúng bằng) snapshotted_at.
+
+        Breakdown được parse từ score_breakdown JSON column (nullable cho legacy rows).
+        Trend = so sánh avg(3 điểm đầu) vs avg(3 điểm cuối); Δ > 5 → improving,
+        Δ < -5 → declining, else stable. < 2 điểm → insufficient_data.
+        """
+        from src.thesis.models import Thesis, ThesisReview, ThesisSnapshot
+        from src.thesis.scoring_service import score_tier
+
+        thesis_result = await self._session.execute(
+            select(Thesis).where(Thesis.id == thesis_id)
+        )
+        thesis = thesis_result.scalar_one_or_none()
+        if thesis is None:
+            return None
+
+        # --- Load snapshots (oldest first) ---
+        snaps_result = await self._session.execute(
+            select(ThesisSnapshot)
+            .where(ThesisSnapshot.thesis_id == thesis_id)
+            .order_by(ThesisSnapshot.snapshotted_at.asc())
+            .limit(limit)
+        )
+        snapshots = snaps_result.scalars().all()
+
+        # --- Load all reviews for this thesis (needed for nearest-prior lookup) ---
+        reviews_result = await self._session.execute(
+            select(ThesisReview)
+            .where(ThesisReview.thesis_id == thesis_id)
+            .order_by(ThesisReview.reviewed_at.asc())
+        )
+        reviews = reviews_result.scalars().all()
+
+        # Build points
+        points: list[ConvictionPoint] = []
+        for snap in snapshots:
+            if snap.score_at_snapshot is None:
+                continue
+
+            tier_label, tier_icon = score_tier(snap.score_at_snapshot)
+            breakdown = _parse_breakdown(snap.score_breakdown)
+
+            # Nearest review at or before snapshotted_at
+            nearest = _nearest_prior_review(reviews, snap.snapshotted_at)
+            verdict = None
+            confidence = None
+            if nearest is not None:
+                verdict = (
+                    str(nearest.verdict.value)
+                    if hasattr(nearest.verdict, "value")
+                    else str(nearest.verdict)
+                )
+                confidence = float(nearest.confidence or 0)
+
+            points.append(
+                ConvictionPoint(
+                    snapshot_id=snap.id,
+                    snapshotted_at=snap.snapshotted_at,
+                    score=snap.score_at_snapshot,
+                    score_tier=tier_label,
+                    score_tier_icon=tier_icon,
+                    breakdown=breakdown,
+                    verdict=verdict,
+                    confidence=confidence,
+                    price=snap.price_at_snapshot,
+                    pnl_pct=snap.pnl_pct,
+                )
+            )
+
+        trend = _compute_trend(points)
+        latest_score = points[-1].score if points else None
+        earliest_score = points[0].score if len(points) >= 2 else None
+
+        return ConvictionTimelineResponse(
+            thesis_id=thesis.id,
+            ticker=thesis.ticker,
+            title=thesis.title,
+            points=points,
+            trend=trend,
+            latest_score=latest_score,
+            earliest_score=earliest_score,
+            total=len(points),
+        )
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -233,3 +333,56 @@ def _parse_json_list(raw: str | None) -> list[str]:
         return []
     except (json.JSONDecodeError, TypeError, ValueError):
         return []
+
+
+def _parse_breakdown(raw: str | None) -> ConvictionBreakdown | None:
+    """Parse score_breakdown JSON column → ConvictionBreakdown. None on legacy/null."""
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+        return ConvictionBreakdown(
+            assumption_health=float(data.get("assumption_health", 0)),
+            catalyst_progress=float(data.get("catalyst_progress", 0)),
+            risk_reward=float(data.get("risk_reward", 0)),
+            review_confidence=float(data.get("review_confidence", 0)),
+        )
+    except (json.JSONDecodeError, TypeError, ValueError, KeyError):
+        return None
+
+
+def _nearest_prior_review(reviews: list, snapshot_ts) -> object | None:  # type: ignore[type-arg]
+    """Return review with reviewed_at <= snapshot_ts, latest first. O(n) scan.
+
+    reviews must be sorted ascending by reviewed_at (caller guarantees this).
+    """
+    best = None
+    for r in reviews:
+        if r.reviewed_at <= snapshot_ts:
+            best = r
+        else:
+            break  # already past snapshot_ts thanks to ascending order
+    return best
+
+
+def _compute_trend(points: list[ConvictionPoint]) -> str:
+    """Compare avg score of first-3 vs last-3 data points.
+
+    Δ > +5  → improving
+    Δ < -5  → declining
+    else    → stable
+    < 2 pts → insufficient_data
+    """
+    if len(points) < 2:
+        return ConvictionTrend.INSUFFICIENT_DATA
+
+    window = min(3, len(points) // 2 or 1)
+    early_avg = sum(p.score for p in points[:window]) / window
+    late_avg = sum(p.score for p in points[-window:]) / window
+    delta = late_avg - early_avg
+
+    if delta > 5:
+        return ConvictionTrend.IMPROVING
+    if delta < -5:
+        return ConvictionTrend.DECLINING
+    return ConvictionTrend.STABLE
