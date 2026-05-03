@@ -115,6 +115,17 @@ HELP_DATA: dict[str, GroupEntry] = {
                 "description": "Chạy AI review: verdict (Bullish/Bearish/Neutral/Watchlist), risk signals, next watch items, confidence score.",
                 "example": "/review_thesis 12",
             },
+            {
+                "usage": "/conviction <ticker> [limit]",
+                "description": (
+                    "Xem Conviction Score Timeline: lịch sử health score qua các snapshot, "
+                    "trend (📈 Improving / 📉 Declining / ➡️ Stable), breakdown 4 dimensions "
+                    "(Assumptions · Catalysts · Risk/Reward · AI Confidence), "
+                    "và verdict + confidence của AI review gần nhất. "
+                    "`limit` = số snapshot tối đa (5–50, mặc định 20)."
+                ),
+                "example": "/conviction VCB",
+            },
         ],
     },
     "briefing": {
