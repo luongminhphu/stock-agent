@@ -264,11 +264,59 @@ class AlignmentStatus(StrEnum):
     NO_DATA = "NO_DATA"    # Không có dữ liệu từ nguồn này
 
 
+class ResolutionCategory(StrEnum):
+    PRICE = "price"       # Điều kiện về giá / kỹ thuật
+    VOLUME = "volume"     # Điều kiện về khối lượng
+    NEWS = "news"         # Điều kiện về tin tức / sự kiện
+    THESIS = "thesis"     # Điều kiện liên quan đến thesis
+    MACRO = "macro"       # Điều kiện vĩ mô / ngành
+
+
+class ResolutionStep(BaseModel):
+    """Một điều kiện cụ thể để chuyển từ WAIT/AVOID → GO.
+
+    Chỉ có nghĩa khi PreTradeCheckOutput.decision != GO.
+    AI điền để nhà đầu tư biết đang chờ điều kiện nào,
+    không phải chờ vô thời hạn.
+
+    priority:
+        1 = bắt buộc — thiếu điều kiện này không thể GO
+        2 = nên có   — nếu thiếu vẫn có thể GO nhưng rủi ro cao hơn
+        3 = bonus    — có thì tốt, không có cũng được
+    """
+
+    condition: str = Field(
+        description="Điều kiện cụ thể, có thể đo được. VD: 'VCB giữ trên 85,000 qua 2 phiên'"
+    )
+    category: ResolutionCategory = Field(
+        description="Phân loại điều kiện: price | volume | news | thesis | macro"
+    )
+    priority: int = Field(
+        ge=1, le=3,
+        description="1=bắt buộc, 2=nên có, 3=bonus",
+    )
+    current_status: str = Field(
+        description="Trạng thái hiện tại của điều kiện này. VD: 'Hiện tại 82,400 — chưa thỏa'"
+    )
+
+    @field_validator("priority", mode="before")
+    @classmethod
+    def clamp_priority(cls, v: object) -> int:
+        try:
+            return max(1, min(3, int(v)))  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return 2
+
+
 class PreTradeCheckOutput(BaseModel):
     """Structured output from PreTradeAgent.
 
     Tổng hợp verdict từ nhiều nguồn: thesis, watchlist signal, brief hôm nay.
     decision là kết luận cuối; các *_alignment fields giải thích lý do.
+
+    resolution_path: có giá trị khi decision = WAIT hoặc AVOID.
+    Liệt kê từng điều kiện cụ thể cần thỏa để chuyển sang GO,
+    theo thứ tự priority (1 trước). Rỗng khi decision = GO.
     """
 
     ticker: str
@@ -296,12 +344,27 @@ class PreTradeCheckOutput(BaseModel):
         description="Rủi ro cần theo dõi ngay cả khi GO",
     )
     reasoning: str = Field(description="Lý giải tổng hợp của AI về quyết định này")
+    resolution_path: list[ResolutionStep] = Field(
+        default_factory=list,
+        description=(
+            "Lộ trình cụ thể để chuyển từ WAIT/AVOID → GO. "
+            "Mỗi bước là một điều kiện đo được, có priority và trạng thái hiện tại. "
+            "Rỗng khi decision = GO."
+        ),
+    )
 
     @field_validator("conflicts", "conditions", "risk_flags", mode="before")
     @classmethod
     def ensure_list(cls, v: object) -> list[object]:
         if isinstance(v, str):
             return [v]
+        if not isinstance(v, list):
+            return []
+        return v  # type: ignore[return-value]
+
+    @field_validator("resolution_path", mode="before")
+    @classmethod
+    def ensure_resolution_list(cls, v: object) -> list[object]:
         if not isinstance(v, list):
             return []
         return v  # type: ignore[return-value]
