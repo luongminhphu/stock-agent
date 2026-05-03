@@ -368,6 +368,15 @@ class ThesisSnapshot(Base):
     price_at_snapshot: Mapped[float] = mapped_column(Float, nullable=False)
     pnl_pct: Mapped[float | None] = mapped_column(Float)  # vs entry_price
     score_at_snapshot: Mapped[float | None] = mapped_column(Float)
+
+    # JSON dict: {"assumption_health": float, "catalyst_progress": float,
+    #             "risk_reward": float, "review_confidence": float}
+    # Stored as TEXT for portability. None for legacy snapshots created before this column.
+    score_breakdown: Mapped[str | None] = mapped_column(
+        Text,
+        comment="JSON breakdown từ ScoringService.compute_with_breakdown(), nullable cho legacy rows",
+    )
+
     snapshotted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
