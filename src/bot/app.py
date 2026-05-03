@@ -70,6 +70,7 @@ async def _sync_tree(bot: commands.Bot) -> None:
 async def _register_cogs(bot: commands.Bot) -> None:
     """Load all command cogs. Add new cogs here only — no logic."""
     from src.bot.commands.briefing import BriefingCog
+    from src.bot.commands.conviction_timeline import ConvictionTimelineCog
     from src.bot.commands.help import HelpCog
     from src.bot.commands.market import MarketCog
     from src.bot.commands.pretrade import PretradeCog
@@ -86,6 +87,7 @@ async def _register_cogs(bot: commands.Bot) -> None:
     await bot.add_cog(HelpCog(bot))
     await bot.add_cog(WhyCog(bot))
     await bot.add_cog(PretradeCog(bot))
+    await bot.add_cog(ConvictionTimelineCog(bot))
     logger.info(
         "bot.cogs_loaded",
         cogs=[
@@ -97,6 +99,7 @@ async def _register_cogs(bot: commands.Bot) -> None:
             "HelpCog",
             "WhyCog",
             "PretradeCog",
+            "ConvictionTimelineCog",
         ],
     )
 
