@@ -1,7 +1,7 @@
 """add portfolio tables
 
 Revision ID: 20260503_0005
-Revises: 20260503_0004
+Revises: 0004_add_score_breakdown
 Create Date: 2026-05-03
 
 Adds two tables for the portfolio segment:
@@ -24,7 +24,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "20260503_0005"
-down_revision: str = "20260503_0004"
+down_revision: str = "0004_add_score_breakdown"
 branch_labels = None
 depends_on = None
 
