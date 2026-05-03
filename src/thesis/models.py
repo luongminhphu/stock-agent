@@ -198,7 +198,6 @@ class Thesis(Base):
             return self.entry_price * self.quantity
         return None
 
-
     def market_value_at(self, current_price: float) -> float | None:
         """Tính market value tại một mức giá cụ thể."""
         if self.quantity:
@@ -393,20 +392,41 @@ class ThesisSnapshot(Base):
     thesis_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("theses.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    price_at_snapshot: Mapped[float] = mapped_column(Float, nullable=False)
+
+    # Legacy columns (market snapshot path — created by snapshot_scheduler)
+    price_at_snapshot: Mapped[float | None] = mapped_column(Float, nullable=True)
     pnl_pct: Mapped[float | None] = mapped_column(Float)  # vs entry_price
     score_at_snapshot: Mapped[float | None] = mapped_column(Float)
+    snapshotted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=True
+    )
 
-    # JSON dict: {"assumption_health": float, "catalyst_progress": float,
-    #             "risk_reward": float, "review_confidence": float}
-    # Stored as TEXT for portability. None for legacy snapshots created before this column.
+    # Review-triggered snapshot columns (created by review_service)
+    score: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        comment="Conviction score tại thời điểm review (0-100)",
+    )
+    verdict: Mapped[str | None] = mapped_column(
+        String(32),
+        nullable=True,
+        comment="ReviewVerdict value tại thời điểm review",
+    )
+    confidence: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        comment="AI confidence tại thời điểm review (0-1)",
+    )
+    recorded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Timestamp của review tạo ra snapshot này",
+    )
+
+    # Shared
     score_breakdown: Mapped[str | None] = mapped_column(
         Text,
         comment="JSON breakdown từ ScoringService.compute_with_breakdown(), nullable cho legacy rows",
-    )
-
-    snapshotted_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     # Relationship
