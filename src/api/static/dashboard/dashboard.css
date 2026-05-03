@@ -23,6 +23,7 @@
 @import url('./css/components/buttons.css');
 @import url('./css/components/badge.css');
 @import url('./css/components/modal.css');
+@import url('./css/components/toast.css');
 
 /* 5. Modules */
 @import url('./css/modules/layout.css');

@@ -1,10 +1,11 @@
-/* ─── Modal, Forms & Toast ───────────────────────────────────────────────────
+/* ─── Modal & Forms ────────────────────────────────────────────────────────────
    Owner: components
-   dialog, modal-inner, form-grid, suggest-bar, suggest-result, toast.
+   dialog, modal-inner, form-grid, suggest-bar, suggest-result.
+   Toast → toast.css
    Không phụ thuộc module nào khác ngoài variables.
 ──────────────────────────────────────────────────────────────────────────── */
 
-/* ── Dialog shell ─────────────────────────────────────────────────────────── */
+/* ── Dialog shell ───────────────────────────────────────────────────────────────── */
 dialog {
   position: fixed;
   inset: 0;
@@ -62,7 +63,7 @@ dialog::backdrop {
   border-top: 1px solid var(--line);
 }
 
-/* ── Forms ────────────────────────────────────────────────────────────────── */
+/* ── Forms ────────────────────────────────────────────────────────────────────── */
 .form-grid {
   display: grid;
   gap: 12px;
@@ -102,7 +103,7 @@ dialog::backdrop {
   text-transform: uppercase;
 }
 
-/* ── AI Suggest bar & result ──────────────────────────────────────────────── */
+/* ── AI Suggest bar & result ─────────────────────────────────────────────────────── */
 .suggest-bar {
   display: flex;
   gap: 10px;
@@ -222,28 +223,3 @@ dialog::backdrop {
   border-radius: 99px;
   transition: width 0.4s ease;
 }
-
-/* ── Toast notification ───────────────────────────────────────────────────── */
-@keyframes slideUp {
-  from { opacity: 0; transform: translateY(12px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-.toast {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  padding: 12px 16px;
-  border-radius: 14px;
-  background: rgba(13, 23, 40, 0.96);
-  border: 1px solid var(--line-strong);
-  box-shadow: 0 16px 48px rgba(2, 6, 23, 0.48);
-  color: var(--text);
-  font-size: 0.82rem;
-  font-weight: 500;
-  z-index: 9999;
-  max-width: 320px;
-  backdrop-filter: blur(12px);
-  animation: slideUp 0.25s ease;
-}
-.toast.success { border-color: rgba(74, 222, 128, 0.3); }
-.toast.error   { border-color: rgba(248, 113, 113, 0.3); }
