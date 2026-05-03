@@ -42,7 +42,7 @@ class ThesisSummaryRow(BaseModel):
 
     # Score context — populated by dashboard_service, sourced from thesis.scoring_service
     # score_tier:      e.g. "Critical" / "Weak" / "Moderate" / "Healthy" / "Strong"
-    # score_tier_icon: matching emoji e.g. "🔴" / "🟠" / "🟡" / "🟢" / "💎"
+    # score_tier_icon: matching emoji e.g. "🔴" / "🟠" / "🟡" / "🟢" / "📎"
     # score_breakdown: per-dimension contributions, keys match ScoringService.compute_with_breakdown()
     #                  Only populated when full ORM graph is loaded (e.g. thesis detail).
     #                  None in list views where we avoid loading assumptions/catalysts.
@@ -182,3 +182,62 @@ class ReviewTimelineResponse(BaseModel):
     title: str
     items: list[ReviewTimelineItem]   # newest first
     total: int
+
+
+# ---------------------------------------------------------------------------
+# Conviction Score Timeline
+# ---------------------------------------------------------------------------
+
+
+class ConvictionBreakdown(BaseModel):
+    """Per-dimension score breakdown at a single point in time (0–100 scale)."""
+
+    assumption_health: float
+    catalyst_progress: float
+    risk_reward: float
+    review_confidence: float
+
+
+class ConvictionPoint(BaseModel):
+    """One data-point on the Conviction Score Timeline.
+
+    Sourced from ThesisSnapshot + nearest ThesisReview before that snapshot.
+    breakdown may be None for legacy snapshots created before score_breakdown column.
+    """
+
+    snapshot_id: int
+    snapshotted_at: datetime
+    score: float                         # total 0–100
+    score_tier: str                      # "Critical" | "Weak" | "Moderate" | "Healthy" | "Strong"
+    score_tier_icon: str                 # "🔴" | "🟠" | "🟡" | "🟢" | "📎"
+    breakdown: ConvictionBreakdown | None = None
+    verdict: str | None = None           # ReviewVerdict from nearest prior AI review
+    confidence: float | None = None      # AI confidence at nearest prior review
+    price: float                         # price_at_snapshot
+    pnl_pct: float | None = None         # vs thesis entry_price
+
+
+class ConvictionTrend(str):
+    IMPROVING = "improving"
+    DECLINING = "declining"
+    STABLE = "stable"
+    INSUFFICIENT_DATA = "insufficient_data"
+
+
+class ConvictionTimelineResponse(BaseModel):
+    """Conviction Score Timeline for a single thesis.
+
+    points: oldest → newest (ascending snapshotted_at).
+    trend: computed by comparing avg of first-3 vs last-3 data points.
+           Δ > +5  → improving | Δ < -5  → declining | else → stable.
+           < 2 data-points → insufficient_data.
+    """
+
+    thesis_id: int
+    ticker: str
+    title: str
+    points: list[ConvictionPoint]         # oldest first
+    trend: str                            # ConvictionTrend value
+    latest_score: float | None            # score of newest point, None if no snapshots
+    earliest_score: float | None          # score of oldest point, None if < 2 snapshots
+    total: int                            # number of data-points returned
