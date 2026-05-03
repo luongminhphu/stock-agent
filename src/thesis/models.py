@@ -198,14 +198,6 @@ class Thesis(Base):
             return self.entry_price * self.quantity
         return None
 
-    @property
-    def market_value(self, current_price: float | None = None) -> float | None:
-        """Market value tại current_price. Cần truyền current_price từ ngoài vào.
-
-        Dùng trong portfolio service: thesis.market_value_at(price).
-        Property này chỉ placeholder — dùng market_value_at() thay thế.
-        """
-        return None
 
     def market_value_at(self, current_price: float) -> float | None:
         """Tính market value tại một mức giá cụ thể."""
