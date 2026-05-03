@@ -68,6 +68,20 @@ async def _ensure_scan_snapshot(
     return await svc.get_scan_latest(user_id)
 
 
+async def _build_price_map(tickers: list[str]) -> dict[str, float]:
+    """Fetch current prices cho danh sach tickers tu QuoteService.
+    Tra ve {} neu QuoteService unavailable hoac tickers rong.
+    """
+    if not tickers:
+        return {}
+    try:
+        quote_svc = get_quote_service()
+        quotes = await quote_svc.get_quotes(tickers)
+        return {q.ticker: q.close for q in quotes if q.close is not None}
+    except Exception:
+        return {}
+
+
 # ---------------------------------------------------------------------------
 # 1. Stats — KPI tong quan
 # ---------------------------------------------------------------------------
@@ -303,6 +317,52 @@ async def get_price_snapshots_single_user(
     if result is None:
         raise HTTPException(status_code=404, detail=f"Thesis {thesis_id} not found")
     return result
+
+
+# ---------------------------------------------------------------------------
+# 10. Portfolio — positions + aggregate P&L
+# ---------------------------------------------------------------------------
+
+
+@router.get("/dashboard/{user_id}/portfolio")
+async def get_portfolio(
+    user_id: str,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    enrich_prices: Annotated[
+        bool,
+        Query(description="Fetch gia hien tai tu QuoteService de tinh P&L realtime"),
+    ] = True,
+) -> dict[str, Any]:
+    """Tra ve toan bo positions active cua user kem aggregate P&L.
+
+    - enrich_prices=true (default): lay gia hien tai tu QuoteService -> pnl_abs/pnl_pct co gia tri.
+    - enrich_prices=false: tra ve position metadata nhanh hon, pnl_abs/pnl_pct = null.
+    """
+    svc = DashboardService(session)
+
+    price_map: dict[str, float] = {}
+    if enrich_prices:
+        # Lay danh sach ticker truoc (1 query nhe), roi fetch gia theo batch
+        theses = await svc.get_theses_list(user_id, status="active", limit=500)
+        tickers = list({t["ticker"] for t in theses if t.get("ticker")})
+        price_map = await _build_price_map(tickers)
+
+    return await svc.get_portfolio(user_id, price_map=price_map)
+
+
+@router.get("/dashboard/portfolio")
+async def get_portfolio_single_user(
+    session: Annotated[AsyncSession, Depends(get_db)],
+    enrich_prices: Annotated[
+        bool,
+        Query(description="Fetch gia hien tai tu QuoteService de tinh P&L realtime"),
+    ] = True,
+) -> dict[str, Any]:
+    return await get_portfolio(
+        user_id=_default_user_id(),
+        session=session,
+        enrich_prices=enrich_prices,
+    )
 
 
 # ---------------------------------------------------------------------------
