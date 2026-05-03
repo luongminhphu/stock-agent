@@ -241,3 +241,76 @@ class ConvictionTimelineResponse(BaseModel):
     latest_score: float | None            # score of newest point, None if no snapshots
     earliest_score: float | None          # score of oldest point, None if < 2 snapshots
     total: int                            # number of data-points returned
+
+
+# ---------------------------------------------------------------------------
+# Portfolio
+# ---------------------------------------------------------------------------
+
+
+class PortfolioPositionRow(BaseModel):
+    """Một position trong portfolio — tương ứng với một thesis active.
+
+    quantity=None: chỉ track thesis (P&L % có, P&L VND không có).
+    quantity set:  full position view với cost_basis, market_value, pnl_abs.
+    """
+
+    thesis_id: int
+    ticker: str
+    title: str
+    status: str
+
+    # Position size
+    quantity: float | None                # số CP nắm giữ
+    entry_price: float | None             # giá vốn (VND)
+    current_price: float | None           # giá hiện tại từ quote service
+
+    # P&L
+    pnl_pct: float | None                 # % so với entry_price
+    pnl_abs: float | None                 # VND = (current - entry) * quantity
+    cost_basis: float | None              # entry_price * quantity
+    market_value: float | None            # current_price * quantity
+
+    # Weight trong tổng portfolio (theo market_value, None nếu thiếu dữ liệu)
+    weight_pct: float | None
+
+    # AI context
+    last_verdict: str | None
+    score: float | None
+    score_tier: str | None
+    score_tier_icon: str | None
+
+    # Price movement hôm nay
+    change_pct: float | None = None       # % thay đổi so với hôm qua
+
+
+class PortfolioSummary(BaseModel):
+    """Tổng hợp portfolio của user.
+
+    Bao gồm aggregate P&L + danh sách positions active.
+    Positions được sắp xếp theo pnl_abs desc (người đang lãi nhất đứng đầu).
+
+    has_quantity_data: True nếu ít nhất 1 position có quantity — cho biết
+    UI có nên hiển thị cột VND hay chỉ hiển thị cột %.
+    """
+
+    user_id: str
+    generated_at: datetime
+
+    # Aggregate (chỉ có giá trị khi có ít nhất 1 position có đủ dữ liệu)
+    total_cost_basis: float | None        # tổng vốn đầu tư (VND)
+    total_market_value: float | None      # tổng giá trị thị trường (VND)
+    total_pnl_abs: float | None           # lãi/lỗ tổng (VND)
+    total_pnl_pct: float | None           # lãi/lỗ % bình quân gia quyền
+
+    # Counts
+    position_count: int                   # tổng số positions
+    winning_count: int                    # pnl_pct > 0
+    losing_count: int                     # pnl_pct < 0
+    neutral_count: int                    # pnl_pct == 0 hoặc None
+
+    # Flag cho UI
+    has_quantity_data: bool               # True nếu ít nhất 1 position có quantity
+
+    # Positions sorted by pnl_abs desc (None pnl_abs đẩy xuống cuối)
+    positions: list[PortfolioPositionRow]
