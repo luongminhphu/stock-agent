@@ -21,6 +21,7 @@ from src.thesis.models import (
     ReviewRecommendation,
     Thesis,
     ThesisReview,
+    ThesisSnapshot,
     ThesisStatus,
 )
 
@@ -292,3 +293,14 @@ class ThesisRepository:
         await self._session.flush()
         await self._session.refresh(rec)
         return rec
+
+    # ------------------------------------------------------------------
+    # Snapshot queries
+    # ------------------------------------------------------------------
+
+    async def save_snapshot(self, snapshot: ThesisSnapshot) -> ThesisSnapshot:
+        """Persist a ThesisSnapshot record (insert only — snapshots are immutable)."""
+        self._session.add(snapshot)
+        await self._session.flush()
+        await self._session.refresh(snapshot)
+        return snapshot
