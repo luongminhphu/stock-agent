@@ -37,6 +37,7 @@ def create_bot() -> commands.Bot:
         _start_thesis_maintenance_scheduler(bot)
         _start_drift_scheduler(bot)
         _start_snapshot_scheduler()
+        _start_reminder_scheduler(bot)
         await _sync_tree(bot)
         logger.info(
             "bot.ready",
@@ -237,6 +238,42 @@ def _start_snapshot_scheduler() -> None:
     scheduler: SnapshotScheduler = get_snapshot_scheduler()  # type: ignore[assignment]
     scheduler.start()
     logger.info("bot.snapshot_scheduler.started", time_ict="15:10")
+
+
+def _start_reminder_scheduler(bot: commands.Bot) -> None:
+    """Attach ReminderScheduler — fires watchlist reminders at 08:00 ICT.
+
+    Tasks:
+        _daily_task  — every weekday 08:00 ICT, DAILY reminders.
+        _weekly_task — Mondays 08:00 ICT, WEEKLY reminders.
+
+    ON_SIGNAL reminders are NOT handled here — they fire via
+    WatchlistScanScheduler → ScanService → ReminderService.list_due_for_signal().
+
+    Requires morning_channel_id (same channel as scan/brief notifications).
+    Skipped silently in test environment.
+    """
+    if settings.environment == "test":
+        logger.info("bot.reminder_scheduler.skipped", reason="test environment")
+        return
+
+    channel_id = getattr(settings, "morning_channel_id", None)
+    if not channel_id:
+        logger.info(
+            "bot.reminder_scheduler.skipped",
+            reason="morning_channel_id not configured",
+        )
+        return
+
+    from src.bot.scheduler import ReminderScheduler
+
+    scheduler = ReminderScheduler(client=bot)
+    scheduler.start()
+    logger.info(
+        "bot.reminder_scheduler.started",
+        time_ict="08:00",
+        channel=channel_id,
+    )
 
 
 def run() -> None:
