@@ -2,8 +2,13 @@
 
 Owner: watchlist segment.
 Consumes QuoteService (market segment) via injection.
-Does NOT own alert-firing logic — calls alert.is_triggered_by() (domain helper)
-then returns structured scan result for bot/api adapters.
+
+Responsibility boundary:
+  ScanService  → detect which alerts are triggered, build ScanSignal/ScanResult
+  AlertService → mutate alert state (mark_triggered), persist fired alerts
+
+ScanService calls AlertService.process_triggered() after collecting all
+triggered alerts for a ticker. It does NOT call alert.mark_triggered() directly.
 
 Note: _persist_snapshot does NOT commit — caller is responsible for session lifecycle.
 """
@@ -16,6 +21,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.logging import get_logger
+from src.watchlist.alert_service import AlertService
 from src.watchlist.models import Alert, AlertStatus, WatchlistScan
 from src.watchlist.repository import WatchlistRepository
 
@@ -87,7 +93,10 @@ class ScanResult:
 
 
 class ScanService:
-    """Scan all watchlist tickers and evaluate alert conditions."""
+    """Scan all watchlist tickers and evaluate alert conditions.
+
+    Detects signals only — delegates alert state mutation to AlertService.
+    """
 
     def __init__(
         self,
@@ -96,6 +105,7 @@ class ScanService:
     ) -> None:
         self._session = session
         self._repo = WatchlistRepository(session)
+        self._alert_service = AlertService(session)
         self._quote_service = quote_service
 
     async def scan_user(self, user_id: str) -> ScanResult:
@@ -106,14 +116,23 @@ class ScanService:
         tickers = sorted({i.ticker for i in items})
         result = ScanResult(scanned_at=datetime.now(UTC))
 
+        # price_map used by AlertService.process_triggered for triggered_price field
+        price_map: dict[str, float] = {}
+
         for ticker in tickers:
             try:
                 signal = await self._scan_ticker(ticker, items)
+                price_map[ticker] = signal.current_price
                 if signal.has_alerts or abs(signal.change_pct) >= 3:
                     result.signals.append(signal)
             except Exception as exc:
                 logger.warning("scan.ticker_error", ticker=ticker, error=str(exc))
                 result.errors[ticker] = str(exc)
+
+        # Delegate state mutation to AlertService — ScanService never calls mark_triggered
+        all_triggered = result.triggered_alerts
+        if all_triggered:
+            await self._alert_service.process_triggered(all_triggered, price_map)
 
         logger.info(
             "scan.complete",
@@ -148,6 +167,7 @@ class ScanService:
         return await self.get_latest_snapshot(user_id)
 
     async def _scan_ticker(self, ticker: str, items: list) -> ScanSignal:
+        """Fetch quote and detect triggered alerts. Does NOT mutate alert state."""
         quote = await self._quote_service.get_quote(ticker)  # type: ignore[union-attr]
         volume_ratio = 1.0
 
@@ -168,8 +188,8 @@ class ScanService:
                 change_pct=quote.change_pct,
                 volume_ratio=volume_ratio,
             ):
+                # Append only — AlertService.process_triggered() handles mark_triggered
                 signal.triggered_alerts.append(alert)
-                alert.mark_triggered(price=quote.price)
 
         return signal
 
