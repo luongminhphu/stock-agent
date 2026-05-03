@@ -30,6 +30,11 @@ from src.portfolio.pnl_service import PnlService
 from src.readmodel.dashboard_service import DashboardService
 
 
+def _is_buy(trade_type: object) -> bool:
+    """Safe comparison: handles both TradeType enum and raw asyncpg string."""
+    return str(trade_type).lower() == "buy"
+
+
 class PortfolioCog(BaseCog):
     """Slash commands for portfolio tracking."""
 
@@ -454,7 +459,11 @@ class PortfolioCog(BaseCog):
 
         lines: list[str] = []
         for t in trades:
-            icon = "🟢" if t.trade_type == "buy" else ("🟢" if (t.realized_pnl or 0) >= 0 else "🔴")
+            is_buy = _is_buy(t.trade_type)
+            if is_buy:
+                icon = "🟢"
+            else:
+                icon = "🟢" if (t.realized_pnl or 0) >= 0 else "🔴"
             pnl_str = (
                 f" | P&L {self.fmt_vnd(t.realized_pnl)}"
                 if t.realized_pnl is not None
@@ -462,9 +471,9 @@ class PortfolioCog(BaseCog):
             )
             date_str = t.traded_at.strftime("%d/%m %H:%M") if t.traded_at else "?"
             # Show trade_id for BUY trades so user can reference /correct_trade
-            trade_id_hint = f" `#{t.id}`" if t.trade_type == "buy" else ""
+            trade_id_hint = f" `#{t.id}`" if is_buy else ""
             lines.append(
-                f"{icon} `{date_str}`{trade_id_hint} **{t.ticker}** {t.trade_type.upper()} "
+                f"{icon} `{date_str}`{trade_id_hint} **{t.ticker}** {str(t.trade_type).upper()} "
                 f"{t.qty:,.0f} cổ @ {self.fmt_vnd(t.price)}{pnl_str}"
             )
 
