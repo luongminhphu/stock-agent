@@ -788,20 +788,41 @@ class DashboardService:
         user_id: str,
         price_map: dict[str, float] | None = None,
     ) -> dict[str, Any]:
-        """Tổng hợp portfolio từ các thesis active.
+        """Tổng hợp portfolio từ thesis active + open positions thực tế.
 
-        price_map: {ticker: current_price} — do caller inject từ QuoteService.
-                   Nếu None hoặc thiếu ticker, pnl_abs và market_value sẽ None.
-
-        Trả về dict tương thích với PortfolioSummary schema.
-        weight_pct được tính theo market_value; nếu không có market_value thì None.
-        Positions được sắp xếp: có pnl_abs trước (giảm dần), None pnl_abs đẩy xuống cuối.
+        - qty và avg_cost lấy từ bảng positions (closed_at IS NULL).
+        - entry_price từ thesis chỉ dùng để hiển thị giá thesis gốc.
+        - price_map: {ticker: current_price} — do caller inject từ QuoteService.
         """
+        from src.portfolio.models import Position
         from src.thesis.models import Thesis, ThesisReview, ThesisStatus
 
         price_map = price_map or {}
 
-        # Query thesis active + latest review trong 1 round trip
+        # --- 1. Load open positions của user ---
+        pos_rows = (
+            await self._session.execute(
+                select(
+                    Position.ticker,
+                    Position.qty,
+                    Position.avg_cost,
+                    Position.thesis_id,
+                )
+                .where(
+                    Position.user_id == user_id,
+                    Position.closed_at.is_(None),
+                    Position.qty > 0,
+                )
+            )
+        ).all()
+
+        # ticker -> (qty, avg_cost) — dùng position đầu tiên nếu có nhiều
+        pos_map: dict[str, tuple[float, float]] = {}
+        for p in pos_rows:
+            if p.ticker not in pos_map:
+                pos_map[p.ticker] = (p.qty, p.avg_cost)
+
+        # --- 2. Load thesis active + latest review ---
         latest_review_subq = (
             select(
                 ThesisReview.thesis_id,
@@ -824,7 +845,6 @@ class DashboardService:
                     Thesis.title,
                     Thesis.status,
                     Thesis.entry_price,
-                    Thesis.quantity,
                     Thesis.score,
                     latest_review_subq.c.verdict.label("last_verdict"),
                 )
@@ -855,19 +875,22 @@ class DashboardService:
             current_price = price_map.get(r.ticker)
             tier_label, tier_icon = score_tier(r.score) if r.score is not None else (None, None)
 
-            # P&L %
-            pnl_pct: float | None = None
-            if r.entry_price and current_price and r.entry_price > 0:
-                pnl_pct = (current_price - r.entry_price) / r.entry_price * 100
+            # Lấy qty và avg_cost từ Position thực tế
+            pos_data = pos_map.get(r.ticker)
+            quantity = pos_data[0] if pos_data else None
+            avg_cost = pos_data[1] if pos_data else None
 
-            # Position size metrics
-            quantity = r.quantity
             if quantity:
                 has_quantity_data = True
 
+            # P&L % tính theo avg_cost thực tế
+            pnl_pct: float | None = None
+            if avg_cost and current_price and avg_cost > 0:
+                pnl_pct = (current_price - avg_cost) / avg_cost * 100
+
             cost_basis: float | None = None
-            if r.entry_price and quantity:
-                cost_basis = r.entry_price * quantity
+            if avg_cost and quantity:
+                cost_basis = avg_cost * quantity
                 total_cost_basis += cost_basis
                 has_cost_data = True
 
@@ -881,7 +904,6 @@ class DashboardService:
             if cost_basis is not None and market_value is not None:
                 pnl_abs = market_value - cost_basis
 
-            # Win/lose counts
             if pnl_pct is not None:
                 if pnl_pct > 0:
                     winning += 1
@@ -898,21 +920,22 @@ class DashboardService:
                 "title": r.title,
                 "status": str(r.status.value),
                 "quantity": quantity,
-                "entry_price": r.entry_price,
+                "avg_cost": round(avg_cost, 0) if avg_cost else None,
+                "entry_price": r.entry_price,  # giá thesis gốc — để tham khảo
                 "current_price": current_price,
                 "pnl_pct": round(pnl_pct, 2) if pnl_pct is not None else None,
                 "pnl_abs": round(pnl_abs, 0) if pnl_abs is not None else None,
                 "cost_basis": round(cost_basis, 0) if cost_basis is not None else None,
                 "market_value": round(market_value, 0) if market_value is not None else None,
-                "weight_pct": None,  # được fill sau khi có total_market_value
+                "weight_pct": None,
                 "last_verdict": str(r.last_verdict) if r.last_verdict else None,
                 "score": r.score,
                 "score_tier": tier_label,
                 "score_tier_icon": tier_icon,
-                "change_pct": None,  # caller có thể enrich sau nếu có intraday data
+                "change_pct": None,
             })
 
-        # Fill weight_pct sau khi có total
+        # Fill weight_pct
         for pos in positions:
             mv = pos["market_value"]
             if mv is not None and has_market_data and total_market_value > 0:
@@ -923,8 +946,11 @@ class DashboardService:
             key=lambda p: (p["pnl_abs"] is None, -(p["pnl_abs"] or 0))
         )
 
-        # Aggregate P&L % bình quân gia quyền (theo cost_basis)
-        total_pnl_abs = (total_market_value - total_cost_basis) if (has_cost_data and has_market_data) else None
+        total_pnl_abs = (
+            (total_market_value - total_cost_basis)
+            if (has_cost_data and has_market_data)
+            else None
+        )
         total_pnl_pct: float | None = None
         if total_cost_basis > 0 and total_pnl_abs is not None:
             total_pnl_pct = round(total_pnl_abs / total_cost_basis * 100, 2)
