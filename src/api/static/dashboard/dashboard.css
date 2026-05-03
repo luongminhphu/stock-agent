@@ -2,9 +2,10 @@
    Không chứa CSS rules trực tiếp.
    Chỉ @import các module theo đúng thứ tự cascade:
      1. base/variables  — :root tokens (phải đứng đầu tiên)
-     2. base/reset      — box-sizing, body, typography, utilities
-     3. components/*    — reusable UI atoms (không phụ thuộc nhau)
-     4. modules/*       — feature-specific styles (dùng tokens + components)
+     2. base/reset      — box-sizing, body, typography, form controls
+     3. base/utilities  — .hidden, .spinner, .empty-state, .error-banner, …
+     4. components/*    — reusable UI atoms (không phụ thuộc nhau)
+     5. modules/*       — feature-specific styles (dùng tokens + components)
 
    index.html load /static/dashboard/dashboard.css — không thay đổi.
 ──────────────────────────────────────────────────────────────────────────── */
@@ -15,12 +16,16 @@
 /* 2. Reset & base */
 @import url('./css/base/reset.css');
 
-/* 3. Components */
+/* 3. Utilities */
+@import url('./css/base/utilities.css');
+
+/* 4. Components */
 @import url('./css/components/buttons.css');
 @import url('./css/components/badge.css');
 @import url('./css/components/modal.css');
 
-/* 4. Modules */
+/* 5. Modules */
 @import url('./css/modules/layout.css');
 @import url('./css/modules/thesis.css');
 @import url('./css/modules/briefing.css');
+@import url('./css/modules/backtesting.css');

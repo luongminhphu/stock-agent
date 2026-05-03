@@ -1,6 +1,8 @@
 /* ─── Reset & Base Typography ────────────────────────────────────────────────
    Owner: base
-   Box-sizing, body background, font stack, base element resets.
+   Box-sizing, body background, font stack, base element resets,
+   heading scale, form control base styles.
+   Utilities (.hidden, .spinner, .empty-state, …) → utilities.css
 ──────────────────────────────────────────────────────────────────────────── */
 
 * { box-sizing: border-box; }
@@ -55,47 +57,4 @@ textarea {
 input:focus, select:focus, textarea:focus {
   border-color: rgba(125, 211, 252, 0.48);
   box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.12);
-}
-
-/* Utilities */
-.hidden { display: none !important; }
-.btn-loading { opacity: 0.7; pointer-events: none; }
-
-.empty-state {
-  color: var(--muted);
-  padding: 18px 0;
-  font-size: 0.82rem;
-}
-.error-banner {
-  margin-bottom: 14px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  border: 1px solid rgba(248, 113, 113, 0.28);
-  background: rgba(248, 113, 113, 0.14);
-  color: #fecaca;
-  font-size: 0.82rem;
-}
-.footer-note {
-  margin-top: 14px;
-  color: var(--muted);
-  font-size: 0.76rem;
-}
-.footer-note code {
-  color: #dff5ff;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(148, 163, 184, 0.12);
-  padding: 2px 7px;
-  border-radius: 8px;
-}
-
-/* Spinner animation */
-@keyframes spin { to { transform: rotate(360deg); } }
-.spinner {
-  width: 18px;
-  height: 18px;
-  border: 2px solid rgba(125, 211, 252, 0.2);
-  border-top-color: var(--brand);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  flex-shrink: 0;
 }
