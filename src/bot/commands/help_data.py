@@ -167,7 +167,7 @@ HELP_DATA: dict[str, GroupEntry] = {
     },
     "briefing": {
         "label": "Briefing · Bản tin thị trường",
-        "emoji": "🗉️",
+        "emoji": "📰",
         "colour": 0xF5A623,
         "intro": "Bản tin AI tổng hợp thị trường, cá nhân hoá theo watchlist của bạn.",
         "commands": [
