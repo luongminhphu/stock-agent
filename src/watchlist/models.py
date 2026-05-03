@@ -131,6 +131,12 @@ class Alert(Base):
     triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     triggered_price: Mapped[float | None] = mapped_column(Float)
     note: Mapped[str | None] = mapped_column(Text)
+    # When True, alert resets to ACTIVE automatically after firing so it can
+    # trigger again on subsequent scans. Useful for key price level monitoring
+    # (e.g. "alert me every time VCB touches 85,000").
+    auto_reactivate: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -168,12 +174,22 @@ class Alert(Base):
                 return False
 
     def mark_triggered(self, price: float | None = None) -> None:
-        """Transition alert to TRIGGERED state. Idempotent if already triggered."""
-        if self.status == AlertStatus.ACTIVE:
+        """Transition alert to TRIGGERED state, then immediately reset to ACTIVE
+        if auto_reactivate is True (recurring alert behaviour).
+
+        Idempotent if already TRIGGERED or DISMISSED.
+        """
+        if self.status != AlertStatus.ACTIVE:
+            return
+        self.triggered_at = datetime.now(tz=UTC)
+        if price is not None:
+            self.triggered_price = price
+        if self.auto_reactivate:
+            # Record the trigger moment but stay ACTIVE so the next scan can
+            # fire again. Status is deliberately NOT set to TRIGGERED.
+            pass
+        else:
             self.status = AlertStatus.TRIGGERED
-            self.triggered_at = datetime.now(tz=UTC)
-            if price is not None:
-                self.triggered_price = price
 
 
 # ---------------------------------------------------------------------------
