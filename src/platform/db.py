@@ -49,6 +49,12 @@ class Base(DeclarativeBase):
     pass
 
 
+async def check_migrations():
+    result = subprocess.run(["alembic", "check"], capture_output=True)
+    if result.returncode != 0:
+        raise RuntimeError("Pending migrations detected — aborting startup")
+
+
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency-style session provider."""
     async with AsyncSessionLocal() as session:
