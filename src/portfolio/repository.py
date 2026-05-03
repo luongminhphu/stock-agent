@@ -35,6 +35,16 @@ class PortfolioRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_position_by_id(self, position_id: int) -> Position | None:
+        """Return a position by primary key."""
+        stmt = (
+            select(Position)
+            .where(Position.id == position_id)
+            .options(selectinload(Position.trades))
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def list_open_positions(self, user_id: str) -> list[Position]:
         """Return all open positions for a user, ordered by ticker."""
         stmt = (
@@ -58,6 +68,26 @@ class PortfolioRepository:
     async def save_trade(self, trade: Trade) -> None:
         self._session.add(trade)
         await self._session.flush()
+
+    async def get_trade_by_id(self, trade_id: int) -> Trade | None:
+        """Return a trade by primary key."""
+        stmt = select(Trade).where(Trade.id == trade_id)
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def list_buy_trades(self, position_id: int) -> list[Trade]:
+        """Return all BUY trades for a position, ordered by traded_at asc.
+
+        Used by correct_trade() to recalculate VWAP avg_cost.
+        """
+        stmt = (
+            select(Trade)
+            .where(Trade.position_id == position_id)
+            .where(Trade.trade_type == TradeType.BUY)
+            .order_by(Trade.traded_at.asc())
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
 
     async def list_trades(
         self,

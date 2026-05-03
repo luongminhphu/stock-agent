@@ -3,9 +3,10 @@
 Owner: portfolio segment.
 
 Responsibilities:
-  - buy()        — open new or add to existing position, record Trade(BUY)
-  - sell()       — reduce or close position, record Trade(SELL) with realized P&L
-  - list_open()  — return all open positions for a user
+  - buy()            — open new or add to existing position, record Trade(BUY)
+  - sell()           — reduce or close position, record Trade(SELL) with realized P&L
+  - correct_trade()  — fix price of a BUY trade and recalculate position avg_cost (VWAP)
+  - list_open()      — return all open positions for a user
 
 Does NOT calculate P&L for display — that is PnlService (read concern).
 Does NOT send Discord notifications — bot/adapter concern.
@@ -14,6 +15,10 @@ Partial sell:
   sell(qty < position.qty) reduces qty, keeps position open.
   sell(qty == position.qty) sets closed_at, position is fully closed.
   sell(qty > position.qty) raises InsufficientQtyError.
+
+correct_trade():
+  Only BUY trades can be corrected (SELL realized P&L is already settled).
+  Recalculates position.avg_cost as VWAP from all BUY trades after correction.
 """
 
 from __future__ import annotations
@@ -35,6 +40,14 @@ class InsufficientQtyError(Exception):
 
 class PositionNotFoundError(Exception):
     """Raised when no open position exists for the given ticker."""
+
+
+class TradeNotFoundError(Exception):
+    """Raised when trade_id does not exist or does not belong to user."""
+
+
+class InvalidOperationError(Exception):
+    """Raised when the requested operation is not valid for the trade/position state."""
 
 
 class PortfolioService:
@@ -174,6 +187,75 @@ class PortfolioService:
             price=price,
             realized_pnl=realized_pnl,
             position_closed=position.closed_at is not None,
+        )
+        return position, trade
+
+    # ------------------------------------------------------------------
+    # Correct trade
+    # ------------------------------------------------------------------
+
+    async def correct_trade(
+        self,
+        user_id: str,
+        trade_id: int,
+        new_price: float,
+    ) -> tuple[Position, Trade]:
+        """Correct the price of a BUY trade and recalculate position avg_cost.
+
+        Only BUY trades on open positions can be corrected.
+        SELL trades are excluded because realized_pnl has already been settled
+        and changing the sell price retroactively would distort accounting.
+
+        Process:
+          1. Load trade — verify ownership and trade_type == BUY.
+          2. Verify the parent position is still open (closed_at is None).
+          3. Update trade.price = new_price.
+          4. Reload all BUY trades for the position and recalculate VWAP avg_cost.
+          5. Save both trade and position.
+
+        Raises:
+            TradeNotFoundError:    trade_id not found or belongs to another user.
+            InvalidOperationError: trade is not BUY, or position is already closed.
+
+        Returns:
+            (position, trade) — both flushed, caller must commit.
+        """
+        trade = await self._repo.get_trade_by_id(trade_id)
+
+        if trade is None or trade.user_id != user_id:
+            raise TradeNotFoundError(f"Trade #{trade_id} not found.")
+
+        if trade.trade_type != TradeType.BUY:
+            raise InvalidOperationError(
+                "Chỉ có thể sửa BUY trade. "
+                "SELL trade đã được hạch toán realized P&L và không thể chỉnh sửa."
+            )
+
+        position = await self._repo.get_position_by_id(trade.position_id)
+        if position is None or position.closed_at is not None:
+            raise InvalidOperationError(
+                f"Vị thế #{trade.position_id} đã đóng — không thể sửa trade thuộc vị thế đã closed."
+            )
+
+        old_price = trade.price
+        trade.price = new_price
+        await self._repo.save_trade(trade)
+
+        # Recalculate avg_cost as VWAP from all BUY trades (including updated one)
+        buy_trades = await self._repo.list_buy_trades(position.id)
+        total_cost = sum(t.price * t.qty for t in buy_trades)
+        total_qty = sum(t.qty for t in buy_trades)
+        position.avg_cost = total_cost / total_qty if total_qty > 0 else new_price
+        await self._repo.save_position(position)
+
+        logger.info(
+            "portfolio.trade_corrected",
+            user_id=user_id,
+            trade_id=trade_id,
+            ticker=trade.ticker,
+            old_price=old_price,
+            new_price=new_price,
+            new_avg_cost=position.avg_cost,
         )
         return position, trade
 
