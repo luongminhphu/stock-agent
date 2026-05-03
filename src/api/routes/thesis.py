@@ -14,6 +14,7 @@ Endpoints:
     POST   /thesis/{thesis_id}/close                              — close thesis
     POST   /thesis/{thesis_id}/invalidate                         — invalidate thesis
     GET    /thesis/{thesis_id}/score                              — health score breakdown
+    GET    /thesis/{thesis_id}/conviction-timeline                — conviction score over time
     GET    /thesis/{thesis_id}/assumptions                        — list assumptions
     POST   /thesis/{thesis_id}/assumptions                        — add assumption
     GET    /thesis/{thesis_id}/assumptions/{id}                   — get assumption
@@ -43,6 +44,7 @@ from src.api.deps import (
     get_review_service,
     get_thesis_service,
     get_thesis_suggest_agent,
+    get_timeline_service,
 )
 from src.api.dto.thesis import (
     ApplyRecommendationRequest,
@@ -66,6 +68,8 @@ from src.api.dto.thesis import (
     ThesisReviewResponse,
     ThesisUpdateRequest,
 )
+from src.readmodel.schemas import ConvictionTimelineResponse
+from src.readmodel.timeline_service import ThesisTimelineService
 from src.thesis.models import ThesisStatus
 from src.thesis.review_service import ReviewNotAllowedError, ReviewService
 from src.thesis.scoring_service import ScoringService, score_tier
@@ -328,6 +332,33 @@ async def get_health_score(
             review_confidence=breakdown["review_confidence"],
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# Conviction Score Timeline
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{thesis_id}/conviction-timeline", response_model=ConvictionTimelineResponse)
+async def get_conviction_timeline(
+    thesis_id: int,
+    limit: int = Query(default=20, ge=2, le=50, description="Số data-point trả về (tối thiểu 2, tối đa 50)"),
+    _user_id: str = Depends(get_current_user_id),
+    timeline_svc: ThesisTimelineService = Depends(get_timeline_service),
+) -> ConvictionTimelineResponse:
+    """Trả về cỗ conviction score theo thời gian của một thesis.
+
+    Mỗi data-point ướng với một ThesisSnapshot — score, tier, 4-dimension breakdown,
+    verdict của AI review gần nhất trước đó, giá và PnL.
+    Trường `trend` cho biết conviction đang cải thiện, süt giảm hay ổn định.
+    """
+    result = await timeline_svc.get_conviction_timeline(thesis_id=thesis_id, limit=limit)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Thesis {thesis_id} not found.",
+        )
+    return result
 
 
 # ---------------------------------------------------------------------------
