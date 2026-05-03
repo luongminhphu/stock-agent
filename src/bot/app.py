@@ -35,6 +35,7 @@ def create_bot() -> commands.Bot:
         _start_briefing_scheduler(bot)
         _start_scan_scheduler(bot)
         _start_thesis_maintenance_scheduler(bot)
+        _start_drift_scheduler(bot)
         _start_snapshot_scheduler()
         await _sync_tree(bot)
         logger.info(
@@ -175,6 +176,43 @@ def _start_thesis_maintenance_scheduler(bot: commands.Bot) -> None:
         time_ict="08:30",
         channel=settings.morning_channel_id,
         user=settings.scheduler_user_id,
+    )
+
+
+def _start_drift_scheduler(bot: commands.Bot) -> None:
+    """Attach ThesisDriftScheduler — triggers AI review when price drifts ±threshold%.
+
+    Runs every 15 min during market hours (09:00–15:00 ICT, weekdays).
+    Requires: scheduler_user_id + morning_channel_id (same as scan scheduler).
+    Threshold and cooldown configurable via:
+        THESIS_DRIFT_THRESHOLD_PCT  (default 5.0)
+        THESIS_DRIFT_COOLDOWN_HOURS (default 4.0)
+    Skipped silently in test environment.
+    """
+    if settings.environment == "test":
+        logger.info("bot.drift_scheduler.skipped", reason="test environment")
+        return
+
+    user_id = getattr(settings, "scheduler_user_id", None)
+    channel_id = getattr(settings, "morning_channel_id", None)
+    if not user_id or not channel_id:
+        logger.info(
+            "bot.drift_scheduler.skipped",
+            reason="scheduler_user_id or morning_channel_id not configured",
+        )
+        return
+
+    from src.bot.scheduler import ThesisDriftScheduler
+
+    scheduler = ThesisDriftScheduler(client=bot)
+    scheduler.start()
+    logger.info(
+        "bot.drift_scheduler.started",
+        interval_minutes=15,
+        threshold_pct=settings.thesis_drift_threshold_pct,
+        cooldown_hours=settings.thesis_drift_cooldown_hours,
+        channel=channel_id,
+        user=user_id,
     )
 
 
