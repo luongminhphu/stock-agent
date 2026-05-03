@@ -7,7 +7,7 @@ from __future__ import annotations
 import discord
 from discord import app_commands
 
-from src.ai.schemas import AlignmentStatus, TradeDecision
+from src.ai.schemas import AlignmentStatus, ResolutionCategory, TradeDecision
 from src.bot.commands.base import BaseCog
 from src.platform.bootstrap import get_pretrade_agent, get_quote_service
 from src.platform.logging import get_logger
@@ -38,6 +38,18 @@ _ALIGNMENT_ICON: dict[AlignmentStatus, str] = {
     AlignmentStatus.CONFLICT: "\u26a0\ufe0f",
     AlignmentStatus.NO_DATA: "\u2753",
 }
+
+# Category icon cho resolution steps
+_CATEGORY_ICON: dict[ResolutionCategory, str] = {
+    ResolutionCategory.PRICE:  "\U0001f4b0",  # 💰
+    ResolutionCategory.VOLUME: "\U0001f4ca",  # 📊
+    ResolutionCategory.NEWS:   "\U0001f4f0",  # 📰
+    ResolutionCategory.THESIS: "\U0001f4cb",  # 📋
+    ResolutionCategory.MACRO:  "\U0001f30d",  # 🌍
+}
+
+# Priority badge
+_PRIORITY_BADGE = {1: "[P1]", 2: "[P2]", 3: "[P3]"}
 
 
 class PretradeCog(BaseCog):
@@ -109,6 +121,25 @@ def _build_pretrade_embed(result) -> discord.Embed:
         embed.add_field(
             name="\u23f3 \u0110i\u1ec1u ki\u1ec7n c\u1ea7n th\u1ecfa (WAIT)",
             value="\n".join(f"\u2022 {c}" for c in result.conditions),
+            inline=False,
+        )
+
+    # Resolution Path — chỉ hiện khi decision != GO và có steps
+    resolution_path = getattr(result, "resolution_path", []) or []
+    if resolution_path and result.decision != TradeDecision.GO:
+        # Sort by priority ascending (P1 trước), AI đã sort nhưng guard lại cho chắc
+        steps = sorted(resolution_path, key=lambda s: s.priority)
+        lines: list[str] = []
+        for step in steps:
+            cat_icon = _CATEGORY_ICON.get(step.category, "\u2022")
+            badge = _PRIORITY_BADGE.get(step.priority, "[P?]")
+            lines.append(
+                f"`{badge}` {cat_icon} **{step.condition}**"
+                f"\n\u00a0\u00a0\u00a0\u00a0\u21b3 {step.current_status}"
+            )
+        embed.add_field(
+            name="\U0001f5fa\ufe0f L\u1ed9 tr\u00ecnh → GO",  # 🗺️ Lộ trình → GO
+            value="\n".join(lines),
             inline=False,
         )
 
