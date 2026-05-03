@@ -1,0 +1,51 @@
+/* ─── Badges & Score/PnL Helpers ─────────────────────────────────────────────
+   Owner: components
+   .badge variants theo verdict/status, .score-*, .pnl-*, .row-item list.
+──────────────────────────────────────────────────────────────────────────── */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+  background: rgba(148, 163, 184, 0.16);
+  color: #dbeafe;
+}
+.badge.bullish, .badge.valid, .badge.triggered, .badge.active { background: rgba(74, 222, 128, 0.14); color: #bbf7d0; }
+.badge.bearish, .badge.invalid, .badge.invalidated, .badge.cancelled { background: rgba(248, 113, 113, 0.14); color: #fecaca; }
+.badge.neutral, .badge.pending, .badge.paused { background: rgba(251, 191, 36, 0.14); color: #fde68a; }
+.badge.watchlist, .badge.uncertain, .badge.expired, .badge.closed { background: rgba(167, 139, 250, 0.14); color: #ddd6fe; }
+
+/* Score tiers */
+.score-high { color: var(--success); font-weight: 700; }
+.score-mid  { color: var(--warning); font-weight: 700; }
+.score-low  { color: var(--danger);  font-weight: 700; }
+
+/* PnL coloring */
+.pnl-pos { color: var(--success); font-weight: 700; }
+.pnl-neg { color: var(--danger);  font-weight: 700; }
+
+/* List row items (verdict distribution, catalyst calendar) */
+.list { display: grid; gap: 10px; }
+.row-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.row-item:first-child { border-top: 0; padding-top: 0; }
+.row-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+  font-size: 0.84rem;
+}
+.row-subtitle {
+  color: var(--muted);
+  font-size: 0.76rem;
+}

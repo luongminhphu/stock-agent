@@ -1,0 +1,166 @@
+/* ─── Thesis Detail, Reviews & Score ────────────────────────────────────────
+   Owner: modules/thesis
+   detail-shell, detail-head, detail-grid, detail-item, review-timeline,
+   review-card, review-box. Score breakdown delegated to render-score.js.
+──────────────────────────────────────────────────────────────────────────── */
+
+.detail-shell {
+  padding: 16px;
+  background: linear-gradient(180deg, rgba(8, 16, 29, 0.74), rgba(12, 21, 36, 0.88));
+  border: 1px solid var(--line);
+}
+.empty-detail {
+  min-height: 240px;
+  display: grid;
+  place-items: center;
+}
+.empty-detail-copy {
+  text-align: center;
+  max-width: 320px;
+}
+.empty-detail-copy p { color: var(--muted); margin-top: 8px; font-size: 0.84rem; }
+
+.detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.detail-head-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.detail-summary {
+  color: var(--muted);
+  line-height: 1.6;
+  margin-bottom: 14px;
+  font-size: 0.84rem;
+}
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.detail-stat {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+.detail-stat span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.7rem;
+  margin-bottom: 6px;
+}
+.detail-stat strong { font-size: 0.96rem; }
+
+.detail-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.detail-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.detail-section h3 { margin-bottom: 0; }
+.detail-list { display: grid; gap: 8px; }
+.detail-item {
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.detail-item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+.detail-item-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.detail-item p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+/* ── Review timeline ──────────────────────────────────────────────────────── */
+.review-timeline {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+.review-card {
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(125, 211, 252, 0.05);
+  border: 1px solid rgba(125, 211, 252, 0.14);
+  transition: opacity 0.2s ease, border-color 0.2s ease;
+}
+.review-card.is-latest {
+  border-color: rgba(125, 211, 252, 0.24);
+  background: rgba(125, 211, 252, 0.08);
+}
+.review-card.is-latest .review-reasoning,
+.review-card.is-latest .review-meta,
+.review-card.is-latest .review-head strong {
+  color: var(--text);
+  font-weight: 700;
+}
+.review-card.is-older  { opacity: 0.9; }
+.review-card.is-older .review-reasoning { color: var(--muted); font-weight: 500; }
+.review-card.is-older .review-meta      { color: var(--faint); }
+.review-card.is-oldest { opacity: 0.78; }
+.review-card.is-oldest .review-reasoning { color: var(--faint); font-weight: 500; }
+.review-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.review-meta      { color: var(--muted); font-size: 0.76rem; }
+.review-reasoning { color: var(--text); line-height: 1.55; margin-bottom: 10px; font-size: 0.82rem; }
+.review-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.review-box {
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+.review-box ul {
+  margin: 8px 0 0;
+  padding-left: 16px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.review-box li + li { margin-top: 4px; }
+
+/* ── Form stack (inline rows inside thesis modal) ─────────────────────────── */
+.form-stack { display: grid; gap: 8px; }

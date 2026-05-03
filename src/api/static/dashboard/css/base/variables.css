@@ -1,0 +1,28 @@
+/* ─── Design Tokens ──────────────────────────────────────────────────────────
+   Owner: base
+   Single source of truth cho toàn bộ CSS custom properties của dashboard.
+   Không chứa bất kỳ selector nào ngoài :root.
+──────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  --bg: #08111f;
+  --bg-2: #0d1728;
+  --surface: rgba(13, 23, 40, 0.82);
+  --surface-2: rgba(15, 28, 48, 0.92);
+  --surface-3: rgba(20, 37, 63, 0.92);
+  --text: #ecf3ff;
+  --muted: #96a7c6;
+  --faint: #61718f;
+  --line: rgba(148, 163, 184, 0.18);
+  --line-strong: rgba(148, 163, 184, 0.28);
+  --brand: #7dd3fc;
+  --brand-strong: #38bdf8;
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --violet: #a78bfa;
+  --radius-lg: 24px;
+  --radius-md: 18px;
+  --radius-sm: 14px;
+  --shadow: 0 24px 70px rgba(2, 6, 23, 0.36);
+}

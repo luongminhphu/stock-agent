@@ -1,0 +1,60 @@
+/* ─── Buttons ────────────────────────────────────────────────────────────────
+   Owner: components
+   Tất cả button variants: primary, ghost, danger, icon-btn.
+   Không phụ thuộc module nào khác ngoài variables.
+──────────────────────────────────────────────────────────────────────────── */
+
+.primary-btn {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--brand), var(--brand-strong));
+  color: #082235;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.primary-btn:hover { filter: brightness(1.05); }
+
+.ghost-btn {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ghost-btn:hover { border-color: var(--brand); color: var(--brand); }
+
+.danger-btn {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  border-radius: 10px;
+  background: rgba(248, 113, 113, 0.08);
+  color: var(--danger);
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.78rem;
+}
+.danger-btn:hover { background: rgba(248, 113, 113, 0.16); }
+
+.icon-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-size: 0.78rem;
+  flex-shrink: 0;
+}
+.icon-btn:hover { border-color: var(--brand); color: var(--brand); }
+.icon-btn.danger:hover { border-color: var(--danger); color: var(--danger); }
