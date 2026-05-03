@@ -10,8 +10,9 @@ Flow:
     3. Call ThesisReviewAgent.review() → ThesisReviewOutput
     4. Persist ThesisReview ORM record
     5. Auto-apply AI recommendations (ACCEPTED) → update assumption/catalyst status
-    6. Reload thesis (fresh) → recompute full score → persist
-    7. Return ThesisReview
+    6. Reload thesis (fresh) → recompute full score with breakdown → persist
+    7. Persist ThesisSnapshot with score_breakdown (JSON) for conviction timeline
+    8. Return ThesisReview
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ from src.thesis.models import (
     ReviewVerdict,
     Thesis,
     ThesisReview,
+    ThesisSnapshot,
     ThesisStatus,
 )
 from src.thesis.repository import ThesisRepository
@@ -181,7 +183,7 @@ class ReviewService:
 
         Args:
             user_id:    User sở hữu các thesis cần review.
-            stale_days: Số ngày không có review trước khi coi là stale. Default: 3.
+            stale_days: Số ngày không có review trước khi cói là stale. Default: 3.
 
         Returns:
             List ThesisReview vừa tạo (chỉ các thesis đã review thành công).
@@ -290,7 +292,7 @@ class ReviewService:
         reviewed_price: float | None,
     ) -> ThesisReview:
         """Map ThesisReviewOutput → ThesisReview ORM, auto-apply recommendations,
-        reload thesis fresh, recompute full score.
+        reload thesis fresh, recompute full score with breakdown, persist snapshot.
 
         Auto-apply flow:
             1. save_review (flush) → review gets a DB id.
@@ -299,8 +301,9 @@ class ReviewService:
                - Insert ReviewRecommendation với status=ACCEPTED ngay lập tức.
             3. Reload thesis via get_by_id (populate_existing) → session-fresh object
                với assumption/catalyst status đã được update.
-            4. ScoringService.compute(thesis) → new_score (tất cả 4 components fresh).
+            4. ScoringService.compute_with_breakdown(thesis) → (new_score, breakdown).
             5. Persist thesis.score only if it changed.
+            6. Persist ThesisSnapshot with score_breakdown as JSON string.
         """
         review = ThesisReview(
             thesis_id=thesis.id,
@@ -320,7 +323,8 @@ class ReviewService:
         # Reload fresh — assumptions/catalysts đã được update, reviews đã có review mới.
         fresh_thesis = await self._repo.get_by_id(thesis.id)
         if fresh_thesis is not None:
-            new_score = self._scoring.compute(fresh_thesis)
+            new_score, breakdown = self._scoring.compute_with_breakdown(fresh_thesis)
+
             if fresh_thesis.score != new_score:
                 fresh_thesis.score = new_score
                 await self._repo.save(fresh_thesis)
@@ -329,6 +333,23 @@ class ReviewService:
                     thesis_id=thesis.id,
                     score=new_score,
                 )
+
+            # Persist snapshot with breakdown so conviction timeline has real data.
+            snapshot = ThesisSnapshot(
+                thesis_id=thesis.id,
+                score=new_score,
+                verdict=review.verdict,
+                confidence=review.confidence,
+                score_breakdown=json.dumps(breakdown, ensure_ascii=False),
+                recorded_at=review.reviewed_at,
+            )
+            await self._repo.save_snapshot(snapshot)
+            logger.info(
+                "review_service.snapshot_saved",
+                thesis_id=thesis.id,
+                score=new_score,
+                breakdown=breakdown,
+            )
 
         return review
 
