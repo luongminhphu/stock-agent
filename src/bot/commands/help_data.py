@@ -106,6 +106,16 @@ HELP_DATA: dict[str, GroupEntry] = {
                 "example": "/sell VCB 500 92000",
             },
             {
+                "usage": "/correct_trade <trade_id> <new_price>",
+                "description": (
+                    "Sửa giá mua sai của một BUY trade và tính lại giá vốn trung bình (VWAP). "
+                    "Lấy trade_id từ `/history` (hiển thị `#ID` cạnh mỗi BUY) "
+                    "hoặc footer của lệnh `/buy`. "
+                    "Chỉ áp dụng cho BUY trade trên vị thế đang mở."
+                ),
+                "example": "/correct_trade 42 85000",
+            },
+            {
                 "usage": "/portfolio [ticker] [view]",
                 "description": (
                     "Xem danh mục hiện tại. "
@@ -120,6 +130,7 @@ HELP_DATA: dict[str, GroupEntry] = {
                 "usage": "/history [ticker]",
                 "description": (
                     "Lịch sử giao dịch đã thực hiện (20 lệnh gần nhất). "
+                    "BUY trade hiển thị `#ID` để dùng với `/correct_trade`. "
                     "Kèm tổng kết realized P&L và win rate."
                 ),
                 "example": "/history VCB",
