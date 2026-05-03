@@ -1,12 +1,12 @@
 """Portfolio commands — bot adapter for portfolio segment.
 
 Owner: bot segment (adapter only).
-Domain logic lives in PortfolioService and PnlService.
+Domain logic lives in PortfolioService, PnlService, and DashboardService.
 
 Commands:
   /buy  <ticker> <qty> <price>   — open/add to position
   /sell <ticker> <qty> <price>   — reduce/close position
-  /portfolio [ticker]            — full portfolio or single position P&L
+  /portfolio [ticker] [view]     — full portfolio (view=trades) or thesis-view (view=thesis)
   /history [ticker]              — realized trade history
 """
 
@@ -20,6 +20,7 @@ from src.bot.commands.base import BaseCog
 from src.platform.bootstrap import get_quote_service
 from src.portfolio.service import InsufficientQtyError, PortfolioService, PositionNotFoundError
 from src.portfolio.pnl_service import PnlService
+from src.readmodel.dashboard_service import DashboardService
 
 
 class PortfolioCog(BaseCog):
@@ -154,22 +155,38 @@ class PortfolioCog(BaseCog):
     # ------------------------------------------------------------------
 
     @app_commands.command(name="portfolio", description="Xem P&L danh mục hiện tại")
-    @app_commands.describe(ticker="Để trống để xem tất cả, hoặc nhập mã cổ phiếu cụ thể")
+    @app_commands.describe(
+        ticker="Để trống để xem tất cả, hoặc nhập mã cổ phiếu cụ thể",
+        view="trades = giao dịch thực tế (mặc định) | thesis = góc nhìn thesis + conviction",
+    )
+    @app_commands.choices(view=[
+        app_commands.Choice(name="trades — P&L giao dịch thực tế", value="trades"),
+        app_commands.Choice(name="thesis — Conviction + score từ thesis", value="thesis"),
+    ])
     async def portfolio(
         self,
         interaction: discord.Interaction,
         ticker: str | None = None,
+        view: str = "trades",
     ) -> None:
         await self.defer(interaction)
         user_id = self.user_id(interaction)
 
+        if view == "thesis":
+            await self._send_thesis_portfolio(interaction, user_id)
+            return
+
+        # view == "trades" (default — hành vi cũ giữ nguyên)
         async with self.db_session() as session:
             svc = PnlService(session=session, quote_service=get_quote_service())
-
             if ticker:
                 await self._send_single_position(interaction, svc, user_id, ticker)
             else:
                 await self._send_full_portfolio(interaction, svc, user_id)
+
+    # ------------------------------------------------------------------
+    # view=trades helpers (giữ nguyên logic cũ)
+    # ------------------------------------------------------------------
 
     async def _send_full_portfolio(
         self,
@@ -245,6 +262,123 @@ class PortfolioCog(BaseCog):
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     # ------------------------------------------------------------------
+    # view=thesis helper
+    # ------------------------------------------------------------------
+
+    async def _send_thesis_portfolio(
+        self,
+        interaction: discord.Interaction,
+        user_id: str,
+    ) -> None:
+        """Hien thi portfolio nhin tu goc do thesis: conviction + score + P&L so sanh entry_price."""
+        async with self.db_session() as session:
+            dash = DashboardService(session)
+
+            # Lay danh sach tickers truoc, roi fetch gia 1 lan
+            theses = await dash.get_theses_list(user_id, status="active", limit=500)
+            tickers = list({t["ticker"] for t in theses if t.get("ticker")})
+
+            price_map: dict[str, float] = {}
+            if tickers:
+                try:
+                    quote_svc = get_quote_service()
+                    quotes = await quote_svc.get_quotes(tickers)
+                    price_map = {q.ticker: q.close for q in quotes if q.close is not None}
+                except Exception:
+                    pass
+
+            data = await dash.get_portfolio(user_id, price_map=price_map)
+
+        positions = data.get("positions", [])
+        if not positions:
+            await self.send_info(
+                interaction,
+                "📊 Thesis Portfolio trống",
+                "Bạn chưa có thesis active nào.\nDùng `/thesis new <ticker>` để bắt đầu.",
+            )
+            return
+
+        lines: list[str] = []
+        for pos in positions:
+            ticker = pos["ticker"]
+            pnl_pct = pos.get("pnl_pct")
+            verdict = pos.get("last_verdict") or "—"
+            score = pos.get("score")
+            tier_icon = pos.get("score_tier_icon") or ""
+
+            # P&L string
+            if pnl_pct is not None:
+                p_icon = "🟢" if pnl_pct >= 0 else "🔴"
+                pnl_str = f"{p_icon} {self.fmt_pct(pnl_pct / 100)}"
+            else:
+                pnl_str = "⚪ N/A"
+
+            # Score string
+            score_str = f"{tier_icon} {score}" if score is not None else "—"
+
+            # Verdict badge
+            verdict_badge = {
+                "BULLISH": "🐂",
+                "BEARISH": "🐻",
+                "NEUTRAL": "⚖️",
+                "WATCHLIST": "👁",
+            }.get(verdict, "❓")
+
+            entry = pos.get("entry_price")
+            current = pos.get("current_price")
+            price_str = (
+                f"{self.fmt_vnd(entry)} → {self.fmt_vnd(current)}"
+                if entry and current
+                else (self.fmt_vnd(entry) if entry else "—")
+            )
+
+            lines.append(
+                f"{verdict_badge} **{ticker}** {pnl_str} • {price_str} • Score {score_str}"
+            )
+
+        body, footer = self.paginate_lines(lines)
+
+        # Aggregate summary
+        total_pnl_pct = data.get("total_pnl_pct")
+        winning = data.get("winning_count", 0)
+        losing = data.get("losing_count", 0)
+        n = data.get("position_count", 0)
+
+        if total_pnl_pct is not None:
+            t_icon = "🟢" if total_pnl_pct >= 0 else "🔴"
+            title = f"📊 Thesis Portfolio — {t_icon} {self.fmt_pct(total_pnl_pct / 100)}"
+            color = discord.Color.green() if total_pnl_pct >= 0 else discord.Color.red()
+        else:
+            title = "📊 Thesis Portfolio"
+            color = discord.Color.blurple()
+
+        embed = discord.Embed(title=title, description=body, color=color)
+        embed.add_field(name="Thesis", value=str(n), inline=True)
+        embed.add_field(name="Đang lời", value=str(winning), inline=True)
+        embed.add_field(name="Đang lỗ", value=str(losing), inline=True)
+
+        if data.get("total_market_value"):
+            embed.add_field(
+                name="Thị giá",
+                value=self.fmt_vnd(data["total_market_value"]),
+                inline=True,
+            )
+        if data.get("total_cost_basis"):
+            embed.add_field(
+                name="Vốn",
+                value=self.fmt_vnd(data["total_cost_basis"]),
+                inline=True,
+            )
+        if not data.get("has_quantity_data"):
+            embed.set_footer(
+                text="⚠️ Một số thesis chưa có quantity — thị giá/vốn có thể không đầy đủ"
+            )
+        elif footer:
+            embed.set_footer(text=footer)
+
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    # ------------------------------------------------------------------
     # /history
     # ------------------------------------------------------------------
 
@@ -267,7 +401,7 @@ class PortfolioCog(BaseCog):
             await self.send_info(
                 interaction,
                 "📜 Lịch sử trống",
-                "Chưa có giao dịch nàođược ghi nhận.",
+                "Chưa có giao dịch nào được ghi nhận.",
             )
             return
 
