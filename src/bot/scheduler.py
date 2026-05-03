@@ -121,6 +121,7 @@ class WatchlistScanScheduler:
 
     - Runs weekdays 09:00–15:00 ICT only (silent outside market hours).
     - Sends embed only when signals exist (alert_triggered or strong_move).
+    - ON_SIGNAL reminders piggyback on the same embed — no extra message.
     - Does NOT call AI — zero token cost.
     - Reuses morning_channel_id + scheduler_user_id from settings.
     """
@@ -165,7 +166,7 @@ class WatchlistScanScheduler:
                 result = await svc.scan_user(str(user_id))
                 await session.commit()
 
-            if not result.signals:
+            if not result.signals and not result.on_signal_reminders:
                 return
 
             channel = self._client.get_channel(int(channel_id))
@@ -178,6 +179,11 @@ class WatchlistScanScheduler:
                 icon = "🔔" if s.has_alerts else "📊"
                 lines.append(f"{icon} **{s.ticker}** {s.change_pct:+.1f}% — {s.description}")
 
+            # ON_SIGNAL reminders piggyback here — no separate Discord message
+            for r in result.on_signal_reminders:
+                ticker = r.watchlist_item.ticker if r.watchlist_item else f"item#{r.watchlist_item_id}"
+                lines.append(f"⏰ **{ticker}** — nhắc nhở theo dõi (ON_SIGNAL)")
+
             has_triggered = result.triggered_count > 0
             embed = discord.Embed(
                 title="📡 Watchlist Scan",
@@ -185,13 +191,21 @@ class WatchlistScanScheduler:
                 color=0xFF6B35 if has_triggered else 0x4F98A3,
             )
             ict_time = (now_utc + datetime.timedelta(hours=7)).strftime("%H:%M ICT")
-            embed.set_footer(text=f"Scan lúc {ict_time} — {len(result.signals)} tín hiệu")
+            signal_count = len(result.signals)
+            reminder_count = len(result.on_signal_reminders)
+            footer_parts = [f"Scan lúc {ict_time}"]
+            if signal_count:
+                footer_parts.append(f"{signal_count} tín hiệu")
+            if reminder_count:
+                footer_parts.append(f"{reminder_count} nhắc nhở")
+            embed.set_footer(text=" — ".join(footer_parts))
 
             await channel.send(embed=embed)  # type: ignore[union-attr]
             logger.info(
                 "scheduler.scan.notified",
-                signals=len(result.signals),
+                signals=signal_count,
                 triggered=result.triggered_count,
+                on_signal_reminders=reminder_count,
             )
 
         except Exception as exc:
@@ -400,7 +414,6 @@ class ThesisDriftScheduler:
                     cooldown_hours=settings.thesis_drift_cooldown_hours,
                 )
                 signals = await drift_svc.detect(str(user_id))
-                # No commit needed — DriftService is read-only
 
             if not signals:
                 logger.debug("scheduler.drift.no_signals", user_id=user_id)
@@ -488,8 +501,6 @@ class ThesisDriftScheduler:
 # ReminderScheduler
 # ---------------------------------------------------------------------------
 
-# Both daily and weekly reminders fire at 08:00 ICT (01:00 UTC)
-# so they land before the morning brief (08:45 ICT).
 _REMINDER_DAILY_TIME = datetime.time(hour=1, minute=0, tzinfo=datetime.UTC)   # 08:00 ICT
 _REMINDER_WEEKLY_TIME = datetime.time(hour=1, minute=0, tzinfo=datetime.UTC)  # 08:00 ICT Monday
 
@@ -524,44 +535,27 @@ class ReminderScheduler:
         self._weekly_task.cancel()
         logger.info("scheduler.reminder.stopped")
 
-    # ── Daily task — every weekday ──────────────────────────────────────────
-
     @tasks.loop(time=_REMINDER_DAILY_TIME)
     async def _daily_task(self) -> None:
         now_utc = datetime.datetime.now(tz=datetime.UTC)
-        if now_utc.weekday() >= 5:  # Sat/Sun — skip
+        if now_utc.weekday() >= 5:
             return
         await self._fire_reminders(label="daily")
-
-    # ── Weekly task — Mondays only ──────────────────────────────────────────
 
     @tasks.loop(time=_REMINDER_WEEKLY_TIME)
     async def _weekly_task(self) -> None:
         now_utc = datetime.datetime.now(tz=datetime.UTC)
-        if now_utc.weekday() != 0:  # 0 = Monday
+        if now_utc.weekday() != 0:
             return
         await self._fire_reminders(label="weekly")
 
-    # ── Shared dispatch ─────────────────────────────────────────────────────
-
     async def _fire_reminders(self, label: str) -> None:
-        """Query due reminders, dispatch each to Discord, then mark as sent.
-
-        One embed per reminder — Discord channel is derived from
-        morning_channel_id (same channel as scan / brief notifications).
-        Each reminder send is attempted independently: one failure does not
-        prevent the others from being dispatched.
-        """
         from src.watchlist.models import ReminderFrequency
         from src.watchlist.reminder_service import ReminderService
 
         channel_id = getattr(settings, "morning_channel_id", None)
         if not channel_id:
-            logger.warning(
-                "scheduler.reminder.skipped",
-                label=label,
-                reason="morning_channel_id not configured",
-            )
+            logger.warning("scheduler.reminder.skipped", label=label, reason="morning_channel_id not configured")
             return
 
         channel = self._client.get_channel(int(channel_id))
@@ -584,11 +578,7 @@ class ReminderScheduler:
                     logger.debug("scheduler.reminder.none_due", label=label)
                     return
 
-                logger.info(
-                    "scheduler.reminder.firing",
-                    label=label,
-                    count=len(due),
-                )
+                logger.info("scheduler.reminder.firing", label=label, count=len(due))
 
                 now_utc = datetime.datetime.now(tz=datetime.UTC)
                 ict_time = (now_utc + datetime.timedelta(hours=7)).strftime("%H:%M ICT")
@@ -611,7 +601,6 @@ class ReminderScheduler:
                         )
                         embed.set_footer(text=f"Reminder {freq_label} — {ict_time}")
                         await channel.send(embed=embed)  # type: ignore[union-attr]
-
                         await svc.mark_sent(reminder)
                         logger.info(
                             "scheduler.reminder.sent",
