@@ -2,11 +2,12 @@
 
 Owner: bot segment.
 Pure presentation layer — no DB access, no service calls.
-Imported by thesis_crud.py and thesis_review.py.
+Imported by thesis_crud.py, thesis_review.py, and scheduler.py.
 """
 
 from __future__ import annotations
 
+import datetime
 import json
 
 import discord
@@ -96,6 +97,45 @@ def build_review_embed(review: object) -> discord.Embed:
     reviewed_at = getattr(review, "reviewed_at", None)
     ts_str = reviewed_at.strftime("%H:%M %d/%m/%Y") if reviewed_at else "N/A"
     embed.set_footer(text=f"Price at review: {price_str} • {ts_str} • stock-agent AI")
+    return embed
+
+
+def build_maintenance_embed(
+    expired_count: int,
+    reviews: list,
+    now_utc: datetime.datetime,
+) -> discord.Embed:
+    """Build embed for ThesisMaintenanceScheduler daily summary.
+
+    Args:
+        expired_count: Number of catalysts auto-expired.
+        reviews:       List of ThesisReview ORM objects from review_stale_theses().
+        now_utc:       Current UTC datetime for footer timestamp.
+
+    Returns:
+        discord.Embed ready to send.
+    """
+    lines: list[str] = []
+    if expired_count:
+        lines.append(f"⏰ **{expired_count}** catalyst đã hết hạn → EXPIRED")
+    for r in reviews:
+        try:
+            verdict_enum = ReviewVerdict(r.verdict)
+            icon = _VERDICT_ICON.get(verdict_enum, "⚪")
+        except (ValueError, KeyError):
+            icon = "⚪"
+        lines.append(
+            f"{icon} Thesis #{r.thesis_id} — {r.verdict} "
+            f"(confidence: {r.confidence:.0%})"
+        )
+
+    embed = discord.Embed(
+        title="🔧 Thesis Maintenance",
+        description="\n".join(lines),
+        color=0x4F98A3,
+    )
+    ict_time = (now_utc + datetime.timedelta(hours=7)).strftime("%H:%M ICT")
+    embed.set_footer(text=f"Auto-maintenance lúc {ict_time}")
     return embed
 
 

@@ -25,8 +25,14 @@ import discord
 from discord.ext import tasks
 
 from src.bot.commands.briefing import build_brief_embed
+from src.bot.commands.thesis_embeds import build_maintenance_embed
 from src.briefing.service import BriefingService
-from src.platform.bootstrap import get_briefing_agent, get_quote_service, get_thesis_review_agent
+from src.platform.bootstrap import (
+    get_briefing_agent,
+    get_pnl_service,
+    get_quote_service,
+    get_thesis_review_agent,
+)
 from src.platform.config import settings
 from src.platform.db import AsyncSessionLocal
 from src.platform.logging import get_logger
@@ -35,11 +41,30 @@ from src.watchlist.service import WatchlistService
 logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
+# Shared market-hours bounds (UTC)
+# Used by WatchlistScanScheduler and ThesisDriftScheduler.
+# Both comparisons use naive time — strip tzinfo before comparing.
+# ---------------------------------------------------------------------------
+
+_MARKET_OPEN_UTC  = datetime.time(hour=2, minute=0)   # 09:00 ICT
+_MARKET_CLOSE_UTC = datetime.time(hour=8, minute=0)   # 15:00 ICT
+
+
+def _in_market_hours(now_utc: datetime.datetime) -> bool:
+    """Return True if now_utc falls within Vietnamese market hours (Mon–Fri)."""
+    if now_utc.weekday() >= 5:
+        return False
+    now_naive = now_utc.utctimetuple()
+    now_time = datetime.time(hour=now_naive.tm_hour, minute=now_naive.tm_min)
+    return _MARKET_OPEN_UTC <= now_time <= _MARKET_CLOSE_UTC
+
+
+# ---------------------------------------------------------------------------
 # BriefingScheduler
 # ---------------------------------------------------------------------------
 
 _MORNING_TIME = datetime.time(hour=1, minute=45, tzinfo=datetime.UTC)  # 08:45 ICT
-_EOD_TIME = datetime.time(hour=8, minute=5, tzinfo=datetime.UTC)       # 15:05 ICT
+_EOD_TIME     = datetime.time(hour=8, minute=5,  tzinfo=datetime.UTC)  # 15:05 ICT
 
 
 class BriefingScheduler:
@@ -91,6 +116,7 @@ class BriefingScheduler:
                     watchlist_service=WatchlistService(session=session),
                     quote_service=get_quote_service(),
                     briefing_agent=get_briefing_agent(),
+                    pnl_service=get_pnl_service(),  # None-safe: BriefingService handles gracefully
                     session=session,
                 )
                 if phase == "morning":
@@ -112,8 +138,6 @@ class BriefingScheduler:
 # ---------------------------------------------------------------------------
 
 _SCAN_INTERVAL_MINUTES = 5
-_MARKET_OPEN_UTC = datetime.time(hour=2, minute=0)   # 09:00 ICT
-_MARKET_CLOSE_UTC = datetime.time(hour=8, minute=0)  # 15:00 ICT
 
 
 class WatchlistScanScheduler:
@@ -140,10 +164,7 @@ class WatchlistScanScheduler:
     @tasks.loop(minutes=_SCAN_INTERVAL_MINUTES)
     async def _scan_task(self) -> None:
         now_utc = datetime.datetime.now(tz=datetime.UTC)
-        if now_utc.weekday() >= 5:
-            return
-        now_time = now_utc.time().replace(tzinfo=datetime.UTC)
-        if not (_MARKET_OPEN_UTC <= now_time.replace(tzinfo=None) <= _MARKET_CLOSE_UTC):
+        if not _in_market_hours(now_utc):
             return
 
         user_id = getattr(settings, "scheduler_user_id", None)
@@ -179,7 +200,6 @@ class WatchlistScanScheduler:
                 icon = "🔔" if s.has_alerts else "📊"
                 lines.append(f"{icon} **{s.ticker}** {s.change_pct:+.1f}% — {s.description}")
 
-            # ON_SIGNAL reminders piggyback here — no separate Discord message
             for r in result.on_signal_reminders:
                 ticker = r.watchlist_item.ticker if r.watchlist_item else f"item#{r.watchlist_item_id}"
                 lines.append(f"⏰ **{ticker}** — nhắc nhở theo dõi (ON_SIGNAL)")
@@ -217,10 +237,10 @@ class WatchlistScanScheduler:
 
 
 # ---------------------------------------------------------------------------
-# ThesisMaintenanceScheduler  (Wave 5)
+# ThesisMaintenanceScheduler
 # ---------------------------------------------------------------------------
 
-_MAINTENANCE_TIME = datetime.time(hour=1, minute=30, tzinfo=datetime.UTC)  # 08:30 ICT
+_MAINTENANCE_TIME      = datetime.time(hour=1, minute=30, tzinfo=datetime.UTC)  # 08:30 ICT
 _MAINTENANCE_STALE_DAYS = 3
 
 
@@ -250,7 +270,7 @@ class ThesisMaintenanceScheduler:
     @tasks.loop(time=_MAINTENANCE_TIME)
     async def _maintenance_task(self) -> None:
         now_utc = datetime.datetime.now(tz=datetime.UTC)
-        if now_utc.weekday() >= 5:  # Skip weekends
+        if now_utc.weekday() >= 5:
             return
 
         user_id = getattr(settings, "scheduler_user_id", None)
@@ -302,7 +322,7 @@ class ThesisMaintenanceScheduler:
         except Exception as exc:
             logger.error("scheduler.thesis_maintenance.review_error", error=str(exc))
 
-        # ── Step 3: Discord notify if anything changed ──
+        # ── Step 3: Discord notify — presentation delegated to thesis_embeds ──
         if not channel_id or (expired_count == 0 and not reviews):
             return
 
@@ -315,25 +335,11 @@ class ThesisMaintenanceScheduler:
             return
 
         try:
-            lines: list[str] = []
-            if expired_count:
-                lines.append(f"⏰ **{expired_count}** catalyst đã hết hạn → EXPIRED")
-            for r in reviews:
-                verdict_icon = {"bullish": "🟢", "bearish": "🔴", "neutral": "🟡"}.get(
-                    str(r.verdict).lower(), "⚪"
-                )
-                lines.append(
-                    f"{verdict_icon} Thesis #{r.thesis_id} — {r.verdict} "
-                    f"(confidence: {r.confidence:.0%})"
-                )
-
-            embed = discord.Embed(
-                title="🔧 Thesis Maintenance",
-                description="\n".join(lines),
-                color=0x4F98A3,
+            embed = build_maintenance_embed(
+                expired_count=expired_count,
+                reviews=reviews,
+                now_utc=now_utc,
             )
-            ict_time = (now_utc + datetime.timedelta(hours=7)).strftime("%H:%M ICT")
-            embed.set_footer(text=f"Auto-maintenance lúc {ict_time}")
             await channel.send(embed=embed)  # type: ignore[union-attr]
             logger.info("scheduler.thesis_maintenance.notified")
         except Exception as exc:
@@ -386,10 +392,7 @@ class ThesisDriftScheduler:
     @tasks.loop(minutes=_DRIFT_INTERVAL_MINUTES)
     async def _drift_task(self) -> None:
         now_utc = datetime.datetime.now(tz=datetime.UTC)
-        if now_utc.weekday() >= 5:
-            return
-        now_time = now_utc.time()
-        if not (_MARKET_OPEN_UTC <= now_time <= _MARKET_CLOSE_UTC):
+        if not _in_market_hours(now_utc):
             return
 
         user_id = getattr(settings, "scheduler_user_id", None)
@@ -501,8 +504,8 @@ class ThesisDriftScheduler:
 # ReminderScheduler
 # ---------------------------------------------------------------------------
 
-_REMINDER_DAILY_TIME = datetime.time(hour=1, minute=0, tzinfo=datetime.UTC)   # 08:00 ICT
-_REMINDER_WEEKLY_TIME = datetime.time(hour=1, minute=0, tzinfo=datetime.UTC)  # 08:00 ICT Monday
+_REMINDER_DAILY_TIME  = datetime.time(hour=1, minute=0, tzinfo=datetime.UTC)   # 08:00 ICT
+_REMINDER_WEEKLY_TIME = datetime.time(hour=1, minute=0, tzinfo=datetime.UTC)   # 08:00 ICT Monday
 
 
 class ReminderScheduler:
@@ -564,7 +567,7 @@ class ReminderScheduler:
             return
 
         frequency_map = {
-            "daily": [ReminderFrequency.DAILY],
+            "daily":  [ReminderFrequency.DAILY],
             "weekly": [ReminderFrequency.WEEKLY],
         }
         frequencies = frequency_map.get(label, [ReminderFrequency.DAILY])

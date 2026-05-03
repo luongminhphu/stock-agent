@@ -24,6 +24,7 @@ _briefing_agent: object | None = None
 _why_agent: object | None = None
 _pretrade_agent: object | None = None
 _snapshot_scheduler: object | None = None
+_pnl_service: object | None = None
 
 
 async def bootstrap() -> None:
@@ -32,7 +33,7 @@ async def bootstrap() -> None:
 
     global _quote_service, _ohlcv_service, _perplexity_client, _thesis_review_agent
     global _thesis_suggest_agent, _briefing_agent, _why_agent, _pretrade_agent
-    global _snapshot_scheduler
+    global _snapshot_scheduler, _pnl_service
 
     if _quote_service is None:
         from src.market.adapters.factory import build_adapter
@@ -85,6 +86,21 @@ async def bootstrap() -> None:
         _pretrade_agent = PreTradeAgent(client=_perplexity_client)  # type: ignore[arg-type]
         logger.info("platform.bootstrap.pretrade_agent_ready")
 
+    # PnlService depends on quote_service — init last
+    if _pnl_service is None:
+        try:
+            from src.portfolio.pnl_service import PnlService
+            from src.platform.db import AsyncSessionLocal
+
+            async with AsyncSessionLocal() as session:
+                _pnl_service = PnlService(
+                    session=session,
+                    quote_service=_quote_service,  # type: ignore[arg-type]
+                )
+            logger.info("platform.bootstrap.pnl_service_ready")
+        except Exception as exc:
+            logger.warning("platform.bootstrap.pnl_service_skipped", error=str(exc))
+
     logger.info("platform.bootstrap.ok")
 
 
@@ -106,7 +122,7 @@ def reset_singletons() -> None:
     """Reset all singletons — for use in tests only."""
     global _quote_service, _ohlcv_service, _perplexity_client, _thesis_review_agent
     global _thesis_suggest_agent, _briefing_agent, _why_agent, _pretrade_agent
-    global _snapshot_scheduler
+    global _snapshot_scheduler, _pnl_service
     _quote_service = None
     _ohlcv_service = None
     _perplexity_client = None
@@ -116,6 +132,7 @@ def reset_singletons() -> None:
     _why_agent = None
     _pretrade_agent = None
     _snapshot_scheduler = None
+    _pnl_service = None
 
 
 def get_quote_service() -> object:
@@ -164,6 +181,14 @@ def get_pretrade_agent() -> object:
     if _pretrade_agent is None:
         raise RuntimeError("PreTradeAgent not initialised — call bootstrap() first.")
     return _pretrade_agent
+
+
+def get_pnl_service() -> object | None:
+    """Return PnlService singleton or None if not available.
+
+    Callers must handle None gracefully — portfolio module is optional.
+    """
+    return _pnl_service
 
 
 def get_snapshot_scheduler() -> object:
