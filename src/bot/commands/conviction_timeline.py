@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import discord
 from discord import app_commands
-from discord.ext import commands
 
+from src.bot.commands.base import BaseCog
 from src.bot.commands.conviction_timeline_embeds import (
     build_conviction_embed,
     build_conviction_not_found_embed,
@@ -20,11 +20,8 @@ from src.platform.logging import get_logger
 logger = get_logger(__name__)
 
 
-class ConvictionTimelineCog(commands.Cog, name="conviction"):
+class ConvictionTimelineCog(BaseCog, name="conviction"):
     """Slash command: /conviction <ticker> [limit]"""
-
-    def __init__(self, bot: commands.Bot) -> None:
-        self.bot = bot
 
     @app_commands.command(
         name="conviction",
@@ -63,25 +60,18 @@ class ConvictionTimelineCog(commands.Cog, name="conviction"):
         await interaction.followup.send(embed=embed)
 
     async def _fetch_timeline(self, ticker: str, limit: int):
-        """Query ThesisTimelineService for the conviction timeline.
+        """Query ThesisTimelineService via BaseCog.db_session().
 
-        Opens a short-lived AsyncSession via platform session factory.
+        Finds the most-recently-created ACTIVE thesis for this ticker,
+        then calls get_conviction_timeline(thesis_id, limit).
         Returns ConvictionTimelineResponse | None.
-
-        Strategy: find the most-recently-created ACTIVE thesis for this ticker,
-        then call get_conviction_timeline(thesis_id, limit).
-        Returns None if no matching thesis found.
         """
         from sqlalchemy import select
 
-        from src.platform.bootstrap import get_async_session_factory
         from src.readmodel.timeline_service import ThesisTimelineService
         from src.thesis.models import Thesis, ThesisStatus
 
-        session_factory = get_async_session_factory()
-
-        async with session_factory() as session:
-            # Find latest active thesis for this ticker
+        async with self.db_session() as session:
             result = await session.execute(
                 select(Thesis)
                 .where(
