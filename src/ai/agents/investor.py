@@ -3,16 +3,11 @@ import json
 from pydantic import ValidationError
 
 from src.ai.client import PerplexityClient, PerplexityError
+from src.ai.prompts.investor import SYSTEM_PROMPT, build_user_prompt
 from src.ai.schemas import StockAnalysisOutput
 from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
-
-_SYSTEM_PROMPT = """Bạn là chuyên gia phân tích cổ phiếu Việt Nam (HOSE, HNX, UPCoM).
-Phân tích cổ phiếu được hỏi và trả về JSON với verdict, confidence, risk_level,
-các điểm tích cực/tiêu cực, và tóm tắt ngắn gọn.
-Chỉ trả về JSON, không có text thừa.
-"""
 
 
 class InvestorAgent:
@@ -21,6 +16,8 @@ class InvestorAgent:
     Owner: ai segment.
     Use for on-demand ticker analysis outside of a formal thesis context.
     For thesis-specific review, use ThesisReviewAgent.
+
+    Prompts: src/ai/prompts/investor.py
     """
 
     def __init__(self, client: PerplexityClient) -> None:
@@ -32,31 +29,13 @@ class InvestorAgent:
         context: str = "",
     ) -> StockAnalysisOutput:
         """Analyze a single ticker and return structured output."""
-        user_msg = f"Phân tích cổ phiếu {ticker} cho thị trường chứng khoán Việt Nam."
-        if context:
-            user_msg += f"\nContext bổ sung: {context}"
-        user_msg += """
-
-Trả về JSON:
-{
-  "ticker": "...",
-  "verdict": "BULLISH|BEARISH|NEUTRAL|WATCHLIST",
-  "confidence": 0.0-1.0,
-  "risk_level": "LOW|MEDIUM|HIGH|CRITICAL",
-  "price_target_note": "...",
-  "key_positives": ["..."],
-  "key_negatives": ["..."],
-  "summary": "..."
-}
-"""
-
         logger.info("investor_agent.start", ticker=ticker)
 
         try:
             response = await self._client.chat_completion(
                 messages=[
-                    {"role": "system", "content": _SYSTEM_PROMPT},
-                    {"role": "user", "content": user_msg},
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": build_user_prompt(ticker, context)},
                 ],
                 temperature=0.2,
                 response_format={"type": "json_object"},
