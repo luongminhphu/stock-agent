@@ -9,6 +9,8 @@ Registered tasks:
     WatchlistScanScheduler.scan_task           — every 5 min, weekdays 09:00–15:00 ICT
     ThesisMaintenanceScheduler.maintenance     — weekdays 08:30 ICT (before morning brief)
     ThesisDriftScheduler.drift_task            — every 15 min, weekdays 09:00–15:00 ICT
+    ReminderScheduler.daily_task               — weekdays 08:00 ICT (DAILY reminders)
+    ReminderScheduler.weekly_task              — Mondays 08:00 ICT (WEEKLY reminders)
 
 Note:
     MORNING_CHANNEL_ID and EOD_CHANNEL_ID must be set in settings.
@@ -479,6 +481,163 @@ class ThesisDriftScheduler:
 
     @_drift_task.before_loop
     async def _before_drift(self) -> None:
+        await self._client.wait_until_ready()
+
+
+# ---------------------------------------------------------------------------
+# ReminderScheduler
+# ---------------------------------------------------------------------------
+
+# Both daily and weekly reminders fire at 08:00 ICT (01:00 UTC)
+# so they land before the morning brief (08:45 ICT).
+_REMINDER_DAILY_TIME = datetime.time(hour=1, minute=0, tzinfo=datetime.UTC)   # 08:00 ICT
+_REMINDER_WEEKLY_TIME = datetime.time(hour=1, minute=0, tzinfo=datetime.UTC)  # 08:00 ICT Monday
+
+
+class ReminderScheduler:
+    """Fire watchlist reminders via Discord based on investor-set frequency.
+
+    Owner: bot segment (adapter only).
+    Domain logic lives entirely in ReminderService — this class only:
+        1. Calls ReminderService.list_due(frequencies=[...])
+        2. Sends one Discord embed per due reminder
+        3. Calls ReminderService.mark_sent(reminder) after dispatching
+
+    Tasks:
+        _daily_task  — weekdays 08:00 ICT, handles DAILY reminders.
+        _weekly_task — Mondays  08:00 ICT, handles WEEKLY reminders.
+
+    ON_SIGNAL reminders are NOT handled here — they are triggered by
+    WatchlistScanScheduler via ScanService → ReminderService.list_due_for_signal().
+    """
+
+    def __init__(self, client: discord.Client) -> None:
+        self._client = client
+
+    def start(self) -> None:
+        self._daily_task.start()
+        self._weekly_task.start()
+        logger.info("scheduler.reminder.started")
+
+    def stop(self) -> None:
+        self._daily_task.cancel()
+        self._weekly_task.cancel()
+        logger.info("scheduler.reminder.stopped")
+
+    # ── Daily task — every weekday ──────────────────────────────────────────
+
+    @tasks.loop(time=_REMINDER_DAILY_TIME)
+    async def _daily_task(self) -> None:
+        now_utc = datetime.datetime.now(tz=datetime.UTC)
+        if now_utc.weekday() >= 5:  # Sat/Sun — skip
+            return
+        await self._fire_reminders(label="daily")
+
+    # ── Weekly task — Mondays only ──────────────────────────────────────────
+
+    @tasks.loop(time=_REMINDER_WEEKLY_TIME)
+    async def _weekly_task(self) -> None:
+        now_utc = datetime.datetime.now(tz=datetime.UTC)
+        if now_utc.weekday() != 0:  # 0 = Monday
+            return
+        await self._fire_reminders(label="weekly")
+
+    # ── Shared dispatch ─────────────────────────────────────────────────────
+
+    async def _fire_reminders(self, label: str) -> None:
+        """Query due reminders, dispatch each to Discord, then mark as sent.
+
+        One embed per reminder — Discord channel is derived from
+        morning_channel_id (same channel as scan / brief notifications).
+        Each reminder send is attempted independently: one failure does not
+        prevent the others from being dispatched.
+        """
+        from src.watchlist.models import ReminderFrequency
+        from src.watchlist.reminder_service import ReminderService
+
+        channel_id = getattr(settings, "morning_channel_id", None)
+        if not channel_id:
+            logger.warning(
+                "scheduler.reminder.skipped",
+                label=label,
+                reason="morning_channel_id not configured",
+            )
+            return
+
+        channel = self._client.get_channel(int(channel_id))
+        if channel is None:
+            logger.warning("scheduler.reminder.channel_not_found", channel_id=channel_id)
+            return
+
+        frequency_map = {
+            "daily": [ReminderFrequency.DAILY],
+            "weekly": [ReminderFrequency.WEEKLY],
+        }
+        frequencies = frequency_map.get(label, [ReminderFrequency.DAILY])
+
+        try:
+            async with AsyncSessionLocal() as session:
+                svc = ReminderService(session)
+                due = await svc.list_due(frequencies=frequencies)
+
+                if not due:
+                    logger.debug("scheduler.reminder.none_due", label=label)
+                    return
+
+                logger.info(
+                    "scheduler.reminder.firing",
+                    label=label,
+                    count=len(due),
+                )
+
+                now_utc = datetime.datetime.now(tz=datetime.UTC)
+                ict_time = (now_utc + datetime.timedelta(hours=7)).strftime("%H:%M ICT")
+                freq_label = "hàng ngày" if label == "daily" else "hàng tuần"
+
+                for reminder in due:
+                    ticker = (
+                        reminder.watchlist_item.ticker
+                        if reminder.watchlist_item
+                        else f"item#{reminder.watchlist_item_id}"
+                    )
+                    try:
+                        embed = discord.Embed(
+                            title=f"⏰ Nhắc nhở {freq_label}: {ticker}",
+                            description=(
+                                f"Bạn đang theo dõi **{ticker}** trong watchlist.\n"
+                                f"Hãy kiểm tra lại thesis và diễn biến giá hôm nay."
+                            ),
+                            color=0x4F98A3,
+                        )
+                        embed.set_footer(text=f"Reminder {freq_label} — {ict_time}")
+                        await channel.send(embed=embed)  # type: ignore[union-attr]
+
+                        await svc.mark_sent(reminder)
+                        logger.info(
+                            "scheduler.reminder.sent",
+                            ticker=ticker,
+                            reminder_id=reminder.id,
+                            frequency=reminder.frequency,
+                        )
+                    except Exception as exc:
+                        logger.error(
+                            "scheduler.reminder.send_failed",
+                            ticker=ticker,
+                            reminder_id=reminder.id,
+                            error=str(exc),
+                        )
+
+                await session.commit()
+
+        except Exception as exc:
+            logger.error("scheduler.reminder.error", label=label, error=str(exc))
+
+    @_daily_task.before_loop
+    async def _before_daily(self) -> None:
+        await self._client.wait_until_ready()
+
+    @_weekly_task.before_loop
+    async def _before_weekly(self) -> None:
         await self._client.wait_until_ready()
 
 
