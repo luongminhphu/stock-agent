@@ -40,6 +40,13 @@ function wireDeleteThesis(id) {
   import('../../utils/dom.js').then(({ openModal }) => openModal('deleteModal'));
 }
 
+// Normalize verdict-accuracy response (array hoặc { items: [...] })
+function normalizeAccuracyRes(res) {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  return res.items ?? [];
+}
+
 // ---------------------------------------------------------------------------
 // Main loader
 // ---------------------------------------------------------------------------
@@ -60,7 +67,7 @@ export async function loadDashboard() {
     ] = await Promise.all([
       getJson(`${base}/stats`).catch(() => null),
       getJson(`${base}/theses?status=${status}`).catch(() => []),
-      getJson(`${base}/backtesting/verdict-accuracy`).catch(() => []),
+      getJson(`${base}/backtesting/verdict-accuracy`).catch(() => null),
       getJson(`${base}/catalysts/upcoming?days=30`).catch(() => []),
       getJson(`${base}/scan/latest`).catch(() => null),
       getJson(`${base}/brief/latest?phase=morning`).catch(() => null),
@@ -77,7 +84,13 @@ export async function loadDashboard() {
       onDelete: (id) => wireDeleteThesis(id),
     });
 
-    renderVerdicts(verdictAccuracy?.items ?? verdictAccuracy ?? []);
+    // Normalize + cache để loadBacktesting() tái dùng, không fetch lại
+    const accuracyRows = normalizeAccuracyRes(verdictAccuracy);
+    state.cachedVerdictAccuracy = accuracyRows;
+
+    renderVerdicts(accuracyRows);
+    renderAccuracy(accuracyRows);
+
     renderCatalystList(catalysts?.items ?? catalysts ?? []);
 
     renderSnapshots({
@@ -109,28 +122,29 @@ export async function loadDashboard() {
 }
 
 // ---------------------------------------------------------------------------
-// Backtesting loader — verdict accuracy + thesis performances
+// Backtesting loader — chỉ fetch thesis-performances (verdict-accuracy đã có từ loadDashboard)
 // ---------------------------------------------------------------------------
 export async function loadBacktesting() {
   const base = apiBase();
 
-  const accuracyWrap     = el('accuracyWrap');
-  const performanceWrap  = el('performanceWrap');
+  const accuracyWrap    = el('accuracyWrap');
+  const performanceWrap = el('performanceWrap');
 
-  if (accuracyWrap)    accuracyWrap.innerHTML    = '<p class="muted">Đang tải...</p>';
   if (performanceWrap) performanceWrap.innerHTML = '<p class="muted">Đang tải...</p>';
 
   try {
-    const [accuracyRes, performanceRes] = await Promise.all([
-      getJson(`${base}/backtesting/verdict-accuracy`).catch(() => null),
-      getJson(`${base}/backtesting/thesis-performances`).catch(() => null),
-    ]);
+    // Tái dùng cache từ loadDashboard() nếu có; fallback fetch nếu gọi standalone
+    if (state.cachedVerdictAccuracy) {
+      renderAccuracy(state.cachedVerdictAccuracy);
+    } else {
+      if (accuracyWrap) accuracyWrap.innerHTML = '<p class="muted">Đang tải...</p>';
+      const accuracyRes  = await getJson(`${base}/backtesting/verdict-accuracy`).catch(() => null);
+      const accuracyRows = Array.isArray(accuracyRes) ? accuracyRes : (accuracyRes?.items ?? []);
+      state.cachedVerdictAccuracy = accuracyRows;
+      renderAccuracy(accuracyRows);
+    }
 
-    // verdict-accuracy trả về { items: [...] } hoặc array trực tiếp
-    const accuracyRows = accuracyRes?.items ?? (Array.isArray(accuracyRes) ? accuracyRes : []);
-    renderAccuracy(accuracyRows);
-
-    // thesis-performances trả về array trực tiếp
+    const performanceRes  = await getJson(`${base}/backtesting/thesis-performances`).catch(() => null);
     const performanceRows = Array.isArray(performanceRes) ? performanceRes : (performanceRes?.items ?? []);
     renderPerformance(performanceRows);
 
