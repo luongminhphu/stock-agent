@@ -329,26 +329,26 @@ class ThesisMaintenanceScheduler:
 
 
 # ---------------------------------------------------------------------------
-# ThesisDriftScheduler  (Wave 6)
+# ThesisDriftScheduler
 # ---------------------------------------------------------------------------
 
 _DRIFT_INTERVAL_MINUTES = 15
-_DRIFT_THRESHOLD_PCT = 5.0   # ±5% from entry_price triggers an immediate AI review
 
 
 class ThesisDriftScheduler:
-    """Chạy mỗi 15 phút trong giờ giao dịch — phát hiện giá dịch chuyển ±5% so với entry.
+    """Detect thesis price drift every 15 min during market hours and trigger AI review.
 
-    Flow:
-        1. DriftService.detect()            — lấy giá live, so với entry_price.
-        2. Nếu có DriftSignal → gọi ReviewService.review_thesis() ngay.
-        3. Discord notify với drift summary + kết quả AI review.
-        4. DriftService.mark_reviewed()     — reset cooldown sau review thành công.
+    Flow (per tick):
+        1. DriftService.detect() — pure detection, no AI, no state mutation.
+        2. For each DriftSignal: ReviewService.review_thesis() — AI review + snapshot.
+        3. Discord notify with verdict + drift summary per thesis.
 
-    Khác biệt với ThesisMaintenanceScheduler:
-      - Chạy trong giờ giao dịch (không phải 08:30 cố định).
-      - Trigger từc thì khi giá vượt ngưỡng, không chờ staleness.
-      - Có cooldown 4h per thesis — tránh spam khi thị trườ́ng volatile.
+    Cooldown is enforced inside DriftService (default 4h) — ReviewService is
+    never called twice for the same thesis within the cooldown window.
+
+    Threshold and cooldown are configurable via settings:
+        THESIS_DRIFT_THRESHOLD_PCT  (default 5.0)
+        THESIS_DRIFT_COOLDOWN_HOURS (default 4.0)
     """
 
     def __init__(self, client: discord.Client) -> None:
@@ -359,7 +359,8 @@ class ThesisDriftScheduler:
         logger.info(
             "scheduler.drift.started",
             interval_minutes=_DRIFT_INTERVAL_MINUTES,
-            threshold_pct=_DRIFT_THRESHOLD_PCT,
+            threshold_pct=settings.thesis_drift_threshold_pct,
+            cooldown_hours=settings.thesis_drift_cooldown_hours,
         )
 
     def stop(self) -> None:
@@ -369,34 +370,38 @@ class ThesisDriftScheduler:
     @tasks.loop(minutes=_DRIFT_INTERVAL_MINUTES)
     async def _drift_task(self) -> None:
         now_utc = datetime.datetime.now(tz=datetime.UTC)
-        # Weekdays only, market hours 09:00–15:00 ICT (02:00–08:00 UTC)
         if now_utc.weekday() >= 5:
             return
         now_time = now_utc.time()
-        if not (datetime.time(2, 0) <= now_time <= datetime.time(8, 0)):
+        if not (_MARKET_OPEN_UTC <= now_time <= _MARKET_CLOSE_UTC):
             return
 
         user_id = getattr(settings, "scheduler_user_id", None)
         channel_id = getattr(settings, "morning_channel_id", None)
-        if not user_id:
-            logger.warning("scheduler.drift.skipped", reason="scheduler_user_id not configured")
+        if not user_id or not channel_id:
+            logger.warning(
+                "scheduler.drift.skipped",
+                reason="scheduler_user_id or morning_channel_id not configured",
+            )
             return
 
-        from src.thesis.drift_service import DriftService
-        from src.thesis.review_service import ReviewService
-
-        # ── Step 1: detect drifted theses ──
         try:
+            from src.thesis.drift_service import DriftService
+            from src.thesis.review_service import ReviewService
+
+            # ── Step 1: Detect drifted theses (no AI) ──
             async with AsyncSessionLocal() as session:
                 drift_svc = DriftService(
                     session=session,
                     quote_service=get_quote_service(),
-                    threshold_pct=_DRIFT_THRESHOLD_PCT,
+                    threshold_pct=settings.thesis_drift_threshold_pct,
+                    cooldown_hours=settings.thesis_drift_cooldown_hours,
                 )
                 signals = await drift_svc.detect(str(user_id))
-                # No commit needed — detect() is read-only
+                # No commit needed — DriftService is read-only
 
             if not signals:
+                logger.debug("scheduler.drift.no_signals", user_id=user_id)
                 return
 
             logger.info(
@@ -404,88 +409,73 @@ class ThesisDriftScheduler:
                 count=len(signals),
                 tickers=[s.ticker for s in signals],
             )
-        except Exception as exc:
-            logger.error("scheduler.drift.detect_error", error=str(exc))
-            return
 
-        # ── Step 2: trigger AI review per signal (sequential, avoid rate limit) ──
-        review_results: list[tuple] = []  # [(DriftSignal, ThesisReview | None)]
-        for signal in signals:
-            try:
-                async with AsyncSessionLocal() as session:
-                    review_svc = ReviewService(
-                        session=session,
-                        agent=get_thesis_review_agent(),  # type: ignore[arg-type]
-                        quote_service=get_quote_service(),
-                    )
-                    review = await review_svc.review_thesis(
+            # ── Step 2: AI review per drifted thesis (sequential, rate-limit safe) ──
+            reviews: list[tuple] = []  # (DriftSignal, ThesisReview)
+            for signal in signals:
+                try:
+                    async with AsyncSessionLocal() as session:
+                        review_svc = ReviewService(
+                            session=session,
+                            agent=get_thesis_review_agent(),  # type: ignore[arg-type]
+                            quote_service=get_quote_service(),
+                        )
+                        review = await review_svc.review_thesis(
+                            thesis_id=signal.thesis_id,
+                            user_id=signal.user_id,
+                            current_price=signal.current_price,
+                        )
+                        await session.commit()
+                    reviews.append((signal, review))
+                    logger.info(
+                        "scheduler.drift.review_done",
                         thesis_id=signal.thesis_id,
-                        user_id=signal.user_id,
-                        current_price=signal.current_price,
+                        ticker=signal.ticker,
+                        verdict=review.verdict,
+                        drift_pct=signal.drift_pct,
                     )
-                    await session.commit()
+                except Exception as exc:
+                    logger.warning(
+                        "scheduler.drift.review_failed",
+                        thesis_id=signal.thesis_id,
+                        ticker=signal.ticker,
+                        error=str(exc),
+                    )
 
-                # Reset cooldown only after successful review
-                DriftService._cooldown_registry[signal.thesis_id] = datetime.datetime.now(
-                    tz=datetime.UTC
-                )
-                review_results.append((signal, review))
-                logger.info(
-                    "scheduler.drift.review_done",
-                    thesis_id=signal.thesis_id,
-                    ticker=signal.ticker,
-                    verdict=review.verdict,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "scheduler.drift.review_error",
-                    thesis_id=signal.thesis_id,
-                    ticker=signal.ticker,
-                    error=str(exc),
-                )
-                review_results.append((signal, None))
+            if not reviews:
+                return
 
-        # ── Step 3: Discord notify ──
-        if not channel_id:
-            return
-        channel = self._client.get_channel(int(channel_id))
-        if channel is None:
-            logger.warning("scheduler.drift.channel_not_found", channel_id=channel_id)
-            return
+            # ── Step 3: Discord notify ──
+            channel = self._client.get_channel(int(channel_id))
+            if channel is None:
+                logger.warning("scheduler.drift.channel_not_found", channel_id=channel_id)
+                return
 
-        try:
             lines: list[str] = []
-            for sig, rev in review_results:
-                lines.append(sig.summary)
-                if rev is not None:
-                    verdict_icon = {"bullish": "🟢", "bearish": "🔴", "neutral": "🟡"}.get(
-                        str(rev.verdict).lower(), "⚪"
-                    )
-                    lines.append(
-                        f"  ↳ AI verdict: {verdict_icon} {rev.verdict} "
-                        f"(confidence: {rev.confidence:.0%})"
-                    )
-                else:
-                    lines.append("  ↳ ⚠️ Review thất bại — kiểm tra logs")
+            for signal, review in reviews:
+                verdict_icon = {"bullish": "🟢", "bearish": "🔴", "neutral": "🟡"}.get(
+                    str(review.verdict).lower(), "⚪"
+                )
+                lines.append(
+                    f"{verdict_icon} **{signal.ticker}** {signal.direction}{abs(signal.drift_pct):.1f}% "
+                    f"drift → AI verdict: **{review.verdict}** "
+                    f"(confidence {review.confidence:.0%})"
+                )
 
-            has_bearish = any(
-                rev is not None and str(rev.verdict).lower() == "bearish"
-                for _, rev in review_results
-            )
             embed = discord.Embed(
-                title="🎯 Thesis Drift Alert",
+                title="⚡ Thesis Drift Alert",
                 description="\n".join(lines),
-                color=0xFF6B35 if has_bearish else 0x4F98A3,
+                color=0xFF6B35,
             )
             ict_time = (now_utc + datetime.timedelta(hours=7)).strftime("%H:%M ICT")
             embed.set_footer(
-                text=f"Drift ±{_DRIFT_THRESHOLD_PCT:.0f}% detected lúc {ict_time} — "
-                f"{len(signals)} thesis(es) reviewed"
+                text=f"Drift ≥{settings.thesis_drift_threshold_pct:.0f}% detected lúc {ict_time}"
             )
             await channel.send(embed=embed)  # type: ignore[union-attr]
-            logger.info("scheduler.drift.notified", count=len(review_results))
+            logger.info("scheduler.drift.notified", reviewed=len(reviews))
+
         except Exception as exc:
-            logger.error("scheduler.drift.notify_error", error=str(exc))
+            logger.error("scheduler.drift.error", error=str(exc))
 
     @_drift_task.before_loop
     async def _before_drift(self) -> None:

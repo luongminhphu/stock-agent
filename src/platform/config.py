@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     eod_channel_id: str = ""
     scheduler_user_id: str = ""
 
+    # Thesis Drift Detector
+    thesis_drift_threshold_pct: float = 5.0   # Trigger review khi |drift| >= threshold
+    thesis_drift_cooldown_hours: float = 4.0  # Không re-trigger trong N giờ sau lần review gần nhất
+
     # ------------------------------------------------------------------
     # Derived properties
     # ------------------------------------------------------------------

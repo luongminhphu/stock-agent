@@ -1,114 +1,99 @@
-"""Drift service — detect significant price moves against active theses.
+"""Drift service — detect price drift against thesis entry_price.
 
 Owner: thesis segment.
 
 Responsibility boundary:
-  DriftService  → detect which theses have drifted beyond threshold
-                  returns list[DriftSignal], does NOT trigger reviews
-  Caller        → decides whether to call ReviewService based on signals
+    DriftService   → compute drift_pct, decide if threshold crossed + cooldown clear
+    ReviewService  → execute AI review (called by scheduler, NOT by DriftService)
+    Scheduler      → wire DriftService → ReviewService → Discord notify
 
-Design decisions:
-  - Only ACTIVE theses with an entry_price are evaluated.
-  - drift_pct is computed as (current_price - entry_price) / entry_price * 100.
-  - A cooldown (default 4h) prevents re-triggering on the same thesis
-    while the market stays volatile. Cooldown state is in-memory only
-    (resets on bot restart) — acceptable for a single-process deployment.
-  - Threshold is configurable via settings.thesis_drift_threshold_pct (default 5.0).
+DriftService is intentionally a pure detection layer. It never calls
+ReviewService directly — that coupling lives in the scheduler (bot segment)
+which owns orchestration decisions.
 
-This service never calls ReviewService directly — that is the scheduler's job.
+Flow (called by ThesisDriftScheduler every 15 min during market hours):
+    1. Load all ACTIVE theses with entry_price for user.
+    2. Fetch live quote per unique ticker (via injected QuoteService).
+    3. Compute drift_pct = (current_price - entry_price) / entry_price * 100.
+    4. If |drift_pct| >= threshold AND cooldown cleared → emit DriftSignal.
+    5. Return list[DriftSignal] — scheduler drives the rest.
+
+Cooldown check: thesis has a review within the last cooldown_hours → skip.
+This prevents repeated AI calls when price stays outside threshold range.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.logging import get_logger
-from src.thesis.models import Thesis, ThesisStatus
-from src.thesis.repository import ThesisRepository
+from src.thesis.models import Thesis, ThesisReview, ThesisStatus
 
 logger = get_logger(__name__)
-
-_DEFAULT_THRESHOLD_PCT = 5.0   # ±5% move triggers a drift review
-_DEFAULT_COOLDOWN_HOURS = 4    # minimum hours between drift reviews per thesis
 
 
 @dataclass
 class DriftSignal:
-    """Represents a single thesis that has drifted beyond the threshold."""
+    """A single thesis that has drifted beyond the threshold."""
 
     thesis_id: int
-    ticker: str
     user_id: str
+    ticker: str
     entry_price: float
     current_price: float
-    drift_pct: float           # positive = price up, negative = price down
+    drift_pct: float  # positive = up, negative = down
 
     @property
     def direction(self) -> str:
-        return "up" if self.drift_pct >= 0 else "down"
+        return "▲" if self.drift_pct >= 0 else "▼"
 
     @property
     def summary(self) -> str:
-        icon = "📈" if self.drift_pct >= 0 else "📉"
         return (
-            f"{icon} **{self.ticker}** drift {self.drift_pct:+.1f}% "
+            f"{self.ticker} drift {self.direction}{abs(self.drift_pct):.1f}% "
             f"(entry {self.entry_price:.0f} → now {self.current_price:.0f})"
         )
 
 
 class DriftService:
-    """Detect active theses whose price has moved beyond the drift threshold.
+    """Detect ACTIVE theses whose price has drifted beyond a threshold.
 
-    Maintains an in-memory cooldown registry so the same thesis is not
-    flagged repeatedly within a short window.
-
-    Args:
-        session:           AsyncSession (per-call).
-        quote_service:     QuoteService adapter (market segment).
-        threshold_pct:     Absolute drift % to trigger a signal (default 5.0).
-        cooldown_hours:    Hours to suppress re-trigger per thesis (default 4).
+    Pure detection — no AI calls, no state mutation.
     """
-
-    # Class-level cooldown registry — shared across all DriftService instances
-    # within the same process. Keys are thesis_id, values are last-triggered UTC.
-    _cooldown_registry: dict[int, datetime] = {}
 
     def __init__(
         self,
         session: AsyncSession,
-        quote_service: object,
-        threshold_pct: float = _DEFAULT_THRESHOLD_PCT,
-        cooldown_hours: int = _DEFAULT_COOLDOWN_HOURS,
+        quote_service: object,  # QuoteService, avoid circular import
+        threshold_pct: float = 5.0,
+        cooldown_hours: float = 4.0,
     ) -> None:
-        self._repo = ThesisRepository(session)
+        self._session = session
         self._quote_service = quote_service
         self._threshold_pct = threshold_pct
         self._cooldown_hours = cooldown_hours
 
     async def detect(self, user_id: str) -> list[DriftSignal]:
-        """Scan all ACTIVE theses for the user and return drift signals.
-
-        Only theses with a set entry_price are evaluated.
-        Theses on cooldown are silently skipped.
+        """Return DriftSignals for theses that crossed the drift threshold
+        and are not in cooldown.
 
         Args:
-            user_id: Owner of the theses to scan.
+            user_id: User whose ACTIVE theses to check.
 
         Returns:
-            List of DriftSignal — may be empty if no drift detected.
+            List of DriftSignal — may be empty if nothing drifted or all in cooldown.
         """
-        theses = await self._repo.list_by_user(user_id, status=ThesisStatus.ACTIVE)
-        eligible = [t for t in theses if t.entry_price is not None]
-
-        if not eligible:
-            logger.info("drift_service.detect.no_eligible", user_id=user_id)
+        theses = await self._load_active_theses(user_id)
+        if not theses:
+            logger.debug("drift_service.detect.no_active_theses", user_id=user_id)
             return []
 
-        # Deduplicate tickers to minimise quote API calls
-        tickers = sorted({t.ticker for t in eligible})
+        # Deduplicate tickers for quote fetching
+        tickers = sorted({t.ticker for t in theses if t.entry_price is not None})
         price_map: dict[str, float] = {}
         for ticker in tickers:
             try:
@@ -116,26 +101,34 @@ class DriftService:
                 price_map[ticker] = quote.price
             except Exception as exc:
                 logger.warning(
-                    "drift_service.detect.quote_error",
+                    "drift_service.quote_fetch_failed",
                     ticker=ticker,
                     error=str(exc),
                 )
 
         signals: list[DriftSignal] = []
-        now = datetime.now(UTC)
-
-        for thesis in eligible:
+        for thesis in theses:
+            if thesis.entry_price is None:
+                continue
             current_price = price_map.get(thesis.ticker)
             if current_price is None:
                 continue
 
-            drift_pct = self._compute_drift_pct(thesis, current_price)
+            drift_pct = (current_price - thesis.entry_price) / thesis.entry_price * 100
+
             if abs(drift_pct) < self._threshold_pct:
+                logger.debug(
+                    "drift_service.below_threshold",
+                    thesis_id=thesis.id,
+                    ticker=thesis.ticker,
+                    drift_pct=round(drift_pct, 2),
+                    threshold=self._threshold_pct,
+                )
                 continue
 
-            if self._is_on_cooldown(thesis.id, now):
-                logger.info(
-                    "drift_service.detect.cooldown_skip",
+            if await self._in_cooldown(thesis.id):
+                logger.debug(
+                    "drift_service.cooldown_active",
                     thesis_id=thesis.id,
                     ticker=thesis.ticker,
                     drift_pct=round(drift_pct, 2),
@@ -144,56 +137,47 @@ class DriftService:
 
             signal = DriftSignal(
                 thesis_id=thesis.id,
+                user_id=user_id,
                 ticker=thesis.ticker,
-                user_id=thesis.user_id,
-                entry_price=float(thesis.entry_price),  # type: ignore[arg-type]
+                entry_price=float(thesis.entry_price),
                 current_price=current_price,
                 drift_pct=round(drift_pct, 2),
             )
             signals.append(signal)
-            self._register_cooldown(thesis.id, now)
             logger.info(
-                "drift_service.detect.signal",
+                "drift_service.signal_emitted",
                 thesis_id=thesis.id,
                 ticker=thesis.ticker,
                 drift_pct=signal.drift_pct,
                 direction=signal.direction,
             )
 
-        logger.info(
-            "drift_service.detect.done",
-            user_id=user_id,
-            eligible=len(eligible),
-            signals=len(signals),
-        )
         return signals
-
-    def mark_reviewed(self, thesis_id: int) -> None:
-        """Reset cooldown clock after a drift-triggered review completes.
-
-        Called by the scheduler after ReviewService.review_thesis() succeeds.
-        Ensures the next genuine drift will fire again after cooldown_hours.
-        """
-        DriftService._cooldown_registry[thesis_id] = datetime.now(UTC)
-        logger.debug("drift_service.cooldown_reset", thesis_id=thesis_id)
 
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _compute_drift_pct(thesis: Thesis, current_price: float) -> float:
-        """Return signed drift % relative to entry_price."""
-        entry = float(thesis.entry_price)  # type: ignore[arg-type]
-        if entry == 0:
-            return 0.0
-        return (current_price - entry) / entry * 100
+    async def _load_active_theses(self, user_id: str) -> list[Thesis]:
+        """Load ACTIVE theses with entry_price set, no eager-loads needed."""
+        stmt = (
+            select(Thesis)
+            .where(Thesis.user_id == user_id)
+            .where(Thesis.status == ThesisStatus.ACTIVE)
+            .where(Thesis.entry_price.is_not(None))
+            .order_by(Thesis.id.asc())
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
 
-    def _is_on_cooldown(self, thesis_id: int, now: datetime) -> bool:
-        last = DriftService._cooldown_registry.get(thesis_id)
-        if last is None:
-            return False
-        return (now - last) < timedelta(hours=self._cooldown_hours)
-
-    def _register_cooldown(self, thesis_id: int, now: datetime) -> None:
-        DriftService._cooldown_registry[thesis_id] = now
+    async def _in_cooldown(self, thesis_id: int) -> bool:
+        """Return True if thesis has a review within the last cooldown_hours."""
+        cutoff = datetime.now(UTC) - timedelta(hours=self._cooldown_hours)
+        stmt = (
+            select(ThesisReview.id)
+            .where(ThesisReview.thesis_id == thesis_id)
+            .where(ThesisReview.reviewed_at >= cutoff)
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none() is not None
