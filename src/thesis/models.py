@@ -267,7 +267,7 @@ class Catalyst(Base):
     )
     description: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[CatalystStatus] = mapped_column(
-        SAEnum(CatalystStatus, values_callable=True),
+        SAEnum(CatalystStatus, values_callable=_enum_values),
         nullable=False,
         default=CatalystStatus.PENDING,
     )
