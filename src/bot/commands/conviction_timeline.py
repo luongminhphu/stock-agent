@@ -43,7 +43,7 @@ class ConvictionTimelineCog(BaseCog, name="conviction"):
         logger.info("conviction.command.called", ticker=ticker_upper, limit=limit)
 
         try:
-            result = await self._fetch_timeline(ticker_upper, limit)
+            result, thesis_id = await self._fetch_timeline(ticker_upper, limit)
         except Exception:
             logger.exception("conviction.command.error", ticker=ticker_upper)
             await interaction.followup.send(
@@ -53,18 +53,20 @@ class ConvictionTimelineCog(BaseCog, name="conviction"):
             return
 
         if result is None or result.total == 0:
-            embed = build_conviction_not_found_embed(ticker_upper)
+            embed = build_conviction_not_found_embed(ticker_upper, thesis_id=thesis_id)
         else:
             embed = build_conviction_embed(result)
 
         await interaction.followup.send(embed=embed)
 
-    async def _fetch_timeline(self, ticker: str, limit: int):
+    async def _fetch_timeline(
+        self, ticker: str, limit: int
+    ) -> tuple[object | None, int | None]:
         """Query ThesisTimelineService via BaseCog.db_session().
 
-        Finds the most-recently-created ACTIVE thesis for this ticker,
-        then calls get_conviction_timeline(thesis_id, limit).
-        Returns ConvictionTimelineResponse | None.
+        Returns (ConvictionTimelineResponse | None, thesis_id | None).
+        - (None, None)        → no ACTIVE thesis found for ticker
+        - (timeline, id)      → thesis found; timeline may have total == 0
         """
         from sqlalchemy import select
 
@@ -85,7 +87,8 @@ class ConvictionTimelineCog(BaseCog, name="conviction"):
 
             if thesis is None:
                 logger.info("conviction.no_active_thesis", ticker=ticker)
-                return None
+                return None, None
 
             svc = ThesisTimelineService(session)
-            return await svc.get_conviction_timeline(thesis.id, limit=limit)
+            timeline = await svc.get_conviction_timeline(thesis.id, limit=limit)
+            return timeline, thesis.id

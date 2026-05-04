@@ -185,13 +185,31 @@ def build_conviction_embed(result: "ConvictionTimelineResponse") -> discord.Embe
     return embed
 
 
-def build_conviction_not_found_embed(ticker: str) -> discord.Embed:
-    """Returned when no active thesis / no snapshots exist for ticker."""
+def build_conviction_not_found_embed(
+    ticker: str,
+    thesis_id: int | None = None,
+) -> discord.Embed:
+    """Returned when no active thesis or no snapshots exist for ticker.
+
+    Branches on thesis_id:
+    - None  → no ACTIVE thesis found → guide user to /thesis add
+    - int   → thesis exists but 0 snapshots → guide user to /review_thesis <id>
+    """
+    ticker_upper = ticker.upper()
+
+    if thesis_id is None:
+        description = (
+            f"Không tìm thấy thesis đang **active** cho **{ticker_upper}**.\n"
+            "→ Dùng `/thesis add` để tạo thesis mới."
+        )
+    else:
+        description = (
+            f"Thesis **#{thesis_id}** ({ticker_upper}) đang active nhưng chưa có snapshot nào.\n"
+            f"→ Dùng `/review_thesis {thesis_id}` để chạy AI review đầu tiên và tạo snapshot."
+        )
+
     return discord.Embed(
-        title=f"⚪ No conviction data — {ticker.upper()}",
-        description=(
-            f"Không tìm thấy thesis đang active hoặc chưa có snapshot nào cho **{ticker.upper()}**.\n"
-            "→ Dùng `/thesis add` để tạo thesis, sau đó hệ thống sẽ tự snapshot mỗi ngày lúc 15:10."
-        ),
+        title=f"⚪ No conviction data — {ticker_upper}",
+        description=description,
         colour=0x95A5A6,
     )
