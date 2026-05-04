@@ -1,0 +1,104 @@
+"""Manual scheduler trigger — /run_replay_scheduler.
+
+Owner: bot segment. Adapter only.
+
+Purpose:
+  Allow owner to manually trigger the DecisionReplayScheduler
+  outside of the cron window, useful for testing and recovery.
+
+  In production, the scheduler runs automatically via bot/scheduler.py cron.
+  This command is gated to bot owner only (interaction.user == bot.owner).
+"""
+
+from __future__ import annotations
+
+import discord
+from discord import app_commands
+from discord.ext import commands
+
+from src.bot.commands.base import BaseCog
+from src.platform.logging import get_logger
+
+logger = get_logger(__name__)
+
+
+class SchedulerTriggerCog(BaseCog):
+    """Owner-only command to manually trigger replay scheduler."""
+
+    @app_commands.command(
+        name="run_replay_scheduler",
+        description="[Owner] Chạy DecisionReplayScheduler thủ công",
+    )
+    async def run_replay_scheduler(
+        self,
+        interaction: discord.Interaction,
+    ) -> None:
+        await interaction.response.defer(ephemeral=True)
+
+        # Guard: chỉ bot owner được chạy
+        app_info = await self.bot.application_info()
+        if interaction.user.id != app_info.owner.id:
+            await self.send_error(
+                interaction,
+                title="Không có quyền",
+                description="Lệnh này chỉ dành cho bot owner.",
+            )
+            return
+
+        try:
+            from src.platform.bootstrap import get_quote_service, get_replay_agent
+            from src.platform.db import get_session
+            from src.thesis.decision_replay_scheduler import DecisionReplayScheduler
+            from src.thesis.decision_service import DecisionService
+
+            async with get_session() as session:
+                svc = DecisionService(
+                    session=session,
+                    quote_service=get_quote_service(),
+                    replay_agent=get_replay_agent(),
+                )
+                scheduler = DecisionReplayScheduler(svc)
+                results = await scheduler.run_pending()
+
+        except Exception as exc:
+            logger.error("run_replay_scheduler.error", error=str(exc), exc_info=True)
+            await self.send_error(
+                interaction,
+                title="Scheduler thất bại",
+                description=f"`{exc}`",
+            )
+            return
+
+        processed = len(results)
+        if processed == 0:
+            await self.send_info(
+                interaction,
+                title="✅ Scheduler chạy xong",
+                description="Không có decision nào đến hạn.",
+            )
+            return
+
+        lines = []
+        for env in results:
+            verdict = env.outcome_verdict or "?"
+            replay = env.replay
+            lesson_preview = ""
+            if replay is not None:
+                lesson = getattr(replay, "key_lesson", None)
+                if lesson:
+                    lesson_preview = f" → _{lesson[:80]}{'...' if len(lesson) > 80 else ''}_"
+            lines.append(f"• `#{env.decision_id}` **{env.ticker}** [{verdict}]{lesson_preview}")
+
+        body, footer = self.paginate_lines(lines)
+        embed = discord.Embed(
+            title=f"🔄 Replay Scheduler — {processed} decision(s) processed",
+            description=body,
+            color=discord.Color.blurple(),
+        )
+        if footer:
+            embed.set_footer(text=footer)
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+async def setup(bot: commands.Bot) -> None:
+    await bot.add_cog(SchedulerTriggerCog(bot))

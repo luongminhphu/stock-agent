@@ -1,112 +1,128 @@
-"""LessonService — extract past decision lessons for AI context injection.
+"""LessonService — query persisted AI lessons from DecisionLog.
 
 Owner: thesis segment.
 
 Responsibilities:
-- Query DecisionLog records that have been evaluated (outcome_evaluated_at is not None).
-- Format lessons as a concise string for injection into AI agent prompts.
-- Optionally filter by ticker for ticker-specific context (pretrade use case).
+- Fetch recent key_lesson + pattern_detected for a user.
+- Format them as plain text snippets ready for prompt injection.
 
 Non-responsibilities:
 - Does not call AI.
-- Does not mutate any record.
-- Does not own briefing or pretrade logic.
+- Does not write DecisionLog (that belongs to DecisionService.persist_lesson).
+- Does not own briefing or pretrade prompt assembly.
 """
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.platform.logging import get_logger
 from src.thesis.models import DecisionLog
 
-logger = get_logger(__name__)
+_DEFAULT_LOOKBACK_DAYS = 90
+_DEFAULT_MAX_LESSONS = 5
 
-_DEFAULT_LESSON_LIMIT = 5
+
+@dataclass(frozen=True)
+class LessonSnippet:
+    """One persisted AI lesson, ready for prompt injection."""
+    decision_id: int
+    ticker: str
+    decision_type: str
+    outcome_verdict: str | None
+    key_lesson: str
+    pattern_detected: str | None
+    decision_at: str  # ISO 8601 string
 
 
 class LessonService:
-    """Read-only service — provides formatted past lessons for prompt injection."""
+    """Read-only view into persisted lessons from the Decision Replay loop.
+
+    Designed to be injected into prompt-building pipelines:
+
+        snippets = await lesson_svc.get_recent_lessons(user_id)
+        prompt_context["past_lessons"] = lesson_svc.format_for_prompt(snippets)
+    """
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def build_lesson_context(
+    async def get_recent_lessons(
         self,
         user_id: str,
         *,
+        lookback_days: int = _DEFAULT_LOOKBACK_DAYS,
+        max_lessons: int = _DEFAULT_MAX_LESSONS,
         ticker: str | None = None,
-        limit: int = _DEFAULT_LESSON_LIMIT,
-    ) -> str:
-        """Return a formatted string of recent evaluated decisions.
+    ) -> list[LessonSnippet]:
+        """Return the most recent key_lesson entries for a user.
 
         Args:
-            user_id:  Filter to this investor only.
-            ticker:   When provided, return lessons for this ticker only
-                      (pretrade use case). When None, return across all tickers
-                      (briefing use case).
-            limit:    Max number of lessons to include (default 5).
+            user_id:       Filter to this investor.
+            lookback_days: Only consider decisions within this window.
+            max_lessons:   Cap the number of returned snippets.
+            ticker:        Optionally filter to a single ticker.
 
         Returns:
-            Multi-line string ready for prompt injection, or empty string
-            when no evaluated decisions exist yet.
+            List of LessonSnippet sorted newest-first, capped at max_lessons.
         """
-        try:
-            rows = await self._query(user_id=user_id, ticker=ticker, limit=limit)
-        except Exception as exc:
-            logger.warning(
-                "lesson_service.query_failed",
-                user_id=user_id,
-                ticker=ticker,
-                error=str(exc),
-            )
-            return ""
+        cutoff = datetime.now(UTC) - timedelta(days=lookback_days)
 
-        if not rows:
-            return ""
+        conditions = [
+            DecisionLog.user_id == user_id,
+            DecisionLog.key_lesson.isnot(None),
+            DecisionLog.decision_at >= cutoff,
+        ]
+        if ticker:
+            conditions.append(DecisionLog.ticker == ticker.upper())
 
-        lines = [f"Lịch sử {len(rows)} quyết định đã được đánh giá của nhà đầu tư này:"]
-        for row in rows:
-            verdict_icon = {"CORRECT": "✅", "INCORRECT": "❌", "MIXED": "🟡"}.get(
-                str(row.outcome_verdict).upper(), "⚪"
-            )
-            pnl_str = f"{row.outcome_pnl_pct:+.1f}%" if row.outcome_pnl_pct is not None else "N/A"
-            decision_date = row.decision_at.strftime("%d/%m/%Y") if row.decision_at else "?"
-
-            line = (
-                f"{verdict_icon} [{row.ticker}, {row.decision_type}, {row.outcome_verdict} {pnl_str}"
-                f", {decision_date}]"
-            )
-            if row.key_lesson:
-                line += f" Lesson: {row.key_lesson}"
-            if row.pattern_detected:
-                line += f" | Pattern: {row.pattern_detected}"
-            lines.append(f"- {line}")
-
-        lines.append(
-            "Dùng những bài học trên để cá nhân hóa phân tích: tránh lặp lại pattern thua lỗ,"
-            " nhận diện tín hiệu đã từng thành công."
-        )
-        return "\n".join(lines)
-
-    async def _query(
-        self,
-        user_id: str,
-        ticker: str | None,
-        limit: int,
-    ) -> list[DecisionLog]:
         stmt = (
             select(DecisionLog)
-            .where(
-                DecisionLog.user_id == user_id,
-                DecisionLog.outcome_evaluated_at.is_not(None),
-                DecisionLog.outcome_verdict.is_not(None),
-            )
-            .order_by(DecisionLog.outcome_evaluated_at.desc())
-            .limit(limit)
+            .where(and_(*conditions))
+            .order_by(DecisionLog.decision_at.desc())
+            .limit(max_lessons)
         )
-        if ticker is not None:
-            stmt = stmt.where(DecisionLog.ticker == ticker.upper())
         rows = (await self._session.execute(stmt)).scalars().all()
-        return list(rows)
+        return [
+            LessonSnippet(
+                decision_id=r.id,
+                ticker=r.ticker,
+                decision_type=r.decision_type,
+                outcome_verdict=r.outcome_verdict,
+                key_lesson=r.key_lesson,
+                pattern_detected=r.pattern_detected,
+                decision_at=r.decision_at.isoformat(),
+            )
+            for r in rows
+        ]
+
+    @staticmethod
+    def format_for_prompt(snippets: list[LessonSnippet]) -> str:
+        """Render snippets as a compact multi-line string for prompt injection.
+
+        Output example (injected into briefing / pretrade context):
+
+            === Past lessons from your decision history ===
+            [2026-02-10] BUY VCB → CORRECT | Lesson: Breakout signal confirmed by volume
+            surge was reliable when market breadth was positive. | Pattern: breakout_chasing
+            [2026-01-03] BUY HPG → INCORRECT | Lesson: Entered before catalyst materialized;
+            waited too short after earnings miss. | Pattern: premature_entry
+
+        Returns empty string if snippets is empty (caller skips injection).
+        """
+        if not snippets:
+            return ""
+
+        lines = ["=== Past lessons from your decision history ==="]
+        for s in snippets:
+            verdict_part = f" → {s.outcome_verdict}" if s.outcome_verdict else ""
+            date_str = s.decision_at[:10]  # YYYY-MM-DD
+            pattern_part = f" | Pattern: {s.pattern_detected}" if s.pattern_detected else ""
+            lines.append(
+                f"[{date_str}] {s.decision_type} {s.ticker}{verdict_part} "
+                f"| Lesson: {s.key_lesson}{pattern_part}"
+            )
+        return "\n".join(lines)
