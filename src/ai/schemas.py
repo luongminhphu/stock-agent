@@ -118,6 +118,38 @@ class MarketSentiment(StrEnum):
     UNCERTAIN = "UNCERTAIN"
 
 
+class ActionPriority(StrEnum):
+    """Priority buckets for pre-market decision brief actions."""
+
+    ACT_TODAY  = "ACT_TODAY"   # Cần hành động trước khi mở lệnh hôm nay
+    WATCH_MORE = "WATCH_MORE"  # Theo dõi thêm, chưa cần quyết định ngay
+    SKIP_TODAY = "SKIP_TODAY"  # Có thể bỏ qua phiên này
+
+
+class PrioritizedAction(BaseModel):
+    """Một hành động được AI phân loại theo priority cho morning brief.
+
+    Thay thế action_items: list[str] bằng cấu trúc có ticker + priority + reason.
+    Formatter sẽ nhóm theo priority và render thành 3 bucket Discord section.
+    """
+
+    ticker: str | None = Field(
+        default=None,
+        description="Mã CK liên quan. None nếu là action market-level (vĩ mô, sentiment).",
+    )
+    priority: ActionPriority
+    action: str = Field(
+        description="Hành động cụ thể, có thể đo được. VD: 'Review stop-loss VCB trước 9h'"
+    )
+    reason: str = Field(
+        description="Lý do ngắn gọn AI đề xuất action này. VD: 'Giá đang tiếp cận stop 82,000'"
+    )
+    confidence: float = Field(
+        ge=0.0, le=1.0, default=0.7,
+        description="Độ tin cậy của AI với action này. Hiển thị nếu < 0.7.",
+    )
+
+
 class WatchlistTickerSummary(BaseModel):
     ticker: str
     price: float
@@ -151,7 +183,20 @@ class BriefOutput(BaseModel):
         default_factory=list,
         description="Watchlist-specific observations",
     )
-    action_items: list[str] = Field(default_factory=list, description="Suggested actions to review")
+    # Deprecated: kept for backward compat with old BriefSnapshot records and bot renders.
+    # New code should read prioritized_actions instead.
+    action_items: list[str] = Field(
+        default_factory=list,
+        description="[DEPRECATED] Flat action list. Superseded by prioritized_actions.",
+    )
+    prioritized_actions: list[PrioritizedAction] = Field(
+        default_factory=list,
+        description=(
+            "Hành động phân loại theo priority: ACT_TODAY → WATCH_MORE → SKIP_TODAY. "
+            "AI phải xuất ít nhất 1 item khi có watchlist. "
+            "Formatter nhóm theo bucket và render thành 3 section Discord."
+        ),
+    )
     ticker_summaries: list[WatchlistTickerSummary] = Field(
         default_factory=list,
         description="Per-ticker summary for each watchlist item",
@@ -164,6 +209,13 @@ class BriefOutput(BaseModel):
             "hoặc gợi ý cần chú ý. Rỗng nếu không có portfolio data."
         ),
     )
+
+    @field_validator("prioritized_actions", mode="before")
+    @classmethod
+    def ensure_prioritized_list(cls, v: object) -> list[object]:
+        if not isinstance(v, list):
+            return []
+        return v  # type: ignore[return-value]
 
 
 # ---------------------------------------------------------------------------
