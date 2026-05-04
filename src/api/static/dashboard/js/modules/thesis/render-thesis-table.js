@@ -11,6 +11,33 @@ export function emptyDetailHTML() {
 }
 
 /**
+ * WAVE 2d — skeleton cho danh sách thesis table.
+ * Hiển thị N hàng placeholder trước khi data về.
+ * @param {number} rows  số hàng skeleton (default 5)
+ */
+export function thesisTableSkeletonHTML(rows = 5) {
+  const cols = 6;
+  const headerCells = Array.from({ length: cols }, () =>
+    `<th><div class="skel skel-text" style="width:${30 + Math.random() * 40 | 0}%;"></div></th>`
+  ).join('');
+  const bodyRows = Array.from({ length: rows }, () => {
+    const cells = Array.from({ length: cols }, (_, i) => {
+      if (i === cols - 1) return `<td><div class="skel skel-badge" style="width:64px;"></div></td>`;
+      const w = [48, 72, 36, 52, 60, 40][i] ?? 50;
+      return `<td><div class="skel skel-text" style="width:${w}%;"></div></td>`;
+    }).join('');
+    return `<tr style="pointer-events:none;">${cells}</tr>`;
+  }).join('');
+  return `
+    <div class="skel-table-wrap" aria-busy="true" aria-label="Đang tải danh sách thesis…">
+      <table>
+        <thead><tr>${headerCells}</tr></thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+    </div>`;
+}
+
+/**
  * Render toàn bộ detail panel cho một thesis.
  */
 export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {

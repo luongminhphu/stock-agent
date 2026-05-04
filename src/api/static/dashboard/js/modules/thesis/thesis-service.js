@@ -17,11 +17,58 @@ import { wireDetailActions } from './thesis-form.js';
 import { renderReviewRecommendResult } from './render-ai-review.js';
 
 // ---------------------------------------------------------------------------
+// Skeleton HTML cho detail-shell
+// Mirrors layout: heading → badges row → 3-col stats → 2-col columns
+// ---------------------------------------------------------------------------
+function detailSkeletonHTML() {
+  return `
+    <div class="skel-detail-wrap" aria-busy="true" aria-label="Đang tải chi tiết thesis…">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+        <div style="flex:1;">
+          <div style="display:flex;gap:6px;margin-bottom:8px;">
+            <div class="skel skel-badge"></div>
+            <div class="skel skel-badge"></div>
+            <div class="skel skel-badge"></div>
+          </div>
+          <div class="skel skel-heading"></div>
+          <div class="skel skel-text" style="width:80%;"></div>
+        </div>
+        <div style="display:flex;gap:8px;flex-shrink:0;">
+          <div class="skel skel-badge" style="width:72px;"></div>
+          <div class="skel skel-badge" style="width:80px;"></div>
+        </div>
+      </div>
+      <div class="skel-stat-grid">
+        <div class="skel skel-stat"></div>
+        <div class="skel skel-stat"></div>
+        <div class="skel skel-stat"></div>
+        <div class="skel skel-stat"></div>
+        <div class="skel skel-stat"></div>
+        <div class="skel skel-stat"></div>
+      </div>
+      <div class="skel-columns">
+        <div>
+          <div class="skel skel-text" style="width:50%;margin-bottom:10px;"></div>
+          <div class="skel skel-item"></div>
+          <div class="skel skel-item"></div>
+        </div>
+        <div>
+          <div class="skel skel-text" style="width:50%;margin-bottom:10px;"></div>
+          <div class="skel skel-item"></div>
+          <div class="skel skel-item"></div>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ---------------------------------------------------------------------------
 // Load detail panel
 // ---------------------------------------------------------------------------
 export async function loadThesisDetail(thesisId) {
   const wrap = el('thesisDetail');
-  wrap.innerHTML = '<div class="empty-detail"><div class="spinner"></div></div>';
+  // WAVE 2d: real skeleton thay vì spinner trơ
+  wrap.classList.remove('empty-detail');
+  wrap.innerHTML = detailSkeletonHTML();
   try {
     const [thesis, assumptions, catalysts, reviews] = await Promise.all([
       getJson(`${thesisApiBase()}/${thesisId}`),
