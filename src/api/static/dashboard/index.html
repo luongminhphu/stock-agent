@@ -9,106 +9,26 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/static/dashboard/dashboard.css" />
-    <!--
-      NOTE: modulepreload bị xóa cố ý.
-      Cloudflare Rocket Loader rewrite <script type="module"> nhưng không touch
-      <link rel="modulepreload"> → credentials mode mâu thuẫn → warning + double-fetch.
-      Same-origin static không cần modulepreload — browser tự fetch nhanh.
-    -->
-    <style>
-      /* Portfolio section styles */
-      .portfolio-tab-bar {
-        display: flex;
-        gap: 4px;
-        margin-bottom: 16px;
-        border-bottom: 1px solid var(--border, rgba(255,255,255,.1));
-        padding-bottom: 0;
-      }
-      .portfolio-tab {
-        background: none;
-        border: none;
-        border-bottom: 2px solid transparent;
-        padding: 8px 18px;
-        cursor: pointer;
-        font-size: .88rem;
-        font-weight: 500;
-        color: var(--muted, #888);
-        transition: color .15s, border-color .15s;
-        margin-bottom: -1px;
-      }
-      .portfolio-tab.active,
-      .portfolio-tab:hover {
-        color: var(--fg, #fff);
-        border-bottom-color: var(--accent, #7c3aed);
-      }
-      .portfolio-pane.hidden { display: none; }
-      .portfolio-summary {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        margin-bottom: 16px;
-      }
-      .summary-chip {
-        background: rgba(255,255,255,.06);
-        border: 1px solid rgba(255,255,255,.1);
-        border-radius: 20px;
-        padding: 4px 14px;
-        font-size: .82rem;
-      }
-      .table-scroll { overflow-x: auto; }
-      .data-table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: .84rem;
-      }
-      .data-table th {
-        text-align: left;
-        padding: 8px 10px;
-        font-weight: 600;
-        border-bottom: 1px solid rgba(255,255,255,.1);
-        white-space: nowrap;
-        color: var(--muted, #888);
-      }
-      .data-table td {
-        padding: 9px 10px;
-        border-bottom: 1px solid rgba(255,255,255,.05);
-        vertical-align: middle;
-      }
-      .data-table tbody tr:hover { background: rgba(255,255,255,.03); }
-      .data-table .num { text-align: right; font-variant-numeric: tabular-nums; }
-      .pnl-positive { color: #4ade80; }
-      .pnl-negative { color: #f87171; }
-      .verdict-badge {
-        display: inline-block;
-        padding: 2px 10px;
-        border-radius: 12px;
-        font-size: .78rem;
-        font-weight: 600;
-        white-space: nowrap;
-      }
-      .badge-bullish  { background: rgba(74,222,128,.15); color: #4ade80; }
-      .badge-bearish  { background: rgba(248,113,113,.15); color: #f87171; }
-      .badge-neutral  { background: rgba(250,204,21,.15);  color: #facc15; }
-      .badge-watchlist{ background: rgba(148,163,184,.15); color: #94a3b8; }
-      .badge-unknown  { background: rgba(148,163,184,.1);  color: #94a3b8; }
-    </style>
   </head>
   <body>
+    <a class="skip-link" href="#main-content">Bỏ qua điều hướng</a>
     <div class="shell">
+
+      <!-- ── TOPBAR ─────────────────────────────────────────── -->
       <header class="topbar">
         <div class="brand-block">
-          <div class="brand-mark" aria-hidden="true">SA</div>
-          <div>
-            <p class="eyebrow">AI-native investor workspace</p>
-            <h1>stock-agent dashboard</h1>
-            <p class="subhead">Theo dõi thesis, catalyst, assumptions và hiệu quả review trên cùng một read model.</p>
-          </div>
+          <svg class="brand-logo" aria-label="stock-agent" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="32" height="32" rx="8" fill="currentColor" fill-opacity=".1"/>
+            <polyline points="4,22 11,14 17,18 28,8" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="28" cy="8" r="2.5" fill="currentColor"/>
+          </svg>
+          <span class="brand-name">stock-agent</span>
         </div>
 
         <div class="toolbar">
           <label class="field field-compact">
-            <span>Status</span>
-            <select id="statusFilter">
+            <span class="sr-only">Lọc trạng thái</span>
+            <select id="statusFilter" aria-label="Lọc thesis theo trạng thái">
               <option value="active">active</option>
               <option value="all">all</option>
               <option value="invalidated">invalidated</option>
@@ -116,56 +36,51 @@
               <option value="paused">paused</option>
             </select>
           </label>
-          <button id="reloadBtn" class="primary-btn" type="button">Reload</button>
-          <button id="newThesisBtn" class="primary-btn" type="button" style="background: linear-gradient(135deg,#a78bfa,#7c3aed); color:#fff;">+ Thesis mới</button>
+          <button id="reloadBtn" class="icon-btn" type="button" aria-label="Tải lại dữ liệu">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Reload
+          </button>
+          <button id="newThesisBtn" class="primary-btn" type="button">+ Thesis mới</button>
         </div>
       </header>
 
-      <div id="errorBanner" class="error-banner hidden"></div>
+      <div id="errorBanner" class="error-banner hidden" role="alert"></div>
 
-      <section class="hero-grid">
-        <div class="hero-card glass">
-          <div class="hero-copy">
-            <p class="eyebrow">Overview</p>
-            <h2>Investor command center</h2>
-            <p class="muted">Tập trung vào tín hiệu có thể hành động: thesis đang mở, catalyst sắp tới, review gần nhất và backtesting verdict.</p>
-          </div>
-          <div class="hero-metrics">
-            <div>
-              <span>Total reviews</span>
-              <strong id="totalReviewsHero">-</strong>
-            </div>
-          </div>
-        </div>
-
-        <div class="grid kpis">
-          <article class="metric-card glass">
-            <span class="metric-label">Open theses</span>
-            <strong class="metric-value" id="openTheses">-</strong>
-          </article>
-          <article class="metric-card glass">
-            <span class="metric-label">Risky theses</span>
-            <strong class="metric-value" id="riskyTheses">-</strong>
-          </article>
-          <article class="metric-card glass">
-            <span class="metric-label">Upcoming 7d</span>
-            <strong class="metric-value" id="upcoming7d">-</strong>
-          </article>
-          <article class="metric-card glass">
-            <span class="metric-label">Reviews today</span>
-            <strong class="metric-value" id="reviewsToday">-</strong>
-          </article>
-        </div>
+      <!-- ── COMMAND STRIP ──────────────────────────────────── -->
+      <section class="command-strip" aria-label="Tổng quan thị trường">
+        <article class="signal-card">
+          <span class="signal-label">Open theses</span>
+          <strong class="signal-value" id="openTheses">—</strong>
+        </article>
+        <article class="signal-card signal-card--risk">
+          <span class="signal-label">Risky theses</span>
+          <strong class="signal-value" id="riskyTheses">—</strong>
+        </article>
+        <article class="signal-card">
+          <span class="signal-label">Upcoming 7d</span>
+          <strong class="signal-value" id="upcoming7d">—</strong>
+        </article>
+        <article class="signal-card">
+          <span class="signal-label">Reviews today</span>
+          <strong class="signal-value" id="reviewsToday">—</strong>
+        </article>
+        <article class="signal-card signal-card--wide">
+          <span class="signal-label">Total reviews</span>
+          <strong class="signal-value" id="totalReviewsHero">—</strong>
+        </article>
       </section>
 
-      <main class="dashboard-layout">
-        <section class="panel panel-main glass">
+      <!-- ── MAIN WORKSPACE ─────────────────────────────────── -->
+      <main class="workspace-grid" id="main-content">
+
+        <!-- Priority board: thesis master list -->
+        <section class="panel panel-main glass" aria-labelledby="thesisBoardTitle">
           <div class="panel-header">
             <div>
               <p class="eyebrow">Portfolio theses</p>
-              <h2>Thesis board</h2>
+              <h2 id="thesisBoardTitle">Thesis board</h2>
             </div>
-            <div class="panel-actions muted">Nhấn vào một thesis để xem chi tiết, sửa hoặc xóa</div>
+            <p class="panel-hint">Nhấn vào một thesis để xem chi tiết</p>
           </div>
           <div id="thesesTableWrap" class="empty-state">Chưa tải dữ liệu…</div>
           <div id="thesisDetail" class="detail-shell empty-detail">
@@ -176,78 +91,66 @@
           </div>
         </section>
 
-        <aside class="sidebar-stack">
-          <section class="panel glass">
+        <!-- Action rail: brief + catalyst + scan -->
+        <aside class="action-rail" aria-label="Tín hiệu hành động">
+
+          <section class="panel glass action-panel" aria-labelledby="briefPanelTitle">
             <div class="panel-header">
               <div>
-                <p class="eyebrow">Sentiment</p>
-                <h2>Verdict distribution</h2>
+                <p class="eyebrow">Automation</p>
+                <h2 id="briefPanelTitle">Scan &amp; Briefs</h2>
               </div>
             </div>
-            <div id="verdictList" class="list empty-state">Chưa tải dữ liệu…</div>
+            <div class="snapshot-grid">
+              <div class="snapshot-card">
+                <span class="snapshot-label">Latest scan</span>
+                <strong id="latestScanAt">—</strong>
+                <p id="latestScanSummary" class="muted">Chưa có scan snapshot.</p>
+              </div>
+              <div class="brief-tabs">
+                <div class="brief-tab-bar" role="tablist" aria-label="Brief phase">
+                  <button class="brief-tab active" role="tab" aria-selected="true"
+                    aria-controls="morningBriefWrap" data-tab="morning">🌅 Morning</button>
+                  <button class="brief-tab" role="tab" aria-selected="false"
+                    aria-controls="eodBriefWrap" data-tab="eod">🌙 End-of-Day</button>
+                </div>
+                <div id="morningBriefWrap" class="brief-tab-pane" role="tabpanel"></div>
+                <div id="eodBriefWrap" class="brief-tab-pane hidden" role="tabpanel"></div>
+              </div>
+            </div>
           </section>
 
-          <section class="panel glass">
+          <section class="panel glass action-panel" aria-labelledby="catalystPanelTitle">
             <div class="panel-header">
               <div>
                 <p class="eyebrow">Catalyst calendar</p>
-                <h2>Upcoming catalysts</h2>
+                <h2 id="catalystPanelTitle">Upcoming catalysts</h2>
               </div>
             </div>
             <div id="catalystList" class="list empty-state">Chưa tải dữ liệu…</div>
           </section>
 
-          <section class="panel glass">
+          <section class="panel glass action-panel" aria-labelledby="verdictPanelTitle">
             <div class="panel-header">
               <div>
-                <p class="eyebrow">Automation</p>
-                <h2>Latest scan &amp; briefs</h2>
+                <p class="eyebrow">Sentiment</p>
+                <h2 id="verdictPanelTitle">Verdict distribution</h2>
               </div>
             </div>
-            <div class="snapshot-grid">
-              <!-- Scan snapshot -->
-              <div class="snapshot-card">
-                <span class="snapshot-label">Latest scan</span>
-                <strong id="latestScanAt">-</strong>
-                <p id="latestScanSummary" class="muted">Chưa có scan snapshot.</p>
-              </div>
-
-              <!-- Brief tabs: Morning / EOD -->
-              <div class="brief-tabs">
-                <div class="brief-tab-bar" role="tablist" aria-label="Brief phase">
-                  <button
-                    class="brief-tab active"
-                    role="tab"
-                    aria-selected="true"
-                    aria-controls="morningBriefWrap"
-                    data-tab="morning"
-                  >🌅 Morning</button>
-                  <button
-                    class="brief-tab"
-                    role="tab"
-                    aria-selected="false"
-                    aria-controls="eodBriefWrap"
-                    data-tab="eod"
-                  >🌙 End-of-Day</button>
-                </div>
-                <div id="morningBriefWrap" class="brief-tab-pane" role="tabpanel"></div>
-                <div id="eodBriefWrap"     class="brief-tab-pane hidden" role="tabpanel"></div>
-              </div>
-            </div>
+            <div id="verdictList" class="list empty-state">Chưa tải dữ liệu…</div>
           </section>
+
         </aside>
       </main>
 
-      <!-- ================================================================
-           PORTFOLIO SECTION
-           ================================================================ -->
-      <section class="panel glass" style="margin-top: 24px;">
+      <!-- ── PORTFOLIO LAYER ────────────────────────────────────── -->
+      <section class="panel glass portfolio-layer" aria-labelledby="portfolioTitle">
         <div class="panel-header split-header">
           <div>
             <p class="eyebrow">Portfolio</p>
-            <h2>💼 Danh mục đầu tư</h2>
+            <h2 id="portfolioTitle">Danh mục đầu tư</h2>
           </div>
-          <p class="muted">
+          <p class="muted panel-hint">
             <strong>Trades</strong>: P&amp;L unrealized theo giao dịch thực tế.
             <strong>Thesis</strong>: Conviction + score từ thesis active.
           </p>
@@ -255,15 +158,15 @@
         <div id="portfolioSection">Đang tải…</div>
       </section>
 
-      <section class="panel glass backtesting-panel">
+      <!-- ── VALIDATION LAYER ─────────────────────────────────────── -->
+      <section class="panel glass validation-layer backtesting-panel" aria-labelledby="backtestTitle">
         <div class="panel-header split-header">
           <div>
             <p class="eyebrow">Backtesting</p>
-            <h2>Review accuracy &amp; thesis performance</h2>
+            <h2 id="backtestTitle">Review accuracy &amp; thesis performance</h2>
           </div>
-          <p class="muted">Đo độ đúng của verdict và xem aggregate PnL theo từng thesis.</p>
+          <p class="muted panel-hint">Đo độ đúng của verdict và xem aggregate PnL theo từng thesis.</p>
         </div>
-
         <div class="backtesting-grid">
           <div class="subpanel">
             <h3>Verdict accuracy</h3>
@@ -281,14 +184,14 @@
       </footer>
     </div>
 
-    <!-- Thesis modal -->
+    <!-- ── MODALS (không thay đổi ID/selector — giữ backward compat) ── -->
+
     <dialog id="thesisModal" aria-labelledby="thesisModalTitle">
       <div class="modal-inner">
         <div class="modal-header">
           <h2 id="thesisModalTitle">Tạo Thesis mới</h2>
           <button class="modal-close" data-close="thesisModal" aria-label="Đóng">&#x2715;</button>
         </div>
-
         <div class="suggest-bar">
           <div class="form-field">
             <label for="suggestTicker">✨ AI Gợi ý theo mã CK</label>
@@ -299,12 +202,8 @@
             Phân tích
           </button>
         </div>
-        <div id="suggestLoading" class="suggest-loading hidden">
-          <div class="spinner"></div>
-          AI đang phân tích thị trường…
-        </div>
+        <div id="suggestLoading" class="suggest-loading hidden"><div class="spinner"></div>AI đang phân tích thị trường…</div>
         <div id="suggestResult" class="suggest-result hidden"></div>
-
         <form id="thesisForm" class="form-grid" novalidate>
           <input type="hidden" id="thesisIdField" />
           <div class="form-row">
@@ -354,7 +253,6 @@
               </select>
             </div>
           </div>
-
           <section class="detail-section" style="margin-top:4px;">
             <div class="detail-section-header">
               <h3>Assumptions trong form</h3>
@@ -362,7 +260,6 @@
             </div>
             <div id="thesisFormAssumptionRows" class="form-stack"></div>
           </section>
-
           <section class="detail-section" style="margin-top:4px;">
             <div class="detail-section-header">
               <h3>Catalysts trong form</h3>
@@ -370,7 +267,6 @@
             </div>
             <div id="thesisFormCatalystRows" class="form-stack"></div>
           </section>
-
           <div class="modal-footer">
             <button type="button" class="ghost-btn" data-close="thesisModal">Hủy</button>
             <button type="submit" class="primary-btn" id="thesisSubmitBtn">Lưu Thesis</button>
@@ -379,7 +275,6 @@
       </div>
     </dialog>
 
-    <!-- Assumption modal -->
     <dialog id="assumptionModal" aria-labelledby="assumptionModalTitle">
       <div class="modal-inner">
         <div class="modal-header">
@@ -393,10 +288,7 @@
           </div>
           <button type="button" id="assumptionAiSuggestBtn" class="suggest-btn">AI gợi ý</button>
         </div>
-        <div id="assumptionSuggestLoading" class="suggest-loading hidden">
-          <div class="spinner"></div>
-          AI đang gợi ý assumptions…
-        </div>
+        <div id="assumptionSuggestLoading" class="suggest-loading hidden"><div class="spinner"></div>AI đang gợi ý assumptions…</div>
         <div id="assumptionSuggestResult" class="suggest-result hidden"></div>
         <form id="assumptionForm" class="form-grid" novalidate>
           <input type="hidden" id="assumptionThesisId" />
@@ -432,7 +324,6 @@
       </div>
     </dialog>
 
-    <!-- Catalyst modal -->
     <dialog id="catalystModal" aria-labelledby="catalystModalTitle">
       <div class="modal-inner">
         <div class="modal-header">
@@ -446,10 +337,7 @@
           </div>
           <button type="button" id="catalystAiSuggestBtn" class="suggest-btn">AI gợi ý</button>
         </div>
-        <div id="catalystSuggestLoading" class="suggest-loading hidden">
-          <div class="spinner"></div>
-          AI đang gợi ý catalysts…
-        </div>
+        <div id="catalystSuggestLoading" class="suggest-loading hidden"><div class="spinner"></div>AI đang gợi ý catalysts…</div>
         <div id="catalystSuggestResult" class="suggest-result hidden"></div>
         <form id="catalystForm" class="form-grid" novalidate>
           <input type="hidden" id="catalystThesisId" />
@@ -485,16 +373,13 @@
       </div>
     </dialog>
 
-    <!-- AI Apply modal -->
     <dialog id="aiApplyModal" aria-labelledby="aiApplyModalTitle">
       <div class="modal-inner">
         <div class="modal-header">
           <h2 id="aiApplyModalTitle">Áp dụng gợi ý từ AI</h2>
           <button class="modal-close" data-close="aiApplyModal" aria-label="Đóng">&#x2715;</button>
         </div>
-        <p class="muted" style="font-size:0.82rem;">
-          Chọn những assumption/catalyst bạn muốn cập nhật theo gợi ý của AI.
-        </p>
+        <p class="muted" style="font-size:0.82rem;">Chọn những assumption/catalyst bạn muốn cập nhật theo gợi ý của AI.</p>
         <div id="aiApplyModalBody" class="review-columns" style="margin-top:10px;"></div>
         <div class="modal-footer">
           <button type="button" class="ghost-btn" data-close="aiApplyModal">Hủy</button>
@@ -503,7 +388,6 @@
       </div>
     </dialog>
 
-    <!-- Delete confirm modal -->
     <dialog id="deleteModal" aria-labelledby="deleteModalTitle">
       <div class="modal-inner">
         <div class="modal-header">
@@ -518,6 +402,6 @@
       </div>
     </dialog>
 
-    <script data-cfasync="false" type="module" src="/static/dashboard/js/app.js?v=4"></script>
+    <script data-cfasync="false" type="module" src="/static/dashboard/js/app.js?v=5"></script>
   </body>
 </html>
