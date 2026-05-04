@@ -203,6 +203,7 @@ class ConvictionPoint(BaseModel):
 
     Sourced from ThesisSnapshot + nearest ThesisReview before that snapshot.
     breakdown may be None for legacy snapshots created before score_breakdown column.
+    price may be None for review-triggered snapshots (price_at_snapshot not set).
     """
 
     snapshot_id: int
@@ -213,7 +214,7 @@ class ConvictionPoint(BaseModel):
     breakdown: ConvictionBreakdown | None = None
     verdict: str | None = None           # ReviewVerdict from nearest prior AI review
     confidence: float | None = None      # AI confidence at nearest prior review
-    price: float                         # price_at_snapshot
+    price: float | None = None           # price_at_snapshot; None for review-triggered snapshots
     pnl_pct: float | None = None         # vs thesis entry_price
 
 
