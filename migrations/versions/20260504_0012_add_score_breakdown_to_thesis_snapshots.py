@@ -14,11 +14,12 @@ causing:
   TypeError: 'score_breakdown' is an invalid keyword argument for ThesisSnapshot
   → SQLAlchemy ROLLBACK → 503 Service Unavailable on POST /api/v1/thesis/:id/review
 
-Fix: add nullable TEXT column. Existing rows get NULL (no data loss).
+Note: migration 0004 (revision 0004_add_score_breakdown, separate chain) already
+added this column to DBs that ran that branch. Using IF NOT EXISTS so this
+migration is idempotent and safe for both cases.
 """
 from __future__ import annotations
 
-import sqlalchemy as sa
 from alembic import op
 
 revision: str = "20260504_0012"
@@ -28,11 +29,14 @@ depends_on: str | None = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "thesis_snapshots",
-        sa.Column("score_breakdown", sa.Text(), nullable=True),
+    # Use raw SQL with IF NOT EXISTS — idempotent regardless of whether
+    # migration 0004 (separate chain) already added this column.
+    op.execute(
+        "ALTER TABLE thesis_snapshots ADD COLUMN IF NOT EXISTS score_breakdown TEXT"
     )
 
 
 def downgrade() -> None:
-    op.drop_column("thesis_snapshots", "score_breakdown")
+    op.execute(
+        "ALTER TABLE thesis_snapshots DROP COLUMN IF EXISTS score_breakdown"
+    )
