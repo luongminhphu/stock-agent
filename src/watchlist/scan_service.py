@@ -2,11 +2,13 @@
 
 Owner: watchlist segment.
 Consumes QuoteService (market segment) via injection.
+Consumes SignalCredibilityAgent (ai segment) via optional injection.
 
 Responsibility boundary:
-  ScanService     → detect which alerts are triggered, build ScanSignal/ScanResult
-  AlertService    → mutate alert state (mark_triggered), persist fired alerts
-  ReminderService → owns cooldown logic for ON_SIGNAL reminders
+  ScanService            → detect which alerts are triggered, build ScanSignal/ScanResult
+  AlertService           → mutate alert state (mark_triggered), persist fired alerts
+  ReminderService        → owns cooldown logic for ON_SIGNAL reminders
+  SignalCredibilityAgent → score signal credibility (optional enrichment, graceful degrade)
 
 ScanService calls AlertService.process_triggered() after collecting all
 triggered alerts for a ticker. It does NOT call alert.mark_triggered() directly.
@@ -46,6 +48,8 @@ class ScanSignal:
     change_pct: float
     triggered_alerts: list[Alert] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    # Optional credibility enrichment — None if agent unavailable or evaluation failed
+    credibility: object | None = field(default=None, repr=False)
 
     @property
     def has_alerts(self) -> bool:
@@ -62,8 +66,12 @@ class ScanSignal:
     @property
     def description(self) -> str:
         if self.triggered_alerts:
-            return f"{len(self.triggered_alerts)} alert(s) triggered"
-        return f"Price move {self.change_pct:+.1f}%"
+            base = f"{len(self.triggered_alerts)} alert(s) triggered"
+        else:
+            base = f"Price move {self.change_pct:+.1f}%"
+        if self.credibility is not None:
+            base += f" | {self.credibility.short_summary()}"
+        return base
 
 
 @dataclass
@@ -108,18 +116,21 @@ class ScanService:
 
     Detects signals only — delegates alert state mutation to AlertService
     and reminder cooldown logic to ReminderService.
+    Optionally enriches signals with credibility scores via SignalCredibilityAgent.
     """
 
     def __init__(
         self,
         session: AsyncSession,
         quote_service: object | None = None,
+        credibility_agent: object | None = None,
     ) -> None:
         self._session = session
         self._repo = WatchlistRepository(session)
         self._alert_service = AlertService(session)
         self._reminder_service = ReminderService(session)
         self._quote_service = quote_service
+        self._credibility_agent = credibility_agent
 
     async def scan_user(self, user_id: str) -> ScanResult:
         if self._quote_service is None:
@@ -137,6 +148,9 @@ class ScanService:
                 signal = await self._scan_ticker(ticker, items)
                 price_map[ticker] = signal.current_price
                 if signal.has_alerts or abs(signal.change_pct) >= 3:
+                    # Enrich signal with credibility score (graceful degrade)
+                    if self._credibility_agent is not None:
+                        signal = await self._enrich_credibility(signal)
                     result.signals.append(signal)
             except Exception as exc:
                 logger.warning("scan.ticker_error", ticker=ticker, error=str(exc))
@@ -148,7 +162,6 @@ class ScanService:
             await self._alert_service.process_triggered(all_triggered, price_map)
 
         # Fire ON_SIGNAL reminders for tickers that had any signal this tick
-        # ReminderService.list_due_for_signal() owns the 1h cooldown logic
         if result.signals:
             signal_tickers = [s.ticker for s in result.signals]
             result.on_signal_reminders = await self._fire_on_signal_reminders(signal_tickers)
@@ -158,6 +171,7 @@ class ScanService:
             user_id=user_id,
             scanned=len(tickers),
             triggered=result.triggered_count,
+            credibility_enriched=sum(1 for s in result.signals if s.credibility is not None),
             on_signal_reminders=len(result.on_signal_reminders),
         )
 
@@ -189,7 +203,6 @@ class ScanService:
     async def _scan_ticker(self, ticker: str, items: list) -> ScanSignal:
         """Fetch quote and detect triggered alerts. Does NOT mutate alert state."""
         quote = await self._quote_service.get_quote(ticker)  # type: ignore[union-attr]
-        volume_ratio = 1.0
 
         signal = ScanSignal(
             ticker=ticker,
@@ -202,28 +215,62 @@ class ScanService:
             if item.ticker == ticker:
                 all_alerts.extend(a for a in item.alerts if a.status == AlertStatus.ACTIVE)
 
+        volume_ratio = getattr(quote, "volume_ratio", 1.0)
+
         for alert in all_alerts:
             if alert.is_triggered_by(
                 current_price=quote.price,
                 change_pct=quote.change_pct,
                 volume_ratio=volume_ratio,
             ):
-                # Append only — AlertService.process_triggered() handles mark_triggered
                 signal.triggered_alerts.append(alert)
 
         return signal
 
-    async def _fire_on_signal_reminders(self, tickers: list[str]) -> list[Reminder]:
-        """Query and mark ON_SIGNAL reminders due for the given tickers.
+    async def _enrich_credibility(self, signal: ScanSignal) -> ScanSignal:
+        """Enrich a ScanSignal with credibility score. Failures are swallowed.
 
-        Delegates cooldown logic entirely to ReminderService — ScanService
-        has no knowledge of frequency deltas.
-
-        Returns the list of fired Reminder objects so WatchlistScanScheduler
-        can include them in the Discord notification embed.
-
-        Failures are swallowed so a reminder error never blocks scan delivery.
+        Imports are local to avoid hard-coupling ai segment into watchlist at module level.
+        The optional credibility_agent injection keeps the boundary clean.
         """
+        try:
+            from src.ai.agents.signal_credibility import SignalCredibilityResult  # noqa: F401
+            from src.ai.prompts.signal_credibility import SignalCredibilityContext
+
+            ctx = SignalCredibilityContext(
+                ticker=signal.ticker,
+                signal_type=signal.signal_type,
+                current_price=signal.current_price,
+                change_pct=signal.change_pct,
+                volume_ratio=getattr(signal, "_volume_ratio", 1.0),
+                price_5d_trend=0.0,   # TODO: inject from market.price_history once available
+                recent_news="N/A",    # TODO: inject from market.news_service once available
+                has_upcoming_earnings=False,
+                alert_note=(
+                    signal.triggered_alerts[0].note
+                    if signal.triggered_alerts and hasattr(signal.triggered_alerts[0], "note")
+                    else ""
+                ),
+            )
+            result = await self._credibility_agent.evaluate(ctx)  # type: ignore[union-attr]
+            signal.credibility = result
+            if result:
+                logger.debug(
+                    "scan.credibility_enriched",
+                    ticker=signal.ticker,
+                    verdict=result.verdict,
+                    score=result.score,
+                )
+        except Exception as exc:
+            logger.warning(
+                "scan.credibility_enrich_failed",
+                ticker=signal.ticker,
+                error=str(exc),
+            )
+        return signal
+
+    async def _fire_on_signal_reminders(self, tickers: list[str]) -> list[Reminder]:
+        """Query and mark ON_SIGNAL reminders due for the given tickers."""
         try:
             due = await self._reminder_service.list_due_for_signal(tickers)
             for reminder in due:
@@ -247,11 +294,7 @@ class ScanService:
             return []
 
     async def _persist_snapshot(self, user_id: str, result: ScanResult) -> None:
-        """Stage a WatchlistScan snapshot — caller must commit the session.
-
-        Failures are logged and swallowed so a DB error never blocks
-        scan result delivery to the caller.
-        """
+        """Stage a WatchlistScan snapshot — caller must commit the session."""
         try:
             snapshot = WatchlistScan(
                 user_id=user_id,
