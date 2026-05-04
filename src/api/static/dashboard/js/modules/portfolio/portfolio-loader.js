@@ -1,7 +1,7 @@
 /**
  * portfolio-loader.js
  * Owner: modules/portfolio
- * Responsibility: fetch /dashboard/portfolio + orchestrate render.
+ * Responsibility: fetch /dashboard/portfolio/trades + /dashboard/portfolio (thesis) → render.
  * Rule: KHÔNG chứa business logic. Chỉ fetch → normalize → render.
  */
 
@@ -11,7 +11,9 @@ import { renderPortfolio } from './portfolio-renderer.js';
 
 /**
  * Load portfolio section.
- * Fetch cả 2 view song song, render vào #portfolioSection.
+ * Fetch cả 2 view song song:
+ *   - /dashboard/portfolio/trades  → PnlService (positions thực tế)
+ *   - /dashboard/portfolio         → DashboardService (thesis-based)
  */
 export async function loadPortfolio() {
   const wrap = el('portfolioSection');
@@ -23,8 +25,8 @@ export async function loadPortfolio() {
 
   try {
     const [tradesRes, thesisRes] = await Promise.all([
+      getJson(`${base}/portfolio/trades`).catch(() => null),
       getJson(`${base}/portfolio`).catch(() => null),
-      getJson(`${base}/portfolio?view=thesis`).catch(() => null),
     ]);
 
     renderPortfolio(wrap, {

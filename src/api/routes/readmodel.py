@@ -27,6 +27,7 @@ from src.readmodel.schemas import (
     ThesisTimelineResponse,
 )
 from src.readmodel.timeline_service import ThesisTimelineService
+from src.portfolio.pnl_service import PnlService
 from src.watchlist.scan_service import ScanService
 
 router = APIRouter(prefix="/readmodel", tags=["readmodel"])
@@ -320,7 +321,54 @@ async def get_price_snapshots_single_user(
 
 
 # ---------------------------------------------------------------------------
-# 10. Portfolio — positions + aggregate P&L
+# 10. Portfolio — Trades view (PnlService — positions thực tế từ DB)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/dashboard/{user_id}/portfolio/trades")
+async def get_portfolio_trades(
+    user_id: str,
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> dict[str, Any]:
+    """Tab Trades: lay positions thuc te tu bang positions + live price tu QuoteService.
+    Khac voi /portfolio (thesis-based), endpoint nay dung PnlService.
+    """
+    svc = PnlService(session=session, quote_service=get_quote_service())
+    pnl = await svc.get_portfolio_pnl(user_id)
+    return {
+        "positions": [
+            {
+                "ticker": p.ticker,
+                "qty": p.qty,
+                "avg_cost": p.avg_cost,
+                "current_price": p.current_price,
+                "cost_basis": p.cost_basis,
+                "market_value": p.market_value,
+                "unrealized_pnl": p.unrealized_pnl,
+                "unrealized_pct": p.unrealized_pct,
+            }
+            for p in pnl.positions
+        ],
+        "total_unrealized_pnl": pnl.total_unrealized_pnl,
+        "total_unrealized_pct": pnl.total_unrealized_pct,
+        "total_cost_basis": pnl.total_cost_basis,
+        "total_market_value": pnl.total_market_value,
+        "errors": pnl.errors,
+    }
+
+
+@router.get("/dashboard/portfolio/trades")
+async def get_portfolio_trades_single_user(
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> dict[str, Any]:
+    return await get_portfolio_trades(
+        user_id=_default_user_id(),
+        session=session,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 11. Portfolio — Thesis view (DashboardService — thesis-based positions)
 # ---------------------------------------------------------------------------
 
 
@@ -333,7 +381,7 @@ async def get_portfolio(
         Query(description="Fetch gia hien tai tu QuoteService de tinh P&L realtime"),
     ] = True,
 ) -> dict[str, Any]:
-    """Tra ve toan bo positions active cua user kem aggregate P&L.
+    """Thesis portfolio view — thesis active + aggregate P&L.
 
     - enrich_prices=true (default): lay gia hien tai tu QuoteService -> pnl_abs/pnl_pct co gia tri.
     - enrich_prices=false: tra ve position metadata nhanh hon, pnl_abs/pnl_pct = null.
@@ -342,7 +390,6 @@ async def get_portfolio(
 
     price_map: dict[str, float] = {}
     if enrich_prices:
-        # Lay danh sach ticker truoc (1 query nhe), roi fetch gia theo batch
         theses = await svc.get_theses_list(user_id, status="active", limit=500)
         tickers = list({t["ticker"] for t in theses if t.get("ticker")})
         price_map = await _build_price_map(tickers)
