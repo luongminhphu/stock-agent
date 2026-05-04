@@ -1,7 +1,7 @@
 """Add auto_reactivate column to alerts table.
 
-Revision ID: 0008_add_auto_reactivate_to_alerts
-Revises: 20260504_0007_add_score_verdict_confidence_recorded_at_to_thesis_snapshots
+Revision ID: 20260504_0008
+Revises: 20260504_0007
 Create Date: 2026-05-04
 
 Problem
@@ -34,8 +34,8 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0008_add_auto_reactivate_to_alerts"
-down_revision: str = "0007_add_score_verdict_confidence_recorded_at_to_thesis_snapshots"
+revision: str = "20260504_0008"
+down_revision: str = "20260504_0007"
 branch_labels: str | tuple[str, ...] | None = None
 depends_on: str | None = None
 
