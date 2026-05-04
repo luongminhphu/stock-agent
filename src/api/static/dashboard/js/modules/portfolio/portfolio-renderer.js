@@ -11,20 +11,19 @@ import { el } from '../../utils/dom.js';
 // Formatters
 // ---------------------------------------------------------------------------
 function fmtVnd(val) {
-  if (val == null || isNaN(val)) return '—';
+  if (val == null) return '—';
   return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val);
 }
 
 /**
  * Format tỷ lệ phần trăm.
- * Nhận vào dạng decimal (0.6594 = 65.94%) — nhân 100 bên trong.
- * Trades: truyền unrealized_pct / 100  (vì backend trả dạng %, ví dụ 65.94)
- * Thesis: truyền pnl_pct / 100         (backend trả dạng %, ví dụ 65.94)
+ * Nhận vào dạng % thực (vd: 65.94, -2.83).
+ * Backend luôn trả dạng % — KHÔNG chia 100 trước khi truyền vào.
  */
 function fmtPct(val) {
-  if (val == null || isNaN(val)) return '—';
+  if (val == null) return '—';
   const sign = val >= 0 ? '+' : '';
-  return `${sign}${(val * 100).toFixed(2)}%`;
+  return `${sign}${val.toFixed(2)}%`;
 }
 
 function pnlClass(val) {
@@ -48,15 +47,14 @@ function renderTradesTab(data) {
     return '<p class="empty-state">Chưa có vị thế nào. Dùng <code>/buy</code> trên Discord để bắt đầu.</p>';
   }
 
-  const totalPnl     = data.total_unrealized_pnl ?? 0;
-  const totalPct     = data.total_unrealized_pct ?? 0;   // dạng % (vd: 18.63)
-  const totalCost    = data.total_cost_basis ?? 0;
-  const totalMkt     = data.total_market_value ?? 0;
+  const totalPnl  = data.total_unrealized_pnl ?? 0;
+  const totalPct  = data.total_unrealized_pct ?? 0;  // dạng % (vd: 18.63)
+  const totalCost = data.total_cost_basis ?? 0;
+  const totalMkt  = data.total_market_value ?? 0;
 
   const rows = positions.map(p => {
     // unrealized_pct từ PnlService là dạng % thực (vd: -2.825, 65.94)
-    // fmtPct() nhận decimal nên cần chia 100
-    const pct = p.unrealized_pct != null ? p.unrealized_pct / 100 : null;
+    const pct = p.unrealized_pct ?? null;
     return `
       <tr>
         <td><strong>${p.ticker}</strong></td>
@@ -74,7 +72,7 @@ function renderTradesTab(data) {
 
   return `
     <div class="portfolio-summary">
-      <span class="summary-chip">${pnlIcon(totalPnl)} P&amp;L: <strong class="${pnlClass(totalPnl)}">${fmtVnd(totalPnl)}</strong> (${fmtPct(totalPct / 100)})</span>
+      <span class="summary-chip">${pnlIcon(totalPnl)} P&amp;L: <strong class="${pnlClass(totalPnl)}">${fmtVnd(totalPnl)}</strong> (${fmtPct(totalPct)})</span>
       <span class="summary-chip">Vốn: <strong>${fmtVnd(totalCost)}</strong></span>
       <span class="summary-chip">Thị giá: <strong>${fmtVnd(totalMkt)}</strong></span>
       <span class="summary-chip">Vị thế: <strong>${positions.length}</strong></span>
@@ -111,7 +109,7 @@ function renderThesisTab(data) {
     return '<p class="empty-state">Chưa có thesis active nào. Dùng <code>/thesis add</code> hoặc tạo trực tiếp tại đây.</p>';
   }
 
-  const totalPnlPct = data.total_pnl_pct;
+  const totalPnlPct = data.total_pnl_pct;  // dạng % thực từ backend
   const winning     = data.winning_count ?? 0;
   const losing      = data.losing_count ?? 0;
   const n           = data.position_count ?? positions.length;
@@ -119,15 +117,19 @@ function renderThesisTab(data) {
   const rows = positions.map(p => {
     const verdict = (p.last_verdict ?? '').toUpperCase();
     const badge   = VERDICT_BADGE[verdict] ?? { icon: '❓', cls: 'badge-unknown' };
-    const pnlPct  = p.pnl_pct != null ? p.pnl_pct / 100 : null;   // API trả %, cần /100 cho fmtPct
-    const score   = p.score != null ? p.score : null;
+    // pnl_pct từ backend là dạng % thực (vd: 12.34, -5.67) — truyền thẳng vào fmtPct
+    const pnlPct  = p.pnl_pct ?? null;
+    const score   = p.score ?? null;
     const tier    = p.score_tier_icon ?? '';
+    // FIX #4: ưu tiên avg_cost (giá vốn thực từ Position) > entry_price (thesis gốc)
+    const entryDisplay = p.avg_cost ?? p.entry_price;
+    const entryLabel   = p.avg_cost != null ? 'avg_cost' : 'entry';
 
     return `
       <tr>
         <td><strong>${p.ticker}</strong></td>
         <td><span class="verdict-badge ${badge.cls}">${badge.icon} ${verdict || '—'}</span></td>
-        <td class="num">${fmtVnd(p.entry_price)}</td>
+        <td class="num" title="${entryLabel}">${fmtVnd(entryDisplay)}</td>
         <td class="num">${fmtVnd(p.current_price)}</td>
         <td class="num ${pnlClass(pnlPct)}">${pnlPct != null ? `${pnlIcon(pnlPct)} ${fmtPct(pnlPct)}` : '⚪ —'}</td>
         <td class="num">${score != null ? `${tier} ${score}` : '—'}</td>
@@ -135,7 +137,7 @@ function renderThesisTab(data) {
   }).join('');
 
   const summaryPnl = totalPnlPct != null
-    ? `${pnlIcon(totalPnlPct)} P&amp;L avg: <strong class="${pnlClass(totalPnlPct)}">${fmtPct(totalPnlPct / 100)}</strong>`
+    ? `${pnlIcon(totalPnlPct)} P&amp;L avg: <strong class="${pnlClass(totalPnlPct)}">${fmtPct(totalPnlPct)}</strong>`
     : '';
 
   const warningHTML = !data.has_quantity_data
