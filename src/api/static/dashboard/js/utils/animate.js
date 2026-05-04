@@ -33,11 +33,16 @@ export function countUp(el, target, opts = {}) {
   const duration = opts.duration ?? 600;
   const format   = opts.format ?? ((n) => _defaultFormat(n, opts));
 
-  // Parse start từ textContent hiện tại
-  const rawText = el.textContent.replace(/[^\d.-]/g, '');
-  const start   = parseFloat(rawText) || 0;
+  // Parse start từ textContent hiện tại.
+  // FIX: chỉ early-return khi el có nội dung thực sự (không rỗng).
+  // Nếu textContent rỗng (lần đầu render) → bắt đầu từ 0 và luôn animate.
+  const rawText = el.textContent.trim().replace(/[^\d.-]/g, '');
+  const hasContent = rawText.length > 0;
+  const start = hasContent ? (parseFloat(rawText) || 0) : 0;
 
-  if (start === target) return;
+  // Early-return chỉ khi element đã hiển thị đúng giá trị — tránh animate không cần thiết.
+  // Không early-return nếu textContent rỗng (target=0 lần đầu cần render '0').
+  if (hasContent && start === target) return;
 
   const startTime = performance.now();
 
