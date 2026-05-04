@@ -41,14 +41,22 @@ class LessonSnippet:
 class LessonService:
     """Read-only view into persisted lessons from the Decision Replay loop.
 
-    Designed to be injected into prompt-building pipelines:
+    Two usage patterns:
 
-        snippets = await lesson_svc.get_recent_lessons(user_id)
-        prompt_context["past_lessons"] = lesson_svc.format_for_prompt(snippets)
+    1. Low-level (get + format separately):
+        snippets = await svc.get_recent_lessons(user_id)
+        text = svc.format_for_prompt(snippets)
+
+    2. High-level convenience (used by BriefingService + PreTradeService):
+        text = await svc.build_lesson_context(user_id, ticker=ticker, limit=3)
     """
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
+
+    # ------------------------------------------------------------------
+    # Primary API
+    # ------------------------------------------------------------------
 
     async def get_recent_lessons(
         self,
@@ -99,17 +107,55 @@ class LessonService:
             for r in rows
         ]
 
+    async def build_lesson_context(
+        self,
+        user_id: str,
+        *,
+        ticker: str | None = None,
+        limit: int = _DEFAULT_MAX_LESSONS,
+        lookback_days: int = _DEFAULT_LOOKBACK_DAYS,
+    ) -> str:
+        """Convenience wrapper: fetch + format in one call.
+
+        Used by BriefingService and PreTradeService to inject past lessons
+        into AI prompt context without needing to handle LessonSnippet objects.
+
+        Args:
+            user_id:       Investor to query.
+            ticker:        Optional ticker filter (PreTrade uses this,
+                           Briefing leaves it None for cross-ticker lessons).
+            limit:         Max snippets to include (PreTrade: 3, Briefing: 5).
+            lookback_days: How far back to look.
+
+        Returns:
+            Formatted string ready for prompt injection,
+            or empty string if no lessons found.
+        """
+        snippets = await self.get_recent_lessons(
+            user_id,
+            lookback_days=lookback_days,
+            max_lessons=limit,
+            ticker=ticker,
+        )
+        return self.format_for_prompt(snippets)
+
+    # ------------------------------------------------------------------
+    # Formatting
+    # ------------------------------------------------------------------
+
     @staticmethod
     def format_for_prompt(snippets: list[LessonSnippet]) -> str:
         """Render snippets as a compact multi-line string for prompt injection.
 
-        Output example (injected into briefing / pretrade context):
+        Output example (injected into briefing / pretrade context)::
 
             === Past lessons from your decision history ===
-            [2026-02-10] BUY VCB → CORRECT | Lesson: Breakout signal confirmed by volume
-            surge was reliable when market breadth was positive. | Pattern: breakout_chasing
-            [2026-01-03] BUY HPG → INCORRECT | Lesson: Entered before catalyst materialized;
-            waited too short after earnings miss. | Pattern: premature_entry
+            [2026-02-10] BUY VCB → CORRECT | Lesson: Breakout signal confirmed by
+            volume surge was reliable when market breadth was positive.
+            | Pattern: breakout_chasing
+            [2026-01-03] BUY HPG → INCORRECT | Lesson: Entered before catalyst
+            materialized; waited too short after earnings miss.
+            | Pattern: premature_entry
 
         Returns empty string if snippets is empty (caller skips injection).
         """

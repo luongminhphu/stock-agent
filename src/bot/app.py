@@ -68,10 +68,12 @@ async def _register_cogs(bot: commands.Bot) -> None:
     """Load all command cogs. Add new cogs here only — no logic."""
     from src.bot.commands.briefing import BriefingCog
     from src.bot.commands.conviction_timeline import ConvictionTimelineCog
+    from src.bot.commands.decision import DecisionCog
     from src.bot.commands.help import HelpCog
     from src.bot.commands.market import MarketCog
     from src.bot.commands.portfolio import PortfolioCog
     from src.bot.commands.pretrade import PretradeCog
+    from src.bot.commands.scheduler_trigger import SchedulerTriggerCog
     from src.bot.commands.stress_test import StressTestCog
     from src.bot.commands.thesis_crud import ThesisCrudCog
     from src.bot.commands.thesis_review import ThesisReviewCog
@@ -89,12 +91,15 @@ async def _register_cogs(bot: commands.Bot) -> None:
     await bot.add_cog(ConvictionTimelineCog(bot))
     await bot.add_cog(PortfolioCog(bot))
     await bot.add_cog(StressTestCog(bot))
+    await bot.add_cog(DecisionCog(bot))
+    await bot.add_cog(SchedulerTriggerCog(bot))
     logger.info(
         "bot.cogs_loaded",
         cogs=[
             "WatchlistCog", "ThesisCrudCog", "ThesisReviewCog", "MarketCog",
             "BriefingCog", "HelpCog", "WhyCog", "PretradeCog",
             "ConvictionTimelineCog", "PortfolioCog", "StressTestCog",
+            "DecisionCog", "SchedulerTriggerCog",
         ],
     )
 
