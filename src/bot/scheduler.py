@@ -78,6 +78,8 @@ class BriefingScheduler:
         self._monitor = monitor or get_monitor()
 
     def start(self) -> None:
+        self._monitor.register_task("briefing.morning")
+        self._monitor.register_task("briefing.eod")
         self._morning_task.start()
         self._eod_task.start()
         logger.info("scheduler.briefing.started")
@@ -93,11 +95,19 @@ class BriefingScheduler:
             return
         await self._send_brief(phase="morning")
 
+    @_morning_task.before_loop
+    async def _before_morning(self) -> None:
+        await self._client.wait_until_ready()
+
     @tasks.loop(time=_EOD_TIME)
     async def _eod_task(self) -> None:
         if datetime.datetime.now(tz=datetime.UTC).weekday() >= 5:
             return
         await self._send_brief(phase="eod")
+
+    @_eod_task.before_loop
+    async def _before_eod(self) -> None:
+        await self._client.wait_until_ready()
 
     async def _send_brief(self, phase: str) -> None:
         task_name = f"briefing.{phase}"
@@ -166,6 +176,7 @@ class WatchlistScanScheduler:
         self._monitor = monitor or get_monitor()
 
     def start(self) -> None:
+        self._monitor.register_task("watchlist.scan")
         self._scan_task.start()
         logger.info("scheduler.scan.started", interval_minutes=_SCAN_INTERVAL_MINUTES)
 
@@ -277,6 +288,7 @@ class ThesisMaintenanceScheduler:
         self._monitor = monitor or get_monitor()
 
     def start(self) -> None:
+        self._monitor.register_task("thesis.maintenance")
         self._maintenance_task.start()
         logger.info("scheduler.thesis_maintenance.started")
 
@@ -398,6 +410,7 @@ class ThesisDriftScheduler:
         self._monitor = monitor or get_monitor()
 
     def start(self) -> None:
+        self._monitor.register_task("thesis.drift")
         self._drift_task.start()
         logger.info(
             "scheduler.drift.started",
@@ -541,6 +554,8 @@ class ReminderScheduler:
         self._monitor = monitor or get_monitor()
 
     def start(self) -> None:
+        self._monitor.register_task("reminder.daily")
+        self._monitor.register_task("reminder.weekly")
         self._daily_task.start()
         self._weekly_task.start()
         logger.info("scheduler.reminder.started")
@@ -557,12 +572,20 @@ class ReminderScheduler:
             return
         await self._fire_reminders(label="daily")
 
+    @_daily_task.before_loop
+    async def _before_daily(self) -> None:
+        await self._client.wait_until_ready()
+
     @tasks.loop(time=_REMINDER_WEEKLY_TIME)
     async def _weekly_task(self) -> None:
         now_utc = datetime.datetime.now(tz=datetime.UTC)
         if now_utc.weekday() != 0:
             return
         await self._fire_reminders(label="weekly")
+
+    @_weekly_task.before_loop
+    async def _before_weekly(self) -> None:
+        await self._client.wait_until_ready()
 
     async def _fire_reminders(self, label: str) -> None:
         from src.watchlist.models import ReminderFrequency
@@ -640,14 +663,6 @@ class ReminderScheduler:
             logger.error("scheduler.reminder.error", label=label, error=str(exc))
             await self._monitor.record_failure(task_name, exc)
 
-    @_daily_task.before_loop
-    async def _before_daily(self) -> None:
-        await self._client.wait_until_ready()
-
-    @_weekly_task.before_loop
-    async def _before_weekly(self) -> None:
-        await self._client.wait_until_ready()
-
 
 # ---------------------------------------------------------------------------
 # DecisionReplayScheduler
@@ -677,6 +692,7 @@ class DecisionReplayScheduler:
         self._monitor = monitor or get_monitor()
 
     def start(self) -> None:
+        self._monitor.register_task("decision.replay")
         self._replay_task.start()
         logger.info("scheduler.decision_replay.started", time_ict="15:15")
 

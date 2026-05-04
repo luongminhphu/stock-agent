@@ -10,6 +10,7 @@ Responsibilities:
 Usage in scheduler.py:
     from src.platform.scheduler_monitor import get_monitor
     monitor = get_monitor()
+    monitor.register_task("briefing.morning")   # call in start()
     ...
     await monitor.record_success("briefing.morning")
     await monitor.record_failure("briefing.morning", exc)
@@ -84,6 +85,17 @@ class SchedulerMonitor:
         """Call after bot is ready to enable proactive Discord alerts."""
         self._alert_channel = channel
         logger.info("scheduler_monitor.alert_channel_set", channel_id=channel.id)
+
+    def register_task(self, task_name: str) -> None:
+        """Register a task at scheduler.start() time.
+
+        Ensures /health always lists all known tasks — even before the first
+        execution tick. Tasks registered here show 'chưa chạy' until
+        record_success or record_failure is called.
+        """
+        if task_name not in self._statuses:
+            self._statuses[task_name] = TaskStatus(task_name=task_name)
+            logger.debug("scheduler_monitor.task_registered", task=task_name)
 
     def _get_or_create(self, task_name: str) -> TaskStatus:
         if task_name not in self._statuses:
