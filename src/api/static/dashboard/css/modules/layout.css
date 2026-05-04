@@ -22,6 +22,16 @@
      900–1199 — narrower rail (clamp)
      600–899  — stack workspace, static rail
      <600     — compact strip, hide brand name
+
+   FIX LOG (2026-05-04):
+     - toolbar flex-wrap: nowrap → Reload + "+ Thesis mới" never wrap to 2nd line
+     - toolbar flex-shrink: 0 → toolbar block never collapses
+     - command-strip: fixed 5-col template (repeat(4,1fr) 1.5fr) instead of auto-fill
+       → signal-card--wide always spans col 5, no mis-alignment
+     - workspace-grid: minmax(0,1fr) instead of bare 1fr
+       → panel-main can't overflow the grid track and push the rail out
+     - panel-main: min-width:0 + overflow:hidden guard
+     - action-rail: min-width:0 guard
 */
 
 /* ── SKIP LINK ─────────────────────────────────────── */
@@ -74,13 +84,17 @@
   border-bottom: 1px solid var(--line);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+  /* Prevent any child from causing overflow-induced clip */
+  overflow: visible;
 }
 
 .brand-block {
   display: flex;
   align-items: center;
   gap: 10px;
+  /* FIX: brand block must not shrink — gives all space to toolbar */
   flex-shrink: 0;
+  min-width: 0;
 }
 
 .brand-logo {
@@ -95,13 +109,17 @@
   font-weight: 700;
   letter-spacing: -.02em;
   color: var(--text);
+  white-space: nowrap;
 }
 
 .toolbar {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  /* FIX: never wrap — keep Reload + "+ Thesis mới" on same line */
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .icon-btn {
@@ -119,6 +137,7 @@
   cursor: pointer;
   transition: background .18s, color .18s, border-color .18s;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .icon-btn:hover {
   background: rgba(148, 163, 184, 0.12);
@@ -131,8 +150,10 @@
 
 /* ── COMMAND STRIP ───────────────────────────────────── */
 .command-strip {
+  /* FIX: fixed 5-col template — predictable layout at all widths ≥900px */
+  /* signal-card--wide always occupies the 5th (wider) column */
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(4, 1fr) 1.5fr;
   gap: 1px;
   background: var(--line);
   border-bottom: 1px solid var(--line);
@@ -146,14 +167,17 @@
   padding: 13px 20px 14px;
   background: var(--surface);
   transition: background .15s;
+  /* FIX: allow text truncation without causing overflow */
   min-width: 0;
+  overflow: hidden;
 }
 .signal-card:hover { background: var(--surface-2); }
 
 .signal-label {
   font-size: .7rem;
   font-weight: 600;
-  letter-spacing: .07em;
+  /* FIX: reduced letter-spacing so label fits at smaller widths */
+  letter-spacing: .05em;
   text-transform: uppercase;
   color: var(--muted);
   white-space: nowrap;
@@ -171,15 +195,18 @@
 
 .signal-card--risk .signal-value { color: var(--danger); }
 
-/* Wide card spans 2 cols when strip ≥5 cols */
-@container (min-width: 800px) {
-  .signal-card--wide { grid-column: span 2; }
+/* At ≥900px the strip has 5 columns; --wide card sits in the last wider slot */
+/* At <600px we collapse to 2 cols and span 2 explicitly */
+@container (min-width: 900px) {
+  /* already handled by the fixed 5-col template — no extra rule needed */
 }
 
 /* ── WORKSPACE GRID ──────────────────────────────────── */
 .workspace-grid {
   display: grid;
-  grid-template-columns: 1fr var(--rail-w);
+  /* FIX: minmax(0, 1fr) — the 0 floor prevents panel-main from overflowing
+     its track and pushing the action-rail outside the viewport */
+  grid-template-columns: minmax(0, 1fr) var(--rail-w);
   gap: var(--workspace-gap);
   padding: var(--workspace-gap) var(--page-px);
   flex: 1;
@@ -189,7 +216,7 @@
 
 /* Rail widens when thesis detail inspector is open */
 .workspace-grid.inspector-open {
-  grid-template-columns: 1fr clamp(340px, 30vw, 440px);
+  grid-template-columns: minmax(0, 1fr) clamp(340px, 30vw, 440px);
 }
 
 /* ── PANEL MAIN (thesis board) ───────────────────────── */
@@ -197,6 +224,9 @@
   display: flex;
   flex-direction: column;
   min-height: 480px;
+  /* FIX: explicit min-width:0 so long thesis titles can truncate
+     instead of stretching the column */
+  min-width: 0;
   overflow: hidden;
 }
 
@@ -227,6 +257,8 @@
   scrollbar-width: thin;
   scrollbar-color: var(--line) transparent;
   overscroll-behavior: contain;
+  /* FIX: guard against self-overflow like panel-main */
+  min-width: 0;
 }
 
 .action-panel { flex-shrink: 0; }
@@ -271,6 +303,7 @@
   transition: color .15s, border-color .15s;
   margin-bottom: -1px;
   min-height: 44px;
+  white-space: nowrap;
 }
 .portfolio-tab.active,
 .portfolio-tab:hover {
@@ -357,6 +390,11 @@
   .detail-shell {
     max-height: none;
   }
+  /* On narrower viewports the strip auto-fills; collapse --wide to full row */
+  .command-strip {
+    grid-template-columns: repeat(3, 1fr) 1.5fr;
+  }
+  .signal-card--wide { grid-column: span 1; }
 }
 
 /* ── RESPONSIVE — 600px ──────────────────────────────── */
@@ -373,4 +411,7 @@
   .brand-name { display: none; }
   .detail-shell.empty-detail { max-height: 120px; }
   .data-table { font-size: .8rem; }
+  .toolbar {
+    gap: 6px;
+  }
 }
