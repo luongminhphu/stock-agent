@@ -6,6 +6,7 @@ parse into one of these schemas.
 """
 
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -534,6 +535,97 @@ class StressTestOutput(BaseModel):
     def ensure_str_list(cls, v: object) -> list[object]:
         if isinstance(v, str):
             return [v]
+        if not isinstance(v, list):
+            return []
+        return v  # type: ignore[return-value]
+
+
+# ---------------------------------------------------------------------------
+# Sector Rotation Radar  (used by SectorRotationAgent)
+# ---------------------------------------------------------------------------
+
+
+class FlowDirection(StrEnum):
+    INFLOW  = "INFLOW"   # Dòng tiền đang vào sector
+    OUTFLOW = "OUTFLOW"  # Dòng tiền đang rút khỏi sector
+    NEUTRAL = "NEUTRAL"  # Không có xu hướng rõ ràng
+
+
+class RiskRegime(StrEnum):
+    RISK_ON  = "RISK_ON"   # Thị trường đang risk-on (tiền vào cyclical/growth)
+    RISK_OFF = "RISK_OFF"  # Thị trường đang risk-off (tiền vào defensive)
+    MIXED    = "MIXED"     # Tín hiệu hỗn hợp
+
+
+class SectorFlow(BaseModel):
+    """Snapshot dòng tiền của một sector trong phiên / tuần."""
+
+    sector: str = Field(description="Tên sector, VD: Banking, Real Estate")
+    avg_change_pct_1d: float = Field(description="% thay đổi trung bình 1 ngày của sector")
+    flow_direction: FlowDirection
+    top_movers: list[str] = Field(
+        default_factory=list,
+        description="Top 3 tickers dẫn dắt sector (tăng mạnh nhất hoặc giảm mạnh nhất)",
+    )
+    ticker_count: int = Field(default=0, description="Số tickers trong sector được theo dõi")
+
+
+class WatchlistCrosscheck(BaseModel):
+    """Một ticker trong watchlist đang đi ngược hoặc cùng dòng sector."""
+
+    ticker: str
+    sector: str
+    ticker_change_pct: float
+    sector_avg_change_pct: float
+    is_contrarian: bool = Field(
+        description="True nếu ticker đi ngược dòng sector (divergence đáng chú ý)"
+    )
+    note: str = Field(description="Nhận xét ngắn. VD: 'VCB -1.2% trong khi Banking +0.5%'")
+
+
+class SectorRotationOutput(BaseModel):
+    """Structured output from SectorRotationAgent.
+
+    Owner: ai segment.
+    Caller: briefing segment (context injection) + bot sector command.
+    Read-only — không persist, on-demand query mỗi lần gọi.
+    """
+
+    snapshot_date: str = Field(description="Ngày snapshot, format YYYY-MM-DD")
+    rotation_narrative: str = Field(
+        description=(
+            "Narrative 2-3 câu mô tả dòng tiền đang chảy đi đâu và tại sao. "
+            "VD: 'Dòng tiền đang rút khỏi Banking vào Real Estate — risk-off trước FED meeting'"
+        )
+    )
+    risk_regime: RiskRegime
+    leading_sectors: list[SectorFlow] = Field(
+        default_factory=list,
+        description="Top 3 sectors có INFLOW mạnh nhất",
+    )
+    lagging_sectors: list[SectorFlow] = Field(
+        default_factory=list,
+        description="Top 3 sectors có OUTFLOW mạnh nhất",
+    )
+    watchlist_crosscheck: list[WatchlistCrosscheck] = Field(
+        default_factory=list,
+        description=(
+            "Tickers trong watchlist đang diverge so với sector của họ. "
+            "Rỗng nếu không có watchlist hoặc không có divergence đáng chú ý."
+        ),
+    )
+    actionable_insight: str = Field(
+        default="",
+        description=(
+            "1 insight cụ thể, actionable nhất cho nhà đầu tư này dựa trên watchlist. "
+            "VD: 'VCB đang đi ngược dòng Banking — thesis có bị ảnh hưởng?'"
+        ),
+    )
+    confidence: float = Field(ge=0.0, le=1.0, description="Độ tin cậy phân tích")
+
+    @field_validator("leading_sectors", "lagging_sectors", "watchlist_crosscheck", mode="before")
+    @classmethod
+    def ensure_sector_list(cls, v: object) -> list[object]:
         if not isinstance(v, list):
             return []
         return v  # type: ignore[return-value]
