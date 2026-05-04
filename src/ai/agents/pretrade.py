@@ -29,6 +29,7 @@ class PreTradeAgent:
         thesis_context: str,
         signal_context: str,
         brief_context: str,
+        past_lessons: str = "",
     ) -> PreTradeCheckOutput:
         prompt = build_pretrade_prompt(
             ticker=ticker,
@@ -37,8 +38,9 @@ class PreTradeAgent:
             thesis_context=thesis_context,
             signal_context=signal_context,
             brief_context=brief_context,
+            past_lessons=past_lessons,
         )
-        logger.info("pretrade_agent.start", ticker=ticker)
+        logger.info("pretrade_agent.start", ticker=ticker, has_lessons=bool(past_lessons))
         try:
             response = await self._client.chat_completion(
                 messages=[

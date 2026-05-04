@@ -5,6 +5,7 @@ Responsibilities:
 - Fetch active thesis for ticker (thesis segment).
 - Fetch latest scan snapshot for ticker (watchlist segment via repo).
 - Extract brief mention for ticker from latest briefing (briefing context).
+- Fetch past evaluated decisions for user (thesis segment via LessonService).
 - Call PreTradeAgent with assembled context.
 - Return PreTradeCheckOutput to caller (bot command).
 
@@ -22,6 +23,7 @@ from src.ai.agents.pretrade import PreTradeAgent
 from src.ai.schemas import PreTradeCheckOutput
 from src.market.quote_service import QuoteService
 from src.platform.logging import get_logger
+from src.thesis.lesson_service import LessonService
 from src.thesis.repository import ThesisRepository
 from src.watchlist.repository import WatchlistRepository
 
@@ -42,6 +44,7 @@ class PreTradeService:
         self._agent = pretrade_agent
         self._thesis_repo = ThesisRepository(session)
         self._watchlist_repo = WatchlistRepository(session)
+        self._lesson_service = LessonService(session)
 
     async def check(self, ticker: str, user_id: str) -> PreTradeCheckOutput:
         ticker = ticker.upper().strip()
@@ -61,7 +64,10 @@ class PreTradeService:
         # 4. Brief context — best-effort only, never blocks
         brief_context = await self._build_brief_context(ticker, user_id)
 
-        # 5. AI check
+        # 5. Past lessons — ticker-specific, best-effort, never blocks
+        past_lessons = await self._build_lesson_context(ticker, user_id)
+
+        # 6. AI check
         result = await self._agent.check(
             ticker=ticker,
             price=price,
@@ -69,12 +75,14 @@ class PreTradeService:
             thesis_context=thesis_context,
             signal_context=signal_context,
             brief_context=brief_context,
+            past_lessons=past_lessons,
         )
         logger.info(
             "pretrade_service.done",
             ticker=ticker,
             decision=result.decision,
             confidence=result.confidence,
+            has_lessons=bool(past_lessons),
         )
         return result
 
@@ -145,4 +153,23 @@ class PreTradeService:
             return f"[Brief {brief.phase} {brief.created_at.date()}] ...{snippet}..."
         except Exception as exc:
             logger.warning("pretrade_service.brief_context_error", ticker=ticker, error=str(exc))
+            return ""
+
+    async def _build_lesson_context(self, ticker: str, user_id: str) -> str:
+        """Fetch ticker-specific past decision lessons for AI personalisation.
+
+        Uses LessonService with ticker filter so only decisions on this exact
+        ticker are included — keeps the pretrade prompt focused.
+
+        Returns empty string if no evaluated decisions exist for this ticker
+        yet, or on any error — pretrade must never be blocked by lesson data.
+        """
+        try:
+            return await self._lesson_service.build_lesson_context(
+                user_id=user_id,
+                ticker=ticker,
+                limit=3,  # pretrade: tighter context window than morning brief
+            )
+        except Exception as exc:
+            logger.warning("pretrade_service.lesson_context_error", ticker=ticker, error=str(exc))
             return ""
