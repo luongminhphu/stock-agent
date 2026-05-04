@@ -205,6 +205,20 @@
   border-left: 2px solid var(--line-strong);
 }
 
+/* ── Scan summary inline formatting ──────────────────────────────────────── */
+/* Applied by formatScanHtml() in render-brief.js */
+.scan-text {
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+.scan-text strong {
+  color: var(--text);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+.scan-text .up   { color: #4ade80; font-weight: 600; }
+.scan-text .down { color: #f87171; font-weight: 600; }
+
 /* ── Watchlist ticker table inside brief ──────────────────────────────────── */
 .brief-ticker-table { width: 100%; border-collapse: collapse; }
 .brief-ticker-table thead th {

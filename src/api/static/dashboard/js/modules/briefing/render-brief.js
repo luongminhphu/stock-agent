@@ -47,6 +47,36 @@ const SENTIMENT_META = {
 };
 
 // ---------------------------------------------------------------------------
+// formatScanHtml — convert plain scan summary string to HTML with bold tickers
+// and coloured change values.
+//
+// Input:  "MSR: Price move +7.4% (+7.4%); NVL: Price move -6.3% (-6.3%)"
+// Output: "<strong>MSR</strong>: Price move <span class=up>+7.4%</span> ..."
+//
+// Safe: the surrounding text is escaped; only the recognised pattern fragments
+// receive markup, so injection via ticker/pct strings is not possible.
+// ---------------------------------------------------------------------------
+function formatScanHtml(text) {
+  if (!text) return esc(text ?? '');
+
+  // Split on "; " between individual signal entries (but keep the delimiter logic
+  // consistent with what scan_service produces).
+  const parts = text.split(/;\s*/);
+  const html = parts.map(part => {
+    // Match: TICKER: <anything> [+-]N.N% (optional second pct in parens)
+    // Groups: 1=ticker, 2=middle text, 3=first pct (with sign), 4=optional paren pct
+    const m = part.match(/^([A-Z0-9]+)(:.*?)([+-]\d+(?:\.\d+)?%)(.*)$/);
+    if (!m) return esc(part);
+
+    const [, ticker, middle, pct, rest] = m;
+    const cls = pct.startsWith('+') ? 'up' : 'down';
+    return `<strong>${esc(ticker)}</strong>${esc(middle)}<span class="${cls}">${esc(pct)}</span>${esc(rest)}`;
+  });
+
+  return `<span class="scan-text">${html.join('; ')}</span>`;
+}
+
+// ---------------------------------------------------------------------------
 // Brief card (morning / eod)
 // Maps đúng fields từ BriefOutput schema (src/ai/schemas.py)
 // ---------------------------------------------------------------------------
@@ -195,8 +225,9 @@ export function renderSnapshots(data) {
   // Scan
   const scanAt  = el('latestScanAt');
   const scanSum = el('latestScanSummary');
-  if (scanAt)  scanAt.textContent  = data.latest_scan_at  ? fmtDate(data.latest_scan_at)  : '—';
-  if (scanSum) scanSum.textContent = data.latest_scan_summary ?? 'Chưa có scan snapshot.';
+  if (scanAt)  scanAt.textContent = data.latest_scan_at ? fmtDate(data.latest_scan_at) : '—';
+  // Use innerHTML so formatScanHtml() markup (bold + colour spans) is rendered.
+  if (scanSum) scanSum.innerHTML  = formatScanHtml(data.latest_scan_summary ?? null) || 'Chưa có scan snapshot.';
 
   // Morning brief
   const morningWrap = el('morningBriefWrap');
