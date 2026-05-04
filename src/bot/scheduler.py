@@ -654,11 +654,14 @@ class DecisionReplayScheduler:
         2. For each pending decision:
            a. evaluate_outcome(id)   — compute realized PnL + assign verdict (no AI).
            b. analyze_decision(id)   — call ReplayAgent for key_lesson + pattern.
+           c. persist_lesson(id, replay_result) — write key_lesson + pattern_detected
+              back to DecisionLog so LessonService can surface them in future prompts.
         3. Notify Discord with a summary embed.
 
     Guardrails:
-        - evaluate_outcome failure skips analyze_decision for that row (independent sessions).
-        - analyze_decision failure does not block the embed — verdict is still shown.
+        - evaluate_outcome failure skips analyze_decision for that row.
+        - analyze_decision failure skips persist_lesson — verdict is still shown.
+        - persist_lesson failure is logged but does not block the Discord embed.
         - Empty result — no Discord message sent.
         - Weekends skipped.
     """
@@ -714,7 +717,7 @@ class DecisionReplayScheduler:
             decision_ids=[d.id for d in pending],
         )
 
-        # ── Step 2: Evaluate + Replay each decision (independent sessions) ──
+        # ── Step 2: Evaluate + Replay + Persist lesson per decision ──
         results: list[dict] = []
         for decision in pending:
             # 2a: evaluate realized outcome (no AI)
@@ -760,6 +763,34 @@ class DecisionReplayScheduler:
                     ticker=decision.ticker,
                     error=str(exc),
                 )
+
+            # 2c: Persist lesson back to DecisionLog for LessonService to surface later.
+            # This closes the learning loop: AI insight → stored → injected into future prompts.
+            if replay_result is not None:
+                try:
+                    async with AsyncSessionLocal() as session:
+                        svc = DecisionService(
+                            session=session,
+                            quote_service=get_quote_service(),
+                        )
+                        await svc.persist_lesson(
+                            decision_id=decision.id,
+                            key_lesson=getattr(replay_result, "key_lesson", None),
+                            pattern_detected=getattr(replay_result, "pattern_detected", None),
+                        )
+                        await session.commit()
+                    logger.info(
+                        "scheduler.decision_replay.lesson_persisted",
+                        decision_id=decision.id,
+                        ticker=decision.ticker,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "scheduler.decision_replay.lesson_persist_failed",
+                        decision_id=decision.id,
+                        ticker=decision.ticker,
+                        error=str(exc),
+                    )
 
             results.append({
                 "decision": evaluated,
