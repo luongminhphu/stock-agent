@@ -1,0 +1,179 @@
+/* ─── Quote Strip — Market context ngay trong Thesis Detail ──────────────
+   Owner: modules/thesis / market
+   Selector root: .quote-strip
+   Wave 3c — mới 100%
+─────────────────────────────────────────────────────────────────────────── */
+
+.quote-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  border-radius: 14px;
+  background: rgba(125, 211, 252, 0.04);
+  border: 1px solid rgba(125, 211, 252, 0.10);
+  transition: opacity 0.25s ease;
+}
+
+/* Loading state: giảm opacity nhẹ, skeleton bên trong tự shimmer */
+.quote-strip--loading {
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+/* Unavailable: không có data */
+.quote-strip--unavailable {
+  border-color: rgba(148, 163, 184, 0.10);
+  background: transparent;
+  padding: 8px 14px;
+}
+.quote-unavailable-label {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+/* ── Price block ──────────────────────────────────────────────────── */
+
+.quote-strip-price {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.quote-price {
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  transition: color 0.2s ease;
+}
+
+/* Màu theo trạng thái */
+.quote-price--up   { color: #4ade80; }
+.quote-price--down { color: #f87171; }
+.quote-price--ceiling {
+  color: #f97316;
+  text-shadow: 0 0 8px rgba(249, 115, 22, 0.4);
+}
+.quote-price--floor {
+  color: #a78bfa;
+  text-shadow: 0 0 8px rgba(167, 139, 250, 0.35);
+}
+
+/* Change line */
+.quote-change {
+  font-size: 0.88rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.quote-change--up   { color: #4ade80; }
+.quote-change--down { color: #f87171; }
+.quote-change--flat { color: var(--muted); }
+
+.quote-change-abs {
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+/* Ceiling / Floor badge */
+.quote-badge-ceiling {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: rgba(249, 115, 22, 0.15);
+  color: #f97316;
+  border: 1px solid rgba(249, 115, 22, 0.25);
+}
+.quote-badge-floor {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: rgba(167, 139, 250, 0.15);
+  color: #a78bfa;
+  border: 1px solid rgba(167, 139, 250, 0.25);
+}
+
+/* ── Meta chips row ───────────────────────────────────────────────── */
+
+.quote-strip-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.quote-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(148, 163, 184, 0.10);
+  min-width: 58px;
+}
+
+.quote-chip--thesis {
+  border-color: rgba(125, 211, 252, 0.18);
+  background: rgba(125, 211, 252, 0.05);
+}
+.quote-chip--thesis.thesis-up   { border-color: rgba(74, 222, 128, 0.22); }
+.quote-chip--thesis.thesis-down { border-color: rgba(248, 113, 113, 0.22); }
+
+.qc-label {
+  font-size: 0.68rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+.qc-val {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+/* ── Volume bar ───────────────────────────────────────────────────── */
+
+.quote-vol-bar {
+  width: 100%;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(148, 163, 184, 0.12);
+  margin-top: 3px;
+  overflow: hidden;
+}
+.quote-vol-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--brand, #7dd3fc);
+  transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ── Responsive: mobile collapse ────────────────────────────────── */
+@media (max-width: 640px) {
+  .quote-strip {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+  .quote-strip-meta { gap: 4px; }
+  .quote-chip { min-width: 50px; }
+  .quote-price { font-size: 1.1rem; }
+}
