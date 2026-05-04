@@ -7,6 +7,7 @@ Responsibilities:
 - Freeze relevant thesis + market context at decision time.
 - Evaluate realized outcome after a review horizon (30/90 days, configurable).
 - Call ReplayAgent to produce personalized lessons.
+- Persist AI-generated key_lesson and pattern_detected back to DecisionLog.
 
 Non-responsibilities:
 - Does not send notifications.
@@ -175,6 +176,63 @@ class DecisionService:
             outcome_verdict=row.outcome_verdict,
             replay=replay,
         )
+
+    async def persist_lesson(
+        self,
+        decision_id: int,
+        *,
+        key_lesson: str | None,
+        pattern_detected: str | None,
+    ) -> DecisionLog:
+        """Write AI-generated lesson and pattern back to DecisionLog.
+
+        Called by DecisionReplayScheduler after analyze_decision() succeeds.
+        This closes the learning loop: ReplayAgent insight → stored in DB →
+        surfaced by LessonService → injected into future briefing / pretrade prompts.
+
+        Only updates fields that have a non-None value — never overwrites
+        an existing lesson with None.
+
+        Args:
+            decision_id:       PK of the DecisionLog to update.
+            key_lesson:        The primary takeaway from ReplayAgent (1-2 sentences).
+            pattern_detected:  Short label for the pattern, e.g. 'breakout_chasing'.
+
+        Returns:
+            Updated DecisionLog row (refreshed).
+
+        Raises:
+            ValueError: If decision_id not found.
+        """
+        row = await self._get_decision_or_raise(decision_id)
+        updated = False
+
+        if key_lesson is not None:
+            row.key_lesson = key_lesson
+            updated = True
+
+        if pattern_detected is not None:
+            row.pattern_detected = pattern_detected
+            updated = True
+
+        if updated:
+            await self._session.commit()
+            await self._session.refresh(row)
+            logger.info(
+                "decision.lesson_persisted",
+                decision_id=row.id,
+                ticker=row.ticker,
+                has_lesson=key_lesson is not None,
+                has_pattern=pattern_detected is not None,
+            )
+        else:
+            logger.debug(
+                "decision.lesson_persist_skipped",
+                decision_id=decision_id,
+                reason="both key_lesson and pattern_detected are None",
+            )
+
+        return row
 
     async def _get_decision_or_raise(self, decision_id: int) -> DecisionLog:
         stmt = select(DecisionLog).where(DecisionLog.id == decision_id)
