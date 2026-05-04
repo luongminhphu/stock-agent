@@ -201,6 +201,16 @@ HELP_DATA: dict[str, GroupEntry] = {
                 ),
                 "example": "/replay 3",
             },
+            {
+                "usage": "/lessons [ticker] [limit]",
+                "description": (
+                    "Xem tổng hợp bài học AI đã rút ra từ các quyết định đã replay. "
+                    "Mỗi bài học kèm verdict (CORRECT/INCORRECT/MIXED), pattern phát hiện, "
+                    "và ngày ra quyết định. "
+                    "`ticker` để lọc theo mã cụ thể. `limit` tối đa 50, mặc định 10."
+                ),
+                "example": "/lessons VCB 5",
+            },
         ],
     },
     "stress_test": {
