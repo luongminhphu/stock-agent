@@ -115,8 +115,7 @@ class ReviewService:
                     error=str(exc),
                 )
 
-        # Build context lists — truyền đủ id + description để AI có thể
-        # populate AssumptionRecommendation.target_id chính xác.
+        # Build context lists with id + description so AI can populate target_id correctly.
         assumptions_ctx = [
             {"id": a.id, "description": a.description}
             for a in thesis.assumptions
@@ -146,11 +145,8 @@ class ReviewService:
             ticker=thesis.ticker,
             thesis_title=thesis.title,
             thesis_summary=thesis.summary or "",
-            assumptions=[a["description"] for a in assumptions_ctx],
             assumptions_with_ids=assumptions_ctx,
-            catalysts=[c["description"] for c in pending_catalysts_ctx],
             catalysts_with_ids=pending_catalysts_ctx,
-            triggered_catalysts=[c["description"] for c in triggered_catalysts_ctx],
             triggered_catalysts_with_ids=triggered_catalysts_ctx,
             current_price=current_price,
             entry_price=thesis.entry_price,

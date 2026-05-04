@@ -42,22 +42,20 @@ class ThesisReviewAgent:
         ticker: str,
         thesis_title: str,
         thesis_summary: str,
-        assumptions: list[str],
-        catalysts: list[str],
-        triggered_catalysts: list[str] | None = None,
+        assumptions_with_ids: list[dict[str, object]],
+        catalysts_with_ids: list[dict[str, object]],
+        triggered_catalysts_with_ids: list[dict[str, object]] | None = None,
         current_price: float | None = None,
         entry_price: float | None = None,
         target_price: float | None = None,
-        **_: object,
     ) -> ThesisReviewOutput:
         """Run a thesis review and return structured output.
 
         Args:
-            catalysts:            PENDING catalysts — chưa xảy ra, sắp tới.
-            triggered_catalysts:  TRIGGERED catalysts — đã kích hoạt/xảy ra.
-                                  Mặc định None (tương đương list rỗng).
-            assumptions_with_ids: Optional richer assumption payload from thesis segment.
-                                  Currently accepted for compatibility, not used by prompt yet.
+            assumptions_with_ids:         Active assumptions — list[{"id": int, "description": str}].
+                                          AI uses id to populate AssumptionRecommendation.target_id.
+            catalysts_with_ids:           PENDING catalysts — list[{"id": int, "description": str}].
+            triggered_catalysts_with_ids: TRIGGERED catalysts — context only, no recommendation needed.
 
         Raises:
             PerplexityError: If the API call fails after retries.
@@ -71,9 +69,9 @@ class ThesisReviewAgent:
                     ticker=ticker,
                     thesis_title=thesis_title,
                     thesis_summary=thesis_summary,
-                    assumptions=assumptions,
-                    catalysts=catalysts,
-                    triggered_catalysts=triggered_catalysts or [],
+                    assumptions_with_ids=assumptions_with_ids,
+                    catalysts_with_ids=catalysts_with_ids,
+                    triggered_catalysts_with_ids=triggered_catalysts_with_ids or [],
                     current_price=current_price,
                     entry_price=entry_price,
                     target_price=target_price,
