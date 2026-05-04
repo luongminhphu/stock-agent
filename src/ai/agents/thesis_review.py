@@ -109,7 +109,6 @@ class ThesisReviewAgent:
                 messages=messages,
                 temperature=0.1,
                 max_tokens=_MAX_TOKENS,
-                response_format={"type": "json_object"},
             )
             raw_text = self._client.extract_text(response)
             clean_text = _extract_json(raw_text)
