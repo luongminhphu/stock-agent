@@ -1,7 +1,7 @@
 /* ─── Design Tokens ──────────────────────────────────────────────────────────
    Owner: base
    Single source of truth cho toàn bộ CSS custom properties của dashboard.
-   Không chứa bất kỳ selector nào ngoài :root.
+   Không chứa bất kỳ selector nào ngoài :root và @keyframes global.
 ──────────────────────────────────────────────────────────────────────────── */
 
 :root {
@@ -25,4 +25,56 @@
   --radius-md: 18px;
   --radius-sm: 14px;
   --shadow: 0 24px 70px rgba(2, 6, 23, 0.36);
+}
+
+/* ─── Flash animations (dùng bởi animate.js → flashValue) ───────────────────
+   .flash-up   → xanh lá khi giá trị tăng
+   .flash-down → đỏ khi giá trị giảm
+   Duration 0.8s — đủ để mắt nhận ra, không gây rối
+──────────────────────────────────────────────────────────────────────────── */
+
+@keyframes flash-up {
+  0%   { color: inherit; }
+  25%  { color: var(--success); }
+  100% { color: inherit; }
+}
+
+@keyframes flash-down {
+  0%   { color: inherit; }
+  25%  { color: var(--danger); }
+  100% { color: inherit; }
+}
+
+.flash-up   { animation: flash-up   0.8s ease forwards; }
+.flash-down { animation: flash-down 0.8s ease forwards; }
+
+/* Respect prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  .flash-up,
+  .flash-down { animation: none; }
+}
+
+/* ─── KPI number state colours ───────────────────────────────────────────────
+   .kpi-risky → đỏ khi riskyTheses > 0
+   .kpi-safe  → trở về màu text mặc định khi = 0
+   Transition nhẹ để không nhảy màu đột ngột khi countUp chạy xong.
+──────────────────────────────────────────────────────────────────────────── */
+
+.kpi-risky {
+  color: var(--danger);
+  transition: color 0.3s ease;
+}
+
+.kpi-safe {
+  color: var(--text);
+  transition: color 0.3s ease;
+}
+
+/* ─── signal-card alert state (khi riskyTheses > 0) ─────────────────────────
+   Dùng border + subtle glow thay vì background loud.
+──────────────────────────────────────────────────────────────────────────── */
+
+.signal-card--alert {
+  border-color: rgba(248, 113, 113, 0.35) !important;
+  box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.15), var(--shadow);
 }
