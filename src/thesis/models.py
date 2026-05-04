@@ -11,6 +11,7 @@ import enum
 from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     Float,
     ForeignKey,
@@ -52,7 +53,7 @@ class AssumptionStatus(enum.StrEnum):
     VALID = "valid"
     INVALID = "invalid"
     UNCERTAIN = "uncertain"
-    PENDING = "pending"  # not yet assessed
+    PENDING = "pending"
 
 
 class CatalystStatus(enum.StrEnum):
@@ -107,9 +108,11 @@ class Thesis(Base):
         default=ThesisStatus.ACTIVE,
         index=True,
     )
+    score: Mapped[float | None] = mapped_column(Float, nullable=True)
     target_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     stop_loss: Mapped[float | None] = mapped_column(Float, nullable=True)
     entry_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
@@ -138,7 +141,7 @@ class Assumption(Base):
     __tablename__ = "assumptions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    thesis_id: Mapped[int] = mapped_column(ForeignKey("theses.id", ondelete="CASCADE"))
+    thesis_id: Mapped[int] = mapped_column(ForeignKey("theses.id", ondelete="CASCADE"), index=True)
     description: Mapped[str] = mapped_column(Text)
     status: Mapped[AssumptionStatus] = mapped_column(
         SAEnum(AssumptionStatus, values_callable=_enum_values),
@@ -146,6 +149,9 @@ class Assumption(Base):
         index=True,
     )
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
     thesis: Mapped[Thesis] = relationship(back_populates="assumptions")
 
@@ -154,9 +160,12 @@ class Catalyst(Base):
     __tablename__ = "catalysts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    thesis_id: Mapped[int] = mapped_column(ForeignKey("theses.id", ondelete="CASCADE"))
+    thesis_id: Mapped[int] = mapped_column(ForeignKey("theses.id", ondelete="CASCADE"), index=True)
     description: Mapped[str] = mapped_column(Text)
-    expected_by: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # DB column is expected_date (DateTime), NOT expected_by
+    expected_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[CatalystStatus] = mapped_column(
         SAEnum(CatalystStatus, values_callable=_enum_values),
         default=CatalystStatus.PENDING,
@@ -171,15 +180,18 @@ class ThesisSnapshot(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     thesis_id: Mapped[int] = mapped_column(ForeignKey("theses.id", ondelete="CASCADE"), index=True)
-    score: Mapped[float] = mapped_column(Float)
-    verdict: Mapped[ReviewVerdict] = mapped_column(
-        SAEnum(ReviewVerdict, values_callable=_enum_values)
-    )
-    summary: Mapped[str] = mapped_column(Text)
-    confidence: Mapped[float] = mapped_column(Float, default=0.5)
-    created_at: Mapped[datetime] = mapped_column(
+    # Market snapshot fields (original — 0001)
+    price_at_snapshot: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pnl_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    score_at_snapshot: Mapped[float | None] = mapped_column(Float, nullable=True)
+    snapshotted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
+    # Review-triggered snapshot fields (added in 0007)
+    score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    verdict: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    recorded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     thesis: Mapped[Thesis] = relationship(back_populates="snapshots")
 
@@ -189,13 +201,19 @@ class ThesisReview(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     thesis_id: Mapped[int] = mapped_column(ForeignKey("theses.id", ondelete="CASCADE"), index=True)
-    summary: Mapped[str] = mapped_column(Text)
     verdict: Mapped[ReviewVerdict] = mapped_column(
         SAEnum(ReviewVerdict, values_callable=_enum_values), index=True
     )
+    confidence: Mapped[float] = mapped_column(Float)
+    reasoning: Mapped[str] = mapped_column(Text)
+    risk_signals: Mapped[str | None] = mapped_column(Text, nullable=True)
+    next_watch_items: Mapped[str | None] = mapped_column(Text, nullable=True)
     reviewed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
+    reviewed_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # summary kept for backward compat with old code that sets it
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     thesis: Mapped[Thesis] = relationship(back_populates="reviews")
     recommendations: Mapped[list[ReviewRecommendation]] = relationship(
