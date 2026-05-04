@@ -43,6 +43,7 @@ class BriefingAgent:
         extra_context: str = "",
         portfolio_context: str = "",
         thesis_context: str = "",
+        past_lessons: str = "",
     ) -> BriefOutput:
         """Generate a pre-market morning brief.
 
@@ -57,6 +58,11 @@ class BriefingAgent:
                                against current prices and forces ACT_TODAY for
                                any ticker approaching thesis invalidation.
                                Empty string = skip thesis section gracefully.
+            past_lessons:      Optional formatted decision history from LessonService.
+                               When provided, AI personalises analysis by referencing
+                               the investor's own past outcomes, reinforcing successful
+                               patterns and flagging repeated loss patterns.
+                               Empty string = skip lesson section gracefully.
 
         Returns:
             Typed BriefOutput.
@@ -73,6 +79,7 @@ class BriefingAgent:
                 extra_context=extra_context,
                 portfolio_context=portfolio_context,
                 thesis_context=thesis_context,
+                past_lessons=past_lessons,
             ),
         )
 
