@@ -14,7 +14,7 @@
     <a class="skip-link" href="#main-content">Bỏ qua điều hướng</a>
     <div class="shell">
 
-      <!-- ── TOPBAR ───────────────────────────────────────────────────── -->
+      <!-- ── TOPBAR ─────────────────────────────────────────────────────── -->
       <header class="topbar">
         <div class="brand-block">
           <svg class="brand-logo" aria-label="stock-agent" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -46,7 +46,7 @@
 
       <div id="errorBanner" class="error-banner hidden" role="alert"></div>
 
-      <!-- ── COMMAND STRIP ──────────────────────────────────────────── -->
+      <!-- ── COMMAND STRIP ───────────────────────────────────────────── -->
       <section class="command-strip" aria-label="Tổng quan thị trường">
         <article class="signal-card">
           <span class="signal-label">Open theses</span>
@@ -70,7 +70,7 @@
         </article>
       </section>
 
-      <!-- ── MAIN WORKSPACE ─────────────────────────────────────────── -->
+      <!-- ── MAIN WORKSPACE ─────────────────────────────────────────────── -->
       <main class="workspace-grid" id="main-content">
 
         <!-- Priority board: thesis master list -->
@@ -143,7 +143,19 @@
         </aside>
       </main>
 
-      <!-- ── PORTFOLIO LAYER ───────────────────────────────────────────────── -->
+      <!-- ── WATCHLIST LAYER ──────────────────────────────────────────────── -->
+      <section class="panel glass watchlist-layer" aria-labelledby="watchlistTitle">
+        <div class="panel-header split-header">
+          <div>
+            <p class="eyebrow">Watchlist</p>
+            <h2 id="watchlistTitle">👁 Mã đang theo dõi</h2>
+          </div>
+          <p class="muted panel-hint">Giá thời gian thực · Nhấn Scan để phát hiện tín hiệu mới</p>
+        </div>
+        <div id="watchlistSection">Đang tải…</div>
+      </section>
+
+      <!-- ── PORTFOLIO LAYER ─────────────────────────────────────────────────── -->
       <section class="panel glass portfolio-layer" aria-labelledby="portfolioTitle">
         <div class="panel-header split-header">
           <div>
@@ -158,7 +170,7 @@
         <div id="portfolioSection">Đang tải…</div>
       </section>
 
-      <!-- ── VALIDATION LAYER ───────────────────────────────────────────────────── -->
+      <!-- ── VALIDATION LAYER ────────────────────────────────────────────────────── -->
       <section class="panel glass validation-layer backtesting-panel" aria-labelledby="backtestTitle">
         <div class="panel-header split-header">
           <div>
@@ -402,6 +414,41 @@
       </div>
     </dialog>
 
-    <script data-cfasync="false" type="module" src="/static/dashboard/js/app.js?v=5"></script>
+    <!-- ── WATCHLIST ADD MODAL ─────────────────────────────────────────────── -->
+    <dialog id="watchlistAddModal" aria-labelledby="watchlistAddModalTitle">
+      <div class="modal-inner">
+        <div class="modal-header">
+          <h2 id="watchlistAddModalTitle">Thêm mã vào Watchlist</h2>
+          <button class="modal-close" data-close="watchlistAddModal" aria-label="Đóng">&#x2715;</button>
+        </div>
+        <form id="watchlistAddForm" class="form-grid" novalidate>
+          <div class="form-field">
+            <label for="wlTickerInput">Mã cổ phiếu *</label>
+            <input
+              id="wlTickerInput"
+              name="ticker"
+              placeholder="VNM, HPG, VIC…"
+              required
+              autocomplete="off"
+              style="text-transform:uppercase;"
+            />
+          </div>
+          <div class="form-field">
+            <label for="wlNoteInput">Ghi chú (tùy chọn)</label>
+            <input
+              id="wlNoteInput"
+              name="note"
+              placeholder="VD: Chờ breakout, theo dõi KQKD Q2…"
+            />
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="ghost-btn" data-close="watchlistAddModal">Hủy</button>
+            <button type="submit" class="primary-btn">➕ Thêm vào watchlist</button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+
+    <script data-cfasync="false" type="module" src="/static/dashboard/js/app.js?v=6"></script>
   </body>
 </html>
