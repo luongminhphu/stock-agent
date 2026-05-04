@@ -20,31 +20,33 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 revision: str = "20260504_0009"
 down_revision: str = "20260504_0008"
 branch_labels: str | tuple[str, ...] | None = None
 depends_on: str | None = None
 
+# Declare enum types with create_type=False so SQLAlchemy's create_table
+# does NOT auto-emit CREATE TYPE — we manage lifecycle manually below.
+decisiontype = postgresql.ENUM(
+    "BUY", "SELL", "HOLD", "ADD", "REDUCE",
+    name="decisiontype",
+    create_type=False,
+)
+outcomeoverdict = postgresql.ENUM(
+    "CORRECT", "INCORRECT", "MIXED",
+    name="outcomeoverdict",
+    create_type=False,
+)
+
 
 def upgrade() -> None:
-    # Postgres enum types — created once; no-op on SQLite.
-    op.execute(
-        """
-        DO $$ BEGIN
-            CREATE TYPE decisiontype AS ENUM ('BUY', 'SELL', 'HOLD', 'ADD', 'REDUCE');
-        EXCEPTION WHEN duplicate_object THEN null;
-        END $$;
-        """
-    )
-    op.execute(
-        """
-        DO $$ BEGIN
-            CREATE TYPE outcomeoverdict AS ENUM ('CORRECT', 'INCORRECT', 'MIXED');
-        EXCEPTION WHEN duplicate_object THEN null;
-        END $$;
-        """
-    )
+    bind = op.get_bind()
+
+    # Create enum types only if they don't already exist (idempotent).
+    decisiontype.create(bind, checkfirst=True)
+    outcomeoverdict.create(bind, checkfirst=True)
 
     op.create_table(
         "decision_logs",
@@ -55,11 +57,7 @@ def upgrade() -> None:
         sa.Column("ticker", sa.String(20), nullable=False),
 
         # --- decision ---
-        sa.Column(
-            "decision_type",
-            sa.Enum("BUY", "SELL", "HOLD", "ADD", "REDUCE", name="decisiontype"),
-            nullable=False,
-        ),
+        sa.Column("decision_type", decisiontype, nullable=False),
         sa.Column(
             "decision_at",
             sa.DateTime(timezone=True),
@@ -76,17 +74,13 @@ def upgrade() -> None:
         sa.Column("active_signal", sa.String(100), nullable=True),
         sa.Column("brief_summary", sa.Text(), nullable=True),
 
-        # --- outcome evaluation (filled later by DecisionService.evaluate_outcome) ---
+        # --- outcome evaluation ---
         sa.Column("outcome_price", sa.Float(), nullable=True),
         sa.Column("outcome_pnl_pct", sa.Float(), nullable=True),
         sa.Column("outcome_evaluated_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column(
-            "outcome_verdict",
-            sa.Enum("CORRECT", "INCORRECT", "MIXED", name="outcomeoverdict"),
-            nullable=True,
-        ),
+        sa.Column("outcome_verdict", outcomeoverdict, nullable=True),
 
-        # --- AI lessons (filled by DecisionService.persist_lesson after ReplayAgent) ---
+        # --- AI lessons ---
         sa.Column("key_lesson", sa.Text(), nullable=True),
         sa.Column("pattern_detected", sa.String(100), nullable=True),
 
@@ -119,5 +113,7 @@ def downgrade() -> None:
     op.drop_index("ix_decision_logs_ticker", table_name="decision_logs")
     op.drop_index("ix_decision_logs_user_id", table_name="decision_logs")
     op.drop_table("decision_logs")
-    op.execute("DROP TYPE IF EXISTS outcomeoverdict")
-    op.execute("DROP TYPE IF EXISTS decisiontype")
+
+    bind = op.get_bind()
+    decisiontype.drop(bind, checkfirst=True)
+    outcomeoverdict.drop(bind, checkfirst=True)
