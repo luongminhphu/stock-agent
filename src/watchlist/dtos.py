@@ -47,7 +47,3 @@ class WatchlistItemNotFoundError(Exception):
 
 class WatchlistItemAlreadyExistsError(Exception):
     """Raised when trying to add a ticker already in the watchlist."""
-
-
-class AlertNotFoundError(Exception):
-    """Raised when an alert ID does not exist for the user."""
