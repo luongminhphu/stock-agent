@@ -12,6 +12,7 @@ import { loadThesisDetail }    from '../thesis/thesis-service.js';
 import { openEditThesisModal } from '../thesis/thesis-form.js';
 import { renderVerdicts, renderAccuracy, renderPerformance } from '../backtesting/render-backtesting.js';
 import { renderCatalystList, renderSnapshots } from '../briefing/render-brief.js';
+import { countUp, flashValue }  from '../../utils/animate.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -156,13 +157,35 @@ export async function loadBacktesting() {
 }
 
 // ---------------------------------------------------------------------------
-// KPI summary cards
+// KPI summary cards — với countUp animation + risk colour
 // ---------------------------------------------------------------------------
 export function renderSummary(s) {
   if (!s) return;
-  if (el('openTheses'))       el('openTheses').textContent       = s.open_theses ?? s.open_thesis_count ?? '—';
-  if (el('riskyTheses'))      el('riskyTheses').textContent      = s.risky_theses ?? s.risky_thesis_count ?? '—';
-  if (el('upcoming7d'))       el('upcoming7d').textContent       = s.upcoming_catalysts_7d ?? s.upcoming_7d ?? '—';
-  if (el('reviewsToday'))     el('reviewsToday').textContent     = s.reviews_today ?? s.review_count_today ?? '—';
-  if (el('totalReviewsHero')) el('totalReviewsHero').textContent = s.total_reviews ?? s.review_count_total ?? '—';
+
+  const kpis = [
+    { id: 'openTheses',       raw: s.open_theses        ?? s.open_thesis_count    },
+    { id: 'riskyTheses',      raw: s.risky_theses       ?? s.risky_thesis_count   },
+    { id: 'upcoming7d',       raw: s.upcoming_catalysts_7d ?? s.upcoming_7d       },
+    { id: 'reviewsToday',     raw: s.reviews_today      ?? s.review_count_today   },
+    { id: 'totalReviewsHero', raw: s.total_reviews      ?? s.review_count_total   },
+  ];
+
+  for (const { id, raw } of kpis) {
+    const node = el(id);
+    if (!node) continue;
+    const num = parseInt(raw, 10);
+    if (!isNaN(num)) {
+      countUp(node, num, 650);
+      flashValue(node);
+    } else {
+      node.textContent = raw ?? '—';
+    }
+  }
+
+  // Conditional risk colour: đỏ khi risky > 0
+  const riskyEl  = el('riskyTheses');
+  const riskyVal = parseInt(s.risky_theses ?? s.risky_thesis_count, 10);
+  if (riskyEl) {
+    riskyEl.closest('.signal-card')?.classList.toggle('signal-card--alert', riskyVal > 0);
+  }
 }
