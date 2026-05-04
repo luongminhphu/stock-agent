@@ -32,9 +32,10 @@
        → panel-main can't overflow the grid track and push the rail out
      - panel-main: min-width:0 + overflow:hidden guard
      - action-rail: min-width:0 guard
+     - .field-compact select: full dark-theme styling → fix bể khung statusFilter
 */
 
-/* ── SKIP LINK ─────────────────────────────────────── */
+/* ── SKIP LINK ──────────────────────────────────── */
 .skip-link {
   position: absolute;
   top: -100%;
@@ -62,14 +63,14 @@
   --panel-pad:     clamp(14px, 2vw, 20px);
 }
 
-/* ── SHELL ───────────────────────────────────────────── */
+/* ── SHELL ──────────────────────────────────────── */
 .shell {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
 }
 
-/* ── TOPBAR ──────────────────────────────────────────── */
+/* ── TOPBAR ──────────────────────────────────────── */
 .topbar {
   position: sticky;
   top: 0;
@@ -122,6 +123,95 @@
   margin-left: auto;
 }
 
+/* ── TOOLBAR: "LỌC TRẠNG THÁI" SELECT ─────────────────
+   FIX (Wave 2d bugfix): browser-native <select> không kế thừa dark theme,
+   cần override toàn bộ appearance + styling cho đúng với topbar.
+─────────────────────────────────────────────── */
+
+/* Label (đang bị hiện cùng .field — tận dụng wrapper chứa label và select) */
+.field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+}
+
+/* Label visible nhỏ trước dropdown */
+.field > span:not(.sr-only) {
+  font-size: .72rem;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* sr-only guard (trong trường hợp base.css chưa load) */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Select element — được override hoàn toàn khỏi OS native */
+.field select,
+.field-compact select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+
+  /* Visual: match .icon-btn look */
+  height: 34px;
+  padding: 0 32px 0 12px;    /* right padding nhường cho chevron SVG */
+  background-color: rgba(148, 163, 184, 0.07);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2396a7c6' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+
+  border: 1px solid var(--line);
+  border-radius: 7px;
+
+  font-size: .82rem;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--text);
+
+  cursor: pointer;
+  flex-shrink: 0;
+  min-width: 120px;
+  outline: none;
+
+  transition: background-color .18s, border-color .18s, color .18s;
+}
+
+.field select:hover,
+.field-compact select:hover {
+  background-color: rgba(148, 163, 184, 0.12);
+  border-color: var(--line-strong);
+}
+
+.field select:focus,
+.field-compact select:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.18);
+}
+
+/* Option dropdown background (Firefox + Chromium mới hỗ trợ color-scheme) */
+.field select option,
+.field-compact select option {
+  background: #1a2436;
+  color: var(--text);
+}
+
+/* ─────────────────────────────────────────────────────── */
+
 .icon-btn {
   display: inline-flex;
   align-items: center;
@@ -148,7 +238,7 @@
   background: rgba(148, 163, 184, 0.07);
 }
 
-/* ── COMMAND STRIP ───────────────────────────────────── */
+/* ── COMMAND STRIP ──────────────────────────────────── */
 .command-strip {
   /* FIX: fixed 5-col template — predictable layout at all widths ≥900px */
   /* signal-card--wide always occupies the 5th (wider) column */
@@ -195,7 +285,7 @@
 
 .signal-card--risk .signal-value { color: var(--danger); }
 
-/* ── WAVE 2c: KPI alert state + countUp flash ─────────── */
+/* ── WAVE 2c: KPI alert state + countUp flash ──────────── */
 
 /* Khi risky > 0: card đổi màu nền nhẹ + border warning */
 .signal-card--alert {
@@ -249,7 +339,7 @@
   grid-template-columns: minmax(0, 1fr) clamp(340px, 30vw, 440px);
 }
 
-/* ── PANEL MAIN (thesis board) ───────────────────────── */
+/* ── PANEL MAIN (thesis board) ──────────────────────── */
 .panel-main {
   display: flex;
   flex-direction: column;
@@ -275,7 +365,7 @@
   justify-content: center;
 }
 
-/* ── ACTION RAIL ─────────────────────────────────────── */
+/* ── ACTION RAIL ────────────────────────────────────── */
 .action-rail {
   display: flex;
   flex-direction: column;
@@ -293,19 +383,19 @@
 
 .action-panel { flex-shrink: 0; }
 
-/* ── PORTFOLIO LAYER ─────────────────────────────────── */
+/* ── PORTFOLIO LAYER ────────────────────────────────── */
 .portfolio-layer {
   padding-inline: var(--page-px);
   margin-bottom: var(--layer-gap);
 }
 
-/* ── WATCHLIST LAYER ─────────────────────────────────── */
+/* ── WATCHLIST LAYER ────────────────────────────────── */
 .watchlist-layer {
   padding-inline: var(--page-px);
   margin-bottom: var(--layer-gap);
 }
 
-/* ── VALIDATION LAYER ────────────────────────────────── */
+/* ── VALIDATION LAYER ───────────────────────────────── */
 .validation-layer {
   padding-inline: var(--page-px);
   margin-bottom: var(--layer-gap);
@@ -395,7 +485,7 @@
 .pnl-positive { color: var(--success); }
 .pnl-negative { color: var(--danger); }
 
-/* ── VERDICT BADGES ──────────────────────────────────── */
+/* ── VERDICT BADGES ─────────────────────────────────────── */
 .verdict-badge {
   display: inline-block;
   padding: 2px 10px;
@@ -410,7 +500,7 @@
 .badge-watchlist { background: rgba(148,163,184,.12); color: var(--muted); }
 .badge-unknown   { background: rgba(148,163,184,.08); color: var(--faint); }
 
-/* ── RESPONSIVE — 900px ──────────────────────────────── */
+/* ── RESPONSIVE — 900px ────────────────────────────────── */
 @media (max-width: 900px) {
   .workspace-grid,
   .workspace-grid.inspector-open {
@@ -433,7 +523,7 @@
   .signal-card--wide { grid-column: span 1; }
 }
 
-/* ── RESPONSIVE — 600px ──────────────────────────────── */
+/* ── RESPONSIVE — 600px ────────────────────────────────── */
 @media (max-width: 600px) {
   :root {
     --page-px: 14px;
@@ -449,5 +539,11 @@
   .data-table { font-size: .8rem; }
   .toolbar {
     gap: 6px;
+  }
+  /* Compact select on small screens */
+  .field select,
+  .field-compact select {
+    min-width: 90px;
+    font-size: .78rem;
   }
 }
