@@ -1,7 +1,7 @@
 """Rewrite review_recommendations schema to match current ORM model.
 
-Revision ID: 0011_rewrite_review_recommendations
-Revises: 0010_add_summary_to_thesis_reviews
+Revision ID: 20260504_0011
+Revises: 20260504_0010
 Create Date: 2026-05-04
 
 Context
@@ -32,8 +32,8 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0011_rewrite_review_recommendations"
-down_revision: str | None = "0010_add_summary_to_thesis_reviews"
+revision: str = "20260504_0011"
+down_revision: str | None = "20260504_0010"
 branch_labels: str | tuple[str, ...] | None = None
 depends_on: str | None = None
 
@@ -63,13 +63,6 @@ def upgrade() -> None:
 
     # 5. Drop orphaned enum type no longer referenced by any column
     op.execute("DROP TYPE IF EXISTS recommendationtargettype")
-
-    # 6. Reconcile status enum: add 'expired' value exists in DB type from 0002
-    #    but is not in the current RecommendationStatus StrEnum.
-    #    We leave the PG enum type as-is (extra value is harmless) to avoid
-    #    a costly ALTER TYPE … RENAME + data migration.  The ORM simply never
-    #    writes 'expired', and any legacy rows with that value are surfaced as
-    #    their raw string — acceptable for now.
 
 
 def downgrade() -> None:
