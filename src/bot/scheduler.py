@@ -87,10 +87,16 @@ class BriefingScheduler:
 
     @tasks.loop(time=_MORNING_TIME)
     async def _morning_task(self) -> None:
+        # discord.py fires tasks.loop(time=...) every day including weekends.
+        if datetime.datetime.now(tz=datetime.UTC).weekday() >= 5:
+            return
         await self._send_brief(phase="morning")
 
     @tasks.loop(time=_EOD_TIME)
     async def _eod_task(self) -> None:
+        # discord.py fires tasks.loop(time=...) every day including weekends.
+        if datetime.datetime.now(tz=datetime.UTC).weekday() >= 5:
+            return
         await self._send_brief(phase="eod")
 
     async def _send_brief(self, phase: str) -> None:
