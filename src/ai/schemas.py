@@ -441,3 +441,99 @@ class PreTradeCheckOutput(BaseModel):
         if not isinstance(v, list):
             return []
         return v  # type: ignore[return-value]
+
+
+# ---------------------------------------------------------------------------
+# Thesis Stress-Test  (used by StressTestAgent)
+# ---------------------------------------------------------------------------
+
+
+class ThreatLevel(StrEnum):
+    INTACT   = "INTACT"    # Assumption vẫn còn hiệu lực
+    WEAKENED = "WEAKENED"  # Đang bị đe dọa nhưng chưa vỡ
+    BROKEN   = "BROKEN"    # Assumption đã bị phủ nhận bởi thực tế
+
+
+class ThreatenedAssumption(BaseModel):
+    """Kết quả AI stress-test một assumption cụ thể.
+
+    assumption_id khớp với Assumption.id trong DB (0 nếu assumption
+    là free-text không có ID — e.g. từ thesis không có components).
+    """
+
+    assumption_id: int = Field(
+        default=0,
+        description="Assumption.id trong DB. 0 nếu không có ID.",
+    )
+    description: str = Field(description="Nội dung assumption đang bị test")
+    threat_level: ThreatLevel
+    evidence: str = Field(
+        description="Bằng chứng cụ thể: giá, tin tức, số liệu macro đang mâu thuẫn"
+    )
+    counter_argument: str = Field(
+        description="Counter-argument mạnh nhất AI tìm được để phủ nhận assumption này"
+    )
+
+
+class StressTestOutput(BaseModel):
+    """Structured output from StressTestAgent.
+
+    Read-only — StressTestService KHÔNG persist output này.
+    Mọi thay đổi thesis phải qua user confirm.
+    """
+
+    ticker: str
+    thesis_title: str
+    verdict: Verdict  # Reuse: BULLISH=thesis còn mạnh, BEARISH=thesis đang vỡ, NEUTRAL=mixed
+    invalidation_probability: float = Field(
+        ge=0.0, le=1.0,
+        description=(
+            "Xác suất thesis bị invalidate trong 3-6 tháng tới. "
+            "Derived từ tỷ lệ BROKEN + 0.5*WEAKENED assumptions."
+        ),
+    )
+    confidence: float = Field(ge=0.0, le=1.0)
+    stress_scenario: str = Field(
+        description=(
+            "Scenario macro AI dùng để stress-test. "
+            "VD: 'FED tăng lãi suất thêm 50bps', 'NIM ngân hàng thu hẹp do cạnh tranh'"
+        )
+    )
+    threatened_assumptions: list[ThreatenedAssumption] = Field(
+        default_factory=list,
+        description="Các assumption bị WEAKENED hoặc BROKEN, theo thứ tự threat_level giảm dần",
+    )
+    surviving_assumptions: list[str] = Field(
+        default_factory=list,
+        description="Các assumption vẫn INTACT — lý do thesis chưa bị invalidate hoàn toàn",
+    )
+    macro_risks: list[str] = Field(
+        default_factory=list,
+        description="Rủi ro vĩ mô / ngành đang đe dọa thesis, ngoài assumptions cụ thể",
+    )
+    suggested_triggers_to_watch: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Trigger cụ thể cần theo dõi để biết khi nào thesis thực sự bị invalidate. "
+            "VD: 'NIM VCB giảm dưới 3.2% trong Q2 2026'"
+        ),
+    )
+    reasoning: str = Field(description="Lý giải tổng thể của AI về kết quả stress-test")
+
+    @field_validator("threatened_assumptions", mode="before")
+    @classmethod
+    def ensure_threatened_list(cls, v: object) -> list[object]:
+        if not isinstance(v, list):
+            return []
+        return v  # type: ignore[return-value]
+
+    @field_validator(
+        "surviving_assumptions", "macro_risks", "suggested_triggers_to_watch", mode="before"
+    )
+    @classmethod
+    def ensure_str_list(cls, v: object) -> list[object]:
+        if isinstance(v, str):
+            return [v]
+        if not isinstance(v, list):
+            return []
+        return v  # type: ignore[return-value]

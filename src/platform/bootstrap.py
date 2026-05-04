@@ -23,6 +23,7 @@ _thesis_suggest_agent: object | None = None
 _briefing_agent: object | None = None
 _why_agent: object | None = None
 _pretrade_agent: object | None = None
+_stress_test_agent: object | None = None
 _snapshot_scheduler: object | None = None
 _pnl_service: object | None = None
 
@@ -33,7 +34,7 @@ async def bootstrap() -> None:
 
     global _quote_service, _ohlcv_service, _perplexity_client, _thesis_review_agent
     global _thesis_suggest_agent, _briefing_agent, _why_agent, _pretrade_agent
-    global _snapshot_scheduler, _pnl_service
+    global _stress_test_agent, _snapshot_scheduler, _pnl_service
 
     if _quote_service is None:
         from src.market.adapters.factory import build_adapter
@@ -86,6 +87,12 @@ async def bootstrap() -> None:
         _pretrade_agent = PreTradeAgent(client=_perplexity_client)  # type: ignore[arg-type]
         logger.info("platform.bootstrap.pretrade_agent_ready")
 
+    if _stress_test_agent is None:
+        from src.ai.agents.stress_test import StressTestAgent
+
+        _stress_test_agent = StressTestAgent(client=_perplexity_client)  # type: ignore[arg-type]
+        logger.info("platform.bootstrap.stress_test_agent_ready")
+
     # PnlService depends on quote_service — init last
     if _pnl_service is None:
         try:
@@ -105,10 +112,7 @@ async def bootstrap() -> None:
 
 
 async def shutdown() -> None:
-    """Graceful shutdown — close long-lived clients.
-
-    Call on FastAPI lifespan teardown and bot on_close.
-    """
+    """Graceful shutdown — close long-lived clients."""
     global _perplexity_client
     if _perplexity_client is not None:
         from src.ai.client import PerplexityClient
@@ -122,7 +126,7 @@ def reset_singletons() -> None:
     """Reset all singletons — for use in tests only."""
     global _quote_service, _ohlcv_service, _perplexity_client, _thesis_review_agent
     global _thesis_suggest_agent, _briefing_agent, _why_agent, _pretrade_agent
-    global _snapshot_scheduler, _pnl_service
+    global _stress_test_agent, _snapshot_scheduler, _pnl_service
     _quote_service = None
     _ohlcv_service = None
     _perplexity_client = None
@@ -131,6 +135,7 @@ def reset_singletons() -> None:
     _briefing_agent = None
     _why_agent = None
     _pretrade_agent = None
+    _stress_test_agent = None
     _snapshot_scheduler = None
     _pnl_service = None
 
@@ -183,19 +188,19 @@ def get_pretrade_agent() -> object:
     return _pretrade_agent
 
 
-def get_pnl_service() -> object | None:
-    """Return PnlService singleton or None if not available.
+def get_stress_test_agent() -> object:
+    if _stress_test_agent is None:
+        raise RuntimeError("StressTestAgent not initialised — call bootstrap() first.")
+    return _stress_test_agent
 
-    Callers must handle None gracefully — portfolio module is optional.
-    """
+
+def get_pnl_service() -> object | None:
+    """Return PnlService singleton or None if not available."""
     return _pnl_service
 
 
 def get_snapshot_scheduler() -> object:
-    """Returns the SnapshotScheduler singleton (market segment).
-
-    Only used by bot._start_snapshot_scheduler(); not needed by API.
-    """
+    """Returns the SnapshotScheduler singleton (market segment)."""
     global _snapshot_scheduler
     if _snapshot_scheduler is None:
         from src.market.snapshot_scheduler import SnapshotScheduler

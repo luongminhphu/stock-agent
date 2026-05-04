@@ -53,11 +53,6 @@ def create_bot() -> commands.Bot:
 
 
 async def _sync_tree(bot: commands.Bot) -> None:
-    """Sync slash commands.
-
-    Guild sync = instant (dùng khi DISCORD_GUILD_ID được set).
-    Global sync = ~1 giờ để Discord propagate (fallback khi không có guild ID).
-    """
     if settings.discord_guild_id:
         guild = discord.Object(id=int(settings.discord_guild_id))
         bot.tree.copy_global_to(guild=guild)
@@ -76,6 +71,7 @@ async def _register_cogs(bot: commands.Bot) -> None:
     from src.bot.commands.market import MarketCog
     from src.bot.commands.portfolio import PortfolioCog
     from src.bot.commands.pretrade import PretradeCog
+    from src.bot.commands.stress_test import StressTestCog
     from src.bot.commands.thesis_crud import ThesisCrudCog
     from src.bot.commands.thesis_review import ThesisReviewCog
     from src.bot.commands.watchlist import WatchlistCog
@@ -91,192 +87,94 @@ async def _register_cogs(bot: commands.Bot) -> None:
     await bot.add_cog(PretradeCog(bot))
     await bot.add_cog(ConvictionTimelineCog(bot))
     await bot.add_cog(PortfolioCog(bot))
+    await bot.add_cog(StressTestCog(bot))
     logger.info(
         "bot.cogs_loaded",
         cogs=[
-            "WatchlistCog",
-            "ThesisCrudCog",
-            "ThesisReviewCog",
-            "MarketCog",
-            "BriefingCog",
-            "HelpCog",
-            "WhyCog",
-            "PretradeCog",
-            "ConvictionTimelineCog",
-            "PortfolioCog",
+            "WatchlistCog", "ThesisCrudCog", "ThesisReviewCog", "MarketCog",
+            "BriefingCog", "HelpCog", "WhyCog", "PretradeCog",
+            "ConvictionTimelineCog", "PortfolioCog", "StressTestCog",
         ],
     )
 
 
 def _start_briefing_scheduler(bot: commands.Bot) -> None:
-    """Attach BriefingScheduler if all three channel/user settings are configured."""
     if not settings.briefing_scheduler_enabled:
-        logger.info(
-            "bot.briefing_scheduler.skipped",
-            reason="morning_channel_id/eod_channel_id/scheduler_user_id not configured",
-        )
+        logger.info("bot.briefing_scheduler.skipped", reason="morning_channel_id/eod_channel_id/scheduler_user_id not configured")
         return
-
     from src.bot.scheduler import BriefingScheduler
-
     scheduler = BriefingScheduler(client=bot)
     scheduler.start()
-    logger.info(
-        "bot.briefing_scheduler.started",
-        morning_channel=settings.morning_channel_id,
-        eod_channel=settings.eod_channel_id,
-        user=settings.scheduler_user_id,
-    )
+    logger.info("bot.briefing_scheduler.started", morning_channel=settings.morning_channel_id, eod_channel=settings.eod_channel_id, user=settings.scheduler_user_id)
 
 
 def _start_scan_scheduler(bot: commands.Bot) -> None:
-    """Attach WatchlistScanScheduler if required settings are configured."""
     if settings.environment == "test":
         logger.info("bot.scan_scheduler.skipped", reason="test environment")
         return
-
     user_id = getattr(settings, "scheduler_user_id", None)
     channel_id = getattr(settings, "morning_channel_id", None)
     if not user_id or not channel_id:
-        logger.info(
-            "bot.scan_scheduler.skipped",
-            reason="scheduler_user_id or morning_channel_id not configured",
-        )
+        logger.info("bot.scan_scheduler.skipped", reason="scheduler_user_id or morning_channel_id not configured")
         return
-
     from src.bot.scheduler import WatchlistScanScheduler
-
     scheduler = WatchlistScanScheduler(client=bot)
     scheduler.start()
-    logger.info(
-        "bot.scan_scheduler.started",
-        interval_minutes=5,
-        channel=channel_id,
-        user=user_id,
-    )
+    logger.info("bot.scan_scheduler.started", interval_minutes=5, channel=channel_id, user=user_id)
 
 
 def _start_thesis_maintenance_scheduler(bot: commands.Bot) -> None:
-    """Attach ThesisMaintenanceScheduler if required settings are configured.
-
-    Runs at 08:30 ICT on weekdays — 15 minutes before morning brief.
-    Requires same settings as briefing scheduler: scheduler_user_id + morning_channel_id.
-    Skipped silently in test environment.
-    """
     if settings.environment == "test":
         logger.info("bot.thesis_maintenance_scheduler.skipped", reason="test environment")
         return
-
     if not settings.briefing_scheduler_enabled:
-        logger.info(
-            "bot.thesis_maintenance_scheduler.skipped",
-            reason="scheduler_user_id or morning_channel_id not configured",
-        )
+        logger.info("bot.thesis_maintenance_scheduler.skipped", reason="scheduler_user_id or morning_channel_id not configured")
         return
-
     from src.bot.scheduler import ThesisMaintenanceScheduler
-
     scheduler = ThesisMaintenanceScheduler(client=bot)
     scheduler.start()
-    logger.info(
-        "bot.thesis_maintenance_scheduler.started",
-        time_ict="08:30",
-        channel=settings.morning_channel_id,
-        user=settings.scheduler_user_id,
-    )
+    logger.info("bot.thesis_maintenance_scheduler.started", time_ict="08:30", channel=settings.morning_channel_id, user=settings.scheduler_user_id)
 
 
 def _start_drift_scheduler(bot: commands.Bot) -> None:
-    """Attach ThesisDriftScheduler — triggers AI review when price drifts ±threshold%.
-
-    Runs every 15 min during market hours (09:00–15:00 ICT, weekdays).
-    Requires: scheduler_user_id + morning_channel_id (same as scan scheduler).
-    Threshold and cooldown configurable via:
-        THESIS_DRIFT_THRESHOLD_PCT  (default 5.0)
-        THESIS_DRIFT_COOLDOWN_HOURS (default 4.0)
-    Skipped silently in test environment.
-    """
     if settings.environment == "test":
         logger.info("bot.drift_scheduler.skipped", reason="test environment")
         return
-
     user_id = getattr(settings, "scheduler_user_id", None)
     channel_id = getattr(settings, "morning_channel_id", None)
     if not user_id or not channel_id:
-        logger.info(
-            "bot.drift_scheduler.skipped",
-            reason="scheduler_user_id or morning_channel_id not configured",
-        )
+        logger.info("bot.drift_scheduler.skipped", reason="scheduler_user_id or morning_channel_id not configured")
         return
-
     from src.bot.scheduler import ThesisDriftScheduler
-
     scheduler = ThesisDriftScheduler(client=bot)
     scheduler.start()
-    logger.info(
-        "bot.drift_scheduler.started",
-        interval_minutes=15,
-        threshold_pct=settings.thesis_drift_threshold_pct,
-        cooldown_hours=settings.thesis_drift_cooldown_hours,
-        channel=channel_id,
-        user=user_id,
-    )
+    logger.info("bot.drift_scheduler.started", interval_minutes=15, threshold_pct=settings.thesis_drift_threshold_pct, cooldown_hours=settings.thesis_drift_cooldown_hours, channel=channel_id, user=user_id)
 
 
 def _start_snapshot_scheduler() -> None:
-    """Start the daily thesis snapshot job (market segment).
-
-    Runs at 15:10 ICT on weekdays regardless of briefing config.
-    Guarded: skips gracefully in test/mock environment.
-    """
     from src.platform.config import settings
-
     if settings.environment == "test":
         logger.info("bot.snapshot_scheduler.skipped", reason="test environment")
         return
-
     from src.market.snapshot_scheduler import SnapshotScheduler
     from src.platform.bootstrap import get_snapshot_scheduler
-
     scheduler: SnapshotScheduler = get_snapshot_scheduler()  # type: ignore[assignment]
     scheduler.start()
     logger.info("bot.snapshot_scheduler.started", time_ict="15:10")
 
 
 def _start_reminder_scheduler(bot: commands.Bot) -> None:
-    """Attach ReminderScheduler — fires watchlist reminders at 08:00 ICT.
-
-    Tasks:
-        _daily_task  — every weekday 08:00 ICT, DAILY reminders.
-        _weekly_task — Mondays 08:00 ICT, WEEKLY reminders.
-
-    ON_SIGNAL reminders are NOT handled here — they fire via
-    WatchlistScanScheduler → ScanService → ReminderService.list_due_for_signal().
-
-    Requires morning_channel_id (same channel as scan/brief notifications).
-    Skipped silently in test environment.
-    """
     if settings.environment == "test":
         logger.info("bot.reminder_scheduler.skipped", reason="test environment")
         return
-
     channel_id = getattr(settings, "morning_channel_id", None)
     if not channel_id:
-        logger.info(
-            "bot.reminder_scheduler.skipped",
-            reason="morning_channel_id not configured",
-        )
+        logger.info("bot.reminder_scheduler.skipped", reason="morning_channel_id not configured")
         return
-
     from src.bot.scheduler import ReminderScheduler
-
     scheduler = ReminderScheduler(client=bot)
     scheduler.start()
-    logger.info(
-        "bot.reminder_scheduler.started",
-        time_ict="08:00",
-        channel=channel_id,
-    )
+    logger.info("bot.reminder_scheduler.started", time_ict="08:00", channel=channel_id)
 
 
 def run() -> None:
