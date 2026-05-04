@@ -8,6 +8,7 @@ All domain operations are delegated to segment services.
 from __future__ import annotations
 
 import asyncio
+import traceback as tb
 
 import discord
 from discord.ext import commands
@@ -32,10 +33,9 @@ def create_bot() -> commands.Bot:
 
     @bot.event
     async def on_ready() -> None:
-        # Guard: on_ready can fire multiple times on gateway reconnects.
-        # Running bootstrap + cog registration + tree sync more than once
-        # causes duplicate cog errors and — worse — an empty tree sync that
-        # wipes all slash commands from Discord, producing CommandNotFound.
+        # Guard: set flag FIRST before any work so that gateway reconnects
+        # never retry a failing init loop (would cause duplicate cog errors
+        # and empty tree syncs wiping all slash commands from Discord).
         if getattr(bot, "_stock_agent_ready", False):
             logger.warning(
                 "bot.on_ready.skip",
@@ -45,25 +45,39 @@ def create_bot() -> commands.Bot:
             return
         bot._stock_agent_ready = True  # type: ignore[attr-defined]
 
-        await bootstrap()
-        await _register_cogs(bot)
-        _start_briefing_scheduler(bot)
-        _start_scan_scheduler(bot)
-        _start_thesis_maintenance_scheduler(bot)
-        _start_drift_scheduler(bot)
-        _start_snapshot_scheduler()
-        _start_reminder_scheduler(bot)
-        _start_decision_replay_scheduler(bot)
-        await _sync_tree(bot)
-        logger.info(
-            "bot.ready",
-            user=str(bot.user),
-            guild_count=len(bot.guilds),
-        )
+        try:
+            await bootstrap()
+            await _register_cogs(bot)
+            _start_briefing_scheduler(bot)
+            _start_scan_scheduler(bot)
+            _start_thesis_maintenance_scheduler(bot)
+            _start_drift_scheduler(bot)
+            _start_snapshot_scheduler()
+            _start_reminder_scheduler(bot)
+            _start_decision_replay_scheduler(bot)
+            await _sync_tree(bot)
+            logger.info(
+                "bot.ready",
+                user=str(bot.user),
+                guild_count=len(bot.guilds),
+            )
+        except Exception as exc:
+            # Log full traceback so the real root cause is never swallowed
+            # by the structured JSON logger truncating the message field.
+            logger.exception(
+                "bot.on_ready.failed",
+                error=str(exc),
+                traceback=tb.format_exc(),
+            )
+            raise
 
     @bot.event
     async def on_error(event: str, *args: object, **kwargs: object) -> None:
-        logger.exception("bot.event_error", event_name=event)
+        logger.error(
+            "bot.event_error",
+            event_name=event,
+            traceback=tb.format_exc(),
+        )
 
     return bot
 
