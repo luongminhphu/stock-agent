@@ -11,6 +11,7 @@ Registered tasks:
     ThesisDriftScheduler.drift_task            — every 15 min, weekdays 09:00–15:00 ICT
     ReminderScheduler.daily_task               — weekdays 08:00 ICT (DAILY reminders)
     ReminderScheduler.weekly_task              — Mondays 08:00 ICT (WEEKLY reminders)
+    DecisionReplayScheduler.replay_task        — weekdays 15:15 ICT (after market close)
 
 Note:
     MORNING_CHANNEL_ID and EOD_CHANNEL_ID must be set in settings.
@@ -31,6 +32,7 @@ from src.platform.bootstrap import (
     get_briefing_agent,
     get_pnl_service,
     get_quote_service,
+    get_replay_agent,
     get_thesis_review_agent,
 )
 from src.platform.config import settings
@@ -630,6 +632,182 @@ class ReminderScheduler:
 
     @_weekly_task.before_loop
     async def _before_weekly(self) -> None:
+        await self._client.wait_until_ready()
+
+
+# ---------------------------------------------------------------------------
+# DecisionReplayScheduler
+# ---------------------------------------------------------------------------
+
+_REPLAY_TIME = datetime.time(hour=8, minute=15, tzinfo=datetime.UTC)  # 15:15 ICT
+
+
+class DecisionReplayScheduler:
+    """Auto-evaluate decision outcomes and run AI replay after market close.
+
+    Owner: bot segment (adapter only).
+    All domain logic lives in thesis.DecisionService and ai.ReplayAgent.
+
+    Flow (runs weekdays at 15:15 ICT):
+        1. DecisionService.list_pending_outcome_evaluations()
+           — find DecisionLogs that reached their review horizon with no outcome yet.
+        2. For each pending decision:
+           a. evaluate_outcome(id)   — compute realized PnL + assign verdict (no AI).
+           b. analyze_decision(id)   — call ReplayAgent for key_lesson + pattern.
+        3. Notify Discord with a summary embed.
+
+    Guardrails:
+        - evaluate_outcome failure skips analyze_decision for that row (independent sessions).
+        - analyze_decision failure does not block the embed — verdict is still shown.
+        - Empty result — no Discord message sent.
+        - Weekends skipped.
+    """
+
+    def __init__(self, client: discord.Client) -> None:
+        self._client = client
+
+    def start(self) -> None:
+        self._replay_task.start()
+        logger.info("scheduler.decision_replay.started", time_ict="15:15")
+
+    def stop(self) -> None:
+        self._replay_task.cancel()
+        logger.info("scheduler.decision_replay.stopped")
+
+    @tasks.loop(time=_REPLAY_TIME)
+    async def _replay_task(self) -> None:
+        now_utc = datetime.datetime.now(tz=datetime.UTC)
+        if now_utc.weekday() >= 5:
+            return
+
+        user_id = getattr(settings, "scheduler_user_id", None)
+        channel_id = getattr(settings, "morning_channel_id", None)
+        if not user_id or not channel_id:
+            logger.warning(
+                "scheduler.decision_replay.skipped",
+                reason="scheduler_user_id or morning_channel_id not configured",
+            )
+            return
+
+        from src.thesis.decision_service import DecisionService
+
+        # ── Step 1: Find decisions that reached their horizon ──
+        try:
+            async with AsyncSessionLocal() as session:
+                svc = DecisionService(
+                    session=session,
+                    quote_service=get_quote_service(),
+                    replay_agent=get_replay_agent(),
+                )
+                pending = await svc.list_pending_outcome_evaluations()
+        except Exception as exc:
+            logger.error("scheduler.decision_replay.list_failed", error=str(exc))
+            return
+
+        if not pending:
+            logger.debug("scheduler.decision_replay.none_pending")
+            return
+
+        logger.info(
+            "scheduler.decision_replay.pending_found",
+            count=len(pending),
+            decision_ids=[d.id for d in pending],
+        )
+
+        # ── Step 2: Evaluate + Replay each decision (independent sessions) ──
+        results: list[dict] = []
+        for decision in pending:
+            # 2a: evaluate realized outcome (no AI)
+            try:
+                async with AsyncSessionLocal() as session:
+                    svc = DecisionService(
+                        session=session,
+                        quote_service=get_quote_service(),
+                    )
+                    evaluated = await svc.evaluate_outcome(decision.id)
+                    await session.commit()
+                logger.info(
+                    "scheduler.decision_replay.evaluated",
+                    decision_id=evaluated.id,
+                    ticker=evaluated.ticker,
+                    pnl_pct=evaluated.outcome_pnl_pct,
+                    verdict=evaluated.outcome_verdict,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "scheduler.decision_replay.evaluate_failed",
+                    decision_id=decision.id,
+                    ticker=decision.ticker,
+                    error=str(exc),
+                )
+                continue
+
+            # 2b: AI replay analysis
+            replay_result = None
+            try:
+                async with AsyncSessionLocal() as session:
+                    svc = DecisionService(
+                        session=session,
+                        quote_service=get_quote_service(),
+                        replay_agent=get_replay_agent(),
+                    )
+                    envelope = await svc.analyze_decision(decision.id)
+                    replay_result = envelope.replay
+            except Exception as exc:
+                logger.warning(
+                    "scheduler.decision_replay.analyze_failed",
+                    decision_id=decision.id,
+                    ticker=decision.ticker,
+                    error=str(exc),
+                )
+
+            results.append({
+                "decision": evaluated,
+                "replay": replay_result,
+            })
+
+        if not results:
+            return
+
+        # ── Step 3: Discord notify ──
+        channel = self._client.get_channel(int(channel_id))
+        if channel is None:
+            logger.warning("scheduler.decision_replay.channel_not_found", channel_id=channel_id)
+            return
+
+        verdict_icon = {"CORRECT": "✅", "INCORRECT": "❌", "MIXED": "🟡"}
+        lines: list[str] = []
+        for item in results:
+            d = item["decision"]
+            r = item["replay"]
+            icon = verdict_icon.get(str(d.outcome_verdict).upper(), "⚪")
+            pnl_str = f"{d.outcome_pnl_pct:+.1f}%" if d.outcome_pnl_pct is not None else "N/A"
+            line = f"{icon} **{d.ticker}** {d.decision_type} → {d.outcome_verdict} ({pnl_str})"
+            if r and r.key_lesson:
+                line += f"\n    💡 _{r.key_lesson}_"
+            if r and r.pattern_detected:
+                line += f"\n    🔍 Pattern: `{r.pattern_detected}`"
+            lines.append(line)
+
+        ict_time = (now_utc + datetime.timedelta(hours=7)).strftime("%H:%M ICT")
+        embed = discord.Embed(
+            title="🔄 Decision Replay — Kết quả sau horizon",
+            description="\n\n".join(lines),
+            color=0x4F98A3,
+        )
+        embed.set_footer(text=f"{len(results)} quyết định được đánh giá lúc {ict_time}")
+
+        try:
+            await channel.send(embed=embed)  # type: ignore[union-attr]
+            logger.info(
+                "scheduler.decision_replay.notified",
+                count=len(results),
+            )
+        except Exception as exc:
+            logger.error("scheduler.decision_replay.notify_failed", error=str(exc))
+
+    @_replay_task.before_loop
+    async def _before_replay(self) -> None:
         await self._client.wait_until_ready()
 
 
