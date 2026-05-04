@@ -38,6 +38,7 @@ from src.platform.bootstrap import (
 from src.platform.config import settings
 from src.platform.db import AsyncSessionLocal
 from src.platform.logging import get_logger
+from src.platform.scheduler_monitor import SchedulerMonitor, get_monitor
 from src.watchlist.service import WatchlistService
 
 logger = get_logger(__name__)
@@ -72,8 +73,9 @@ _EOD_TIME     = datetime.time(hour=8, minute=5,  tzinfo=datetime.UTC)  # 15:05 I
 class BriefingScheduler:
     """Attach to a discord.Client after login."""
 
-    def __init__(self, client: discord.Client) -> None:
+    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
         self._client = client
+        self._monitor = monitor or get_monitor()
 
     def start(self) -> None:
         self._morning_task.start()
@@ -87,19 +89,18 @@ class BriefingScheduler:
 
     @tasks.loop(time=_MORNING_TIME)
     async def _morning_task(self) -> None:
-        # discord.py fires tasks.loop(time=...) every day including weekends.
         if datetime.datetime.now(tz=datetime.UTC).weekday() >= 5:
             return
         await self._send_brief(phase="morning")
 
     @tasks.loop(time=_EOD_TIME)
     async def _eod_task(self) -> None:
-        # discord.py fires tasks.loop(time=...) every day including weekends.
         if datetime.datetime.now(tz=datetime.UTC).weekday() >= 5:
             return
         await self._send_brief(phase="eod")
 
     async def _send_brief(self, phase: str) -> None:
+        task_name = f"briefing.{phase}"
         channel_id = getattr(
             settings, "morning_channel_id" if phase == "morning" else "eod_channel_id", None
         )
@@ -124,7 +125,7 @@ class BriefingScheduler:
                     watchlist_service=WatchlistService(session=session),
                     quote_service=get_quote_service(),
                     briefing_agent=get_briefing_agent(),
-                    pnl_service=get_pnl_service(),  # None-safe: BriefingService handles gracefully
+                    pnl_service=get_pnl_service(),
                     session=session,
                 )
                 if phase == "morning":
@@ -136,9 +137,11 @@ class BriefingScheduler:
             embed = build_brief_embed(brief, phase=phase)
             await channel.send(embed=embed)  # type: ignore[union-attr]
             logger.info("scheduler.briefing.sent", phase=phase, channel_id=channel_id)
+            await self._monitor.record_success(task_name)
 
         except Exception as exc:
             logger.error("scheduler.briefing.error", phase=phase, error=str(exc))
+            await self._monitor.record_failure(task_name, exc)
 
 
 # ---------------------------------------------------------------------------
@@ -158,8 +161,9 @@ class WatchlistScanScheduler:
     - Reuses morning_channel_id + scheduler_user_id from settings.
     """
 
-    def __init__(self, client: discord.Client) -> None:
+    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
         self._client = client
+        self._monitor = monitor or get_monitor()
 
     def start(self) -> None:
         self._scan_task.start()
@@ -175,6 +179,7 @@ class WatchlistScanScheduler:
         if not _in_market_hours(now_utc):
             return
 
+        task_name = "watchlist.scan"
         user_id = getattr(settings, "scheduler_user_id", None)
         channel_id = getattr(settings, "morning_channel_id", None)
         if not user_id or not channel_id:
@@ -196,6 +201,7 @@ class WatchlistScanScheduler:
                 await session.commit()
 
             if not result.signals and not result.on_signal_reminders:
+                await self._monitor.record_success(task_name)
                 return
 
             channel = self._client.get_channel(int(channel_id))
@@ -235,9 +241,11 @@ class WatchlistScanScheduler:
                 triggered=result.triggered_count,
                 on_signal_reminders=reminder_count,
             )
+            await self._monitor.record_success(task_name)
 
         except Exception as exc:
             logger.error("scheduler.scan.error", error=str(exc))
+            await self._monitor.record_failure(task_name, exc)
 
     @_scan_task.before_loop
     async def _before_scan(self) -> None:
@@ -264,8 +272,9 @@ class ThesisMaintenanceScheduler:
     fail không rollback bước 1.
     """
 
-    def __init__(self, client: discord.Client) -> None:
+    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
         self._client = client
+        self._monitor = monitor or get_monitor()
 
     def start(self) -> None:
         self._maintenance_task.start()
@@ -281,6 +290,7 @@ class ThesisMaintenanceScheduler:
         if now_utc.weekday() >= 5:
             return
 
+        task_name = "thesis.maintenance"
         user_id = getattr(settings, "scheduler_user_id", None)
         channel_id = getattr(settings, "morning_channel_id", None)
         if not user_id:
@@ -307,6 +317,8 @@ class ThesisMaintenanceScheduler:
             )
         except Exception as exc:
             logger.error("scheduler.thesis_maintenance.expire_error", error=str(exc))
+            await self._monitor.record_failure(task_name, exc)
+            return
 
         # ── Step 2: AI review for stale theses ──
         try:
@@ -329,6 +341,10 @@ class ThesisMaintenanceScheduler:
             )
         except Exception as exc:
             logger.error("scheduler.thesis_maintenance.review_error", error=str(exc))
+            await self._monitor.record_failure(task_name, exc)
+            return
+
+        await self._monitor.record_success(task_name)
 
         # ── Step 3: Discord notify — presentation delegated to thesis_embeds ──
         if not channel_id or (expired_count == 0 and not reviews):
@@ -375,14 +391,11 @@ class ThesisDriftScheduler:
 
     Cooldown is enforced inside DriftService (default 4h) — ReviewService is
     never called twice for the same thesis within the cooldown window.
-
-    Threshold and cooldown are configurable via settings:
-        THESIS_DRIFT_THRESHOLD_PCT  (default 5.0)
-        THESIS_DRIFT_COOLDOWN_HOURS (default 4.0)
     """
 
-    def __init__(self, client: discord.Client) -> None:
+    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
         self._client = client
+        self._monitor = monitor or get_monitor()
 
     def start(self) -> None:
         self._drift_task.start()
@@ -403,6 +416,7 @@ class ThesisDriftScheduler:
         if not _in_market_hours(now_utc):
             return
 
+        task_name = "thesis.drift"
         user_id = getattr(settings, "scheduler_user_id", None)
         channel_id = getattr(settings, "morning_channel_id", None)
         if not user_id or not channel_id:
@@ -428,6 +442,7 @@ class ThesisDriftScheduler:
 
             if not signals:
                 logger.debug("scheduler.drift.no_signals", user_id=user_id)
+                await self._monitor.record_success(task_name)
                 return
 
             logger.info(
@@ -437,7 +452,7 @@ class ThesisDriftScheduler:
             )
 
             # ── Step 2: AI review per drifted thesis (sequential, rate-limit safe) ──
-            reviews: list[tuple] = []  # (DriftSignal, ThesisReview)
+            reviews: list[tuple] = []
             for signal in signals:
                 try:
                     async with AsyncSessionLocal() as session:
@@ -499,9 +514,11 @@ class ThesisDriftScheduler:
             )
             await channel.send(embed=embed)  # type: ignore[union-attr]
             logger.info("scheduler.drift.notified", reviewed=len(reviews))
+            await self._monitor.record_success(task_name)
 
         except Exception as exc:
             logger.error("scheduler.drift.error", error=str(exc))
+            await self._monitor.record_failure(task_name, exc)
 
     @_drift_task.before_loop
     async def _before_drift(self) -> None:
@@ -517,24 +534,11 @@ _REMINDER_WEEKLY_TIME = datetime.time(hour=1, minute=0, tzinfo=datetime.UTC)   #
 
 
 class ReminderScheduler:
-    """Fire watchlist reminders via Discord based on investor-set frequency.
+    """Fire watchlist reminders via Discord based on investor-set frequency."""
 
-    Owner: bot segment (adapter only).
-    Domain logic lives entirely in ReminderService — this class only:
-        1. Calls ReminderService.list_due(frequencies=[...])
-        2. Sends one Discord embed per due reminder
-        3. Calls ReminderService.mark_sent(reminder) after dispatching
-
-    Tasks:
-        _daily_task  — weekdays 08:00 ICT, handles DAILY reminders.
-        _weekly_task — Mondays  08:00 ICT, handles WEEKLY reminders.
-
-    ON_SIGNAL reminders are NOT handled here — they are triggered by
-    WatchlistScanScheduler via ScanService → ReminderService.list_due_for_signal().
-    """
-
-    def __init__(self, client: discord.Client) -> None:
+    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
         self._client = client
+        self._monitor = monitor or get_monitor()
 
     def start(self) -> None:
         self._daily_task.start()
@@ -564,6 +568,7 @@ class ReminderScheduler:
         from src.watchlist.models import ReminderFrequency
         from src.watchlist.reminder_service import ReminderService
 
+        task_name = f"reminder.{label}"
         channel_id = getattr(settings, "morning_channel_id", None)
         if not channel_id:
             logger.warning("scheduler.reminder.skipped", label=label, reason="morning_channel_id not configured")
@@ -587,6 +592,7 @@ class ReminderScheduler:
 
                 if not due:
                     logger.debug("scheduler.reminder.none_due", label=label)
+                    await self._monitor.record_success(task_name)
                     return
 
                 logger.info("scheduler.reminder.firing", label=label, count=len(due))
@@ -628,9 +634,11 @@ class ReminderScheduler:
                         )
 
                 await session.commit()
+            await self._monitor.record_success(task_name)
 
         except Exception as exc:
             logger.error("scheduler.reminder.error", label=label, error=str(exc))
+            await self._monitor.record_failure(task_name, exc)
 
     @_daily_task.before_loop
     async def _before_daily(self) -> None:
@@ -656,24 +664,17 @@ class DecisionReplayScheduler:
 
     Flow (runs weekdays at 15:15 ICT):
         1. DecisionService.list_pending_outcome_evaluations()
-           — find DecisionLogs that reached their review horizon with no outcome yet.
         2. For each pending decision:
            a. evaluate_outcome(id)   — compute realized PnL + assign verdict (no AI).
            b. analyze_decision(id)   — call ReplayAgent for key_lesson + pattern.
            c. persist_lesson(id, replay_result) — write key_lesson + pattern_detected
               back to DecisionLog so LessonService can surface them in future prompts.
         3. Notify Discord with a summary embed.
-
-    Guardrails:
-        - evaluate_outcome failure skips analyze_decision for that row.
-        - analyze_decision failure skips persist_lesson — verdict is still shown.
-        - persist_lesson failure is logged but does not block the Discord embed.
-        - Empty result — no Discord message sent.
-        - Weekends skipped.
     """
 
-    def __init__(self, client: discord.Client) -> None:
+    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
         self._client = client
+        self._monitor = monitor or get_monitor()
 
     def start(self) -> None:
         self._replay_task.start()
@@ -689,6 +690,7 @@ class DecisionReplayScheduler:
         if now_utc.weekday() >= 5:
             return
 
+        task_name = "decision.replay"
         user_id = getattr(settings, "scheduler_user_id", None)
         channel_id = getattr(settings, "morning_channel_id", None)
         if not user_id or not channel_id:
@@ -711,10 +713,12 @@ class DecisionReplayScheduler:
                 pending = await svc.list_pending_outcome_evaluations()
         except Exception as exc:
             logger.error("scheduler.decision_replay.list_failed", error=str(exc))
+            await self._monitor.record_failure(task_name, exc)
             return
 
         if not pending:
             logger.debug("scheduler.decision_replay.none_pending")
+            await self._monitor.record_success(task_name)
             return
 
         logger.info(
@@ -770,8 +774,7 @@ class DecisionReplayScheduler:
                     error=str(exc),
                 )
 
-            # 2c: Persist lesson back to DecisionLog for LessonService to surface later.
-            # This closes the learning loop: AI insight → stored → injected into future prompts.
+            # 2c: Persist lesson back to DecisionLog for LessonService
             if replay_result is not None:
                 try:
                     async with AsyncSessionLocal() as session:
@@ -805,6 +808,8 @@ class DecisionReplayScheduler:
 
         if not results:
             return
+
+        await self._monitor.record_success(task_name)
 
         # ── Step 3: Discord notify ──
         channel = self._client.get_channel(int(channel_id))
