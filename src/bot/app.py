@@ -38,6 +38,7 @@ def create_bot() -> commands.Bot:
         _start_drift_scheduler(bot)
         _start_snapshot_scheduler()
         _start_reminder_scheduler(bot)
+        _start_decision_replay_scheduler(bot)
         await _sync_tree(bot)
         logger.info(
             "bot.ready",
@@ -99,85 +100,42 @@ async def _register_cogs(bot: commands.Bot) -> None:
 
 
 def _start_briefing_scheduler(bot: commands.Bot) -> None:
-    if not settings.briefing_scheduler_enabled:
-        logger.info("bot.briefing_scheduler.skipped", reason="morning_channel_id/eod_channel_id/scheduler_user_id not configured")
-        return
     from src.bot.scheduler import BriefingScheduler
-    scheduler = BriefingScheduler(client=bot)
+    scheduler = BriefingScheduler(bot)
     scheduler.start()
-    logger.info("bot.briefing_scheduler.started", morning_channel=settings.morning_channel_id, eod_channel=settings.eod_channel_id, user=settings.scheduler_user_id)
 
 
 def _start_scan_scheduler(bot: commands.Bot) -> None:
-    if settings.environment == "test":
-        logger.info("bot.scan_scheduler.skipped", reason="test environment")
-        return
-    user_id = getattr(settings, "scheduler_user_id", None)
-    channel_id = getattr(settings, "morning_channel_id", None)
-    if not user_id or not channel_id:
-        logger.info("bot.scan_scheduler.skipped", reason="scheduler_user_id or morning_channel_id not configured")
-        return
     from src.bot.scheduler import WatchlistScanScheduler
-    scheduler = WatchlistScanScheduler(client=bot)
+    scheduler = WatchlistScanScheduler(bot)
     scheduler.start()
-    logger.info("bot.scan_scheduler.started", interval_minutes=5, channel=channel_id, user=user_id)
 
 
 def _start_thesis_maintenance_scheduler(bot: commands.Bot) -> None:
-    if settings.environment == "test":
-        logger.info("bot.thesis_maintenance_scheduler.skipped", reason="test environment")
-        return
-    if not settings.briefing_scheduler_enabled:
-        logger.info("bot.thesis_maintenance_scheduler.skipped", reason="scheduler_user_id or morning_channel_id not configured")
-        return
     from src.bot.scheduler import ThesisMaintenanceScheduler
-    scheduler = ThesisMaintenanceScheduler(client=bot)
+    scheduler = ThesisMaintenanceScheduler(bot)
     scheduler.start()
-    logger.info("bot.thesis_maintenance_scheduler.started", time_ict="08:30", channel=settings.morning_channel_id, user=settings.scheduler_user_id)
 
 
 def _start_drift_scheduler(bot: commands.Bot) -> None:
-    if settings.environment == "test":
-        logger.info("bot.drift_scheduler.skipped", reason="test environment")
-        return
-    user_id = getattr(settings, "scheduler_user_id", None)
-    channel_id = getattr(settings, "morning_channel_id", None)
-    if not user_id or not channel_id:
-        logger.info("bot.drift_scheduler.skipped", reason="scheduler_user_id or morning_channel_id not configured")
-        return
     from src.bot.scheduler import ThesisDriftScheduler
-    scheduler = ThesisDriftScheduler(client=bot)
+    scheduler = ThesisDriftScheduler(bot)
     scheduler.start()
-    logger.info("bot.drift_scheduler.started", interval_minutes=15, threshold_pct=settings.thesis_drift_threshold_pct, cooldown_hours=settings.thesis_drift_cooldown_hours, channel=channel_id, user=user_id)
 
 
 def _start_snapshot_scheduler() -> None:
-    from src.platform.config import settings
-    if settings.environment == "test":
-        logger.info("bot.snapshot_scheduler.skipped", reason="test environment")
-        return
-    from src.market.snapshot_scheduler import SnapshotScheduler
     from src.platform.bootstrap import get_snapshot_scheduler
-    scheduler: SnapshotScheduler = get_snapshot_scheduler()  # type: ignore[assignment]
-    scheduler.start()
-    logger.info("bot.snapshot_scheduler.started", time_ict="15:10")
+    scheduler = get_snapshot_scheduler()
+    scheduler.start()  # type: ignore[union-attr]
 
 
 def _start_reminder_scheduler(bot: commands.Bot) -> None:
-    if settings.environment == "test":
-        logger.info("bot.reminder_scheduler.skipped", reason="test environment")
-        return
-    channel_id = getattr(settings, "morning_channel_id", None)
-    if not channel_id:
-        logger.info("bot.reminder_scheduler.skipped", reason="morning_channel_id not configured")
-        return
     from src.bot.scheduler import ReminderScheduler
-    scheduler = ReminderScheduler(client=bot)
+    scheduler = ReminderScheduler(bot)
     scheduler.start()
-    logger.info("bot.reminder_scheduler.started", time_ict="08:00", channel=channel_id)
 
 
-def run() -> None:
-    """Entry point — called from __main__ or a process manager."""
-    bot = create_bot()
-    bot.run(settings.discord_token, log_handler=None)
+def _start_decision_replay_scheduler(bot: commands.Bot) -> None:
+    from src.bot.scheduler import DecisionReplayScheduler
+    scheduler = DecisionReplayScheduler(bot)
+    scheduler.start()
