@@ -7,15 +7,24 @@ Callers: bot.commands.sector_rotation, briefing (context injection).
 
 from __future__ import annotations
 
+import json
 import logging
 
-from src.ai.client import AIClient
+from pydantic import ValidationError
+
+from src.ai.client import PerplexityClient, PerplexityError
 from src.ai.schemas import SectorRotationOutput, WatchlistCrosscheck
 from src.ai.prompts.sector_rotation import build_sector_rotation_prompt
 from src.market.sector_rotation_service import SectorRotationService
 from src.market.quote_service import QuoteService
 
 logger = logging.getLogger(__name__)
+
+_SYSTEM_PROMPT = (
+    "Bạn là chuyên gia phân tích dòng tiền chứng khoán Việt Nam. "
+    "Trả lời bằng JSON hợp lệ theo schema được cung cấp. "
+    "Không định dạng markdown, không giải thích ngoài JSON."
+)
 
 
 class SectorRotationAgent:
@@ -24,13 +33,14 @@ class SectorRotationAgent:
     Flow:
         1. SectorRotationService.get_sector_flows() → list[SectorFlow]
         2. build_sector_rotation_prompt() → prompt str
-        3. AIClient.structured_query() → SectorRotationOutput
-        4. Enrich watchlist_crosscheck bằng quote thực tế nếu cần
+        3. PerplexityClient.chat_completion() → raw JSON
+        4. SectorRotationOutput.model_validate() → typed output
+        5. Enrich watchlist_crosscheck bằng quote thực tế nếu cần
     """
 
     def __init__(
         self,
-        ai_client: AIClient,
+        ai_client: PerplexityClient,
         sector_service: SectorRotationService,
         quote_service: QuoteService,
     ) -> None:
@@ -51,7 +61,6 @@ class SectorRotationAgent:
         Returns:
             SectorRotationOutput — read-only, không persist.
         """
-        # 1. Aggregate sector data
         sector_flows = await self._sector_svc.get_sector_flows(
             watchlist_tickers=watchlist_tickers
         )
@@ -61,19 +70,44 @@ class SectorRotationAgent:
             logger.warning("sector_rotation_agent: no sector data, returning fallback")
             return _empty_output(snapshot_date)
 
-        # 2. Build + call AI
         prompt = build_sector_rotation_prompt(
             sector_flows=sector_flows,
             snapshot_date=snapshot_date,
             watchlist_tickers=watchlist_tickers,
         )
 
-        result: SectorRotationOutput = await self._ai.structured_query(
-            prompt=prompt,
-            response_model=SectorRotationOutput,
+        logger.info("sector_rotation_agent.start", snapshot_date=snapshot_date)
+        try:
+            response = await self._ai.chat_completion(
+                messages=[
+                    {"role": "system", "content": _SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.2,
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "SectorRotationOutput",
+                        "schema": SectorRotationOutput.model_json_schema(),
+                        "strict": True,
+                    },
+                },
+            )
+            data = json.loads(self._ai.extract_text(response))
+            result = SectorRotationOutput.model_validate(data)
+        except (json.JSONDecodeError, ValidationError) as exc:
+            logger.error("sector_rotation_agent.parse_error", error=str(exc))
+            raise ValueError(f"Failed to parse SectorRotationAgent response: {exc}") from exc
+        except PerplexityError:
+            logger.error("sector_rotation_agent.api_error")
+            raise
+
+        logger.info(
+            "sector_rotation_agent.complete",
+            risk_regime=str(result.risk_regime),
+            confidence=result.confidence,
         )
 
-        # 3. Enrich watchlist_crosscheck với giá thực tế nếu AI không tự điền đủ
         if watchlist_tickers and not result.watchlist_crosscheck:
             result = await self._enrich_crosscheck(result, watchlist_tickers, sector_flows)
 
@@ -85,21 +119,16 @@ class SectorRotationAgent:
         watchlist_tickers: list[str],
         sector_flows,
     ) -> SectorRotationOutput:
-        """Bổ sung watchlist_crosscheck nếu AI bỏ sót.
-
-        So sánh từng ticker với sector avg. Flag is_contrarian khi
-        ticker và sector đi ngược chiều (hệu số âm).
-        """
+        """Bổ sung watchlist_crosscheck nếu AI bỏ sót."""
         try:
             raw = await self._quotes.get_bulk_quotes(watchlist_tickers)
         except Exception:
-            logger.exception("sector_rotation_agent: enrich_crosscheck get_bulk_quotes failed")
+            logger.exception("sector_rotation_agent: enrich_crosscheck failed")
             return output
 
         quote_map = {q.ticker: q for q in raw}
         sector_avg_map = {sf.sector: sf.avg_change_pct_1d for sf in sector_flows}
 
-        # Build ticker → sector mapping từ sector_flows
         ticker_sector: dict[str, str] = {}
         for sf in sector_flows:
             for t in sf.top_movers:
@@ -115,7 +144,7 @@ class SectorRotationAgent:
             if sector is None:
                 continue
             sector_avg = sector_avg_map.get(sector, 0.0)
-            is_contrarian = (q.change_pct * sector_avg) < 0  # ngược dấu
+            is_contrarian = (q.change_pct * sector_avg) < 0
             crosscheck.append(
                 WatchlistCrosscheck(
                     ticker=ticker_upper,
@@ -130,7 +159,6 @@ class SectorRotationAgent:
                 )
             )
 
-        # Trả về output mới với crosscheck được enrich
         return output.model_copy(update={"watchlist_crosscheck": crosscheck})
 
 
