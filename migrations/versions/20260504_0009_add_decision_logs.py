@@ -1,7 +1,7 @@
 """Add decision_logs table.
 
-Revision ID: 0009_add_decision_logs
-Revises: 0008_add_auto_reactivate_to_alerts
+Revision ID: 20260504_0009
+Revises: 20260504_0008
 Create Date: 2026-05-04
 
 Adds the decision_logs table which backs DecisionLog ORM model in
@@ -21,8 +21,8 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0009_add_decision_logs"
-down_revision: str = "0008_add_auto_reactivate_to_alerts"
+revision: str = "20260504_0009"
+down_revision: str = "20260504_0008"
 branch_labels: str | tuple[str, ...] | None = None
 depends_on: str | None = None
 
@@ -95,7 +95,6 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
 
-    # Indexes for common query patterns
     op.create_index("ix_decision_logs_user_id", "decision_logs", ["user_id"])
     op.create_index("ix_decision_logs_ticker", "decision_logs", ["ticker"])
     op.create_index("ix_decision_logs_thesis_id", "decision_logs", ["thesis_id"])
