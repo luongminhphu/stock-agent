@@ -282,6 +282,23 @@ HELP_DATA: dict[str, GroupEntry] = {
             },
         ],
     },
+    "system": {
+        "label": "System · Trạng thái hệ thống",
+        "emoji": "🖥️",
+        "colour": 0x7F8C8D,
+        "intro": "Kiểm tra trạng thái kết nối và sức khoẻ của bot và các dịch vụ phụ thuộc.",
+        "commands": [
+            {
+                "usage": "/health",
+                "description": (
+                    "Kiểm tra trạng thái hệ thống: kết nối database, market data adapter, "
+                    "AI client, và Discord bot runtime. "
+                    "Hiển thị ✅ / ⚠️ / ❌ cho từng thành phần kèm latency."
+                ),
+                "example": None,
+            },
+        ],
+    },
     "owner": {
         "label": "Owner · Công cụ quản trị",
         "emoji": "⚙️",
