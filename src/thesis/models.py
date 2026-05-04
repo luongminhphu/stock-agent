@@ -256,4 +256,8 @@ class DecisionLog(Base):
         SAEnum(OutcomeVerdict, values_callable=_enum_values), nullable=True, index=True
     )
 
+    # AI lesson fields — written by DecisionService.persist_lesson() after ReplayAgent analysis
+    key_lesson: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pattern_detected: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
     thesis: Mapped[Thesis] = relationship(back_populates="decision_logs")
