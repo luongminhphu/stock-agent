@@ -1,8 +1,8 @@
-/* ─── Thesis Detail, Reviews & Score ────────────────────────────────────────
+/* ─── Thesis Detail, Reviews & Score ─────────────────────────────────────────
    Owner: modules/thesis
    detail-shell, detail-head, detail-grid, detail-item, review-timeline,
    review-card, review-box. Score breakdown delegated to render-score.js.
-──────────────────────────────────────────────────────────────────────────── */
+───────────────────────────────────────────────────────────────────────────── */
 
 .detail-shell {
   padding: 16px;
@@ -106,7 +106,7 @@
   line-height: 1.5;
 }
 
-/* ── Review timeline ──────────────────────────────────────────────────────── */
+/* ── Review timeline ────────────────────────────────────────────── */
 .review-timeline {
   display: grid;
   gap: 10px;
@@ -162,5 +162,109 @@
 }
 .review-box li + li { margin-top: 4px; }
 
-/* ── Form stack (inline rows inside thesis modal) ─────────────────────────── */
+/* ── Form stack (inline rows inside thesis modal) ─────────────────────── */
 .form-stack { display: grid; gap: 8px; }
+
+/* ────────────────────────────────────────────────────────────────────────────
+   WAVE 2d — SKELETON LOADER
+   Owner: modules/thesis
+   Classes: .skel, .skel-text, .skel-heading, .skel-badge, .skel-stat,
+            .skel-row, .skel-item, .skel-detail-wrap, .skel-table-wrap
+──────────────────────────────────────────────────────────────────────────── */
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+/* Base skeleton block — tất cả variants đều extend class này */
+.skel {
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    rgba(148, 163, 184, 0.08) 25%,
+    rgba(148, 163, 184, 0.16) 50%,
+    rgba(148, 163, 184, 0.08) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+/* Respect user preference — dừng animation, giữ màu nền */
+@media (prefers-reduced-motion: reduce) {
+  .skel { animation: none; }
+}
+
+/* Size variants */
+.skel-heading {
+  height: 1.2em;
+  width: 38%;
+  margin-bottom: 10px;
+  border-radius: 8px;
+}
+
+.skel-text {
+  height: 0.85em;
+  border-radius: 4px;
+  margin-bottom: 6px;
+}
+.skel-text:last-child { width: 55%; }
+
+.skel-badge {
+  height: 1.4em;
+  width: 56px;
+  border-radius: 20px;
+  display: inline-block;
+}
+
+/* Stat box — mirrors .detail-stat */
+.skel-stat {
+  height: 58px;
+  border-radius: 16px;
+}
+
+/* Generic row (for table rows) */
+.skel-row {
+  height: 44px;
+  border-radius: 8px;
+  margin-bottom: 6px;
+}
+
+/* Assumption / catalyst item */
+.skel-item {
+  height: 72px;
+  border-radius: 16px;
+  margin-bottom: 8px;
+}
+
+/* ── Composed skeletons ─────────────────────────────────────────── */
+
+/* Wrapper cho detail-shell skeleton: padding khớp với real detail */
+.skel-detail-wrap {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Wrapper cho table skeleton */
+.skel-table-wrap {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 3-col stat grid mirror */
+.skel-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+/* 2-col columns mirror */
+.skel-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
