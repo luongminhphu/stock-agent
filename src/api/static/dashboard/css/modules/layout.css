@@ -1,7 +1,13 @@
 /* layout.css — Wave 1 redesign: command-strip + workspace-grid + action-rail
    Art direction: AI-native investor workspace → focused, dense, decision-first
-   Palette: dark glass surfaces, accent hydra teal/purple, minimal decoration
+   Palette: dark glass surfaces, accent hydra teal, minimal decoration
    Density: dense — data product, not marketing page
+
+   Breakpoints:
+     ≥1200px  — full 2-col workspace + sticky rail
+     900–1199 — narrower rail (clamp)
+     600–899  — stack workspace, static rail
+     <600     — compact strip, hide brand name
 */
 
 /* ── SKIP LINK ─────────────────────────────────────── */
@@ -21,12 +27,23 @@
 }
 .skip-link:focus { top: 0; }
 
+/* ── CSS CUSTOM PROPERTIES (layout-scoped) ───────────── */
+:root {
+  --topbar-h:       52px;
+  --strip-h:        56px;    /* command strip approx height; used for sticky calc */
+  --rail-w:         clamp(280px, 24vw, 360px);
+  --page-px:        clamp(16px, 3vw, 28px);
+  --workspace-gap:  16px;
+  --layer-gap:      16px;
+  --panel-radius:   12px;
+  --panel-pad:      clamp(14px, 2vw, 20px);
+}
+
 /* ── SHELL ───────────────────────────────────────────── */
 .shell {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  gap: 0;
 }
 
 /* ── TOPBAR ────────────────────────────────────────── */
@@ -38,8 +55,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 0 24px;
-  height: 52px;
+  padding: 0 var(--page-px);
+  height: var(--topbar-h);
   background: var(--surface, rgba(18,18,24,.95));
   border-bottom: 1px solid var(--border, rgba(255,255,255,.08));
   backdrop-filter: blur(12px);
@@ -87,43 +104,55 @@
   font-weight: 500;
   color: var(--muted, #888);
   cursor: pointer;
-  transition: background .15s, color .15s;
+  transition: background .18s, color .18s;
   white-space: nowrap;
 }
 .icon-btn:hover {
   background: rgba(255,255,255,.1);
   color: var(--fg, #e8e8f0);
 }
+.icon-btn:active {
+  background: rgba(255,255,255,.06);
+}
 
 /* ── COMMAND STRIP ──────────────────────────────────── */
+/*
+  Auto-fill minmax: cards wrap naturally instead of squishing.
+  --strip-h is approximate — sticky calc uses CSS env fallback.
+*/
 .command-strip {
   display: grid;
-  grid-template-columns: repeat(4, 1fr) 1.4fr;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 1px;
   background: var(--border, rgba(255,255,255,.08));
   border-bottom: 1px solid var(--border, rgba(255,255,255,.08));
+  container-type: inline-size;
 }
 
 .signal-card {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 14px 20px;
+  gap: 3px;
+  padding: 13px 20px 14px;
   background: var(--surface, rgba(18,18,24,.95));
   transition: background .15s;
+  min-width: 0; /* prevent overflow in tight grid */
 }
-.signal-card:hover { background: rgba(255,255,255,.04); }
+.signal-card:hover { background: rgba(255,255,255,.035); }
 
 .signal-label {
-  font-size: .72rem;
+  font-size: .7rem;
   font-weight: 600;
-  letter-spacing: .06em;
+  letter-spacing: .07em;
   text-transform: uppercase;
   color: var(--muted, #888);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .signal-value {
-  font-size: 1.55rem;
+  font-size: clamp(1.25rem, 1rem + 0.8vw, 1.6rem);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--fg, #e8e8f0);
@@ -132,38 +161,105 @@
 
 .signal-card--risk .signal-value { color: var(--danger, #f87171); }
 
+/* Wide card spans 2 cols when strip has ≥5 cols rendered */
+@container (min-width: 800px) {
+  .signal-card--wide { grid-column: span 2; }
+}
+
 /* ── WORKSPACE GRID ──────────────────────────────────── */
+/*
+  Two-column: main board + sticky action rail.
+  Rail width is fluid via --rail-w. Column transition gives
+  a subtle resize feel when inspector opens/closes.
+*/
 .workspace-grid {
   display: grid;
-  grid-template-columns: 1fr 320px;
-  gap: 16px;
-  padding: 16px 24px;
+  grid-template-columns: 1fr var(--rail-w);
+  gap: var(--workspace-gap);
+  padding: var(--workspace-gap) var(--page-px);
   flex: 1;
   align-items: start;
+  transition: grid-template-columns .2s ease;
+}
+
+/* When a thesis detail inspector is open, widen the rail slightly */
+.workspace-grid.inspector-open {
+  grid-template-columns: 1fr clamp(340px, 30vw, 440px);
+}
+
+/* ── PANEL MAIN (thesis board) ────────────────────────── */
+.panel-main {
+  display: flex;
+  flex-direction: column;
+  min-height: 480px;
+  overflow: hidden;
+}
+
+/* Split pane: master list top, detail below (default) */
+/* On ≥1200px: side-by-side via subgrid when inspector-open */
+@media (min-width: 1200px) {
+  .workspace-grid.inspector-open .panel-main {
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+  }
+}
+
+/* ── DETAIL SHELL (sticky inspector) ─────────────────── */
+/*
+  .detail-shell renders the selected thesis detail.
+  Default: below the thesis table (stacked in panel-main).
+  On narrow viewports it collapses to a bottom sheet.
+*/
+.detail-shell {
+  border-top: 1px solid var(--border, rgba(255,255,255,.08));
+  padding: var(--panel-pad);
+  overflow-y: auto;
+  max-height: 420px;
+  transition: max-height .25s ease, opacity .2s ease;
+}
+.detail-shell.empty-detail {
+  max-height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* ── ACTION RAIL ─────────────────────────────────────── */
+/*
+  Sticky below topbar + command-strip.
+  --strip-h approximates the command strip; exact pixel value
+  is intentionally generous to avoid clipping edge cases.
+*/
 .action-rail {
   display: flex;
   flex-direction: column;
   gap: 12px;
   position: sticky;
-  top: calc(52px + 16px);
-  max-height: calc(100dvh - 52px - 56px - 32px);
+  top: calc(var(--topbar-h) + var(--strip-h) + var(--workspace-gap));
+  max-height: calc(100dvh - var(--topbar-h) - var(--strip-h) - var(--workspace-gap) * 2 - 8px);
   overflow-y: auto;
   scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,.1) transparent;
+  overscroll-behavior: contain;
 }
 
 .action-panel { flex-shrink: 0; }
 
-/* ── PORTFOLIO & VALIDATION LAYERS ────────────────────── */
-.portfolio-layer,
-.validation-layer {
-  margin: 0 24px;
+/* ── PORTFOLIO LAYER ─────────────────────────────────── */
+/*
+  Sits below the workspace as an evidence/analytics layer.
+  Uses padding-inline matching --page-px instead of margin hack.
+*/
+.portfolio-layer {
+  padding-inline: var(--page-px);
+  margin-bottom: var(--layer-gap);
 }
 
-.portfolio-layer { margin-top: 0; margin-bottom: 16px; }
-.validation-layer { margin-bottom: 16px; }
+/* ── VALIDATION LAYER ─────────────────────────────────── */
+.validation-layer {
+  padding-inline: var(--page-px);
+  margin-bottom: var(--layer-gap);
+}
 
 /* ── PANEL BASE HELPERS ───────────────────────────────── */
 .panel-hint {
@@ -173,13 +269,12 @@
   line-height: 1.5;
 }
 
-/* ── PORTFOLIO STYLES (extracted from inline HTML) ────────── */
+/* ── PORTFOLIO STYLES ─────────────────────────────────── */
 .portfolio-tab-bar {
   display: flex;
   gap: 4px;
   margin-bottom: 16px;
   border-bottom: 1px solid var(--border, rgba(255,255,255,.1));
-  padding-bottom: 0;
 }
 
 .portfolio-tab {
@@ -193,12 +288,14 @@
   color: var(--muted, #888);
   transition: color .15s, border-color .15s;
   margin-bottom: -1px;
+  min-height: 44px; /* touch target */
 }
 .portfolio-tab.active,
 .portfolio-tab:hover {
   color: var(--fg, #fff);
   border-bottom-color: var(--accent, #7c3aed);
 }
+.portfolio-tab:active { opacity: .75; }
 
 .portfolio-pane.hidden { display: none; }
 
@@ -217,7 +314,10 @@
   font-size: .82rem;
 }
 
-.table-scroll { overflow-x: auto; }
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
 
 .data-table {
   width: 100%;
@@ -242,6 +342,7 @@
 .pnl-positive { color: #4ade80; }
 .pnl-negative { color: #f87171; }
 
+/* ── VERDICT BADGES ───────────────────────────────────── */
 .verdict-badge {
   display: inline-block;
   padding: 2px 10px;
@@ -250,41 +351,42 @@
   font-weight: 600;
   white-space: nowrap;
 }
-.badge-bullish  { background: rgba(74,222,128,.15);  color: #4ade80; }
-.badge-bearish  { background: rgba(248,113,113,.15); color: #f87171; }
-.badge-neutral  { background: rgba(250,204,21,.15);  color: #facc15; }
-.badge-watchlist{ background: rgba(148,163,184,.15); color: #94a3b8; }
-.badge-unknown  { background: rgba(148,163,184,.1);  color: #94a3b8; }
+.badge-bullish   { background: rgba(74,222,128,.15);  color: #4ade80; }
+.badge-bearish   { background: rgba(248,113,113,.15); color: #f87171; }
+.badge-neutral   { background: rgba(250,204,21,.15);  color: #facc15; }
+.badge-watchlist { background: rgba(148,163,184,.15); color: #94a3b8; }
+.badge-unknown   { background: rgba(148,163,184,.1);  color: #94a3b8; }
 
-/* ── RESPONSIVE ─────────────────────────────────────────── */
-@media (max-width: 1100px) {
-  .workspace-grid {
-    grid-template-columns: 1fr 280px;
-  }
-}
-
-@media (max-width: 860px) {
-  .workspace-grid {
+/* ── RESPONSIVE — 900px ──────────────────────────────── */
+@media (max-width: 900px) {
+  .workspace-grid,
+  .workspace-grid.inspector-open {
     grid-template-columns: 1fr;
-    padding: 12px 16px;
+    padding: 12px var(--page-px);
   }
   .action-rail {
     position: static;
     max-height: none;
     overflow: visible;
+    overscroll-behavior: auto;
   }
-  .command-strip {
-    grid-template-columns: repeat(2, 1fr);
+  .detail-shell {
+    max-height: none;
   }
-  .signal-card--wide { grid-column: span 2; }
-  .portfolio-layer,
-  .validation-layer { margin: 0 16px 16px; }
-  .topbar { padding: 0 16px; }
 }
 
-@media (max-width: 480px) {
-  .command-strip { grid-template-columns: 1fr 1fr; }
-  .signal-card { padding: 12px 14px; }
-  .signal-value { font-size: 1.25rem; }
+/* ── RESPONSIVE — 600px ──────────────────────────────── */
+@media (max-width: 600px) {
+  :root {
+    --page-px: 14px;
+    --workspace-gap: 10px;
+  }
+  .command-strip {
+    grid-template-columns: 1fr 1fr;
+  }
+  .signal-card { padding: 11px 14px; }
+  .signal-card--wide { grid-column: span 2; }
   .brand-name { display: none; }
+  .detail-shell.empty-detail { max-height: 120px; }
+  .data-table { font-size: .8rem; }
 }
