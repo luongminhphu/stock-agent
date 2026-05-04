@@ -1,7 +1,21 @@
 /* layout.css — Wave 1 redesign: command-strip + workspace-grid + action-rail
    Art direction: AI-native investor workspace → focused, dense, decision-first
-   Palette: dark glass surfaces, accent hydra teal, minimal decoration
+   Palette: dark blue surfaces (--bg/--surface), accent --brand sky-blue
    Density: dense — data product, not marketing page
+
+   TOKEN MAP (from variables.css — single source of truth):
+     surface bg  → var(--bg) / var(--surface) / var(--surface-2) / var(--surface-3)
+     text        → var(--text)          #ecf3ff
+     muted       → var(--muted)         #96a7c6
+     faint       → var(--faint)         #61718f
+     border      → var(--line)          rgba(148,163,184,.18)
+     border+     → var(--line-strong)   rgba(148,163,184,.28)
+     accent      → var(--brand)         #7dd3fc
+     accent+     → var(--brand-strong)  #38bdf8
+     success     → var(--success)       #4ade80
+     warning     → var(--warning)       #fbbf24
+     danger      → var(--danger)        #f87171
+     purple      → var(--violet)        #a78bfa
 
    Breakpoints:
      ≥1200px  — full 2-col workspace + sticky rail
@@ -16,8 +30,8 @@
   top: -100%;
   left: 16px;
   padding: 8px 16px;
-  background: var(--accent, #7c3aed);
-  color: #fff;
+  background: var(--brand-strong);
+  color: var(--bg);
   border-radius: 0 0 8px 8px;
   font-size: .85rem;
   font-weight: 600;
@@ -27,16 +41,15 @@
 }
 .skip-link:focus { top: 0; }
 
-/* ── CSS CUSTOM PROPERTIES (layout-scoped) ───────────── */
+/* ── CSS CUSTOM PROPERTIES (layout-scoped) ─────────── */
 :root {
-  --topbar-h:       52px;
-  --strip-h:        56px;    /* command strip approx height; used for sticky calc */
-  --rail-w:         clamp(280px, 24vw, 360px);
-  --page-px:        clamp(16px, 3vw, 28px);
-  --workspace-gap:  16px;
-  --layer-gap:      16px;
-  --panel-radius:   12px;
-  --panel-pad:      clamp(14px, 2vw, 20px);
+  --topbar-h:      52px;
+  --strip-h:       56px;
+  --rail-w:        clamp(280px, 24vw, 360px);
+  --page-px:       clamp(16px, 3vw, 28px);
+  --workspace-gap: 16px;
+  --layer-gap:     16px;
+  --panel-pad:     clamp(14px, 2vw, 20px);
 }
 
 /* ── SHELL ───────────────────────────────────────────── */
@@ -46,7 +59,7 @@
   flex-direction: column;
 }
 
-/* ── TOPBAR ────────────────────────────────────────── */
+/* ── TOPBAR ──────────────────────────────────────────── */
 .topbar {
   position: sticky;
   top: 0;
@@ -57,8 +70,8 @@
   gap: 16px;
   padding: 0 var(--page-px);
   height: var(--topbar-h);
-  background: var(--surface, rgba(18,18,24,.95));
-  border-bottom: 1px solid var(--border, rgba(255,255,255,.08));
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
@@ -73,7 +86,7 @@
 .brand-logo {
   width: 28px;
   height: 28px;
-  color: var(--accent, #7c3aed);
+  color: var(--brand);
   flex-shrink: 0;
 }
 
@@ -81,7 +94,7 @@
   font-size: .95rem;
   font-weight: 700;
   letter-spacing: -.02em;
-  color: var(--fg, #e8e8f0);
+  color: var(--text);
 }
 
 .toolbar {
@@ -97,35 +110,32 @@
   gap: 6px;
   padding: 0 12px;
   height: 34px;
-  background: rgba(255,255,255,.06);
-  border: 1px solid rgba(255,255,255,.1);
+  background: rgba(148, 163, 184, 0.07);
+  border: 1px solid var(--line);
   border-radius: 7px;
   font-size: .82rem;
   font-weight: 500;
-  color: var(--muted, #888);
+  color: var(--muted);
   cursor: pointer;
-  transition: background .18s, color .18s;
+  transition: background .18s, color .18s, border-color .18s;
   white-space: nowrap;
 }
 .icon-btn:hover {
-  background: rgba(255,255,255,.1);
-  color: var(--fg, #e8e8f0);
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--text);
+  border-color: var(--line-strong);
 }
 .icon-btn:active {
-  background: rgba(255,255,255,.06);
+  background: rgba(148, 163, 184, 0.07);
 }
 
-/* ── COMMAND STRIP ──────────────────────────────────── */
-/*
-  Auto-fill minmax: cards wrap naturally instead of squishing.
-  --strip-h is approximate — sticky calc uses CSS env fallback.
-*/
+/* ── COMMAND STRIP ───────────────────────────────────── */
 .command-strip {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 1px;
-  background: var(--border, rgba(255,255,255,.08));
-  border-bottom: 1px solid var(--border, rgba(255,255,255,.08));
+  background: var(--line);
+  border-bottom: 1px solid var(--line);
   container-type: inline-size;
 }
 
@@ -134,18 +144,18 @@
   flex-direction: column;
   gap: 3px;
   padding: 13px 20px 14px;
-  background: var(--surface, rgba(18,18,24,.95));
+  background: var(--surface);
   transition: background .15s;
-  min-width: 0; /* prevent overflow in tight grid */
+  min-width: 0;
 }
-.signal-card:hover { background: rgba(255,255,255,.035); }
+.signal-card:hover { background: var(--surface-2); }
 
 .signal-label {
   font-size: .7rem;
   font-weight: 600;
   letter-spacing: .07em;
   text-transform: uppercase;
-  color: var(--muted, #888);
+  color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -155,23 +165,18 @@
   font-size: clamp(1.25rem, 1rem + 0.8vw, 1.6rem);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  color: var(--fg, #e8e8f0);
+  color: var(--text);
   line-height: 1.1;
 }
 
-.signal-card--risk .signal-value { color: var(--danger, #f87171); }
+.signal-card--risk .signal-value { color: var(--danger); }
 
-/* Wide card spans 2 cols when strip has ≥5 cols rendered */
+/* Wide card spans 2 cols when strip ≥5 cols */
 @container (min-width: 800px) {
   .signal-card--wide { grid-column: span 2; }
 }
 
 /* ── WORKSPACE GRID ──────────────────────────────────── */
-/*
-  Two-column: main board + sticky action rail.
-  Rail width is fluid via --rail-w. Column transition gives
-  a subtle resize feel when inspector opens/closes.
-*/
 .workspace-grid {
   display: grid;
   grid-template-columns: 1fr var(--rail-w);
@@ -182,12 +187,12 @@
   transition: grid-template-columns .2s ease;
 }
 
-/* When a thesis detail inspector is open, widen the rail slightly */
+/* Rail widens when thesis detail inspector is open */
 .workspace-grid.inspector-open {
   grid-template-columns: 1fr clamp(340px, 30vw, 440px);
 }
 
-/* ── PANEL MAIN (thesis board) ────────────────────────── */
+/* ── PANEL MAIN (thesis board) ───────────────────────── */
 .panel-main {
   display: flex;
   flex-direction: column;
@@ -195,23 +200,9 @@
   overflow: hidden;
 }
 
-/* Split pane: master list top, detail below (default) */
-/* On ≥1200px: side-by-side via subgrid when inspector-open */
-@media (min-width: 1200px) {
-  .workspace-grid.inspector-open .panel-main {
-    display: grid;
-    grid-template-rows: auto 1fr auto;
-  }
-}
-
-/* ── DETAIL SHELL (sticky inspector) ─────────────────── */
-/*
-  .detail-shell renders the selected thesis detail.
-  Default: below the thesis table (stacked in panel-main).
-  On narrow viewports it collapses to a bottom sheet.
-*/
+/* ── DETAIL SHELL (sticky inspector) ────────────────── */
 .detail-shell {
-  border-top: 1px solid var(--border, rgba(255,255,255,.08));
+  border-top: 1px solid var(--line);
   padding: var(--panel-pad);
   overflow-y: auto;
   max-height: 420px;
@@ -225,11 +216,6 @@
 }
 
 /* ── ACTION RAIL ─────────────────────────────────────── */
-/*
-  Sticky below topbar + command-strip.
-  --strip-h approximates the command strip; exact pixel value
-  is intentionally generous to avoid clipping edge cases.
-*/
 .action-rail {
   display: flex;
   flex-direction: column;
@@ -239,42 +225,38 @@
   max-height: calc(100dvh - var(--topbar-h) - var(--strip-h) - var(--workspace-gap) * 2 - 8px);
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,.1) transparent;
+  scrollbar-color: var(--line) transparent;
   overscroll-behavior: contain;
 }
 
 .action-panel { flex-shrink: 0; }
 
 /* ── PORTFOLIO LAYER ─────────────────────────────────── */
-/*
-  Sits below the workspace as an evidence/analytics layer.
-  Uses padding-inline matching --page-px instead of margin hack.
-*/
 .portfolio-layer {
   padding-inline: var(--page-px);
   margin-bottom: var(--layer-gap);
 }
 
-/* ── VALIDATION LAYER ─────────────────────────────────── */
+/* ── VALIDATION LAYER ────────────────────────────────── */
 .validation-layer {
   padding-inline: var(--page-px);
   margin-bottom: var(--layer-gap);
 }
 
-/* ── PANEL BASE HELPERS ───────────────────────────────── */
+/* ── PANEL BASE HELPERS ──────────────────────────────── */
 .panel-hint {
   font-size: .78rem;
-  color: var(--muted, #888);
+  color: var(--muted);
   max-width: 52ch;
   line-height: 1.5;
 }
 
-/* ── PORTFOLIO STYLES ─────────────────────────────────── */
+/* ── PORTFOLIO STYLES ────────────────────────────────── */
 .portfolio-tab-bar {
   display: flex;
   gap: 4px;
   margin-bottom: 16px;
-  border-bottom: 1px solid var(--border, rgba(255,255,255,.1));
+  border-bottom: 1px solid var(--line);
 }
 
 .portfolio-tab {
@@ -285,15 +267,15 @@
   cursor: pointer;
   font-size: .88rem;
   font-weight: 500;
-  color: var(--muted, #888);
+  color: var(--muted);
   transition: color .15s, border-color .15s;
   margin-bottom: -1px;
-  min-height: 44px; /* touch target */
+  min-height: 44px;
 }
 .portfolio-tab.active,
 .portfolio-tab:hover {
-  color: var(--fg, #fff);
-  border-bottom-color: var(--accent, #7c3aed);
+  color: var(--text);
+  border-bottom-color: var(--brand);
 }
 .portfolio-tab:active { opacity: .75; }
 
@@ -307,11 +289,12 @@
 }
 
 .summary-chip {
-  background: rgba(255,255,255,.06);
-  border: 1px solid rgba(255,255,255,.1);
+  background: rgba(148, 163, 184, 0.07);
+  border: 1px solid var(--line);
   border-radius: 20px;
   padding: 4px 14px;
   font-size: .82rem;
+  color: var(--muted);
 }
 
 .table-scroll {
@@ -328,21 +311,22 @@
   text-align: left;
   padding: 8px 10px;
   font-weight: 600;
-  border-bottom: 1px solid rgba(255,255,255,.1);
+  border-bottom: 1px solid var(--line-strong);
   white-space: nowrap;
-  color: var(--muted, #888);
+  color: var(--muted);
 }
 .data-table td {
   padding: 9px 10px;
-  border-bottom: 1px solid rgba(255,255,255,.05);
+  border-bottom: 1px solid var(--line);
   vertical-align: middle;
+  color: var(--text);
 }
-.data-table tbody tr:hover { background: rgba(255,255,255,.03); }
+.data-table tbody tr:hover { background: rgba(148, 163, 184, 0.04); }
 .data-table .num { text-align: right; font-variant-numeric: tabular-nums; }
-.pnl-positive { color: #4ade80; }
-.pnl-negative { color: #f87171; }
+.pnl-positive { color: var(--success); }
+.pnl-negative { color: var(--danger); }
 
-/* ── VERDICT BADGES ───────────────────────────────────── */
+/* ── VERDICT BADGES ──────────────────────────────────── */
 .verdict-badge {
   display: inline-block;
   padding: 2px 10px;
@@ -351,11 +335,11 @@
   font-weight: 600;
   white-space: nowrap;
 }
-.badge-bullish   { background: rgba(74,222,128,.15);  color: #4ade80; }
-.badge-bearish   { background: rgba(248,113,113,.15); color: #f87171; }
-.badge-neutral   { background: rgba(250,204,21,.15);  color: #facc15; }
-.badge-watchlist { background: rgba(148,163,184,.15); color: #94a3b8; }
-.badge-unknown   { background: rgba(148,163,184,.1);  color: #94a3b8; }
+.badge-bullish   { background: rgba(74,222,128,.14);  color: var(--success); }
+.badge-bearish   { background: rgba(248,113,113,.14); color: var(--danger); }
+.badge-neutral   { background: rgba(251,191,36,.14);  color: var(--warning); }
+.badge-watchlist { background: rgba(148,163,184,.12); color: var(--muted); }
+.badge-unknown   { background: rgba(148,163,184,.08); color: var(--faint); }
 
 /* ── RESPONSIVE — 900px ──────────────────────────────── */
 @media (max-width: 900px) {
