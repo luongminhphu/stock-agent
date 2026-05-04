@@ -25,6 +25,11 @@ Quy tắc resolution_path (BẮT BUỘC khi decision = WAIT hoặc AVOID):
   ✓ "VCB giữ trên 85,000 qua 2 phiên liên tiếp với volume > TB20"
   ✗ "Chờ thị trường ổn định hơn"
 
+Nếu được cung cấp lịch sử quyết định của nhà đầu tư:
+- Tham chiếu các pattern đã xảy ra trước để cá nhân hóa phân tích.
+- Nếu hiện tại có dấu hiệu giống pattern thua lỗ → đưa vào risk_flags với mức độ rõ ràng.
+- Nếu có tín hiệu tương tự pattern thành công → ghi nhận trong reasoning, tăng confidence.
+
 Trả lời bằng JSON hợp lệ theo schema được cung cấp, không thêm text ngoài JSON.
 """
 
@@ -36,8 +41,9 @@ def build_pretrade_prompt(
     thesis_context: str,
     signal_context: str,
     brief_context: str,
+    past_lessons: str = "",
 ) -> str:
-    return f"""\
+    prompt = f"""\
 Pre-trade check cho: **{ticker}**
 Giá hiện tại: {price:,.0f} ({change_pct:+.2f}%)
 
@@ -49,16 +55,36 @@ Giá hiện tại: {price:,.0f} ({change_pct:+.2f}%)
 
 === BRIEF HÔM NAY ===
 {brief_context or "Brief hôm nay không đề cập mã này."}
+"""
 
-Hãy cross-check 3 nguồn trên và trả về PreTradeCheckOutput JSON.
+    if past_lessons:
+        prompt += f"""
+=== LỊCH SỪ QUYẼT ĐỊNH CỦA NHÀ ĐẦU TƯ ===
+{past_lessons}
+"""
+
+    prompt += f"""
+Hãy cross-check {"4" if past_lessons else "3"} nguồn trên và trả về PreTradeCheckOutput JSON.
 Đánh giá thesis_alignment, signal_alignment, brief_alignment riêng biệt.
 Nêu rõ conflicts nếu các nguồn mâu thuẫn nhau.
-
-Nếu decision = WAIT hoặc AVOID:
-  → Bắt buộc điền resolution_path với 2-4 bước cụ thể.
-  → Mỗi bước phải có condition đo được, category, priority (1-3), current_status.
-  → Sắp xếp theo priority tăng dần (priority 1 trước).
-
-Nếu decision = GO:
-  → resolution_path = []
 """
+
+    if past_lessons:
+        prompt += (
+            "Tham chiếu lịch sử quyết định để cá nhân hóa phân tích:\n"
+            "- Nếu thấy dấu hiệu của pattern thua lỗ đã xảy ra trước → "
+            "  bắt buộc đưa vào risk_flags với mô tả rõ.\n"
+            "- Nếu có tín hiệu tương tự pattern CORRECT trước đó → "
+            "  ghi nhận trong summary và tăng confidence tương ứng.\n"
+        )
+
+    prompt += (
+        "\nNếu decision = WAIT hoặc AVOID:\n"
+        "  → Bắt buộc điền resolution_path với 2-4 bước cụ thể.\n"
+        "  → Mỗi bước phải có condition đo được, category, priority (1-3), current_status.\n"
+        "  → Sắp xếp theo priority tăng dần (priority 1 trước).\n"
+        "\nNếu decision = GO:\n"
+        "  → resolution_path = []\n"
+    )
+
+    return prompt
