@@ -10,16 +10,36 @@ from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Matches ```json ... ``` or ``` ... ``` fences that sonar-pro wraps output in
+# Matches ```json ... ``` or ``` ... ``` fences
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.IGNORECASE)
 
 
 def _extract_json(text: str) -> str:
-    """Strip markdown code fences if present, else return text as-is."""
+    """Extract JSON object from text, handling markdown fences and extra prose.
+
+    Strategy (in order):
+    1. Strip markdown code fence via regex — handles well-formed ```json...```.
+    2. Brace-scan fallback — find first '{' and last '}' in the string.
+       Handles: truncated fences (no closing ```), raw JSON with surrounding
+       prose, and AI responses where fence regex doesn't match.
+    """
     text = text.strip()
+
+    # Strategy 1: regex fence strip
     match = _JSON_FENCE_RE.search(text)
     if match:
-        return match.group(1).strip()
+        candidate = match.group(1).strip()
+        # Only trust the match if it actually looks like a JSON object
+        if candidate.startswith("{"):
+            return candidate
+
+    # Strategy 2: brace-scan — works even when closing fence is missing
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        return text[start : end + 1]
+
+    # No JSON object found — return as-is and let json.loads raise
     return text
 
 
