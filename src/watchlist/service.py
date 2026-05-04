@@ -11,9 +11,9 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.logging import get_logger
+from src.watchlist.alert_service import AlertNotFoundError
 from src.watchlist.dtos import (
     AddToWatchlistInput,
-    AlertNotFoundError,
     CreateAlertInput,
     WatchlistItemAlreadyExistsError,
     WatchlistItemNotFoundError,
