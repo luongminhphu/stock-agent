@@ -35,6 +35,11 @@ _PRIORITY_CONFIG: dict[ActionPriority, tuple[str, str, bool, bool]] = {
     ActionPriority.SKIP_TODAY: ("⚪",  "Bỏ qua hôm nay",     False, False),
 }
 
+# Discord Embed description hard limit; we stay 96 chars below to leave
+# room for the dropped-sections notice appended at the end.
+_DISCORD_CHAR_LIMIT = 4096
+_DEFAULT_CHAR_LIMIT = _DISCORD_CHAR_LIMIT - 96
+
 
 def _inline(text: str) -> str:
     """Collapse stray single newlines to a space so tickers stay inline.
@@ -103,24 +108,21 @@ def _format_prioritized_actions(actions: list[PrioritizedAction]) -> list[str]:
     return lines
 
 
-def format_brief(brief: BriefOutput, brief_type: str = "brief") -> str:
-    """Format a BriefOutput as a Discord-ready markdown string.
+def _build_sections(brief: BriefOutput, brief_type: str) -> list[list[str]]:
+    """Return brief content as an ordered list of line-groups (sections).
 
-    Prefers prioritized_actions over deprecated action_items.
-    Falls back to action_items if prioritized_actions is empty
-    (backward compat with old BriefSnapshot records).
-
-    Args:
-        brief:      Structured output from BriefingAgent.
-        brief_type: Label shown in the header (e.g. "Morning Brief", "EOD Brief").
-
-    Returns:
-        Multi-line string with Discord markdown formatting.
+    Each section is a list[str] that should be appended together.
+    Sections are ordered by investor priority:
+        1. Header (always included — never dropped)
+        2. Watchlist alerts
+        3. Prioritized actions / action items
+        4. Ticker summaries
+        5. Portfolio summary
     """
     emoji = _SENTIMENT_EMOJI.get(brief.sentiment, "⚪")
     label = _SENTIMENT_LABEL.get(brief.sentiment, str(brief.sentiment))
 
-    lines: list[str] = [
+    header: list[str] = [
         f"**📈 {brief_type.title()}** \u2014 {emoji} `{label}`",
         "",
         f"**{brief.headline}**",
@@ -130,39 +132,87 @@ def format_brief(brief: BriefOutput, brief_type: str = "brief") -> str:
 
     if brief.key_movers:
         movers_inline = "  \u2022  ".join(f"**{m}**" for m in brief.key_movers)
-        lines += ["", f"🔥 {movers_inline}"]
+        header += ["", f"🔥 {movers_inline}"]
+
+    sections: list[list[str]] = [header]
 
     if brief.watchlist_alerts:
-        lines += ["", "**👁️ Watchlist**"]
+        block: list[str] = ["", "**👁️ Watchlist**"]
         for alert in brief.watchlist_alerts:
-            lines.append(f"\u2022 {_inline(alert)}")
+            block.append(f"\u2022 {_inline(alert)}")
+        sections.append(block)
 
-    # --- Actions: prefer prioritized_actions, fallback to action_items ---
     if brief.prioritized_actions:
-        lines += _format_prioritized_actions(brief.prioritized_actions)
+        action_lines = _format_prioritized_actions(brief.prioritized_actions)
+        if action_lines:
+            sections.append(action_lines)
     elif brief.action_items:
-        # Deprecated fallback — renders flat list as before
-        lines += ["", "**✅ Actions**"]
+        block = ["", "**✅ Actions**"]
         for item in brief.action_items:
-            lines.append(f"\u2022 {_inline(item)}")
+            block.append(f"\u2022 {_inline(item)}")
+        sections.append(block)
 
     if brief.ticker_summaries:
-        lines += ["", "**📊 Ticker**"]
+        block = ["", "**📊 Ticker**"]
         for ts in brief.ticker_summaries:
             signal_emoji = {"bullish": "🟢", "bearish": "🔴", "neutral": "🟡"}.get(ts.signal, "⚪")
             pct = f"+{ts.change_pct:.1f}%" if ts.change_pct >= 0 else f"{ts.change_pct:.1f}%"
-            lines.append(
+            block.append(
                 f"{signal_emoji} **{ts.ticker}** `{ts.price:,.0f}` ({pct}) \u2014 {ts.one_line}"
             )
             if ts.watch_reason:
-                lines.append(f"  \u21b3 _{ts.watch_reason}_")
+                block.append(f"  \u21b3 _{ts.watch_reason}_")
+        sections.append(block)
 
     if brief.portfolio_summary:
-        lines += ["", "**💼 Portfolio**"]
+        block = ["", "**💼 Portfolio**"]
         for item in brief.portfolio_summary:
-            lines.append(f"\u2022 {_inline(item)}")
+            block.append(f"\u2022 {_inline(item)}")
+        sections.append(block)
 
-    return "\n".join(lines)
+    return sections
+
+
+def format_brief(brief: BriefOutput, brief_type: str = "brief", char_limit: int = _DEFAULT_CHAR_LIMIT) -> str:
+    """Format a BriefOutput as a Discord-ready markdown string.
+
+    Assembles sections in priority order and stops adding sections once
+    char_limit would be exceeded. Appends a notice when sections are
+    dropped so the investor knows the brief was clipped.
+
+    Prefers prioritized_actions over deprecated action_items.
+    Falls back to action_items if prioritized_actions is empty
+    (backward compat with old BriefSnapshot records).
+
+    Args:
+        brief:      Structured output from BriefingAgent.
+        brief_type: Label shown in the header (e.g. "Morning Brief", "EOD Brief").
+        char_limit: Max characters before a dropped-sections notice is appended.
+                    Defaults to 4000 to leave headroom within Discord's 4096 limit.
+
+    Returns:
+        Multi-line string with Discord markdown formatting, within char_limit.
+    """
+    sections = _build_sections(brief, brief_type)
+
+    assembled: list[str] = []
+    dropped = 0
+
+    for i, section in enumerate(sections):
+        candidate = "\n".join(assembled + section)
+        if i == 0:
+            # Header is always included — it is always shorter than char_limit
+            assembled += section
+        elif len(candidate) <= char_limit:
+            assembled += section
+        else:
+            dropped += 1
+
+    if dropped:
+        notice = f"\n_{dropped} section(s) không hiển thị do giới hạn Discord (4096 ký tự)._"
+        assembled.append(notice)
+
+    return "\n".join(assembled)
 
 
 def format_morning_brief(brief: BriefOutput) -> str:
