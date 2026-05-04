@@ -7,7 +7,7 @@
 import { el }                  from '../../utils/dom.js';
 import { apiBase, getJson }    from '../../api/client.js';
 import { state }               from '../../state/dashboard-state.js';
-import { renderThesesTable }   from '../thesis/render-thesis-table.js';
+import { renderThesesTable, thesisTableSkeletonHTML, emptyDetailHTML } from '../thesis/render-thesis-table.js';
 import { loadThesisDetail }    from '../thesis/thesis-service.js';
 import { openEditThesisModal } from '../thesis/thesis-form.js';
 import { renderVerdicts, renderAccuracy, renderPerformance } from '../backtesting/render-backtesting.js';
@@ -49,12 +49,31 @@ function normalizeAccuracyRes(res) {
 }
 
 // ---------------------------------------------------------------------------
+// WAVE 2d — Show skeletons ngay khi bắt đầu load, trước Promise.all
+// ---------------------------------------------------------------------------
+function showLoadingSkeletons() {
+  // Thesis table skeleton
+  const tableWrap = document.getElementById('thesesTableWrap');
+  if (tableWrap) tableWrap.innerHTML = thesisTableSkeletonHTML(5);
+
+  // Detail panel: chỉ reset về empty state nếu không đang có thesis được chọn.
+  // Nếu đang có selected thesis, skeleton sẽ được inject bửi loadThesisDetail().
+  if (!state.selectedThesisId) {
+    const detail = el('thesisDetail');
+    if (detail) detail.innerHTML = emptyDetailHTML();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main loader
 // ---------------------------------------------------------------------------
 export async function loadDashboard() {
   const status = el('statusFilter')?.value ?? 'active';
   const base   = apiBase();
   el('errorBanner')?.classList.add('hidden');
+
+  // WAVE 2d: skeleton trước khi fetch bắt đầu
+  showLoadingSkeletons();
 
   try {
     const [
@@ -105,11 +124,12 @@ export async function loadDashboard() {
 
     if (state.selectedThesisId) {
       const t = state.theses.find(x => x.id === state.selectedThesisId);
+      // loadThesisDetail inject skeleton mình (Wave 2d) trước khi fetch 4 endpoints
       if (t) await loadThesisDetail(t.id);
       else {
-        const { emptyDetailHTML } = await import('../thesis/render-thesis-table.js');
         const detail = el('thesisDetail');
         if (detail) detail.innerHTML = emptyDetailHTML();
+        state.selectedThesisId = null;
       }
     }
   } catch (err) {
