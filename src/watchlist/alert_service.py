@@ -7,19 +7,13 @@ Responsibilities:
   - List alerts for a user (all or active-only)
   - Process a batch of triggered alerts (called by ScanService)
   - Dismiss an alert by ID
-  - Reactivate a TRIGGERED alert back to ACTIVE (manual or auto via model flag)
+  - Reactivate a TRIGGERED alert back to ACTIVE
 
 ScanService detects WHICH alerts are triggered; AlertService decides
 what happens WHEN they are triggered (state mutation, persistence).
 
 Does NOT fire Discord notifications — that is a bot/adapter concern.
 Callers receive the list of fired Alert objects and dispatch as needed.
-
-Recurring alerts:
-  Set alert.auto_reactivate=True at creation time. mark_triggered() will
-  record triggered_at/triggered_price but leave status=ACTIVE so the next
-  scan can fire again without manual intervention.
-  For one-shot alerts (default), use reactivate() to manually reset.
 """
 
 from __future__ import annotations
@@ -62,7 +56,6 @@ class AlertService:
         condition_type: AlertConditionType,
         threshold: float,
         note: str | None = None,
-        auto_reactivate: bool = False,
     ) -> Alert:
         """Create and persist a new ACTIVE alert.
 
@@ -73,8 +66,6 @@ class AlertService:
             condition_type: Trigger condition enum value.
             threshold: Numeric threshold for the condition.
             note: Optional free-text note.
-            auto_reactivate: If True, alert stays ACTIVE after firing (recurring).
-                             If False (default), alert moves to TRIGGERED after firing.
 
         Returns:
             Persisted Alert instance in ACTIVE state.
@@ -87,7 +78,6 @@ class AlertService:
             threshold=threshold,
             status=AlertStatus.ACTIVE,
             note=note,
-            auto_reactivate=auto_reactivate,
         )
         await self._repo.save_alert(alert)
         logger.info(
@@ -96,7 +86,6 @@ class AlertService:
             ticker=ticker,
             condition=condition_type,
             threshold=threshold,
-            auto_reactivate=auto_reactivate,
         )
         return alert
 
@@ -122,10 +111,6 @@ class AlertService:
         Called by ScanService after it detects which alerts fired.
         AlertService is the single place that calls alert.mark_triggered().
 
-        For auto_reactivate alerts, mark_triggered() keeps status=ACTIVE
-        (handled inside the model method) — they will be eligible to fire
-        again on the next scan tick.
-
         Args:
             alerts: Alerts that ScanService determined should fire.
             price_map: Mapping of ticker -> current price for triggered_price field.
@@ -147,7 +132,6 @@ class AlertService:
                 "alert_service.process_triggered",
                 count=len(fired),
                 tickers=sorted({a.ticker for a in fired}),
-                auto_reactivate_count=sum(1 for a in fired if a.auto_reactivate),
             )
         return fired
 
@@ -182,11 +166,6 @@ class AlertService:
     async def reactivate(self, alert_id: int, user_id: str) -> Alert:
         """Reset a TRIGGERED alert back to ACTIVE so it can fire again.
 
-        Use this for one-shot alerts (auto_reactivate=False) when the investor
-        wants to re-arm the same alert without deleting and recreating it.
-        Alerts with auto_reactivate=True never reach TRIGGERED, so calling
-        this on them is a no-op that returns the alert unchanged.
-
         Args:
             alert_id: Primary key of the alert.
             user_id: Must match alert.user_id (ownership check).
@@ -200,7 +179,6 @@ class AlertService:
         alert = await self._get_owned(alert_id, user_id)
 
         if alert.status == AlertStatus.ACTIVE:
-            # Already active — idempotent, nothing to do
             return alert
 
         if alert.status == AlertStatus.DISMISSED:
