@@ -12,9 +12,6 @@ export function renderReviewRecommendSection(thesisId) {
       <div class="detail-section-header" style="align-items:flex-end; gap:12px;">
         <div style="max-width: 65%;">
           <h3>Agent Suggestion</h3>
-          <p class="muted" style="font-size: 0.78rem; margin-top: 2px;">
-            Nhờ AI rà lại thesis, bạn vẫn là người xác nhận thay đổi.
-          </p>
         </div>
         <button
           class="suggest-btn"
