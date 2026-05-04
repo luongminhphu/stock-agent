@@ -83,6 +83,12 @@ class OutcomeVerdict(enum.StrEnum):
     MIXED = "MIXED"
 
 
+class RecommendationStatus(enum.StrEnum):
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+
+
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
@@ -192,6 +198,29 @@ class ThesisReview(Base):
     )
 
     thesis: Mapped[Thesis] = relationship(back_populates="reviews")
+    recommendations: Mapped[list[ReviewRecommendation]] = relationship(
+        back_populates="review", cascade="all, delete-orphan"
+    )
+
+
+class ReviewRecommendation(Base):
+    __tablename__ = "review_recommendations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    review_id: Mapped[int] = mapped_column(
+        ForeignKey("thesis_reviews.id", ondelete="CASCADE"), index=True
+    )
+    content: Mapped[str] = mapped_column(Text)
+    status: Mapped[RecommendationStatus] = mapped_column(
+        SAEnum(RecommendationStatus, values_callable=_enum_values),
+        default=RecommendationStatus.PENDING,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    review: Mapped[ThesisReview] = relationship(back_populates="recommendations")
 
 
 class DecisionLog(Base):
