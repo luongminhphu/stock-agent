@@ -15,7 +15,7 @@ import json
 
 from pydantic import BaseModel, Field
 
-from src.ai.client import AIClient
+from src.ai.client import PerplexityClient
 from src.ai.prompts.replay import ReplayContext, SYSTEM_PROMPT, build_user_prompt
 from src.platform.logging import get_logger
 
@@ -36,16 +36,21 @@ class DecisionReplayResult(BaseModel):
 
 
 class ReplayAgent:
-    def __init__(self, ai_client: AIClient) -> None:
+    def __init__(self, ai_client: PerplexityClient) -> None:
         self._client = ai_client
 
     async def analyze(self, ctx: ReplayContext) -> DecisionReplayResult | None:
         try:
-            raw = await self._client.complete(
-                system=SYSTEM_PROMPT,
-                user=build_user_prompt(ctx),
+            messages = [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": build_user_prompt(ctx)},
+            ]
+            response = await self._client.chat_completion(
+                messages=messages,
                 temperature=0.2,
+                response_format={"type": "json_object"},
             )
+            raw = self._client.extract_text(response)
             result = DecisionReplayResult(**json.loads(raw))
             logger.info(
                 "decision_replay.analyzed",

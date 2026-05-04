@@ -7,6 +7,8 @@ All domain operations are delegated to segment services.
 
 from __future__ import annotations
 
+import asyncio
+
 import discord
 from discord.ext import commands
 
@@ -51,6 +53,12 @@ def create_bot() -> commands.Bot:
         logger.exception("bot.event_error", event_name=event)
 
     return bot
+
+
+def run() -> None:
+    """Entry point called by src/bot/__main__.py."""
+    bot = create_bot()
+    asyncio.run(bot.start(settings.discord_token))
 
 
 async def _sync_tree(bot: commands.Bot) -> None:
