@@ -854,6 +854,7 @@ class DashboardService:
                 pos_map[p.ticker] = (p.qty, p.avg_cost)
 
         # --- 2. Load thesis active + latest review ---
+        # FIX #3: filter user_id trong subquery để tránh cross-user verdict leak
         latest_review_subq = (
             select(
                 ThesisReview.thesis_id,
@@ -865,6 +866,8 @@ class DashboardService:
                 )
                 .label("rn"),
             )
+            .join(Thesis, Thesis.id == ThesisReview.thesis_id)
+            .where(Thesis.user_id == user_id)
             .subquery()
         )
 
@@ -914,10 +917,11 @@ class DashboardService:
             if quantity:
                 has_quantity_data = True
 
-            # P&L % tính theo avg_cost thực tế
+            # FIX #5: pnl_pct fallback về thesis.entry_price khi không có Position
+            effective_entry: float | None = avg_cost if avg_cost else r.entry_price
             pnl_pct: float | None = None
-            if avg_cost and current_price and avg_cost > 0:
-                pnl_pct = (current_price - avg_cost) / avg_cost * 100
+            if current_price and effective_entry and effective_entry > 0:
+                pnl_pct = (current_price - effective_entry) / effective_entry * 100
 
             cost_basis: float | None = None
             if avg_cost and quantity:
@@ -952,7 +956,7 @@ class DashboardService:
                 "status": str(r.status.value),
                 "quantity": quantity,
                 "avg_cost": round(avg_cost, 0) if avg_cost else None,
-                "entry_price": r.entry_price,  # giá thesis gốc — để tham khảo
+                "entry_price": r.entry_price,
                 "current_price": current_price,
                 "pnl_pct": round(pnl_pct, 2) if pnl_pct is not None else None,
                 "pnl_abs": round(pnl_abs, 0) if pnl_abs is not None else None,
@@ -972,9 +976,9 @@ class DashboardService:
             if mv is not None and has_market_data and total_market_value > 0:
                 pos["weight_pct"] = round(mv / total_market_value * 100, 2)
 
-        # Sort: pnl_abs desc, None đẩy xuống cuối
+        # FIX #6: stable sort — pnl_abs desc, None xuống cuối, fallback ticker asc
         positions.sort(
-            key=lambda p: (p["pnl_abs"] is None, -(p["pnl_abs"] or 0))
+            key=lambda p: (p["pnl_abs"] is None, -(p["pnl_abs"] or 0), p["ticker"])
         )
 
         total_pnl_abs = (
