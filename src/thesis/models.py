@@ -248,7 +248,8 @@ class ReviewRecommendation(Base):
     review_id: Mapped[int] = mapped_column(
         ForeignKey("thesis_reviews.id", ondelete="CASCADE"), index=True
     )
-    content: Mapped[str] = mapped_column(Text)
+    # Legacy field — kept for backward compat; new code uses structured fields below.
+    content: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[RecommendationStatus] = mapped_column(
         SAEnum(RecommendationStatus, values_callable=_enum_values),
         default=RecommendationStatus.PENDING,
@@ -257,6 +258,16 @@ class ReviewRecommendation(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+    # Structured fields added in 0013 — populated by _auto_apply_recommendations.
+    target_type: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )  # "assumption" | "catalyst"
+    target_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    target_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recommended_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    acted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     review: Mapped[ThesisReview] = relationship(back_populates="recommendations")
 
