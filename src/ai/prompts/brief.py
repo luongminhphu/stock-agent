@@ -26,7 +26,7 @@ Quy tắc chung:
 - ĐÚNG: "NVL tăng 5.4%, MSR giảm 5.9%, HCM và TCX cùng tăng nhẹ."
 - SAI: viết tên mã trên một dòng riêng rồi mới tiếp tục câu văn ở dòng tiếp theo.
 
-⚡ QUY TẮc prioritized_actions (bắt buộc điền khi có watchlist):
+⚡ QUY TẬC prioritized_actions (bắt buộc điền khi có watchlist):
 - ACT_TODAY: ticker đang approach stop_loss trong thesis, catalyst sắp triggered 1-3 ngày,
   signal conflict với thesis hiện tại, hoặc market sentiment đảo chiều mạnh.
 - WATCH_MORE: thesis còn valid nhưng cần 1-2 phiên xác nhận, volume chưa đủ,
@@ -78,6 +78,7 @@ def build_morning_prompt(
     extra_context: str = "",
     portfolio_context: str = "",
     thesis_context: str = "",
+    past_lessons: str = "",
 ) -> str:
     """Build morning brief prompt.
 
@@ -89,6 +90,10 @@ def build_morning_prompt(
         thesis_context: Optional active thesis summary string. When provided,
             AI will cross-reference thesis stop_loss levels against current price
             and force ACT_TODAY for any ticker approaching invalidation.
+        past_lessons: Optional formatted string from LessonService — recent
+            evaluated decisions with outcome verdicts, key lessons, and detected
+            patterns. When provided, AI will personalise analysis by referencing
+            the investor's own historical decision quality.
     """
     ticker_str = ", ".join(watchlist_tickers) if watchlist_tickers else "(không có watchlist)"
     prompt = f"""[MORNING BRIEF — Phiên hôm nay]
@@ -103,6 +108,9 @@ Watchlist cần theo dõi: {ticker_str}
 
     if thesis_context:
         prompt += f"\nThesis đang active (dùng để xác định ACT_TODAY):\n{thesis_context}\n"
+
+    if past_lessons:
+        prompt += f"\nLịch sử quyết định của nhà đầu tư này (dùng để cá nhân hóa phân tích):\n{past_lessons}\n"
 
     if extra_context:
         prompt += f"\nThông tin bổ sung:\n{extra_context}\n"
@@ -123,6 +131,12 @@ Watchlist cần theo dõi: {ticker_str}
             " Điền prioritized_actions dựa trên thesis data:"
             " nếu giá hiện tại đang tiếp cận stop_loss của bất kỳ thesis nào"
             " → bắt buộc xuất ACT_TODAY cho ticker đó với lý do rõ ràng."
+        )
+    if past_lessons:
+        prompt += (
+            " Tham chiếu lịch sử quyết định để cá nhân hóa prioritized_actions:"
+            " nếu có pattern thua lỗ từng xảy ra → nâng thêm cảnh báo trong reason."
+            " Nếu có tín hiệu tương tự từng CORRECT → tăng confidence cho action tươngứng."
         )
     return prompt
 
