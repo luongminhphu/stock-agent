@@ -4,6 +4,13 @@ Owner: bot segment.
 File này là source of truth cho toàn bộ nội dung /help.
 Khi thêm/bớt/sửa command, chỉ cần chỉnh sửa file này.
 Không chứa Discord UI logic.
+
+Categories:
+    📈 market    — Market & Analysis
+    📋 thesis    — Thesis & Research
+    🧠 decision  — Decision & Learning
+    💼 portfolio — Portfolio & Watchlist
+    ⚙️ system    — System
 """
 
 from __future__ import annotations
@@ -35,11 +42,15 @@ class GroupEntry(TypedDict):
 # ---------------------------------------------------------------------------
 
 HELP_DATA: dict[str, GroupEntry] = {
+    # -----------------------------------------------------------------------
+    # 📈 Market & Analysis
+    # /quote, /quote_bulk, /morning_brief, /eod_brief, /why, /sector
+    # -----------------------------------------------------------------------
     "market": {
-        "label": "Market · Giá cổ phiếu",
+        "label": "Market & Analysis",
         "emoji": "📈",
         "colour": 0x0078D7,
-        "intro": "Tra giá realtime cho một hoặc nhiều mã cổ phiếu.",
+        "intro": "Tra giá realtime, bản tin thị trường, phân tích biến động và dòng tiền sector.",
         "commands": [
             {
                 "usage": "/quote <ticker>",
@@ -51,49 +62,150 @@ HELP_DATA: dict[str, GroupEntry] = {
                 "description": "Giá cho nhiều mã cùng lúc, cách nhau dấu phẩy (tối đa 10).",
                 "example": "/quote_bulk HPG,VNM,FPT",
             },
+            {
+                "usage": "/morning_brief",
+                "description": "Bản tin buổi sáng: tổng quan thị trường, watchlist highlight, macro/sector context.",
+                "example": None,
+            },
+            {
+                "usage": "/eod_brief",
+                "description": "Bản tin cuối phiên: diễn biến ngày, phân tích watchlist, điểm cần theo dõi ngày mai.",
+                "example": None,
+            },
+            {
+                "usage": "/why <ticker>",
+                "description": (
+                    "Giải thích nguyên nhân tăng/giảm đột biến: "
+                    "nguyên nhân kỹ thuật, cơ bản, macro context, risk flags và độ tin cậy phân tích."
+                ),
+                "example": "/why HPG",
+            },
+            {
+                "usage": "/sector",
+                "description": (
+                    "Phân tích dòng tiền toàn thị trường theo sector. "
+                    "Output: risk regime (RISK_ON 🟢 / RISK_OFF 🔴 / MIXED 🟡), "
+                    "3 sector dẫn dắt + 3 sector yếu nhất, rotation narrative AI, "
+                    "và actionable insight cho phiên tiếp theo."
+                ),
+                "example": None,
+            },
+            {
+                "usage": "/sector [tickers]",
+                "description": (
+                    "Scope theo watchlist tuỳ chọn: thêm danh sách mã cách nhau dấu cách. "
+                    "AI crosscheck từng mã với sector đang dẫn/yếu — "
+                    "gắn cờ 🚩 contrarian nếu mã đang đi ngược dòng tiền sector của nó, "
+                    "hoặc ✅ aligned nếu đang đi cùng hướng."
+                ),
+                "example": "/sector VCB VNM BID",
+            },
         ],
     },
-    "watchlist": {
-        "label": "Watchlist · Danh sách theo dõi",
-        "emoji": "👁️",
-        "colour": 0x00B96B,
-        "intro": "Quản lý danh sách theo dõi, cảnh báo giá, và quét tín hiệu.",
+    # -----------------------------------------------------------------------
+    # 📋 Thesis & Research
+    # /thesis add/list/close, /review_thesis, /conviction, /stress_test
+    # -----------------------------------------------------------------------
+    "thesis": {
+        "label": "Thesis & Research",
+        "emoji": "📋",
+        "colour": 0x7B2FBE,
+        "intro": "Tạo, theo dõi, review AI và stress-test investment thesis của bạn.",
         "commands": [
             {
-                "usage": "/watchlist add <ticker> [note]",
-                "description": "Thêm mã vào watchlist, kèm ghi chú tuỳ chọn.",
-                "example": "/watchlist add VNM Theo dõi breakout",
+                "usage": "/thesis add <ticker> <title> <entry_price> <target_price> <stop_loss> [summary]",
+                "description": "Tạo investment thesis mới với giá vào, mục tiêu, và stop-loss.",
+                "example": "/thesis add HPG Thesis Q2 45000 60000 40000",
             },
             {
-                "usage": "/watchlist remove <ticker>",
-                "description": "Xoá mã khỏi watchlist.",
-                "example": "/watchlist remove VNM",
+                "usage": "/thesis list [status]",
+                "description": "Xem danh sách thesis. Status: `active` (default), `paused`, `closed`, `invalidated`, `all`.",
+                "example": "/thesis list active",
             },
             {
-                "usage": "/watchlist list",
-                "description": "Hiển thị toàn bộ watchlist kèm giá realtime.",
-                "example": None,
+                "usage": "/thesis close <thesis_id> <reason>",
+                "description": "Đóng thesis (`closed` = đạt target/exit) hoặc huỷ (`invalidated` = thesis không còn valid).",
+                "example": "/thesis close 12 closed",
             },
             {
-                "usage": "/watchlist scan",
-                "description": "Quét tín hiệu kỹ thuật và kiểm tra cảnh báo đang active trên toàn bộ watchlist.",
-                "example": None,
+                "usage": "/review_thesis <thesis_id>",
+                "description": "Chạy AI review: verdict (Bullish/Bearish/Neutral/Watchlist), risk signals, next watch items, confidence score.",
+                "example": "/review_thesis 12",
             },
             {
-                "usage": "/watchlist alert <ticker> <condition> <threshold>",
+                "usage": "/conviction <ticker> [limit]",
                 "description": (
-                    "Đặt cảnh báo giá/thay đổi/volume. Condition: "
-                    "`price_above`, `price_below`, `change_pct_up`, `change_pct_down`, `volume_spike`."
+                    "Xem Conviction Score Timeline: lịch sử health score qua các snapshot, "
+                    "trend (📈 Improving / 📉 Declining / ➡️ Stable), breakdown 4 dimensions "
+                    "(Assumptions · Catalysts · Risk/Reward · AI Confidence), "
+                    "và verdict + confidence của AI review gần nhất. "
+                    "`limit` = số snapshot tối đa (5–50, mặc định 20)."
                 ),
-                "example": "/watchlist alert HPG price_above 55000",
+                "example": "/conviction VCB",
+            },
+            {
+                "usage": "/stress_test <ticker>",
+                "description": (
+                    "Stress-test thesis đang active của mã: tạo kịch bản bất lợi, "
+                    "đánh giá từng assumption (🟢 INTACT / 🟡 WEAKENED / 🔴 BROKEN), "
+                    "xác suất invalidation, triggers cần theo dõi, và rủi ro vĩ mô. "
+                    "Output: verdict + confidence. Không thay đổi trạng thái thesis."
+                ),
+                "example": "/stress_test VCB",
             },
         ],
     },
+    # -----------------------------------------------------------------------
+    # 🧠 Decision & Learning
+    # /log_decision, /replay, /lessons
+    # -----------------------------------------------------------------------
+    "decision": {
+        "label": "Decision & Learning",
+        "emoji": "🧠",
+        "colour": 0x2980B9,
+        "intro": "Ghi lại quyết định đầu tư và để AI phân tích outcome sau horizon để rút ra bài học.",
+        "commands": [
+            {
+                "usage": "/log_decision <thesis_id> <action> <rationale> [horizon_days]",
+                "description": (
+                    "Ghi lại quyết định BUY/SELL/HOLD/ADD/REDUCE tại thời điểm thực tế. "
+                    "Hệ thống đóng băng giá và thesis score hiện tại. "
+                    "Sau `horizon_days` ngày (mặc định 30), outcome sẽ được evaluate tự động."
+                ),
+                "example": "/log_decision 5 BUY Breakout volume xác nhận, thesis còn valid 30",
+            },
+            {
+                "usage": "/replay <decision_id>",
+                "description": (
+                    "AI phân tích một quyết định đã qua horizon: so sánh giá vào với giá thực tế, "
+                    "verdict CORRECT/INCORRECT/MIXED, những gì đúng/sai, key lesson, pattern phát hiện, "
+                    "và gợi ý điều chỉnh cho lần sau. "
+                    "Lấy `decision_id` từ output của `/log_decision`."
+                ),
+                "example": "/replay 3",
+            },
+            {
+                "usage": "/lessons [ticker] [limit]",
+                "description": (
+                    "Xem tổng hợp bài học AI đã rút ra từ các quyết định đã replay. "
+                    "Mỗi bài học kèm verdict (CORRECT/INCORRECT/MIXED), pattern phát hiện, "
+                    "và ngày ra quyết định. "
+                    "`ticker` để lọc theo mã cụ thể. `limit` tối đa 50, mặc định 10."
+                ),
+                "example": "/lessons VCB 5",
+            },
+        ],
+    },
+    # -----------------------------------------------------------------------
+    # 💼 Portfolio & Watchlist
+    # /buy, /sell, /correct_trade, /portfolio, /history
+    # /watchlist add/remove/list/scan/alert, /pretrade
+    # -----------------------------------------------------------------------
     "portfolio": {
-        "label": "Portfolio · Danh mục đầu tư",
+        "label": "Portfolio & Watchlist",
         "emoji": "💼",
         "colour": 0x2ECC71,
-        "intro": "Ghi nhận giao dịch, theo dõi P&L realtime và conviction từ thesis.",
+        "intro": "Ghi nhận giao dịch, theo dõi P&L, quản lý watchlist và kiểm tra trước khi vào lệnh.",
         "commands": [
             {
                 "usage": "/buy <ticker> <qty> <price> [note]",
@@ -135,126 +247,34 @@ HELP_DATA: dict[str, GroupEntry] = {
                 ),
                 "example": "/history VCB",
             },
-        ],
-    },
-    "thesis": {
-        "label": "Thesis · Investment thesis",
-        "emoji": "📝",
-        "colour": 0x7B2FBE,
-        "intro": "Tạo, theo dõi, và review AI cho investment thesis của bạn.",
-        "commands": [
             {
-                "usage": "/thesis add <ticker> <title> <entry_price> <target_price> <stop_loss> [summary]",
-                "description": "Tạo investment thesis mới với giá vào, mục tiêu, và stop-loss.",
-                "example": "/thesis add HPG Thesis Q2 45000 60000 40000",
+                "usage": "/watchlist add <ticker> [note]",
+                "description": "Thêm mã vào watchlist, kèm ghi chú tuỳ chọn.",
+                "example": "/watchlist add VNM Theo dõi breakout",
             },
             {
-                "usage": "/thesis list [status]",
-                "description": "Xem danh sách thesis. Status: `active` (default), `paused`, `closed`, `invalidated`, `all`.",
-                "example": "/thesis list active",
+                "usage": "/watchlist remove <ticker>",
+                "description": "Xoá mã khỏi watchlist.",
+                "example": "/watchlist remove VNM",
             },
             {
-                "usage": "/thesis close <thesis_id> <reason>",
-                "description": "Đóng thesis (`closed` = đạt target/exit) hoặc huỷ (`invalidated` = thesis không còn valid).",
-                "example": "/thesis close 12 closed",
-            },
-            {
-                "usage": "/review_thesis <thesis_id>",
-                "description": "Chạy AI review: verdict (Bullish/Bearish/Neutral/Watchlist), risk signals, next watch items, confidence score.",
-                "example": "/review_thesis 12",
-            },
-            {
-                "usage": "/conviction <ticker> [limit]",
-                "description": (
-                    "Xem Conviction Score Timeline: lịch sử health score qua các snapshot, "
-                    "trend (📈 Improving / 📉 Declining / ➡️ Stable), breakdown 4 dimensions "
-                    "(Assumptions · Catalysts · Risk/Reward · AI Confidence), "
-                    "và verdict + confidence của AI review gần nhất. "
-                    "`limit` = số snapshot tối đa (5–50, mặc định 20)."
-                ),
-                "example": "/conviction VCB",
-            },
-        ],
-    },
-    "decision": {
-        "label": "Decision · Ghi nhận & học từ quyết định",
-        "emoji": "🧠",
-        "colour": 0x2980B9,
-        "intro": "Ghi lại quyết định đầu tư và để AI phân tích outcome sau horizon để rút ra bài học.",
-        "commands": [
-            {
-                "usage": "/log_decision <thesis_id> <action> <rationale> [horizon_days]",
-                "description": (
-                    "Ghi lại quyết định BUY/SELL/HOLD/ADD/REDUCE tại thời điểm thực tế. "
-                    "Hệ thống đóng băng giá và thesis score hiện tại. "
-                    "Sau `horizon_days` ngày (mặc định 30), outcome sẽ được evaluate tự động."
-                ),
-                "example": "/log_decision 5 BUY Breakout volume xác nhận, thesis còn valid 30",
-            },
-            {
-                "usage": "/replay <decision_id>",
-                "description": (
-                    "AI phân tích một quyết định đã qua horizon: so sánh giá vào với giá thực tế, "
-                    "verdict CORRECT/INCORRECT/MIXED, những gì đúng/sai, key lesson, pattern phát hiện, "
-                    "và gợi ý điều chỉnh cho lần sau. "
-                    "Lấy `decision_id` từ output của `/log_decision`."
-                ),
-                "example": "/replay 3",
-            },
-            {
-                "usage": "/lessons [ticker] [limit]",
-                "description": (
-                    "Xem tổng hợp bài học AI đã rút ra từ các quyết định đã replay. "
-                    "Mỗi bài học kèm verdict (CORRECT/INCORRECT/MIXED), pattern phát hiện, "
-                    "và ngày ra quyết định. "
-                    "`ticker` để lọc theo mã cụ thể. `limit` tối đa 50, mặc định 10."
-                ),
-                "example": "/lessons VCB 5",
-            },
-        ],
-    },
-    "stress_test": {
-        "label": "Stress-Test · Kiểm tra sức chịu đựng thesis",
-        "emoji": "🔬",
-        "colour": 0xE74C3C,
-        "intro": "AI chạy stress-test toàn bộ assumptions của thesis trước các kịch bản bất lợi.",
-        "commands": [
-            {
-                "usage": "/stress_test <ticker>",
-                "description": (
-                    "Stress-test thesis đang active của mã: tạo kịch bản bất lợi, "
-                    "đánh giá từng assumption (🟢 INTACT / 🟡 WEAKENED / 🔴 BROKEN), "
-                    "xác suất invalidation, triggers cần theo dõi, và rủi ro vĩ mô. "
-                    "Output: verdict + confidence. Không thay đổi trạng thái thesis."
-                ),
-                "example": "/stress_test VCB",
-            },
-        ],
-    },
-    "briefing": {
-        "label": "Briefing · Bản tin thị trường",
-        "emoji": "📰",
-        "colour": 0xF5A623,
-        "intro": "Bản tin AI tổng hợp thị trường, cá nhân hoá theo watchlist của bạn.",
-        "commands": [
-            {
-                "usage": "/morning_brief",
-                "description": "Bản tin buổi sáng: tổng quan thị trường, watchlist highlight, macro/sector context.",
+                "usage": "/watchlist list",
+                "description": "Hiển thị toàn bộ watchlist kèm giá realtime.",
                 "example": None,
             },
             {
-                "usage": "/eod_brief",
-                "description": "Bản tin cuối phiên: diễn biến ngày, phân tích watchlist, điểm cần theo dõi ngày mai.",
+                "usage": "/watchlist scan",
+                "description": "Quét tín hiệu kỹ thuật và kiểm tra cảnh báo đang active trên toàn bộ watchlist.",
                 "example": None,
             },
-        ],
-    },
-    "pretrade": {
-        "label": "Pre-trade · Kiểm tra trước khi vào lệnh",
-        "emoji": "🎯",
-        "colour": 0x01696F,
-        "intro": "AI kiểm tra thesis, tín hiệu, và brief trước khi bạn vào lệnh.",
-        "commands": [
+            {
+                "usage": "/watchlist alert <ticker> <condition> <threshold>",
+                "description": (
+                    "Đặt cảnh báo giá/thay đổi/volume. Condition: "
+                    "`price_above`, `price_below`, `change_pct_up`, `change_pct_down`, `volume_spike`."
+                ),
+                "example": "/watchlist alert HPG price_above 55000",
+            },
             {
                 "usage": "/pretrade <ticker>",
                 "description": (
@@ -266,55 +286,15 @@ HELP_DATA: dict[str, GroupEntry] = {
             },
         ],
     },
-    "analysis": {
-        "label": "Analysis · Phân tích biến động",
-        "emoji": "🔍",
-        "colour": 0xE8534A,
-        "intro": "AI phân tích nguyên nhân tăng/giảm đột biến của một mã cổ phiếu.",
-        "commands": [
-            {
-                "usage": "/why <ticker>",
-                "description": (
-                    "Giải thích nguyên nhân tăng/giảm đột biến: "
-                    "nguyên nhân kỹ thuật, cơ bản, macro context, risk flags và độ tin cậy phân tích."
-                ),
-                "example": "/why HPG",
-            },
-        ],
-    },
-    "sector_rotation": {
-        "label": "Sector Rotation · Dòng tiền theo ngành",
-        "emoji": "🔄",
-        "colour": 0x16A085,
-        "intro": "AI radar theo dõi dòng tiền luân chuyển giữa các sector HOSE/HNX/UPCoM.",
-        "commands": [
-            {
-                "usage": "/sector",
-                "description": (
-                    "Phân tích dòng tiền toàn thị trường theo sector. "
-                    "Output: risk regime (RISK_ON 🟢 / RISK_OFF 🔴 / MIXED 🟡), "
-                    "3 sector dẫn dắt + 3 sector yếu nhất, rotation narrative AI, "
-                    "và actionable insight cho phiên tiếp theo."
-                ),
-                "example": None,
-            },
-            {
-                "usage": "/sector [tickers]",
-                "description": (
-                    "Scope theo watchlist tuỳ chọn: thêm danh sách mã cách nhau dấu cách. "
-                    "AI crosscheck từng mã với sector đang dẫn/yếu — "
-                    "gắn cờ 🚩 contrarian nếu mã đang đi ngược dòng tiền sector của nó, "
-                    "hoặc ✅ aligned nếu đang đi cùng hướng."
-                ),
-                "example": "/sector VCB VNM BID",
-            },
-        ],
-    },
+    # -----------------------------------------------------------------------
+    # ⚙️ System
+    # /health, /run_replay_scheduler
+    # -----------------------------------------------------------------------
     "system": {
-        "label": "System · Trạng thái hệ thống",
-        "emoji": "🖥️",
+        "label": "System",
+        "emoji": "⚙️",
         "colour": 0x7F8C8D,
-        "intro": "Kiểm tra trạng thái kết nối và sức khoẻ của bot và các dịch vụ phụ thuộc.",
+        "intro": "Kiểm tra trạng thái hệ thống và các công cụ quản trị dành cho bot owner.",
         "commands": [
             {
                 "usage": "/health",
@@ -325,20 +305,13 @@ HELP_DATA: dict[str, GroupEntry] = {
                 ),
                 "example": None,
             },
-        ],
-    },
-    "owner": {
-        "label": "Owner · Công cụ quản trị",
-        "emoji": "⚙️",
-        "colour": 0x95A5A6,
-        "intro": "Các lệnh dành riêng cho bot owner. Người dùng thường không thể chạy.",
-        "commands": [
             {
                 "usage": "/run_replay_scheduler",
                 "description": (
                     "Kích hoạt DecisionReplayScheduler thủ công ngoài giờ cron. "
                     "Tìm tất cả decision đã đến hạn horizon, evaluate outcome, chạy ReplayAgent, "
-                    "và lưu lesson. Hữu ích để test hoặc recovery sau downtime."
+                    "và lưu lesson. Hữu ích để test hoặc recovery sau downtime. "
+                    "(Chỉ dành cho bot owner.)"
                 ),
                 "example": None,
             },
