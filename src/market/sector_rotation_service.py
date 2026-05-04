@@ -14,7 +14,7 @@ from collections import defaultdict
 from datetime import date
 
 from src.market.quote_service import QuoteService
-from src.market.registry import TickerRegistry
+from src.market.registry import SymbolRegistry
 from src.ai.schemas import FlowDirection, SectorFlow
 
 logger = logging.getLogger(__name__)
@@ -36,7 +36,7 @@ class SectorRotationService:
     def __init__(
         self,
         quote_service: QuoteService,
-        registry: TickerRegistry,
+        registry: SymbolRegistry,
     ) -> None:
         self._quotes = quote_service
         self._registry = registry
