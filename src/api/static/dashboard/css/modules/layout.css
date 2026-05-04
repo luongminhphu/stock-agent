@@ -195,6 +195,36 @@
 
 .signal-card--risk .signal-value { color: var(--danger); }
 
+/* ── WAVE 2c: KPI alert state + countUp flash ─────────── */
+
+/* Khi risky > 0: card đổi màu nền nhẹ + border warning */
+.signal-card--alert {
+  background: rgba(251, 191, 36, 0.06) !important;
+  border-bottom: 2px solid rgba(251, 191, 36, 0.5);
+}
+.signal-card--alert .signal-value {
+  color: var(--warning);
+}
+
+/* Flash keyframe: bật sáng nhẹ 1 beat khi giá trị vừa update */
+@keyframes kpi-flash {
+  0%   { color: var(--brand-strong); }
+  60%  { color: var(--brand); }
+  100% { color: inherit; }
+}
+
+.signal-value.updated {
+  animation: kpi-flash 0.8s ease-out forwards;
+}
+
+/* Respect reduced-motion: không animate, chỉ đổi màu 1 lần */
+@media (prefers-reduced-motion: reduce) {
+  .signal-value.updated {
+    animation: none;
+    color: var(--brand);
+  }
+}
+
 /* At ≥900px the strip has 5 columns; --wide card sits in the last wider slot */
 /* At <600px we collapse to 2 cols and span 2 explicitly */
 @container (min-width: 900px) {
@@ -265,6 +295,12 @@
 
 /* ── PORTFOLIO LAYER ─────────────────────────────────── */
 .portfolio-layer {
+  padding-inline: var(--page-px);
+  margin-bottom: var(--layer-gap);
+}
+
+/* ── WATCHLIST LAYER ─────────────────────────────────── */
+.watchlist-layer {
   padding-inline: var(--page-px);
   margin-bottom: var(--layer-gap);
 }
