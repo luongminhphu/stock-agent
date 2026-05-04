@@ -1,4 +1,4 @@
-"""Health command — /health slash command for scheduler monitoring.
+"""Health command — /health slash command.
 
 Owner: bot segment (adapter only).
 No domain logic — reads from SchedulerMonitor singleton and renders embed.
@@ -12,20 +12,18 @@ from __future__ import annotations
 import discord
 from discord import app_commands
 
+from src.bot.commands.base import BaseCog
 from src.platform.logging import get_logger
 from src.platform.scheduler_monitor import get_monitor
 
 logger = get_logger(__name__)
 
 
-class HealthCommands(app_commands.Group):
-    """Slash commands for scheduler health monitoring."""
+class HealthCog(BaseCog):
+    """Slash command: /health"""
 
-    def __init__(self) -> None:
-        super().__init__(name="health", description="Kiểm tra trạng thái scheduler")
-
-    @app_commands.command(name="status", description="Xem trạng thái tất cả scheduled tasks")
-    async def status(self, interaction: discord.Interaction) -> None:
+    @app_commands.command(name="health", description="Kiểm tra trạng thái hệ thống và scheduled tasks")
+    async def health(self, interaction: discord.Interaction) -> None:
         """Return a health embed for all scheduler tasks. Ephemeral — only visible to caller."""
         await interaction.response.defer(ephemeral=True)
 
@@ -34,12 +32,12 @@ class HealthCommands(app_commands.Group):
             embed = monitor.get_health_embed()
             await interaction.followup.send(embed=embed, ephemeral=True)
             logger.info(
-                "command.health.status",
+                "command.health",
                 user_id=interaction.user.id,
             )
         except Exception as exc:
-            logger.error("command.health.status.error", error=str(exc))
+            logger.error("command.health.error", error=str(exc))
             await interaction.followup.send(
-                "❌ Không thể lấy trạng thái scheduler. Kiểm tra log.",
+                "❌ Không thể lấy trạng thái hệ thống. Kiểm tra log.",
                 ephemeral=True,
             )
