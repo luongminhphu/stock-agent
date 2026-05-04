@@ -155,7 +155,7 @@ HELP_DATA: dict[str, GroupEntry] = {
             },
             {
                 "usage": "/thesis close <thesis_id> <reason>",
-                "description": "Dóng thesis (`closed` = đạt target/exit) hoặc huỷ (`invalidated` = thesis không còn valid).",
+                "description": "Đóng thesis (`closed` = đạt target/exit) hoặc huỷ (`invalidated` = thesis không còn valid).",
                 "example": "/thesis close 12 closed",
             },
             {
@@ -173,6 +173,51 @@ HELP_DATA: dict[str, GroupEntry] = {
                     "`limit` = số snapshot tối đa (5–50, mặc định 20)."
                 ),
                 "example": "/conviction VCB",
+            },
+        ],
+    },
+    "decision": {
+        "label": "Decision · Ghi nhận & học từ quyết định",
+        "emoji": "🧠",
+        "colour": 0x2980B9,
+        "intro": "Ghi lại quyết định đầu tư và để AI phân tích outcome sau horizon để rút ra bài học.",
+        "commands": [
+            {
+                "usage": "/log_decision <thesis_id> <action> <rationale> [horizon_days]",
+                "description": (
+                    "Ghi lại quyết định BUY/SELL/HOLD/ADD/REDUCE tại thời điểm thực tế. "
+                    "Hệ thống đóng băng giá và thesis score hiện tại. "
+                    "Sau `horizon_days` ngày (mặc định 30), outcome sẽ được evaluate tự động."
+                ),
+                "example": "/log_decision 5 BUY Breakout volume xác nhận, thesis còn valid 30",
+            },
+            {
+                "usage": "/replay <decision_id>",
+                "description": (
+                    "AI phân tích một quyết định đã qua horizon: so sánh giá vào với giá thực tế, "
+                    "verdict CORRECT/INCORRECT/MIXED, những gì đúng/sai, key lesson, pattern phát hiện, "
+                    "và gợi ý điều chỉnh cho lần sau. "
+                    "Lấy `decision_id` từ output của `/log_decision`."
+                ),
+                "example": "/replay 3",
+            },
+        ],
+    },
+    "stress_test": {
+        "label": "Stress-Test · Kiểm tra sức chịu đựng thesis",
+        "emoji": "🔬",
+        "colour": 0xE74C3C,
+        "intro": "AI chạy stress-test toàn bộ assumptions của thesis trước các kịch bản bất lợi.",
+        "commands": [
+            {
+                "usage": "/stress_test <ticker>",
+                "description": (
+                    "Stress-test thesis đang active của mã: tạo kịch bản bất lợi, "
+                    "đánh giá từng assumption (🟢 INTACT / 🟡 WEAKENED / 🔴 BROKEN), "
+                    "xác suất invalidation, triggers cần theo dõi, và rủi ro vĩ mô. "
+                    "Output: verdict + confidence. Không thay đổi trạng thái thesis."
+                ),
+                "example": "/stress_test VCB",
             },
         ],
     },
@@ -224,6 +269,23 @@ HELP_DATA: dict[str, GroupEntry] = {
                     "nguyên nhân kỹ thuật, cơ bản, macro context, risk flags và độ tin cậy phân tích."
                 ),
                 "example": "/why HPG",
+            },
+        ],
+    },
+    "owner": {
+        "label": "Owner · Công cụ quản trị",
+        "emoji": "⚙️",
+        "colour": 0x95A5A6,
+        "intro": "Các lệnh dành riêng cho bot owner. Người dùng thường không thể chạy.",
+        "commands": [
+            {
+                "usage": "/run_replay_scheduler",
+                "description": (
+                    "Kích hoạt DecisionReplayScheduler thủ công ngoài giờ cron. "
+                    "Tìm tất cả decision đã đến hạn horizon, evaluate outcome, chạy ReplayAgent, "
+                    "và lưu lesson. Hữu ích để test hoặc recovery sau downtime."
+                ),
+                "example": None,
             },
         ],
     },
