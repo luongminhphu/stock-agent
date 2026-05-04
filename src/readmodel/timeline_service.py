@@ -231,8 +231,11 @@ class ThesisTimelineService:
     ) -> ConvictionTimelineResponse | None:
         """Trả về cỗ conviction score theo thời gian cho một thesis.
 
-        Mỗi point ướng với một ThesisSnapshot. Verdict + confidence được lấy
+        Mỗi point ứng với một ThesisSnapshot. Verdict + confidence được lấy
         từ ThesisReview gần nhất trước (hoặc đúng bằng) snapshotted_at.
+
+        Score coalesce: score_at_snapshot (scheduler snapshots) OR score
+        (review-triggered snapshots). Rows where both are NULL are skipped.
 
         Breakdown được parse từ score_breakdown JSON column (nullable cho legacy rows).
         Trend = so sánh avg(3 điểm đầu) vs avg(3 điểm cuối); Δ > 5 → improving,
@@ -268,10 +271,13 @@ class ThesisTimelineService:
         # Build points
         points: list[ConvictionPoint] = []
         for snap in snapshots:
-            if snap.score_at_snapshot is None:
+            # Coalesce: scheduler snapshots use score_at_snapshot,
+            # review-triggered snapshots use score. Skip if both are NULL.
+            score = snap.score_at_snapshot if snap.score_at_snapshot is not None else snap.score
+            if score is None:
                 continue
 
-            tier_label, tier_icon = score_tier(snap.score_at_snapshot)
+            tier_label, tier_icon = score_tier(score)
             breakdown = _parse_breakdown(snap.score_breakdown)
 
             # Nearest review at or before snapshotted_at
@@ -290,7 +296,7 @@ class ThesisTimelineService:
                 ConvictionPoint(
                     snapshot_id=snap.id,
                     snapshotted_at=snap.snapshotted_at,
-                    score=snap.score_at_snapshot,
+                    score=score,
                     score_tier=tier_label,
                     score_tier_icon=tier_icon,
                     breakdown=breakdown,
