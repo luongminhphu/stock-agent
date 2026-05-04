@@ -113,6 +113,38 @@ class DecisionService:
             if r.decision_at + timedelta(days=r.review_horizon_days) <= now
         ]
 
+    async def list_lessons(
+        self,
+        user_id: str,
+        *,
+        ticker: str | None = None,
+        limit: int = 10,
+    ) -> list[DecisionLog]:
+        """Return decisions that have an AI-generated key_lesson, newest first.
+
+        Args:
+            user_id: Filter to this user's decisions only.
+            ticker:  Optional — narrow to one ticker symbol (uppercased).
+            limit:   Max rows to return (default 10, max 50).
+
+        Returns:
+            List of DecisionLog rows ordered by decision_at DESC.
+        """
+        limit = min(max(limit, 1), 50)
+        stmt = (
+            select(DecisionLog)
+            .where(
+                DecisionLog.user_id == user_id,
+                DecisionLog.key_lesson.is_not(None),
+            )
+            .order_by(DecisionLog.decision_at.desc())
+            .limit(limit)
+        )
+        if ticker:
+            stmt = stmt.where(DecisionLog.ticker == ticker.upper().strip())
+        rows = (await self._session.execute(stmt)).scalars().all()
+        return list(rows)
+
     async def evaluate_outcome(self, decision_id: int) -> DecisionLog:
         """Fill realized outcome fields for one decision."""
         row = await self._get_decision_or_raise(decision_id)
