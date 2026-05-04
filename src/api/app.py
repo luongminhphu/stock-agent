@@ -13,6 +13,8 @@ Route groups:
     /api/v1/watchlist      — watchlist management
     /api/v1/briefing       — on-demand brief generation
     /api/v1/readmodel      — dashboard, leaderboard, thesis timeline (wave 3)
+    /api/v1/decisions      — log, list, evaluate, replay trade decisions
+    /api/v1/lessons        — list persisted AI lessons from Decision Replay loop
 """
 
 from __future__ import annotations
@@ -28,6 +30,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from src.api.routes.briefing import router as briefing_router
+from src.api.routes.decisions import router as decisions_router
 from src.api.routes.health import router as health_router
 from src.api.routes.market import router as market_router
 from src.api.routes.readmodel import router as readmodel_router
@@ -156,6 +159,7 @@ def create_app() -> FastAPI:
     app.include_router(watchlist_router, prefix="/api/v1")
     app.include_router(briefing_router, prefix="/api/v1")
     app.include_router(readmodel_router, prefix="/api/v1")
+    app.include_router(decisions_router, prefix="/api/v1")
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request, exc: Exception) -> JSONResponse:

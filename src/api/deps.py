@@ -18,6 +18,9 @@ from src.platform.bootstrap import (
     get_quote_service as _get_qs,
 )
 from src.platform.bootstrap import (
+    get_replay_agent as _get_replay_agent,
+)
+from src.platform.bootstrap import (
     get_thesis_review_agent as _get_agent,
 )
 from src.platform.bootstrap import (
@@ -120,3 +123,30 @@ async def get_timeline_service(
     from src.readmodel.timeline_service import ThesisTimelineService
 
     return ThesisTimelineService(session=session)
+
+
+async def get_decision_service(
+    session: AsyncSession = Depends(get_db),
+    quote_svc: object = Depends(get_quote_service),
+) -> "DecisionService":  # type: ignore[name-defined]  # noqa: F821
+    """DI factory for DecisionService.
+
+    ReplayAgent is injected so analyze_decision() can be called directly
+    from the API without needing the scheduler.
+    """
+    from src.thesis.decision_service import DecisionService
+
+    return DecisionService(
+        session=session,
+        quote_service=quote_svc,
+        replay_agent=_get_replay_agent(),
+    )
+
+
+async def get_lesson_service(
+    session: AsyncSession = Depends(get_db),
+) -> "LessonService":  # type: ignore[name-defined]  # noqa: F821
+    """DI factory for LessonService (read-only)."""
+    from src.thesis.lesson_service import LessonService
+
+    return LessonService(session=session)
