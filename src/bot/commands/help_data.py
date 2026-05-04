@@ -282,6 +282,34 @@ HELP_DATA: dict[str, GroupEntry] = {
             },
         ],
     },
+    "sector_rotation": {
+        "label": "Sector Rotation · Dòng tiền theo ngành",
+        "emoji": "🔄",
+        "colour": 0x16A085,
+        "intro": "AI radar theo dõi dòng tiền luân chuyển giữa các sector HOSE/HNX/UPCoM.",
+        "commands": [
+            {
+                "usage": "/sector",
+                "description": (
+                    "Phân tích dòng tiền toàn thị trường theo sector. "
+                    "Output: risk regime (RISK_ON 🟢 / RISK_OFF 🔴 / MIXED 🟡), "
+                    "3 sector dẫn dắt + 3 sector yếu nhất, rotation narrative AI, "
+                    "và actionable insight cho phiên tiếp theo."
+                ),
+                "example": None,
+            },
+            {
+                "usage": "/sector [tickers]",
+                "description": (
+                    "Scope theo watchlist tuỳ chọn: thêm danh sách mã cách nhau dấu cách. "
+                    "AI crosscheck từng mã với sector đang dẫn/yếu — "
+                    "gắn cờ 🚩 contrarian nếu mã đang đi ngược dòng tiền sector của nó, "
+                    "hoặc ✅ aligned nếu đang đi cùng hướng."
+                ),
+                "example": "/sector VCB VNM BID",
+            },
+        ],
+    },
     "system": {
         "label": "System · Trạng thái hệ thống",
         "emoji": "🖥️",
