@@ -6,6 +6,7 @@ Responsibilities:
 - collect watchlist tickers from watchlist segment
 - collect market context from market segment (quotes)
 - collect portfolio P&L snapshot from portfolio segment (optional)
+- collect active thesis context from thesis segment (optional)
 - call BriefingAgent for morning/EOD narrative
 - persist BriefSnapshot via BriefSnapshotRepository
 - return structured BriefOutput to adapters
@@ -43,6 +44,11 @@ class BriefingService:
         briefing_agent:     AI agent that writes the brief narrative.
         pnl_service:        optional — reads open position P&L for portfolio context.
                             Pass None to skip portfolio section gracefully.
+        thesis_service:     optional — reads active theses for thesis context injection.
+                            When provided, stop_loss levels and key assumptions are
+                            formatted and sent to the AI so it can force ACT_TODAY
+                            for any ticker approaching invalidation.
+                            Pass None to skip thesis section gracefully.
         session:            AsyncSession for persisting BriefSnapshot.
                             Pass None to skip persistence (e.g. in tests).
     """
@@ -53,12 +59,14 @@ class BriefingService:
         quote_service: object,
         briefing_agent: BriefingAgent,
         pnl_service: object | None = None,
+        thesis_service: object | None = None,
         session: AsyncSession | None = None,
     ) -> None:
         self._watchlist_service = watchlist_service
         self._quote_service = quote_service
         self._agent = briefing_agent
         self._pnl_service = pnl_service
+        self._thesis_service = thesis_service
         self._session = session
         self._repo = BriefSnapshotRepository(session) if session is not None else None
 
@@ -66,16 +74,19 @@ class BriefingService:
         tickers = await self._get_watchlist_tickers(user_id)
         market_context = await self._build_market_context(tickers, phase="morning")
         portfolio_context = await self._build_portfolio_context(user_id)
+        thesis_context = await self._build_thesis_context(user_id)
         logger.info(
             "briefing.generate_morning",
             user_id=user_id,
             tickers=tickers,
             has_portfolio=bool(portfolio_context),
+            has_thesis=bool(thesis_context),
         )
         result = await self._agent.morning_brief(
             market_context=market_context,
             watchlist_tickers=tickers,
             portfolio_context=portfolio_context,
+            thesis_context=thesis_context,
         )
         await self._persist(user_id=user_id, phase="morning", output=result, tickers=tickers)
         return result
@@ -208,4 +219,52 @@ class BriefingService:
             return "\n".join(lines)
         except Exception as exc:
             logger.warning("briefing.portfolio_context_failed", user_id=user_id, error=str(exc))
+            return ""
+
+    async def _build_thesis_context(self, user_id: str) -> str:
+        """Build active thesis summary string for AI context injection.
+
+        Formats each active thesis as: ticker, title, stop_loss (if set),
+        and up to 3 key assumptions. This gives the AI enough data to
+        detect when a price is approaching invalidation territory.
+
+        Returns empty string if thesis_service is not injected, no active
+        theses exist, or any error occurs — brief generation must never be
+        blocked by thesis data unavailability.
+        """
+        if self._thesis_service is None:
+            return ""
+        try:
+            theses = await self._thesis_service.list_for_user(  # type: ignore[attr-defined]
+                user_id=user_id, status="active"
+            )
+            if not theses:
+                return ""
+
+            lines = [f"Có {len(theses)} thesis đang active:"]
+            for t in theses:
+                stop_loss_str = (
+                    f", stop_loss={t.stop_loss:,.0f}"
+                    if getattr(t, "stop_loss", None) is not None
+                    else " (chưa đặt stop_loss)"
+                )
+                target_str = (
+                    f", target={t.target_price:,.0f}"
+                    if getattr(t, "target_price", None) is not None
+                    else ""
+                )
+                lines.append(
+                    f"- [{t.ticker}] {t.title}{stop_loss_str}{target_str}"
+                )
+                assumptions = getattr(t, "assumptions", []) or []
+                for a in assumptions[:3]:
+                    desc = getattr(a, "description", str(a))
+                    lines.append(f"  • Giả định: {desc}")
+            lines.append(
+                "Nếu giá hiện tại (từ Watchlist snapshot) đang tiếp cận stop_loss của bất kỳ thesis —"
+                " xuất ACT_TODAY cho ticker đó."
+            )
+            return "\n".join(lines)
+        except Exception as exc:
+            logger.warning("briefing.thesis_context_failed", user_id=user_id, error=str(exc))
             return ""

@@ -42,6 +42,7 @@ class BriefingAgent:
         watchlist_tickers: list[str],
         extra_context: str = "",
         portfolio_context: str = "",
+        thesis_context: str = "",
     ) -> BriefOutput:
         """Generate a pre-market morning brief.
 
@@ -51,6 +52,11 @@ class BriefingAgent:
             extra_context:     Optional free-text context (news, macro events).
             portfolio_context: Optional P&L snapshot from PnlService.
                                Empty string = skip portfolio section gracefully.
+            thesis_context:    Optional active thesis summary from ThesisService.
+                               When provided, AI cross-references stop_loss levels
+                               against current prices and forces ACT_TODAY for
+                               any ticker approaching thesis invalidation.
+                               Empty string = skip thesis section gracefully.
 
         Returns:
             Typed BriefOutput.
@@ -66,6 +72,7 @@ class BriefingAgent:
                 watchlist_tickers=watchlist_tickers,
                 extra_context=extra_context,
                 portfolio_context=portfolio_context,
+                thesis_context=thesis_context,
             ),
         )
 
@@ -132,5 +139,6 @@ class BriefingAgent:
             "briefing_agent.complete",
             brief_type=brief_type,
             sentiment=result.sentiment,
+            prioritized_action_count=len(result.prioritized_actions),
         )
         return result
