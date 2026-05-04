@@ -1,6 +1,6 @@
 /* ─── Buttons ────────────────────────────────────────────────────────────────
    Owner: components
-   Tất cả button variants: primary, ghost, danger, icon-btn.
+   Tất cả button variants: primary, ghost, danger, icon-btn, icon-text-btn.
    Không phụ thuộc module nào khác ngoài variables.
 ──────────────────────────────────────────────────────────────────────────── */
 
@@ -43,18 +43,41 @@
 }
 .danger-btn:hover { background: rgba(248, 113, 113, 0.16); }
 
+/* icon-only button (edit / delete trong table) */
 .icon-btn {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
   border-radius: 9px;
   border: 1px solid var(--line);
   background: transparent;
   color: var(--muted);
   cursor: pointer;
-  display: grid;
-  place-items: center;
-  font-size: 0.78rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  padding: 0;
 }
 .icon-btn:hover { border-color: var(--brand); color: var(--brand); }
 .icon-btn.danger:hover { border-color: var(--danger); color: var(--danger); }
+
+/* icon + text button (Reload, v.v.) */
+.icon-text-btn {
+  min-height: 32px;
+  padding: 0 12px;
+  gap: 6px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.icon-text-btn:hover { border-color: var(--brand); color: var(--brand); }
+.icon-text-btn svg { flex-shrink: 0; }
