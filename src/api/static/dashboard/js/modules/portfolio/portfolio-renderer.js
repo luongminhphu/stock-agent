@@ -15,6 +15,12 @@ function fmtVnd(val) {
   return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val);
 }
 
+/**
+ * Format tỷ lệ phần trăm.
+ * Nhận vào dạng decimal (0.6594 = 65.94%) — nhân 100 bên trong.
+ * Trades: truyền unrealized_pct / 100  (vì backend trả dạng %, ví dụ 65.94)
+ * Thesis: truyền pnl_pct / 100         (backend trả dạng %, ví dụ 65.94)
+ */
 function fmtPct(val) {
   if (val == null || isNaN(val)) return '—';
   const sign = val >= 0 ? '+' : '';
@@ -43,12 +49,14 @@ function renderTradesTab(data) {
   }
 
   const totalPnl     = data.total_unrealized_pnl ?? 0;
-  const totalPct     = data.total_unrealized_pct ?? 0;
+  const totalPct     = data.total_unrealized_pct ?? 0;   // dạng % (vd: 18.63)
   const totalCost    = data.total_cost_basis ?? 0;
   const totalMkt     = data.total_market_value ?? 0;
 
   const rows = positions.map(p => {
-    const pct = p.unrealized_pct ?? 0;
+    // unrealized_pct từ PnlService là dạng % thực (vd: -2.825, 65.94)
+    // fmtPct() nhận decimal nên cần chia 100
+    const pct = p.unrealized_pct != null ? p.unrealized_pct / 100 : null;
     return `
       <tr>
         <td><strong>${p.ticker}</strong></td>
@@ -66,7 +74,7 @@ function renderTradesTab(data) {
 
   return `
     <div class="portfolio-summary">
-      <span class="summary-chip">${pnlIcon(totalPnl)} P&amp;L: <strong class="${pnlClass(totalPnl)}">${fmtVnd(totalPnl)}</strong> (${fmtPct(totalPct)})</span>
+      <span class="summary-chip">${pnlIcon(totalPnl)} P&amp;L: <strong class="${pnlClass(totalPnl)}">${fmtVnd(totalPnl)}</strong> (${fmtPct(totalPct / 100)})</span>
       <span class="summary-chip">Vốn: <strong>${fmtVnd(totalCost)}</strong></span>
       <span class="summary-chip">Thị giá: <strong>${fmtVnd(totalMkt)}</strong></span>
       <span class="summary-chip">Vị thế: <strong>${positions.length}</strong></span>
