@@ -136,6 +136,24 @@ class Thesis(Base):
         back_populates="thesis", cascade="all, delete-orphan"
     )
 
+    @property
+    def risk_reward(self) -> float | None:
+        """Computed risk/reward ratio: upside / downside.
+
+        Returns None when any required price field is missing,
+        or when downside <= 0 (stop_loss >= entry_price).
+        """
+        if (
+            self.entry_price is not None
+            and self.target_price is not None
+            and self.stop_loss is not None
+        ):
+            upside = self.target_price - self.entry_price
+            downside = self.entry_price - self.stop_loss
+            if downside > 0:
+                return round(upside / downside, 2)
+        return None
+
 
 class Assumption(Base):
     __tablename__ = "assumptions"
