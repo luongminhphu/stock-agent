@@ -32,6 +32,19 @@ def create_bot() -> commands.Bot:
 
     @bot.event
     async def on_ready() -> None:
+        # Guard: on_ready can fire multiple times on gateway reconnects.
+        # Running bootstrap + cog registration + tree sync more than once
+        # causes duplicate cog errors and — worse — an empty tree sync that
+        # wipes all slash commands from Discord, producing CommandNotFound.
+        if getattr(bot, "_stock_agent_ready", False):
+            logger.warning(
+                "bot.on_ready.skip",
+                reason="already_initialized",
+                user=str(bot.user),
+            )
+            return
+        bot._stock_agent_ready = True  # type: ignore[attr-defined]
+
         await bootstrap()
         await _register_cogs(bot)
         _start_briefing_scheduler(bot)
