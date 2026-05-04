@@ -20,6 +20,9 @@ Response shape (per symbol):
       },
       "bidAsk": { ... }
     }
+
+NOTE: matchVolume từ VCI là đơn vị LÔ (1 lô = 100 CP với HOSE/HNX/UPCoM).
+Phải nhân 100 để ra số CP thực tế — Quote.volume contract là số CP.
 """
 
 from __future__ import annotations
@@ -44,6 +47,7 @@ _HEADERS = {
 }
 _TIMEOUT = 10.0
 _BULK_CHUNK_SIZE = 50
+_LOT_SIZE = 100  # 1 lô = 100 CP (HOSE, HNX, UPCoM)
 
 
 def _safe_float(val: Any, fallback: float = 0.0) -> float:
@@ -137,7 +141,8 @@ def _parse_item(item: dict[str, Any]) -> Quote:
         fallback=(change / ref_price * 100) if ref_price else 0.0,
     )
 
-    volume = int(_safe_float(match.get("matchVolume"), fallback=0.0))
+    # matchVolume từ VCI là đơn vị lô → nhân _LOT_SIZE để ra số CP thực tế
+    volume = int(_safe_float(match.get("matchVolume"), fallback=0.0)) * _LOT_SIZE
     value = _safe_float(match.get("matchValue"))
     open_ = _safe_float(match.get("open") or listing.get("refPrice"), fallback=price)
     high = _safe_float(match.get("highest"), fallback=price)
