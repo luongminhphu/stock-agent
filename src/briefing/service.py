@@ -7,6 +7,7 @@ Responsibilities:
 - collect market context from market segment (quotes)
 - collect portfolio P&L snapshot from portfolio segment (optional)
 - collect active thesis context from thesis segment (optional)
+- collect past decision lessons from thesis segment (optional, via LessonService)
 - call BriefingAgent for morning/EOD narrative
 - persist BriefSnapshot via BriefSnapshotRepository
 - return structured BriefOutput to adapters
@@ -49,8 +50,9 @@ class BriefingService:
                             formatted and sent to the AI so it can force ACT_TODAY
                             for any ticker approaching invalidation.
                             Pass None to skip thesis section gracefully.
-        session:            AsyncSession for persisting BriefSnapshot.
-                            Pass None to skip persistence (e.g. in tests).
+        session:            AsyncSession for persisting BriefSnapshot and reading
+                            past decision lessons via LessonService.
+                            Pass None to skip persistence and lesson injection.
     """
 
     def __init__(
@@ -75,18 +77,21 @@ class BriefingService:
         market_context = await self._build_market_context(tickers, phase="morning")
         portfolio_context = await self._build_portfolio_context(user_id)
         thesis_context = await self._build_thesis_context(user_id)
+        past_lessons = await self._build_lesson_context(user_id)
         logger.info(
             "briefing.generate_morning",
             user_id=user_id,
             tickers=tickers,
             has_portfolio=bool(portfolio_context),
             has_thesis=bool(thesis_context),
+            has_lessons=bool(past_lessons),
         )
         result = await self._agent.morning_brief(
             market_context=market_context,
             watchlist_tickers=tickers,
             portfolio_context=portfolio_context,
             thesis_context=thesis_context,
+            past_lessons=past_lessons,
         )
         await self._persist(user_id=user_id, phase="morning", output=result, tickers=tickers)
         return result
@@ -267,4 +272,25 @@ class BriefingService:
             return "\n".join(lines)
         except Exception as exc:
             logger.warning("briefing.thesis_context_failed", user_id=user_id, error=str(exc))
+            return ""
+
+    async def _build_lesson_context(self, user_id: str) -> str:
+        """Build past decision lesson string for AI personalisation.
+
+        Queries the last 5 evaluated DecisionLog records for this user via
+        LessonService and returns a formatted string for prompt injection.
+
+        Returns empty string if session is not injected, no evaluated
+        decisions exist yet, or any error occurs — brief generation must
+        never be blocked by lesson data unavailability.
+        """
+        if self._session is None:
+            return ""
+        try:
+            from src.thesis.lesson_service import LessonService
+
+            svc = LessonService(self._session)
+            return await svc.build_lesson_context(user_id=user_id)
+        except Exception as exc:
+            logger.warning("briefing.lesson_context_failed", user_id=user_id, error=str(exc))
             return ""
