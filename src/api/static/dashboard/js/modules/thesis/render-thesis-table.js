@@ -1,6 +1,7 @@
 import { esc, fmtDate, fmtScore, badge, fmt, scoreClass } from '../../utils/format.js';
 import { renderScoreBreakdown } from './render-score.js';
 import { renderReviewRecommendSection } from './render-ai-review.js';
+import { convictionTimelineSlotHTML } from './render-conviction-timeline.js';
 import { quoteStripSkeletonHTML } from './market-quote.js';
 import { state } from '../../state/dashboard-state.js';
 
@@ -118,6 +119,10 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
       </div>` : ''}
 
     ${renderScoreBreakdown(t.score_breakdown)}
+
+    <!-- Conviction Timeline slot — filled async by thesis-service -->
+    ${convictionTimelineSlotHTML(t.id)}
+
     ${renderReviewRecommendSection(t.id)}
   `;
 }

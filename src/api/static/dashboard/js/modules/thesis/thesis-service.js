@@ -16,6 +16,7 @@ import { renderThesisDetailHTML, emptyDetailHTML } from './render-thesis-table.j
 import { wireDetailActions } from './thesis-form.js';
 import { renderReviewRecommendResult } from './render-ai-review.js';
 import { fetchQuote, renderQuoteStrip } from './market-quote.js';
+import { loadConvictionTimeline } from './render-conviction-timeline.js';
 
 // ---------------------------------------------------------------------------
 // Skeleton HTML cho detail-shell
@@ -83,23 +84,29 @@ export async function loadThesisDetail(thesisId) {
       wrap.innerHTML = emptyDetailHTML();
       return;
     }
-    // Render detail HTML ngay (quote slot hiển skeleton tự động)
+    // Render detail HTML ngay (quote slot + conviction timeline slot hiển skeleton tự động)
     wrap.innerHTML = renderThesisDetailHTML(thesis, assumptions, catalysts, reviews);
     wireDetailActions(thesisId, wrap);
 
-    // WAVE 3b: fetch quote bất đồng bộ sau khi HTML đã ở trong DOM.
-    // Dùng requestIdleCallback nếu có, fallback setTimeout(0)
-    const scheduleQuote = window.requestIdleCallback
+    const scheduleIdle = window.requestIdleCallback
       ? (fn) => requestIdleCallback(fn, { timeout: 3000 })
       : (fn) => setTimeout(fn, 0);
 
-    scheduleQuote(async () => {
+    // WAVE 3b: fetch quote bất đồng bộ
+    scheduleIdle(async () => {
       const slot = wrap.querySelector('#quoteStripSlot');
       if (!slot) return;
       const quote = await fetchQuote(thesis.ticker);
-      // Chỉ update nếu slot vẫn thuộc về đúng thesis (user có thể click sang thesis khác trong lúc fetch)
       if (slot.dataset.ticker !== thesis.ticker) return;
       slot.innerHTML = renderQuoteStrip(quote, thesis);
+    });
+
+    // Conviction timeline: fetch async, không block quote
+    scheduleIdle(async () => {
+      // Guard: slot vẫn thuộc về đúng thesis (user có thể click sang thesis khác)
+      const slot = wrap.querySelector(`#convictionTimelineSlot-${thesisId}`);
+      if (!slot) return;
+      await loadConvictionTimeline(thesisId);
     });
 
   } catch (err) {
@@ -129,6 +136,8 @@ export async function triggerAiReview(thesisId) {
     }
     result.innerHTML = renderReviewRecommendResult(thesisId, data);
     result.classList.remove('hidden');
+    // Refresh conviction timeline sau khi có review mới → snapshot mới
+    await loadConvictionTimeline(thesisId);
   } catch (err) {
     result.innerHTML = `<div class="error-banner" style="margin:0;">AI review lỗi: ${esc(err.message)}</div>`;
     result.classList.remove('hidden');
