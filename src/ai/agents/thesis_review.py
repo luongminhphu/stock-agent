@@ -13,6 +13,10 @@ logger = get_logger(__name__)
 # Matches ```json ... ``` or ``` ... ``` fences
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.IGNORECASE)
 
+# Max tokens for thesis review — responses include reasoning + multiple
+# recommendations and regularly exceed 1200 tokens. 4096 gives headroom.
+_MAX_TOKENS = 4096
+
 
 def _extract_json(text: str) -> str:
     """Extract JSON object from text, handling markdown fences and extra prose.
@@ -29,7 +33,6 @@ def _extract_json(text: str) -> str:
     match = _JSON_FENCE_RE.search(text)
     if match:
         candidate = match.group(1).strip()
-        # Only trust the match if it actually looks like a JSON object
         if candidate.startswith("{"):
             return candidate
 
@@ -105,6 +108,8 @@ class ThesisReviewAgent:
             response = await self._client.chat_completion(
                 messages=messages,
                 temperature=0.1,
+                max_tokens=_MAX_TOKENS,
+                response_format={"type": "json_object"},
             )
             raw_text = self._client.extract_text(response)
             clean_text = _extract_json(raw_text)
