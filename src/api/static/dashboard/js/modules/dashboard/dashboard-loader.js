@@ -52,12 +52,9 @@ function normalizeAccuracyRes(res) {
 // WAVE 2d — Show skeletons ngay khi bắt đầu load, trước Promise.all
 // ---------------------------------------------------------------------------
 function showLoadingSkeletons() {
-  // Thesis table skeleton
   const tableWrap = document.getElementById('thesesTableWrap');
   if (tableWrap) tableWrap.innerHTML = thesisTableSkeletonHTML(5);
 
-  // Detail panel: chỉ reset về empty state nếu không đang có thesis được chọn.
-  // Nếu đang có selected thesis, skeleton sẽ được inject bửi loadThesisDetail().
   if (!state.selectedThesisId) {
     const detail = el('thesisDetail');
     if (detail) detail.innerHTML = emptyDetailHTML();
@@ -72,7 +69,6 @@ export async function loadDashboard() {
   const base   = apiBase();
   el('errorBanner')?.classList.add('hidden');
 
-  // WAVE 2d: skeleton trước khi fetch bắt đầu
   showLoadingSkeletons();
 
   try {
@@ -104,7 +100,6 @@ export async function loadDashboard() {
       onDelete: (id) => wireDeleteThesis(id),
     });
 
-    // Normalize + cache để loadBacktesting() tái dùng, không fetch lại
     const accuracyRows = normalizeAccuracyRes(verdictAccuracy);
     state.cachedVerdictAccuracy = accuracyRows;
 
@@ -124,7 +119,6 @@ export async function loadDashboard() {
 
     if (state.selectedThesisId) {
       const t = state.theses.find(x => x.id === state.selectedThesisId);
-      // loadThesisDetail inject skeleton mình (Wave 2d) trước khi fetch 4 endpoints
       if (t) await loadThesisDetail(t.id);
       else {
         const detail = el('thesisDetail');
@@ -143,7 +137,7 @@ export async function loadDashboard() {
 }
 
 // ---------------------------------------------------------------------------
-// Backtesting loader — chỉ fetch thesis-performances (verdict-accuracy đã có từ loadDashboard)
+// Backtesting loader
 // ---------------------------------------------------------------------------
 export async function loadBacktesting() {
   const base = apiBase();
@@ -154,7 +148,6 @@ export async function loadBacktesting() {
   if (performanceWrap) performanceWrap.innerHTML = '<p class="muted">Đang tải...</p>';
 
   try {
-    // Tái dùng cache từ loadDashboard() nếu có; fallback fetch nếu gọi standalone
     if (state.cachedVerdictAccuracy) {
       renderAccuracy(state.cachedVerdictAccuracy);
     } else {
@@ -177,35 +170,56 @@ export async function loadBacktesting() {
 }
 
 // ---------------------------------------------------------------------------
-// KPI summary cards — với countUp animation + risk colour
+// KPI summary cards — countUp animation + conditional colour
 // ---------------------------------------------------------------------------
+
+/**
+ * Đọc giá trị số hiện tại của element (bỏ dấu chấm, phẩy, ký hiệu).
+ * Dùng để so sánh old vs new cho flashValue direction.
+ * @param {HTMLElement} node
+ * @returns {number}
+ */
+function parseCurrentValue(node) {
+  return parseFloat((node.textContent ?? '').replace(/[^\d.-]/g, '')) || 0;
+}
+
 export function renderSummary(s) {
   if (!s) return;
 
+  /** @type {Array<{id: string, raw: any, suffix?: string, decimals?: number}>} */
   const kpis = [
-    { id: 'openTheses',       raw: s.open_theses        ?? s.open_thesis_count    },
-    { id: 'riskyTheses',      raw: s.risky_theses       ?? s.risky_thesis_count   },
-    { id: 'upcoming7d',       raw: s.upcoming_catalysts_7d ?? s.upcoming_7d       },
-    { id: 'reviewsToday',     raw: s.reviews_today      ?? s.review_count_today   },
-    { id: 'totalReviewsHero', raw: s.total_reviews      ?? s.review_count_total   },
+    { id: 'openTheses',       raw: s.open_theses          ?? s.open_thesis_count    },
+    { id: 'riskyTheses',      raw: s.risky_theses         ?? s.risky_thesis_count   },
+    { id: 'upcoming7d',       raw: s.upcoming_catalysts_7d ?? s.upcoming_7d         },
+    { id: 'reviewsToday',     raw: s.reviews_today        ?? s.review_count_today   },
+    { id: 'totalReviewsHero', raw: s.total_reviews        ?? s.review_count_total   },
   ];
 
-  for (const { id, raw } of kpis) {
+  for (const { id, raw, suffix = '', decimals = 0 } of kpis) {
     const node = el(id);
     if (!node) continue;
-    const num = parseInt(raw, 10);
+    const num = parseFloat(String(raw ?? '').replace(/[^\d.-]/g, ''));
     if (!isNaN(num)) {
-      countUp(node, num, 650);
-      flashValue(node);
+      // FIX: truyền opts object đúng signature của countUp(el, target, opts)
+      const oldVal = parseCurrentValue(node);
+      countUp(node, num, { duration: 650, decimals, suffix });
+      // FIX: flashValue direction dựa trên so sánh old vs new
+      flashValue(node, num >= oldVal);
     } else {
       node.textContent = raw ?? '—';
     }
   }
 
-  // Conditional risk colour: đỏ khi risky > 0
+  // Conditional risk colour: đỏ khi risky > 0, reset khi = 0
   const riskyEl  = el('riskyTheses');
-  const riskyVal = parseInt(s.risky_theses ?? s.risky_thesis_count, 10);
+  const riskyVal = parseFloat(String(s.risky_theses ?? s.risky_thesis_count ?? '0').replace(/[^\d.-]/g, ''));
   if (riskyEl) {
-    riskyEl.closest('.signal-card')?.classList.toggle('signal-card--alert', riskyVal > 0);
+    // Toggle class trên signal-card cha gần nhất
+    const card = riskyEl.closest('.signal-card');
+    if (card) card.classList.toggle('signal-card--alert', riskyVal > 0);
+
+    // Thêm cập nhật màu trực tiếp vào số thẳm khi đỏ
+    riskyEl.classList.toggle('kpi-risky', riskyVal > 0);
+    riskyEl.classList.toggle('kpi-safe',  riskyVal === 0);
   }
 }
