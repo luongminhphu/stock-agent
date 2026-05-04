@@ -4,7 +4,7 @@ Owner: readmodel segment.
 
 Endpoints served (via src/api/routes/readmodel.py):
     get_stats()                  — KPI tong quan (open theses, verdict dist, risky count)
-    get_theses_list()            — list thesis + last review + health score
+    get_theses_list()            — list thesis + last review + health score + live price
     get_thesis_detail()          — full detail + assumption history + score series
     get_upcoming_catalysts()     — catalysts sap toi
     get_scan_latest()            — snapshot scan gan nhat (WatchlistScan)
@@ -183,7 +183,17 @@ class DashboardService:
         status: str | None = "active",
         ticker: str | None = None,
         limit: int = 200,
+        price_map: dict[str, float] | None = None,
+        position_map: dict[str, tuple[float, float]] | None = None,
     ) -> list[dict[str, Any]]:
+        """List thesis rows enriched with live price + avg_cost from positions.
+
+        price_map:    {ticker: current_price}  — injected by route from QuoteService.
+        position_map: {ticker: (qty, avg_cost)} — injected by route from Position table.
+
+        entry_price displayed = avg_cost (if position exists) else thesis.entry_price.
+        pnl_pct = (current_price - effective_entry) / effective_entry * 100.
+        """
         from src.thesis.models import (
             Assumption,
             Catalyst,
@@ -191,6 +201,9 @@ class DashboardService:
             ThesisReview,
             ThesisStatus,
         )
+
+        price_map = price_map or {}
+        position_map = position_map or {}
 
         filters = [Thesis.user_id == user_id]
         if status and status != "all":
@@ -258,6 +271,20 @@ class DashboardService:
         for r in rows:
             t = r.Thesis
             tier_label, tier_icon = score_tier(t.score) if t.score is not None else (None, None)
+
+            # Live price
+            current_price: float | None = price_map.get(t.ticker)
+
+            # Effective entry: avg_cost từ Position thực tế > thesis.entry_price
+            pos_data = position_map.get(t.ticker)
+            avg_cost: float | None = pos_data[1] if pos_data else None
+            effective_entry: float | None = avg_cost if avg_cost else t.entry_price
+
+            # P&L % theo effective_entry
+            pnl_pct: float | None = None
+            if current_price and effective_entry and effective_entry > 0:
+                pnl_pct = round((current_price - effective_entry) / effective_entry * 100, 2)
+
             result.append(
                 {
                     "id": t.id,
@@ -267,9 +294,13 @@ class DashboardService:
                     "score": t.score,
                     "score_tier": tier_label,
                     "score_tier_icon": tier_icon,
-                    "entry_price": t.entry_price,
+                    # entry_price: avg_cost thực tế nếu có, fallback thesis.entry_price
+                    "entry_price": round(effective_entry, 0) if effective_entry else None,
+                    "entry_price_source": "avg_cost" if avg_cost else "thesis",
                     "target_price": t.target_price,
                     "stop_loss": t.stop_loss,
+                    "current_price": current_price,
+                    "pnl_pct": pnl_pct,
                     "created_at": t.created_at.isoformat() if t.created_at else None,
                     "updated_at": t.updated_at.isoformat() if t.updated_at else None,
                     "last_verdict": str(r.last_verdict) if r.last_verdict else None,

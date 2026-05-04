@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.bootstrap import get_quote_service
@@ -83,6 +84,33 @@ async def _build_price_map(tickers: list[str]) -> dict[str, float]:
         return {}
 
 
+async def _build_position_map(
+    session: AsyncSession, user_id: str
+) -> dict[str, tuple[float, float]]:
+    """Load open positions for user -> {ticker: (qty, avg_cost)}.
+    Returns {} on error or no positions.
+    """
+    try:
+        from src.portfolio.models import Position
+
+        rows = (
+            await session.execute(
+                select(Position.ticker, Position.qty, Position.avg_cost).where(
+                    Position.user_id == user_id,
+                    Position.closed_at.is_(None),
+                    Position.qty > 0,
+                )
+            )
+        ).all()
+        result: dict[str, tuple[float, float]] = {}
+        for p in rows:
+            if p.ticker not in result:
+                result[p.ticker] = (p.qty, p.avg_cost)
+        return result
+    except Exception:
+        return {}
+
+
 # ---------------------------------------------------------------------------
 # 1. Stats — KPI tong quan
 # ---------------------------------------------------------------------------
@@ -106,7 +134,7 @@ async def get_stats_single_user(
 
 
 # ---------------------------------------------------------------------------
-# 2. Theses list
+# 2. Theses list — enriched with live price + avg_cost from positions
 # ---------------------------------------------------------------------------
 
 
@@ -117,9 +145,32 @@ async def get_theses_list(
     status: Annotated[str, Query()] = "active",
     ticker: Annotated[str | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 200,
+    enrich_prices: Annotated[
+        bool,
+        Query(description="Fetch giá hiện tại + avg_cost từ positions để tính P&L"),
+    ] = True,
 ) -> dict[str, Any]:
     svc = DashboardService(session)
-    items = await svc.get_theses_list(user_id, status=status, ticker=ticker, limit=limit)
+
+    price_map: dict[str, float] = {}
+    position_map: dict[str, tuple[float, float]] = {}
+
+    if enrich_prices:
+        # Lấy tickers trước (lightweight query không enrich)
+        raw_items = await svc.get_theses_list(user_id, status=status, ticker=ticker, limit=limit)
+        tickers = list({t["ticker"] for t in raw_items if t.get("ticker")})
+        price_map, position_map = await _fetch_price_and_position(
+            session=session, user_id=user_id, tickers=tickers
+        )
+
+    items = await svc.get_theses_list(
+        user_id,
+        status=status,
+        ticker=ticker,
+        limit=limit,
+        price_map=price_map,
+        position_map=position_map,
+    )
     return _paginated(items)
 
 
@@ -129,15 +180,34 @@ async def get_theses_list_single_user(
     status: Annotated[str, Query()] = "active",
     ticker: Annotated[str | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 200,
+    enrich_prices: Annotated[
+        bool,
+        Query(description="Fetch giá hiện tại + avg_cost từ positions để tính P&L"),
+    ] = True,
 ) -> dict[str, Any]:
-    svc = DashboardService(session)
-    items = await svc.get_theses_list(
-        _default_user_id(),
+    return await get_theses_list(
+        user_id=_default_user_id(),
+        session=session,
         status=status,
         ticker=ticker,
         limit=limit,
+        enrich_prices=enrich_prices,
     )
-    return _paginated(items)
+
+
+async def _fetch_price_and_position(
+    session: AsyncSession,
+    user_id: str,
+    tickers: list[str],
+) -> tuple[dict[str, float], dict[str, tuple[float, float]]]:
+    """Parallel-ish fetch: price_map + position_map."""
+    import asyncio
+
+    price_map, position_map = await asyncio.gather(
+        _build_price_map(tickers),
+        _build_position_map(session, user_id),
+    )
+    return price_map, position_map
 
 
 # ---------------------------------------------------------------------------
