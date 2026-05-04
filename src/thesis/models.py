@@ -69,28 +69,22 @@ class ReviewVerdict(enum.StrEnum):
     WATCHLIST = "WATCHLIST"
 
 
-class RecommendationStatus(enum.StrEnum):
-    """Lifecycle của một AI recommendation.
-
-    PENDING   — AI vừa tạo, chờ user xác nhận.
-    ACCEPTED  — User đã apply (assumption/catalyst đã được cập nhật).
-    REJECTED  — User từ chối, không apply.
-    EXPIRED   — Review mới hơn đã supersede recommendation này.
-    """
-
-    PENDING = "pending"
-    ACCEPTED = "accepted"
-    REJECTED = "rejected"
-    EXPIRED = "expired"
+class DecisionType(enum.StrEnum):
+    BUY = "BUY"
+    SELL = "SELL"
+    HOLD = "HOLD"
+    ADD = "ADD"
+    REDUCE = "REDUCE"
 
 
-class RecommendationTargetType(enum.StrEnum):
-    ASSUMPTION = "assumption"
-    CATALYST = "catalyst"
+class OutcomeVerdict(enum.StrEnum):
+    CORRECT = "CORRECT"
+    INCORRECT = "INCORRECT"
+    MIXED = "MIXED"
 
 
 # ---------------------------------------------------------------------------
-# Thesis
+# Models
 # ---------------------------------------------------------------------------
 
 
@@ -98,336 +92,139 @@ class Thesis(Base):
     __tablename__ = "theses"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
-    ticker: Mapped[str] = mapped_column(String(10), index=True, nullable=False)
-    title: Mapped[str] = mapped_column(String(256), nullable=False)
-    summary: Mapped[str | None] = mapped_column(Text)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    ticker: Mapped[str] = mapped_column(String(20), index=True)
+    title: Mapped[str] = mapped_column(String(255))
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[ThesisStatus] = mapped_column(
         SAEnum(ThesisStatus, values_callable=_enum_values),
-        nullable=False,
         default=ThesisStatus.ACTIVE,
+        index=True,
     )
-
-    # Prices (VND)
-    entry_price: Mapped[float | None] = mapped_column(Float)
-    target_price: Mapped[float | None] = mapped_column(Float)
-    stop_loss: Mapped[float | None] = mapped_column(Float)
-
-    # Position size — số lượng cổ phiếu nắm giữ (nullable: user có thể không nhập)
-    # Dùng để tính cost_basis, market_value, pnl_abs trong portfolio view.
-    quantity: Mapped[float | None] = mapped_column(
-        Float,
-        nullable=True,
-        comment="Số lượng CP nắm giữ. None = chỉ track thesis, không track position size.",
-    )
-
-    # Scoring (0-100, computed by ScoringService)
-    score: Mapped[float | None] = mapped_column(Float)
-
-    # Timestamps
+    target_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    stop_loss: Mapped[float | None] = mapped_column(Float, nullable=True)
+    entry_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        DateTime(timezone=True), server_default=func.now(), index=True
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False,
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
-    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    # Relationships
     assumptions: Mapped[list[Assumption]] = relationship(
         back_populates="thesis", cascade="all, delete-orphan"
     )
     catalysts: Mapped[list[Catalyst]] = relationship(
         back_populates="thesis", cascade="all, delete-orphan"
     )
-    reviews: Mapped[list[ThesisReview]] = relationship(
-        back_populates="thesis", cascade="all, delete-orphan"
-    )
     snapshots: Mapped[list[ThesisSnapshot]] = relationship(
         back_populates="thesis", cascade="all, delete-orphan"
     )
-
-    def __repr__(self) -> str:
-        return f"<Thesis id={self.id} ticker={self.ticker} status={self.status}>"
-
-    # ------------------------------------------------------------------
-    # Domain helpers (pure, no DB calls)
-    # ------------------------------------------------------------------
-
-    @property
-    def is_active(self) -> bool:
-        return self.status == ThesisStatus.ACTIVE
-
-    @property
-    def invalid_assumption_count(self) -> int:
-        return sum(1 for a in self.assumptions if a.status == AssumptionStatus.INVALID)
-
-    @property
-    def triggered_catalyst_count(self) -> int:
-        return sum(1 for c in self.catalysts if c.status == CatalystStatus.TRIGGERED)
-
-    @property
-    def upside_pct(self) -> float | None:
-        """Potential upside from entry to target, in %."""
-        if self.entry_price and self.target_price and self.entry_price > 0:
-            return (self.target_price - self.entry_price) / self.entry_price * 100
-        return None
-
-    @property
-    def risk_reward(self) -> float | None:
-        """Risk/reward ratio: upside / downside."""
-        if (
-            self.entry_price
-            and self.target_price
-            and self.stop_loss
-            and self.entry_price > self.stop_loss
-        ):
-            upside = self.target_price - self.entry_price
-            downside = self.entry_price - self.stop_loss
-            if downside > 0:
-                return upside / downside
-        return None
-
-    @property
-    def cost_basis(self) -> float | None:
-        """Tổng vốn đầu tư (VND) = entry_price * quantity."""
-        if self.entry_price and self.quantity:
-            return self.entry_price * self.quantity
-        return None
-
-    def market_value_at(self, current_price: float) -> float | None:
-        """Tính market value tại một mức giá cụ thể."""
-        if self.quantity:
-            return current_price * self.quantity
-        return None
-
-    def pnl_abs_at(self, current_price: float) -> float | None:
-        """P&L tuyệt đối (VND) tại current_price."""
-        if self.entry_price and self.quantity:
-            return (current_price - self.entry_price) * self.quantity
-        return None
-
-
-# ---------------------------------------------------------------------------
-# Assumption
-# ---------------------------------------------------------------------------
+    reviews: Mapped[list[ThesisReview]] = relationship(
+        back_populates="thesis", cascade="all, delete-orphan"
+    )
+    decision_logs: Mapped[list[DecisionLog]] = relationship(
+        back_populates="thesis", cascade="all, delete-orphan"
+    )
 
 
 class Assumption(Base):
     __tablename__ = "assumptions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    thesis_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("theses.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    description: Mapped[str] = mapped_column(Text, nullable=False)
+    thesis_id: Mapped[int] = mapped_column(ForeignKey("theses.id", ondelete="CASCADE"))
+    description: Mapped[str] = mapped_column(Text)
     status: Mapped[AssumptionStatus] = mapped_column(
         SAEnum(AssumptionStatus, values_callable=_enum_values),
-        nullable=False,
         default=AssumptionStatus.PENDING,
+        index=True,
     )
-    note: Mapped[str | None] = mapped_column(Text)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False,
-    )
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # Relationship
     thesis: Mapped[Thesis] = relationship(back_populates="assumptions")
-
-    def __repr__(self) -> str:
-        return f"<Assumption id={self.id} status={self.status}>"
-
-
-# ---------------------------------------------------------------------------
-# Catalyst
-# ---------------------------------------------------------------------------
 
 
 class Catalyst(Base):
     __tablename__ = "catalysts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    thesis_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("theses.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    description: Mapped[str] = mapped_column(Text, nullable=False)
+    thesis_id: Mapped[int] = mapped_column(ForeignKey("theses.id", ondelete="CASCADE"))
+    description: Mapped[str] = mapped_column(Text)
+    expected_by: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[CatalystStatus] = mapped_column(
         SAEnum(CatalystStatus, values_callable=_enum_values),
-        nullable=False,
         default=CatalystStatus.PENDING,
-    )
-    expected_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    note: Mapped[str | None] = mapped_column(Text)
-
-    # Relationship
-    thesis: Mapped[Thesis] = relationship(back_populates="catalysts")
-
-    def __repr__(self) -> str:
-        return f"<Catalyst id={self.id} status={self.status}>"
-
-
-# ---------------------------------------------------------------------------
-# ThesisReview (AI review snapshot)
-# ---------------------------------------------------------------------------
-
-
-class ThesisReview(Base):
-    __tablename__ = "thesis_reviews"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    thesis_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("theses.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    verdict: Mapped[ReviewVerdict] = mapped_column(
-        SAEnum(ReviewVerdict, values_callable=_enum_values), nullable=False
-    )
-    confidence: Mapped[float] = mapped_column(Float, nullable=False)
-    reasoning: Mapped[str] = mapped_column(Text, nullable=False)
-    risk_signals: Mapped[str | None] = mapped_column(Text)  # JSON list stored as text
-    next_watch_items: Mapped[str | None] = mapped_column(Text)  # JSON list
-    reviewed_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-    reviewed_price: Mapped[float | None] = mapped_column(Float)
-
-    # Relationships
-    thesis: Mapped[Thesis] = relationship(back_populates="reviews")
-    recommendations: Mapped[list[ReviewRecommendation]] = relationship(
-        back_populates="review",
-        cascade="all, delete-orphan",
-        lazy="selectin",
-    )
-
-    def __repr__(self) -> str:
-        return f"<ThesisReview id={self.id} verdict={self.verdict} confidence={self.confidence}>"
-
-    @property
-    def pending_recommendations(self) -> list[ReviewRecommendation]:
-        """Shortcut — filter in Python, no extra query (relies on selectin load)."""
-        return [r for r in self.recommendations if r.status == RecommendationStatus.PENDING]
-
-
-# ---------------------------------------------------------------------------
-# ReviewRecommendation (AI-suggested status updates, PENDING until user acts)
-# ---------------------------------------------------------------------------
-
-
-class ReviewRecommendation(Base):
-    """Một đề xuất cụ thể từ AI review để cập nhật assumption hoặc catalyst.
-
-    Lifecycle:
-        PENDING  → user xem và confirm/reject
-        ACCEPTED → ThesisService.apply_recommendation() đã apply
-        REJECTED → user bỏ qua
-        EXPIRED  → review mới hơn tạo recommendation supersede cái này
-
-    target_type + target_id trỏ đến Assumption.id hoặc Catalyst.id.
-    recommended_status là string (không phải enum) để linh hoạt với
-    cả AssumptionStatus lẫn CatalystStatus.
-    """
-
-    __tablename__ = "review_recommendations"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    review_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("thesis_reviews.id", ondelete="CASCADE"),
-        nullable=False,
         index=True,
     )
-    target_type: Mapped[str] = mapped_column(
-        SAEnum(RecommendationTargetType, values_callable=_enum_values),
-        nullable=False,
-    )
-    target_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    target_description: Mapped[str] = mapped_column(
-        Text, nullable=False, comment="Snapshot mô tả tại thời điểm review, để hiển thị cho user"
-    )
-    recommended_status: Mapped[str] = mapped_column(
-        String(32),
-        nullable=False,
-        comment="valid | invalid | uncertain | triggered | expired | cancelled",
-    )
-    reason: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[RecommendationStatus] = mapped_column(
-        SAEnum(RecommendationStatus, values_callable=_enum_values),
-        nullable=False,
-        default=RecommendationStatus.PENDING,
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-    acted_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        comment="Khi user ACCEPTED hoặc REJECTED",
-    )
 
-    # Relationship
-    review: Mapped[ThesisReview] = relationship(back_populates="recommendations")
-
-    def __repr__(self) -> str:
-        return (
-            f"<ReviewRecommendation id={self.id} "
-            f"target={self.target_type}:{self.target_id} "
-            f"status={self.status}>"
-        )
-
-
-# ---------------------------------------------------------------------------
-# ThesisSnapshot (point-in-time performance record)
-# ---------------------------------------------------------------------------
+    thesis: Mapped[Thesis] = relationship(back_populates="catalysts")
 
 
 class ThesisSnapshot(Base):
     __tablename__ = "thesis_snapshots"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    thesis_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("theses.id", ondelete="CASCADE"), nullable=False, index=True
+    thesis_id: Mapped[int] = mapped_column(ForeignKey("theses.id", ondelete="CASCADE"), index=True)
+    score: Mapped[float] = mapped_column(Float)
+    verdict: Mapped[ReviewVerdict] = mapped_column(
+        SAEnum(ReviewVerdict, values_callable=_enum_values)
+    )
+    summary: Mapped[str] = mapped_column(Text)
+    confidence: Mapped[float] = mapped_column(Float, default=0.5)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
     )
 
-    # Legacy columns (market snapshot path — created by snapshot_scheduler)
-    price_at_snapshot: Mapped[float | None] = mapped_column(Float, nullable=True)
-    pnl_pct: Mapped[float | None] = mapped_column(Float)  # vs entry_price
-    score_at_snapshot: Mapped[float | None] = mapped_column(Float)
-    snapshotted_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=True
-    )
-
-    # Review-triggered snapshot columns (created by review_service)
-    score: Mapped[float | None] = mapped_column(
-        Float,
-        nullable=True,
-        comment="Conviction score tại thời điểm review (0-100)",
-    )
-    verdict: Mapped[str | None] = mapped_column(
-        String(32),
-        nullable=True,
-        comment="ReviewVerdict value tại thời điểm review",
-    )
-    confidence: Mapped[float | None] = mapped_column(
-        Float,
-        nullable=True,
-        comment="AI confidence tại thời điểm review (0-1)",
-    )
-    recorded_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-        comment="Timestamp của review tạo ra snapshot này",
-    )
-
-    # Shared
-    score_breakdown: Mapped[str | None] = mapped_column(
-        Text,
-        comment="JSON breakdown từ ScoringService.compute_with_breakdown(), nullable cho legacy rows",
-    )
-
-    # Relationship
     thesis: Mapped[Thesis] = relationship(back_populates="snapshots")
+
+
+class ThesisReview(Base):
+    __tablename__ = "thesis_reviews"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    thesis_id: Mapped[int] = mapped_column(ForeignKey("theses.id", ondelete="CASCADE"), index=True)
+    summary: Mapped[str] = mapped_column(Text)
+    verdict: Mapped[ReviewVerdict] = mapped_column(
+        SAEnum(ReviewVerdict, values_callable=_enum_values), index=True
+    )
+    reviewed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+    thesis: Mapped[Thesis] = relationship(back_populates="reviews")
+
+
+class DecisionLog(Base):
+    __tablename__ = "decision_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    thesis_id: Mapped[int] = mapped_column(
+        ForeignKey("theses.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    ticker: Mapped[str] = mapped_column(String(20), index=True)
+    decision_type: Mapped[DecisionType] = mapped_column(
+        SAEnum(DecisionType, values_callable=_enum_values), index=True
+    )
+    decision_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+    price_at_decision: Mapped[float | None] = mapped_column(Float, nullable=True)
+    thesis_score_at_decision: Mapped[float | None] = mapped_column(Float, nullable=True)
+    thesis_health_score_at_decision: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    active_signal: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    brief_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rationale: Mapped[str] = mapped_column(Text)
+    review_horizon_days: Mapped[int] = mapped_column(Integer, default=30)
+
+    outcome_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    outcome_pnl_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    outcome_evaluated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    outcome_verdict: Mapped[OutcomeVerdict | None] = mapped_column(
+        SAEnum(OutcomeVerdict, values_callable=_enum_values), nullable=True, index=True
+    )
+
+    thesis: Mapped[Thesis] = relationship(back_populates="decision_logs")
