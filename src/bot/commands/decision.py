@@ -1,4 +1,4 @@
-"""Decision commands — /log_decision and /replay.
+"""Decision commands — /log_decision, /replay and /lessons.
 
 Owner: bot segment. Adapter only — no domain logic.
 
@@ -9,6 +9,9 @@ Commands:
   /replay  <decision_id>
       Run AI replay on a decision whose horizon has passed and
       outcome has been evaluated. Surfaces key_lesson + pattern.
+
+  /lessons  [ticker] [limit]
+      Show a summary of AI-generated lessons from past decisions.
 
 All domain logic lives in src/thesis/decision_service.py.
 """
@@ -195,6 +198,50 @@ class DecisionCog(BaseCog):
         embed = _build_replay_embed(decision_id, envelope)
         await interaction.followup.send(embed=embed, ephemeral=True)
 
+    # ------------------------------------------------------------------
+    # /lessons
+    # ------------------------------------------------------------------
+
+    @app_commands.command(
+        name="lessons",
+        description="Xem tổng hợp bài học AI rút ra từ các quyết định đã replay",
+    )
+    @app_commands.describe(
+        ticker="Lọc theo mã cổ phiếu (tuỳ chọn, ví dụ: VCB)",
+        limit="Số bài học muốn xem (1–50, mặc định 10)",
+    )
+    async def lessons(
+        self,
+        interaction: discord.Interaction,
+        ticker: str | None = None,
+        limit: int = 10,
+    ) -> None:
+        await interaction.response.defer(ephemeral=True)
+        user_id = self.user_id(interaction)
+
+        try:
+            from src.platform.db import get_session
+            from src.thesis.decision_service import DecisionService
+
+            async with get_session() as session:
+                svc = DecisionService(session=session)
+                rows = await svc.list_lessons(
+                    user_id,
+                    ticker=ticker,
+                    limit=limit,
+                )
+        except Exception as exc:
+            logger.error("lessons.command.error", error=str(exc), exc_info=True)
+            await self.send_error(
+                interaction,
+                title="Lỗi hệ thống",
+                description=f"Không thể tải lessons.\n`{exc}`",
+            )
+            return
+
+        embed = _build_lessons_embed(rows, ticker=ticker, limit=limit)
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
 
 def _build_replay_embed(decision_id: int, envelope) -> discord.Embed:
     """Build Discord embed for replay result."""
@@ -235,6 +282,51 @@ def _build_replay_embed(decision_id: int, envelope) -> discord.Embed:
         conf_bar = "█" * round(confidence * 10) + "░" * (10 - round(confidence * 10))
         embed.set_footer(text=f"Confidence: {conf_bar} {confidence:.0%}  ·  stock-agent replay")
 
+    return embed
+
+
+def _build_lessons_embed(
+    rows: list,
+    *,
+    ticker: str | None,
+    limit: int,
+) -> discord.Embed:
+    """Build Discord embed listing AI-generated lessons."""
+    title = f"🧠 Lessons — {ticker.upper()}" if ticker else "🧠 Lessons — Tất cả mã"
+
+    if not rows:
+        scope = f"mã **{ticker.upper()}**" if ticker else "bất kỳ mã nào"
+        embed = discord.Embed(
+            title=title,
+            description=(
+                f"Chưa có bài học nào được ghi nhận cho {scope}.\n"
+                "Dùng `/replay <decision_id>` sau khi horizon qua để AI phân tích."
+            ),
+            color=discord.Color.greyple(),
+        )
+        embed.set_footer(text="stock-agent lessons")
+        return embed
+
+    embed = discord.Embed(title=title, color=discord.Color.blue())
+
+    for row in rows:
+        verdict = row.outcome_verdict or "?"
+        meta = _VERDICT_META.get(verdict, _DEFAULT_COLOR)
+        date_str = row.decision_at.strftime("%d/%m/%Y") if row.decision_at else "N/A"
+        pattern_str = f"  `{row.pattern_detected}`" if row.pattern_detected else ""
+        field_name = (
+            f"{meta['emoji']} #{row.id} · {row.ticker} · "
+            f"{row.decision_type} · {date_str}{pattern_str}"
+        )
+        embed.add_field(
+            name=field_name,
+            value=row.key_lesson,
+            inline=False,
+        )
+
+    embed.set_footer(
+        text=f"Hiển thị {len(rows)}/{limit} bài học mới nhất  ·  stock-agent"
+    )
     return embed
 
 
