@@ -1,5 +1,5 @@
 /**
- * app.js — Entry point (Wave 7)
+ * app.js — Entry point (Wave 7 + Wave 2b watchlist)
  * Responsibility: import tất cả modules, wire events, khởi động dashboard.
  * Rule: KHÔNG chứa business logic. Chỉ bootstrap + wiring.
  */
@@ -14,6 +14,7 @@ import {
 } from './modules/thesis/thesis-form.js';
 import { bindSuggestEvents }    from './modules/thesis/thesis-suggest.js';
 import { loadPortfolio }        from './modules/portfolio/portfolio-loader.js';
+import { loadWatchlist, handleAddTicker } from './modules/watchlist/watchlist-loader.js';
 import { state }                from './state/dashboard-state.js';
 
 // ---------------------------------------------------------------------------
@@ -47,6 +48,24 @@ function bindBriefTabs() {
 }
 
 // ---------------------------------------------------------------------------
+// Watchlist add modal: wire form submit
+// ---------------------------------------------------------------------------
+function bindWatchlistAddModal() {
+  const form = document.getElementById('watchlistAddForm');
+  if (!form) return;
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const ticker = form.querySelector('#wlTickerInput')?.value?.trim();
+    const note   = form.querySelector('#wlNoteInput')?.value?.trim() ?? '';
+    if (!ticker) return;
+    closeModal('watchlistAddModal');
+    form.reset();
+    await handleAddTicker(ticker, note);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Bootstrap
 // ---------------------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', async () => {
@@ -73,6 +92,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadDashboard();
     await loadBacktesting();
     await loadPortfolio();
+    await loadWatchlist();
   });
   el('statusFilter')?.addEventListener('change', loadDashboard);
 
@@ -121,8 +141,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // 8. Initial load
-  await loadDashboard();
-  await loadBacktesting();
-  await loadPortfolio();
+  // 8. Watchlist add modal form
+  bindWatchlistAddModal();
+
+  // 9. Initial load (watchlist song song với các section khác)
+  await Promise.all([
+    loadDashboard(),
+    loadBacktesting(),
+    loadPortfolio(),
+    loadWatchlist(),
+  ]);
 });
