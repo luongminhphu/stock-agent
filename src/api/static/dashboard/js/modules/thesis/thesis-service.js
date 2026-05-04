@@ -15,6 +15,7 @@ import { state } from '../../state/dashboard-state.js';
 import { renderThesisDetailHTML, emptyDetailHTML } from './render-thesis-table.js';
 import { wireDetailActions } from './thesis-form.js';
 import { renderReviewRecommendResult } from './render-ai-review.js';
+import { fetchQuote, renderQuoteStrip } from './market-quote.js';
 
 // ---------------------------------------------------------------------------
 // Skeleton HTML cho detail-shell
@@ -70,19 +71,37 @@ export async function loadThesisDetail(thesisId) {
   wrap.classList.remove('empty-detail');
   wrap.innerHTML = detailSkeletonHTML();
   try {
+    // WAVE 3b: fetch quote SONG SONG với 4 thesis calls — không chặn nhau
     const [thesis, assumptions, catalysts, reviews] = await Promise.all([
       getJson(`${thesisApiBase()}/${thesisId}`),
       getJson(`${thesisApiBase()}/${thesisId}/assumptions`).catch(() => []),
       getJson(`${thesisApiBase()}/${thesisId}/catalysts`).catch(() => []),
       getJson(`${thesisApiBase()}/${thesisId}/reviews`).catch(() => []),
     ]);
-    // FIX: guard thesis null/undefined — có thể xảy ra khi API trả 204 hoặc null
+    // FIX: guard thesis null/undefined
     if (!thesis) {
       wrap.innerHTML = emptyDetailHTML();
       return;
     }
+    // Render detail HTML ngay (quote slot hiển skeleton tự động)
     wrap.innerHTML = renderThesisDetailHTML(thesis, assumptions, catalysts, reviews);
     wireDetailActions(thesisId, wrap);
+
+    // WAVE 3b: fetch quote bất đồng bộ sau khi HTML đã ở trong DOM.
+    // Dùng requestIdleCallback nếu có, fallback setTimeout(0)
+    const scheduleQuote = window.requestIdleCallback
+      ? (fn) => requestIdleCallback(fn, { timeout: 3000 })
+      : (fn) => setTimeout(fn, 0);
+
+    scheduleQuote(async () => {
+      const slot = wrap.querySelector('#quoteStripSlot');
+      if (!slot) return;
+      const quote = await fetchQuote(thesis.ticker);
+      // Chỉ update nếu slot vẫn thuộc về đúng thesis (user có thể click sang thesis khác trong lúc fetch)
+      if (slot.dataset.ticker !== thesis.ticker) return;
+      slot.innerHTML = renderQuoteStrip(quote, thesis);
+    });
+
   } catch (err) {
     wrap.innerHTML = `<div class="error-banner">Lỗi tải chi tiết: ${err.message}</div>${emptyDetailHTML()}`;
   }
@@ -103,7 +122,6 @@ export async function triggerAiReview(thesisId) {
 
   try {
     const data = await sendJson(`${thesisApiBase()}/${thesisId}/review`, 'POST', null);
-    // FIX: guard data null/undefined — AI endpoint đôi khi trả về null khi lỗi upstream
     if (!data) {
       result.innerHTML = `<div class="error-banner" style="margin:0;">AI review không trả về kết quả.</div>`;
       result.classList.remove('hidden');
@@ -213,7 +231,6 @@ export function confirmDeleteThesis(thesisId) {
     state.selectedThesisId = null;
     closeModal('deleteModal');
     showToast('🗑 Đã xóa thesis');
-    // loadDashboard được gọi từ app.js hoặc event bus sau khi deleteCallback resolve
   };
   openModal('deleteModal');
 }

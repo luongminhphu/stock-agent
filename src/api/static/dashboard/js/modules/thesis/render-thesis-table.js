@@ -1,6 +1,7 @@
 import { esc, fmtDate, fmtScore, badge, fmt, scoreClass } from '../../utils/format.js';
 import { renderScoreBreakdown } from './render-score.js';
 import { renderReviewRecommendSection } from './render-ai-review.js';
+import { quoteStripSkeletonHTML } from './market-quote.js';
 import { state } from '../../state/dashboard-state.js';
 
 /**
@@ -39,6 +40,9 @@ export function thesisTableSkeletonHTML(rows = 5) {
 
 /**
  * Render toàn bộ detail panel cho một thesis.
+ * WAVE 3b: thêm quote-strip-placeholder ngay sau detail-head.
+ *   - Placeholder (skeleton) được render ngay lập tức (số 0 đồng bộ).
+ *   - thesis-service.js sẽ fetch quote song song rồi swap innerHTML của #quoteStripSlot.
  */
 export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
   const assumList = Array.isArray(assumptions) ? assumptions : (assumptions?.items ?? []);
@@ -60,6 +64,11 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
         <button class="ghost-btn" id="detailEditBtn">✏️ Sửa</button>
         <button class="danger-btn" id="detailDeleteBtn">🗑 Xóa thesis</button>
       </div>
+    </div>
+
+    <!-- WAVE 3b: quote strip slot — filled async by thesis-service after render -->
+    <div id="quoteStripSlot" data-ticker="${esc(t.ticker)}">
+      ${quoteStripSkeletonHTML()}
     </div>
 
     ${t.summary ? `<p class="detail-summary">${esc(t.summary)}</p>` : ''}
