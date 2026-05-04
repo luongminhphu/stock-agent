@@ -210,6 +210,8 @@ class ThesisSnapshot(Base):
     verdict: Mapped[str | None] = mapped_column(String(32), nullable=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     recorded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Conviction timeline breakdown (added in 0012)
+    score_breakdown: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     thesis: Mapped[Thesis] = relationship(back_populates="snapshots")
 
