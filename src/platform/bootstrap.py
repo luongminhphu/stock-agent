@@ -27,6 +27,7 @@ _stress_test_agent: object | None = None
 _replay_agent: object | None = None
 _snapshot_scheduler: object | None = None
 _pnl_service: object | None = None
+_sector_rotation_agent: object | None = None
 
 
 async def bootstrap() -> None:
@@ -36,6 +37,7 @@ async def bootstrap() -> None:
     global _quote_service, _ohlcv_service, _perplexity_client, _thesis_review_agent
     global _thesis_suggest_agent, _briefing_agent, _why_agent, _pretrade_agent
     global _stress_test_agent, _replay_agent, _snapshot_scheduler, _pnl_service
+    global _sector_rotation_agent
 
     if _quote_service is None:
         from src.market.adapters.factory import build_adapter
@@ -100,6 +102,21 @@ async def bootstrap() -> None:
         _replay_agent = ReplayAgent(ai_client=_perplexity_client)  # type: ignore[arg-type]
         logger.info("platform.bootstrap.replay_agent_ready")
 
+    if _sector_rotation_agent is None:
+        from src.ai.agents.sector_rotation import SectorRotationAgent
+        from src.market.registry import registry
+        from src.market.sector_rotation_service import SectorRotationService
+
+        _sector_rotation_agent = SectorRotationAgent(
+            ai_client=_perplexity_client,  # type: ignore[arg-type]
+            sector_service=SectorRotationService(
+                quote_service=_quote_service,  # type: ignore[arg-type]
+                registry=registry,
+            ),
+            quote_service=_quote_service,  # type: ignore[arg-type]
+        )
+        logger.info("platform.bootstrap.sector_rotation_agent_ready")
+
     # PnlService depends on quote_service — init last
     if _pnl_service is None:
         try:
@@ -134,6 +151,7 @@ def reset_singletons() -> None:
     global _quote_service, _ohlcv_service, _perplexity_client, _thesis_review_agent
     global _thesis_suggest_agent, _briefing_agent, _why_agent, _pretrade_agent
     global _stress_test_agent, _replay_agent, _snapshot_scheduler, _pnl_service
+    global _sector_rotation_agent
     _quote_service = None
     _ohlcv_service = None
     _perplexity_client = None
@@ -146,6 +164,7 @@ def reset_singletons() -> None:
     _replay_agent = None
     _snapshot_scheduler = None
     _pnl_service = None
+    _sector_rotation_agent = None
 
 
 def get_quote_service() -> object:
@@ -206,6 +225,12 @@ def get_replay_agent() -> object:
     if _replay_agent is None:
         raise RuntimeError("ReplayAgent not initialised — call bootstrap() first.")
     return _replay_agent
+
+
+def get_sector_rotation_agent() -> object:
+    if _sector_rotation_agent is None:
+        raise RuntimeError("SectorRotationAgent not initialised — call bootstrap() first.")
+    return _sector_rotation_agent
 
 
 def get_pnl_service() -> object | None:

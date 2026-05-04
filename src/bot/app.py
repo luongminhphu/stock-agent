@@ -110,6 +110,7 @@ async def _register_cogs(bot: commands.Bot) -> None:
     from src.bot.commands.portfolio import PortfolioCog
     from src.bot.commands.pretrade import PretradeCog
     from src.bot.commands.scheduler_trigger import SchedulerTriggerCog
+    from src.bot.commands.sector_rotation import SectorRotationCog
     from src.bot.commands.stress_test import StressTestCog
     from src.bot.commands.thesis_crud import ThesisCrudCog
     from src.bot.commands.thesis_review import ThesisReviewCog
@@ -130,13 +131,14 @@ async def _register_cogs(bot: commands.Bot) -> None:
     await bot.add_cog(DecisionCog(bot))
     await bot.add_cog(SchedulerTriggerCog(bot))
     await bot.add_cog(HealthCog(bot))
+    await bot.add_cog(SectorRotationCog(bot))
     logger.info(
         "bot.cogs_loaded",
         cogs=[
             "WatchlistCog", "ThesisCrudCog", "ThesisReviewCog", "MarketCog",
             "BriefingCog", "HelpCog", "WhyCog", "PretradeCog",
             "ConvictionTimelineCog", "PortfolioCog", "StressTestCog",
-            "DecisionCog", "SchedulerTriggerCog", "HealthCog",
+            "DecisionCog", "SchedulerTriggerCog", "HealthCog", "SectorRotationCog",
         ],
     )
 

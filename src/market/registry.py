@@ -183,6 +183,16 @@ class SymbolRegistry:
     def all_tickers(self) -> list[str]:
         return list(_REGISTRY.keys())
 
+    def get_sector_map(self) -> dict[str, list[str]]:
+        """Return mapping sector_name → list[ticker].
+
+        Used by SectorRotationService to aggregate quotes per sector.
+        """
+        result: dict[str, list[str]] = {}
+        for info in _REGISTRY.values():
+            result.setdefault(info.sector.value, []).append(info.ticker)
+        return result
+
 
 # Module-level singleton
 registry = SymbolRegistry()
