@@ -4,10 +4,15 @@
 #   docker compose up api       # API only (no bot)
 #   docker compose up bot       # bot only
 #   docker compose down -v      # stop and remove volumes
+#
+# Dev loop (no rebuild needed after code changes):
+#   docker compose restart api
+#   docker compose restart bot
+#   docker compose up migrate     # re-run migrations
 
 services:
 
-  # ── PostgreSQL ────────────────────────────────────────────────────────────
+  # ── PostgreSQL ────────────────────────────────────────────────────────────────
   db:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -25,7 +30,7 @@ services:
       timeout: 5s
       retries: 10
 
-  # ── Alembic migrate (runs once then exits) ────────────────────────────────
+  # ── Alembic migrate (runs once then exits) ────────────────────────────
   migrate:
     build: .
     command: ["migrate"]
@@ -37,9 +42,10 @@ services:
       db:
         condition: service_healthy
     volumes:
+      - ./src:/app/src           # live code — no rebuild needed
       - ./migrations:/app/migrations
 
-  # ── FastAPI ───────────────────────────────────────────────────────────────
+  # ── FastAPI ──────────────────────────────────────────────────────────────────
   api:
     build: .
     command: ["api"]
@@ -54,13 +60,15 @@ services:
       migrate:
         condition: service_completed_successfully
     restart: unless-stopped
+    volumes:
+      - ./src:/app/src           # live code — no rebuild needed
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # ── Discord bot ───────────────────────────────────────────────────────────
+  # ── Discord bot ────────────────────────────────────────────────────────────────
   bot:
     build: .
     command: ["bot"]
@@ -72,6 +80,8 @@ services:
       migrate:
         condition: service_completed_successfully
     restart: unless-stopped
+    volumes:
+      - ./src:/app/src           # live code — no rebuild needed
 
 volumes:
   postgres_data:
