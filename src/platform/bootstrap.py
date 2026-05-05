@@ -158,7 +158,7 @@ async def shutdown() -> None:
     Call this in the API lifespan teardown and in the bot on_close handler.
     Safe to call even if bootstrap() was never called (all singletons are None).
     """
-    global _quote_service
+    global _quote_service, _ai_client
 
     if _quote_service is not None:
         try:
@@ -166,6 +166,13 @@ async def shutdown() -> None:
             logger.info("platform.shutdown.quote_service_closed")
         except Exception as exc:  # noqa: BLE001
             logger.warning("platform.shutdown.quote_service_close_failed", error=str(exc))
+
+    if _ai_client is not None:
+        try:
+            await _ai_client.aclose()  # type: ignore[union-attr]
+            logger.info("platform.shutdown.ai_client_closed")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("platform.shutdown.ai_client_close_failed", error=str(exc))
 
     logger.info("platform.shutdown.complete")
 
