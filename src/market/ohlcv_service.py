@@ -98,6 +98,15 @@ class OHLCVService:
             )
         return self._adapter
 
+    async def close(self) -> None:
+        """Release adapter resources (e.g. httpx connection pool).
+
+        Delegates to adapter.close() if present. Safe to call even if
+        no adapter is configured or adapter has no close() method.
+        """
+        if self._adapter is not None and hasattr(self._adapter, "close"):
+            await self._adapter.close()  # type: ignore[union-attr]
+
     async def get_candles(
         self,
         ticker: str,
