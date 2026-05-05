@@ -4,9 +4,13 @@ Owner: portfolio segment only.
 Other segments MUST NOT import these models directly —
 use PortfolioService or PnlService as the public interface.
 
-Two models:
+Two ORM models:
   Position  — current state of a holding (qty, avg_cost, open/closed)
   Trade     — immutable record of each BUY/SELL execution
+
+One read-model dataclass (no DB table):
+  PortfolioContext  — typed snapshot consumed by ai/context_builder.
+                      Built by get_portfolio_context() in __init__.py.
 
 Relationship:
   One Position → many Trades.
@@ -22,12 +26,12 @@ Partial sell example:
 from __future__ import annotations
 
 import enum
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.sql import func
 
 from src.platform.db import Base
 
@@ -114,3 +118,63 @@ class Trade(Base):
             f"<Trade {self.trade_type} {self.ticker} qty={self.qty} "
             f"price={self.price} pnl={self.realized_pnl}>"
         )
+
+
+# ---------------------------------------------------------------------------
+# PortfolioContext — read-model dataclass (no DB table)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class PositionSummary:
+    """Lightweight snapshot of one open position for AI context.
+
+    Intentionally flat — no SQLAlchemy ORM objects cross the boundary.
+    """
+
+    ticker: str
+    qty: float
+    avg_cost: float
+    sector: str | None
+    thesis_id: int | None
+    market_value: float | None = None   # filled by get_portfolio_context() if prices available
+    unrealized_pnl: float | None = None
+    unrealized_pnl_pct: float | None = None
+
+
+@dataclass
+class PortfolioContext:
+    """Typed snapshot of a user's portfolio state.
+
+    Owner: portfolio segment.
+    Consumed by: ai/context_builder — import from portfolio.__init__ only.
+
+    Contract:
+      - Immutable after construction (dataclass, no setters).
+      - Never contains SQLAlchemy ORM objects.
+      - sector_weights: {sector_name: weight_pct} based on market_value
+        (or avg_cost * qty when prices unavailable).
+      - total_realized_pnl: sum of realized_pnl across ALL positions
+        (open + closed) for the user — lifetime figure.
+
+    Boundary rule:
+      portfolio → ai is FORBIDDEN.
+      ai → portfolio (read PortfolioContext) is ALLOWED.
+    """
+
+    user_id: str
+    open_positions: list[PositionSummary] = field(default_factory=list)
+    sector_weights: dict[str, float] = field(default_factory=dict)   # sector → weight %
+    total_cost_basis: float = 0.0         # sum(avg_cost * qty) for open positions
+    total_market_value: float | None = None  # None when prices unavailable
+    total_unrealized_pnl: float | None = None
+    total_realized_pnl: float = 0.0
+    position_count: int = 0
+    as_of: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+    @property
+    def has_positions(self) -> bool:
+        return self.position_count > 0
+
+    @property
+    def tickers(self) -> list[str]:
+        return [p.ticker for p in self.open_positions]

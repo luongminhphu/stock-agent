@@ -26,9 +26,13 @@ _pretrade_agent: object | None = None
 _stress_test_agent: object | None = None
 _replay_agent: object | None = None
 _snapshot_scheduler: object | None = None
-_pnl_service: object | None = None
 _sector_rotation_agent: object | None = None
 _investor_profile_service: object | None = None  # Wave 1 — Blueprint V2
+
+# PnlService is session-scoped (stateless), so bootstrap stores the class
+# rather than an instance. get_pnl_service() returns the class; callers
+# instantiate with their own session: PnlService(session).
+_pnl_service_class: type | None = None
 
 
 async def bootstrap() -> None:
@@ -37,8 +41,8 @@ async def bootstrap() -> None:
 
     global _quote_service, _ohlcv_service, _ai_client, _thesis_review_agent
     global _thesis_suggest_agent, _briefing_agent, _why_agent, _pretrade_agent
-    global _stress_test_agent, _replay_agent, _snapshot_scheduler, _pnl_service
-    global _sector_rotation_agent, _investor_profile_service
+    global _stress_test_agent, _replay_agent, _snapshot_scheduler
+    global _sector_rotation_agent, _investor_profile_service, _pnl_service_class
 
     if _quote_service is None:
         from src.market.adapters.factory import build_adapter
@@ -116,6 +120,12 @@ async def bootstrap() -> None:
         # get_quote_service() inside _run_snapshot at task execution time.
         _snapshot_scheduler = SnapshotScheduler()
         logger.info("platform.bootstrap.snapshot_scheduler_ready")
+
+    if _pnl_service_class is None:
+        from src.portfolio.pnl_service import PnlService
+
+        _pnl_service_class = PnlService
+        logger.info("platform.bootstrap.pnl_service_ready")
 
 
 # ---------------------------------------------------------------------------
@@ -203,6 +213,11 @@ def get_snapshot_scheduler():
 
 
 def get_pnl_service():
-    if _pnl_service is None:
-        raise RuntimeError("PnLService not initialised — call bootstrap() first.")
-    return _pnl_service
+    """Return the PnlService class (not an instance).
+
+    PnlService is session-scoped. Callers must instantiate with their session:
+        pnl_svc = get_pnl_service()(session)
+    """
+    if _pnl_service_class is None:
+        raise RuntimeError("PnlService not initialised — call bootstrap() first.")
+    return _pnl_service_class
