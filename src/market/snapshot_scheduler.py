@@ -1,29 +1,23 @@
-"""SnapshotScheduler — writes ThesisSnapshot records on a daily schedule.
+"""SnapshotScheduler — triggers daily thesis price snapshots after market close.
 
-Owner: market segment (price concern) + thin write into thesis domain.
+Owner: market segment (timing + price fetching only).
 
-Schedule: weekdays at 15:10 ICT (08:10 UTC) — 5 min after market close.
+Schedule: weekdays at 15:10 ICT (08:10 UTC) — 5 min after HOSE close.
 
 Design rules:
-- Scheduler owns ONLY the timing and orchestration.
-- Price fetching: QuoteService (market segment).
-- DB write: direct SQLAlchemy session — creates ThesisSnapshot rows.
-- Does NOT call ThesisService; snapshots are append-only side-effects.
-- Skips tickers where QuoteService raises (logs warning, continues).
+- Scheduler owns ONLY timing and price fetching (market concern).
+- ThesisSnapshot write logic lives in thesis.ThesisSnapshotService.
+- Scheduler fetches bulk prices, passes price_map to ThesisSnapshotService.
+- Does NOT import Thesis / ThesisSnapshot models directly.
 """
 
 from __future__ import annotations
-
-from datetime import UTC, datetime
 
 from discord.ext import tasks
 
 from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
-
-# Weekdays at 08:10 UTC = 15:10 ICT
-_SNAPSHOT_TIME_UTC = datetime.strptime("08:10", "%H:%M").time().replace()
 
 
 class SnapshotScheduler:
@@ -53,32 +47,32 @@ class SnapshotScheduler:
     # ------------------------------------------------------------------
 
     async def _run_snapshot(self) -> None:
-        """Fetch active thesis tickers, get prices, write snapshots."""
+        """Fetch live prices for active thesis tickers, delegate snapshot writes to thesis segment."""
         from sqlalchemy import select
 
         from src.platform.bootstrap import get_quote_service
         from src.platform.db import AsyncSessionLocal
-        from src.thesis.models import Thesis, ThesisSnapshot, ThesisStatus
+        from src.thesis.models import Thesis, ThesisStatus
+        from src.thesis.snapshot_service import ThesisSnapshotService
 
         logger.info("market.snapshot_scheduler.run_start")
         qs = get_quote_service()  # type: ignore[assignment]
 
         async with AsyncSessionLocal() as session:
-            # 1. Load all active theses with entry_price set
+            # 1. Resolve tickers that need snapshots (read-only, minimal import)
             result = await session.execute(
-                select(Thesis).where(
+                select(Thesis.ticker).where(
                     Thesis.status == ThesisStatus.ACTIVE,
                     Thesis.entry_price.is_not(None),
                 )
             )
-            theses = result.scalars().all()
+            tickers = list({row[0] for row in result.all()})
 
-            if not theses:
-                logger.info("market.snapshot_scheduler.no_active_theses")
+            if not tickers:
+                logger.info("market.snapshot_scheduler.no_active_tickers")
                 return
 
-            # 2. Bulk fetch prices
-            tickers = list({t.ticker for t in theses})
+            # 2. Bulk fetch prices — market segment concern
             try:
                 quotes = await qs.get_bulk_quotes(tickers)  # type: ignore[attr-defined]
                 price_map: dict[str, float] = {q.ticker: q.price for q in quotes}
@@ -86,35 +80,12 @@ class SnapshotScheduler:
                 logger.error("market.snapshot_scheduler.bulk_fetch_failed", error=str(exc))
                 return
 
-            # 3. Write snapshots
-            now = datetime.now(UTC)
-            written = 0
-            for thesis in theses:
-                price = price_map.get(thesis.ticker)
-                if price is None:
-                    logger.warning(
-                        "market.snapshot_scheduler.missing_price",
-                        ticker=thesis.ticker,
-                    )
-                    continue
+            # 3. Delegate write to thesis segment
+            snapshot_svc = ThesisSnapshotService(session)
+            written = await snapshot_svc.record_daily_snapshots(price_map)
 
-                pnl_pct: float | None = None
-                if thesis.entry_price and thesis.entry_price > 0:
-                    pnl_pct = (price - thesis.entry_price) / thesis.entry_price * 100
-
-                snap = ThesisSnapshot(
-                    thesis_id=thesis.id,
-                    price_at_snapshot=price,
-                    pnl_pct=pnl_pct,
-                    score_at_snapshot=thesis.score,
-                    snapshotted_at=now,
-                )
-                session.add(snap)
-                written += 1
-
-            await session.commit()
             logger.info(
                 "market.snapshot_scheduler.run_done",
                 snapshots_written=written,
-                total_theses=len(theses),
+                tickers_fetched=len(tickers),
             )
