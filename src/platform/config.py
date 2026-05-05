@@ -51,11 +51,24 @@ class Settings(BaseSettings):
     # and injected into every AI agent call via ContextBuilder (Wave 2).
     # ------------------------------------------------------------------
 
-    investor_risk_appetite: str = "medium — max drawdown 10%, position size ≤15%"
-    investor_thesis_style: str = "fundamental, hold 3-6 tháng"
-    investor_trading_horizon: str = "swing to positional — không day trade"
-    investor_preferred_sectors: str = "banking, consumer staples, tech"
-    investor_avoid: str = "speculative penny stocks, T+ illiquid"
+    investor_risk_appetite: str = (
+        "medium — max drawdown 15%, position size ≤20%, không dùng margin"
+    )
+    investor_thesis_style: str = (
+        "fundamental + macro top-down, hold 2-6 tháng, tập trung chu kỳ ngành"
+    )
+    investor_trading_horizon: str = "positional — không day trade, không T+"
+    investor_preferred_sectors: str = (
+        "tài chính (VCB, BID, CTG, TCB, MBB), "
+        "nguyên vật liệu và sắt thép (HPG, HSG, NKG, TLH), "
+        "năng lượng (PVD, BSR, GAS, PLC)"
+    )
+    investor_avoid: str = (
+        "cổ phiếu penny dưới 5000đ, "
+        "nhóm bất động sản thanh khoản thấp, "
+        "IPO năm đầu, "
+        "T+ dưới 10 ngàn đơn vị/phiên"
+    )
 
     # ------------------------------------------------------------------
     # Derived properties
