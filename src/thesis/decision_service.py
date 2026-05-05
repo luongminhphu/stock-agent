@@ -36,6 +36,10 @@ _VALID_OUTCOME_VERDICTS = {"CORRECT", "INCORRECT", "MIXED"}
 _DEFAULT_REVIEW_HORIZON_DAYS = 30
 
 
+class DecisionNotFoundError(Exception):
+    """Raised when a decision is not found or not owned by the requesting user."""
+
+
 @dataclass
 class DecisionReplayEnvelope:
     decision_id: int
@@ -205,7 +209,6 @@ class DecisionService:
             outcome_horizon_days=row.review_horizon_days,
             outcome_verdict_hint=row.outcome_verdict,
         )
-        # Pass session + user_id → ReplayAgent logs interaction to episodic memory
         replay = await self._replay_agent.analyze(  # type: ignore[func-returns-value]
             ctx,
             session=self._session,
@@ -229,10 +232,10 @@ class DecisionService:
         """Write AI-generated lesson and pattern back to DecisionLog.
 
         Called by DecisionReplayScheduler after analyze_decision() succeeds.
-        This closes the learning loop: ReplayAgent insight → stored in DB →
-        surfaced by LessonService → injected into future briefing / pretrade prompts.
+        This closes the learning loop: ReplayAgent insight -> stored in DB ->
+        surfaced by LessonService -> injected into future briefing / pretrade prompts.
 
-        Only updates fields that have a non-None value — never overwrites
+        Only updates fields that have a non-None value -- never overwrites
         an existing lesson with None.
 
         Args:
@@ -275,6 +278,48 @@ class DecisionService:
             )
 
         return row
+
+    async def replay_decision(
+        self,
+        decision_id: int,
+        user_id: str,
+    ) -> DecisionReplayEnvelope:
+        """Load, ownership-check, evaluate if needed, analyze, persist lesson.
+
+        This is the single entry-point for the /replay command. Encapsulates
+        the full pipeline so bot adapters never touch DecisionLog ORM directly
+        and ownership rules live in exactly one place.
+
+        Args:
+            decision_id: PK of the DecisionLog to replay.
+            user_id:     Requesting user — must match DecisionLog.user_id.
+
+        Returns:
+            DecisionReplayEnvelope with verdict + AI replay output.
+
+        Raises:
+            DecisionNotFoundError: decision not found or not owned by user_id.
+            ValueError:            outcome cannot be evaluated (missing price).
+        """
+        row = await self._get_decision_or_raise(decision_id)
+        if str(row.user_id) != str(user_id):
+            raise DecisionNotFoundError(
+                f"Decision #{decision_id} not found or does not belong to this user."
+            )
+
+        if row.outcome_evaluated_at is None:
+            await self.evaluate_outcome(decision_id)
+
+        envelope = await self.analyze_decision(decision_id)
+
+        if envelope.replay is not None:
+            await self.persist_lesson(
+                decision_id,
+                key_lesson=getattr(envelope.replay, "key_lesson", None),
+                pattern_detected=getattr(envelope.replay, "pattern_detected", None),
+            )
+
+        return envelope
 
     async def _get_decision_or_raise(self, decision_id: int) -> DecisionLog:
         stmt = select(DecisionLog).where(DecisionLog.id == decision_id)

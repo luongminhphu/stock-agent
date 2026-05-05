@@ -134,11 +134,12 @@ class DecisionCog(BaseCog):
         decision_id: int,
     ) -> None:
         await interaction.response.defer(ephemeral=True)
+        user_id = self.user_id(interaction)
 
         try:
             from src.platform.bootstrap import get_quote_service, get_replay_agent
             from src.platform.db import get_session
-            from src.thesis.decision_service import DecisionService
+            from src.thesis.decision_service import DecisionNotFoundError, DecisionService
 
             async with get_session() as session:
                 svc = DecisionService(
@@ -146,39 +147,15 @@ class DecisionCog(BaseCog):
                     quote_service=get_quote_service(),
                     replay_agent=get_replay_agent(),
                 )
-                # Evaluate nếu chưa có outcome
-                from sqlalchemy import select
-                from src.thesis.models import DecisionLog
-                stmt = select(DecisionLog).where(DecisionLog.id == decision_id)
-                row = (await session.execute(stmt)).scalar_one_or_none()
-                if row is None:
-                    await self.send_error(
-                        interaction,
-                        title="Không tìm thấy",
-                        description=f"Decision `#{decision_id}` không tồn tại.",
-                    )
-                    return
+                envelope = await svc.replay_decision(decision_id, user_id=user_id)
 
-                if row.user_id != self.user_id(interaction):
-                    await self.send_error(
-                        interaction,
-                        title="Không có quyền",
-                        description="Decision này không thuộc về bạn.",
-                    )
-                    return
-
-                if row.outcome_evaluated_at is None:
-                    await svc.evaluate_outcome(decision_id)
-
-                envelope = await svc.analyze_decision(decision_id)
-
-                if envelope.replay is not None:
-                    await svc.persist_lesson(
-                        decision_id,
-                        key_lesson=getattr(envelope.replay, "key_lesson", None),
-                        pattern_detected=getattr(envelope.replay, "pattern_detected", None),
-                    )
-
+        except DecisionNotFoundError as exc:
+            await self.send_error(
+                interaction,
+                title="Không tìm thấy",
+                description=str(exc),
+            )
+            return
         except ValueError as exc:
             await self.send_error(
                 interaction,
