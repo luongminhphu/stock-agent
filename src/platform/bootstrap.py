@@ -109,6 +109,16 @@ async def bootstrap() -> None:
         _sector_rotation_agent = SectorRotationAgent(ai_client=_ai_client)  # type: ignore[arg-type]
         logger.info("platform.bootstrap.sector_rotation_agent_ready")
 
+    if _snapshot_scheduler is None:
+        from src.market.snapshot_scheduler import SnapshotScheduler
+
+        _snapshot_scheduler = SnapshotScheduler(quote_service=_quote_service)  # type: ignore[arg-type]
+        logger.info("platform.bootstrap.snapshot_scheduler_ready")
+
+
+# ---------------------------------------------------------------------------
+# Getters — raise RuntimeError if called before bootstrap()
+# ---------------------------------------------------------------------------
 
 def get_quote_service():
     if _quote_service is None:
@@ -128,6 +138,10 @@ def get_ai_client():
     return _ai_client
 
 
+# Backward-compat alias — tests and legacy callers still use get_perplexity_client()
+get_perplexity_client = get_ai_client
+
+
 def get_thesis_review_agent():
     if _thesis_review_agent is None:
         raise RuntimeError("ThesisReviewAgent not initialised — call bootstrap() first.")
@@ -138,6 +152,10 @@ def get_thesis_suggest_agent():
     if _thesis_suggest_agent is None:
         raise RuntimeError("ThesisSuggestAgent not initialised — call bootstrap() first.")
     return _thesis_suggest_agent
+
+
+# Alias — scheduler_trigger and other callers import get_suggest_agent directly
+get_suggest_agent = get_thesis_suggest_agent
 
 
 def get_briefing_agent():
@@ -174,6 +192,12 @@ def get_sector_rotation_agent():
     if _sector_rotation_agent is None:
         raise RuntimeError("SectorRotationAgent not initialised — call bootstrap() first.")
     return _sector_rotation_agent
+
+
+def get_snapshot_scheduler():
+    if _snapshot_scheduler is None:
+        raise RuntimeError("SnapshotScheduler not initialised — call bootstrap() first.")
+    return _snapshot_scheduler
 
 
 def get_pnl_service():
