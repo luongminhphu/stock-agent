@@ -36,7 +36,7 @@ from src.api.routes.market import router as market_router
 from src.api.routes.readmodel import router as readmodel_router
 from src.api.routes.thesis import router as thesis_router
 from src.api.routes.watchlist import router as watchlist_router
-from src.platform.bootstrap import bootstrap
+from src.platform.bootstrap import bootstrap, shutdown
 from src.platform.config import settings
 from src.platform.logging import get_logger
 
@@ -97,8 +97,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Run startup/shutdown logic around the app lifetime."""
     await bootstrap()
     logger.info("api.startup", env=settings.environment)
-    yield
-    logger.info("api.shutdown")
+    try:
+        yield
+    finally:
+        await shutdown()
+        logger.info("api.shutdown")
 
 
 def create_app() -> FastAPI:

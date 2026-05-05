@@ -13,7 +13,7 @@ import traceback as tb
 import discord
 from discord.ext import commands
 
-from src.platform.bootstrap import bootstrap
+from src.platform.bootstrap import bootstrap, shutdown
 from src.platform.config import settings
 from src.platform.logging import get_logger
 
@@ -70,6 +70,16 @@ def create_bot() -> commands.Bot:
                 traceback=tb.format_exc(),
             )
             raise
+
+    @bot.event
+    async def on_close() -> None:
+        """Called by discord.py when the bot disconnects / process exits.
+
+        Gives bootstrap.shutdown() a chance to close httpx clients and other
+        resources before the event loop is torn down.
+        """
+        await shutdown()
+        logger.info("bot.closed")
 
     @bot.event
     async def on_error(event: str, *args: object, **kwargs: object) -> None:
