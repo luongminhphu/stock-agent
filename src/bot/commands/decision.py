@@ -14,6 +14,7 @@ Commands:
       Show a summary of AI-generated lessons from past decisions.
 
 All domain logic lives in src/thesis/decision_service.py.
+All embed builders live in src/bot/commands/decision_embeds.py.
 """
 
 from __future__ import annotations
@@ -23,16 +24,13 @@ from discord import app_commands
 from discord.ext import commands
 
 from src.bot.commands.base import BaseCog
+from src.bot.commands.decision_embeds import (
+    build_lessons_embed,
+    build_single_replay_embed,
+)
 from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
-
-_VERDICT_META = {
-    "CORRECT":   {"emoji": "✅", "color": discord.Color.green()},
-    "INCORRECT": {"emoji": "❌", "color": discord.Color.red()},
-    "MIXED":     {"emoji": "⚖️", "color": discord.Color.orange()},
-}
-_DEFAULT_COLOR = {"emoji": "📋", "color": discord.Color.blue()}
 
 _VALID_ACTIONS = ["BUY", "SELL", "HOLD", "ADD", "REDUCE"]
 
@@ -88,7 +86,7 @@ class DecisionCog(BaseCog):
         except ValueError as exc:
             await self.send_error(
                 interaction,
-                title="Không thể ghi quyết định",
+                title="Kh\u00f4ng th\u1ec3 ghi quy\u1ebft \u0111\u1ecbnh",
                 description=str(exc),
             )
             return
@@ -96,8 +94,8 @@ class DecisionCog(BaseCog):
             logger.error("log_decision.command.error", error=str(exc), exc_info=True)
             await self.send_error(
                 interaction,
-                title="Lỗi hệ thống",
-                description=f"Không thể lưu quyết định.\n`{exc}`",
+                title="L\u1ed7i h\u1ec7 th\u1ed1ng",
+                description=f"Kh\u00f4ng th\u1ec3 l\u01b0u quy\u1ebft \u0111\u1ecbnh.\n`{exc}`",
             )
             return
 
@@ -105,15 +103,15 @@ class DecisionCog(BaseCog):
         score_str = f"{row.thesis_score_at_decision:.1f}" if row.thesis_score_at_decision else "N/A"
 
         embed = discord.Embed(
-            title=f"📝 Đã ghi: {action} {row.ticker}",
+            title=f"\U0001f4dd \u0110\u00e3 ghi: {action} {row.ticker}",
             description=f"> {rationale}",
             color=discord.Color.green(),
         )
-        embed.add_field(name="📌 Decision ID", value=f"`#{row.id}`", inline=True)
-        embed.add_field(name="💰 Giá lúc vào", value=price_str, inline=True)
-        embed.add_field(name="📊 Thesis score", value=score_str, inline=True)
+        embed.add_field(name="\U0001f4cc Decision ID", value=f"`#{row.id}`", inline=True)
+        embed.add_field(name="\U0001f4b0 Gi\u00e1 l\u00fac v\u00e0o", value=price_str, inline=True)
+        embed.add_field(name="\U0001f4ca Thesis score", value=score_str, inline=True)
         embed.set_footer(
-            text=f"Outcome sẽ được evaluate sau {horizon_days} ngày  ·  stock-agent"
+            text=f"Outcome s\u1ebd \u0111\u01b0\u1ee3c evaluate sau {horizon_days} ng\u00e0y  \u00b7  stock-agent"
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
 
@@ -123,10 +121,10 @@ class DecisionCog(BaseCog):
 
     @app_commands.command(
         name="replay",
-        description="Replay AI phân tích outcome của một quyết định đã qua horizon",
+        description="Replay AI ph\u00e2n t\u00edch outcome c\u1ee7a m\u1ed9t quy\u1ebft \u0111\u1ecbnh \u0111\u00e3 qua horizon",
     )
     @app_commands.describe(
-        decision_id="ID của quyết định (xem trong /log_decision hoặc /decision_history)",
+        decision_id="ID c\u1ee7a quy\u1ebft \u0111\u1ecbnh (xem trong /log_decision ho\u1eb7c /decision_history)",
     )
     async def replay(
         self,
@@ -152,14 +150,14 @@ class DecisionCog(BaseCog):
         except DecisionNotFoundError as exc:
             await self.send_error(
                 interaction,
-                title="Không tìm thấy",
+                title="Kh\u00f4ng t\u00ecm th\u1ea5y",
                 description=str(exc),
             )
             return
         except ValueError as exc:
             await self.send_error(
                 interaction,
-                title="Không thể replay",
+                title="Kh\u00f4ng th\u1ec3 replay",
                 description=str(exc),
             )
             return
@@ -167,12 +165,12 @@ class DecisionCog(BaseCog):
             logger.error("replay.command.error", decision_id=decision_id, error=str(exc), exc_info=True)
             await self.send_error(
                 interaction,
-                title="Lỗi hệ thống",
-                description=f"Replay thất bại.\n`{exc}`",
+                title="L\u1ed7i h\u1ec7 th\u1ed1ng",
+                description=f"Replay th\u1ea5t b\u1ea1i.\n`{exc}`",
             )
             return
 
-        embed = _build_replay_embed(decision_id, envelope)
+        embed = build_single_replay_embed(decision_id, envelope)
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     # ------------------------------------------------------------------
@@ -181,11 +179,11 @@ class DecisionCog(BaseCog):
 
     @app_commands.command(
         name="lessons",
-        description="Xem tổng hợp bài học AI rút ra từ các quyết định đã replay",
+        description="Xem t\u1ed5ng h\u1ee3p b\u00e0i h\u1ecdc AI r\u00fat ra t\u1eeb c\u00e1c quy\u1ebft \u0111\u1ecbnh \u0111\u00e3 replay",
     )
     @app_commands.describe(
-        ticker="Lọc theo mã cổ phiếu (tuỳ chọn, ví dụ: VCB)",
-        limit="Số bài học muốn xem (1–50, mặc định 10)",
+        ticker="L\u1ecdc theo m\u00e3 c\u1ed5 phi\u1ebfu (tu\u1ef3 ch\u1ecdn, v\u00ed d\u1ee5: VCB)",
+        limit="S\u1ed1 b\u00e0i h\u1ecdc mu\u1ed1n xem (1\u201350, m\u1eb7c \u0111\u1ecbnh 10)",
     )
     async def lessons(
         self,
@@ -211,100 +209,13 @@ class DecisionCog(BaseCog):
             logger.error("lessons.command.error", error=str(exc), exc_info=True)
             await self.send_error(
                 interaction,
-                title="Lỗi hệ thống",
-                description=f"Không thể tải lessons.\n`{exc}`",
+                title="L\u1ed7i h\u1ec7 th\u1ed1ng",
+                description=f"Kh\u00f4ng th\u1ec3 t\u1ea3i lessons.\n`{exc}`",
             )
             return
 
-        embed = _build_lessons_embed(rows, ticker=ticker, limit=limit)
+        embed = build_lessons_embed(rows, ticker=ticker, limit=limit)
         await interaction.followup.send(embed=embed, ephemeral=True)
-
-
-def _build_replay_embed(decision_id: int, envelope) -> discord.Embed:
-    """Build Discord embed for replay result."""
-    verdict = envelope.outcome_verdict or "MIXED"
-    meta = _VERDICT_META.get(verdict, _DEFAULT_COLOR)
-    replay = envelope.replay
-
-    title = f"{meta['emoji']} Replay #{decision_id} — {envelope.ticker} [{verdict}]"
-
-    if replay is None:
-        return discord.Embed(
-            title=title,
-            description="ReplayAgent không khả dụng. Outcome đã được evaluate.",
-            color=meta["color"],
-        )
-
-    embed = discord.Embed(title=title, color=meta["color"])
-
-    what_right = getattr(replay, "what_went_right", None)
-    what_wrong = getattr(replay, "what_went_wrong", None)
-    key_lesson = getattr(replay, "key_lesson", None)
-    pattern = getattr(replay, "pattern_detected", None)
-    adjustment = getattr(replay, "suggested_adjustment", None)
-    confidence = getattr(replay, "confidence", None)
-
-    if what_right:
-        embed.add_field(name="✅ Đúng ở điểm nào", value=what_right, inline=False)
-    if what_wrong:
-        embed.add_field(name="❌ Sai ở điểm nào", value=what_wrong, inline=False)
-    if key_lesson:
-        embed.add_field(name="💡 Key lesson", value=key_lesson, inline=False)
-    if pattern:
-        embed.add_field(name="🔁 Pattern", value=f"`{pattern}`", inline=True)
-    if adjustment:
-        embed.add_field(name="🎯 Điều chỉnh gợi ý", value=adjustment, inline=False)
-
-    if confidence is not None:
-        conf_bar = "█" * round(confidence * 10) + "░" * (10 - round(confidence * 10))
-        embed.set_footer(text=f"Confidence: {conf_bar} {confidence:.0%}  ·  stock-agent replay")
-
-    return embed
-
-
-def _build_lessons_embed(
-    rows: list,
-    *,
-    ticker: str | None,
-    limit: int,
-) -> discord.Embed:
-    """Build Discord embed listing AI-generated lessons."""
-    title = f"🧠 Lessons — {ticker.upper()}" if ticker else "🧠 Lessons — Tất cả mã"
-
-    if not rows:
-        scope = f"mã **{ticker.upper()}**" if ticker else "bất kỳ mã nào"
-        embed = discord.Embed(
-            title=title,
-            description=(
-                f"Chưa có bài học nào được ghi nhận cho {scope}.\n"
-                "Dùng `/replay <decision_id>` sau khi horizon qua để AI phân tích."
-            ),
-            color=discord.Color.greyple(),
-        )
-        embed.set_footer(text="stock-agent lessons")
-        return embed
-
-    embed = discord.Embed(title=title, color=discord.Color.blue())
-
-    for row in rows:
-        verdict = row.outcome_verdict or "?"
-        meta = _VERDICT_META.get(verdict, _DEFAULT_COLOR)
-        date_str = row.decision_at.strftime("%d/%m/%Y") if row.decision_at else "N/A"
-        pattern_str = f"  `{row.pattern_detected}`" if row.pattern_detected else ""
-        field_name = (
-            f"{meta['emoji']} #{row.id} · {row.ticker} · "
-            f"{row.decision_type} · {date_str}{pattern_str}"
-        )
-        embed.add_field(
-            name=field_name,
-            value=row.key_lesson,
-            inline=False,
-        )
-
-    embed.set_footer(
-        text=f"Hiển thị {len(rows)}/{limit} bài học mới nhất  ·  stock-agent"
-    )
-    return embed
 
 
 async def setup(bot: commands.Bot) -> None:
