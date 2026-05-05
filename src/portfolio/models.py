@@ -45,6 +45,10 @@ class Position(Base):
     avg_cost is the volume-weighted average cost across all BUY trades.
     Recalculated by PortfolioService on each buy.
     closed_at is set when qty reaches 0 (full close).
+
+    sector is an optional free-text label (e.g. "tài chính", "nguyên vật liệu").
+    Used by ContextBuilder._fetch_portfolio_bias() to compute sector weights.
+    Nullable — positions created before this field existed remain valid.
     """
 
     __tablename__ = "positions"
@@ -54,6 +58,7 @@ class Position(Base):
     ticker: Mapped[str] = mapped_column(String(10), nullable=False)
     qty: Mapped[float] = mapped_column(Float, nullable=False)
     avg_cost: Mapped[float] = mapped_column(Float, nullable=False)
+    sector: Mapped[str | None] = mapped_column(String(64), nullable=True)
     thesis_id: Mapped[int | None] = mapped_column(Integer, index=True)
     note: Mapped[str | None] = mapped_column(Text)
     opened_at: Mapped[datetime] = mapped_column(
