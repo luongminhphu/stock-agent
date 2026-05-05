@@ -6,13 +6,14 @@ Responsibilities:
 - Fetch latest scan snapshot for ticker (watchlist segment via repo).
 - Extract brief mention for ticker from latest briefing (briefing context).
 - Fetch past evaluated decisions for user (thesis segment via LessonService).
-- Call PreTradeAgent with assembled context.
+- Call PreTradeAgent with assembled context + session for investor profile.
 - Return PreTradeCheckOutput to caller (bot command).
 
 Does NOT own:
 - Quote fetching logic (market segment).
 - Scan execution (watchlist segment).
 - AI prompt construction (ai segment).
+- Investor profile assembly (ai.ContextBuilder).
 """
 
 from __future__ import annotations
@@ -67,7 +68,7 @@ class PreTradeService:
         # 5. Past lessons — ticker-specific, best-effort, never blocks
         past_lessons = await self._build_lesson_context(ticker, user_id)
 
-        # 6. AI check
+        # 6. AI check — session forwarded so ContextBuilder can inject investor profile
         result = await self._agent.check(
             ticker=ticker,
             price=price,
@@ -76,6 +77,7 @@ class PreTradeService:
             signal_context=signal_context,
             brief_context=brief_context,
             past_lessons=past_lessons,
+            session=self._session,
         )
         logger.info(
             "pretrade_service.done",
