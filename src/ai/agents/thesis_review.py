@@ -1,5 +1,18 @@
+"""ThesisReviewAgent — AI agent for reviewing a single investment thesis.
+
+Owner: ai segment.
+Caller: thesis.review_service — passes in all domain data,
+receives typed ThesisReviewOutput back.
+
+This agent does NOT know thesis business rules (invalidation thresholds,
+scoring weights). Those live in the thesis segment.
+"""
+
+from __future__ import annotations
+
 import json
 import re
+from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
@@ -7,6 +20,9 @@ from src.ai.client import AIClient, AIError
 from src.ai.prompts.thesis_review import SYSTEM_PROMPT, build_review_prompt
 from src.ai.schemas import ThesisReviewOutput
 from src.platform.logging import get_logger
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -29,33 +45,22 @@ def _extract_json(text: str) -> str:
     """
     text = text.strip()
 
-    # Strategy 1: regex fence strip
     match = _JSON_FENCE_RE.search(text)
     if match:
         candidate = match.group(1).strip()
         if candidate.startswith("{"):
             return candidate
 
-    # Strategy 2: brace-scan — works even when closing fence is missing
     start = text.find("{")
     end = text.rfind("}")
     if start != -1 and end != -1 and end > start:
         return text[start : end + 1]
 
-    # No JSON object found — return as-is and let json.loads raise
     return text
 
 
 class ThesisReviewAgent:
-    """AI agent for reviewing a single investment thesis.
-
-    Owner: ai segment.
-    Caller: thesis.review_service — passes in all domain data,
-    receives typed ThesisReviewOutput back.
-
-    This agent does NOT know thesis business rules (invalidation thresholds,
-    scoring weights). Those live in the thesis segment.
-    """
+    """AI agent for reviewing a single investment thesis."""
 
     def __init__(self, client: AIClient) -> None:
         self._client = client
@@ -71,14 +76,22 @@ class ThesisReviewAgent:
         current_price: float | None = None,
         entry_price: float | None = None,
         target_price: float | None = None,
+        # Memory wiring params (optional, backward-compat)
+        session: AsyncSession | None = None,
+        user_id: str | None = None,
+        thesis_id: int | None = None,
+        trigger: str = "thesis_review",
     ) -> ThesisReviewOutput:
         """Run a thesis review and return structured output.
 
         Args:
             assumptions_with_ids:         Active assumptions — list[{"id": int, "description": str}].
-                                          AI uses id to populate AssumptionRecommendation.target_id.
             catalysts_with_ids:           PENDING catalysts — list[{"id": int, "description": str}].
-            triggered_catalysts_with_ids: TRIGGERED catalysts — context only, no recommendation needed.
+            triggered_catalysts_with_ids: TRIGGERED catalysts — context only.
+            session:                      Optional AsyncSession for memory logging.
+            user_id:                      Optional user_id for episodic log.
+            thesis_id:                    Optional thesis FK for traceability.
+            trigger:                      Trigger label (default: thesis_review).
 
         Raises:
             AIError: If the API call fails after retries.
@@ -138,4 +151,69 @@ class ThesisReviewAgent:
             verdict=result.verdict,
             confidence=result.confidence,
         )
+
+        # --- Memory: log interaction (Layer 2) ---
+        await _log_thesis_review_interaction(
+            session=session,
+            user_id=user_id,
+            ticker=ticker,
+            result=result,
+            thesis_id=thesis_id,
+            trigger=trigger,
+        )
+
         return result
+
+
+# ---------------------------------------------------------------------------
+# Internal helper
+# ---------------------------------------------------------------------------
+
+async def _log_thesis_review_interaction(
+    session,
+    user_id: str | None,
+    ticker: str,
+    result: ThesisReviewOutput,
+    thesis_id: int | None,
+    trigger: str,
+) -> None:
+    """Fire-and-forget memory log. Never raises."""
+    if session is None or not user_id:
+        return
+    try:
+        from src.ai.memory.memory_service import InteractionEntry, MemoryService
+
+        # key_points: top 5 recommendation summaries
+        key_lines: list[str] = []
+        for rec in (getattr(result, "recommendations", []) or [])[:5]:
+            if hasattr(rec, "action"):
+                key_lines.append(str(rec.action))
+            elif isinstance(rec, str):
+                key_lines.append(rec)
+
+        # risk_signals: invalidation risks or bearish signals
+        risk_lines: list[str] = []
+        for risk in (getattr(result, "invalidation_risks", []) or [])[:3]:
+            risk_lines.append(str(risk))
+        if not risk_lines:
+            for risk in (getattr(result, "risk_signals", []) or [])[:3]:
+                risk_lines.append(str(risk.signal) if hasattr(risk, "signal") else str(risk))
+
+        entry = InteractionEntry(
+            user_id=user_id,
+            agent_type="thesis_review",
+            trigger=trigger,
+            tickers=[ticker],
+            ai_verdict=str(getattr(result, "verdict", "") or ""),
+            ai_confidence=getattr(result, "confidence", None),
+            ai_key_points="\n".join(key_lines) if key_lines else None,
+            ai_risk_signals="\n".join(risk_lines) if risk_lines else None,
+            thesis_id=thesis_id,
+        )
+        await MemoryService.log_interaction(session, entry)
+    except Exception as exc:
+        logger.warning(
+            "thesis_review_agent.memory_log_failed",
+            ticker=ticker,
+            error=str(exc),
+        )
