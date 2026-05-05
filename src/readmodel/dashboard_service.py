@@ -23,7 +23,7 @@ Design rules:
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Protocol
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +35,16 @@ from src.readmodel.stats_service import StatsService
 from src.readmodel.thesis_query_service import ThesisQueryService
 
 logger = get_logger(__name__)
+
+
+class QuoteBatchReader(Protocol):
+    """Minimal batch-quote interface required by DashboardService.
+
+    Any object with a compatible get_quotes() method satisfies this contract.
+    Keeps DashboardService loosely coupled from the market segment.
+    """
+
+    async def get_quotes(self, tickers: list[str]): ...  # noqa: D102
 
 
 class DashboardService:
@@ -188,5 +198,29 @@ class DashboardService:
         self,
         user_id: str,
         price_map: dict[str, float] | None = None,
+        quote_service: QuoteBatchReader | None = None,
     ) -> dict[str, Any]:
+        """Return portfolio data for user, optionally enriched with live prices.
+
+        Price resolution order:
+          1. price_map if provided (explicit caller override)
+          2. quote_service.get_quotes() if provided (auto-fetch)
+          3. No prices (portfolio returned without current price data)
+        """
+        if price_map is None and quote_service is not None:
+            theses = await self._thesis_query.get_theses_list(
+                user_id=user_id, status="active", limit=500
+            )
+            tickers = list({t["ticker"] for t in theses if t.get("ticker")})
+            if tickers:
+                try:
+                    quotes = await quote_service.get_quotes(tickers)
+                    price_map = {q.ticker: q.close for q in quotes if q.close is not None}
+                except Exception as exc:
+                    logger.warning(
+                        "dashboard_service.get_portfolio.price_fetch_failed",
+                        error=str(exc),
+                    )
+                    price_map = {}
+
         return await self._portfolio_query.get_portfolio(user_id, price_map=price_map)

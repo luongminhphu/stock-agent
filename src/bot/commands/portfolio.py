@@ -341,19 +341,7 @@ class PortfolioCog(BaseCog):
     ) -> None:
         async with self.db_session() as session:
             dash = DashboardService(session)
-            theses = await dash.get_theses_list(user_id, status="active", limit=500)
-            tickers = list({t["ticker"] for t in theses if t.get("ticker")})
-
-            price_map: dict[str, float] = {}
-            if tickers:
-                try:
-                    quote_svc = get_quote_service()
-                    quotes = await quote_svc.get_quotes(tickers)
-                    price_map = {q.ticker: q.close for q in quotes if q.close is not None}
-                except Exception:
-                    pass
-
-            data = await dash.get_portfolio(user_id, price_map=price_map)
+            data = await dash.get_portfolio(user_id, quote_service=get_quote_service())
 
         positions = data.get("positions", [])
         if not positions:
@@ -470,7 +458,6 @@ class PortfolioCog(BaseCog):
                 else ""
             )
             date_str = t.traded_at.strftime("%d/%m %H:%M") if t.traded_at else "?"
-            # Show trade_id for BUY trades so user can reference /correct_trade
             trade_id_hint = f" `#{t.id}`" if is_buy else ""
             lines.append(
                 f"{icon} `{date_str}`{trade_id_hint} **{t.ticker}** {str(t.trade_type).upper()} "
