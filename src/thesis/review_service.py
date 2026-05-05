@@ -18,8 +18,8 @@ Flow:
 from __future__ import annotations
 
 import json
-import warnings
 from datetime import UTC, datetime
+from typing import Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -44,6 +44,16 @@ from src.thesis.service import ThesisNotFoundError
 logger = get_logger(__name__)
 
 
+class QuoteReader(Protocol):
+    """Minimal quote interface required by ReviewService.
+
+    Any object with a compatible get_quote() method satisfies this contract.
+    Keeps ReviewService loosely coupled from the market segment.
+    """
+
+    async def get_quote(self, ticker: str): ...  # noqa: D102
+
+
 class ReviewNotAllowedError(Exception):
     """Raised when a review is attempted on a non-active thesis."""
 
@@ -54,14 +64,14 @@ class ReviewService:
     Dependencies injected at construction:
         session        — AsyncSession (per-request)
         agent          — ThesisReviewAgent (singleton from bootstrap)
-        quote_service  — optional QuoteService for live price enrichment
+        quote_service  — optional QuoteReader for live price enrichment
     """
 
     def __init__(
         self,
         session: AsyncSession,
         agent: ThesisReviewAgent,
-        quote_service: object | None = None,
+        quote_service: QuoteReader | None = None,
     ) -> None:
         self._session = session  # stored for memory log pass-through
         self._repo = ThesisRepository(session)
@@ -107,7 +117,7 @@ class ReviewService:
 
         if current_price is None and self._quote_service is not None:
             try:
-                quote = await self._quote_service.get_quote(thesis.ticker)  # type: ignore[attr-defined]
+                quote = await self._quote_service.get_quote(thesis.ticker)
                 current_price = quote.price
             except Exception as exc:
                 logger.warning(
@@ -262,37 +272,6 @@ class ReviewService:
         if thesis is None or thesis.user_id != user_id:
             raise ThesisNotFoundError(f"Thesis {thesis_id} not found for user {user_id}")
         return await self._repo.list_pending_recommendations(thesis_id)
-
-    async def apply_bulk_recommendations(
-        self,
-        thesis_id: int,
-        user_id: str,
-        applied_recommendation_ids: list[int],
-        verdict: str | None = None,
-        ai_confidence: float | None = None,
-    ) -> None:
-        """No-op kể từ khi auto-apply được bật.
-
-        Recommendations được ACCEPTED ngay tại _persist_review → không còn
-        PENDING nào để apply. Giữ lại để backward compat với bot/API cũ.
-
-        .. deprecated::
-            Remove all call sites. This method will be deleted in a future
-            cleanup wave once confirmed no callers remain.
-        """
-        logger.warning(
-            "review_service.apply_bulk.noop_deprecated",
-            thesis_id=thesis_id,
-            requested_ids=applied_recommendation_ids,
-            reason="auto-apply is enabled — all recommendations are ACCEPTED at review time; "
-                   "this call site should be removed",
-        )
-        warnings.warn(
-            "apply_bulk_recommendations is a no-op since auto-apply was enabled. "
-            "Remove all call sites — this method will be deleted in a future cleanup.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
 
     # ------------------------------------------------------------------
     # Private helpers
