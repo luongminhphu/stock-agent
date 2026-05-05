@@ -1,13 +1,12 @@
-"""Manual scheduler trigger — /run_replay_scheduler.
+"""Manual scheduler triggers — owner-only.
 
 Owner: bot segment. Adapter only.
 
-Purpose:
-  Allow owner to manually trigger the DecisionReplayScheduler
-  outside of the cron window, useful for testing and recovery.
+Commands:
+  /run_replay_scheduler — trigger DecisionReplayScheduler thủ công.
+  /run_snapshot         — trigger SnapshotScheduler thủ công (seed backtesting data).
 
-  In production, the scheduler runs automatically via bot/scheduler.py cron.
-  This command is gated to bot owner only (interaction.user == bot.owner).
+Cả 2 đều gated: chỉ bot owner được dùng.
 """
 
 from __future__ import annotations
@@ -23,7 +22,11 @@ logger = get_logger(__name__)
 
 
 class SchedulerTriggerCog(BaseCog):
-    """Owner-only command to manually trigger replay scheduler."""
+    """Owner-only commands to manually trigger schedulers."""
+
+    # ------------------------------------------------------------------
+    # /run_replay_scheduler
+    # ------------------------------------------------------------------
 
     @app_commands.command(
         name="run_replay_scheduler",
@@ -35,7 +38,6 @@ class SchedulerTriggerCog(BaseCog):
     ) -> None:
         await interaction.response.defer(ephemeral=True)
 
-        # Guard: chỉ bot owner được chạy
         app_info = await self.bot.application_info()
         if interaction.user.id != app_info.owner.id:
             await self.send_error(
@@ -97,6 +99,75 @@ class SchedulerTriggerCog(BaseCog):
         )
         if footer:
             embed.set_footer(text=footer)
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    # ------------------------------------------------------------------
+    # /run_snapshot
+    # ------------------------------------------------------------------
+
+    @app_commands.command(
+        name="run_snapshot",
+        description="[Owner] Chụp giá + ghi ThesisSnapshot thủ công — seed data cho Backtesting",
+    )
+    async def run_snapshot(
+        self,
+        interaction: discord.Interaction,
+    ) -> None:
+        await interaction.response.defer(ephemeral=True)
+
+        app_info = await self.bot.application_info()
+        if interaction.user.id != app_info.owner.id:
+            await self.send_error(
+                interaction,
+                title="Không có quyền",
+                description="Lệnh này chỉ dành cho bot owner.",
+            )
+            return
+
+        try:
+            from src.platform.bootstrap import get_snapshot_scheduler
+            scheduler = get_snapshot_scheduler()
+            await scheduler._run_snapshot()  # type: ignore[union-attr]
+        except Exception as exc:
+            logger.error("run_snapshot.error", error=str(exc), exc_info=True)
+            await self.send_error(
+                interaction,
+                title="Snapshot thất bại",
+                description=f"`{exc}`",
+            )
+            return
+
+        # Đọc lại số snapshot vừa ghi để báo cáo
+        try:
+            from datetime import UTC, datetime, timedelta
+
+            from sqlalchemy import func, select
+
+            from src.platform.db import AsyncSessionLocal
+            from src.thesis.models import ThesisSnapshot
+
+            cutoff = datetime.now(UTC) - timedelta(minutes=2)
+            async with AsyncSessionLocal() as session:
+                written = (
+                    await session.scalar(
+                        select(func.count(ThesisSnapshot.id)).where(
+                            ThesisSnapshot.snapshotted_at >= cutoff
+                        )
+                    )
+                ) or 0
+        except Exception:
+            written = -1  # không lấy được count nhưng job đã chạy
+
+        count_text = f"**{written}** snapshot(s) vừa ghi." if written >= 0 else "Job chạy xong (không đếm được số rows)."
+
+        embed = discord.Embed(
+            title="📸 Snapshot hoàn tất",
+            description=(
+                f"{count_text}\n\n"
+                "Tab **Backtesting** trên dashboard sẽ có data sau khi refresh."
+            ),
+            color=discord.Color.green(),
+        )
         await interaction.followup.send(embed=embed, ephemeral=True)
 
 
