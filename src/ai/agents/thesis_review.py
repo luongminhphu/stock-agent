@@ -3,7 +3,7 @@ import re
 
 from pydantic import ValidationError
 
-from src.ai.client import PerplexityClient, PerplexityError
+from src.ai.client import AIClient, AIError
 from src.ai.prompts.thesis_review import SYSTEM_PROMPT, build_review_prompt
 from src.ai.schemas import ThesisReviewOutput
 from src.platform.logging import get_logger
@@ -57,7 +57,7 @@ class ThesisReviewAgent:
     scoring weights). Those live in the thesis segment.
     """
 
-    def __init__(self, client: PerplexityClient) -> None:
+    def __init__(self, client: AIClient) -> None:
         self._client = client
 
     async def review(
@@ -81,7 +81,7 @@ class ThesisReviewAgent:
             triggered_catalysts_with_ids: TRIGGERED catalysts — context only, no recommendation needed.
 
         Raises:
-            PerplexityError: If the API call fails after retries.
+            AIError: If the API call fails after retries.
             ValueError: If the response cannot be parsed into ThesisReviewOutput.
         """
         messages = [
@@ -128,7 +128,7 @@ class ThesisReviewAgent:
                 raw_text=raw_text[:500] if "raw_text" in dir() else "unavailable",
             )
             raise ValueError(f"Failed to parse AI response for {ticker}: {exc}") from exc
-        except PerplexityError:
+        except AIError:
             logger.error("thesis_review_agent.api_error", ticker=ticker)
             raise
 

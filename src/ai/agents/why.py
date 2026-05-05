@@ -9,7 +9,7 @@ import json
 
 from pydantic import ValidationError
 
-from src.ai.client import PerplexityClient, PerplexityError
+from src.ai.client import AIClient, AIError
 from src.ai.prompts.why import SYSTEM_PROMPT, build_why_prompt
 from src.ai.schemas import WhyOutput
 from src.platform.logging import get_logger
@@ -18,7 +18,7 @@ logger = get_logger(__name__)
 
 
 class WhyAgent:
-    def __init__(self, client: PerplexityClient) -> None:
+    def __init__(self, client: AIClient) -> None:
         self._client = client
 
     async def explain(
@@ -64,7 +64,7 @@ class WhyAgent:
         except (json.JSONDecodeError, ValidationError) as exc:
             logger.error("why_agent.parse_error", ticker=ticker, error=str(exc))
             raise ValueError(f"Failed to parse WhyAgent response: {exc}") from exc
-        except PerplexityError:
+        except AIError:
             logger.error("why_agent.api_error", ticker=ticker)
             raise
 

@@ -1,178 +1,136 @@
-"""Sector Rotation Agent.
+"""SectorRotationAgent — analyse macro + sector momentum and emit a ranked rotation signal.
 
-Orchestrate: lấy sector flows → build prompt → call AI → parse SectorRotationOutput.
 Owner: ai segment.
-Callers: bot.commands.sector_rotation, briefing (context injection).
+Callers: briefing segment (BriefingAgent context injection),
+         bot/scheduler (SectorRotationScheduler).
+
+Boundary rules:
+- Accepts raw market data dicts (no domain models imported).
+- Returns SectorRotationOutput (Pydantic schema, ai segment owns it).
+- Does NOT read from DB, does NOT call watchlist/thesis services.
 """
 
 from __future__ import annotations
 
 import json
 
-from pydantic import ValidationError
+from pydantic import BaseModel, Field
 
-from src.ai.client import PerplexityClient, PerplexityError
-from src.ai.schemas import SectorRotationOutput, WatchlistCrosscheck
-from src.ai.prompts.sector_rotation import build_sector_rotation_prompt
-from src.market.sector_rotation_service import SectorRotationService
-from src.market.quote_service import QuoteService
+from src.ai.client import AIClient, AIError
 from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
 
-_SYSTEM_PROMPT = (
-    "Bạn là chuyên gia phân tích dòng tiền chứng khoán Việt Nam. "
-    "Trả lời bằng JSON hợp lệ theo schema được cung cấp. "
-    "Không định dạng markdown, không giải thích ngoài JSON."
-)
+
+class SectorSignal(BaseModel):
+    sector: str
+    signal: str = Field(..., description="ROTATE_IN | ROTATE_OUT | HOLD | WATCH")
+    momentum_score: float = Field(..., ge=0.0, le=1.0)
+    rationale: str
+    key_tickers: list[str] = Field(default_factory=list)
+
+
+class SectorRotationOutput(BaseModel):
+    """Structured output from SectorRotationAgent."""
+
+    market_regime: str = Field(
+        ..., description="RISK_ON | RISK_OFF | TRANSITIONING | UNCLEAR"
+    )
+    top_rotate_in: list[str] = Field(
+        ..., description="Top 2-3 sectors to rotate into"
+    )
+    top_rotate_out: list[str] = Field(
+        ..., description="Top 2-3 sectors to rotate out of"
+    )
+    sector_signals: list[SectorSignal]
+    macro_summary: str
+    key_risk: str
+    confidence: str = Field(..., description="HIGH | MEDIUM | LOW")
+    next_watch: str
+
+
+_SYSTEM_PROMPT = """
+Bạn là chuyên gia phân tích quay vòng ngành (sector rotation) thị trường chứng khoán Việt Nam (HOSE, HNX, UPCoM).
+
+Nhiệm vụ: Phân tích dữ liệu macro và momentum ngành, đưa ra tín hiệu quay vòng có cấu trúc.
+
+Quy trình phân tích:
+1. Đánh giá tình trạng vĩ mô (lãi suất, tỷ giá, dòng vốn ngoại)
+2. Xác định market regime hiện tại
+3. Tính momentum ngành theo performance tương đối
+4. Emit sector signals: ROTATE_IN / ROTATE_OUT / HOLD / WATCH
+5. Chỉ ra key risk và next_watch
+
+Output: JSON theo schema SectorRotationOutput. Không có markdown, không có prose thêm.
+"""
 
 
 class SectorRotationAgent:
-    """Agent phân tích sector rotation cho thị trường Việt Nam.
+    """Analyses sector rotation from raw market data.
 
-    Flow:
-        1. SectorRotationService.get_sector_flows() → list[SectorFlow]
-        2. build_sector_rotation_prompt() → prompt str
-        3. PerplexityClient.chat_completion() → raw JSON
-        4. SectorRotationOutput.model_validate() → typed output
-        5. Enrich watchlist_crosscheck bằng quote thực tế nếu cần
+    Design note — data flow:
+        caller builds raw dicts → SectorRotationAgent.analyze() → SectorRotationOutput
+
+    This agent deliberately accepts primitive dicts, not domain models, so the
+    ai segment stays decoupled from market/thesis domain types.
     """
 
     def __init__(
         self,
-        ai_client: PerplexityClient,
-        sector_service: SectorRotationService,
-        quote_service: QuoteService,
+        ai_client: AIClient,
     ) -> None:
-        self._ai = ai_client
-        self._sector_svc = sector_service
-        self._quotes = quote_service
+        self._client = ai_client
 
     async def analyze(
         self,
-        watchlist_tickers: list[str] | None = None,
+        sector_performance: list[dict],
+        macro_context: str,
+        foreign_flow: str = "",
     ) -> SectorRotationOutput:
-        """Chạy phân tích sector rotation.
+        """Emit sector rotation signal.
 
         Args:
-            watchlist_tickers: Tickers trong watchlist của user.
-                Nếu None, phân tích toàn thị trường không có crosscheck.
+            sector_performance: list of {sector, return_1d, return_5d, return_1m, volume_vs_avg}
+            macro_context:      free-text macro summary (VN-Index trend, interest rate, FX)
+            foreign_flow:       free-text foreign buy/sell summary
 
         Returns:
-            SectorRotationOutput — read-only, không persist.
+            SectorRotationOutput with ranked signals.
+
+        Raises:
+            AIError: If API call fails after retries.
+            ValueError: If response cannot be parsed.
         """
-        sector_flows = await self._sector_svc.get_sector_flows(
-            watchlist_tickers=watchlist_tickers
-        )
-        snapshot_date = await self._sector_svc.get_snapshot_date()
-
-        if not sector_flows:
-            logger.warning("sector_rotation_agent: no sector data, returning fallback")
-            return _empty_output(snapshot_date)
-
-        prompt = build_sector_rotation_prompt(
-            sector_flows=sector_flows,
-            snapshot_date=snapshot_date,
-            watchlist_tickers=watchlist_tickers,
+        user_prompt = (
+            f"## Macro Context\n{macro_context}\n\n"
+            f"## Foreign Flow\n{foreign_flow or 'No data'}\n\n"
+            f"## Sector Performance\n{json.dumps(sector_performance, ensure_ascii=False, indent=2)}"
         )
 
-        logger.info("sector_rotation_agent.start", snapshot_date=snapshot_date)
+        logger.info("sector_rotation_agent.start", sector_count=len(sector_performance))
+
         try:
-            response = await self._ai.chat_completion(
+            response = await self._client.chat_completion(
                 messages=[
                     {"role": "system", "content": _SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt},
+                    {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.2,
-                response_format={
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "SectorRotationOutput",
-                        "schema": SectorRotationOutput.model_json_schema(),
-                        "strict": True,
-                    },
-                },
+                temperature=0.15,
+                response_format={"type": "json_object"},
             )
-            data = json.loads(self._ai.extract_text(response))
-            result = SectorRotationOutput.model_validate(data)
-        except (json.JSONDecodeError, ValidationError) as exc:
+            raw = self._client.extract_text(response)
+            result = SectorRotationOutput.model_validate(json.loads(raw))
+        except (json.JSONDecodeError, Exception) as exc:
             logger.error("sector_rotation_agent.parse_error", error=str(exc))
             raise ValueError(f"Failed to parse SectorRotationAgent response: {exc}") from exc
-        except PerplexityError:
+        except AIError:
             logger.error("sector_rotation_agent.api_error")
             raise
 
         logger.info(
             "sector_rotation_agent.complete",
-            risk_regime=str(result.risk_regime),
+            regime=result.market_regime,
+            top_in=result.top_rotate_in,
             confidence=result.confidence,
         )
-
-        if watchlist_tickers and not result.watchlist_crosscheck:
-            result = await self._enrich_crosscheck(result, watchlist_tickers, sector_flows)
-
         return result
-
-    async def _enrich_crosscheck(
-        self,
-        output: SectorRotationOutput,
-        watchlist_tickers: list[str],
-        sector_flows,
-    ) -> SectorRotationOutput:
-        """Bổ sung watchlist_crosscheck nếu AI bỏ sót."""
-        try:
-            raw = await self._quotes.get_bulk_quotes(watchlist_tickers)
-        except Exception:
-            logger.exception("sector_rotation_agent: enrich_crosscheck failed")
-            return output
-
-        quote_map = {q.ticker: q for q in raw}
-        sector_avg_map = {sf.sector: sf.avg_change_pct_1d for sf in sector_flows}
-
-        ticker_sector: dict[str, str] = {}
-        for sf in sector_flows:
-            for t in sf.top_movers:
-                ticker_sector[t] = sf.sector
-
-        crosscheck: list[WatchlistCrosscheck] = []
-        for ticker in watchlist_tickers:
-            ticker_upper = ticker.upper()
-            q = quote_map.get(ticker_upper)
-            if q is None or q.change_pct is None:
-                continue
-            sector = ticker_sector.get(ticker_upper)
-            if sector is None:
-                continue
-            sector_avg = sector_avg_map.get(sector, 0.0)
-            is_contrarian = (q.change_pct * sector_avg) < 0
-            crosscheck.append(
-                WatchlistCrosscheck(
-                    ticker=ticker_upper,
-                    sector=sector,
-                    ticker_change_pct=round(q.change_pct, 2),
-                    sector_avg_change_pct=round(sector_avg, 2),
-                    is_contrarian=is_contrarian,
-                    note=(
-                        f"{ticker_upper} {q.change_pct:+.2f}% dalam khi "
-                        f"{sector} avg {sector_avg:+.2f}%"
-                    ),
-                )
-            )
-
-        return output.model_copy(update={"watchlist_crosscheck": crosscheck})
-
-
-def _empty_output(snapshot_date: str) -> SectorRotationOutput:
-    """Fallback khi không có dữ liệu sector."""
-    from src.ai.schemas import RiskRegime
-
-    return SectorRotationOutput(
-        snapshot_date=snapshot_date,
-        rotation_narrative="Không đủ dữ liệu sector để phân tích hôm nay.",
-        risk_regime=RiskRegime.MIXED,
-        leading_sectors=[],
-        lagging_sectors=[],
-        watchlist_crosscheck=[],
-        actionable_insight="",
-        confidence=0.0,
-    )
