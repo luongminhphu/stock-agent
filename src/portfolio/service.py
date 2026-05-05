@@ -67,11 +67,17 @@ class PortfolioService:
         price: float,
         thesis_id: int | None = None,
         note: str | None = None,
+        sector: str | None = None,
     ) -> tuple[Position, Trade]:
         """Open a new position or add to an existing one.
 
         avg_cost is recalculated as volume-weighted average:
             new_avg = (old_qty * old_avg + qty * price) / (old_qty + qty)
+
+        sector is an optional free-text label (e.g. "tài chính",
+        "nguyên vật liệu"). Stored on Position for use by
+        ContextBuilder._fetch_portfolio_bias(). Omit to leave unchanged
+        on an existing position, or NULL on a new one.
 
         Returns:
             (position, trade) — both flushed to DB, caller must commit.
@@ -85,6 +91,7 @@ class PortfolioService:
                 ticker=ticker,
                 qty=qty,
                 avg_cost=price,
+                sector=sector,
                 thesis_id=thesis_id,
                 note=note,
                 opened_at=datetime.now(UTC),
@@ -96,6 +103,8 @@ class PortfolioService:
             position.avg_cost = total_cost / position.qty
             if thesis_id is not None:
                 position.thesis_id = thesis_id
+            if sector is not None:
+                position.sector = sector
 
         await self._repo.save_position(position)
 
@@ -120,6 +129,7 @@ class PortfolioService:
             price=price,
             new_avg_cost=position.avg_cost,
             new_qty=position.qty,
+            sector=sector,
         )
         return position, trade
 
