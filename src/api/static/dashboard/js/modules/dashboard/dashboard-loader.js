@@ -1,26 +1,28 @@
 /**
  * dashboard-loader.js
  * Owner: modules/dashboard
- * Responsibility: orchestrate data fetching + render calls cho màn hình chính.
  */
 
-import { el }                  from '../../utils/dom.js';
-import { apiBase, getJson }    from '../../api/client.js';
-import { state }               from '../../state/dashboard-state.js';
+import { el }               from '../../utils/dom.js';
+import { apiBase, getJson } from '../../api/client.js';
+import { state }            from '../../state/dashboard-state.js';
 import { renderThesesTable, thesisTableSkeletonHTML, emptyDetailHTML } from '../thesis/render-thesis-table.js';
 import { loadThesisDetail }    from '../thesis/thesis-service.js';
 import { openEditThesisModal } from '../thesis/thesis-form.js';
-import { renderVerdicts, renderAccuracy, renderWorstCalls, renderBestCalls } from '../backtesting/render-backtesting.js';
+import {
+  renderVerdicts,
+  renderAccuracy,
+  renderWorstCalls,
+  renderBestCalls,
+  initCallsTabs,
+} from '../backtesting/render-backtesting.js';
 import { renderCatalystList, renderSnapshots } from '../briefing/render-brief.js';
-import { countUp, flashValue }  from '../../utils/animate.js';
+import { countUp, flashValue } from '../../utils/animate.js';
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 function wireDeleteThesis(id) {
   const msg = el('deleteModalMsg');
   const btn = el('deleteConfirmBtn');
-  if (msg) msg.textContent = `Bạn có chắc muốn xóa thesis này không? Hành động không thể hoàn tác.`;
+  if (msg) msg.textContent = 'Bạn có chắc muốn xóa thesis này không? Hành động không thể hoàn tác.';
   if (btn) {
     const fresh = btn.cloneNode(true);
     btn.parentNode.replaceChild(fresh, btn);
@@ -47,64 +49,37 @@ function normalizeAccuracyRes(res) {
   return res.items ?? [];
 }
 
-// ---------------------------------------------------------------------------
-// Split performance rows → worst top-5 + best top-5
-// Attach _positiveCount / _negativeCount để render footer insight.
-// ---------------------------------------------------------------------------
 function splitPerformance(rows) {
   if (!rows || !rows.length) return { worst: [], best: [] };
-
-  const withPnl = rows.filter(r => r.avg_pnl_pct != null && r.snapshot_count > 0);
-
-  const negative = withPnl
-    .filter(r => r.avg_pnl_pct < 0)
-    .sort((a, b) => a.avg_pnl_pct - b.avg_pnl_pct); // ascending — worst first
-
-  const positive = withPnl
-    .filter(r => r.avg_pnl_pct >= 0)
-    .sort((a, b) => b.avg_pnl_pct - a.avg_pnl_pct); // descending — best first
-
+  const withPnl  = rows.filter(r => r.avg_pnl_pct != null && r.snapshot_count > 0);
+  const negative = withPnl.filter(r => r.avg_pnl_pct < 0).sort((a, b) => a.avg_pnl_pct - b.avg_pnl_pct);
+  const positive = withPnl.filter(r => r.avg_pnl_pct >= 0).sort((a, b) => b.avg_pnl_pct - a.avg_pnl_pct);
   const worst = negative.slice(0, 5);
-  worst._positiveCount = positive.length; // bao nhiêu thesis dương không hiển thị
-
+  worst._positiveCount = positive.length;
   const best = positive.slice(0, 5);
-  best._negativeCount = negative.length;  // bao nhiêu thesis âm không hiển thị
-
+  best._negativeCount = negative.length;
   return { worst, best };
 }
 
-// ---------------------------------------------------------------------------
-// Skeletons
-// ---------------------------------------------------------------------------
 function showLoadingSkeletons() {
   const tableWrap = document.getElementById('thesesTableWrap');
   if (tableWrap) tableWrap.innerHTML = thesisTableSkeletonHTML(5);
-
   if (!state.selectedThesisId) {
     const detail = el('thesisDetail');
     if (detail) detail.innerHTML = emptyDetailHTML();
   }
 }
 
-// ---------------------------------------------------------------------------
-// Main loader
-// ---------------------------------------------------------------------------
 export async function loadDashboard() {
   const status = el('statusFilter')?.value ?? 'active';
   const base   = apiBase();
   el('errorBanner')?.classList.add('hidden');
-
   showLoadingSkeletons();
 
   try {
     const [
-      stats,
-      theses,
-      verdictAccuracy,
-      catalysts,
-      latestScan,
-      latestMorningBrief,
-      latestEodBrief,
+      stats, theses, verdictAccuracy, catalysts,
+      latestScan, latestMorningBrief, latestEodBrief,
     ] = await Promise.all([
       getJson(`${base}/stats`).catch(() => null),
       getJson(`${base}/theses?status=${status}`).catch(() => []),
@@ -118,7 +93,6 @@ export async function loadDashboard() {
     renderSummary(stats);
 
     state.theses = theses?.items ?? theses ?? [];
-
     renderThesesTable(state.theses, {
       onSelect: (id) => loadThesisDetail(id),
       onEdit:   (id) => openEditThesisModal(id, state.theses.find(t => t.id === id)),
@@ -127,19 +101,17 @@ export async function loadDashboard() {
 
     const accuracyRows = normalizeAccuracyRes(verdictAccuracy);
     state.cachedVerdictAccuracy = accuracyRows;
-
     renderVerdicts(accuracyRows);
     renderAccuracy(accuracyRows);
 
     renderCatalystList(catalysts?.items ?? catalysts ?? []);
-
     renderSnapshots({
-      latest_scan_at:              latestScan?.created_at ?? latestScan?.generated_at ?? null,
-      latest_scan_summary:         latestScan?.summary ?? latestScan?.headline ?? null,
-      latest_morning_brief_at:     latestMorningBrief?.created_at ?? latestMorningBrief?.generated_at ?? null,
-      latest_morning_brief_data:   latestMorningBrief ?? null,
-      latest_eod_brief_at:         latestEodBrief?.created_at ?? latestEodBrief?.generated_at ?? null,
-      latest_eod_brief_data:       latestEodBrief ?? null,
+      latest_scan_at:            latestScan?.created_at ?? latestScan?.generated_at ?? null,
+      latest_scan_summary:       latestScan?.summary ?? latestScan?.headline ?? null,
+      latest_morning_brief_at:   latestMorningBrief?.created_at ?? latestMorningBrief?.generated_at ?? null,
+      latest_morning_brief_data: latestMorningBrief ?? null,
+      latest_eod_brief_at:       latestEodBrief?.created_at ?? latestEodBrief?.generated_at ?? null,
+      latest_eod_brief_data:     latestEodBrief ?? null,
     });
 
     if (state.selectedThesisId) {
@@ -161,12 +133,8 @@ export async function loadDashboard() {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Backtesting loader
-// ---------------------------------------------------------------------------
 export async function loadBacktesting() {
-  const base = apiBase();
-
+  const base      = apiBase();
   const worstWrap = el('worstCallsWrap');
   const bestWrap  = el('bestCallsWrap');
   const accWrap   = el('accuracyWrap');
@@ -175,51 +143,44 @@ export async function loadBacktesting() {
   if (bestWrap)  bestWrap.innerHTML  = '<p class="muted">Đang tải...</p>';
 
   try {
-    // Accuracy — reuse cache nếu đã có từ loadDashboard
     if (state.cachedVerdictAccuracy) {
       renderAccuracy(state.cachedVerdictAccuracy);
     } else {
       if (accWrap) accWrap.innerHTML = '<p class="muted">Đang tải...</p>';
-      const accuracyRes  = await getJson(`${base}/backtesting/verdict-accuracy`).catch(() => null);
-      const accuracyRows = Array.isArray(accuracyRes) ? accuracyRes : (accuracyRes?.items ?? []);
-      state.cachedVerdictAccuracy = accuracyRows;
-      renderAccuracy(accuracyRows);
+      const res  = await getJson(`${base}/backtesting/verdict-accuracy`).catch(() => null);
+      const rows = Array.isArray(res) ? res : (res?.items ?? []);
+      state.cachedVerdictAccuracy = rows;
+      renderAccuracy(rows);
     }
 
-    // Performances — fetch, split, render
-    const performanceRes  = await getJson(`${base}/backtesting/thesis-performances`).catch(() => null);
-    const performanceRows = Array.isArray(performanceRes) ? performanceRes : (performanceRes?.items ?? []);
-
-    const { worst, best } = splitPerformance(performanceRows);
+    const perfRes  = await getJson(`${base}/backtesting/thesis-performances`).catch(() => null);
+    const perfRows = Array.isArray(perfRes) ? perfRes : (perfRes?.items ?? []);
+    const { worst, best } = splitPerformance(perfRows);
     renderWorstCalls(worst);
     renderBestCalls(best);
+    initCallsTabs();
 
   } catch (err) {
     console.error('[dashboard-loader] loadBacktesting error:', err);
-    if (accWrap)    accWrap.innerHTML    = '<p class="empty-state">Lỗi tải dữ liệu accuracy.</p>';
-    if (worstWrap)  worstWrap.innerHTML  = '<p class="empty-state">Lỗi tải dữ liệu.</p>';
-    if (bestWrap)   bestWrap.innerHTML   = '<p class="empty-state">Lỗi tải dữ liệu.</p>';
+    if (accWrap)   accWrap.innerHTML   = '<p class="empty-state">Lỗi tải dữ liệu.</p>';
+    if (worstWrap) worstWrap.innerHTML = '<p class="empty-state">Lỗi tải dữ liệu.</p>';
+    if (bestWrap)  bestWrap.innerHTML  = '<p class="empty-state">Lỗi tải dữ liệu.</p>';
   }
 }
 
-// ---------------------------------------------------------------------------
-// KPI summary cards
-// ---------------------------------------------------------------------------
 function parseCurrentValue(node) {
   return parseFloat((node.textContent ?? '').replace(/[^\d.-]/g, '')) || 0;
 }
 
 export function renderSummary(s) {
   if (!s) return;
-
   const kpis = [
-    { id: 'openTheses',       raw: s.open_theses          ?? s.open_thesis_count    },
-    { id: 'riskyTheses',      raw: s.risky_theses         ?? s.risky_thesis_count   },
+    { id: 'openTheses',       raw: s.open_theses           ?? s.open_thesis_count   },
+    { id: 'riskyTheses',      raw: s.risky_theses          ?? s.risky_thesis_count  },
     { id: 'upcoming7d',       raw: s.upcoming_catalysts_7d ?? s.upcoming_7d         },
-    { id: 'reviewsToday',     raw: s.reviews_today        ?? s.review_count_today   },
-    { id: 'totalReviewsHero', raw: s.total_reviews        ?? s.review_count_total   },
+    { id: 'reviewsToday',     raw: s.reviews_today         ?? s.review_count_today  },
+    { id: 'totalReviewsHero', raw: s.total_reviews         ?? s.review_count_total  },
   ];
-
   for (const { id, raw, suffix = '', decimals = 0 } of kpis) {
     const node = el(id);
     if (!node) continue;
@@ -232,7 +193,6 @@ export function renderSummary(s) {
       node.textContent = raw ?? '—';
     }
   }
-
   const riskyEl  = el('riskyTheses');
   const riskyVal = parseFloat(String(s.risky_theses ?? s.risky_thesis_count ?? '0').replace(/[^\d.-]/g, ''));
   if (riskyEl) {

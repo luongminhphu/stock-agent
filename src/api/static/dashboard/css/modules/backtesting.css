@@ -1,24 +1,26 @@
 /* ─── Backtesting Panel ──────────────────────────────────────────────────────
    Owner: modules/backtesting
-   3-panel layout: Verdict accuracy | Worst calls | Best calls
+   Layout: 2-col — Verdict accuracy | Worst+Best calls (tabbed)
 ──────────────────────────────────────────────────────────────────────────── */
 
 .backtesting-panel { margin-top: 14px; }
+
 .backtesting-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
 }
+
 .subpanel {
   padding: 14px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(148, 163, 184, 0.12);
   border-radius: var(--radius-lg);
-  min-width: 0; /* prevent grid blowout */
+  min-width: 0;
 }
 .subpanel h3 { margin-bottom: 10px; }
 
-/* ── Shared table base ──────────────────────────────────────────────────── */
+/* ── Shared table base ───────────────────────────────────────────────────── */
 #accuracyWrap table,
 #worstCallsWrap table,
 #bestCallsWrap table {
@@ -27,7 +29,7 @@
   table-layout: fixed;
 }
 
-/* ── Accuracy table ─────────────────────────────────────────────────────── */
+/* ── Accuracy table ──────────────────────────────────────────────────────── */
 #accuracyWrap th:nth-child(1) { width: 38%; text-align: left; }
 #accuracyWrap th:nth-child(2) { width: 18%; text-align: right; }
 #accuracyWrap th:nth-child(3) { width: 22%; text-align: right; }
@@ -40,10 +42,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Warning row: accuracy < 50% */
-.warn-row {
-  background: rgba(239, 68, 68, 0.06);
-}
+.warn-row { background: rgba(239, 68, 68, 0.06); }
 .warn-badge {
   font-size: .75rem;
   color: var(--danger, #ef4444);
@@ -51,43 +50,63 @@
   cursor: help;
 }
 
-/* ── Worst / Best calls tables ──────────────────────────────────────────── */
-#worstCallsWrap th:nth-child(1),
-#bestCallsWrap  th:nth-child(1) { width: 44px; text-align: left; }
+/* ── Calls tab bar ───────────────────────────────────────────────────────── */
+.calls-tab-bar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+  padding-bottom: 8px;
+}
 
-#worstCallsWrap th:nth-child(2),
-#bestCallsWrap  th:nth-child(2) { width: auto; text-align: left; }
+.calls-tab {
+  padding: 4px 12px;
+  font-size: .82rem;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: color 140ms, background 140ms, border-color 140ms;
+}
+.calls-tab:hover {
+  color: var(--text);
+  background: rgba(255,255,255,0.05);
+}
+.calls-tab.active {
+  color: var(--text);
+  background: rgba(255,255,255,0.07);
+  border-color: rgba(148, 163, 184, 0.2);
+}
 
-#worstCallsWrap th:nth-child(3),
-#worstCallsWrap th:nth-child(4),
-#bestCallsWrap  th:nth-child(3),
-#bestCallsWrap  th:nth-child(4) { width: 60px; text-align: right; }
+/* ── Calls panes ─────────────────────────────────────────────────────────── */
+.calls-pane { min-width: 0; }
+.calls-pane.hidden { display: none; }
 
-#worstCallsWrap th:nth-child(5),
-#bestCallsWrap  th:nth-child(5) { width: 44px; text-align: center; }
-
-#worstCallsWrap td:nth-child(1),
-#bestCallsWrap  td:nth-child(1) { font-weight: 600; }
+/* ── Worst / Best calls tables ───────────────────────────────────────────── */
+#worstCallsWrap th,
+#bestCallsWrap  th {
+  font-size: .75rem;
+  color: var(--muted);
+  font-weight: 500;
+  padding: 0 4px 6px;
+  white-space: nowrap;
+}
 
 #worstCallsWrap td.cell-title,
 #bestCallsWrap  td.cell-title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 0;
 }
 
-#worstCallsWrap td:nth-child(3),
-#worstCallsWrap td:nth-child(4),
-#bestCallsWrap  td:nth-child(3),
-#bestCallsWrap  td:nth-child(4) {
-  text-align: right;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
+#worstCallsWrap td:nth-child(1),
+#bestCallsWrap  td:nth-child(1) { font-weight: 600; }
 
 .cell-center { text-align: center; }
 
-/* Footer insight line */
 .insight-footer {
   margin-top: 8px;
   font-size: .78rem;
@@ -95,10 +114,6 @@
   text-align: right;
 }
 
-/* Responsive: 3→2→1 columns */
-@media (max-width: 1280px) {
-  .backtesting-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
 @media (max-width: 860px) {
   .backtesting-grid { grid-template-columns: 1fr; }
 }

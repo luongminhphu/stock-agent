@@ -1,16 +1,11 @@
 /**
  * render-backtesting.js
  * Owner: modules/backtesting
- * Responsibility: render Verdict distribution list, Accuracy wrap,
- *                 Worst calls wrap, Best calls wrap.
  */
 
 import { el } from '../../utils/dom.js';
-import { badge, esc, fmt, fmtDate } from '../../utils/format.js';
+import { badge, esc } from '../../utils/format.js';
 
-// ---------------------------------------------------------------------------
-// Normalize helpers
-// ---------------------------------------------------------------------------
 function normalizeCount(r) {
   return r.count ?? r.total ?? 0;
 }
@@ -23,7 +18,7 @@ function normalizeAccuracy(r) {
 }
 
 // ---------------------------------------------------------------------------
-// Verdict distribution (sidebar)
+// Verdict distribution
 // ---------------------------------------------------------------------------
 export function renderVerdicts(list) {
   const wrap = el('verdictList');
@@ -39,16 +34,14 @@ export function renderVerdicts(list) {
     <div class="row-item">
       <div>
         <div class="row-title">${badge(v.verdict)}</div>
-        <div class="row-subtitle">
-          ${count} review${accuracy ? ` · ${accuracy} accuracy` : ''}
-        </div>
+        <div class="row-subtitle">${count} review${accuracy ? ` · ${accuracy} accuracy` : ''}</div>
       </div>
     </div>`;
   }).join('');
 }
 
 // ---------------------------------------------------------------------------
-// Verdict accuracy table — thêm avg_pnl col + warning khi accuracy < 50%
+// Verdict accuracy table
 // ---------------------------------------------------------------------------
 export function renderAccuracy(rows) {
   const wrap = el('accuracyWrap');
@@ -61,10 +54,7 @@ export function renderAccuracy(rows) {
     <table>
       <thead>
         <tr>
-          <th>Verdict</th>
-          <th>Count</th>
-          <th>Accuracy</th>
-          <th>Avg PnL</th>
+          <th>Verdict</th><th>Count</th><th>Accuracy</th><th>Avg PnL</th>
         </tr>
       </thead>
       <tbody>
@@ -79,12 +69,10 @@ export function renderAccuracy(rows) {
             : '<span class="text-muted" style="font-size:.82rem;">N/A</span>';
           return `
           <tr class="${warn ? 'warn-row' : ''}">
-            <td>${badge(r.verdict)}${warn ? ' <span class="warn-badge" title="Accuracy dưới 50% — cần review ngưỡng">⚠</span>' : ''}</td>
-            <td>${count}</td>
-            <td title="${accuracy ? '' : 'Backend chưa tính accuracy cho verdict này'}">
-              ${accuracy ?? '<span class="text-muted" style="font-size:.82rem;">N/A</span>'}
-            </td>
-            <td>${avgPnlText}</td>
+            <td>${badge(r.verdict)}${warn ? ' <span class="warn-badge" title="Accuracy dưới 50%">⚠</span>' : ''}</td>
+            <td style="text-align:right">${count}</td>
+            <td style="text-align:right">${accuracy ?? '<span class="text-muted" style="font-size:.82rem;">N/A</span>'}</td>
+            <td style="text-align:right">${avgPnlText}</td>
           </tr>`;
         }).join('')}
       </tbody>
@@ -92,100 +80,98 @@ export function renderAccuracy(rows) {
 }
 
 // ---------------------------------------------------------------------------
-// Worst calls — top 5 thesis có avg_pnl_pct thấp nhất (âm)
+// Shared table builder
 // ---------------------------------------------------------------------------
+function buildCallsTable(rows, cols, footerText) {
+  const colWidths = { 0: '44px', 2: '68px', 3: '68px', 4: '44px' };
+  const colgroup = cols.map((_, i) =>
+    colWidths[i] ? `<col style="width:${colWidths[i]}">` : '<col>'
+  ).join('');
+  const thead = cols.map(c =>
+    `<th style="text-align:${c.align ?? 'left'}">${c.label}</th>`
+  ).join('');
+  const tbody = rows.map(r => {
+    const cells = cols.map(c => {
+      const raw = c.render ? c.render(r) : esc(String(r[c.key] ?? '—'));
+      return `<td style="text-align:${c.align ?? 'left'}"${c.cls ? ` class="${c.cls}"` : ''}>${raw}</td>`;
+    }).join('');
+    return `<tr>${cells}</tr>`;
+  }).join('');
+  const footer = footerText ? `<p class="insight-footer">${footerText}</p>` : '';
+  return `
+    <table>
+      <colgroup>${colgroup}</colgroup>
+      <thead><tr>${thead}</tr></thead>
+      <tbody>${tbody}</tbody>
+    </table>${footer}`;
+}
+
+const COLS_WORST = [
+  { label: 'Mã',       align: 'left',   render: r => `<strong>${esc(r.ticker ?? '—')}</strong>` },
+  { label: 'Thesis',   align: 'left',   cls: 'cell-title', render: r => esc(r.title ?? '—') },
+  { label: 'Avg PnL',  align: 'right',  render: r => {
+      const v = r.avg_pnl_pct ?? r.pnl_pct;
+      return v != null ? `<span class="score-low">${Number(v).toFixed(1)}%</span>` : '<span class="text-muted" style="font-size:.82rem;">N/A</span>';
+  }},
+  { label: 'Drawdown', align: 'right',  render: r => {
+      const v = r.min_pnl_pct;
+      return v != null ? `<span class="score-low">${Number(v).toFixed(1)}%</span>` : '—';
+  }},
+  { label: 'Snaps',    align: 'center', render: r => `<span class="muted">${r.snapshot_count ?? '—'}</span>` },
+];
+
+const COLS_BEST = [
+  { label: 'Mã',      align: 'left',   render: r => `<strong>${esc(r.ticker ?? '—')}</strong>` },
+  { label: 'Thesis',  align: 'left',   cls: 'cell-title', render: r => esc(r.title ?? '—') },
+  { label: 'Avg PnL', align: 'right',  render: r => {
+      const v = r.avg_pnl_pct ?? r.pnl_pct;
+      return v != null ? `<span class="score-high">+${Number(v).toFixed(1)}%</span>` : '<span class="text-muted" style="font-size:.82rem;">N/A</span>';
+  }},
+  { label: 'Peak',    align: 'right',  render: r => {
+      const v = r.max_pnl_pct;
+      return v != null ? `<span class="score-high">+${Number(v).toFixed(1)}%</span>` : '—';
+  }},
+  { label: 'Snaps',   align: 'center', render: r => `<span class="muted">${r.snapshot_count ?? '—'}</span>` },
+];
+
 export function renderWorstCalls(rows) {
   const wrap = el('worstCallsWrap');
   if (!wrap) return;
-  if (!rows || !rows.length) {
-    wrap.innerHTML = '<p class="empty-state">Chưa có dữ liệu.</p>';
-    return;
-  }
-
-  // Caller đã sort + slice; ta chỉ render
-  const positiveCount = rows._positiveCount ?? 0;
-
-  wrap.innerHTML = `
-    <table>
-      <thead>
-        <tr>
-          <th>Mã</th>
-          <th>Thesis</th>
-          <th>Avg PnL</th>
-          <th>Drawdown</th>
-          <th>Snaps</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rows.map(r => {
-          const pnl  = r.avg_pnl_pct ?? r.pnl_pct ?? null;
-          const draw = r.min_pnl_pct ?? null;
-          const pnlText  = pnl  != null ? `<span class="score-low">${Number(pnl).toFixed(1)}%</span>`  : '<span class="text-muted" style="font-size:.82rem;">N/A</span>';
-          const drawText = draw != null ? `<span class="score-low">${Number(draw).toFixed(1)}%</span>` : '—';
-          return `
-          <tr>
-            <td><strong>${esc(r.ticker ?? '—')}</strong></td>
-            <td class="cell-title">${esc(r.title ?? '—')}</td>
-            <td>${pnlText}</td>
-            <td>${drawText}</td>
-            <td class="cell-center muted">${r.snapshot_count ?? '—'}</td>
-          </tr>`;
-        }).join('')}
-      </tbody>
-    </table>
-    ${positiveCount > 0 ? `<p class="insight-footer">+ ${positiveCount} thesis dương không hiển thị</p>` : ''}`;
+  if (!rows || !rows.length) { wrap.innerHTML = '<p class="empty-state">Chưa có dữ liệu.</p>'; return; }
+  const footer = (rows._positiveCount ?? 0) > 0 ? `+ ${rows._positiveCount} thesis dương không hiển thị` : '';
+  wrap.innerHTML = buildCallsTable(rows, COLS_WORST, footer);
 }
 
-// ---------------------------------------------------------------------------
-// Best calls — top 5 thesis có avg_pnl_pct cao nhất (dương)
-// ---------------------------------------------------------------------------
 export function renderBestCalls(rows) {
   const wrap = el('bestCallsWrap');
   if (!wrap) return;
-  if (!rows || !rows.length) {
-    wrap.innerHTML = '<p class="empty-state">Chưa có dữ liệu.</p>';
-    return;
-  }
-
-  const negativeCount = rows._negativeCount ?? 0;
-
-  wrap.innerHTML = `
-    <table>
-      <thead>
-        <tr>
-          <th>Mã</th>
-          <th>Thesis</th>
-          <th>Avg PnL</th>
-          <th>Peak</th>
-          <th>Snaps</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rows.map(r => {
-          const pnl  = r.avg_pnl_pct ?? r.pnl_pct ?? null;
-          const peak = r.max_pnl_pct ?? null;
-          const pnlText  = pnl  != null ? `<span class="score-high">+${Number(pnl).toFixed(1)}%</span>`  : '<span class="text-muted" style="font-size:.82rem;">N/A</span>';
-          const peakText = peak != null ? `<span class="score-high">+${Number(peak).toFixed(1)}%</span>` : '—';
-          return `
-          <tr>
-            <td><strong>${esc(r.ticker ?? '—')}</strong></td>
-            <td class="cell-title">${esc(r.title ?? '—')}</td>
-            <td>${pnlText}</td>
-            <td>${peakText}</td>
-            <td class="cell-center muted">${r.snapshot_count ?? '—'}</td>
-          </tr>`;
-        }).join('')}
-      </tbody>
-    </table>
-    ${negativeCount > 0 ? `<p class="insight-footer">+ ${negativeCount} thesis âm không hiển thị</p>` : ''}`;
+  if (!rows || !rows.length) { wrap.innerHTML = '<p class="empty-state">Chưa có dữ liệu.</p>'; return; }
+  const footer = (rows._negativeCount ?? 0) > 0 ? `+ ${rows._negativeCount} thesis âm không hiển thị` : '';
+  wrap.innerHTML = buildCallsTable(rows, COLS_BEST, footer);
 }
 
 // ---------------------------------------------------------------------------
-// Legacy export — giữ backward compat nếu code cũ còn import renderPerformance
+// Tab switching — wire once after DOM ready
 // ---------------------------------------------------------------------------
-export function renderPerformance(rows) {
-  // Delegate sang renderWorstCalls để không break import cũ;
-  // caller mới nên dùng renderWorstCalls / renderBestCalls trực tiếp.
-  const wrap = el('performanceWrap');
-  if (wrap) wrap.style.display = 'none'; // ẩn nếu DOM cũ còn tồn tại
+export function initCallsTabs() {
+  const bar = document.querySelector('.calls-tab-bar');
+  if (!bar || bar._wired) return;
+  bar._wired = true;
+  bar.addEventListener('click', e => {
+    const btn = e.target.closest('.calls-tab');
+    if (!btn) return;
+    const target = btn.dataset.callsTab;
+    bar.querySelectorAll('.calls-tab').forEach(b => {
+      b.classList.toggle('active', b === btn);
+      b.setAttribute('aria-selected', String(b === btn));
+    });
+    document.getElementById('worstCallsPane')?.classList.toggle('hidden', target !== 'worst');
+    document.getElementById('bestCallsPane')?.classList.toggle('hidden',  target !== 'best');
+  });
+}
+
+// Legacy compat
+export function renderPerformance() {
+  const wrap = document.getElementById('performanceWrap');
+  if (wrap) wrap.style.display = 'none';
 }

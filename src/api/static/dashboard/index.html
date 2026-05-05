@@ -24,7 +24,6 @@
           </svg>
           <span class="brand-name">stock-agent</span>
         </div>
-
         <div class="toolbar">
           <label class="field field-compact">
             <span class="sr-only">Lọc trạng thái</span>
@@ -73,7 +72,6 @@
       <!-- ── MAIN WORKSPACE ─────────────────────────────────────────────── -->
       <main class="workspace-grid" id="main-content">
 
-        <!-- Priority board: thesis master list -->
         <section class="panel panel-main glass" aria-labelledby="thesisBoardTitle">
           <div class="panel-header">
             <div>
@@ -91,9 +89,7 @@
           </div>
         </section>
 
-        <!-- Action rail: brief + catalyst + scan -->
         <aside class="action-rail" aria-label="Tín hiệu hành động">
-
           <section class="panel glass action-panel" aria-labelledby="briefPanelTitle">
             <div class="panel-header">
               <div>
@@ -139,11 +135,10 @@
             </div>
             <div id="verdictList" class="list empty-state">Chưa tải dữ liệu…</div>
           </section>
-
         </aside>
       </main>
 
-      <!-- ── WATCHLIST LAYER ──────────────────────────────────────────────── -->
+      <!-- ── WATCHLIST LAYER ──────────────────────────────────────────── -->
       <section class="panel glass watchlist-layer" aria-labelledby="watchlistTitle">
         <div class="panel-header split-header">
           <div>
@@ -155,7 +150,7 @@
         <div id="watchlistSection">Đang tải…</div>
       </section>
 
-      <!-- ── PORTFOLIO LAYER ─────────────────────────────────────────────────── -->
+      <!-- ── PORTFOLIO LAYER ─────────────────────────────────────────── -->
       <section class="panel glass portfolio-layer" aria-labelledby="portfolioTitle">
         <div class="panel-header split-header">
           <div>
@@ -170,7 +165,7 @@
         <div id="portfolioSection">Đang tải…</div>
       </section>
 
-      <!-- ── VALIDATION LAYER ────────────────────────────────────────────────────── -->
+      <!-- ── BACKTESTING LAYER ───────────────────────────────────────── -->
       <section class="panel glass validation-layer backtesting-panel" aria-labelledby="backtestTitle">
         <div class="panel-header split-header">
           <div>
@@ -181,19 +176,30 @@
         </div>
         <div class="backtesting-grid">
 
+          <!-- Col 1: Verdict accuracy -->
           <div class="subpanel">
             <h3>📊 Verdict accuracy</h3>
             <div id="accuracyWrap" class="empty-state">Chưa tải dữ liệu…</div>
           </div>
 
-          <div class="subpanel">
-            <h3>🔴 Worst calls</h3>
-            <div id="worstCallsWrap" class="empty-state">Chưa tải dữ liệu…</div>
-          </div>
-
-          <div class="subpanel">
-            <h3>🟢 Best calls</h3>
-            <div id="bestCallsWrap" class="empty-state">Chưa tải dữ liệu…</div>
+          <!-- Col 2: Worst / Best calls (tabbed) -->
+          <div class="subpanel" id="callsPanel">
+            <div class="calls-tab-bar" role="tablist" aria-label="Calls view">
+              <button class="calls-tab active" role="tab" aria-selected="true"
+                aria-controls="worstCallsPane" data-calls-tab="worst">
+                🔴 Worst calls
+              </button>
+              <button class="calls-tab" role="tab" aria-selected="false"
+                aria-controls="bestCallsPane" data-calls-tab="best">
+                🟢 Best calls
+              </button>
+            </div>
+            <div id="worstCallsPane" class="calls-pane" role="tabpanel">
+              <div id="worstCallsWrap" class="empty-state">Chưa tải dữ liệu…</div>
+            </div>
+            <div id="bestCallsPane" class="calls-pane hidden" role="tabpanel">
+              <div id="bestCallsWrap" class="empty-state">Chưa tải dữ liệu…</div>
+            </div>
           </div>
 
         </div>
@@ -422,7 +428,6 @@
       </div>
     </dialog>
 
-    <!-- ── WATCHLIST ADD MODAL ─────────────────────────────────────────────── -->
     <dialog id="watchlistAddModal" aria-labelledby="watchlistAddModalTitle">
       <div class="modal-inner">
         <div class="modal-header">
@@ -432,22 +437,11 @@
         <form id="watchlistAddForm" class="form-grid" novalidate>
           <div class="form-field">
             <label for="wlTickerInput">Mã cổ phiếu *</label>
-            <input
-              id="wlTickerInput"
-              name="ticker"
-              placeholder="VNM, HPG, VIC…"
-              required
-              autocomplete="off"
-              style="text-transform:uppercase;"
-            />
+            <input id="wlTickerInput" name="ticker" placeholder="VNM, HPG, VIC…" required autocomplete="off" style="text-transform:uppercase;" />
           </div>
           <div class="form-field">
             <label for="wlNoteInput">Ghi chú (tùy chọn)</label>
-            <input
-              id="wlNoteInput"
-              name="note"
-              placeholder="VD: Chờ breakout, theo dõi KQKD Q2…"
-            />
+            <input id="wlNoteInput" name="note" placeholder="VD: Chờ breakout, theo dõi KQKD Q2…" />
           </div>
           <div class="modal-footer">
             <button type="button" class="ghost-btn" data-close="watchlistAddModal">Hủy</button>
@@ -457,6 +451,6 @@
       </div>
     </dialog>
 
-    <script data-cfasync="false" type="module" src="/static/dashboard/js/app.js?v=7"></script>
+    <script data-cfasync="false" type="module" src="/static/dashboard/js/app.js?v=8"></script>
   </body>
 </html>
