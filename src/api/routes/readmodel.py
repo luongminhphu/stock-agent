@@ -78,8 +78,8 @@ async def _build_price_map(tickers: list[str]) -> dict[str, float]:
         return {}
     try:
         quote_svc = get_quote_service()
-        quotes = await quote_svc.get_quotes(tickers)
-        return {q.ticker: q.close for q in quotes if q.close is not None}
+        quotes = await quote_svc.get_bulk_quotes(tickers)
+        return {q.ticker: q.price for q in quotes if q.price}
     except Exception:
         return {}
 
