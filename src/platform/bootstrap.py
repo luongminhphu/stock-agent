@@ -28,6 +28,7 @@ _replay_agent: object | None = None
 _snapshot_scheduler: object | None = None
 _sector_rotation_agent: object | None = None
 _investor_profile_service: object | None = None  # Wave 1 — Blueprint V2
+_memory_consolidator: object | None = None        # Wave 3 — Blueprint V2 Memory
 
 # PnlService is session-scoped (stateless), so bootstrap stores the class
 # rather than an instance. get_pnl_service() returns the class; callers
@@ -43,6 +44,7 @@ async def bootstrap() -> None:
     global _thesis_suggest_agent, _briefing_agent, _why_agent, _pretrade_agent
     global _stress_test_agent, _replay_agent, _snapshot_scheduler
     global _sector_rotation_agent, _investor_profile_service, _pnl_service_class
+    global _memory_consolidator
 
     if _quote_service is None:
         from src.market.adapters.factory import build_adapter
@@ -116,8 +118,6 @@ async def bootstrap() -> None:
     if _snapshot_scheduler is None:
         from src.market.snapshot_scheduler import SnapshotScheduler
 
-        # SnapshotScheduler.__init__() takes no args — it lazily calls
-        # get_quote_service() inside _run_snapshot at task execution time.
         _snapshot_scheduler = SnapshotScheduler()
         logger.info("platform.bootstrap.snapshot_scheduler_ready")
 
@@ -126,6 +126,26 @@ async def bootstrap() -> None:
 
         _pnl_service_class = PnlService
         logger.info("platform.bootstrap.pnl_service_ready")
+
+    if _memory_consolidator is None:
+        from src.ai.memory.consolidator import MemoryConsolidator
+        from src.platform.config import settings
+
+        user_id = getattr(settings, "scheduler_user_id", None)
+        if user_id:
+            _memory_consolidator = MemoryConsolidator(
+                client=_ai_client,  # type: ignore[arg-type]
+                user_id=str(user_id),
+            )
+            logger.info(
+                "platform.bootstrap.memory_consolidator_ready",
+                user_id=str(user_id),
+            )
+        else:
+            logger.warning(
+                "platform.bootstrap.memory_consolidator_skipped",
+                reason="scheduler_user_id not configured",
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -221,3 +241,12 @@ def get_pnl_service():
     if _pnl_service_class is None:
         raise RuntimeError("PnlService not initialised — call bootstrap() first.")
     return _pnl_service_class
+
+
+def get_memory_consolidator():
+    """Return the MemoryConsolidator singleton.
+
+    Returns None if scheduler_user_id was not configured at bootstrap time
+    (graceful degrade — MemoryConsolidatorScheduler checks for None before running).
+    """
+    return _memory_consolidator

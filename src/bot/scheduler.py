@@ -12,6 +12,7 @@ Registered tasks:
     ReminderScheduler.daily_task               — weekdays 08:00 ICT (DAILY reminders)
     ReminderScheduler.weekly_task              — Mondays 08:00 ICT (WEEKLY reminders)
     DecisionReplayScheduler.replay_task        — weekdays 15:15 ICT (after market close)
+    MemoryConsolidatorScheduler.consolidate    — Sundays 09:00 ICT (weekly memory distill)
 
 Note:
     MORNING_CHANNEL_ID and EOD_CHANNEL_ID must be set in settings.
@@ -33,6 +34,7 @@ from src.bot.commands.watchlist_embeds import build_scan_embed
 from src.briefing.service import BriefingService
 from src.platform.bootstrap import (
     get_briefing_agent,
+    get_memory_consolidator,
     get_pnl_service,
     get_quote_service,
     get_replay_agent,
@@ -251,15 +253,15 @@ _MAINTENANCE_STALE_DAYS = 3
 
 
 class ThesisMaintenanceScheduler:
-    """Ch\u1ea1y l\u00fac 08:30 ICT m\u1ed7i ng\u00e0y l\u00e0m vi\u1ec7c \u2014 15 ph\u00fat tr\u01b0\u1edbc morning brief.
+    """Chạy lúc 08:30 ICT mỗi ngày làm việc — 15 phút trước morning brief.
 
     Flow:
-        1. auto_expire_overdue_catalysts()  — kh\u00f4ng t\u1ed1n token, ch\u1ea1y \u0111\u1ea7u ti\u00ean.
-        2. review_stale_theses()            — AI review, ch\u1ec9 khi thesis stale > 3 ng\u00e0y.
-        3. Discord notify n\u1ebfu c\u00f3 thay \u0111\u1ed5i.
+        1. auto_expire_overdue_catalysts()  — không tốn token, chạy đầu tiên.
+        2. review_stale_theses()            — AI review, chỉ khi thesis stale > 3 ngày.
+        3. Discord notify nếu có thay đổi.
 
-    Hai b\u01b0\u1edbc d\u00f9ng session ri\u00eang bi\u1ec7t \u2014 expire v\u00e0 review \u0111\u1ed9c l\u1eadp, b\u01b0\u1edbc 2
-    fail kh\u00f4ng rollback b\u01b0\u1edbc 1.
+    Hai bước dùng session riêng biệt — expire và review độc lập, bước 2
+    fail không rollback bước 1.
     """
 
     def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
@@ -294,7 +296,7 @@ class ThesisMaintenanceScheduler:
         expired_count = 0
         reviews: list = []
 
-        # \u2500\u2500 Step 1: Auto-expire overdue catalysts (no AI, no token cost) \u2500\u2500
+        # -- Step 1: Auto-expire overdue catalysts (no AI, no token cost) --
         try:
             from src.thesis.component_service import ComponentService
 
@@ -311,7 +313,7 @@ class ThesisMaintenanceScheduler:
             await self._monitor.record_failure(task_name, exc)
             return
 
-        # \u2500\u2500 Step 2: AI review for stale theses \u2500\u2500
+        # -- Step 2: AI review for stale theses --
         try:
             from src.thesis.review_service import ReviewService
 
@@ -337,7 +339,7 @@ class ThesisMaintenanceScheduler:
 
         await self._monitor.record_success(task_name)
 
-        # \u2500\u2500 Step 3: Discord notify \u2014 presentation delegated to thesis_embeds \u2500\u2500
+        # -- Step 3: Discord notify — presentation delegated to thesis_embeds --
         if not channel_id or (expired_count == 0 and not reviews):
             return
 
@@ -422,7 +424,7 @@ class ThesisDriftScheduler:
             from src.thesis.drift_service import DriftService
             from src.thesis.review_service import ReviewService
 
-            # \u2500\u2500 Step 1: Detect drifted theses (no AI) \u2500\u2500
+            # -- Step 1: Detect drifted theses (no AI) --
             async with AsyncSessionLocal() as session:
                 drift_svc = DriftService(
                     session=session,
@@ -443,7 +445,7 @@ class ThesisDriftScheduler:
                 tickers=[s.ticker for s in signals],
             )
 
-            # \u2500\u2500 Step 2: AI review per drifted thesis (sequential, rate-limit safe) \u2500\u2500
+            # -- Step 2: AI review per drifted thesis (sequential, rate-limit safe) --
             reviews: list[tuple] = []
             for signal in signals:
                 try:
@@ -478,7 +480,7 @@ class ThesisDriftScheduler:
             if not reviews:
                 return
 
-            # \u2500\u2500 Step 3: Discord notify \u2014 presentation delegated to thesis_embeds \u2500\u2500
+            # -- Step 3: Discord notify — presentation delegated to thesis_embeds --
             channel = self._client.get_channel(int(channel_id))
             if channel is None:
                 logger.warning("scheduler.drift.channel_not_found", channel_id=channel_id)
@@ -567,7 +569,7 @@ class ReminderScheduler:
             "weekly": [ReminderFrequency.WEEKLY],
         }
         frequencies = frequency_map.get(label, [ReminderFrequency.DAILY])
-        freq_label = "h\u00e0ng ng\u00e0y" if label == "daily" else "h\u00e0ng tu\u1ea7n"
+        freq_label = "hàng ngày" if label == "daily" else "hàng tuần"
 
         try:
             async with AsyncSessionLocal() as session:
@@ -670,7 +672,7 @@ class DecisionReplayScheduler:
 
         from src.thesis.decision_service import DecisionService
 
-        # \u2500\u2500 Step 1: Find decisions that reached their horizon \u2500\u2500
+        # -- Step 1: Find decisions that reached their horizon --
         try:
             async with AsyncSessionLocal() as session:
                 svc = DecisionService(
@@ -695,7 +697,7 @@ class DecisionReplayScheduler:
             decision_ids=[d.id for d in pending],
         )
 
-        # \u2500\u2500 Step 2: Evaluate + Replay + Persist lesson per decision \u2500\u2500
+        # -- Step 2: Evaluate + Replay + Persist lesson per decision --
         results: list[dict] = []
         for decision in pending:
             # 2a: evaluate realized outcome (no AI)
@@ -779,7 +781,7 @@ class DecisionReplayScheduler:
 
         await self._monitor.record_success(task_name)
 
-        # \u2500\u2500 Step 3: Discord notify \u2014 presentation delegated to decision_embeds \u2500\u2500
+        # -- Step 3: Discord notify — presentation delegated to decision_embeds --
         channel = self._client.get_channel(int(channel_id))
         if channel is None:
             logger.warning("scheduler.decision_replay.channel_not_found", channel_id=channel_id)
@@ -797,6 +799,95 @@ class DecisionReplayScheduler:
 
     @_replay_task.before_loop
     async def _before_replay(self) -> None:
+        await self._client.wait_until_ready()
+
+
+# ---------------------------------------------------------------------------
+# MemoryConsolidatorScheduler
+# ---------------------------------------------------------------------------
+
+_MEMORY_CONSOLIDATE_TIME = datetime.time(hour=2, minute=0, tzinfo=datetime.UTC)  # 09:00 ICT Sunday
+
+
+class MemoryConsolidatorScheduler:
+    """Weekly memory distillation: episodic logs → MemorySnapshot.
+
+    Owner: bot segment (adapter only).
+    All domain logic lives in ai.memory.MemoryConsolidator.
+
+    Schedule: Every Sunday at 09:00 ICT (02:00 UTC).
+    - Runs weekday check: only fires on Sunday (weekday() == 6).
+    - Graceful skip: if memory_consolidator is None (scheduler_user_id not set),
+      logs a warning and returns — never raises.
+    - No Discord notification: memory consolidation is a background process.
+      Add a notify here in the future if you want a weekly memory digest embed.
+
+    Flow:
+        1. get_memory_consolidator() — retrieve singleton from bootstrap.
+        2. MemoryConsolidator.run(session) — load episodes, call AI, persist snapshot.
+        3. Log result (snapshot_id or skip reason).
+    """
+
+    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
+        self._client = client
+        self._monitor = monitor or get_monitor()
+
+    def start(self) -> None:
+        self._monitor.register_task("memory.consolidate")
+        self._consolidate_task.start()
+        logger.info("scheduler.memory_consolidator.started", time_utc="Sunday 02:00")
+
+    def stop(self) -> None:
+        self._consolidate_task.cancel()
+        logger.info("scheduler.memory_consolidator.stopped")
+
+    @tasks.loop(time=_MEMORY_CONSOLIDATE_TIME)
+    async def _consolidate_task(self) -> None:
+        now_utc = datetime.datetime.now(tz=datetime.UTC)
+        # Only run on Sundays (weekday 6)
+        if now_utc.weekday() != 6:
+            return
+
+        task_name = "memory.consolidate"
+
+        consolidator = get_memory_consolidator()
+        if consolidator is None:
+            logger.warning(
+                "scheduler.memory_consolidator.skipped",
+                reason="consolidator not initialised — scheduler_user_id not set",
+            )
+            return
+
+        logger.info("scheduler.memory_consolidator.running")
+
+        try:
+            async with AsyncSessionLocal() as session:
+                snapshot = await consolidator.run(session)
+
+            if snapshot is not None:
+                logger.info(
+                    "scheduler.memory_consolidator.done",
+                    snapshot_id=snapshot.id,
+                    episode_count=snapshot.episode_count,
+                    period_start=str(snapshot.period_start.date()),
+                    period_end=str(snapshot.period_end.date()),
+                )
+                await self._monitor.record_success(task_name)
+            else:
+                # Consolidator returned None — not enough episodes or AI failed.
+                # This is not an error — just log and move on.
+                logger.info(
+                    "scheduler.memory_consolidator.skipped_by_consolidator",
+                    reason="not enough episodes or AI call failed",
+                )
+                await self._monitor.record_success(task_name)
+
+        except Exception as exc:
+            logger.error("scheduler.memory_consolidator.error", error=str(exc))
+            await self._monitor.record_failure(task_name, exc)
+
+    @_consolidate_task.before_loop
+    async def _before_consolidate(self) -> None:
         await self._client.wait_until_ready()
 
 
