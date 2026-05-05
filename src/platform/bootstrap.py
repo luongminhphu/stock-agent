@@ -121,8 +121,12 @@ async def bootstrap() -> None:
 
     if _snapshot_scheduler is None:
         from src.market.snapshot_scheduler import SnapshotScheduler
+        from src.platform.db import AsyncSessionLocal
 
-        _snapshot_scheduler = SnapshotScheduler()
+        _snapshot_scheduler = SnapshotScheduler(
+            quote_service=_quote_service,
+            session_factory=AsyncSessionLocal,
+        )
         logger.info("platform.bootstrap.snapshot_scheduler_ready")
 
     if _pnl_service_class is None:
