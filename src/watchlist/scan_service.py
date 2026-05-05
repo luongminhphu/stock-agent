@@ -20,7 +20,8 @@ and returns the fired reminders as part of ScanResult.on_signal_reminders so
 the bot adapter (WatchlistScanScheduler) can dispatch Discord notifications.
 ScanService itself NEVER sends Discord messages.
 
-Note: _persist_snapshot does NOT commit — caller is responsible for session lifecycle.
+Note: _persist_snapshot does NOT commit — caller (WatchlistScanScheduler)
+is responsible for committing the session after scan_user() returns.
 """
 
 from __future__ import annotations
@@ -140,12 +141,27 @@ class ScanService:
         tickers = sorted({i.ticker for i in items})
         result = ScanResult(scanned_at=datetime.now(UTC))
 
+        if not tickers:
+            await self._persist_snapshot(user_id, result)
+            return result
+
+        # Bulk-fetch all quotes in a single call — avoids N serial round-trips.
+        # Falls back to per-ticker get_quote when a ticker is missing from bulk result
+        # (e.g. delisted symbol, adapter limitation).
+        bulk_quote_map: dict[str, object] = {}
+        try:
+            bulk_quotes = await self._quote_service.get_bulk_quotes(tickers)  # type: ignore[union-attr]
+            bulk_quote_map = {q.ticker: q for q in bulk_quotes}
+        except Exception as exc:
+            logger.warning("scan.bulk_quote_failed", tickers=tickers, error=str(exc))
+            # bulk failed — per-ticker fallback handled inside loop
+
         # price_map used by AlertService.process_triggered for triggered_price field
         price_map: dict[str, float] = {}
 
         for ticker in tickers:
             try:
-                signal = await self._scan_ticker(ticker, items)
+                signal = await self._scan_ticker(ticker, items, bulk_quote_map)
                 price_map[ticker] = signal.current_price
                 if signal.has_alerts or abs(signal.change_pct) >= 3:
                     # Enrich signal with credibility score (graceful degrade)
@@ -200,14 +216,26 @@ class ScanService:
         await self.scan_user(user_id)
         return await self.get_latest_snapshot(user_id)
 
-    async def _scan_ticker(self, ticker: str, items: list) -> ScanSignal:
-        """Fetch quote and detect triggered alerts. Does NOT mutate alert state."""
-        quote = await self._quote_service.get_quote(ticker)  # type: ignore[union-attr]
+    async def _scan_ticker(
+        self,
+        ticker: str,
+        items: list,
+        bulk_quote_map: dict[str, object],
+    ) -> ScanSignal:
+        """Fetch quote (from bulk map or per-ticker fallback) and detect triggered alerts.
+
+        Does NOT mutate alert state.
+        """
+        quote = bulk_quote_map.get(ticker)
+        if quote is None:
+            # Fallback: ticker missing from bulk result — try individual fetch
+            logger.debug("scan.bulk_miss_fallback", ticker=ticker)
+            quote = await self._quote_service.get_quote(ticker)  # type: ignore[union-attr]
 
         signal = ScanSignal(
             ticker=ticker,
-            current_price=quote.price,
-            change_pct=quote.change_pct,
+            current_price=quote.price,  # type: ignore[union-attr]
+            change_pct=quote.change_pct,  # type: ignore[union-attr]
         )
 
         all_alerts: list[Alert] = []
@@ -219,8 +247,8 @@ class ScanService:
 
         for alert in all_alerts:
             if alert.is_triggered_by(
-                current_price=quote.price,
-                change_pct=quote.change_pct,
+                current_price=quote.price,  # type: ignore[union-attr]
+                change_pct=quote.change_pct,  # type: ignore[union-attr]
                 volume_ratio=volume_ratio,
             ):
                 signal.triggered_alerts.append(alert)
@@ -294,7 +322,7 @@ class ScanService:
             return []
 
     async def _persist_snapshot(self, user_id: str, result: ScanResult) -> None:
-        """Stage a WatchlistScan snapshot — caller must commit the session."""
+        """Stage a WatchlistScan snapshot — caller (WatchlistScanScheduler) must commit."""
         try:
             snapshot = WatchlistScan(
                 user_id=user_id,

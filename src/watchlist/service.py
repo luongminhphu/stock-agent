@@ -89,6 +89,28 @@ class WatchlistService:
         await self._repo.save_item(item)
         return item
 
+    async def update_priority(self, user_id: str, ticker: str, priority: int) -> WatchlistItem:
+        """Update the priority of a watchlist item.
+
+        Args:
+            user_id: Owner of the watchlist.
+            ticker:  Stock symbol (case-insensitive).
+            priority: New priority value (lower = higher priority).
+
+        Returns:
+            Updated WatchlistItem.
+
+        Raises:
+            WatchlistItemNotFoundError: If ticker is not in the user's watchlist.
+        """
+        item = await self._repo.get_item(user_id, ticker.upper())
+        if item is None:
+            raise WatchlistItemNotFoundError(f"{ticker} not in watchlist for user {user_id}")
+        item.priority = priority
+        await self._repo.save_item(item)
+        logger.info("watchlist.priority_updated", user_id=user_id, ticker=ticker, priority=priority)
+        return item
+
     async def create_alert(self, inp: CreateAlertInput) -> Alert:
         if isinstance(inp.condition_type, str):
             inp.condition_type = AlertConditionType(inp.condition_type.lower())
