@@ -28,6 +28,7 @@ _replay_agent: object | None = None
 _snapshot_scheduler: object | None = None
 _pnl_service: object | None = None
 _sector_rotation_agent: object | None = None
+_investor_profile_service: object | None = None  # Wave 1 — Blueprint V2
 
 
 async def bootstrap() -> None:
@@ -37,7 +38,7 @@ async def bootstrap() -> None:
     global _quote_service, _ohlcv_service, _perplexity_client, _thesis_review_agent
     global _thesis_suggest_agent, _briefing_agent, _why_agent, _pretrade_agent
     global _stress_test_agent, _replay_agent, _snapshot_scheduler, _pnl_service
-    global _sector_rotation_agent
+    global _sector_rotation_agent, _investor_profile_service
 
     if _quote_service is None:
         from src.market.adapters.factory import build_adapter
@@ -132,6 +133,28 @@ async def bootstrap() -> None:
         except Exception as exc:
             logger.warning("platform.bootstrap.pnl_service_skipped", error=str(exc))
 
+    # InvestorProfileService — Wave 1 Blueprint V2
+    # Initialised after DB is confirmed available (pnl_service init above proves DB is up).
+    # Session is injected per-call in actual usage; this singleton holds no persistent session.
+    if _investor_profile_service is None:
+        try:
+            from src.platform.db import AsyncSessionLocal
+            from src.platform.investor_profile import InvestorProfileService
+
+            async with AsyncSessionLocal() as session:
+                # Probe only — actual build_snapshot() is called by scheduler at 08:20
+                svc = InvestorProfileService(session=session)
+                existing = await svc.get_latest()
+                _investor_profile_service = svc
+                logger.info(
+                    "platform.bootstrap.investor_profile_service_ready",
+                    has_existing_snapshot=existing is not None,
+                )
+        except Exception as exc:
+            logger.warning(
+                "platform.bootstrap.investor_profile_service_skipped", error=str(exc)
+            )
+
     logger.info("platform.bootstrap.ok")
 
 
@@ -151,7 +174,7 @@ def reset_singletons() -> None:
     global _quote_service, _ohlcv_service, _perplexity_client, _thesis_review_agent
     global _thesis_suggest_agent, _briefing_agent, _why_agent, _pretrade_agent
     global _stress_test_agent, _replay_agent, _snapshot_scheduler, _pnl_service
-    global _sector_rotation_agent
+    global _sector_rotation_agent, _investor_profile_service
     _quote_service = None
     _ohlcv_service = None
     _perplexity_client = None
@@ -165,6 +188,7 @@ def reset_singletons() -> None:
     _snapshot_scheduler = None
     _pnl_service = None
     _sector_rotation_agent = None
+    _investor_profile_service = None
 
 
 def get_quote_service() -> object:
@@ -246,3 +270,18 @@ def get_snapshot_scheduler() -> object:
 
         _snapshot_scheduler = SnapshotScheduler()
     return _snapshot_scheduler
+
+
+def get_investor_profile_service() -> object:
+    """Return InvestorProfileService singleton.
+
+    Note: the singleton’s internal session may be stale after the bootstrap probe.
+    Callers that need a fresh session (e.g. scheduler.build_snapshot) should
+    instantiate InvestorProfileService(session) directly with a new AsyncSessionLocal.
+    This getter is intended for ContextBuilder (Wave 2) read-only calls.
+    """
+    if _investor_profile_service is None:
+        raise RuntimeError(
+            "InvestorProfileService not initialised — call bootstrap() first."
+        )
+    return _investor_profile_service
