@@ -18,6 +18,7 @@ Flow:
 from __future__ import annotations
 
 import json
+import warnings
 from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -208,7 +209,6 @@ class ReviewService:
         results: list[ThesisReview] = []
         for thesis in stale:
             try:
-                # review_thesis() already passes session/user_id/thesis_id to agent
                 review = await self.review_thesis(
                     thesis_id=thesis.id,
                     user_id=user_id,
@@ -275,11 +275,23 @@ class ReviewService:
 
         Recommendations được ACCEPTED ngay tại _persist_review → không còn
         PENDING nào để apply. Giữ lại để backward compat với bot/API cũ.
+
+        .. deprecated::
+            Remove all call sites. This method will be deleted in a future
+            cleanup wave once confirmed no callers remain.
         """
-        logger.info(
-            "review_service.apply_bulk.skipped_auto_apply_enabled",
+        logger.warning(
+            "review_service.apply_bulk.noop_deprecated",
             thesis_id=thesis_id,
             requested_ids=applied_recommendation_ids,
+            reason="auto-apply is enabled — all recommendations are ACCEPTED at review time; "
+                   "this call site should be removed",
+        )
+        warnings.warn(
+            "apply_bulk_recommendations is a no-op since auto-apply was enabled. "
+            "Remove all call sites — this method will be deleted in a future cleanup.",
+            DeprecationWarning,
+            stacklevel=2,
         )
 
     # ------------------------------------------------------------------
