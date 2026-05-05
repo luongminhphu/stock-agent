@@ -33,6 +33,10 @@ from src.portfolio.repository import PortfolioRepository
 
 logger = get_logger(__name__)
 
+# Positions with qty below this threshold are treated as fully closed.
+# Guards against floating-point drift in cumulative partial sells.
+_QTY_ZERO_EPSILON = 1e-9
+
 
 class InsufficientQtyError(Exception):
     """Raised when sell qty exceeds current position qty."""
@@ -79,9 +83,17 @@ class PortfolioService:
         ContextBuilder._fetch_portfolio_bias(). Omit to leave unchanged
         on an existing position, or NULL on a new one.
 
+        Raises:
+            ValueError: qty or price is not positive.
+
         Returns:
             (position, trade) — both flushed to DB, caller must commit.
         """
+        if qty <= 0:
+            raise ValueError(f"qty phải lớn hơn 0, nhận được: {qty}")
+        if price <= 0:
+            raise ValueError(f"price phải lớn hơn 0, nhận được: {price}")
+
         ticker = ticker.upper()
         position = await self._repo.get_open_position(user_id, ticker)
 
@@ -150,12 +162,18 @@ class PortfolioService:
         realized_pnl = (price - avg_cost) * qty
 
         Raises:
+            ValueError:            qty or price is not positive.
             PositionNotFoundError: No open position for this ticker.
             InsufficientQtyError:  sell qty > current position qty.
 
         Returns:
             (position, trade) — position may be closed (closed_at set).
         """
+        if qty <= 0:
+            raise ValueError(f"qty phải lớn hơn 0, nhận được: {qty}")
+        if price <= 0:
+            raise ValueError(f"price phải lớn hơn 0, nhận được: {price}")
+
         ticker = ticker.upper()
         position = await self._repo.get_open_position(user_id, ticker)
 
@@ -171,7 +189,9 @@ class PortfolioService:
         position.realized_pnl += realized_pnl
         position.qty -= qty
 
-        if position.qty == 0:
+        # Guard against floating-point drift: treat sub-epsilon qty as fully closed
+        if position.qty <= _QTY_ZERO_EPSILON:
+            position.qty = 0.0
             position.closed_at = datetime.now(UTC)
 
         await self._repo.save_position(position)
@@ -224,12 +244,16 @@ class PortfolioService:
           5. Save both trade and position.
 
         Raises:
+            ValueError:            new_price is not positive.
             TradeNotFoundError:    trade_id not found or belongs to another user.
             InvalidOperationError: trade is not BUY, or position is already closed.
 
         Returns:
             (position, trade) — both flushed, caller must commit.
         """
+        if new_price <= 0:
+            raise ValueError(f"new_price phải lớn hơn 0, nhận được: {new_price}")
+
         trade = await self._repo.get_trade_by_id(trade_id)
 
         if trade is None or trade.user_id != user_id:

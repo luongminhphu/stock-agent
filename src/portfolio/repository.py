@@ -10,7 +10,6 @@ from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from src.portfolio.models import Position, Trade, TradeType
 
@@ -30,18 +29,13 @@ class PortfolioRepository:
             .where(Position.user_id == user_id)
             .where(Position.ticker == ticker.upper())
             .where(Position.closed_at.is_(None))
-            .options(selectinload(Position.trades))
         )
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
     async def get_position_by_id(self, position_id: int) -> Position | None:
         """Return a position by primary key."""
-        stmt = (
-            select(Position)
-            .where(Position.id == position_id)
-            .options(selectinload(Position.trades))
-        )
+        stmt = select(Position).where(Position.id == position_id)
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -52,7 +46,6 @@ class PortfolioRepository:
             .where(Position.user_id == user_id)
             .where(Position.closed_at.is_(None))
             .order_by(Position.ticker)
-            .options(selectinload(Position.trades))
         )
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
@@ -119,7 +112,11 @@ class PortfolioRepository:
         ticker: str | None = None,
         since: datetime | None = None,
     ) -> list[Trade]:
-        """Return SELL trades only — used by PnlService for realized summary."""
+        """Return SELL trades only — used by PnlService for realized summary.
+
+        Limit is intentionally high (10_000) to cover full lifetime trade history
+        for get_realized_summary(). Retail investors rarely exceed this.
+        """
         return await self.list_trades(
-            user_id, ticker=ticker, trade_type=TradeType.SELL, since=since, limit=500
+            user_id, ticker=ticker, trade_type=TradeType.SELL, since=since, limit=10_000
         )
