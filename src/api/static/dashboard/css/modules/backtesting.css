@@ -25,6 +25,47 @@
   border-collapse: collapse;
 }
 
+/* ── Accuracy table: pin column widths ──────────────────────────────────── */
+#accuracyWrap table {
+  table-layout: fixed;
+}
+#accuracyWrap th:nth-child(1) { width: 44%; text-align: left; }
+#accuracyWrap th:nth-child(2) { width: 28%; text-align: right; }
+#accuracyWrap th:nth-child(3) { width: 28%; text-align: right; }
+
+#accuracyWrap td:nth-child(2),
+#accuracyWrap td:nth-child(3) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Performance table: pin column widths ───────────────────────────────── */
+#performanceWrap table {
+  table-layout: fixed;
+}
+#performanceWrap th:nth-child(1) { width: 52px;  text-align: left; }
+#performanceWrap th:nth-child(2) { width: auto;  text-align: left; }
+#performanceWrap th:nth-child(3) { width: 64px;  text-align: right; }
+#performanceWrap th:nth-child(4) { width: 72px;  text-align: center; }
+#performanceWrap th:nth-child(5) { width: 90px;  text-align: right; }
+
+#performanceWrap td:nth-child(1) { font-weight: 600; }
+#performanceWrap td:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#performanceWrap td:nth-child(3),
+#performanceWrap td:nth-child(5) {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+#performanceWrap td:nth-child(4) {
+  text-align: center;
+  color: var(--muted);
+}
+
 /* Responsive: stack to single column on narrow viewports */
 @media (max-width: 1180px) {
   .backtesting-grid { grid-template-columns: 1fr; }
