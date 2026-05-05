@@ -82,7 +82,7 @@ class BriefingService:
         portfolio_context = await self._build_portfolio_context(user_id)
         thesis_context = await self._build_thesis_context(user_id)
         past_lessons = await self._build_lesson_context(user_id)
-        investor_profile = await self._build_investor_profile_context()
+        investor_profile = await self._build_investor_profile_context(user_id)
         logger.info(
             "briefing.generate_morning",
             user_id=user_id,
@@ -106,10 +106,26 @@ class BriefingService:
     async def generate_eod_brief(self, user_id: str) -> BriefOutput:
         tickers = await self._get_watchlist_tickers(user_id)
         market_context = await self._build_market_context(tickers, phase="eod")
-        logger.info("briefing.generate_eod", user_id=user_id, tickers=tickers)
+        portfolio_context = await self._build_portfolio_context(user_id)
+        thesis_context = await self._build_thesis_context(user_id)
+        past_lessons = await self._build_lesson_context(user_id)
+        investor_profile = await self._build_investor_profile_context(user_id)
+        logger.info(
+            "briefing.generate_eod",
+            user_id=user_id,
+            tickers=tickers,
+            has_portfolio=bool(portfolio_context),
+            has_thesis=bool(thesis_context),
+            has_lessons=bool(past_lessons),
+            has_investor_profile=bool(investor_profile),
+        )
         result = await self._agent.eod_brief(
             market_context=market_context,
             watchlist_tickers=tickers,
+            portfolio_context=portfolio_context,
+            thesis_context=thesis_context,
+            past_lessons=past_lessons,
+            investor_profile=investor_profile,
         )
         await self._persist(user_id=user_id, phase="eod", output=result, tickers=tickers)
         return result
@@ -302,12 +318,12 @@ class BriefingService:
             logger.warning("briefing.lesson_context_failed", user_id=user_id, error=str(exc))
             return ""
 
-    async def _build_investor_profile_context(self) -> str:
-        """Build investor profile block via ContextBuilder for morning brief.
+    async def _build_investor_profile_context(self, user_id: str) -> str:
+        """Build investor profile block via ContextBuilder.
 
-        Calls ContextBuilder(session).build() → render_for_agent() to produce
-        a pre-rendered plain-text block that BriefingAgent injects into the
-        morning prompt for personalised prioritized_actions.
+        Calls ContextBuilder(session).build(user_id) → render_for_agent() to
+        produce a pre-rendered plain-text block that BriefingAgent injects into
+        the morning/EOD prompt for personalised prioritized_actions.
 
         Owner: ai segment (ContextBuilder). This method is a thin adapter —
         it does NOT contain profile assembly logic.
@@ -321,7 +337,7 @@ class BriefingService:
         if self._session is None:
             return ""
         try:
-            ctx = await ContextBuilder(self._session).build()
+            ctx = await ContextBuilder(self._session).build(user_id=user_id)
             return render_for_agent(ctx)
         except Exception as exc:
             logger.warning("briefing.investor_profile_context_failed", error=str(exc))
