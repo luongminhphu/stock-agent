@@ -26,7 +26,10 @@ import discord
 from discord.ext import tasks
 
 from src.bot.commands.briefing import build_brief_embed
-from src.bot.commands.thesis_embeds import build_maintenance_embed
+from src.bot.commands.decision_embeds import build_replay_embed
+from src.bot.commands.reminder_embeds import build_reminder_embed
+from src.bot.commands.thesis_embeds import build_drift_embed, build_maintenance_embed
+from src.bot.commands.watchlist_embeds import build_scan_embed
 from src.briefing.service import BriefingService
 from src.platform.bootstrap import (
     get_briefing_agent,
@@ -220,37 +223,13 @@ class WatchlistScanScheduler:
                 logger.warning("scheduler.scan.channel_not_found", channel_id=channel_id)
                 return
 
-            lines: list[str] = []
-            for s in result.signals:
-                icon = "🔔" if s.has_alerts else "📊"
-                lines.append(f"{icon} **{s.ticker}** {s.change_pct:+.1f}% — {s.description}")
-
-            for r in result.on_signal_reminders:
-                ticker = r.watchlist_item.ticker if r.watchlist_item else f"item#{r.watchlist_item_id}"
-                lines.append(f"⏰ **{ticker}** — nhắc nhở theo dõi (ON_SIGNAL)")
-
-            has_triggered = result.triggered_count > 0
-            embed = discord.Embed(
-                title="📡 Watchlist Scan",
-                description="\n".join(lines),
-                color=0xFF6B35 if has_triggered else 0x4F98A3,
-            )
-            ict_time = (now_utc + datetime.timedelta(hours=7)).strftime("%H:%M ICT")
-            signal_count = len(result.signals)
-            reminder_count = len(result.on_signal_reminders)
-            footer_parts = [f"Scan lúc {ict_time}"]
-            if signal_count:
-                footer_parts.append(f"{signal_count} tín hiệu")
-            if reminder_count:
-                footer_parts.append(f"{reminder_count} nhắc nhở")
-            embed.set_footer(text=" — ".join(footer_parts))
-
+            embed = build_scan_embed(result, now_utc)
             await channel.send(embed=embed)  # type: ignore[union-attr]
             logger.info(
                 "scheduler.scan.notified",
-                signals=signal_count,
+                signals=len(result.signals),
                 triggered=result.triggered_count,
-                on_signal_reminders=reminder_count,
+                on_signal_reminders=len(result.on_signal_reminders),
             )
             await self._monitor.record_success(task_name)
 
@@ -272,15 +251,15 @@ _MAINTENANCE_STALE_DAYS = 3
 
 
 class ThesisMaintenanceScheduler:
-    """Chạy lúc 08:30 ICT mỗi ngày làm việc — 15 phút trước morning brief.
+    """Ch\u1ea1y l\u00fac 08:30 ICT m\u1ed7i ng\u00e0y l\u00e0m vi\u1ec7c \u2014 15 ph\u00fat tr\u01b0\u1edbc morning brief.
 
     Flow:
-        1. auto_expire_overdue_catalysts()  — không tốn token, chạy đầu tiên.
-        2. review_stale_theses()            — AI review, chỉ khi thesis stale > 3 ngày.
-        3. Discord notify nếu có thay đổi.
+        1. auto_expire_overdue_catalysts()  — kh\u00f4ng t\u1ed1n token, ch\u1ea1y \u0111\u1ea7u ti\u00ean.
+        2. review_stale_theses()            — AI review, ch\u1ec9 khi thesis stale > 3 ng\u00e0y.
+        3. Discord notify n\u1ebfu c\u00f3 thay \u0111\u1ed5i.
 
-    Hai bước dùng session riêng biệt — expire và review độc lập, bước 2
-    fail không rollback bước 1.
+    Hai b\u01b0\u1edbc d\u00f9ng session ri\u00eang bi\u1ec7t \u2014 expire v\u00e0 review \u0111\u1ed9c l\u1eadp, b\u01b0\u1edbc 2
+    fail kh\u00f4ng rollback b\u01b0\u1edbc 1.
     """
 
     def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
@@ -315,7 +294,7 @@ class ThesisMaintenanceScheduler:
         expired_count = 0
         reviews: list = []
 
-        # ── Step 1: Auto-expire overdue catalysts (no AI, no token cost) ──
+        # \u2500\u2500 Step 1: Auto-expire overdue catalysts (no AI, no token cost) \u2500\u2500
         try:
             from src.thesis.component_service import ComponentService
 
@@ -332,7 +311,7 @@ class ThesisMaintenanceScheduler:
             await self._monitor.record_failure(task_name, exc)
             return
 
-        # ── Step 2: AI review for stale theses ──
+        # \u2500\u2500 Step 2: AI review for stale theses \u2500\u2500
         try:
             from src.thesis.review_service import ReviewService
 
@@ -358,7 +337,7 @@ class ThesisMaintenanceScheduler:
 
         await self._monitor.record_success(task_name)
 
-        # ── Step 3: Discord notify — presentation delegated to thesis_embeds ──
+        # \u2500\u2500 Step 3: Discord notify \u2014 presentation delegated to thesis_embeds \u2500\u2500
         if not channel_id or (expired_count == 0 and not reviews):
             return
 
@@ -443,7 +422,7 @@ class ThesisDriftScheduler:
             from src.thesis.drift_service import DriftService
             from src.thesis.review_service import ReviewService
 
-            # ── Step 1: Detect drifted theses (no AI) ──
+            # \u2500\u2500 Step 1: Detect drifted theses (no AI) \u2500\u2500
             async with AsyncSessionLocal() as session:
                 drift_svc = DriftService(
                     session=session,
@@ -464,7 +443,7 @@ class ThesisDriftScheduler:
                 tickers=[s.ticker for s in signals],
             )
 
-            # ── Step 2: AI review per drifted thesis (sequential, rate-limit safe) ──
+            # \u2500\u2500 Step 2: AI review per drifted thesis (sequential, rate-limit safe) \u2500\u2500
             reviews: list[tuple] = []
             for signal in signals:
                 try:
@@ -499,32 +478,13 @@ class ThesisDriftScheduler:
             if not reviews:
                 return
 
-            # ── Step 3: Discord notify ──
+            # \u2500\u2500 Step 3: Discord notify \u2014 presentation delegated to thesis_embeds \u2500\u2500
             channel = self._client.get_channel(int(channel_id))
             if channel is None:
                 logger.warning("scheduler.drift.channel_not_found", channel_id=channel_id)
                 return
 
-            lines: list[str] = []
-            for signal, review in reviews:
-                verdict_icon = {"bullish": "🟢", "bearish": "🔴", "neutral": "🟡"}.get(
-                    str(review.verdict).lower(), "⚪"
-                )
-                lines.append(
-                    f"{verdict_icon} **{signal.ticker}** {signal.direction}{abs(signal.drift_pct):.1f}% "
-                    f"drift → AI verdict: **{review.verdict}** "
-                    f"(confidence {review.confidence:.0%})"
-                )
-
-            embed = discord.Embed(
-                title="⚡ Thesis Drift Alert",
-                description="\n".join(lines),
-                color=0xFF6B35,
-            )
-            ict_time = (now_utc + datetime.timedelta(hours=7)).strftime("%H:%M ICT")
-            embed.set_footer(
-                text=f"Drift ≥{settings.thesis_drift_threshold_pct:.0f}% detected lúc {ict_time}"
-            )
+            embed = build_drift_embed(reviews, now_utc)
             await channel.send(embed=embed)  # type: ignore[union-attr]
             logger.info("scheduler.drift.notified", reviewed=len(reviews))
             await self._monitor.record_success(task_name)
@@ -607,6 +567,7 @@ class ReminderScheduler:
             "weekly": [ReminderFrequency.WEEKLY],
         }
         frequencies = frequency_map.get(label, [ReminderFrequency.DAILY])
+        freq_label = "h\u00e0ng ng\u00e0y" if label == "daily" else "h\u00e0ng tu\u1ea7n"
 
         try:
             async with AsyncSessionLocal() as session:
@@ -622,7 +583,6 @@ class ReminderScheduler:
 
                 now_utc = datetime.datetime.now(tz=datetime.UTC)
                 ict_time = (now_utc + datetime.timedelta(hours=7)).strftime("%H:%M ICT")
-                freq_label = "hàng ngày" if label == "daily" else "hàng tuần"
 
                 for reminder in due:
                     ticker = (
@@ -631,15 +591,7 @@ class ReminderScheduler:
                         else f"item#{reminder.watchlist_item_id}"
                     )
                     try:
-                        embed = discord.Embed(
-                            title=f"⏰ Nhắc nhở {freq_label}: {ticker}",
-                            description=(
-                                f"Bạn đang theo dõi **{ticker}** trong watchlist.\n"
-                                f"Hãy kiểm tra lại thesis và diễn biến giá hôm nay."
-                            ),
-                            color=0x4F98A3,
-                        )
-                        embed.set_footer(text=f"Reminder {freq_label} — {ict_time}")
+                        embed = build_reminder_embed(ticker, freq_label, ict_time)
                         await channel.send(embed=embed)  # type: ignore[union-attr]
                         await svc.mark_sent(reminder)
                         logger.info(
@@ -718,7 +670,7 @@ class DecisionReplayScheduler:
 
         from src.thesis.decision_service import DecisionService
 
-        # ── Step 1: Find decisions that reached their horizon ──
+        # \u2500\u2500 Step 1: Find decisions that reached their horizon \u2500\u2500
         try:
             async with AsyncSessionLocal() as session:
                 svc = DecisionService(
@@ -743,7 +695,7 @@ class DecisionReplayScheduler:
             decision_ids=[d.id for d in pending],
         )
 
-        # ── Step 2: Evaluate + Replay + Persist lesson per decision ──
+        # \u2500\u2500 Step 2: Evaluate + Replay + Persist lesson per decision \u2500\u2500
         results: list[dict] = []
         for decision in pending:
             # 2a: evaluate realized outcome (no AI)
@@ -827,35 +779,14 @@ class DecisionReplayScheduler:
 
         await self._monitor.record_success(task_name)
 
-        # ── Step 3: Discord notify ──
+        # \u2500\u2500 Step 3: Discord notify \u2014 presentation delegated to decision_embeds \u2500\u2500
         channel = self._client.get_channel(int(channel_id))
         if channel is None:
             logger.warning("scheduler.decision_replay.channel_not_found", channel_id=channel_id)
             return
 
-        verdict_icon = {"CORRECT": "✅", "INCORRECT": "❌", "MIXED": "🟡"}
-        lines: list[str] = []
-        for item in results:
-            d = item["decision"]
-            r = item["replay"]
-            icon = verdict_icon.get(str(d.outcome_verdict).upper(), "⚪")
-            pnl_str = f"{d.outcome_pnl_pct:+.1f}%" if d.outcome_pnl_pct is not None else "N/A"
-            line = f"{icon} **{d.ticker}** {d.decision_type} → {d.outcome_verdict} ({pnl_str})"
-            if r and r.key_lesson:
-                line += f"\n    💡 _{r.key_lesson}_"
-            if r and r.pattern_detected:
-                line += f"\n    🔍 Pattern: `{r.pattern_detected}`"
-            lines.append(line)
-
-        ict_time = (now_utc + datetime.timedelta(hours=7)).strftime("%H:%M ICT")
-        embed = discord.Embed(
-            title="🔄 Decision Replay — Kết quả sau horizon",
-            description="\n\n".join(lines),
-            color=0x4F98A3,
-        )
-        embed.set_footer(text=f"{len(results)} quyết định được đánh giá lúc {ict_time}")
-
         try:
+            embed = build_replay_embed(results, now_utc)
             await channel.send(embed=embed)  # type: ignore[union-attr]
             logger.info(
                 "scheduler.decision_replay.notified",
