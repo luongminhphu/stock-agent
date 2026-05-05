@@ -177,17 +177,25 @@
             <p class="eyebrow">Backtesting</p>
             <h2 id="backtestTitle">Review accuracy &amp; thesis performance</h2>
           </div>
-          <p class="muted panel-hint">Đo độ đúng của verdict và xem aggregate PnL theo từng thesis.</p>
+          <p class="muted panel-hint">Verdict quality · Worst &amp; Best calls theo avg PnL snapshot.</p>
         </div>
         <div class="backtesting-grid">
+
           <div class="subpanel">
-            <h3>Verdict accuracy</h3>
+            <h3>📊 Verdict accuracy</h3>
             <div id="accuracyWrap" class="empty-state">Chưa tải dữ liệu…</div>
           </div>
+
           <div class="subpanel">
-            <h3>Thesis performances</h3>
-            <div id="performanceWrap" class="empty-state">Chưa tải dữ liệu…</div>
+            <h3>🔴 Worst calls</h3>
+            <div id="worstCallsWrap" class="empty-state">Chưa tải dữ liệu…</div>
           </div>
+
+          <div class="subpanel">
+            <h3>🟢 Best calls</h3>
+            <div id="bestCallsWrap" class="empty-state">Chưa tải dữ liệu…</div>
+          </div>
+
         </div>
       </section>
 
@@ -196,7 +204,7 @@
       </footer>
     </div>
 
-    <!-- ── MODALS (không thay đổi ID/selector — giữ backward compat) ── -->
+    <!-- ── MODALS ── -->
 
     <dialog id="thesisModal" aria-labelledby="thesisModalTitle">
       <div class="modal-inner">
@@ -449,6 +457,6 @@
       </div>
     </dialog>
 
-    <script data-cfasync="false" type="module" src="/static/dashboard/js/app.js?v=6"></script>
+    <script data-cfasync="false" type="module" src="/static/dashboard/js/app.js?v=7"></script>
   </body>
 </html>

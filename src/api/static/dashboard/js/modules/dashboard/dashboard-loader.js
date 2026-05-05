@@ -10,7 +10,7 @@ import { state }               from '../../state/dashboard-state.js';
 import { renderThesesTable, thesisTableSkeletonHTML, emptyDetailHTML } from '../thesis/render-thesis-table.js';
 import { loadThesisDetail }    from '../thesis/thesis-service.js';
 import { openEditThesisModal } from '../thesis/thesis-form.js';
-import { renderVerdicts, renderAccuracy, renderPerformance } from '../backtesting/render-backtesting.js';
+import { renderVerdicts, renderAccuracy, renderWorstCalls, renderBestCalls } from '../backtesting/render-backtesting.js';
 import { renderCatalystList, renderSnapshots } from '../briefing/render-brief.js';
 import { countUp, flashValue }  from '../../utils/animate.js';
 
@@ -41,7 +41,6 @@ function wireDeleteThesis(id) {
   import('../../utils/dom.js').then(({ openModal }) => openModal('deleteModal'));
 }
 
-// Normalize verdict-accuracy response (array hoặc { items: [...] })
 function normalizeAccuracyRes(res) {
   if (!res) return [];
   if (Array.isArray(res)) return res;
@@ -49,7 +48,33 @@ function normalizeAccuracyRes(res) {
 }
 
 // ---------------------------------------------------------------------------
-// WAVE 2d — Show skeletons ngay khi bắt đầu load, trước Promise.all
+// Split performance rows → worst top-5 + best top-5
+// Attach _positiveCount / _negativeCount để render footer insight.
+// ---------------------------------------------------------------------------
+function splitPerformance(rows) {
+  if (!rows || !rows.length) return { worst: [], best: [] };
+
+  const withPnl = rows.filter(r => r.avg_pnl_pct != null && r.snapshot_count > 0);
+
+  const negative = withPnl
+    .filter(r => r.avg_pnl_pct < 0)
+    .sort((a, b) => a.avg_pnl_pct - b.avg_pnl_pct); // ascending — worst first
+
+  const positive = withPnl
+    .filter(r => r.avg_pnl_pct >= 0)
+    .sort((a, b) => b.avg_pnl_pct - a.avg_pnl_pct); // descending — best first
+
+  const worst = negative.slice(0, 5);
+  worst._positiveCount = positive.length; // bao nhiêu thesis dương không hiển thị
+
+  const best = positive.slice(0, 5);
+  best._negativeCount = negative.length;  // bao nhiêu thesis âm không hiển thị
+
+  return { worst, best };
+}
+
+// ---------------------------------------------------------------------------
+// Skeletons
 // ---------------------------------------------------------------------------
 function showLoadingSkeletons() {
   const tableWrap = document.getElementById('thesesTableWrap');
@@ -142,43 +167,44 @@ export async function loadDashboard() {
 export async function loadBacktesting() {
   const base = apiBase();
 
-  const accuracyWrap    = el('accuracyWrap');
-  const performanceWrap = el('performanceWrap');
+  const worstWrap = el('worstCallsWrap');
+  const bestWrap  = el('bestCallsWrap');
+  const accWrap   = el('accuracyWrap');
 
-  if (performanceWrap) performanceWrap.innerHTML = '<p class="muted">Đang tải...</p>';
+  if (worstWrap) worstWrap.innerHTML = '<p class="muted">Đang tải...</p>';
+  if (bestWrap)  bestWrap.innerHTML  = '<p class="muted">Đang tải...</p>';
 
   try {
+    // Accuracy — reuse cache nếu đã có từ loadDashboard
     if (state.cachedVerdictAccuracy) {
       renderAccuracy(state.cachedVerdictAccuracy);
     } else {
-      if (accuracyWrap) accuracyWrap.innerHTML = '<p class="muted">Đang tải...</p>';
+      if (accWrap) accWrap.innerHTML = '<p class="muted">Đang tải...</p>';
       const accuracyRes  = await getJson(`${base}/backtesting/verdict-accuracy`).catch(() => null);
       const accuracyRows = Array.isArray(accuracyRes) ? accuracyRes : (accuracyRes?.items ?? []);
       state.cachedVerdictAccuracy = accuracyRows;
       renderAccuracy(accuracyRows);
     }
 
+    // Performances — fetch, split, render
     const performanceRes  = await getJson(`${base}/backtesting/thesis-performances`).catch(() => null);
     const performanceRows = Array.isArray(performanceRes) ? performanceRes : (performanceRes?.items ?? []);
-    renderPerformance(performanceRows);
+
+    const { worst, best } = splitPerformance(performanceRows);
+    renderWorstCalls(worst);
+    renderBestCalls(best);
 
   } catch (err) {
     console.error('[dashboard-loader] loadBacktesting error:', err);
-    if (accuracyWrap)    accuracyWrap.innerHTML    = '<p class="empty-state">Lỗi tải dữ liệu accuracy.</p>';
-    if (performanceWrap) performanceWrap.innerHTML = '<p class="empty-state">Lỗi tải dữ liệu performance.</p>';
+    if (accWrap)    accWrap.innerHTML    = '<p class="empty-state">Lỗi tải dữ liệu accuracy.</p>';
+    if (worstWrap)  worstWrap.innerHTML  = '<p class="empty-state">Lỗi tải dữ liệu.</p>';
+    if (bestWrap)   bestWrap.innerHTML   = '<p class="empty-state">Lỗi tải dữ liệu.</p>';
   }
 }
 
 // ---------------------------------------------------------------------------
-// KPI summary cards — countUp animation + conditional colour
+// KPI summary cards
 // ---------------------------------------------------------------------------
-
-/**
- * Đọc giá trị số hiện tại của element (bỏ dấu chấm, phẩy, ký hiệu).
- * Dùng để so sánh old vs new cho flashValue direction.
- * @param {HTMLElement} node
- * @returns {number}
- */
 function parseCurrentValue(node) {
   return parseFloat((node.textContent ?? '').replace(/[^\d.-]/g, '')) || 0;
 }
@@ -186,7 +212,6 @@ function parseCurrentValue(node) {
 export function renderSummary(s) {
   if (!s) return;
 
-  /** @type {Array<{id: string, raw: any, suffix?: string, decimals?: number}>} */
   const kpis = [
     { id: 'openTheses',       raw: s.open_theses          ?? s.open_thesis_count    },
     { id: 'riskyTheses',      raw: s.risky_theses         ?? s.risky_thesis_count   },
@@ -200,25 +225,19 @@ export function renderSummary(s) {
     if (!node) continue;
     const num = parseFloat(String(raw ?? '').replace(/[^\d.-]/g, ''));
     if (!isNaN(num)) {
-      // FIX: truyền opts object đúng signature của countUp(el, target, opts)
       const oldVal = parseCurrentValue(node);
       countUp(node, num, { duration: 650, decimals, suffix });
-      // FIX: flashValue direction dựa trên so sánh old vs new
       flashValue(node, num >= oldVal);
     } else {
       node.textContent = raw ?? '—';
     }
   }
 
-  // Conditional risk colour: đỏ khi risky > 0, reset khi = 0
   const riskyEl  = el('riskyTheses');
   const riskyVal = parseFloat(String(s.risky_theses ?? s.risky_thesis_count ?? '0').replace(/[^\d.-]/g, ''));
   if (riskyEl) {
-    // Toggle class trên signal-card cha gần nhất
     const card = riskyEl.closest('.signal-card');
     if (card) card.classList.toggle('signal-card--alert', riskyVal > 0);
-
-    // Thêm cập nhật màu trực tiếp vào số thẳm khi đỏ
     riskyEl.classList.toggle('kpi-risky', riskyVal > 0);
     riskyEl.classList.toggle('kpi-safe',  riskyVal === 0);
   }
