@@ -14,7 +14,7 @@ Quy tắc chung:
 - Ngôn ngữ: tiếng Việt, giọng chuyên nghiệp nhưng dễ hiểu.
 - Tập trung vào thông tin actionable, không lan man.
 - Với watchlist: chỉ đề cập ticker nếu có điều đáng chú ý thực sự.
-- ticker_summaries: bắt buộc điền đầy đủ cho MỔI ticker trong watchlist, không được bỏ sót.
+- ticker_summaries: bắt buộc điền đầy đủ cho MỖI ticker trong watchlist, không được bỏ sót.
 - portfolio_summary: chỉ điền khi có dữ liệu portfolio. Nhận xét alignment giữa portfolio
   hiện tại với market sentiment hôm nay — rủi ro tập trung, position nổi bật cần chú ý.
   Nếu không có portfolio data thì để mảng rỗng [].
@@ -26,7 +26,7 @@ Quy tắc chung:
 - ĐÚNG: "NVL tăng 5.4%, MSR giảm 5.9%, HCM và TCX cùng tăng nhẹ."
 - SAI: viết tên mã trên một dòng riêng rồi mới tiếp tục câu văn ở dòng tiếp theo.
 
-⚡ QUY TẬC prioritized_actions (bắt buộc điền khi có watchlist):
+⚡ QUY TẮC prioritized_actions (bắt buộc điền khi có watchlist):
 - ACT_TODAY: ticker đang approach stop_loss trong thesis, catalyst sắp triggered 1-3 ngày,
   signal conflict với thesis hiện tại, hoặc market sentiment đảo chiều mạnh.
 - WATCH_MORE: thesis còn valid nhưng cần 1-2 phiên xác nhận, volume chưa đủ,
@@ -35,6 +35,11 @@ Quy tắc chung:
 - Phải có ít nhất 1 entry khi có watchlist. Không để mảng rỗng trừ khi watchlist trống.
 - Nếu có thesis data và giá hiện tại đang tiếp cận stop_loss của thesis → bắt buộc
   xuất ACT_TODAY cho ticker đó, không được hạ xuống WATCH_MORE.
+
+Nếu được cung cấp INVESTOR PROFILE:
+- Dùng risk_appetite để lọc prioritized_actions: không đề xuất action vi phạm ngưỡng drawdown.
+- Dùng avoid để bỏ qua các ticker/sector nhà đầu tư không muốn tiếp cận.
+- Tham chiếu patterns/lessons để cá nhân hóa reason trong mỗi action.
 
 JSON schema:
 {
@@ -79,6 +84,7 @@ def build_morning_prompt(
     portfolio_context: str = "",
     thesis_context: str = "",
     past_lessons: str = "",
+    investor_profile: str = "",
 ) -> str:
     """Build morning brief prompt.
 
@@ -87,13 +93,12 @@ def build_morning_prompt(
         watchlist_tickers: List of ticker symbols in the user's watchlist.
         extra_context: Optional free-form additional context.
         portfolio_context: Optional portfolio P&L snapshot string.
-        thesis_context: Optional active thesis summary string. When provided,
-            AI will cross-reference thesis stop_loss levels against current price
-            and force ACT_TODAY for any ticker approaching invalidation.
-        past_lessons: Optional formatted string from LessonService — recent
-            evaluated decisions with outcome verdicts, key lessons, and detected
-            patterns. When provided, AI will personalise analysis by referencing
-            the investor's own historical decision quality.
+        thesis_context: Optional active thesis summary string.
+        past_lessons: Optional formatted string from LessonService.
+        investor_profile: Optional pre-rendered investor profile block from
+            ContextBuilder.render_for_agent(). When provided, AI personalises
+            actions against the investor's risk appetite, avoid list, and
+            known behavioral patterns.
     """
     ticker_str = ", ".join(watchlist_tickers) if watchlist_tickers else "(không có watchlist)"
     prompt = f"""[MORNING BRIEF — Phiên hôm nay]
@@ -103,6 +108,9 @@ Dữ liệu thị trường:
 
 Watchlist cần theo dõi: {ticker_str}
 """
+    if investor_profile:
+        prompt += f"\n{investor_profile}\n"
+
     if portfolio_context:
         prompt += f"\nPortfolio hiện tại:\n{portfolio_context}\n"
 
@@ -121,6 +129,12 @@ Watchlist cần theo dõi: {ticker_str}
         " Với mỗi ticker, dùng dữ liệu giá từ phần 'Dữ liệu thị trường' ở trên."
         " Nếu không có giá, đặt price=0, change_pct=0 và ghi rõ trong one_line là thiếu dữ liệu."
     )
+    if investor_profile:
+        prompt += (
+            " Dùng INVESTOR PROFILE để lọc và cá nhân hóa prioritized_actions:"
+            " không đề xuất action vi phạm risk_appetite, bỏ qua ticker/sector trong avoid list."
+            " Tham chiếu patterns/lessons khi viết reason."
+        )
     if portfolio_context:
         prompt += (
             " Điền portfolio_summary dựa trên dữ liệu portfolio ở trên:"
@@ -136,7 +150,7 @@ Watchlist cần theo dõi: {ticker_str}
         prompt += (
             " Tham chiếu lịch sử quyết định để cá nhân hóa prioritized_actions:"
             " nếu có pattern thua lỗ từng xảy ra → nâng thêm cảnh báo trong reason."
-            " Nếu có tín hiệu tương tự từng CORRECT → tăng confidence cho action tươngứng."
+            " Nếu có tín hiệu tương tự từng CORRECT → tăng confidence cho action tương ứng."
         )
     return prompt
 
