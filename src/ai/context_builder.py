@@ -60,7 +60,7 @@ class InvestorContext:
     active_thesis_summary: str = ""
     recent_lessons: str = ""
     portfolio_bias: str = ""
-    watchlist_signals: str = ""  # reserved — Wave 3
+    watchlist_signals: str = ""  # reserved — future wave
     built_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     source_flags: dict[str, bool] = field(default_factory=dict)
 
@@ -268,14 +268,23 @@ class ContextBuilder:
             return "", False
 
     async def _fetch_portfolio_bias(self) -> tuple[str, bool]:
-        """Return short sector-weight string from open positions."""
+        """Return short sector-weight string from open positions.
+
+        Uses avg_cost * qty as cost-basis proxy for sector weight.
+        Position.is_open is a Python @property — cannot be used in SQLAlchemy
+        WHERE clauses. Use column-level predicates instead:
+            closed_at IS NULL AND qty > 0
+        """
         try:
             from sqlalchemy import select
 
             from src.portfolio.models import Position
 
             result = await self._session.execute(
-                select(Position).where(Position.is_open.is_(True))
+                select(Position).where(
+                    Position.closed_at.is_(None),
+                    Position.qty > 0,
+                )
             )
             positions = result.scalars().all()
             if not positions:
@@ -284,10 +293,11 @@ class ContextBuilder:
             sector_totals: dict[str, float] = {}
             total_value = 0.0
             for pos in positions:
-                sector = getattr(pos, "sector", None) or "Unknown"
-                value = float(getattr(pos, "market_value", 0) or 0)
-                sector_totals[sector] = sector_totals.get(sector, 0.0) + value
-                total_value += value
+                sector = pos.sector or "Unknown"
+                # cost_basis = avg_cost * qty (market_value not stored on Position)
+                cost_basis = float(pos.avg_cost) * float(pos.qty)
+                sector_totals[sector] = sector_totals.get(sector, 0.0) + cost_basis
+                total_value += cost_basis
 
             if total_value == 0:
                 return "", False
