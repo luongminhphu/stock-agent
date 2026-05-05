@@ -178,3 +178,53 @@ class PortfolioContext:
     @property
     def tickers(self) -> list[str]:
         return [p.ticker for p in self.open_positions]
+
+    def format_for_prompt(self) -> str:
+        """Render PortfolioContext as a human-readable block for AI prompt injection.
+
+        Used exclusively by ai/context_builder._fetch_portfolio_bias().
+        Never returns raw dataclass repr.
+
+        Output example::
+
+            Portfolio (3 vị thế mở):
+              - VCB: 500 cp @ 87,500 | lãi/lỗ TT: +1,750,000 (+4.0%) [Banking]
+              - HPG: 1,000 cp @ 28,000 [Materials]
+              Tỷ trọng ngành: Banking: 62.5%, Materials: 37.5%
+              Lãi/lỗ TT tổng: +1,750,000
+              Realized P&L: +3,200,000
+        """
+        if not self.has_positions:
+            return "Portfolio: Chưa có vị thế nào đang mở."
+
+        lines = [f"Portfolio ({self.position_count} vị thế mở):"]
+
+        for p in self.open_positions:
+            base = f"  - {p.ticker}: {p.qty:,.0f} cp @ {p.avg_cost:,.0f}"
+            if p.unrealized_pnl is not None and p.unrealized_pnl_pct is not None:
+                sign = "+" if p.unrealized_pnl >= 0 else ""
+                base += f" | lãi/lỗ TT: {sign}{p.unrealized_pnl:,.0f} ({sign}{p.unrealized_pnl_pct:.1f}%)"
+            elif p.unrealized_pnl is not None:
+                sign = "+" if p.unrealized_pnl >= 0 else ""
+                base += f" | lãi/lỗ TT: {sign}{p.unrealized_pnl:,.0f}"
+            if p.sector:
+                base += f" [{p.sector}]"
+            lines.append(base)
+
+        if self.sector_weights:
+            weights = ", ".join(
+                f"{k}: {v:.1f}%" for k, v in sorted(
+                    self.sector_weights.items(), key=lambda x: x[1], reverse=True
+                )
+            )
+            lines.append(f"  Tỷ trọng ngành: {weights}")
+
+        if self.total_unrealized_pnl is not None:
+            sign = "+" if self.total_unrealized_pnl >= 0 else ""
+            lines.append(f"  Lãi/lỗ TT tổng: {sign}{self.total_unrealized_pnl:,.0f}")
+
+        if self.total_realized_pnl:
+            sign = "+" if self.total_realized_pnl >= 0 else ""
+            lines.append(f"  Realized P&L: {sign}{self.total_realized_pnl:,.0f}")
+
+        return "\n".join(lines)

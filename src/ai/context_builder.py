@@ -8,7 +8,8 @@ Builds an InvestorContext from:
   - thesis segment (active theses summary)
   - thesis.lesson_service (recent decision lessons)
   - portfolio segment (portfolio bias — sector exposure, P&L tilt)
-  - ai.memory (MemoryContext — episodic + semantic memory)  ← NEW in V2
+  - market.registry (sector key_metrics per position ticker)  ← NEW in V2-3
+  - ai.memory (MemoryContext — episodic + semantic memory)    ← NEW in V2
 
 Boundary rule:
   ContextBuilder knows ABOUT domain segments but does NOT own their logic.
@@ -17,6 +18,7 @@ Boundary rule:
 Backward compatibility:
   ContextBuilder(session) still works exactly as before.
   memory injection is additive — if MemoryService fails, context is still built.
+  sector context injection is additive — if registry fails, context is still built.
 """
 
 from __future__ import annotations
@@ -50,7 +52,7 @@ class InvestorContext:
     # From thesis.lesson_service
     recent_lessons: str = ""
 
-    # From portfolio segment
+    # From portfolio segment + market.registry (V2-3)
     portfolio_bias: str = ""
 
     # From ai.memory (NEW in V2)
@@ -80,7 +82,7 @@ class ContextBuilder:
             self._fetch_thesis_summary(user_id),
             self._fetch_recent_lessons(user_id),
             self._fetch_portfolio_bias(user_id),
-            self._fetch_memory_context(user_id),   # NEW
+            self._fetch_memory_context(user_id),
             return_exceptions=True,
         )
 
@@ -89,7 +91,7 @@ class ContextBuilder:
         _apply_thesis(ctx, results[1])
         _apply_lessons(ctx, results[2])
         _apply_portfolio(ctx, results[3])
-        _apply_memory(ctx, results[4])              # NEW
+        _apply_memory(ctx, results[4])
 
         return ctx
 
@@ -129,7 +131,12 @@ class ContextBuilder:
                 ticker = getattr(t, "ticker", "?")
                 direction = getattr(t, "direction", "")
                 summary = getattr(t, "summary", "") or ""
-                lines.append(f"- {ticker} ({direction}): {summary[:120]}")
+                line = f"  - {ticker}"
+                if direction:
+                    line += f" ({direction})"
+                if summary:
+                    line += f": {summary[:120]}"
+                lines.append(line)
             return "Active theses:\n" + "\n".join(lines)
         except Exception as exc:
             logger.warning("context_builder.thesis_summary_failed", error=str(exc))
@@ -140,41 +147,66 @@ class ContextBuilder:
             from src.thesis.lesson_service import LessonService
 
             svc = LessonService(self._session)
-            lessons = await svc.get_recent(user_id=user_id, limit=5)
+            lessons = await svc.get_recent(user_id=user_id, limit=3)
             if not lessons:
                 return ""
             lines = []
-            for lesson in lessons:
-                date_str = getattr(lesson, "created_at", "")  
-                text = getattr(lesson, "key_lesson", "") or ""
-                lines.append(f"- [{date_str}] {text[:150]}")
-            return "Recent decision lessons:\n" + "\n".join(lines)
+            for les in lessons:
+                text = getattr(les, "lesson_text", "") or ""
+                if text:
+                    lines.append(f"  - {text[:150]}")
+            if not lines:
+                return ""
+            return "Recent lessons:\n" + "\n".join(lines)
         except Exception as exc:
             logger.warning("context_builder.recent_lessons_failed", error=str(exc))
             return ""
 
     async def _fetch_portfolio_bias(self, user_id: str | None) -> str:
-        """Fetch portfolio bias block from portfolio segment public contract.
+        """Build portfolio bias string with P&L details + sector key_metrics.
 
-        Calls portfolio.get_portfolio_context(session, user_id) which
-        returns a PortfolioContext. Degrades gracefully to empty string.
+        V2-3 changes:
+          - Uses port_ctx.format_for_prompt() instead of str(port_ctx)
+            to avoid raw dataclass repr leaking into AI prompts.
+          - Injects sector key_metrics from market.registry per ticker
+            (deduped by sector string, capped at 5 distinct sectors).
         """
         try:
+            from src.market.registry import registry
             from src.portfolio import get_portfolio_context
 
             port_ctx = await get_portfolio_context(self._session, user_id)
-            if port_ctx is None:
+            if not port_ctx.has_positions:
                 return ""
-            return str(port_ctx)
+
+            base = port_ctx.format_for_prompt()
+
+            # Inject sector key_metrics from market/registry (V2-1)
+            sector_blocks: list[str] = []
+            seen_contexts: set[str] = set()
+            for pos in port_ctx.open_positions:
+                ctx_str = registry.get_sector_context_str(pos.ticker)
+                if ctx_str and ctx_str not in seen_contexts:
+                    seen_contexts.add(ctx_str)
+                    sector_blocks.append(ctx_str)
+                    if len(sector_blocks) >= 5:  # cap to avoid prompt bloat
+                        break
+
+            if sector_blocks:
+                base += "\n\nSector context:\n" + "\n".join(
+                    f"  {s}" for s in sector_blocks
+                )
+
+            return base
         except Exception as exc:
             logger.warning("context_builder.portfolio_bias_failed", error=str(exc))
             return ""
 
     async def _fetch_memory_context(self, user_id: str | None) -> str:
-        """Fetch L2 + L3 memory context for the investor.
+        """Fetch episodic + semantic memory for the user.
 
-        Returns rendered text block, or empty string if unavailable.
-        Owner: ai.memory (MemoryService) — not this method.
+        Returns empty string if user_id is None or memory is unavailable.
+        Never raises — memory failure must not block AI calls.
         """
         if not user_id:
             return ""
@@ -182,35 +214,22 @@ class ContextBuilder:
             from src.ai.memory.memory_service import MemoryService
 
             mem_ctx = await MemoryService.get_memory_context(
-                session=self._session,
-                user_id=user_id,
+                self._session, user_id=user_id
             )
             if mem_ctx.is_empty():
                 return ""
-            rendered = mem_ctx.render()
-            logger.debug(
-                "context_builder.memory_context_loaded",
-                user_id=user_id,
-                episode_count=len(mem_ctx.recent_episodes),
-                has_snapshot=mem_ctx.latest_snapshot is not None,
-            )
-            return rendered
+            return mem_ctx.render()
         except Exception as exc:
-            logger.warning(
-                "context_builder.memory_context_failed",
-                user_id=user_id,
-                error=str(exc),
-            )
+            logger.warning("context_builder.memory_context_failed", error=str(exc))
             return ""
 
 
 # ---------------------------------------------------------------------------
-# Applicator helpers (keep build() readable)
+# Apply helpers — each applies one result slot into InvestorContext
 # ---------------------------------------------------------------------------
 
-
-def _apply_profile(ctx: InvestorContext, result) -> None:
-    if isinstance(result, dict):
+def _apply_profile(ctx: InvestorContext, result: object) -> None:
+    if isinstance(result, dict) and result:
         ctx.risk_appetite = result.get("risk_appetite", "")
         ctx.avoid_list = result.get("avoid_list", [])
         ctx.preferred_sectors = result.get("preferred_sectors", [])
@@ -218,60 +237,67 @@ def _apply_profile(ctx: InvestorContext, result) -> None:
         ctx.notes = result.get("notes", "")
 
 
-def _apply_thesis(ctx: InvestorContext, result) -> None:
+def _apply_thesis(ctx: InvestorContext, result: object) -> None:
     if isinstance(result, str):
         ctx.active_thesis_summary = result
 
 
-def _apply_lessons(ctx: InvestorContext, result) -> None:
+def _apply_lessons(ctx: InvestorContext, result: object) -> None:
     if isinstance(result, str):
         ctx.recent_lessons = result
 
 
-def _apply_portfolio(ctx: InvestorContext, result) -> None:
+def _apply_portfolio(ctx: InvestorContext, result: object) -> None:
     if isinstance(result, str):
         ctx.portfolio_bias = result
 
 
-def _apply_memory(ctx: InvestorContext, result) -> None:
-    """Apply memory context block — NEW in V2."""
+def _apply_memory(ctx: InvestorContext, result: object) -> None:
     if isinstance(result, str):
         ctx.memory_context_block = result
 
 
 # ---------------------------------------------------------------------------
-# Public render helper
+# render_for_agent — formats InvestorContext for prompt injection
 # ---------------------------------------------------------------------------
 
-
 def render_for_agent(ctx: InvestorContext) -> str:
-    """Render InvestorContext as a text block for injection into AI prompts.
+    """Render InvestorContext into a structured prompt block.
 
-    Returns empty string if all fields are empty (new user, no data).
+    Called by agents just before constructing their system prompt.
+    Returns empty string if context is fully empty (no-op for agents).
     """
     parts: list[str] = []
 
+    # Investor profile
+    profile_lines: list[str] = []
     if ctx.risk_appetite:
-        parts.append(f"Risk appetite: {ctx.risk_appetite}")
+        profile_lines.append(f"  Khẩu vị rủi ro: {ctx.risk_appetite}")
     if ctx.trading_style:
-        parts.append(f"Trading style: {ctx.trading_style}")
+        profile_lines.append(f"  Trading style: {ctx.trading_style}")
     if ctx.preferred_sectors:
-        parts.append(f"Preferred sectors: {', '.join(ctx.preferred_sectors)}")
+        profile_lines.append(f"  Ngành ưu tiên: {', '.join(ctx.preferred_sectors)}")
     if ctx.avoid_list:
-        parts.append(f"Avoid list: {', '.join(ctx.avoid_list)}")
+        profile_lines.append(f"  Tránh: {', '.join(ctx.avoid_list)}")
     if ctx.notes:
-        parts.append(f"Investor notes: {ctx.notes}")
-    if ctx.active_thesis_summary:
-        parts.append(ctx.active_thesis_summary)
-    if ctx.recent_lessons:
-        parts.append(ctx.recent_lessons)
-    if ctx.portfolio_bias:
-        parts.append(ctx.portfolio_bias)
+        profile_lines.append(f"  Ghi chú: {ctx.notes}")
+    if profile_lines:
+        parts.append("[Investor profile]\n" + "\n".join(profile_lines))
 
-    # Memory block appended last — most contextual, highest recency signal
+    # Active theses
+    if ctx.active_thesis_summary:
+        parts.append(f"[{ctx.active_thesis_summary}]")
+
+    # Recent lessons
+    if ctx.recent_lessons:
+        parts.append(f"[{ctx.recent_lessons}]")
+
+    # Portfolio — V2-3: formatted with sector context injected
+    if ctx.portfolio_bias:
+        parts.append(f"[Portfolio hiện tại]\n{ctx.portfolio_bias}")
+
+    # Memory — episodic + semantic
     if ctx.memory_context_block:
         parts.append(ctx.memory_context_block)
 
-    if not parts:
-        return ""
-    return "[Investor context]\n" + "\n".join(parts)
+    return "\n\n".join(parts)
