@@ -74,8 +74,14 @@ JSON schema:
 """
 
 
-def build_user_prompt(ctx: WatchdogContext) -> str:
-    """Build the user-turn prompt from a WatchdogContext."""
+def build_user_prompt(ctx: WatchdogContext, investor_profile: str = "") -> str:
+    """Build the user-turn prompt from a WatchdogContext.
+
+    Args:
+        ctx:              WatchdogContext with thesis + market data.
+        investor_profile: Optional rendered InvestorContext from ContextBuilder.
+                          Appended after the main block when provided.
+    """
     price_section = "Không có dữ liệu giá."
     if ctx.current_price and ctx.entry_price:
         pnl = (ctx.current_price - ctx.entry_price) / ctx.entry_price * 100
@@ -112,7 +118,7 @@ def build_user_prompt(ctx: WatchdogContext) -> str:
         else ""
     )
 
-    return f"""Mã: {ctx.ticker}
+    prompt = f"""Mã: {ctx.ticker}
 Thês: {ctx.thesis_title}
 Tóm tắt: {ctx.thesis_summary or 'N/A'}
 
@@ -126,3 +132,8 @@ Bối cảnh vĩ mô: {ctx.macro_context}
 Tin tức gần nhất: {ctx.recent_news}{stale_note}
 
 Đánh giá sức khoẻ thesis và trả về JSON theo schema đã định."""
+
+    if investor_profile:
+        prompt += f"\n\n{investor_profile}"
+
+    return prompt
