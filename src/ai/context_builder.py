@@ -12,15 +12,18 @@ Design rules:
     - Each source is fetched independently; a failure in one source
       MUST NOT block the others (graceful degradation).
     - Does NOT import from: bot, briefing, watchlist, api, readmodel.
-    - Dependency direction: ai → platform, thesis (read), portfolio (read).
+    - Does NOT import ORM models from portfolio — use get_portfolio_context().
+    - Dependency direction: ai → platform, thesis (read), portfolio (public API).
     - Session is injected by caller; ContextBuilder does not own sessions.
+    - user_id is optional for backward compatibility; portfolio bias degrades
+      gracefully when user_id is None.
 
 Usage::
 
     from src.ai.context_builder import ContextBuilder, render_for_agent
 
     async with AsyncSessionLocal() as session:
-        ctx = await ContextBuilder(session).build()
+        ctx = await ContextBuilder(session, user_id="user_123").build()
     block = render_for_agent(ctx)
     # pass block as investor_profile= kwarg to prompt builders
 """
@@ -137,10 +140,18 @@ class ContextBuilder:
     Each ``_fetch_*`` method is fully independent and silently degrades
     to empty string on any exception. This ensures ContextBuilder.build()
     never raises and never blocks an AI call due to a missing data source.
+
+    Args:
+        session: AsyncSession — caller manages lifecycle.
+        user_id: Optional user identifier. When provided, enables portfolio
+                 bias fetching via get_portfolio_context(). When None,
+                 portfolio_bias is skipped and source_flags["portfolio_bias"]
+                 is set to False.
     """
 
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, user_id: str | None = None) -> None:
         self._session = session
+        self._user_id = user_id
 
     async def build(self) -> InvestorContext:
         """Build and return InvestorContext. Never raises."""
@@ -164,6 +175,7 @@ class ContextBuilder:
             sources_available=sum(ctx.source_flags.values()),
             sources_total=len(ctx.source_flags),
             is_empty=ctx.is_empty(),
+            user_id=self._user_id,
         )
         return ctx
 
@@ -188,7 +200,6 @@ class ContextBuilder:
             snapshot = await svc.get_latest()
 
             if snapshot and snapshot.summary_for_ai:
-                # DB snapshot available — use pre-rendered block
                 static = StaticProfile.from_settings()
                 inv_ctx = _InvCtx(static=static, snapshot=snapshot)
                 return inv_ctx.to_prompt_block(), True
@@ -268,42 +279,34 @@ class ContextBuilder:
             return "", False
 
     async def _fetch_portfolio_bias(self) -> tuple[str, bool]:
-        """Return short sector-weight string from open positions.
+        """Return short sector-weight string via portfolio public contract.
 
-        Uses avg_cost * qty as cost-basis proxy for sector weight.
-        Position.is_open is a Python @property — cannot be used in SQLAlchemy
-        WHERE clauses. Use column-level predicates instead:
-            closed_at IS NULL AND qty > 0
+        Uses get_portfolio_context() — the single public entry point for
+        portfolio data. Does NOT import Position ORM model directly.
+
+        Degrades gracefully when user_id is None (returns empty string).
         """
-        try:
-            from sqlalchemy import select
-
-            from src.portfolio.models import Position
-
-            result = await self._session.execute(
-                select(Position).where(
-                    Position.closed_at.is_(None),
-                    Position.qty > 0,
-                )
+        if not self._user_id:
+            logger.debug(
+                "context_builder.portfolio_bias_skipped",
+                reason="no_user_id",
             )
-            positions = result.scalars().all()
-            if not positions:
+            return "", False
+
+        try:
+            from src.portfolio import get_portfolio_context
+
+            portfolio_ctx = await get_portfolio_context(
+                self._session,
+                user_id=self._user_id,
+                include_prices=False,  # fast path — cost-basis weights only
+            )
+
+            if not portfolio_ctx.sector_weights:
                 return "", False
 
-            sector_totals: dict[str, float] = {}
-            total_value = 0.0
-            for pos in positions:
-                sector = pos.sector or "Unknown"
-                # cost_basis = avg_cost * qty (market_value not stored on Position)
-                cost_basis = float(pos.avg_cost) * float(pos.qty)
-                sector_totals[sector] = sector_totals.get(sector, 0.0) + cost_basis
-                total_value += cost_basis
-
-            if total_value == 0:
-                return "", False
-
-            top = sorted(sector_totals.items(), key=lambda x: x[1], reverse=True)[:3]
-            parts = [f"{s} {(v / total_value) * 100:.0f}%" for s, v in top if v > 0]
+            top = list(portfolio_ctx.sector_weights.items())[:3]
+            parts = [f"{sector} {weight:.0f}%" for sector, weight in top if weight > 0]
             return ", ".join(parts), True
         except Exception as exc:
             logger.warning("context_builder.portfolio_bias_error", error=str(exc))
