@@ -1,23 +1,23 @@
-"""BriefingAgent — generates morning and end-of-day market briefs.
+"""BriefingAgent — AI agent for morning and EOD brief generation.
 
 Owner: ai segment.
-Caller: briefing segment's BriefingService.
+Callers: briefing.BriefingService.
 
-This agent does NOT know watchlist business rules or user preferences;
-those are resolved by BriefingService before calling this agent.
+This agent is a thin wrapper around the AI client. It:
+- builds prompts via ai/prompts/brief.py
+- calls the AI client with the appropriate schema
+- returns structured BriefOutput
+
+No business logic, no DB access, no Discord formatting.
 """
 
 from __future__ import annotations
 
-import json
-
-from pydantic import ValidationError
-
-from src.ai.client import PerplexityClient, PerplexityError
+from src.ai.client import AIClient
 from src.ai.prompts.brief import (
     SYSTEM_PROMPT,
-    build_eod_prompt,
     build_morning_prompt,
+    build_eod_prompt,
 )
 from src.ai.schemas import BriefOutput
 from src.platform.logging import get_logger
@@ -26,14 +26,13 @@ logger = get_logger(__name__)
 
 
 class BriefingAgent:
-    """AI agent for generating market briefs.
+    """Generates morning and EOD briefs via AI.
 
-    Supports two brief types:
-    - morning_brief: pre-market context, watchlist scan priming
-    - eod_brief: end-of-day recap, P&L context, next-day prep
+    Args:
+        client: Injected AIClient with retry/circuit-breaker.
     """
 
-    def __init__(self, client: PerplexityClient) -> None:
+    def __init__(self, client: AIClient) -> None:
         self._client = client
 
     async def morning_brief(
@@ -44,44 +43,50 @@ class BriefingAgent:
         portfolio_context: str = "",
         thesis_context: str = "",
         past_lessons: str = "",
+        investor_profile: str = "",
     ) -> BriefOutput:
-        """Generate a pre-market morning brief.
+        """Generate a morning brief for the given watchlist and market context.
 
         Args:
-            market_context:    Overnight/pre-market price summary string.
-            watchlist_tickers: Tickers from user's watchlist to focus on.
-            extra_context:     Optional free-text context (news, macro events).
-            portfolio_context: Optional P&L snapshot from PnlService.
-                               Empty string = skip portfolio section gracefully.
-            thesis_context:    Optional active thesis summary from ThesisService.
-                               When provided, AI cross-references stop_loss levels
-                               against current prices and forces ACT_TODAY for
-                               any ticker approaching thesis invalidation.
-                               Empty string = skip thesis section gracefully.
-            past_lessons:      Optional formatted decision history from LessonService.
-                               When provided, AI personalises analysis by referencing
-                               the investor's own past outcomes, reinforcing successful
-                               patterns and flagging repeated loss patterns.
-                               Empty string = skip lesson section gracefully.
-
-        Returns:
-            Typed BriefOutput.
-
-        Raises:
-            ValueError: If response cannot be parsed.
-            PerplexityError: On API failure.
+            market_context:    Market data string (quotes, indices, news summary).
+            watchlist_tickers: List of ticker symbols in the user's watchlist.
+            extra_context:     Optional free-form additional context.
+            portfolio_context: Optional portfolio P&L snapshot string.
+            thesis_context:    Optional active thesis summary string.
+            past_lessons:      Optional formatted lesson history from LessonService.
+            investor_profile:  Optional pre-rendered investor profile block from
+                               ContextBuilder.render_for_agent(). When provided,
+                               the AI personalises prioritized_actions against the
+                               investor's risk appetite, avoid list, and patterns.
         """
-        return await self._run_brief(
-            brief_type="morning",
-            prompt=build_morning_prompt(
-                market_context=market_context,
-                watchlist_tickers=watchlist_tickers,
-                extra_context=extra_context,
-                portfolio_context=portfolio_context,
-                thesis_context=thesis_context,
-                past_lessons=past_lessons,
-            ),
+        prompt = build_morning_prompt(
+            market_context=market_context,
+            watchlist_tickers=watchlist_tickers,
+            extra_context=extra_context,
+            portfolio_context=portfolio_context,
+            thesis_context=thesis_context,
+            past_lessons=past_lessons,
+            investor_profile=investor_profile,
         )
+        logger.debug(
+            "briefing_agent.morning_brief.calling_ai",
+            ticker_count=len(watchlist_tickers),
+            has_portfolio=bool(portfolio_context),
+            has_thesis=bool(thesis_context),
+            has_lessons=bool(past_lessons),
+            has_investor_profile=bool(investor_profile),
+        )
+        result: BriefOutput = await self._client.chat(
+            system_prompt=SYSTEM_PROMPT,
+            user_prompt=prompt,
+            response_schema=BriefOutput,
+        )
+        logger.info(
+            "briefing_agent.morning_brief.done",
+            sentiment=getattr(result, "sentiment", None),
+            action_count=len(getattr(result, "prioritized_actions", []) or []),
+        )
+        return result
 
     async def eod_brief(
         self,
@@ -91,61 +96,25 @@ class BriefingAgent:
     ) -> BriefOutput:
         """Generate an end-of-day brief.
 
-        Args:
-            market_context:    Intraday summary, net foreign flow, index performance.
-            watchlist_tickers: Tickers to review for the day.
-            extra_context:     Optional free-text context.
-
-        Returns:
-            Typed BriefOutput.
-
-        Raises:
-            ValueError: If response cannot be parsed.
-            PerplexityError: On API failure.
+        EOD brief does not inject investor profile — it is a market recap,
+        not a decision-making prompt. Profile injection is morning-only.
         """
-        return await self._run_brief(
-            brief_type="eod",
-            prompt=build_eod_prompt(
-                market_context=market_context,
-                watchlist_tickers=watchlist_tickers,
-                extra_context=extra_context,
-            ),
+        prompt = build_eod_prompt(
+            market_context=market_context,
+            watchlist_tickers=watchlist_tickers,
+            extra_context=extra_context,
         )
-
-    async def _run_brief(self, brief_type: str, prompt: str) -> BriefOutput:
-        """Shared execution path for both brief types."""
-        logger.info("briefing_agent.start", brief_type=brief_type)
-
-        try:
-            response = await self._client.chat_completion(
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.3,
-                response_format={
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "BriefOutput",
-                        "schema": BriefOutput.model_json_schema(),
-                        "strict": True,
-                    },
-                },
-            )
-            raw_text = self._client.extract_text(response)
-            data = json.loads(raw_text)
-            result = BriefOutput.model_validate(data)
-        except (json.JSONDecodeError, ValidationError) as exc:
-            logger.error("briefing_agent.parse_error", brief_type=brief_type, error=str(exc))
-            raise ValueError(f"Failed to parse AI response for {brief_type} brief: {exc}") from exc
-        except PerplexityError:
-            logger.error("briefing_agent.api_error", brief_type=brief_type)
-            raise
-
+        logger.debug(
+            "briefing_agent.eod_brief.calling_ai",
+            ticker_count=len(watchlist_tickers),
+        )
+        result: BriefOutput = await self._client.chat(
+            system_prompt=SYSTEM_PROMPT,
+            user_prompt=prompt,
+            response_schema=BriefOutput,
+        )
         logger.info(
-            "briefing_agent.complete",
-            brief_type=brief_type,
-            sentiment=result.sentiment,
-            prioritized_action_count=len(result.prioritized_actions),
+            "briefing_agent.eod_brief.done",
+            sentiment=getattr(result, "sentiment", None),
         )
         return result

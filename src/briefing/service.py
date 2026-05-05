@@ -8,6 +8,7 @@ Responsibilities:
 - collect portfolio P&L snapshot from portfolio segment (optional)
 - collect active thesis context from thesis segment (optional)
 - collect past decision lessons from thesis segment (optional, via LessonService)
+- collect investor profile context from ai segment (optional, via ContextBuilder)
 - call BriefingAgent for morning/EOD narrative
 - persist BriefSnapshot via BriefSnapshotRepository
 - return structured BriefOutput to adapters
@@ -26,6 +27,7 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.ai.agents.briefing import BriefingAgent
+from src.ai.context_builder import ContextBuilder, render_for_agent
 from src.ai.schemas import BriefOutput
 from src.briefing.models import BriefSnapshot
 from src.briefing.repository import BriefSnapshotRepository
@@ -50,9 +52,11 @@ class BriefingService:
                             formatted and sent to the AI so it can force ACT_TODAY
                             for any ticker approaching invalidation.
                             Pass None to skip thesis section gracefully.
-        session:            AsyncSession for persisting BriefSnapshot and reading
-                            past decision lessons via LessonService.
-                            Pass None to skip persistence and lesson injection.
+        session:            AsyncSession for persisting BriefSnapshot, reading past
+                            decision lessons via LessonService, and building investor
+                            profile context via ContextBuilder.
+                            Pass None to skip persistence, lesson injection, and
+                            investor profile injection.
     """
 
     def __init__(
@@ -78,6 +82,7 @@ class BriefingService:
         portfolio_context = await self._build_portfolio_context(user_id)
         thesis_context = await self._build_thesis_context(user_id)
         past_lessons = await self._build_lesson_context(user_id)
+        investor_profile = await self._build_investor_profile_context()
         logger.info(
             "briefing.generate_morning",
             user_id=user_id,
@@ -85,6 +90,7 @@ class BriefingService:
             has_portfolio=bool(portfolio_context),
             has_thesis=bool(thesis_context),
             has_lessons=bool(past_lessons),
+            has_investor_profile=bool(investor_profile),
         )
         result = await self._agent.morning_brief(
             market_context=market_context,
@@ -92,6 +98,7 @@ class BriefingService:
             portfolio_context=portfolio_context,
             thesis_context=thesis_context,
             past_lessons=past_lessons,
+            investor_profile=investor_profile,
         )
         await self._persist(user_id=user_id, phase="morning", output=result, tickers=tickers)
         return result
@@ -293,4 +300,29 @@ class BriefingService:
             return await svc.build_lesson_context(user_id=user_id)
         except Exception as exc:
             logger.warning("briefing.lesson_context_failed", user_id=user_id, error=str(exc))
+            return ""
+
+    async def _build_investor_profile_context(self) -> str:
+        """Build investor profile block via ContextBuilder for morning brief.
+
+        Calls ContextBuilder(session).build() → render_for_agent() to produce
+        a pre-rendered plain-text block that BriefingAgent injects into the
+        morning prompt for personalised prioritized_actions.
+
+        Owner: ai segment (ContextBuilder). This method is a thin adapter —
+        it does NOT contain profile assembly logic.
+
+        Returns empty string when:
+        - session is not injected (scheduler/test without DB)
+        - ContextBuilder finds no data in any source
+        - any unexpected error occurs
+        Brief generation must never be blocked by profile unavailability.
+        """
+        if self._session is None:
+            return ""
+        try:
+            ctx = await ContextBuilder(self._session).build()
+            return render_for_agent(ctx)
+        except Exception as exc:
+            logger.warning("briefing.investor_profile_context_failed", error=str(exc))
             return ""
