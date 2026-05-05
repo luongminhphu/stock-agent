@@ -16,8 +16,10 @@ function normalizeCount(r) {
 }
 
 function normalizeAccuracy(r) {
-  if (r.accuracy != null) return (r.accuracy * 100).toFixed(1) + '%';
-  if (r.pct      != null) return r.pct + '%';
+  // Backend trả accuracy_pct (0–100). Fallback r.accuracy (0–1) và r.pct cho compat.
+  if (r.accuracy_pct != null) return Number(r.accuracy_pct).toFixed(1) + '%';
+  if (r.accuracy     != null) return (r.accuracy * 100).toFixed(1) + '%';
+  if (r.pct          != null) return r.pct + '%';
   return null; // chưa có data
 }
 
@@ -105,7 +107,7 @@ export function renderPerformance(rows) {
       </thead>
       <tbody>
         ${rows.map(r => {
-          const pnl     = r.pnl_pct ?? r.pnl ?? null;
+          const pnl     = r.avg_pnl_pct ?? r.pnl_pct ?? r.pnl ?? null;
           const pnlText = pnl != null
             ? `${pnl > 0 ? '+' : ''}${Number(pnl).toFixed(1)}%`
             : '<span class="text-muted" style="font-size:.82rem;" title="Chưa có dữ liệu giá">N/A</span>';
@@ -118,7 +120,7 @@ export function renderPerformance(rows) {
             <td style="max-width:200px;">${esc(r.title ?? '—')}</td>
             <td class="${pnlClass}">${pnlText}</td>
             <td>${r.review_count ?? r.reviews ?? '—'}</td>
-            <td style="color:var(--muted);font-size:.82rem;">${fmtDate(r.updated_at)}</td>
+            <td style="color:var(--muted);font-size:.82rem;">${fmtDate(r.last_snapshot_at ?? r.updated_at)}</td>
           </tr>`;
         }).join('')}
       </tbody>
