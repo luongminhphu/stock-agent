@@ -33,6 +33,14 @@
      - panel-main: min-width:0 + overflow:hidden guard
      - action-rail: min-width:0 guard
      - .field-compact select: full dark-theme styling → fix bể khung statusFilter
+
+   FIX LOG (2026-05-05):
+     - --rail-w: clamp max 360px → 420px — rail rộng hơn ở 1920px+
+     - --page-px: clamp max 28px → 48px — gutter thoáng hơn ở màn lớn
+     - .workspace-grid: thêm max-width 1680px + margin-inline auto
+       → content không dải vô hạn trên 24-inch (1920–2560px)
+     - .command-strip: thêm max-width 1680px + margin-inline auto
+       → strip canh giữa đồng bộ với workspace
 */
 
 /* ── SKIP LINK ──────────────────────────────────── */
@@ -56,8 +64,10 @@
 :root {
   --topbar-h:      52px;
   --strip-h:       56px;
-  --rail-w:        clamp(280px, 24vw, 360px);
-  --page-px:       clamp(16px, 3vw, 28px);
+  /* FIX: rail rộng hơn ở màn lớn — tránh bị cứng 360px trên 1920px+ */
+  --rail-w:        clamp(280px, 22vw, 420px);
+  /* FIX: gutter lớn hơn ở màn lớn — tránh sát mép trên 24-inch */
+  --page-px:       clamp(16px, 3vw, 48px);
   --workspace-gap: 16px;
   --layer-gap:     16px;
   --panel-pad:     clamp(14px, 2vw, 20px);
@@ -248,6 +258,10 @@
   background: var(--line);
   border-bottom: 1px solid var(--line);
   container-type: inline-size;
+  /* FIX: cap strip width đồng bộ với workspace — tránh dải hết 2560px */
+  max-width: 1680px;
+  margin-inline: auto;
+  width: 100%;
 }
 
 .signal-card {
@@ -332,6 +346,10 @@
   flex: 1;
   align-items: start;
   transition: grid-template-columns .2s ease;
+  /* FIX: cap tổng chiều rộng workspace — tránh dải vô hạn trên 24-inch (1920–2560px) */
+  max-width: 1680px;
+  margin-inline: auto;
+  width: 100%;
 }
 
 /* Rail widens when thesis detail inspector is open */
