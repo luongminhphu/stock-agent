@@ -8,7 +8,6 @@ Callers: bot.commands.sector_rotation, briefing (context injection).
 from __future__ import annotations
 
 import json
-import logging
 
 from pydantic import ValidationError
 
@@ -17,8 +16,9 @@ from src.ai.schemas import SectorRotationOutput, WatchlistCrosscheck
 from src.ai.prompts.sector_rotation import build_sector_rotation_prompt
 from src.market.sector_rotation_service import SectorRotationService
 from src.market.quote_service import QuoteService
+from src.platform.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _SYSTEM_PROMPT = (
     "Bạn là chuyên gia phân tích dòng tiền chứng khoán Việt Nam. "
@@ -153,7 +153,7 @@ class SectorRotationAgent:
                     sector_avg_change_pct=round(sector_avg, 2),
                     is_contrarian=is_contrarian,
                     note=(
-                        f"{ticker_upper} {q.change_pct:+.2f}% trong khi "
+                        f"{ticker_upper} {q.change_pct:+.2f}% dalam khi "
                         f"{sector} avg {sector_avg:+.2f}%"
                     ),
                 )
