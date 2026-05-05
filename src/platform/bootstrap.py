@@ -7,6 +7,10 @@ Guarantees:
     - Idempotent: safe to call multiple times (singletons are initialised only once).
     - Fast in test environment: mock adapter selected, no real HTTP clients.
     - All get_*() raise RuntimeError if called before bootstrap().
+
+Lifecycle:
+    await bootstrap()   — call on startup (API lifespan / bot on_ready)
+    await shutdown()    — call on teardown (API lifespan / bot on_close)
 """
 
 from __future__ import annotations
@@ -146,6 +150,24 @@ async def bootstrap() -> None:
                 "platform.bootstrap.memory_consolidator_skipped",
                 reason="scheduler_user_id not configured",
             )
+
+
+async def shutdown() -> None:
+    """Gracefully release resources held by singletons.
+
+    Call this in the API lifespan teardown and in the bot on_close handler.
+    Safe to call even if bootstrap() was never called (all singletons are None).
+    """
+    global _quote_service
+
+    if _quote_service is not None:
+        try:
+            await _quote_service.close()  # type: ignore[union-attr]
+            logger.info("platform.shutdown.quote_service_closed")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("platform.shutdown.quote_service_close_failed", error=str(exc))
+
+    logger.info("platform.shutdown.complete")
 
 
 # ---------------------------------------------------------------------------

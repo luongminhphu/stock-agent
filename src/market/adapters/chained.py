@@ -9,6 +9,8 @@ Design:
   batch if primary fails — no per-symbol granularity to keep it simple.
 - Callers receive a Quote regardless of which adapter succeeded.
 - Metrics: tracks source ('primary'/'secondary'/'failed') per call via logger.
+- On close(): forwards to both primary and secondary so httpx clients are
+  released on app shutdown regardless of which adapter was active.
 """
 
 from __future__ import annotations
@@ -84,3 +86,12 @@ class ChainedAdapter(MarketDataAdapter):
                     secondary_error=str(secondary_exc),
                 )
                 raise secondary_exc
+
+    async def close(self) -> None:
+        """Close both primary and secondary adapters. Errors are logged and swallowed."""
+        for name, adapter in (("primary", self._primary), ("secondary", self._secondary)):
+            try:
+                await adapter.close()
+                logger.debug("chained.close", adapter=name)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("chained.close_failed", adapter=name, error=str(exc))

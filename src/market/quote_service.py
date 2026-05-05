@@ -72,6 +72,14 @@ class MarketDataAdapter(ABC):
     @abstractmethod
     async def fetch_bulk_quotes(self, tickers: list[str]) -> list[Quote]: ...
 
+    async def close(self) -> None:
+        """Release any held resources (e.g. httpx.AsyncClient).
+
+        Default is a no-op so adapters with no resources (MockAdapter)
+        do not need to override this method.
+        Called by bootstrap.shutdown() on application teardown.
+        """
+
 
 # ---------------------------------------------------------------------------
 # Service
@@ -104,3 +112,8 @@ class QuoteService:
 
     async def get_bulk_quotes(self, tickers: list[str]) -> list[Quote]:
         return await self._require_adapter().fetch_bulk_quotes([t.upper() for t in tickers])
+
+    async def close(self) -> None:
+        """Forward close to the underlying adapter. Safe to call even if no adapter."""
+        if self._adapter is not None:
+            await self._adapter.close()
