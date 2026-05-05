@@ -126,8 +126,7 @@ class SchedulerTriggerCog(BaseCog):
 
         try:
             from src.platform.bootstrap import get_snapshot_scheduler
-            scheduler = get_snapshot_scheduler()
-            await scheduler._run_snapshot()  # type: ignore[union-attr]
+            written = await get_snapshot_scheduler().run_once()
         except Exception as exc:
             logger.error("run_snapshot.error", error=str(exc), exc_info=True)
             await self.send_error(
@@ -137,33 +136,10 @@ class SchedulerTriggerCog(BaseCog):
             )
             return
 
-        # Đọc lại số snapshot vừa ghi để báo cáo
-        try:
-            from datetime import UTC, datetime, timedelta
-
-            from sqlalchemy import func, select
-
-            from src.platform.db import AsyncSessionLocal
-            from src.thesis.models import ThesisSnapshot
-
-            cutoff = datetime.now(UTC) - timedelta(minutes=2)
-            async with AsyncSessionLocal() as session:
-                written = (
-                    await session.scalar(
-                        select(func.count(ThesisSnapshot.id)).where(
-                            ThesisSnapshot.snapshotted_at >= cutoff
-                        )
-                    )
-                ) or 0
-        except Exception:
-            written = -1  # không lấy được count nhưng job đã chạy
-
-        count_text = f"**{written}** snapshot(s) vừa ghi." if written >= 0 else "Job chạy xong (không đếm được số rows)."
-
         embed = discord.Embed(
             title="📸 Snapshot hoàn tất",
             description=(
-                f"{count_text}\n\n"
+                f"**{written}** snapshot(s) vừa ghi.\n\n"
                 "Tab **Backtesting** trên dashboard sẽ có data sau khi refresh."
             ),
             color=discord.Color.green(),

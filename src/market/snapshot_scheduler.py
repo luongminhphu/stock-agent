@@ -12,6 +12,8 @@ Two distinct concerns are separated here:
            — market segment NEVER imports Thesis/ThesisStatus models directly.
         3. Bulk-fetch live prices from quote_service.
         4. Delegate snapshot writes to ThesisSnapshotService.record_daily_snapshots().
+      Returns:
+        int — number of snapshots written (0 if nothing to do or fetch failed).
 
   SnapshotScheduler
       Thin Discord shim. The ONLY place discord.ext.tasks is imported in this
@@ -28,13 +30,17 @@ from src.platform.logging import get_logger
 logger = get_logger(__name__)
 
 
-async def run_snapshot_job(quote_service: object, session_factory: object) -> None:
+async def run_snapshot_job(quote_service: object, session_factory: object) -> int:
     """Fetch live prices for active thesis tickers and write daily snapshots.
 
     Args:
         quote_service:   QuoteService instance (duck-typed to avoid circular import).
         session_factory: Callable that returns an AsyncSession context manager
                          (e.g. AsyncSessionLocal from src.platform.db).
+
+    Returns:
+        Number of snapshots written. Returns 0 if there are no active tickers
+        or if the bulk price fetch fails.
 
     This function is the testable core of the snapshot workflow.
     It contains zero Discord SDK imports.
@@ -51,7 +57,7 @@ async def run_snapshot_job(quote_service: object, session_factory: object) -> No
 
         if not tickers:
             logger.info("market.snapshot_job.no_active_tickers")
-            return
+            return 0
 
         # 2. Bulk fetch prices — market segment concern
         try:
@@ -59,7 +65,7 @@ async def run_snapshot_job(quote_service: object, session_factory: object) -> No
             price_map: dict[str, float] = {q.ticker: q.price for q in quotes}
         except Exception as exc:
             logger.error("market.snapshot_job.bulk_fetch_failed", error=str(exc))
-            return
+            return 0
 
         # 3. Delegate write to thesis segment
         written = await snapshot_svc.record_daily_snapshots(price_map)
@@ -69,6 +75,7 @@ async def run_snapshot_job(quote_service: object, session_factory: object) -> No
             snapshots_written=written,
             tickers_fetched=len(tickers),
         )
+        return written
 
 
 class SnapshotScheduler:
@@ -100,5 +107,15 @@ class SnapshotScheduler:
         self._task.cancel()
         logger.info("market.snapshot_scheduler.stopped")
 
+    async def run_once(self) -> int:
+        """Manual trigger — runs the snapshot job immediately and returns the
+        number of snapshots written.
+
+        Use this from bot commands or admin tools instead of calling _run()
+        directly. Safe to call outside the scheduled loop.
+        """
+        return await run_snapshot_job(self._quote_service, self._session_factory)
+
     async def _run(self) -> None:
+        """Scheduled loop callback — return value intentionally discarded."""
         await run_snapshot_job(self._quote_service, self._session_factory)
