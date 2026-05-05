@@ -45,6 +45,19 @@ class Settings(BaseSettings):
     thesis_drift_cooldown_hours: float = 4.0  # Không re-trigger trong N giờ sau lần review gần nhất
 
     # ------------------------------------------------------------------
+    # Investor Static Profile — Wave 1 Blueprint V2
+    # Edit these in .env when your investment style changes.
+    # Consumed by InvestorProfileService.StaticProfile.from_settings()
+    # and injected into every AI agent call via ContextBuilder (Wave 2).
+    # ------------------------------------------------------------------
+
+    investor_risk_appetite: str = "medium — max drawdown 10%, position size ≤15%"
+    investor_thesis_style: str = "fundamental, hold 3-6 tháng"
+    investor_trading_horizon: str = "swing to positional — không day trade"
+    investor_preferred_sectors: str = "banking, consumer staples, tech"
+    investor_avoid: str = "speculative penny stocks, T+ illiquid"
+
+    # ------------------------------------------------------------------
     # Derived properties
     # ------------------------------------------------------------------
 
