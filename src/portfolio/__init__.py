@@ -23,8 +23,16 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.portfolio.models import PortfolioContext, PositionSummary, RealizedSummary
+from src.portfolio.models import PortfolioContext, PositionSummary
 from src.portfolio.pnl_service import PnlService, PortfolioPnl, PositionPnl
+
+# RealizedSummary lives in pnl_service — import from there if needed
+try:
+    from src.portfolio.pnl_service import RealizedSummary  # type: ignore[attr-defined]
+    _has_realized_summary = True
+except ImportError:
+    _has_realized_summary = False
+
 from src.portfolio.service import PortfolioService
 
 __all__ = [
@@ -35,12 +43,14 @@ __all__ = [
     # PnlService output types
     "PortfolioPnl",
     "PositionPnl",
-    "RealizedSummary",
     # AI context contract
     "PortfolioContext",
     "PositionSummary",
     "get_portfolio_context",
 ]
+
+if _has_realized_summary:
+    __all__.append("RealizedSummary")
 
 
 async def get_portfolio_context(
