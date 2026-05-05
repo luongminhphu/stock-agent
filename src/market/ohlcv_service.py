@@ -6,9 +6,33 @@ Wave 2: implement adapter backed by real data provider.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timezone
 from enum import StrEnum
 
+
+# ---------------------------------------------------------------------------
+# ICT date helper
+# ---------------------------------------------------------------------------
+
+def _today_ict() -> date:
+    """Return today's date in Asia/Ho_Chi_Minh (ICT, UTC+7).
+
+    Using date.today() on a UTC server returns the wrong date after
+    17:00 UTC (= midnight ICT), which would set to_date to tomorrow
+    before HOSE has published any data for that day.
+
+    Falls back to date.today() if zoneinfo is unavailable.
+    """
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).date()
+    except Exception:  # noqa: BLE001
+        return date.today()
+
+
+# ---------------------------------------------------------------------------
+# Domain types
+# ---------------------------------------------------------------------------
 
 class Interval(StrEnum):
     D1 = "1D"
@@ -39,6 +63,10 @@ class Candle:
         return abs(self.close - self.open) / self.open * 100
 
 
+# ---------------------------------------------------------------------------
+# Adapter contract
+# ---------------------------------------------------------------------------
+
 class OHLCVAdapter(ABC):
     @abstractmethod
     async def fetch_candles(
@@ -49,6 +77,10 @@ class OHLCVAdapter(ABC):
         interval: Interval = Interval.D1,
     ) -> list[Candle]: ...
 
+
+# ---------------------------------------------------------------------------
+# Service
+# ---------------------------------------------------------------------------
 
 class OHLCVServiceNotConfiguredError(Exception): ...
 
@@ -83,11 +115,10 @@ class OHLCVService:
         n: int = 20,
         interval: Interval = Interval.D1,
     ) -> list[Candle]:
-        """Convenience: fetch last N candles. Adapter resolves date range."""
+        """Convenience: fetch last N candles ending at today (ICT)."""
         from datetime import timedelta
 
-        today = date.today()
-        # Provide enough buffer for weekends/holidays
-        from_date = today - timedelta(days=n * 2)
+        today = _today_ict()  # ICT-aware, never overshoots into tomorrow
+        from_date = today - timedelta(days=n * 2)  # buffer for weekends/holidays
         candles = await self.get_candles(ticker, from_date, today, interval)
         return candles[-n:] if len(candles) >= n else candles
