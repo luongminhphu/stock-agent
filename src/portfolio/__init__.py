@@ -23,16 +23,9 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.market.quote_service import QuoteService
 from src.portfolio.models import PortfolioContext, PositionSummary
-from src.portfolio.pnl_service import PnlService, PortfolioPnl, PositionPnl
-
-# RealizedSummary lives in pnl_service — import from there if needed
-try:
-    from src.portfolio.pnl_service import RealizedSummary  # type: ignore[attr-defined]
-    _has_realized_summary = True
-except ImportError:
-    _has_realized_summary = False
-
+from src.portfolio.pnl_service import PnlService, PortfolioPnl, PositionPnl, RealizedSummary
 from src.portfolio.service import PortfolioService
 
 __all__ = [
@@ -43,20 +36,19 @@ __all__ = [
     # PnlService output types
     "PortfolioPnl",
     "PositionPnl",
+    "RealizedSummary",
     # AI context contract
     "PortfolioContext",
     "PositionSummary",
     "get_portfolio_context",
 ]
 
-if _has_realized_summary:
-    __all__.append("RealizedSummary")
-
 
 async def get_portfolio_context(
     session: AsyncSession,
     user_id: str,
     *,
+    quote_service: QuoteService | None = None,
     include_prices: bool = False,
 ) -> PortfolioContext:
     """Build a PortfolioContext snapshot for a user.
@@ -67,6 +59,10 @@ async def get_portfolio_context(
     Args:
         session:        AsyncSession — caller manages lifecycle.
         user_id:        Target user.
+        quote_service:  Optional pre-configured QuoteService. When omitted,
+                        a default QuoteService() is created (Wave 1 stub;
+                        raises QuoteServiceNotConfiguredError if get_quote
+                        is actually called without a wired adapter).
         include_prices: When True, attempts to enrich positions with current
                         market prices via QuoteService (best-effort; positions
                         that fail price lookup keep market_value=None).
@@ -81,7 +77,7 @@ async def get_portfolio_context(
     logger = get_logger(__name__)
 
     svc = PortfolioService(session)
-    pnl_svc = PnlService(session)
+    pnl_svc = PnlService(session, quote_service or QuoteService())
 
     positions = await svc.list_open(user_id)
 
