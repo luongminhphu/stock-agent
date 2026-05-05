@@ -112,7 +112,9 @@ async def bootstrap() -> None:
     if _snapshot_scheduler is None:
         from src.market.snapshot_scheduler import SnapshotScheduler
 
-        _snapshot_scheduler = SnapshotScheduler(quote_service=_quote_service)  # type: ignore[arg-type]
+        # SnapshotScheduler.__init__() takes no args — it lazily calls
+        # get_quote_service() inside _run_snapshot at task execution time.
+        _snapshot_scheduler = SnapshotScheduler()
         logger.info("platform.bootstrap.snapshot_scheduler_ready")
 
 
