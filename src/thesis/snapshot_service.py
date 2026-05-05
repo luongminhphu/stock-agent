@@ -2,7 +2,7 @@
 
 Owner: thesis segment.
 
-Called by market.SnapshotScheduler after it fetches live prices.
+Called by market.run_snapshot_job after it fetches live prices.
 This service owns the full write concern:
   - Load active theses with entry_price set
   - Compute pnl_pct from price_map
@@ -39,6 +39,23 @@ class ThesisSnapshotService:
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
+
+    async def get_active_tickers(self) -> list[str]:
+        """Return unique tickers for all active theses that have an entry_price set.
+
+        Called by market.run_snapshot_job so the market segment never needs
+        to import Thesis / ThesisStatus models directly.
+
+        Returns:
+            Deduplicated list of uppercase ticker strings.
+        """
+        result = await self._session.execute(
+            select(Thesis.ticker).where(
+                Thesis.status == ThesisStatus.ACTIVE,
+                Thesis.entry_price.is_not(None),
+            )
+        )
+        return list({row[0] for row in result.all()})
 
     async def record_daily_snapshots(self, price_map: dict[str, float]) -> int:
         """Create ThesisSnapshot rows for active theses present in price_map.

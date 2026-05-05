@@ -77,6 +77,13 @@ class OHLCVAdapter(ABC):
         interval: Interval = Interval.D1,
     ) -> list[Candle]: ...
 
+    async def close(self) -> None:
+        """Release any held resources (e.g. httpx.AsyncClient).
+
+        Default is a no-op so adapters with no resources do not need
+        to override this method. Matches the pattern in MarketDataAdapter.
+        """
+
 
 # ---------------------------------------------------------------------------
 # Service
@@ -101,11 +108,11 @@ class OHLCVService:
     async def close(self) -> None:
         """Release adapter resources (e.g. httpx connection pool).
 
-        Delegates to adapter.close() if present. Safe to call even if
-        no adapter is configured or adapter has no close() method.
+        Delegates to adapter.close(). Safe to call even if no adapter
+        is configured.
         """
-        if self._adapter is not None and hasattr(self._adapter, "close"):
-            await self._adapter.close()  # type: ignore[union-attr]
+        if self._adapter is not None:
+            await self._adapter.close()
 
     async def get_candles(
         self,

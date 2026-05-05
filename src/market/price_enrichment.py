@@ -59,7 +59,7 @@ class PriceEnrichmentService:
         return response
 
     async def enrich_watchlist(self, rows: list) -> list:
-        """Mutate WatchlistSnapshotRow với live price + change/volume/ceiling/floor."""
+        """Mutate WatchlistSnapshotRow with live price + change/volume/ceiling/floor."""
         if not rows:
             return rows
         tickers = list({r.ticker for r in rows})
@@ -80,41 +80,16 @@ class PriceEnrichmentService:
     # ------------------------------------------------------------------
 
     async def _bulk_fetch(self, tickers: list[str]) -> dict[str, float]:
-        """Fetch all tickers in one adapter call; return {TICKER: price}."""
-        if not tickers:
-            return {}
-        try:
-            quotes = await self._qs.get_bulk_quotes(tickers)
-            return {q.ticker: q.price for q in quotes}
-        except Exception as exc:
-            logger.warning(
-                "market.price_enrichment.bulk_fetch_failed",
-                tickers=tickers,
-                error=str(exc),
-            )
-            # Fall back to individual fetches so partial data beats no data
-            results: dict[str, float] = {}
-            tasks = {t: asyncio.create_task(self._safe_single(t)) for t in tickers}
-            for ticker, task in tasks.items():
-                price = await task
-                if price is not None:
-                    results[ticker] = price
-            return results
+        """Fetch all tickers; return {TICKER: price}.
 
-    async def _safe_single(self, ticker: str) -> float | None:
-        try:
-            quote = await self._qs.get_quote(ticker)
-            return quote.price
-        except Exception as exc:
-            logger.warning(
-                "market.price_enrichment.single_fetch_failed",
-                ticker=ticker,
-                error=str(exc),
-            )
-            return None
+        Delegates to _bulk_fetch_quotes and extracts prices, reusing
+        the same bulk→per-ticker fallback logic in one place.
+        """
+        quote_map = await self._bulk_fetch_quotes(tickers)
+        return {ticker: q.price for ticker, q in quote_map.items()}  # type: ignore[union-attr]
 
     async def _bulk_fetch_quotes(self, tickers: list[str]) -> dict[str, object]:
-        """Bulk fetch → {ticker: Quote}. Dùng cho enrich_watchlist."""
+        """Bulk fetch → {ticker: Quote}. Falls back to per-ticker on bulk failure."""
         if not tickers:
             return {}
         try:
@@ -122,7 +97,7 @@ class PriceEnrichmentService:
             return {q.ticker: q for q in quotes}
         except Exception as exc:
             logger.warning(
-                "market.price_enrichment.bulk_fetch_quotes_failed",
+                "market.price_enrichment.bulk_fetch_failed",
                 tickers=tickers,
                 error=str(exc),
             )
@@ -139,7 +114,7 @@ class PriceEnrichmentService:
             return await self._qs.get_quote(ticker)
         except Exception as exc:
             logger.warning(
-                "market.price_enrichment.single_quote_failed",
+                "market.price_enrichment.single_fetch_failed",
                 ticker=ticker,
                 error=str(exc),
             )
