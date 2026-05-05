@@ -13,6 +13,10 @@ Non-responsibilities:
 - No DB writes — stress-test is read-only, does not mutate thesis state
 - No Discord formatting (formatter lives in bot layer)
 - No business rule decisions (invalidation threshold lives in ReviewService)
+
+Sector context:
+- Provided by market.registry.SymbolRegistry.get_sector_context_str()
+- StressTestService does NOT own sector/key_metrics knowledge
 """
 
 from __future__ import annotations
@@ -21,84 +25,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.ai.agents.stress_test import StressTestAgent
 from src.ai.schemas import StressTestOutput
+from src.market.registry import SymbolRegistry
 from src.platform.logging import get_logger
 from src.thesis.repository import ThesisRepository
 
 logger = get_logger(__name__)
-
-# ---------------------------------------------------------------------------
-# Sector context helpers
-# ---------------------------------------------------------------------------
-
-_SECTOR_HINTS: dict[str, tuple[str, str]] = {
-    # ticker -> (sector_label, key_metrics_to_watch)
-    # Banking
-    "VCB":  ("Banking", "NIM, NPL ratio, room tín dụng, lãi suất điều hành NHNN"),
-    "BID":  ("Banking", "NIM, NPL ratio, room tín dụng, lãi suất điều hành NHNN"),
-    "CTG":  ("Banking", "NIM, NPL ratio, room tín dụng, lãi suất điều hành NHNN"),
-    "TCB":  ("Banking", "NIM, NPL ratio, room tín dụng, lãi suất điều hành NHNN"),
-    "MBB":  ("Banking", "NIM, NPL ratio, room tín dụng, lãi suất điều hành NHNN"),
-    "VPB":  ("Banking", "NIM, NPL ratio, room tín dụng, lãi suất điều hành NHNN"),
-    "HDB":  ("Banking", "NIM, NPL ratio, room tín dụng, lãi suất điều hành NHNN"),
-    "ACB":  ("Banking", "NIM, NPL ratio, room tín dụng, lãi suất điều hành NHNN"),
-    "STB":  ("Banking", "NIM, NPL ratio, room tín dụng, tái cơ cấu nợ xấu"),
-    "LPB":  ("Banking", "NIM, NPL ratio, room tín dụng, lãi suất điều hành NHNN"),
-    "MSB":  ("Banking", "NIM, NPL ratio, room tín dụng, lãi suất điều hành NHNN"),
-    # Real Estate
-    "VHM":  ("Real Estate", "lãi suất vay mua nhà, tỷ lệ hấp thụ, pháp lý dự án, tồn kho"),
-    "NVL":  ("Real Estate", "lãi suất vay mua nhà, tỷ lệ hấp thụ, pháp lý dự án, đòn bẩy tài chính"),
-    "PDR":  ("Real Estate", "lãi suất vay mua nhà, tỷ lệ hấp thụ, pháp lý dự án"),
-    "DXG":  ("Real Estate", "lãi suất vay mua nhà, tỷ lệ hấp thụ, pháp lý dự án"),
-    "KDH":  ("Real Estate", "lãi suất vay mua nhà, tỷ lệ hấp thụ, pháp lý dự án"),
-    "BCM":  ("Real Estate / KCN", "lãi suất vay mua nhà, tỷ lệ lấp đầy KCN, FDI inflow"),
-    # Industrial Park / FDI
-    "GVR":  ("Industrial / Rubber", "giá cao su tự nhiên, FDI vào chế biến, tỷ giá USD"),
-    "VGC":  ("Industrial / Building Material", "giá nguyên liệu, tốc độ triển khai BĐS, xuất khẩu"),
-    # Steel
-    "HPG":  ("Steel", "giá thép HRC, giá quặng sắt, hoạt động xây dựng, xuất khẩu thép"),
-    "NKG":  ("Steel", "giá thép cán nguội, biên lợi nhuận gia công, xuất khẩu"),
-    # Consumer / Retail
-    "MWG":  ("Consumer Electronics Retail", "sức mua tiêu dùng, tỷ lệ mở rộng cửa hàng, biên lợi nhuận"),
-    "MSN":  ("Consumer / F&B", "sức mua tiêu dùng, giá nguyên liệu đầu vào, tỷ giá"),
-    "VNM":  ("FMCG / Dairy", "giá sữa bột nhập khẩu, sức mua, thị phần nội địa"),
-    # Energy
-    "GAS":  ("Gas / Energy", "giá khí LNG, nhu cầu điện, hợp đồng Petro Vietnam"),
-    "PLX":  ("Petroleum Retail", "giá dầu thô, biên lợi nhuận kinh doanh xăng dầu, tỷ giá"),
-    "PVD":  ("Oil & Gas Services", "giá dầu Brent, rig day rate, capex E&P khu vực"),
-    # Aviation / Logistics
-    "HVN":  ("Aviation", "giá nhiên liệu jet, phục hồi du lịch quốc tế, tỷ giá USD"),
-    "ACV":  ("Airport Infrastructure", "lượng hành khách, phí dịch vụ sân bay, capex mở rộng"),
-    "GMD":  ("Logistics / Port", "sản lượng container, phí cảng, tăng trưởng xuất khẩu"),
-    # Tech / Software
-    "FPT":  ("Technology", "tăng trưởng IT outsourcing, biên lợi nhuận mảng nước ngoài, tỷ giá"),
-}
-
-
-def _get_sector_context(ticker: str) -> str:
-    """Return a one-line sector hint for AI macro_context injection.
-
-    Returns empty string for tickers not in the registry.
-    To add a new ticker: update _SECTOR_HINTS above.
-    """
-    entry = _SECTOR_HINTS.get(ticker.upper())
-    if not entry:
-        return ""
-    sector_label, key_metrics = entry
-    return f"Sector: {sector_label} — metrics then chốt cần theo dõi: {key_metrics}."
-
-
-# ---------------------------------------------------------------------------
-# Service
-# ---------------------------------------------------------------------------
 
 
 class StressTestService:
     """Orchestrates stress-test for a single active thesis.
 
     Args:
-        session:       AsyncSession for loading thesis data.
-        agent:         StressTestAgent — adversarial AI caller.
-        quote_service: For fetching current price of the thesis ticker.
+        session:         AsyncSession for loading thesis data.
+        agent:           StressTestAgent — adversarial AI caller.
+        quote_service:   For fetching current price of the thesis ticker.
+        symbol_registry: SymbolRegistry for sector context injection.
+                         Defaults to module-level singleton if not provided.
     """
 
     def __init__(
@@ -106,10 +48,12 @@ class StressTestService:
         session: AsyncSession,
         agent: StressTestAgent,
         quote_service: object,
+        symbol_registry: SymbolRegistry | None = None,
     ) -> None:
         self._session = session
         self._agent = agent
         self._quote_service = quote_service
+        self._registry = symbol_registry or SymbolRegistry()
         self._repo = ThesisRepository(session)
 
     async def stress_test(
@@ -170,8 +114,8 @@ class StressTestService:
                 error=str(exc),
             )
 
-        # Inject sector context so AI knows which metrics matter for this ticker
-        sector_hint = _get_sector_context(thesis.ticker)
+        # Inject sector context from market registry
+        sector_hint = self._registry.get_sector_context_str(thesis.ticker)
         if sector_hint:
             macro_context = (macro_context + "\n" + sector_hint).strip()
 
