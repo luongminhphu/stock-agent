@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Protocol, runtime_checkable
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +25,23 @@ from src.portfolio.models import Position
 from src.portfolio.repository import PortfolioRepository
 
 logger = get_logger(__name__)
+
+# Threshold dưới đây coi là hòa vốn (tránh float == 0.0 với realized_pnl VND).
+# 1.0 VND là đủ nhỏ để không nhầm với lời/lỗ thực tế.
+_BREAKEVEN_EPSILON = 1.0
+
+
+@runtime_checkable
+class QuoteServiceProtocol(Protocol):
+    """Minimal contract PnlService cần từ market segment.
+
+    Dùng Protocol để giữ loose coupling — market segment không cần
+    import portfolio và portfolio không cần import class cụ thể.
+    """
+
+    async def get_quote(self, ticker: str) -> object:
+        """Trả về object có thuộc tính .price (float)."""
+        ...
 
 
 @dataclass
@@ -110,7 +128,12 @@ class TradeSnapshot:
 class PnlService:
     """Read-side P&L calculations. No DB writes."""
 
-    def __init__(self, session: AsyncSession, quote_service: object) -> None:
+    def __init__(self, session: AsyncSession, quote_service: QuoteServiceProtocol) -> None:
+        if quote_service is None:
+            raise ValueError(
+                "PnlService requires a QuoteServiceProtocol instance. "
+                "Pass quote_service=get_quote_service() from bootstrap."
+            )
         self._session = session
         self._repo = PortfolioRepository(session)
         self._quote_service = quote_service
@@ -152,9 +175,9 @@ class PnlService:
         for trade in trades:
             pnl = trade.realized_pnl or 0.0
             total_pnl += pnl
-            if pnl > 0:
+            if pnl > _BREAKEVEN_EPSILON:
                 wins += 1
-            elif pnl < 0:
+            elif pnl < -_BREAKEVEN_EPSILON:
                 losses += 1
             else:
                 breakevens += 1
@@ -198,8 +221,8 @@ class PnlService:
     # ------------------------------------------------------------------
 
     async def _calc_position_pnl(self, position: Position) -> PositionPnl:
-        quote = await self._quote_service.get_quote(position.ticker)  # type: ignore[union-attr]
-        current_price = quote.price
+        quote = await self._quote_service.get_quote(position.ticker)
+        current_price = quote.price  # type: ignore[union-attr]
         unrealized_pnl = (current_price - position.avg_cost) * position.qty
         cost_basis = position.avg_cost * position.qty
         unrealized_pct = (unrealized_pnl / cost_basis * 100) if cost_basis else 0.0
