@@ -15,12 +15,16 @@ never blocks other thesis operations.
 from __future__ import annotations
 
 import json
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
 from src.ai.client import AIClient
 from src.ai.prompts.watchdog import WatchdogContext, build_user_prompt, SYSTEM_PROMPT
 from src.platform.logging import get_logger
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -90,10 +94,25 @@ class WatchdogAgent:
     def __init__(self, ai_client: AIClient) -> None:
         self._client = ai_client
 
-    async def assess(self, ctx: WatchdogContext) -> ThesisHealthScore | None:
-        """Assess thesis health. Returns None on any failure (graceful degrade)."""
+    async def assess(
+        self,
+        ctx: WatchdogContext,
+        session: AsyncSession | None = None,
+        user_id: str | None = None,
+        trigger: str = "watchdog",
+    ) -> ThesisHealthScore | None:
+        """Assess thesis health. Returns None on any failure (graceful degrade).
+
+        Args:
+            ctx:      WatchdogContext built by WatchdogService.
+            session:  Optional AsyncSession. When provided, investor profile +
+                      memory context are injected into the prompt.
+            user_id:  Optional user_id for memory logging.
+            trigger:  Trigger label for episodic log.
+        """
         try:
-            user_prompt = build_user_prompt(ctx)
+            investor_profile = await self._build_investor_profile(session, user_id)
+            user_prompt = build_user_prompt(ctx, investor_profile=investor_profile)
             raw = await self._client.complete(
                 system=SYSTEM_PROMPT,
                 user=user_prompt,
@@ -109,6 +128,14 @@ class WatchdogAgent:
                 health_score=result.health_score,
                 alert_level=result.alert_level,
             )
+            # --- Memory: log interaction (Layer 2) ---
+            await self._log_interaction(
+                session=session,
+                user_id=user_id,
+                ctx=ctx,
+                result=result,
+                trigger=trigger,
+            )
             return result
         except Exception as exc:
             logger.warning(
@@ -118,3 +145,62 @@ class WatchdogAgent:
                 error=str(exc),
             )
             return None
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    async def _build_investor_profile(self, session, user_id: str | None) -> str:
+        """Build investor profile block via ContextBuilder (includes memory).
+
+        Returns empty string when session is None or any error occurs.
+        Owner of assembly logic: ai.ContextBuilder.
+        """
+        if session is None:
+            return ""
+        try:
+            from src.ai.context_builder import ContextBuilder, render_for_agent
+
+            ctx = await ContextBuilder(session).build(user_id=user_id)
+            return render_for_agent(ctx)
+        except Exception as exc:
+            logger.warning("watchdog_agent.investor_profile_failed", error=str(exc))
+            return ""
+
+    async def _log_interaction(
+        self,
+        session,
+        user_id: str | None,
+        ctx: WatchdogContext,
+        result: ThesisHealthScore,
+        trigger: str,
+    ) -> None:
+        """Fire-and-forget memory log. Never raises."""
+        if session is None or not user_id:
+            return
+        try:
+            from src.ai.memory.memory_service import InteractionEntry, MemoryService
+
+            threatened = [
+                t.description[:100]
+                for t in result.threatened_assumptions
+                if t.is_threatened
+            ]
+            entry = InteractionEntry(
+                user_id=user_id,
+                agent_type="watchdog",
+                trigger=trigger,
+                tickers=[ctx.ticker],
+                ai_verdict=f"{result.overall_health} ({result.health_score}/100)",
+                ai_confidence=None,
+                ai_key_points=result.summary or None,
+                ai_risk_signals="\n".join(threatened) if threatened else None,
+                thesis_id=ctx.thesis_id,
+            )
+            await MemoryService.log_interaction(session, entry)
+        except Exception as exc:
+            logger.warning(
+                "watchdog_agent.memory_log_failed",
+                ticker=ctx.ticker,
+                error=str(exc),
+            )

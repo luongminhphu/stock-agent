@@ -20,12 +20,16 @@ Note on schema:
 from __future__ import annotations
 
 import json
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 from pydantic import ValidationError
 
 from src.ai.client import AIClient, AIError
 from src.platform.logging import get_logger
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -107,6 +111,9 @@ class ThesisSuggestAgent:
         current_price: float | None = None,
         sector: str = "",
         extra_context: str = "",
+        session: AsyncSession | None = None,
+        user_id: str | None = None,
+        trigger: str = "suggest",
     ) -> ThesisDraft:
         """Generate a draft thesis for the given ticker.
 
@@ -116,6 +123,10 @@ class ThesisSuggestAgent:
             current_price: Latest price, used for price targets.
             sector:        Sector/industry context.
             extra_context: Any additional context (recent news, technicals).
+            session:       Optional AsyncSession. When provided, investor profile +
+                           memory context are injected into the prompt.
+            user_id:       Optional user_id for memory logging.
+            trigger:       Trigger label for episodic log.
 
         Returns:
             ThesisDraft with full thesis structure.
@@ -124,6 +135,7 @@ class ThesisSuggestAgent:
             AIError: If AI API call fails after retries.
             ValueError: If response cannot be parsed into ThesisDraft.
         """
+        investor_profile = await self._build_investor_profile(session, user_id)
         price_line = f"Current price: {current_price:,.0f} VND" if current_price else ""
         user_prompt = (
             f"Ticker: {ticker}\n"
@@ -132,6 +144,9 @@ class ThesisSuggestAgent:
             f"{price_line}\n"
             f"{('Extra context: ' + extra_context) if extra_context else ''}"
         ).strip()
+
+        if investor_profile:
+            user_prompt += f"\n\n{investor_profile}"
 
         logger.info("thesis_suggest_agent.start", ticker=ticker)
 
@@ -158,4 +173,68 @@ class ThesisSuggestAgent:
             ticker=ticker,
             conviction=result.conviction_level,
         )
+
+        # --- Memory: log interaction (Layer 2) ---
+        await self._log_interaction(
+            session=session,
+            user_id=user_id,
+            ticker=ticker,
+            result=result,
+            trigger=trigger,
+        )
+
         return result
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    async def _build_investor_profile(self, session, user_id: str | None) -> str:
+        """Build investor profile block via ContextBuilder (includes memory).
+
+        Returns empty string when session is None or any error occurs.
+        Owner of assembly logic: ai.ContextBuilder.
+        """
+        if session is None:
+            return ""
+        try:
+            from src.ai.context_builder import ContextBuilder, render_for_agent
+
+            ctx = await ContextBuilder(session).build(user_id=user_id)
+            return render_for_agent(ctx)
+        except Exception as exc:
+            logger.warning("suggest_agent.investor_profile_failed", error=str(exc))
+            return ""
+
+    async def _log_interaction(
+        self,
+        session,
+        user_id: str | None,
+        ticker: str,
+        result: ThesisDraft,
+        trigger: str,
+    ) -> None:
+        """Fire-and-forget memory log. Never raises."""
+        if session is None or not user_id:
+            return
+        try:
+            from src.ai.memory.memory_service import InteractionEntry, MemoryService
+
+            catalysts = [c.description[:100] for c in (result.catalysts or [])[:3]]
+            entry = InteractionEntry(
+                user_id=user_id,
+                agent_type="suggest",
+                trigger=trigger,
+                tickers=[ticker],
+                ai_verdict=result.conviction_level,
+                ai_confidence=None,
+                ai_key_points=result.summary[:300] if result.summary else None,
+                ai_risk_signals=result.risk_summary[:300] if result.risk_summary else None,
+            )
+            await MemoryService.log_interaction(session, entry)
+        except Exception as exc:
+            logger.warning(
+                "suggest_agent.memory_log_failed",
+                ticker=ticker,
+                error=str(exc),
+            )
