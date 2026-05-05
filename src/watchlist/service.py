@@ -8,6 +8,8 @@ DTOs and Exceptions → dtos.py
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.logging import get_logger
@@ -33,6 +35,7 @@ logger = get_logger(__name__)
 # Re-export để backward compat với code import từ service.py
 __all__ = [
     "WatchlistService",
+    "WatchlistItemWithPrice",
     "AddToWatchlistInput",
     "CreateAlertInput",
     "AddAlertInput",
@@ -40,6 +43,21 @@ __all__ = [
     "WatchlistItemAlreadyExistsError",
     "AlertNotFoundError",
 ]
+
+
+@dataclass
+class WatchlistItemWithPrice:
+    """Watchlist item enriched with live price data.
+
+    Returned by WatchlistService.list_items_with_prices().
+    price_str is pre-formatted for display (e.g. "12,345 (🔺+1.2%)").
+    change_pct is None when the quote fetch failed for this ticker.
+    """
+
+    ticker: str
+    note: str | None
+    price_str: str
+    change_pct: float | None
 
 
 class WatchlistService:
@@ -76,6 +94,60 @@ class WatchlistService:
 
     async def list_items(self, user_id: str) -> list[WatchlistItem]:
         return await self._repo.list_for_user(user_id)
+
+    async def list_items_with_prices(
+        self,
+        user_id: str,
+        quote_service: object,
+    ) -> list[WatchlistItemWithPrice]:
+        """Return watchlist items enriched with live price data.
+
+        Performs a single bulk quote fetch. Individual tickers missing from
+        the bulk result get price_str='N/A' and change_pct=None — same
+        graceful-degrade behaviour as the previous bot-side implementation.
+
+        Args:
+            user_id:       Owner of the watchlist.
+            quote_service: QuoteService instance (duck-typed; injected by caller).
+
+        Returns:
+            List of WatchlistItemWithPrice in watchlist order.
+        """
+        items = await self._repo.list_for_user(user_id)
+        if not items:
+            return []
+
+        tickers = [i.ticker for i in items]
+        try:
+            quotes = await quote_service.get_bulk_quotes(tickers)  # type: ignore[union-attr]
+            price_map = {q.ticker: q for q in quotes}
+        except Exception as exc:
+            logger.warning(
+                "watchlist.list_with_prices.bulk_fetch_failed",
+                user_id=user_id,
+                error=str(exc),
+            )
+            price_map: dict[str, object] = {}
+
+        result: list[WatchlistItemWithPrice] = []
+        for item in items:
+            q = price_map.get(item.ticker)
+            if q is not None:
+                change_pct: float = getattr(q, "change_pct", 0.0)
+                icon = "🔺" if change_pct >= 0 else "🔻"
+                price_str = f"{getattr(q, 'price', 0):,.0f} ({icon}{change_pct:+.1f}%)"
+            else:
+                price_str = "N/A"
+                change_pct = None  # type: ignore[assignment]
+            result.append(
+                WatchlistItemWithPrice(
+                    ticker=item.ticker,
+                    note=item.note,
+                    price_str=price_str,
+                    change_pct=change_pct,
+                )
+            )
+        return result
 
     async def get_tickers(self, user_id: str) -> list[str]:
         items = await self._repo.list_for_user(user_id)

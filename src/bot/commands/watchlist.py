@@ -145,7 +145,7 @@ class WatchlistCog(BaseCog):
         try:
             async with self.db_session() as session:
                 svc = WatchlistService(session)
-                items = await svc.list_items(user_id)
+                items = await svc.list_items_with_prices(user_id, get_quote_service())
         except Exception as exc:
             logger.error("watchlist_list.error", error=str(exc))
             await self.send_error(interaction, title="Error", description=str(exc))
@@ -159,25 +159,10 @@ class WatchlistCog(BaseCog):
             )
             return
 
-        # Fetch live prices in bulk
-        qs = get_quote_service()
-        tickers = [i.ticker for i in items]
-        try:
-            quotes = await qs.get_bulk_quotes(tickers)
-            price_map = {q.ticker: q for q in quotes}
-        except Exception:
-            price_map = {}
-
         lines = []
         for item in items:
-            q = price_map.get(item.ticker)
-            if q:
-                change_icon = "🔺" if q.change >= 0 else "🔻"
-                price_str = f"{q.price:,.0f} ({change_icon}{q.change_pct:+.1f}%)"
-            else:
-                price_str = "N/A"
             note_part = f" · {item.note[:30]}" if item.note else ""
-            lines.append(f"• **{item.ticker}** {price_str}{note_part}")
+            lines.append(f"• **{item.ticker}** {item.price_str}{note_part}")
 
         embed = discord.Embed(
             title="📋 Your Watchlist",
