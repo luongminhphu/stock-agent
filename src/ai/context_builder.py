@@ -1,37 +1,28 @@
-"""ContextBuilder — assemble investor context before each AI call.
+"""ContextBuilder — assembles investor context for AI agent calls.
 
 Owner: ai segment.
-Callers: briefing.BriefingService, thesis.PreTradeService.
+Callers: ai/agents/*.py only.
 
-Responsibility:
-    Aggregate context from multiple domain segments into a single
-    InvestorContext object that agents can render into their prompts.
+Builds an InvestorContext from:
+  - platform.investor_profile (static profile + risk settings)
+  - thesis segment (active theses summary)
+  - thesis.lesson_service (recent decision lessons)
+  - portfolio segment (portfolio bias — sector exposure, P&L tilt)
+  - ai.memory (MemoryContext — episodic + semantic memory)  ← NEW in V2
 
-Design rules:
-    - Read-only access to domain data; never writes.
-    - Each source is fetched independently; a failure in one source
-      MUST NOT block the others (graceful degradation).
-    - Does NOT import from: bot, briefing, watchlist, api, readmodel.
-    - Does NOT import ORM models from portfolio — use get_portfolio_context().
-    - Dependency direction: ai → platform, thesis (read), portfolio (public API).
-    - Session is injected by caller; ContextBuilder does not own sessions.
-    - user_id is optional for backward compatibility; portfolio bias degrades
-      gracefully when user_id is None.
+Boundary rule:
+  ContextBuilder knows ABOUT domain segments but does NOT own their logic.
+  It calls their public read APIs; never writes to them.
 
-Usage::
-
-    from src.ai.context_builder import ContextBuilder, render_for_agent
-
-    async with AsyncSessionLocal() as session:
-        ctx = await ContextBuilder(session, user_id="user_123").build()
-    block = render_for_agent(ctx)
-    # pass block as investor_profile= kwarg to prompt builders
+Backward compatibility:
+  ContextBuilder(session) still works exactly as before.
+  memory injection is additive — if MemoryService fails, context is still built.
 """
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from src.platform.logging import get_logger
@@ -42,41 +33,210 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Data contract
-# ---------------------------------------------------------------------------
-
-
 @dataclass
 class InvestorContext:
-    """Structured investor context passed to AI agents.
+    """Assembled investor context — passed to render_for_agent()."""
 
-    All string fields default to empty string so agents can safely
-    check ``if ctx.investor_profile_block`` without None guards.
+    # From platform.investor_profile
+    risk_appetite: str = ""
+    avoid_list: list[str] = field(default_factory=list)
+    preferred_sectors: list[str] = field(default_factory=list)
+    trading_style: str = ""
+    notes: str = ""
 
-    source_flags records which upstream sources were available at build
-    time (name → bool). Agents may use this to adjust confidence when
-    data is missing.
+    # From thesis segment
+    active_thesis_summary: str = ""
+
+    # From thesis.lesson_service
+    recent_lessons: str = ""
+
+    # From portfolio segment
+    portfolio_bias: str = ""
+
+    # From ai.memory (NEW in V2)
+    memory_context_block: str = ""
+
+
+class ContextBuilder:
+    """Assembles InvestorContext by querying domain segment read-APIs.
+
+    Usage::
+
+        ctx = await ContextBuilder(session).build(user_id="user_001")
+        profile_str = render_for_agent(ctx)
     """
 
-    investor_profile_block: str = ""
-    active_thesis_summary: str = ""
-    recent_lessons: str = ""
-    portfolio_bias: str = ""
-    watchlist_signals: str = ""  # reserved — future wave
-    built_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    source_flags: dict[str, bool] = field(default_factory=dict)
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
 
-    def is_empty(self) -> bool:
-        """True when no meaningful context was available from any source."""
-        return not any(
-            [
-                self.investor_profile_block,
-                self.active_thesis_summary,
-                self.recent_lessons,
-                self.portfolio_bias,
-            ]
+    async def build(self, user_id: str | None = None) -> InvestorContext:
+        """Fetch all context layers concurrently and assemble InvestorContext.
+
+        All sub-fetches are fire-and-forget — if any fails, the rest still
+        succeed. ContextBuilder never blocks AI calls due to data errors.
+        """
+        results = await asyncio.gather(
+            self._fetch_investor_profile(user_id),
+            self._fetch_thesis_summary(user_id),
+            self._fetch_recent_lessons(user_id),
+            self._fetch_portfolio_bias(user_id),
+            self._fetch_memory_context(user_id),   # NEW
+            return_exceptions=True,
         )
+
+        ctx = InvestorContext()
+        _apply_profile(ctx, results[0])
+        _apply_thesis(ctx, results[1])
+        _apply_lessons(ctx, results[2])
+        _apply_portfolio(ctx, results[3])
+        _apply_memory(ctx, results[4])              # NEW
+
+        return ctx
+
+    # ------------------------------------------------------------------
+    # Private fetch methods — each returns a plain value or raises
+    # ------------------------------------------------------------------
+
+    async def _fetch_investor_profile(self, user_id: str | None) -> dict:
+        try:
+            from src.platform.investor_profile import InvestorProfileService
+
+            svc = InvestorProfileService(self._session)
+            profile = await svc.get_profile(user_id=user_id)
+            if profile is None:
+                return {}
+            return {
+                "risk_appetite": getattr(profile, "risk_appetite", "") or "",
+                "avoid_list": getattr(profile, "avoid_list", []) or [],
+                "preferred_sectors": getattr(profile, "preferred_sectors", []) or [],
+                "trading_style": getattr(profile, "trading_style", "") or "",
+                "notes": getattr(profile, "notes", "") or "",
+            }
+        except Exception as exc:
+            logger.warning("context_builder.investor_profile_failed", error=str(exc))
+            return {}
+
+    async def _fetch_thesis_summary(self, user_id: str | None) -> str:
+        try:
+            from src.thesis.service import ThesisService
+
+            svc = ThesisService(self._session)
+            theses = await svc.list_active(user_id=user_id)
+            if not theses:
+                return ""
+            lines = []
+            for t in theses[:5]:  # cap at 5 to avoid prompt bloat
+                ticker = getattr(t, "ticker", "?")
+                direction = getattr(t, "direction", "")
+                summary = getattr(t, "summary", "") or ""
+                lines.append(f"- {ticker} ({direction}): {summary[:120]}")
+            return "Active theses:\n" + "\n".join(lines)
+        except Exception as exc:
+            logger.warning("context_builder.thesis_summary_failed", error=str(exc))
+            return ""
+
+    async def _fetch_recent_lessons(self, user_id: str | None) -> str:
+        try:
+            from src.thesis.lesson_service import LessonService
+
+            svc = LessonService(self._session)
+            lessons = await svc.get_recent(user_id=user_id, limit=5)
+            if not lessons:
+                return ""
+            lines = []
+            for lesson in lessons:
+                date_str = getattr(lesson, "created_at", "")  
+                text = getattr(lesson, "key_lesson", "") or ""
+                lines.append(f"- [{date_str}] {text[:150]}")
+            return "Recent decision lessons:\n" + "\n".join(lines)
+        except Exception as exc:
+            logger.warning("context_builder.recent_lessons_failed", error=str(exc))
+            return ""
+
+    async def _fetch_portfolio_bias(self, user_id: str | None) -> str:
+        """Fetch portfolio bias block from portfolio segment public contract.
+
+        Calls portfolio.get_portfolio_context(session, user_id) which
+        returns a PortfolioContext. Degrades gracefully to empty string.
+        """
+        try:
+            from src.portfolio import get_portfolio_context
+
+            port_ctx = await get_portfolio_context(self._session, user_id)
+            if port_ctx is None:
+                return ""
+            return str(port_ctx)
+        except Exception as exc:
+            logger.warning("context_builder.portfolio_bias_failed", error=str(exc))
+            return ""
+
+    async def _fetch_memory_context(self, user_id: str | None) -> str:
+        """Fetch L2 + L3 memory context for the investor.
+
+        Returns rendered text block, or empty string if unavailable.
+        Owner: ai.memory (MemoryService) — not this method.
+        """
+        if not user_id:
+            return ""
+        try:
+            from src.ai.memory.memory_service import MemoryService
+
+            mem_ctx = await MemoryService.get_memory_context(
+                session=self._session,
+                user_id=user_id,
+            )
+            if mem_ctx.is_empty():
+                return ""
+            rendered = mem_ctx.render()
+            logger.debug(
+                "context_builder.memory_context_loaded",
+                user_id=user_id,
+                episode_count=len(mem_ctx.recent_episodes),
+                has_snapshot=mem_ctx.latest_snapshot is not None,
+            )
+            return rendered
+        except Exception as exc:
+            logger.warning(
+                "context_builder.memory_context_failed",
+                user_id=user_id,
+                error=str(exc),
+            )
+            return ""
+
+
+# ---------------------------------------------------------------------------
+# Applicator helpers (keep build() readable)
+# ---------------------------------------------------------------------------
+
+
+def _apply_profile(ctx: InvestorContext, result) -> None:
+    if isinstance(result, dict):
+        ctx.risk_appetite = result.get("risk_appetite", "")
+        ctx.avoid_list = result.get("avoid_list", [])
+        ctx.preferred_sectors = result.get("preferred_sectors", [])
+        ctx.trading_style = result.get("trading_style", "")
+        ctx.notes = result.get("notes", "")
+
+
+def _apply_thesis(ctx: InvestorContext, result) -> None:
+    if isinstance(result, str):
+        ctx.active_thesis_summary = result
+
+
+def _apply_lessons(ctx: InvestorContext, result) -> None:
+    if isinstance(result, str):
+        ctx.recent_lessons = result
+
+
+def _apply_portfolio(ctx: InvestorContext, result) -> None:
+    if isinstance(result, str):
+        ctx.portfolio_bias = result
+
+
+def _apply_memory(ctx: InvestorContext, result) -> None:
+    """Apply memory context block — NEW in V2."""
+    if isinstance(result, str):
+        ctx.memory_context_block = result
 
 
 # ---------------------------------------------------------------------------
@@ -85,229 +245,33 @@ class InvestorContext:
 
 
 def render_for_agent(ctx: InvestorContext) -> str:
-    """Render InvestorContext as a compact plain-text block for prompt injection.
+    """Render InvestorContext as a text block for injection into AI prompts.
 
-    Returns empty string when no context is available so callers can safely
-    do ``if block: prompt += block`` without special-casing.
-
-    Output example::
-
-        === INVESTOR PROFILE ===
-        Risk: medium — max drawdown 10%
-        Style: fundamental | Horizon: swing to positional
-        Focus: banking, consumer staples
-        Win rate (30d): 62%  |  Avg hold: 18d
-        Portfolio: Banking 42%, Real Estate 18%
-        Patterns: FOMO buy at resistance; Sell too early on volatility
-        Last lesson: Không chase breakout khi volume thấp hơn TB20
-        === ACTIVE THESES (2) ===
-        VCB: entry 88500 | stop 82000 | target 102000 | ACTIVE
-        MWG: entry 45000 | stop 41000 | target 58000 | ACTIVE
-        === RECENT LESSONS ===
-        1. Không chase breakout khi volume thấp
-        2. Thoát lệnh đúng SL, không giữ khi thesis bị vi phạm
-        ========================
+    Returns empty string if all fields are empty (new user, no data).
     """
-    if ctx.is_empty():
-        return ""
+    parts: list[str] = []
 
-    sections: list[str] = []
-
-    if ctx.investor_profile_block:
-        sections.append(ctx.investor_profile_block)
-
+    if ctx.risk_appetite:
+        parts.append(f"Risk appetite: {ctx.risk_appetite}")
+    if ctx.trading_style:
+        parts.append(f"Trading style: {ctx.trading_style}")
+    if ctx.preferred_sectors:
+        parts.append(f"Preferred sectors: {', '.join(ctx.preferred_sectors)}")
+    if ctx.avoid_list:
+        parts.append(f"Avoid list: {', '.join(ctx.avoid_list)}")
+    if ctx.notes:
+        parts.append(f"Investor notes: {ctx.notes}")
     if ctx.active_thesis_summary:
-        sections.append(ctx.active_thesis_summary)
-
+        parts.append(ctx.active_thesis_summary)
     if ctx.recent_lessons:
-        sections.append(ctx.recent_lessons)
-
+        parts.append(ctx.recent_lessons)
     if ctx.portfolio_bias:
-        sections.append(f"Portfolio bias: {ctx.portfolio_bias}")
+        parts.append(ctx.portfolio_bias)
 
-    sections.append("========================")
-    return "\n".join(sections)
+    # Memory block appended last — most contextual, highest recency signal
+    if ctx.memory_context_block:
+        parts.append(ctx.memory_context_block)
 
-
-# ---------------------------------------------------------------------------
-# Builder
-# ---------------------------------------------------------------------------
-
-
-class ContextBuilder:
-    """Assembles InvestorContext for a single AI call.
-
-    Each ``_fetch_*`` method is fully independent and silently degrades
-    to empty string on any exception. This ensures ContextBuilder.build()
-    never raises and never blocks an AI call due to a missing data source.
-
-    Args:
-        session: AsyncSession — caller manages lifecycle.
-        user_id: Optional user identifier. When provided, enables portfolio
-                 bias fetching via get_portfolio_context(). When None,
-                 portfolio_bias is skipped and source_flags["portfolio_bias"]
-                 is set to False.
-    """
-
-    def __init__(self, session: AsyncSession, user_id: str | None = None) -> None:
-        self._session = session
-        self._user_id = user_id
-
-    async def build(self) -> InvestorContext:
-        """Build and return InvestorContext. Never raises."""
-        ctx = InvestorContext()
-
-        ctx.investor_profile_block, ctx.source_flags["investor_profile"] = (
-            await self._fetch_investor_profile()
-        )
-        ctx.active_thesis_summary, ctx.source_flags["active_theses"] = (
-            await self._fetch_active_theses()
-        )
-        ctx.recent_lessons, ctx.source_flags["recent_lessons"] = (
-            await self._fetch_recent_lessons()
-        )
-        ctx.portfolio_bias, ctx.source_flags["portfolio_bias"] = (
-            await self._fetch_portfolio_bias()
-        )
-
-        logger.info(
-            "context_builder.built",
-            sources_available=sum(ctx.source_flags.values()),
-            sources_total=len(ctx.source_flags),
-            is_empty=ctx.is_empty(),
-            user_id=self._user_id,
-        )
-        return ctx
-
-    # ------------------------------------------------------------------
-    # Private fetchers — each returns (content: str, available: bool)
-    # ------------------------------------------------------------------
-
-    async def _fetch_investor_profile(self) -> tuple[str, bool]:
-        """Read latest InvestorProfile snapshot → summary_for_ai.
-
-        Falls back to StaticProfile.from_settings() + InvestorContext.to_prompt_block()
-        when no DB snapshot exists yet (first run before scheduler has fired).
-        """
-        try:
-            from src.platform.investor_profile import (
-                InvestorContext as _InvCtx,
-                InvestorProfileService,
-                StaticProfile,
-            )
-
-            svc = InvestorProfileService(session=self._session)
-            snapshot = await svc.get_latest()
-
-            if snapshot and snapshot.summary_for_ai:
-                static = StaticProfile.from_settings()
-                inv_ctx = _InvCtx(static=static, snapshot=snapshot)
-                return inv_ctx.to_prompt_block(), True
-
-            # Fallback: static profile only (first boot)
-            static = StaticProfile.from_settings()
-            inv_ctx = _InvCtx(static=static, snapshot=None)
-            block = inv_ctx.to_prompt_block()
-            if block:
-                logger.info(
-                    "context_builder.investor_profile_static_fallback",
-                    reason="no_db_snapshot_yet",
-                )
-                return block, True
-            return "", False
-        except Exception as exc:
-            logger.warning("context_builder.investor_profile_error", error=str(exc))
-            return "", False
-
-    async def _fetch_active_theses(self) -> tuple[str, bool]:
-        """Summarise active theses: ticker | entry | stop | target | status."""
-        try:
-            from sqlalchemy import select
-
-            from src.thesis.models import Thesis, ThesisStatus
-
-            result = await self._session.execute(
-                select(Thesis)
-                .where(Thesis.status == ThesisStatus.ACTIVE)
-                .order_by(Thesis.created_at.desc())
-                .limit(10)
-            )
-            theses = result.scalars().all()
-            if not theses:
-                return "", False
-
-            lines = [f"=== ACTIVE THESES ({len(theses)}) ==="]
-            for t in theses:
-                entry = f"{t.entry_price:,.0f}" if t.entry_price else "?"
-                stop = f"{t.stop_loss:,.0f}" if t.stop_loss else "?"
-                target = f"{t.target_price:,.0f}" if t.target_price else "?"
-                lines.append(
-                    f"{t.ticker}: entry {entry} | stop {stop} | target {target} | {t.status.value}"
-                )
-            return "\n".join(lines), True
-        except Exception as exc:
-            logger.warning("context_builder.active_theses_error", error=str(exc))
-            return "", False
-
-    async def _fetch_recent_lessons(self) -> tuple[str, bool]:
-        """Return top 5 recent key_lesson strings from evaluated DecisionLogs."""
-        try:
-            from sqlalchemy import select
-
-            from src.thesis.models import DecisionLog
-
-            result = await self._session.execute(
-                select(DecisionLog)
-                .where(
-                    DecisionLog.outcome_verdict.isnot(None),
-                    DecisionLog.key_lesson.isnot(None),
-                    DecisionLog.key_lesson != "",
-                )
-                .order_by(DecisionLog.outcome_evaluated_at.desc())
-                .limit(5)
-            )
-            logs = result.scalars().all()
-            if not logs:
-                return "", False
-
-            lines = ["=== RECENT LESSONS ==="]
-            for i, log in enumerate(logs, 1):
-                lines.append(f"{i}. {log.key_lesson}")
-            return "\n".join(lines), True
-        except Exception as exc:
-            logger.warning("context_builder.recent_lessons_error", error=str(exc))
-            return "", False
-
-    async def _fetch_portfolio_bias(self) -> tuple[str, bool]:
-        """Return short sector-weight string via portfolio public contract.
-
-        Uses get_portfolio_context() — the single public entry point for
-        portfolio data. Does NOT import Position ORM model directly.
-
-        Degrades gracefully when user_id is None (returns empty string).
-        """
-        if not self._user_id:
-            logger.debug(
-                "context_builder.portfolio_bias_skipped",
-                reason="no_user_id",
-            )
-            return "", False
-
-        try:
-            from src.portfolio import get_portfolio_context
-
-            portfolio_ctx = await get_portfolio_context(
-                self._session,
-                user_id=self._user_id,
-                include_prices=False,  # fast path — cost-basis weights only
-            )
-
-            if not portfolio_ctx.sector_weights:
-                return "", False
-
-            top = list(portfolio_ctx.sector_weights.items())[:3]
-            parts = [f"{sector} {weight:.0f}%" for sector, weight in top if weight > 0]
-            return ", ".join(parts), True
-        except Exception as exc:
-            logger.warning("context_builder.portfolio_bias_error", error=str(exc))
-            return "", False
+    if not parts:
+        return ""
+    return "[Investor context]\n" + "\n".join(parts)

@@ -6,12 +6,15 @@ Callers: briefing.BriefingService.
 This agent is a thin wrapper around the AI client. It:
 - builds prompts via ai/prompts/brief.py
 - calls the AI client with the appropriate schema
+- logs interaction to ai.memory (Layer 2) after every call
 - returns structured BriefOutput
 
 No business logic, no DB access, no Discord formatting.
 """
 
 from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from src.ai.client import AIClient
 from src.ai.prompts.brief import (
@@ -21,6 +24,9 @@ from src.ai.prompts.brief import (
 )
 from src.ai.schemas import BriefOutput
 from src.platform.logging import get_logger
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -44,6 +50,10 @@ class BriefingAgent:
         thesis_context: str = "",
         past_lessons: str = "",
         investor_profile: str = "",
+        # Memory wiring params (optional, backward-compat)
+        session: AsyncSession | None = None,
+        user_id: str | None = None,
+        trigger: str = "morning_brief",
     ) -> BriefOutput:
         """Generate a morning brief for the given watchlist and market context.
 
@@ -58,6 +68,9 @@ class BriefingAgent:
                                ContextBuilder.render_for_agent(). When provided,
                                the AI personalises prioritized_actions against the
                                investor's risk appetite, avoid list, and patterns.
+            session:           Optional AsyncSession for memory logging.
+            user_id:           Optional user_id for memory logging.
+            trigger:           Trigger label for episodic log (default: morning_brief).
         """
         prompt = build_morning_prompt(
             market_context=market_context,
@@ -86,6 +99,17 @@ class BriefingAgent:
             sentiment=getattr(result, "sentiment", None),
             action_count=len(getattr(result, "prioritized_actions", []) or []),
         )
+
+        # --- Memory: log interaction (Layer 2) ---
+        await _log_brief_interaction(
+            session=session,
+            user_id=user_id,
+            result=result,
+            tickers=watchlist_tickers,
+            trigger=trigger,
+            agent_type="briefing",
+        )
+
         return result
 
     async def eod_brief(
@@ -93,6 +117,9 @@ class BriefingAgent:
         market_context: str,
         watchlist_tickers: list[str],
         extra_context: str = "",
+        # Memory wiring params (optional, backward-compat)
+        session: AsyncSession | None = None,
+        user_id: str | None = None,
     ) -> BriefOutput:
         """Generate an end-of-day brief.
 
@@ -117,4 +144,53 @@ class BriefingAgent:
             "briefing_agent.eod_brief.done",
             sentiment=getattr(result, "sentiment", None),
         )
+
+        # --- Memory: log interaction (Layer 2) ---
+        await _log_brief_interaction(
+            session=session,
+            user_id=user_id,
+            result=result,
+            tickers=watchlist_tickers,
+            trigger="eod_brief",
+            agent_type="briefing",
+        )
+
         return result
+
+
+# ---------------------------------------------------------------------------
+# Internal helper — keeps agent methods readable
+# ---------------------------------------------------------------------------
+
+async def _log_brief_interaction(
+    session,
+    user_id: str | None,
+    result: BriefOutput,
+    tickers: list[str],
+    trigger: str,
+    agent_type: str,
+) -> None:
+    """Fire-and-forget memory log. Never raises."""
+    if session is None or not user_id:
+        return
+    try:
+        from src.ai.memory.memory_service import InteractionEntry, MemoryService
+
+        key_points_lines = []
+        for action in (getattr(result, "prioritized_actions", []) or [])[:5]:
+            if isinstance(action, str):
+                key_points_lines.append(action)
+            elif hasattr(action, "action"):
+                key_points_lines.append(str(action.action))
+
+        entry = InteractionEntry(
+            user_id=user_id,
+            agent_type=agent_type,
+            trigger=trigger,
+            tickers=tickers[:10],
+            ai_verdict=str(getattr(result, "sentiment", "") or ""),
+            ai_key_points="\n".join(key_points_lines) if key_points_lines else None,
+        )
+        await MemoryService.log_interaction(session, entry)
+    except Exception as exc:
+        logger.warning("briefing_agent.memory_log_failed", error=str(exc))

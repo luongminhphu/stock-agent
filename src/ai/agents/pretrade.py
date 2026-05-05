@@ -45,6 +45,8 @@ class PreTradeAgent:
         brief_context: str,
         past_lessons: str = "",
         session: AsyncSession | None = None,
+        user_id: str | None = None,
+        trigger: str = "pretrade_check",
     ) -> PreTradeCheckOutput:
         """Run pre-trade check for a single ticker.
 
@@ -57,11 +59,12 @@ class PreTradeAgent:
             brief_context:  Today's brief mention for this ticker from BriefingService.
             past_lessons:   Optional formatted decision history from LessonService.
             session:        Optional AsyncSession. When provided, ContextBuilder builds
-                            an investor profile block that is injected into the prompt
-                            for personalised risk checks. Pass None to skip (existing
-                            behaviour — backward compat preserved).
+                            an investor profile block and memory context is injected.
+                            Pass None to skip (existing behaviour — backward compat).
+            user_id:        Optional user_id for memory logging.
+            trigger:        Trigger label for episodic log.
         """
-        investor_profile = await self._build_investor_profile(session)
+        investor_profile = await self._build_investor_profile(session, user_id)
         prompt = build_pretrade_prompt(
             ticker=ticker,
             price=price,
@@ -93,14 +96,24 @@ class PreTradeAgent:
             decision=getattr(result, "decision", None),
             confidence=getattr(result, "confidence", None),
         )
+
+        # --- Memory: log interaction (Layer 2) ---
+        await self._log_interaction(
+            session=session,
+            user_id=user_id,
+            ticker=ticker,
+            result=result,
+            trigger=trigger,
+        )
+
         return result
 
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
 
-    async def _build_investor_profile(self, session: AsyncSession | None) -> str:
-        """Build investor profile block via ContextBuilder.
+    async def _build_investor_profile(self, session, user_id: str | None) -> str:
+        """Build investor profile block via ContextBuilder (includes memory).
 
         Returns empty string when session is None or any error occurs so
         the pre-trade check is never blocked by profile unavailability.
@@ -111,8 +124,48 @@ class PreTradeAgent:
         try:
             from src.ai.context_builder import ContextBuilder, render_for_agent
 
-            ctx = await ContextBuilder(session).build()
+            ctx = await ContextBuilder(session).build(user_id=user_id)
             return render_for_agent(ctx)
         except Exception as exc:
             logger.warning("pretrade_agent.investor_profile_failed", error=str(exc))
             return ""
+
+    async def _log_interaction(
+        self,
+        session,
+        user_id: str | None,
+        ticker: str,
+        result: PreTradeCheckOutput,
+        trigger: str,
+    ) -> None:
+        """Fire-and-forget memory log. Never raises."""
+        if session is None or not user_id:
+            return
+        try:
+            from src.ai.memory.memory_service import InteractionEntry, MemoryService
+
+            risk_lines = []
+            for rs in (getattr(result, "risk_signals", []) or [])[:5]:
+                risk_lines.append(str(rs) if not hasattr(rs, "signal") else str(rs.signal))
+
+            key_lines = []
+            for nw in (getattr(result, "next_watch", []) or [])[:3]:
+                key_lines.append(str(nw))
+
+            entry = InteractionEntry(
+                user_id=user_id,
+                agent_type="pretrade",
+                trigger=trigger,
+                tickers=[ticker],
+                ai_verdict=str(getattr(result, "decision", "") or ""),
+                ai_confidence=getattr(result, "confidence", None),
+                ai_key_points="\n".join(key_lines) if key_lines else None,
+                ai_risk_signals="\n".join(risk_lines) if risk_lines else None,
+            )
+            await MemoryService.log_interaction(session, entry)
+        except Exception as exc:
+            logger.warning(
+                "pretrade_agent.memory_log_failed",
+                ticker=ticker,
+                error=str(exc),
+            )
