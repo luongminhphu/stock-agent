@@ -171,7 +171,11 @@ class DecisionService:
         return row
 
     async def analyze_decision(self, decision_id: int) -> DecisionReplayEnvelope:
-        """Run AI replay analysis after outcome is evaluated."""
+        """Run AI replay analysis after outcome is evaluated.
+
+        Passes session + user_id to replay_agent.analyze() so the agent
+        can fire-and-forget the episodic memory log (Layer 2).
+        """
         row = await self._get_decision_or_raise(decision_id)
         if row.outcome_evaluated_at is None:
             raise ValueError("Decision outcome not evaluated yet")
@@ -201,7 +205,13 @@ class DecisionService:
             outcome_horizon_days=row.review_horizon_days,
             outcome_verdict_hint=row.outcome_verdict,
         )
-        replay = await self._replay_agent.analyze(ctx)  # type: ignore[func-returns-value]
+        # Pass session + user_id → ReplayAgent logs interaction to episodic memory
+        replay = await self._replay_agent.analyze(  # type: ignore[func-returns-value]
+            ctx,
+            session=self._session,
+            user_id=str(row.user_id),
+            trigger="decision_replay",
+        )
         return DecisionReplayEnvelope(
             decision_id=row.id,
             ticker=row.ticker,
@@ -290,7 +300,6 @@ class DecisionService:
         return float(latest.score)
 
     def _infer_current_health_score(self, thesis: Thesis) -> int | None:
-        # No dedicated persisted health table yet. Reuse latest snapshot confidence/score as fallback.
         if not thesis.snapshots:
             return None
         latest = max(thesis.snapshots, key=lambda s: s.created_at)
@@ -311,7 +320,6 @@ class DecisionService:
                 return "INCORRECT"
             return "MIXED"
 
-        # HOLD depends on stability; neutral move counts mixed by default
         if abs(pnl_pct) < 5:
             return "CORRECT"
         return "MIXED"

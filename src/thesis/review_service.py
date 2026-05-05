@@ -60,8 +60,9 @@ class ReviewService:
         self,
         session: AsyncSession,
         agent: ThesisReviewAgent,
-        quote_service: object | None = None,  # QuoteService | None, avoid circular import
+        quote_service: object | None = None,
     ) -> None:
+        self._session = session  # stored for memory log pass-through
         self._repo = ThesisRepository(session)
         self._agent = agent
         self._quote_service = quote_service
@@ -103,7 +104,6 @@ class ReviewService:
                 f"Thesis {thesis_id} is {thesis.status} — only ACTIVE theses can be reviewed."
             )
 
-        # Enrich with live price if not provided
         if current_price is None and self._quote_service is not None:
             try:
                 quote = await self._quote_service.get_quote(thesis.ticker)  # type: ignore[attr-defined]
@@ -115,7 +115,6 @@ class ReviewService:
                     error=str(exc),
                 )
 
-        # Build context lists with id + description so AI can populate target_id correctly.
         assumptions_ctx = [
             {"id": a.id, "description": a.description}
             for a in thesis.assumptions
@@ -151,6 +150,11 @@ class ReviewService:
             current_price=current_price,
             entry_price=thesis.entry_price,
             target_price=thesis.target_price,
+            # Memory wiring — pass session + identifiers for episodic log
+            session=self._session,
+            user_id=str(user_id),
+            thesis_id=thesis.id,
+            trigger="thesis_review",
         )
 
         review = await self._persist_review(thesis, output, current_price)
@@ -204,6 +208,7 @@ class ReviewService:
         results: list[ThesisReview] = []
         for thesis in stale:
             try:
+                # review_thesis() already passes session/user_id/thesis_id to agent
                 review = await self.review_thesis(
                     thesis_id=thesis.id,
                     user_id=user_id,
@@ -289,17 +294,6 @@ class ReviewService:
     ) -> ThesisReview:
         """Map ThesisReviewOutput → ThesisReview ORM, auto-apply recommendations,
         reload thesis fresh, recompute full score with breakdown, persist snapshot.
-
-        Auto-apply flow:
-            1. save_review (flush) → review gets a DB id.
-            2. _auto_apply_recommendations:
-               - Update Assumption/Catalyst status in DB (save riêng từng object).
-               - Insert ReviewRecommendation với status=ACCEPTED ngay lập tức.
-            3. Reload thesis via get_by_id (populate_existing) → session-fresh object
-               với assumption/catalyst status đã được update.
-            4. ScoringService.compute_with_breakdown(thesis) → (new_score, breakdown).
-            5. Persist thesis.score only if it changed.
-            6. Persist ThesisSnapshot with score_breakdown as JSON string.
         """
         review = ThesisReview(
             thesis_id=thesis.id,
@@ -313,10 +307,8 @@ class ReviewService:
         )
         await self._repo.save_review(review)
 
-        # Auto-apply: update assumption/catalyst status + insert recs as ACCEPTED.
         await self._auto_apply_recommendations(thesis, review.id, output)
 
-        # Reload fresh — assumptions/catalysts đã được update, reviews đã có review mới.
         fresh_thesis = await self._repo.get_by_id(thesis.id)
         if fresh_thesis is not None:
             new_score, breakdown = self._scoring.compute_with_breakdown(fresh_thesis)
@@ -330,7 +322,6 @@ class ReviewService:
                     score=new_score,
                 )
 
-            # Persist snapshot with breakdown so conviction timeline has real data.
             snapshot = ThesisSnapshot(
                 thesis_id=thesis.id,
                 score=new_score,
@@ -355,12 +346,7 @@ class ReviewService:
         review_id: int,
         output: ThesisReviewOutput,
     ) -> None:
-        """Auto-apply toàn bộ AI recommendations ngay tại thời điểm Verify.
-
-        - Update Assumption.status / Catalyst.status → persist riêng từng object.
-        - Insert ReviewRecommendation với status=ACCEPTED và acted_at=now.
-        - Không raise nếu target_id không tìm thấy — log warning và tiếp tục.
-        """
+        """Auto-apply toàn bộ AI recommendations ngay tại thời điểm Verify."""
         now = datetime.now(UTC)
         assumptions_by_id = {a.id: a for a in thesis.assumptions}
         catalysts_by_id = {c.id: c for c in thesis.catalysts}
