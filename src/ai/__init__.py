@@ -1,10 +1,11 @@
-"""AI segment — Perplexity client, prompt packs, structured schemas, agents.
+"""AI segment — AI client, prompt packs, structured schemas, agents.
 
 Public API:
-    PerplexityClient             — async HTTP client with retry
-    PerplexityError              — base exception
-    PerplexityRateLimitError
-    PerplexityUnavailableError
+    AIClient                     — async HTTP client with retry (canonical name)
+    PerplexityClient             — alias for AIClient, kept for backward compat
+    AIError                      — base exception
+    AIRateLimitError
+    AIUnavailableError
     ThesisReviewAgent            — reviews a thesis, returns ThesisReviewOutput
     ThesisReviewOutput           — structured schema
     BriefOutput                  — structured schema
@@ -13,6 +14,10 @@ Public API:
 
 from src.ai.agents.thesis_review import ThesisReviewAgent
 from src.ai.client import (
+    AIClient,
+    AIError,
+    AIRateLimitError,
+    AIUnavailableError,
     PerplexityClient,
     PerplexityError,
     PerplexityRateLimitError,
@@ -27,11 +32,19 @@ from src.ai.schemas import (
 )
 
 __all__ = [
+    # Canonical names
+    "AIClient",
+    "AIError",
+    "AIRateLimitError",
+    "AIUnavailableError",
+    # Legacy aliases
     "PerplexityClient",
     "PerplexityError",
     "PerplexityRateLimitError",
     "PerplexityUnavailableError",
+    # Agents
     "ThesisReviewAgent",
+    # Schemas
     "ThesisReviewOutput",
     "BriefOutput",
     "Verdict",
