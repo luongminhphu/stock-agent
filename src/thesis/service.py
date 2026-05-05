@@ -207,6 +207,11 @@ class ThesisService:
         timeline: str | None,
         note: str | None = None,
     ) -> Catalyst:
+        # Ownership + mutability check — consistent với add_catalyst() và tất cả
+        # proxy methods khác. Thiếu check này cho phép bất kỳ user nào append
+        # catalyst vào thesis của user khác nếu biết thesis_id.
+        thesis = await self._get_owned(thesis_id, user_id)
+        self._assert_mutable(thesis)
         return await self._components.add_catalyst_from_timeline(
             thesis_id=thesis_id,
             user_id=user_id,
