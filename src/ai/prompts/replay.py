@@ -88,23 +88,22 @@ def build_user_prompt(ctx: ReplayContext) -> str:
         f"{ctx.outcome_pnl_pct:+.1f}%" if ctx.outcome_pnl_pct is not None else "N/A"
     )
 
-    return f"""Decision ID: {ctx.decision_id}
-Thesis ID: {ctx.thesis_id}
-Ticker: {ctx.ticker}
-Decision type: {ctx.decision_type}
-Decision at: {ctx.decision_at}
+    return f"""Quyết định #{ctx.decision_id}
+Thesis #{ctx.thesis_id} | Mã: {ctx.ticker}
+Loại lệnh: {ctx.decision_type}
+Thời điểm: {ctx.decision_at}
 
-Context tại thời điểm quyết định:
-- Price at decision: {decision_price}
-- Thesis score: {thesis_score}
-- Thesis health score: {health_score}
-- Active signal: {ctx.active_signal or 'N/A'}
-- Brief summary: {ctx.brief_summary or 'N/A'}
-- Investor rationale: {ctx.rationale or 'N/A'}
+Bối cảnh lúc ra quyết định:
+- Giá tại thời điểm: {decision_price}
+- Điểm thesis: {thesis_score}
+- Điểm sức khoẻ thesis: {health_score}
+- Signal đang active: {ctx.active_signal or 'N/A'}
+- Tóm tắt brief: {ctx.brief_summary or 'N/A'}
+- Lý do của nhà đầu tư: {ctx.rationale or 'N/A'}
 
 Kết quả sau {ctx.outcome_horizon_days} ngày:
-- Outcome price: {outcome_price}
-- Outcome PnL: {outcome_pnl}
-- Outcome verdict hint: {ctx.outcome_verdict_hint or 'N/A'}
+- Giá kết quả: {outcome_price}
+- P&L: {outcome_pnl}
+- Nhận định sơ bộ: {ctx.outcome_verdict_hint or 'N/A'}
 
 Hãy phân tích quyết định này và trả về JSON theo schema đã định."""

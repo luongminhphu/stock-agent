@@ -81,7 +81,7 @@ def build_user_prompt(
         lines.append("")
 
     if macro_context:
-        lines += ["**Market context**:", macro_context, ""]
+        lines += ["**Bối cảnh thị trường**:", macro_context, ""]
 
     if assumptions:
         lines.append(

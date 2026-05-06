@@ -119,7 +119,7 @@ def build_user_prompt(ctx: WatchdogContext, investor_profile: str = "") -> str:
     )
 
     prompt = f"""Mã: {ctx.ticker}
-Thês: {ctx.thesis_title}
+Thesis: {ctx.thesis_title}
 Tóm tắt: {ctx.thesis_summary or 'N/A'}
 
 Giá và vị thế:

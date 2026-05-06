@@ -65,13 +65,13 @@ def build_pretrade_prompt(
             the trade against risk_appetite, avoid list, and known patterns.
     """
     prompt = f"""\
-Pre-trade check cho: **{ticker}**
+Kiểm tra trước lệnh: **{ticker}**
 Giá hiện tại: {price:,.0f} ({change_pct:+.2f}%)
 
-=== THESIS ===
+=== LUẬN ĐIỂM ===
 {thesis_context or "Không có thesis active cho mã này."}
 
-=== WATCHLIST SCAN SIGNAL ===
+=== TÍN HIỆU SCAN ===
 {signal_context or "Không có scan signal gần đây cho mã này."}
 
 === BRIEF HÔM NAY ===
