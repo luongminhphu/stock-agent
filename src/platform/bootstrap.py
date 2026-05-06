@@ -31,15 +31,14 @@ _stress_test_agent: object | None = None
 _replay_agent: object | None = None
 _snapshot_scheduler: object | None = None
 _sector_rotation_agent: object | None = None
-_investor_profile_service: tuple | None = None  # (InvestorProfileService class, user_id str)
-_memory_consolidator: object | None = None        # Wave 3 — Blueprint V2 Memory
-_proactive_alert_agent: object | None = None      # Wave 5 — Event-driven alerts
-_thesis_review_listener: object | None = None     # Wave 6 — Thesis review loop
-_briefing_listener: object | None = None          # Wave 8 — Event-driven briefing
+_investor_profile_service: tuple | None = None
+_memory_consolidator: object | None = None
+_proactive_alert_agent: object | None = None
+_thesis_review_listener: object | None = None
+_briefing_listener: object | None = None
+_opportunity_screen_scheduler: object | None = None  # Wave 3
+_opportunity_screen_subscriber: object | None = None  # Wave 3
 
-# PnlService is session-scoped (stateless), so bootstrap stores the class
-# rather than an instance. get_pnl_service() returns a factory function;
-# callers instantiate with their own session: get_pnl_service()(session).
 _pnl_service_class: type | None = None
 
 
@@ -53,6 +52,7 @@ async def bootstrap() -> None:
     global _sector_rotation_agent, _investor_profile_service, _pnl_service_class
     global _memory_consolidator, _proactive_alert_agent, _thesis_review_listener
     global _briefing_listener
+    global _opportunity_screen_scheduler, _opportunity_screen_subscriber
 
     if _quote_service is None:
         from src.market.adapters.factory import build_adapter
@@ -176,9 +176,7 @@ async def bootstrap() -> None:
                 reason="scheduler_user_id not configured",
             )
 
-    # ── Wave 5: Event Bus + ProactiveAlertAgent ────────────────────────────────
-    # Start the bus worker BEFORE registering any handlers so no events
-    # are lost between registration and the first queue drain.
+    # ── Event Bus + subscribers (start bus FIRST) ──────────────────────────────
     from src.platform.event_bus import get_event_bus
     bus = get_event_bus()
     await bus.start()
@@ -192,14 +190,9 @@ async def bootstrap() -> None:
             ai_client=_ai_client,  # type: ignore[arg-type]
             session_factory=AsyncSessionLocal,
         )
-        _proactive_alert_agent.register()  # subscribe SignalDetectedEvent on bus
+        _proactive_alert_agent.register()
         logger.info("platform.bootstrap.proactive_alert_agent_ready")
 
-    # ── Wave 6: ThesisReviewListener ──────────────────────────────────────────
-    # Registered AFTER ProactiveAlertAgent so the full chain is wired in order:
-    # SignalDetectedEvent → ProactiveAlertAgent → ThesisReviewRequestedEvent
-    #                                           → ThesisReviewListener → ReviewService
-    #                                                                   → ThesisInvalidatedEvent
     if _thesis_review_listener is None:
         from src.thesis.thesis_review_listener import ThesisReviewListener
 
@@ -207,18 +200,9 @@ async def bootstrap() -> None:
             thesis_review_agent=_thesis_review_agent,
             quote_service=_quote_service,
         )
-        _thesis_review_listener.register()  # subscribe ThesisReviewRequestedEvent on bus
+        _thesis_review_listener.register()
         logger.info("platform.bootstrap.thesis_review_listener_ready")
 
-    # ── Wave 8: BriefingListener ───────────────────────────────────────────────
-    # Registered last — subscribes BriefingRequestedEvent.
-    # discord.Client is NOT available at bootstrap time (bot hasn't logged in yet).
-    # Inject via get_briefing_listener().set_client(bot) in bot on_ready
-    # AFTER bootstrap() returns.
-    #
-    # Chain: BriefingScheduler → emit BriefingRequestedEvent
-    #        → BriefingListener._handle() → BriefingService → Discord channel
-    #                                     → emit BriefingReadyEvent
     if _briefing_listener is None:
         from src.briefing.briefing_listener import BriefingListener
         from src.platform.config import settings
@@ -232,7 +216,7 @@ async def bootstrap() -> None:
                 eod_channel_id=int(eod_id) if eod_id else None,
                 user_id=str(user_id),
             )
-            _briefing_listener.register()  # subscribe BriefingRequestedEvent on bus
+            _briefing_listener.register()
             logger.info(
                 "platform.bootstrap.briefing_listener_ready",
                 user_id=str(user_id),
@@ -240,6 +224,52 @@ async def bootstrap() -> None:
         else:
             logger.warning(
                 "platform.bootstrap.briefing_listener_skipped",
+                reason="scheduler_user_id not configured",
+            )
+
+    # ── Wave 3: Opportunity Screen (scheduler + subscriber) ───────────────────
+    # Subscriber registered here (bus already started).
+    # Scheduler is initialised here but start() is called by bot on_ready —
+    # discord.ext.tasks requires the bot event loop to be running.
+    #
+    # Chain:
+    #   OpportunityScreenScheduler._run()  [09:10 ICT daily]
+    #     → run_opportunity_screen_job()   [market segment]
+    #       → OpportunityScreenCompletedEvent → EventBus
+    #         → OpportunityScreenSubscriber._handle()  [ai segment]
+    #           → SectorRotationAgent.analyze()
+    #             → Discord morning channel
+    if _opportunity_screen_scheduler is None:
+        from src.market.opportunity_screen_scheduler import OpportunityScreenScheduler
+
+        _opportunity_screen_scheduler = OpportunityScreenScheduler(
+            quote_service=_quote_service,
+        )
+        logger.info("platform.bootstrap.opportunity_screen_scheduler_ready")
+
+    if _opportunity_screen_subscriber is None:
+        from src.ai.opportunity_screen_subscriber import get_opportunity_screen_subscriber
+        from src.platform.config import settings
+        from src.platform.db import AsyncSessionLocal
+
+        user_id = getattr(settings, "scheduler_user_id", None)
+        morning_id = getattr(settings, "morning_channel_id", None)
+        if user_id:
+            _opportunity_screen_subscriber = get_opportunity_screen_subscriber(
+                sector_rotation_agent=_sector_rotation_agent,
+                session_factory=AsyncSessionLocal,
+                morning_channel_id=int(morning_id) if morning_id else None,
+                user_id=str(user_id),
+            )
+            _opportunity_screen_subscriber.register()  # subscribe on bus
+            logger.info(
+                "platform.bootstrap.opportunity_screen_subscriber_ready",
+                user_id=str(user_id),
+                morning_channel_id=morning_id,
+            )
+        else:
+            logger.warning(
+                "platform.bootstrap.opportunity_screen_subscriber_skipped",
                 reason="scheduler_user_id not configured",
             )
 
@@ -252,7 +282,6 @@ async def shutdown() -> None:
     """
     global _quote_service, _ohlcv_service, _ai_client
 
-    # Stop event bus first — drain pending events before closing AI client
     try:
         from src.platform.event_bus import get_event_bus
         bus = get_event_bus()
@@ -293,7 +322,7 @@ async def shutdown() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Getters — raise RuntimeError if called before bootstrap()
+# Getters
 # ---------------------------------------------------------------------------
 
 def get_quote_service():
@@ -314,7 +343,6 @@ def get_ai_client():
     return _ai_client
 
 
-# Backward-compat alias — tests and legacy callers still use get_perplexity_client()
 get_perplexity_client = get_ai_client
 
 
@@ -330,7 +358,6 @@ def get_thesis_suggest_agent():
     return _thesis_suggest_agent
 
 
-# Alias — scheduler_trigger and other callers import get_suggest_agent directly
 get_suggest_agent = get_thesis_suggest_agent
 
 
@@ -377,14 +404,7 @@ def get_snapshot_scheduler():
 
 
 def get_pnl_service():
-    """Return a factory function: factory(session) -> PnlService instance.
-
-    PnlService is session-scoped. quote_service is bound automatically from
-    the bootstrap singleton so callers never need to import it directly.
-
-    Usage:
-        pnl_svc = get_pnl_service()(session)
-    """
+    """Return a factory: factory(session) -> PnlService."""
     if _pnl_service_class is None:
         raise RuntimeError("PnlService not initialised — call bootstrap() first.")
     quote_svc = get_quote_service()
@@ -392,60 +412,42 @@ def get_pnl_service():
 
 
 def get_investor_profile_service() -> tuple | None:
-    """Return (InvestorProfileService class, user_id) tuple, or None.
-
-    InvestorProfileService is session-scoped — callers instantiate with
-    their own session. Returns None if scheduler_user_id was not configured
-    at bootstrap time; callers should skip gracefully.
-
-    Usage:
-        result = get_investor_profile_service()
-        if result:
-            svc_class, user_id = result
-            async with AsyncSessionLocal() as session:
-                svc = svc_class(session)
-                await svc.build_snapshot(user_id=user_id)
-                await session.commit()
-    """
     return _investor_profile_service
 
 
 def get_memory_consolidator():
-    """Return the MemoryConsolidator singleton.
-
-    Returns None if scheduler_user_id was not configured at bootstrap time
-    (graceful degrade — MemoryConsolidatorScheduler checks for None before running).
-    """
     return _memory_consolidator
 
 
 def get_proactive_alert_agent():
-    """Return the ProactiveAlertAgent singleton.
-
-    Raises RuntimeError if bootstrap() has not been called.
-    The agent is always registered on the event bus after bootstrap.
-    """
     if _proactive_alert_agent is None:
         raise RuntimeError("ProactiveAlertAgent not initialised — call bootstrap() first.")
     return _proactive_alert_agent
 
 
 def get_thesis_review_listener():
-    """Return the ThesisReviewListener singleton.
-
-    Raises RuntimeError if bootstrap() has not been called.
-    The listener is registered on the event bus after bootstrap.
-    """
     if _thesis_review_listener is None:
         raise RuntimeError("ThesisReviewListener not initialised — call bootstrap() first.")
     return _thesis_review_listener
 
 
 def get_briefing_listener():
-    """Return the BriefingListener singleton.
-
-    Returns None if scheduler_user_id was not configured at bootstrap time.
-    The listener is registered on the event bus after bootstrap.
-    Call set_client(bot) after bot login to inject the discord.Client.
-    """
     return _briefing_listener
+
+
+def get_opportunity_screen_scheduler():
+    """Return the OpportunityScreenScheduler singleton.
+
+    Call scheduler.start() in bot on_ready AFTER bootstrap() returns.
+    Returns None if bootstrap() has not been called yet.
+    """
+    return _opportunity_screen_scheduler
+
+
+def get_opportunity_screen_subscriber():
+    """Return the OpportunityScreenSubscriber singleton.
+
+    Call subscriber.set_client(bot) in bot on_ready to inject discord.Client.
+    Returns None if scheduler_user_id was not configured.
+    """
+    return _opportunity_screen_subscriber
