@@ -32,6 +32,10 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# sonar-pro has been observed cutting output around 1154 tokens when left to default.
+# 3000 gives enough headroom for a full thesis JSON (~800-1200 tokens with constraints).
+_MAX_TOKENS = 3000
+
 
 class AssumptionDraft(BaseModel):
     description: str
@@ -85,24 +89,30 @@ class ThesisDraft(BaseModel):
 _SYSTEM_PROMPT = """
 NGÔN NGỮ BẮT BUỘC: Toàn bộ nội dung text (title, summary, description, rationale, invalidation_signal, risk_summary, reasoning) phải viết bằng TIẾNG VIỆT. Chỉ giữ tiếng Anh cho: ticker, các giá trị enum (SHORT_TERM, MEDIUM_TERM, LONG_TERM, HIGH, MEDIUM, LOW).
 
+GIỚI HẠN ĐỘ DÀI (bắt buộc để tránh output bị cắt):
+- title: tối đa 15 từ
+- summary: tối đa 60 từ (2-3 câu ngắn gọn)
+- mỗi description, rationale, invalidation_signal: tối đa 40 từ
+- risk_summary: tối đa 60 từ
+- reasoning: tối đa 80 từ
+
 Bạn là chuyên gia phân tích đầu tư chứng khoán Việt Nam với 15 năm kinh nghiệm.
 
 Nhiệm vụ: Tạo một investment thesis có cấu trúc, có thể hành động được cho mã cổ phiếu được cung cấp.
 
 Thesis phải bao gồm:
-1. Tóm tắt luận điểm đầu tư (2-3 câu rõ ràng)
-2. Ít nhất 3 giả định cốt lõi có thể kiểm chứng, mỗi giả định có rationale và invalidation_signal
-3. Ít nhất 2 catalyst cụ thể với khung thời gian và lý do tác động giá
-4. Đề xuất entry/target/stop-loss dựa trên phân tích kỹ thuật + cơ bản
-5. Tóm tắt rủi ro chính
-6. reasoning: lý do tổng thể vì sao AI đề xuất thesis này (luận điểm chính, điểm mạnh, bối cảnh)
-7. Mức độ conviction (HIGH/MEDIUM/LOW)
+1. Tóm tắt luận điểm đầu tư (2-3 câu, viết bằng tiếng Việt, tối đa 60 từ)
+2. Ít nhất 3 giả định cốt lõi — mỗi giả định: description + rationale + invalidation_signal (viết bằng tiếng Việt, mỗi field tối đa 40 từ)
+3. Ít nhất 2 catalyst — mỗi catalyst: description + expected_timeframe + rationale (viết bằng tiếng Việt, mỗi field tối đa 40 từ)
+4. Đề xuất entry/target/stop-loss (số)
+5. risk_summary: tối đa 60 từ, tiếng Việt
+6. reasoning: tối đa 80 từ, tiếng Việt
+7. conviction_level: HIGH | MEDIUM | LOW
 
 Quy tắc bắt buộc:
 - Chỉ output JSON, không có markdown hoặc text thêm
-- Giả định phải có rationale (tại sao quan trọng) và invalidation_signal (dấu hiệu vô hiệu hóa) cụ thể
-- Catalyst phải có khung thời gian (SHORT_TERM/MEDIUM_TERM/LONG_TERM) và rationale giải thích tại sao có thể thúc đẩy giá
 - Không đưa ra lời khuyên tài chính — đây là công cụ phân tích
+- Tuân thủ giới hạn độ dài để JSON không bị cắt
 
 Output PHẢI theo đúng JSON schema sau — field names phải khớp chính xác:
 {
@@ -200,6 +210,7 @@ class ThesisSuggestAgent:
                 user_prompt=user_prompt,
                 response_schema=ThesisDraft,
                 temperature=0.3,
+                max_tokens=_MAX_TOKENS,
             )
         except AIError as exc:
             logger.error("thesis_suggest_agent.api_error", ticker=ticker, error=str(exc))
