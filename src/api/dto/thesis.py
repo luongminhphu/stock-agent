@@ -12,7 +12,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from src.thesis.models import AssumptionStatus, CatalystStatus
+from src.thesis.models import AssumptionStatus, CatalystStatus, ThesisDirection
 
 # ---------------------------------------------------------------------------
 # Assumption
@@ -100,6 +100,7 @@ class ThesisResponse(BaseModel):
     title: str
     summary: str | None = None
     status: str
+    direction: str | None = None
     entry_price: float | None = None
     target_price: float | None = None
     stop_loss: float | None = None
@@ -125,6 +126,9 @@ class ThesisCreateRequest(BaseModel):
     ticker: str = Field(..., min_length=1, max_length=10)
     title: str = Field(..., min_length=1, max_length=256)
     summary: str = Field(default="", max_length=4000)
+    direction: ThesisDirection | None = Field(
+        default=None, description="LONG | SHORT — hướng giao dịch kỳ vọng"
+    )
     entry_price: float | None = Field(default=None, gt=0)
     target_price: float | None = Field(default=None, gt=0)
     stop_loss: float | None = Field(default=None, gt=0)
@@ -135,6 +139,9 @@ class ThesisCreateRequest(BaseModel):
 class ThesisUpdateRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=256)
     summary: str | None = Field(default=None, max_length=4000)
+    direction: ThesisDirection | None = Field(
+        default=None, description="LONG | SHORT — cập nhật hướng giao dịch"
+    )
     entry_price: float | None = Field(default=None, gt=0)
     target_price: float | None = Field(default=None, gt=0)
     stop_loss: float | None = Field(default=None, gt=0)
@@ -242,7 +249,7 @@ class ApplyRecommendationRequest(BaseModel):
     action: Literal["accept", "reject"] = Field(
         ..., description="'accept' để áp dụng đề xuất, 'reject' để bỏ qua"
     )
-    
+
 class ApplyAiReviewRequest(BaseModel):
     """Body cho POST /thesis/{thesis_id}/ai-review/apply (bulk apply).
 
