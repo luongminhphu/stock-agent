@@ -13,8 +13,9 @@ Boundary rules:
 from __future__ import annotations
 
 import json
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from src.ai.client import AIClient, AIError
 from src.platform.logging import get_logger
@@ -25,28 +26,114 @@ logger = get_logger(__name__)
 class SectorSignal(BaseModel):
     sector: str
     signal: str = Field(..., description="ROTATE_IN | ROTATE_OUT | HOLD | WATCH")
-    momentum_score: float = Field(..., ge=0.0, le=1.0)
+    momentum_score: float = Field(default=0.5, ge=0.0, le=1.0)
     rationale: str
     key_tickers: list[str] = Field(default_factory=list)
 
+    @field_validator("rationale", mode="before")
+    @classmethod
+    def coerce_rationale(cls, v: Any) -> str:
+        if isinstance(v, list):
+            return " | ".join(str(i) for i in v)
+        return str(v) if v is not None else ""
+
+    @field_validator("momentum_score", mode="before")
+    @classmethod
+    def coerce_momentum(cls, v: Any) -> float:
+        if v is None:
+            return 0.5
+        try:
+            return max(0.0, min(1.0, float(v)))
+        except (TypeError, ValueError):
+            return 0.5
+
 
 class SectorRotationOutput(BaseModel):
-    """Structured output from SectorRotationAgent."""
+    """Structured output from SectorRotationAgent.
 
-    market_regime: str = Field(
-        ..., description="RISK_ON | RISK_OFF | TRANSITIONING | UNCLEAR"
-    )
-    top_rotate_in: list[str] = Field(
-        ..., description="Top 2-3 sectors to rotate into"
-    )
-    top_rotate_out: list[str] = Field(
-        ..., description="Top 2-3 sectors to rotate out of"
-    )
+    Validators absorb common model output variations so the schema
+    stays stable regardless of how sonar-pro names its fields.
+    """
+
+    market_regime: str = Field(..., description="RISK_ON | RISK_OFF | TRANSITIONING | UNCLEAR")
+    top_rotate_in: list[str] = Field(default_factory=list)
+    top_rotate_out: list[str] = Field(default_factory=list)
     sector_signals: list[SectorSignal]
     macro_summary: str
     key_risk: str
-    confidence: str = Field(..., description="HIGH | MEDIUM | LOW")
+    confidence: str = Field(default="MEDIUM", description="HIGH | MEDIUM | LOW")
     next_watch: str
+
+    @field_validator("next_watch", "key_risk", "macro_summary", mode="before")
+    @classmethod
+    def coerce_str_fields(cls, v: Any) -> str:
+        if isinstance(v, list):
+            return " | ".join(str(i) for i in v)
+        if isinstance(v, dict):
+            return json.dumps(v, ensure_ascii=False)
+        return str(v) if v is not None else ""
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def coerce_confidence(cls, v: Any) -> str:
+        if isinstance(v, float):
+            if v >= 0.7:
+                return "HIGH"
+            if v >= 0.5:
+                return "MEDIUM"
+            return "LOW"
+        return str(v) if v else "MEDIUM"
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_model_output(cls, data: Any) -> Any:
+        """Normalize divergent model field names into the canonical schema."""
+        if not isinstance(data, dict):
+            return data
+
+        # macro_summary: prefer explicit field, fallback to nested macro_assessment
+        if not data.get("macro_summary"):
+            ma = data.get("macro_assessment", {})
+            regime = ma.get("regime", "") if isinstance(ma, dict) else ""
+            desc = data.get("regime_description", "")
+            data["macro_summary"] = f"{regime}: {desc}".strip(": ") or "N/A"
+
+        # key_risk: prefer explicit str, fallback to key_risks list
+        if not data.get("key_risk"):
+            risks = data.get("key_risks", [])
+            if isinstance(risks, list) and risks:
+                data["key_risk"] = " | ".join(str(r) for r in risks[:3])
+            else:
+                data["key_risk"] = str(risks) if risks else "N/A"
+
+        # next_watch: coerce list → str early so field_validator also works
+        if isinstance(data.get("next_watch"), list):
+            data["next_watch"] = " | ".join(str(i) for i in data["next_watch"])
+
+        # top_rotate_in / top_rotate_out: derive from sector_signals if missing
+        signals = data.get("sector_signals", [])
+        if not data.get("top_rotate_in"):
+            data["top_rotate_in"] = [
+                s["sector"] for s in signals
+                if isinstance(s, dict) and s.get("signal") == "ROTATE_IN"
+            ][:3]
+        if not data.get("top_rotate_out"):
+            data["top_rotate_out"] = [
+                s["sector"] for s in signals
+                if isinstance(s, dict) and s.get("signal") == "ROTATE_OUT"
+            ][:3]
+
+        # confidence: derive from avg signal confidence float if top-level missing
+        if not data.get("confidence"):
+            scores = [
+                s.get("confidence", 0.5)
+                for s in signals
+                if isinstance(s, dict) and isinstance(s.get("confidence"), (int, float))
+            ]
+            avg = sum(scores) / len(scores) if scores else 0.5
+            data["confidence"] = "HIGH" if avg >= 0.7 else "MEDIUM" if avg >= 0.5 else "LOW"
+
+        return data
 
 
 _SYSTEM_PROMPT = """
@@ -110,8 +197,6 @@ class SectorRotationAgent:
         logger.info("sector_rotation_agent.start", sector_count=len(sector_performance))
 
         try:
-            # Use client.chat() — sonar-pro does NOT support response_format=json_object.
-            # client.chat() enforces JSON via system prompt and parses into Pydantic schema.
             result = await self._client.chat(
                 system_prompt=_SYSTEM_PROMPT,
                 user_prompt=user_prompt,
