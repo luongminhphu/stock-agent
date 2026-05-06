@@ -159,7 +159,25 @@ def build_eod_prompt(
     market_context: str,
     watchlist_tickers: list[str],
     extra_context: str = "",
+    portfolio_context: str = "",
+    thesis_context: str = "",
+    past_lessons: str = "",
+    investor_profile: str = "",
 ) -> str:
+    """Build EOD brief prompt.
+
+    Args:
+        market_context:    EOD market data string (closing quotes, session recap).
+        watchlist_tickers: List of ticker symbols in the user's watchlist.
+        extra_context:     Optional free-form additional context.
+        portfolio_context: Optional portfolio P&L snapshot — used to review
+                           portfolio alignment with end-of-session sentiment.
+        thesis_context:    Optional active thesis summary — used to detect whether
+                           closing price is approaching any thesis stop_loss,
+                           triggering ACT_TODAY recommendation for next session.
+        past_lessons:      Optional formatted lesson history from LessonService.
+        investor_profile:  Optional pre-rendered investor profile block.
+    """
     ticker_str = ", ".join(watchlist_tickers) if watchlist_tickers else "(không có watchlist)"
     prompt = f"""[EOD BRIEF — Tổng kết phiên]
 
@@ -168,6 +186,18 @@ Diễn biến phiên hôm nay:
 
 Watchlist cần review: {ticker_str}
 """
+    if investor_profile:
+        prompt += f"\n{investor_profile}\n"
+
+    if portfolio_context:
+        prompt += f"\nPortfolio hiện tại:\n{portfolio_context}\n"
+
+    if thesis_context:
+        prompt += f"\nThesis đang active (dùng để phát hiện risk cho phiên tiếp theo):\n{thesis_context}\n"
+
+    if past_lessons:
+        prompt += f"\nLịch sử quyết định của nhà đầu tư này (dùng để cá nhân hóa phân tích):\n{past_lessons}\n"
+
     if extra_context:
         prompt += f"\nThông tin bổ sung:\n{extra_context}\n"
 
@@ -177,4 +207,25 @@ Watchlist cần review: {ticker_str}
         " Tổng kết hiệu suất từng mã trong phiên: giá đóng cửa, % thay đổi, tín hiệu kỹ thuật."
         " watch_reason là điểm cần chú ý cho phiên TIẾP THEO."
     )
+    if investor_profile:
+        prompt += (
+            " Dùng INVESTOR PROFILE để lọc và cá nhân hóa prioritized_actions:"
+            " không đề xuất action vi phạm risk_appetite, bỏ qua ticker/sector trong avoid list."
+            " Tham chiếu patterns/lessons khi viết reason."
+        )
+    if portfolio_context:
+        prompt += (
+            " Điền portfolio_summary: nhận xét alignment portfolio với market sentiment cuối phiên,"
+            " position nào cần chú ý hoặc cân nhắc điều chỉnh cho phiên tới."
+        )
+    if thesis_context:
+        prompt += (
+            " Kiểm tra thesis stop_loss: nếu giá đóng cửa hôm nay đang tiếp cận stop_loss"
+            " của bất kỳ thesis nào → bắt buộc xuất ACT_TODAY cho phiên tiếp theo."
+        )
+    if past_lessons:
+        prompt += (
+            " Tham chiếu lịch sử quyết định để cá nhân hóa prioritized_actions cho phiên tới:"
+            " nếu có pattern thua lỗ từng xảy ra → nâng thêm cảnh báo trong reason."
+        )
     return prompt

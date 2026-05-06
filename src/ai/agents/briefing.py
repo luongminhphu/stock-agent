@@ -117,23 +117,48 @@ class BriefingAgent:
         market_context: str,
         watchlist_tickers: list[str],
         extra_context: str = "",
+        portfolio_context: str = "",
+        thesis_context: str = "",
+        past_lessons: str = "",
+        investor_profile: str = "",
         # Memory wiring params (optional, backward-compat)
         session: AsyncSession | None = None,
         user_id: str | None = None,
     ) -> BriefOutput:
         """Generate an end-of-day brief.
 
-        EOD brief does not inject investor profile — it is a market recap,
-        not a decision-making prompt. Profile injection is morning-only.
+        EOD brief injects the same context blocks as morning_brief so the
+        AI can review portfolio alignment, detect thesis stop_loss breaches
+        for the next session, and personalise the recap via investor profile
+        and past lessons.
+
+        Args:
+            market_context:    EOD market data string (closing quotes, session recap).
+            watchlist_tickers: List of ticker symbols in the user's watchlist.
+            extra_context:     Optional free-form additional context.
+            portfolio_context: Optional portfolio P&L snapshot string.
+            thesis_context:    Optional active thesis summary string.
+            past_lessons:      Optional formatted lesson history from LessonService.
+            investor_profile:  Optional pre-rendered investor profile block.
+            session:           Optional AsyncSession for memory logging.
+            user_id:           Optional user_id for memory logging.
         """
         prompt = build_eod_prompt(
             market_context=market_context,
             watchlist_tickers=watchlist_tickers,
             extra_context=extra_context,
+            portfolio_context=portfolio_context,
+            thesis_context=thesis_context,
+            past_lessons=past_lessons,
+            investor_profile=investor_profile,
         )
         logger.debug(
             "briefing_agent.eod_brief.calling_ai",
             ticker_count=len(watchlist_tickers),
+            has_portfolio=bool(portfolio_context),
+            has_thesis=bool(thesis_context),
+            has_lessons=bool(past_lessons),
+            has_investor_profile=bool(investor_profile),
         )
         result: BriefOutput = await self._client.chat(
             system_prompt=SYSTEM_PROMPT,
@@ -143,6 +168,7 @@ class BriefingAgent:
         logger.info(
             "briefing_agent.eod_brief.done",
             sentiment=getattr(result, "sentiment", None),
+            action_count=len(getattr(result, "prioritized_actions", []) or []),
         )
 
         # --- Memory: log interaction (Layer 2) ---
