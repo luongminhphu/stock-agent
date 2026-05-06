@@ -42,7 +42,7 @@
      - .command-strip: thêm max-width 1680px + margin-inline auto
        → strip canh giữa đồng bộ với workspace
 
-   FIX LOG (2026-05-06):
+   FIX LOG (2026-05-06a):
      - portfolio-layer / watchlist-layer / validation-layer: thêm max-width 1680px
        + margin-inline auto → bảng data không dải vô hạn trên 1920px+
      - brief-context-strip: thêm max-width 1680px + margin-inline auto
@@ -51,6 +51,14 @@
        repeat(4, minmax(0,260px)) minmax(0,360px) + justify-content:center
        → KPI cell có trần kích thước, không dãn vô hạn ở 1920px+
      - kpi-strip (6 cards): thêm variant 6-col với trần nhỏ hơn
+
+   FIX LOG (2026-05-06b):
+     - .signal-card: thêm align-self:stretch + justify-content:flex-start
+       → Portfolio Value / Unrealized P&L không bị lệch xuống thấp hơn
+       các card còn lại khi content cao hơn (số VNĐ + sub-text)
+     - .brief-context-strip: thêm box-sizing:border-box
+       → padding-inline không overflow max-width, brief text canh lề
+       đồng bộ với watchlist-layer / workspace-grid
 */
 
 /* ── SKIP LINK ──────────────────────────────────── */
@@ -223,7 +231,7 @@
   color: var(--text);
 }
 
-/* ─────────────────────────────────────────────────────── */
+/* ───────────────────────────────────────────────────────── */
 
 .icon-btn {
   display: inline-flex;
@@ -253,7 +261,7 @@
 
 /* ── COMMAND STRIP (KPI strip) ──────────────────────────────────── */
 /*
-   FIX (2026-05-06): Replace bare 1fr columns with minmax(0, Npx) so cells
+   FIX (2026-05-06a): Replace bare 1fr columns with minmax(0, Npx) so cells
    have a hard ceiling at 24-inch widths. justify-content:center means the
    strip clusters toward the middle rather than stretching edge-to-edge.
 
@@ -287,6 +295,10 @@
   transition: background .15s;
   min-width: 0;
   overflow: hidden;
+  /* FIX (2026-05-06b): fill grid row height so all cards sit at the same
+     top edge regardless of content height differences */
+  align-self: stretch;
+  justify-content: flex-start;
 }
 .signal-card:hover { background: var(--surface-2); }
 
@@ -347,13 +359,16 @@
 }
 
 /* ── BRIEF CONTEXT STRIP ────────────────────────────────
-   FIX (2026-05-06): constrain width + sync alignment với các layer khác
+   FIX (2026-05-06a): constrain width + sync alignment với các layer khác
+   FIX (2026-05-06b): box-sizing:border-box → padding-inline không overflow
+     max-width, brief text canh lề đồng bộ với watchlist-layer / workspace-grid
 ─────────────────────────────────────────────────────── */
 .brief-context-strip {
   max-width: var(--content-max);
   margin-inline: auto;
   width: 100%;
   padding-inline: var(--page-px);
+  box-sizing: border-box;
 }
 
 /* ── WORKSPACE GRID ──────────────────────────────────── */
@@ -416,7 +431,7 @@
 .action-panel { flex-shrink: 0; }
 
 /* ── PORTFOLIO LAYER ────────────────────────────────────
-   FIX (2026-05-06): add max-width + margin-inline auto
+   FIX (2026-05-06a): add max-width + margin-inline auto
    → bảng Holdings không dải hết 1920px trên màn 24-inch
 ─────────────────────────────────────────────────────── */
 .portfolio-layer {
@@ -428,7 +443,7 @@
 }
 
 /* ── WATCHLIST LAYER ────────────────────────────────────
-   FIX (2026-05-06): same constraint as portfolio-layer
+   FIX (2026-05-06a): same constraint as portfolio-layer
 ─────────────────────────────────────────────────────── */
 .watchlist-layer {
   padding-inline: var(--page-px);
@@ -439,7 +454,7 @@
 }
 
 /* ── VALIDATION LAYER ───────────────────────────────────
-   FIX (2026-05-06): same constraint as portfolio-layer
+   FIX (2026-05-06a): same constraint as portfolio-layer
 ─────────────────────────────────────────────────────── */
 .validation-layer {
   padding-inline: var(--page-px);
