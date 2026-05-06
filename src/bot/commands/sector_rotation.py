@@ -13,9 +13,9 @@ from __future__ import annotations
 import discord
 from discord import app_commands
 
-from src.ai.schemas import FlowDirection
+from src.ai.agents.sector_rotation import SectorRotationOutput
 from src.bot.commands.base import BaseCog
-from src.platform.bootstrap import get_sector_rotation_agent
+from src.platform.bootstrap import get_sector_rotation_agent, get_quote_service
 from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
@@ -37,8 +37,43 @@ class SectorRotationCog(BaseCog):
             watchlist = [t.strip().upper() for t in tickers.split() if t.strip()]
 
         try:
+            from src.market.registry import SymbolRegistry
+            from src.market.sector_rotation_service import SectorRotationService
+
+            svc = SectorRotationService(
+                quote_service=get_quote_service(),
+                registry=SymbolRegistry(),
+            )
+            flows = await svc.get_sector_flows(watchlist_tickers=watchlist)
+            snapshot_date = await svc.get_snapshot_date()
+
+            # Convert SectorFlow → list[dict] cho agent
+            sector_performance = [
+                {
+                    "sector": f.sector,
+                    "avg_change_pct_1d": f.avg_change_pct_1d,
+                    "flow_direction": str(f.flow_direction),
+                    "top_movers": f.top_movers,
+                    "ticker_count": f.ticker_count,
+                }
+                for f in flows
+            ]
+
+            # Tổng hợp macro_context đơn giản từ data có sẵn
+            inflow = [f.sector for f in flows if f.avg_change_pct_1d > 0]
+            outflow = [f.sector for f in flows if f.avg_change_pct_1d < 0]
+            macro_context = (
+                f"Ngày {snapshot_date}. "
+                f"Sectors tăng: {', '.join(inflow) or 'không có'}. "
+                f"Sectors giảm: {', '.join(outflow) or 'không có'}."
+            )
+
             agent = get_sector_rotation_agent()
-            result = await agent.analyze(watchlist_tickers=watchlist)  # type: ignore[union-attr]
+            result = await agent.analyze(
+                sector_performance=sector_performance,
+                macro_context=macro_context,
+                foreign_flow="",
+            )
         except Exception as exc:
             logger.error("sector.command.error", error=str(exc))
             await self.send_error(
@@ -48,50 +83,59 @@ class SectorRotationCog(BaseCog):
             )
             return
 
-        embed = _build_sector_embed(result)
+        embed = _build_sector_embed(result, watchlist_filter=watchlist)
         await interaction.followup.send(embed=embed, ephemeral=False)
 
 
-def _build_sector_embed(result) -> discord.Embed:
-    regime_emoji = {"RISK_ON": "🟢", "RISK_OFF": "🔴", "MIXED": "🟡"}.get(
-        str(result.risk_regime), ""
-    )
+def _build_sector_embed(
+    result: SectorRotationOutput,
+    watchlist_filter: list[str] | None = None,
+) -> discord.Embed:
+    regime_emoji = {
+        "RISK_ON": "🟢",
+        "RISK_OFF": "🔴",
+        "TRANSITIONING": "🟡",
+        "UNCLEAR": "⚪",
+    }.get(result.market_regime, "")
     color = {
         "RISK_ON": discord.Color.green(),
         "RISK_OFF": discord.Color.red(),
-        "MIXED": discord.Color.gold(),
-    }.get(str(result.risk_regime), discord.Color.blurple())
+        "TRANSITIONING": discord.Color.gold(),
+    }.get(result.market_regime, discord.Color.blurple())
 
     embed = discord.Embed(
-        title=f"{regime_emoji} Sector Rotation Radar — {result.snapshot_date}",
-        description=result.rotation_narrative,
+        title=f"{regime_emoji} Sector Rotation — {result.market_regime}",
+        description=result.macro_summary,
         color=color,
     )
 
-    if result.leading_sectors:
+    if result.top_rotate_in:
+        embed.add_field(name="⬆️ Rotate In", value=", ".join(result.top_rotate_in), inline=True)
+    if result.top_rotate_out:
+        embed.add_field(name="⬇️ Rotate Out", value=", ".join(result.top_rotate_out), inline=True)
+
+    # Signals — nếu có watchlist, ưu tiên signals có tickers overlap
+    signals = result.sector_signals
+    if watchlist_filter:
+        filtered = [
+            s for s in signals
+            if any(t in s.key_tickers for t in watchlist_filter)
+        ]
+        signals = filtered or signals  # fallback full nếu không match
+
+    if signals:
         lines = []
-        for sf in result.leading_sectors[:3]:
-            movers = ", ".join(sf.top_movers[:3]) if sf.top_movers else "—"
-            lines.append(f"**{sf.sector}** `{sf.avg_change_pct_1d:+.2f}%` — {movers}")
-        embed.add_field(name="⬆️ Leading Sectors", value="\n".join(lines), inline=False)
+        for s in signals[:5]:
+            bar = "█" * round(s.momentum_score * 5) + "░" * (5 - round(s.momentum_score * 5))
+            tickers_str = ", ".join(s.key_tickers[:3]) if s.key_tickers else "—"
+            lines.append(f"**{s.sector}** `{s.signal}` {bar} — {tickers_str}")
+        embed.add_field(name="📊 Signals", value="\n".join(lines), inline=False)
 
-    if result.lagging_sectors:
-        lines = []
-        for sf in result.lagging_sectors[:3]:
-            movers = ", ".join(sf.top_movers[:3]) if sf.top_movers else "—"
-            lines.append(f"**{sf.sector}** `{sf.avg_change_pct_1d:+.2f}%` — {movers}")
-        embed.add_field(name="⬇️ Lagging Sectors", value="\n".join(lines), inline=False)
+    embed.add_field(name="⚠️ Key Risk", value=result.key_risk, inline=False)
+    embed.add_field(name="👀 Next Watch", value=result.next_watch, inline=False)
 
-    if result.watchlist_crosscheck:
-        lines = []
-        for wc in result.watchlist_crosscheck:
-            flag = "🚩" if wc.is_contrarian else "✅"
-            lines.append(f"{flag} {wc.note}")
-        embed.add_field(name="🔍 Watchlist vs Sector", value="\n".join(lines), inline=False)
-
-    if result.actionable_insight:
-        embed.add_field(name="💡 Insight", value=result.actionable_insight, inline=False)
-
-    conf_bar = "█" * round(result.confidence * 10) + "░" * (10 - round(result.confidence * 10))
-    embed.set_footer(text=f"Confidence: {conf_bar} {result.confidence:.0%}  ·  stock-agent AI")
+    conf_label = {"HIGH": "🟢 HIGH", "MEDIUM": "🟡 MEDIUM", "LOW": "🔴 LOW"}.get(
+        result.confidence, result.confidence
+    )
+    embed.set_footer(text=f"Confidence: {conf_label}  ·  stock-agent AI")
     return embed
