@@ -78,6 +78,31 @@ class ThesisReviewRequestedEvent(DomainEvent):
     reason: str = "scheduled"      # scheduled | signal | manual
 
 
+@dataclass(frozen=True)
+class StressTestCompletedEvent(DomainEvent):
+    """Emitted by thesis.StressTestService after AI stress-test finishes.
+
+    Consumers:
+    - watchlist.StressTestSubscriber: auto-creates ThesisTriggerAlert rules
+      for each suggested_trigger when invalidation_probability >= 0.25.
+    - briefing segment (future): inject high-risk thesis context into morning brief.
+
+    suggested_triggers: measurable early-warning conditions identified by AI,
+    e.g. "NIM VCB giảm dưới 3.2% trong Q2 2026" or "NHNN tăng lãi suất cơ bản".
+    """
+    thesis_id: str = ""
+    user_id: str = ""
+    symbol: str = ""
+    thesis_title: str = ""
+    verdict: str = ""                        # BULLISH | BEARISH | NEUTRAL
+    invalidation_probability: float = 0.0   # 0.0 – 1.0
+    confidence: float = 0.0
+    suggested_triggers: list[str] = field(default_factory=list)
+    broken_assumption_count: int = 0
+    weakened_assumption_count: int = 0
+    stress_scenario: str = ""               # macro scenario AI used
+
+
 # ─── AI recommendations ───────────────────────────────────────────────────────
 
 @dataclass(frozen=True)

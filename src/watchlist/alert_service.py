@@ -4,6 +4,7 @@ Owner: watchlist segment.
 
 Responsibilities:
   - Create alerts attached to watchlist items
+  - Create thesis-trigger alert rules (from StressTestSubscriber)
   - List alerts for a user (all or active-only)
   - Process a batch of triggered alerts (called by ScanService)
   - Dismiss an alert by ID
@@ -37,6 +38,7 @@ class AlertService:
 
     Owner: watchlist segment.
     Caller: ScanService (process_triggered), WatchlistService (create/dismiss),
+            StressTestSubscriber (create_thesis_trigger_rule),
             bot/api adapters (list, reactivate).
     """
 
@@ -45,7 +47,7 @@ class AlertService:
         self._repo = WatchlistRepository(session)
 
     # ------------------------------------------------------------------
-    # Create
+    # Create — standard price/condition alerts
     # ------------------------------------------------------------------
 
     async def create(
@@ -86,6 +88,99 @@ class AlertService:
             ticker=ticker,
             condition=condition_type,
             threshold=threshold,
+        )
+        return alert
+
+    # ------------------------------------------------------------------
+    # Create — thesis trigger rules (Wave 2, from StressTestSubscriber)
+    # ------------------------------------------------------------------
+
+    async def rule_exists_by_dedup_key(
+        self,
+        user_id: str,
+        dedup_key: str,
+    ) -> bool:
+        """Check if an alert rule with this dedup_key already exists for user.
+
+        Used by StressTestSubscriber to prevent duplicate rule creation
+        when the same stress-test result is processed more than once.
+
+        Args:
+            user_id:   Owner of the alert.
+            dedup_key: Unique key, e.g. "stress:{thesis_id}:{trigger_index}".
+
+        Returns:
+            True if a matching rule already exists.
+        """
+        result = await self._session.execute(
+            select(Alert).where(
+                Alert.user_id == user_id,
+                Alert.dedup_key == dedup_key,
+            )
+        )
+        return result.scalar_one_or_none() is not None
+
+    async def create_thesis_trigger_rule(
+        self,
+        user_id: str,
+        symbol: str,
+        label: str,
+        trigger_description: str,
+        thesis_id: str,
+        dedup_key: str,
+        source_event_id: str,
+        invalidation_probability: float,
+    ) -> Alert:
+        """Create a watch alert rule from a thesis stress-test trigger.
+
+        Rule type: THESIS_TRIGGER.
+        Priority is derived from invalidation_probability:
+            >= 0.7  → HIGH
+            >= 0.4  → MEDIUM
+            < 0.4   → LOW
+
+        Does NOT commit — caller (StressTestSubscriber) commits once
+        after all rules for the event are created.
+
+        Args:
+            user_id:                  Owner of the rule.
+            symbol:                   Ticker symbol (uppercased internally).
+            label:                    Human-readable label shown in Discord/UI.
+            trigger_description:      Full AI-generated trigger text.
+            thesis_id:                ID of the source thesis (str).
+            dedup_key:                Dedup guard, e.g. "stress:{thesis_id}:{idx}".
+            source_event_id:          event_id of StressTestCompletedEvent for tracing.
+            invalidation_probability: Float 0-1 from AI result.
+
+        Returns:
+            Alert instance added to session (not yet committed).
+        """
+        priority = (
+            "HIGH"   if invalidation_probability >= 0.7 else
+            "MEDIUM" if invalidation_probability >= 0.4 else
+            "LOW"
+        )
+        alert = Alert(
+            user_id=user_id,
+            ticker=symbol.upper(),
+            condition_type=AlertConditionType.THESIS_TRIGGER,
+            threshold=0.0,           # N/A for narrative triggers
+            status=AlertStatus.ACTIVE,
+            note=trigger_description,
+            label=label,
+            thesis_id=thesis_id,
+            dedup_key=dedup_key,
+            source_event_id=source_event_id,
+            priority=priority,
+        )
+        self._session.add(alert)
+        logger.info(
+            "alert_service.thesis_trigger_rule_created",
+            user_id=user_id,
+            symbol=symbol,
+            thesis_id=thesis_id,
+            priority=priority,
+            dedup_key=dedup_key,
         )
         return alert
 

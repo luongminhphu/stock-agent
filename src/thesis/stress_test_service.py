@@ -7,12 +7,14 @@ Responsibilities:
 - Fetch current price from market segment
 - Build macro_context string (price + sector hint) for AI
 - Call StressTestAgent
+- Emit StressTestCompletedEvent via platform event bus
 - Return StressTestOutput to caller (bot adapter)
 
 Non-responsibilities:
 - No DB writes — stress-test is read-only, does not mutate thesis state
 - No Discord formatting (formatter lives in bot layer)
 - No business rule decisions (invalidation threshold lives in ReviewService)
+- Does NOT call watchlist directly — emits event, watchlist subscribes
 
 Sector context:
 - Provided by market.registry.SymbolRegistry.get_sector_context_str()
@@ -21,15 +23,23 @@ Sector context:
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.ai.agents.stress_test import StressTestAgent
 from src.ai.schemas import StressTestOutput
 from src.market.registry import SymbolRegistry
+from src.platform.event_bus import get_event_bus
+from src.platform.events import StressTestCompletedEvent
 from src.platform.logging import get_logger
 from src.thesis.repository import ThesisRepository
 
 logger = get_logger(__name__)
+
+# Suppress re-emit for the same thesis within this window.
+# Prevents double-fire if bot retries a slow AI call.
+_STRESS_TEST_DEDUP_WINDOW = timedelta(hours=2)
 
 
 class StressTestService:
@@ -62,6 +72,10 @@ class StressTestService:
         user_id: str,
     ) -> StressTestOutput:
         """Load thesis, build context, run adversarial stress-test.
+
+        After the AI call completes, emits StressTestCompletedEvent on the
+        platform event bus. watchlist.StressTestSubscriber picks this up and
+        auto-creates ThesisTriggerAlert rules — no direct coupling.
 
         Args:
             thesis_id: ID of the thesis to stress-test.
@@ -149,6 +163,40 @@ class StressTestService:
             verdict=result.verdict,
             invalidation_prob=result.invalidation_probability,
         )
+
+        # ── Emit StressTestCompletedEvent ──────────────────────────────────────
+        # watchlist.StressTestSubscriber subscribes to this and auto-creates
+        # ThesisTriggerAlert rules. thesis segment has zero knowledge of watchlist.
+        threatened = getattr(result, "threatened_assumptions", []) or []
+        broken_count = sum(
+            1 for a in threatened
+            if str(getattr(a, "threat_level", "")).upper() == "BROKEN"
+        )
+        weakened_count = sum(
+            1 for a in threatened
+            if str(getattr(a, "threat_level", "")).upper() == "WEAKENED"
+        )
+        await get_event_bus().publish(
+            StressTestCompletedEvent(
+                thesis_id=str(thesis_id),
+                user_id=str(user_id),
+                symbol=thesis.ticker,
+                thesis_title=thesis.title,
+                verdict=str(result.verdict),
+                invalidation_probability=float(result.invalidation_probability),
+                confidence=float(getattr(result, "confidence", 0.0)),
+                suggested_triggers=list(
+                    getattr(result, "suggested_triggers_to_watch", []) or []
+                ),
+                broken_assumption_count=broken_count,
+                weakened_assumption_count=weakened_count,
+                stress_scenario=str(getattr(result, "stress_scenario", "") or ""),
+            ),
+            dedup_key=f"stress_test:{thesis_id}",
+            dedup_window=_STRESS_TEST_DEDUP_WINDOW,
+        )
+        # ──────────────────────────────────────────────────────────────────────
+
         return result
 
     async def stress_test_by_ticker(
