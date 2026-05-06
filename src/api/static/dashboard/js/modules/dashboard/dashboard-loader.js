@@ -251,7 +251,8 @@ export function renderSummary(s, portfolio) {
     if (pnlPctNode) {
       if (pct != null) {
         const sign = pct >= 0 ? '+' : '';
-        pnlPctNode.textContent = `${sign}${(pct * 100).toFixed(2)}%`;
+        // pnl_service.py trả về % thô (e.g. 19.20), không phải decimal ratio
+        pnlPctNode.textContent = `${sign}${pct.toFixed(2)}%`;
       } else {
         pnlPctNode.textContent = '';
       }
