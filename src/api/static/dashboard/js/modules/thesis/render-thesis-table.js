@@ -55,7 +55,7 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
       <div>
         <div class="detail-meta">
           <span class="badge" style="font-size:.9rem;padding:6px 12px;">${esc(t.ticker)}</span>
-          ${badge(t.direction)}
+          ${t.direction ? badge(t.direction) : ''}
           ${badge(t.status)}
           ${t.score_tier ? `<span class="badge ${scoreClass(t.score)}">${esc(t.score_tier_icon ?? '')} ${esc(t.score_tier)}</span>` : ''}
         </div>
@@ -185,7 +185,10 @@ export function renderThesesTable(list, callbacks = {}) {
       <tbody>
         ${list.map(t => `
           <tr data-id="${t.id}" class="${t.id === state.selectedThesisId ? 'is-selected' : ''}">
-            <td class="ticker-cell"><strong>${esc(t.ticker)}</strong><span>${badge(t.direction)}</span></td>
+            <td class="ticker-cell">
+              <strong>${esc(t.ticker)}</strong>
+              ${t.direction ? `<span>${badge(t.direction)}</span>` : ''}
+            </td>
             <td>${esc(t.title ?? '—')}</td>
             <td class="${scoreClass(t.score)}">
               <div style="display:flex;flex-direction:column;gap:2px;">
