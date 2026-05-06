@@ -55,6 +55,7 @@ def create_bot() -> commands.Bot:
             _start_snapshot_scheduler()
             _start_reminder_scheduler(bot)
             _start_decision_replay_scheduler(bot)
+            _start_recommendation_listener(bot)  # Wave 4: event-driven alerts
             await _sync_tree(bot)
             logger.info(
                 "bot.ready",
@@ -193,3 +194,10 @@ def _start_decision_replay_scheduler(bot: commands.Bot) -> None:
     from src.bot.scheduler import DecisionReplayScheduler
     scheduler = DecisionReplayScheduler(bot)
     scheduler.start()
+
+
+def _start_recommendation_listener(bot: commands.Bot) -> None:
+    """Wire Wave 4: RecommendationListener subscribes event bus → Discord push."""
+    from src.bot.recommendation_listener import RecommendationListener
+    listener = RecommendationListener(bot)
+    listener.register()
