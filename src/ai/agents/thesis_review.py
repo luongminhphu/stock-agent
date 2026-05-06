@@ -97,6 +97,13 @@ class ThesisReviewAgent:
             AIError: If the API call fails after retries.
             ValueError: If the response cannot be parsed into ThesisReviewOutput.
         """
+        # --- Memory: fetch context (Layer 2 + 3) trước khi build prompt ---
+        memory_block = await _fetch_memory_for_review(
+            session=session,
+            user_id=user_id,
+            ticker=ticker,
+        )
+
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {
@@ -111,11 +118,16 @@ class ThesisReviewAgent:
                     current_price=current_price,
                     entry_price=entry_price,
                     target_price=target_price,
+                    memory_context=memory_block,  # INJECT memory vào prompt
                 ),
             },
         ]
 
-        logger.info("thesis_review_agent.start", ticker=ticker)
+        logger.info(
+            "thesis_review_agent.start",
+            ticker=ticker,
+            has_memory=bool(memory_block),
+        )
 
         try:
             response = await self._client.chat_completion(
@@ -166,8 +178,55 @@ class ThesisReviewAgent:
 
 
 # ---------------------------------------------------------------------------
-# Internal helper
+# Internal helpers
 # ---------------------------------------------------------------------------
+
+async def _fetch_memory_for_review(
+    session,
+    user_id: str | None,
+    ticker: str,
+) -> str:
+    """Fetch episodic + semantic memory filtered to this ticker.
+
+    Returns empty string if session/user_id missing or memory unavailable.
+    Never raises — memory failure must not block AI review calls.
+    """
+    if session is None or not user_id:
+        return ""
+    try:
+        from src.ai.memory.memory_service import MemoryService
+
+        mem_ctx = await MemoryService.get_memory_context(
+            session, user_id=user_id, episode_limit=10
+        )
+        if mem_ctx.is_empty():
+            return ""
+
+        # Filter episodes to this ticker only — tránh noise từ thesis khác
+        filtered_episodes = [
+            ep for ep in mem_ctx.recent_episodes
+            if not ep.tickers or ticker in ep.tickers
+        ]
+        if not filtered_episodes and mem_ctx.latest_snapshot is None:
+            return ""
+
+        mem_ctx.recent_episodes = filtered_episodes
+        rendered = mem_ctx.render()
+        logger.debug(
+            "thesis_review_agent.memory_fetched",
+            ticker=ticker,
+            episodes=len(filtered_episodes),
+            has_snapshot=mem_ctx.latest_snapshot is not None,
+        )
+        return rendered
+    except Exception as exc:
+        logger.warning(
+            "thesis_review_agent.memory_fetch_failed",
+            ticker=ticker,
+            error=str(exc),
+        )
+        return ""
+
 
 async def _log_thesis_review_interaction(
     session,

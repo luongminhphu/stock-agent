@@ -23,6 +23,8 @@ Quy tắc:
   và trả về object có target_id (integer ID đúng như đã cho), description,
   recommended_status (triggered | expired | cancelled | pending), và reason.
   Chỉ đề xuất status khác "pending" nếu có bằng chứng rõ ràng.
+- Nếu có lịch sử review trước, hãy dùng làm "anchor" để đánh giá sự thay đổi.
+  Chỉ thay đổi verdict khi có lý do cụ thể, rõ ràng. Giải thích delta so với lần trước.
 
 JSON schema:
 {
@@ -61,6 +63,7 @@ def build_review_prompt(
     current_price: float | None = None,
     entry_price: float | None = None,
     target_price: float | None = None,
+    memory_context: str = "",  # NEW: episodic + semantic memory block
 ) -> str:
     """Build the user message for a thesis review.
 
@@ -68,6 +71,7 @@ def build_review_prompt(
         assumptions_with_ids:          Active assumptions — list[{"id": int, "description": str}].
         catalysts_with_ids:            PENDING catalysts  — list[{"id": int, "description": str}].
         triggered_catalysts_with_ids:  TRIGGERED catalysts — list[{"id": int, "description": str}].
+        memory_context:                Rendered memory block from MemoryService (optional).
     """
     lines = [
         f"**Thesis Review: {ticker} — {thesis_title}**",
@@ -75,6 +79,12 @@ def build_review_prompt(
         f"Tóm tắt thesis: {thesis_summary}",
         "",
     ]
+
+    # Memory context injection — AI dùng làm anchor, không override data thực tế
+    if memory_context:
+        lines.append("[Lịch sử AI review trước đây — dùng làm anchor, không phải sự thật tuyệt đối]")
+        lines.append(memory_context)
+        lines.append("")
 
     if assumptions_with_ids:
         lines.append("Assumptions (dùng đúng id khi trả về assumption_recommendations):")
