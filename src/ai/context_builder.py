@@ -19,6 +19,12 @@ Backward compatibility:
   ContextBuilder(session) still works exactly as before.
   memory injection is additive — if MemoryService fails, context is still built.
   sector context injection is additive — if registry fails, context is still built.
+
+Wave 3 fix:
+  _fetch_investor_profile() now calls svc.get_profile(user_id=user_id) which
+  exists on InvestorProfileService. Previously called svc.get_profile() on a
+  method that did not exist → always raised AttributeError → profile block
+  was always empty despite data being available in DB.
 """
 
 from __future__ import annotations
@@ -100,20 +106,17 @@ class ContextBuilder:
     # ------------------------------------------------------------------
 
     async def _fetch_investor_profile(self, user_id: str | None) -> dict:
+        """Fetch investor profile dict from InvestorProfileService.
+
+        Wave 3: calls svc.get_profile(user_id=user_id) — the correct
+        public method that returns a ContextBuilder-compatible dict.
+        """
         try:
             from src.platform.investor_profile import InvestorProfileService
 
             svc = InvestorProfileService(self._session)
             profile = await svc.get_profile(user_id=user_id)
-            if profile is None:
-                return {}
-            return {
-                "risk_appetite": getattr(profile, "risk_appetite", "") or "",
-                "avoid_list": getattr(profile, "avoid_list", []) or [],
-                "preferred_sectors": getattr(profile, "preferred_sectors", []) or [],
-                "trading_style": getattr(profile, "trading_style", "") or "",
-                "notes": getattr(profile, "notes", "") or "",
-            }
+            return profile if isinstance(profile, dict) else {}
         except Exception as exc:
             logger.warning("context_builder.investor_profile_failed", error=str(exc))
             return {}

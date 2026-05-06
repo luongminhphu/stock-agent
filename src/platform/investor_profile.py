@@ -125,7 +125,7 @@ class InvestorContext:
     def to_prompt_block(self) -> str:
         """Render as compact plain-text block for injection into AI system prompts.
 
-        Designed to be concise (<300 chars in normal operation) so it doesn’t
+        Designed to be concise (<300 chars in normal operation) so it doesn't
         crowd out ticker-specific context in the prompt.
         """
         lines = [
@@ -204,8 +204,64 @@ class InvestorProfileService:
         snapshot = await self.get_latest()
         return InvestorContext(static=static, snapshot=snapshot)
 
+    async def get_profile(self, user_id: str | None = None) -> dict:
+        """Return investor profile as a dict compatible with ContextBuilder._apply_profile().
+
+        Wave 3: this is the contract method called by ai.ContextBuilder.
+        Combines StaticProfile (from settings) with the latest snapshot's
+        behavioral notes and summary.
+
+        Args:
+            user_id: Accepted for API compatibility with ContextBuilder; currently
+                     InvestorProfileSnapshot is single-tenant (one per system).
+                     Will be used for multi-tenant filtering in a future wave.
+
+        Returns:
+            dict with keys: risk_appetite, avoid_list, preferred_sectors,
+                            trading_style, notes.
+            Returns {} on any failure so callers can safely treat as no-op.
+        """
+        try:
+            static = StaticProfile.from_settings()
+            snapshot = await self.get_latest()
+
+            # avoid_list: split comma-separated avoid string from settings
+            avoid_list: list[str] = [
+                s.strip() for s in static.avoid.split(",") if s.strip()
+            ]
+
+            # preferred_sectors: split comma-separated string from settings
+            preferred_sectors: list[str] = [
+                s.strip() for s in static.preferred_sectors.split(",") if s.strip()
+            ]
+
+            # notes: combine snapshot summary_for_ai with win_rate/avg_hold if available
+            notes_parts: list[str] = []
+            if snapshot and snapshot.summary_for_ai:
+                notes_parts.append(snapshot.summary_for_ai)
+            if snapshot and snapshot.win_rate_30d:
+                notes_parts.append(
+                    f"Win rate 30d: {snapshot.win_rate_30d:.0f}% | "
+                    f"Avg hold: {snapshot.avg_hold_days:.0f}d"
+                )
+
+            return {
+                "risk_appetite": static.risk_appetite,
+                "avoid_list": avoid_list,
+                "preferred_sectors": preferred_sectors,
+                "trading_style": f"{static.thesis_style} | {static.trading_horizon}",
+                "notes": " ".join(notes_parts),
+            }
+        except Exception as exc:
+            logger.warning(
+                "platform.investor_profile.get_profile_failed",
+                user_id=user_id,
+                error=str(exc),
+            )
+            return {}
+
     async def build_snapshot(self, user_id: str) -> InvestorProfileSnapshot:
-        """Build today’s snapshot from live DB data and persist it.
+        """Build today's snapshot from live DB data and persist it.
 
         Sources (dependency order):
             1. thesis.models.Thesis      — active thesis count
