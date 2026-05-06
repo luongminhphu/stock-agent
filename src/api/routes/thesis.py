@@ -152,10 +152,6 @@ async def create_thesis(
     ThesisCreateRequest.catalysts is list[str] (plain descriptions).
     We map each string → AddCatalystInput here at the route boundary so the
     service layer never has to deal with raw strings.
-
-    If the DTO later evolves to carry expected_timeline strings (e.g. from
-    the AI suggest confirm flow), parse_timeline_to_date is already imported
-    and can be wired in without touching the service.
     """
     catalyst_inputs: list[AddCatalystInput] = [
         AddCatalystInput(description=desc) for desc in (body.catalysts or [])
@@ -167,6 +163,7 @@ async def create_thesis(
             ticker=body.ticker,
             title=body.title,
             summary=body.summary,
+            direction=body.direction,
             entry_price=body.entry_price,
             target_price=body.target_price,
             stop_loss=body.stop_loss,
@@ -212,12 +209,10 @@ async def get_thesis(
     except ThesisNotFoundError as exc:
         raise _not_found(exc) from exc
 
-    # Nếu đã có thesis.score, dùng luôn; nếu chưa, fallback tính lại
     scoring = ScoringService()
     total, breakdown = scoring.compute_with_breakdown(thesis)
     tier_label, tier_icon = score_tier(total)
 
-    # Build DTO bằng tay để fill thêm trường mới
     base = ThesisResponse.model_validate(thesis)
     base.score = thesis.score if thesis.score is not None else total
     base.score_tier = tier_label
@@ -238,7 +233,7 @@ async def update_thesis(
     user_id: str = Depends(get_current_user_id),
     svc: ThesisService = Depends(get_thesis_service),
 ) -> ThesisResponse:
-    """Partially update thesis header fields (title, summary, prices)."""
+    """Partially update thesis header fields (title, summary, direction, prices)."""
     try:
         thesis = await svc.update(
             thesis_id,
@@ -246,6 +241,7 @@ async def update_thesis(
             UpdateThesisInput(
                 title=body.title,
                 summary=body.summary,
+                direction=body.direction,
                 entry_price=body.entry_price,
                 target_price=body.target_price,
                 stop_loss=body.stop_loss,
@@ -346,12 +342,7 @@ async def get_conviction_timeline(
     _user_id: str = Depends(get_current_user_id),
     timeline_svc: ThesisTimelineService = Depends(get_timeline_service),
 ) -> ConvictionTimelineResponse:
-    """Trả về cỗ conviction score theo thời gian của một thesis.
-
-    Mỗi data-point ướng với một ThesisSnapshot — score, tier, 4-dimension breakdown,
-    verdict của AI review gần nhất trước đó, giá và PnL.
-    Trường `trend` cho biết conviction đang cải thiện, süt giảm hay ổn định.
-    """
+    """Trả về cỗ conviction score theo thời gian của một thesis."""
     result = await timeline_svc.get_conviction_timeline(thesis_id=thesis_id, limit=limit)
     if result is None:
         raise HTTPException(
@@ -695,11 +686,7 @@ async def list_recommendations(
     user_id: str = Depends(get_current_user_id),
     review_svc: ReviewService = Depends(get_review_service),
 ) -> RecommendationListResponse:
-    """Trả danh sách AI recommendations đang PENDING cho một thesis.
-
-    Dashboard gọi endpoint này để hiển thị card Accept/Reject cho user.
-    Chỉ trả recommendations có status=PENDING — đã accepted/rejected không xuất hiện.
-    """
+    """Trả danh sách AI recommendations đang PENDING cho một thesis."""
     try:
         recs = await review_svc.list_pending_recommendations(thesis_id=thesis_id, user_id=user_id)
     except ThesisNotFoundError as exc:
@@ -722,14 +709,7 @@ async def apply_recommendation(
     user_id: str = Depends(get_current_user_id),
     svc: ThesisService = Depends(get_thesis_service),
 ) -> None:
-    """Accept hoặc reject một AI recommendation.
-
-    - action="accept" → áp dụng recommended_status lên assumption/catalyst thật,
-                        mark recommendation ACCEPTED, recompute score.
-    - action="reject" → mark recommendation REJECTED, không thay đổi gì khác.
-
-    Sau khi apply/reject, recommendation sẽ không còn xuất hiện trong GET /recommendations.
-    """
+    """Accept hoặc reject một AI recommendation."""
     try:
         await svc.apply_recommendation(
             thesis_id=thesis_id,
@@ -756,14 +736,7 @@ async def apply_ai_review_bulk(
     user_id: str = Depends(get_current_user_id),
     review_svc: ReviewService = Depends(get_review_service),
 ) -> None:
-    """Áp dụng nhiều AI recommendations cùng lúc cho một thesis.
-
-    Dùng cho flow 'AI check xong → Áp dụng gợi ý' trên UI:
-    - applied_recommendation_ids: list các ReviewRecommendation.id mà user đã tick.
-    - verdict / ai_confidence: optional snapshot để lưu lại trên thesis / log.
-    Business logic (update assumption/catalyst, mark ACCEPTED, recompute score)
-    nằm trong ReviewService/ThesisService, route chỉ forward.
-    """
+    """Áp dụng nhiều AI recommendations cùng lúc cho một thesis."""
     try:
         await review_svc.apply_bulk_recommendations(
             thesis_id=thesis_id,
