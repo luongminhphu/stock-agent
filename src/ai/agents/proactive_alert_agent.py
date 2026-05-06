@@ -16,7 +16,6 @@ Boundary rules:
 """
 from __future__ import annotations
 
-import asyncio
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
@@ -95,7 +94,7 @@ class ProactiveAlertAgent:
     # Dedup window: same symbol + signal_type won't re-trigger AI within 60 min
     DEDUP_WINDOW = timedelta(minutes=60)
 
-    # Urgency → signal_type mapping for thesis review side-effect
+    # Signal types that warrant a thesis review side-effect
     _THESIS_REVIEW_SIGNAL_TYPES = {
         "THESIS_DIVERGENCE",
         "TREND_REVERSAL",
@@ -153,13 +152,22 @@ class ProactiveAlertAgent:
 
         bus = get_event_bus()
 
-        # Emit RecommendationReadyEvent → bot/briefing segments consume this
+        # thesis_id from signal metadata — passed through to embed for context
+        thesis_id = str(event.metadata.get("thesis_id", ""))
+
+        # Emit RecommendationReadyEvent with full rich content → bot/briefing segments
         rec_event = RecommendationReadyEvent(
             symbol=recommendation.symbol,
             action=recommendation.verdict,
             urgency=recommendation.urgency,
             confidence=recommendation.confidence,
             source_agent="proactive_alert",
+            # ── rich fields (Wave 7) ──────────────────────────────────────────
+            reasoning=getattr(recommendation, "reasoning", "") or "",
+            action_detail=getattr(recommendation, "action", "") or "",
+            risk_signals=list(getattr(recommendation, "risk_signals", None) or []),
+            next_watch_items=list(getattr(recommendation, "next_watch_items", None) or []),
+            thesis_id=thesis_id,
         )
         await bus.publish(
             rec_event,
@@ -173,12 +181,12 @@ class ProactiveAlertAgent:
             verdict=recommendation.verdict,
             urgency=recommendation.urgency,
             confidence=recommendation.confidence,
+            thesis_id=thesis_id or None,
             recommendation_id=rec_event.recommendation_id,
         )
 
         # Side-effect: if signal warrants thesis review, emit ThesisReviewRequestedEvent
         if event.signal_type in self._THESIS_REVIEW_SIGNAL_TYPES:
-            thesis_id = event.metadata.get("thesis_id", "")
             if thesis_id:
                 await bus.publish(
                     ThesisReviewRequestedEvent(

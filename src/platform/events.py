@@ -82,13 +82,24 @@ class ThesisReviewRequestedEvent(DomainEvent):
 
 @dataclass(frozen=True)
 class RecommendationReadyEvent(DomainEvent):
-    """Emitted when an AI agent produces a ProactiveRecommendation."""
+    """Emitted when an AI agent produces a ProactiveRecommendation.
+
+    Rich fields (reasoning, action_detail, risk_signals, next_watch_items,
+    thesis_id) are optional — all default to empty so existing consumers
+    remain backward-compatible.
+    """
     symbol: str = ""
     action: str = ""               # BUY | SELL | REDUCE | HOLD | WATCH
     urgency: str = "MONITORING"    # NOW | TODAY | THIS_WEEK | MONITORING
     confidence: float = 0.0
     source_agent: str = ""         # proactive_alert | risk_assessment | opportunity_scout
     recommendation_id: str = field(default_factory=lambda: str(uuid4()))
+    # ── rich content fields (Wave 7) ──────────────────────────────────────────
+    reasoning: str = ""            # Short AI reasoning (1-3 sentences)
+    action_detail: str = ""        # Specific action text, e.g. "Mua breakout trên 93,500"
+    risk_signals: list[str] = field(default_factory=list)    # Up to 5 risk bullets
+    next_watch_items: list[str] = field(default_factory=list) # Up to 3 follow-up items
+    thesis_id: str = ""            # Non-empty when recommendation is thesis-linked
 
 
 # ─── briefing ─────────────────────────────────────────────────────────────────

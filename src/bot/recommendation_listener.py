@@ -18,10 +18,7 @@ from src.platform.event_bus import get_event_bus
 from src.platform.events import RecommendationReadyEvent
 from src.platform.logging import get_logger
 
-from .commands.recommendation_embeds import (
-    build_recommendation_embed,
-    build_simple_alert_embed,
-)
+from .commands.recommendation_embeds import build_recommendation_embed
 
 logger = get_logger(__name__)
 
@@ -76,7 +73,8 @@ class RecommendationListener:
             )
             return
 
-        embed = build_simple_alert_embed(event)
+        # Wave 7: use rich embed — all content fields come from the event itself
+        embed = build_recommendation_embed(event)
 
         try:
             await channel.send(embed=embed)
@@ -87,6 +85,8 @@ class RecommendationListener:
                 urgency=urgency,
                 channel_id=channel.id,
                 recommendation_id=event.recommendation_id,
+                has_reasoning=bool(event.reasoning),
+                has_thesis=bool(event.thesis_id),
             )
         except discord.DiscordException as exc:
             logger.exception(
@@ -117,7 +117,6 @@ class RecommendationListener:
 
         channel = self._bot.get_channel(channel_id)
         if channel is None:
-            # Channel not in cache — fetch from API
             try:
                 channel = await self._bot.fetch_channel(channel_id)
             except discord.NotFound:
