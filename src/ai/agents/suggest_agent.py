@@ -7,14 +7,14 @@ Callers:
 
 Boundary:
     - Accepts ticker string + optional context strings.
-    - Returns ThesisDraft (Pydantic schema, owned by ai segment).
+    - Returns ThesisSuggestionResult (public ai.schemas contract).
     - Does NOT write DB, does NOT call thesis/watchlist repositories.
     - Caller (bot or service) is responsible for persisting the draft if desired.
 
 Note on schema:
-    ThesisDraft is intentionally a flat, AI-segment-owned schema.
-    It maps to thesis.models.ThesisDraft for persistence, but the mapping
-    happens in the caller — not here.
+    ThesisDraft is the internal parse target (matches AI JSON output).
+    ThesisSuggestionResult is the public contract returned to callers.
+    Mapping happens here — callers always see ThesisSuggestionResult.
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from src.ai.client import AIClient, AIError
+from src.ai.schemas import SuggestedAssumption, SuggestedCatalyst, ThesisSuggestionResult
 from src.platform.logging import get_logger
 
 if TYPE_CHECKING:
@@ -47,8 +48,8 @@ class CatalystDraft(BaseModel):
 class ThesisDraft(BaseModel):
     """Structured thesis draft produced by the AI.
 
-    Owner: ai segment.
-    Mapped to thesis.models.ThesisDraft by the calling service.
+    Owner: ai segment (internal parse target only).
+    Mapped to ThesisSuggestionResult before returning to callers.
     """
 
     ticker: str
@@ -118,6 +119,11 @@ Output PHẢI theo đúng JSON schema sau — field names phải khớp chính x
 """
 
 
+def _conviction_to_confidence(level: str) -> float:
+    """Map conviction level string to float confidence score."""
+    return {"HIGH": 0.85, "MEDIUM": 0.60, "LOW": 0.35}.get(level.upper(), 0.50)
+
+
 class ThesisSuggestAgent:
     """Generates a draft investment thesis for a given ticker.
 
@@ -137,7 +143,7 @@ class ThesisSuggestAgent:
         session: AsyncSession | None = None,
         user_id: str | None = None,
         trigger: str = "suggest",
-    ) -> ThesisDraft:
+    ) -> ThesisSuggestionResult:
         """Generate a draft thesis for the given ticker.
 
         Args:
@@ -152,7 +158,7 @@ class ThesisSuggestAgent:
             trigger:       Trigger label for episodic log.
 
         Returns:
-            ThesisDraft with full thesis structure.
+            ThesisSuggestionResult with full thesis structure.
 
         Raises:
             AIError: If AI API call fails after retries.
@@ -176,7 +182,7 @@ class ThesisSuggestAgent:
         try:
             # client.chat() enforces JSON via prompt, strips fences, and parses
             # into the Pydantic schema — no manual json.loads() needed.
-            result = await self._client.chat(
+            draft = await self._client.chat(
                 system_prompt=_SYSTEM_PROMPT,
                 user_prompt=user_prompt,
                 response_schema=ThesisDraft,
@@ -189,7 +195,34 @@ class ThesisSuggestAgent:
         logger.info(
             "thesis_suggest_agent.complete",
             ticker=ticker,
-            conviction=result.conviction_level,
+            conviction=draft.conviction_level,
+        )
+
+        # --- Map ThesisDraft (internal) → ThesisSuggestionResult (public contract) ---
+        result = ThesisSuggestionResult(
+            ticker=draft.ticker,
+            thesis_title=draft.title,
+            thesis_summary=draft.summary,
+            entry_price_hint=draft.entry_price_suggestion,
+            target_price_hint=draft.target_price_suggestion,
+            stop_loss_hint=draft.stop_loss_suggestion,
+            assumptions=[
+                SuggestedAssumption(
+                    description=a.description,
+                    rationale=a.invalidation_signal,
+                )
+                for a in draft.assumptions
+            ],
+            catalysts=[
+                SuggestedCatalyst(
+                    description=c.description,
+                    expected_timeline=c.expected_timeframe,
+                    rationale="",
+                )
+                for c in draft.catalysts
+            ],
+            confidence=_conviction_to_confidence(draft.conviction_level),
+            reasoning=draft.risk_summary,
         )
 
         # --- Memory: log interaction (Layer 2) ---
@@ -197,7 +230,7 @@ class ThesisSuggestAgent:
             session=session,
             user_id=user_id,
             ticker=ticker,
-            result=result,
+            result=draft,
             trigger=trigger,
         )
 
