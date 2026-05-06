@@ -70,6 +70,15 @@ function showLoadingSkeletons() {
   }
 }
 
+/** Format số VNĐ compact: 1,234,567 → "1.23M" hoặc "1,234,567" */
+function fmtVnd(val) {
+  if (val == null || isNaN(val)) return '—';
+  const abs = Math.abs(val);
+  if (abs >= 1_000_000_000) return (val / 1_000_000_000).toFixed(2) + 'B';
+  if (abs >= 1_000_000)     return (val / 1_000_000).toFixed(2) + 'M';
+  return new Intl.NumberFormat('vi-VN').format(Math.round(val));
+}
+
 export async function loadDashboard() {
   const status = el('statusFilter')?.value ?? 'active';
   const base   = apiBase();
@@ -80,6 +89,7 @@ export async function loadDashboard() {
     const [
       stats, theses, verdictAccuracy, catalysts,
       latestScan, latestMorningBrief, latestEodBrief,
+      portfolioTrades,
     ] = await Promise.all([
       getJson(`${base}/stats`).catch(() => null),
       getJson(`${base}/theses?status=${status}`).catch(() => []),
@@ -88,9 +98,10 @@ export async function loadDashboard() {
       getJson(`${base}/scan/latest`).catch(() => null),
       getJson(`${base}/brief/latest?phase=morning`).catch(() => null),
       getJson(`${base}/brief/latest?phase=eod`).catch(() => null),
+      getJson(`${base}/portfolio/trades`).catch(() => null),
     ]);
 
-    renderSummary(stats);
+    renderSummary(stats, portfolioTrades);
 
     state.theses = theses?.items ?? theses ?? [];
     renderThesesTable(state.theses, {
@@ -172,7 +183,7 @@ function parseCurrentValue(node) {
   return parseFloat((node.textContent ?? '').replace(/[^\d.-]/g, '')) || 0;
 }
 
-export function renderSummary(s) {
+export function renderSummary(s, portfolio) {
   if (!s) return;
   const kpis = [
     { id: 'openTheses',       raw: s.open_theses           ?? s.open_thesis_count   },
@@ -200,5 +211,54 @@ export function renderSummary(s) {
     if (card) card.classList.toggle('signal-card--alert', riskyVal > 0);
     riskyEl.classList.toggle('kpi-risky', riskyVal > 0);
     riskyEl.classList.toggle('kpi-safe',  riskyVal === 0);
+  }
+
+  // ── Portfolio KPIs từ /portfolio/trades ──────────────────────────────
+  const pvNode      = el('portfolioValue');
+  const pvSubNode   = el('portfolioValueSub');
+  const pnlNode     = el('unrealizedPnl');
+  const pnlPctNode  = el('unrealizedPnlPct');
+
+  if (portfolio) {
+    const mv  = portfolio.total_market_value   ?? null;
+    const pnl = portfolio.total_unrealized_pnl ?? null;
+    const pct = portfolio.total_unrealized_pct ?? null;
+
+    if (pvNode) {
+      if (mv != null) {
+        pvNode.textContent = fmtVnd(mv);
+        flashValue(pvNode, true);
+      } else {
+        pvNode.textContent = '—';
+      }
+    }
+    if (pvSubNode) {
+      const n = portfolio.positions?.length ?? 0;
+      pvSubNode.textContent = n > 0 ? `${n} vị thế` : '';
+    }
+
+    if (pnlNode) {
+      if (pnl != null) {
+        const sign = pnl >= 0 ? '+' : '';
+        pnlNode.textContent = sign + fmtVnd(pnl);
+        pnlNode.classList.toggle('kpi-positive', pnl >= 0);
+        pnlNode.classList.toggle('kpi-negative', pnl < 0);
+        flashValue(pnlNode, pnl >= 0);
+      } else {
+        pnlNode.textContent = '—';
+      }
+    }
+    if (pnlPctNode) {
+      if (pct != null) {
+        const sign = pct >= 0 ? '+' : '';
+        pnlPctNode.textContent = `${sign}${(pct * 100).toFixed(2)}%`;
+      } else {
+        pnlPctNode.textContent = '';
+      }
+    }
+  } else {
+    // portfolio/trades call failed — giữ nguyên dấu "—"
+    if (pvNode  && pvNode.textContent  === '—') pvNode.textContent  = '—';
+    if (pnlNode && pnlNode.textContent === '—') pnlNode.textContent = '—';
   }
 }
