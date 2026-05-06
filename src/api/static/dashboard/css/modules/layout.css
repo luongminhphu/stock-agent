@@ -24,7 +24,7 @@
      <600     — compact strip, hide brand name
 
    FIX LOG (2026-05-04):
-     - toolbar flex-wrap: nowrap → Reload + "+ Thesis mới" never wrap to 2nd line
+     - toolbar flex-wrap: nowrap → Reload + "+" Thesis mới never wrap to 2nd line
      - toolbar flex-shrink: 0 → toolbar block never collapses
      - command-strip: fixed 5-col template (repeat(4,1fr) 1.5fr) instead of auto-fill
        → signal-card--wide always spans col 5, no mis-alignment
@@ -41,6 +41,16 @@
        → content không dải vô hạn trên 24-inch (1920–2560px)
      - .command-strip: thêm max-width 1680px + margin-inline auto
        → strip canh giữa đồng bộ với workspace
+
+   FIX LOG (2026-05-06):
+     - portfolio-layer / watchlist-layer / validation-layer: thêm max-width 1680px
+       + margin-inline auto → bảng data không dải vô hạn trên 1920px+
+     - brief-context-strip: thêm max-width 1680px + margin-inline auto
+       + padding-inline var(--page-px) → brief text canh giữa đồng bộ
+     - command-strip: replace repeat(4,1fr) 1.5fr →
+       repeat(4, minmax(0,260px)) minmax(0,360px) + justify-content:center
+       → KPI cell có trần kích thước, không dãn vô hạn ở 1920px+
+     - kpi-strip (6 cards): thêm variant 6-col với trần nhỏ hơn
 */
 
 /* ── SKIP LINK ──────────────────────────────────── */
@@ -71,6 +81,8 @@
   --workspace-gap: 16px;
   --layer-gap:     16px;
   --panel-pad:     clamp(14px, 2vw, 20px);
+  /* FIX: shared content max-width — single token used by all full-width layers */
+  --content-max:   1680px;
 }
 
 /* ── SHELL ──────────────────────────────────────── */
@@ -95,7 +107,6 @@
   border-bottom: 1px solid var(--line);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  /* Prevent any child from causing overflow-induced clip */
   overflow: visible;
 }
 
@@ -103,7 +114,6 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  /* FIX: brand block must not shrink — gives all space to toolbar */
   flex-shrink: 0;
   min-width: 0;
 }
@@ -127,7 +137,6 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  /* FIX: never wrap — keep Reload + "+ Thesis mới" on same line */
   flex-wrap: nowrap;
   flex-shrink: 0;
   margin-left: auto;
@@ -138,7 +147,6 @@
    cần override toàn bộ appearance + styling cho đúng với topbar.
 ─────────────────────────────────────────────── */
 
-/* Label (đang bị hiện cùng .field — tận dụng wrapper chứa label và select) */
 .field {
   display: flex;
   align-items: center;
@@ -146,7 +154,6 @@
   position: relative;
 }
 
-/* Label visible nhỏ trước dropdown */
 .field > span:not(.sr-only) {
   font-size: .72rem;
   font-weight: 600;
@@ -157,7 +164,6 @@
   flex-shrink: 0;
 }
 
-/* sr-only guard (trong trường hợp base.css chưa load) */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -170,16 +176,14 @@
   border-width: 0;
 }
 
-/* Select element — được override hoàn toàn khỏi OS native */
 .field select,
 .field-compact select {
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
 
-  /* Visual: match .icon-btn look */
   height: 34px;
-  padding: 0 32px 0 12px;    /* right padding nhường cho chevron SVG */
+  padding: 0 32px 0 12px;
   background-color: rgba(148, 163, 184, 0.07);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2396a7c6' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
@@ -213,7 +217,6 @@
   box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.18);
 }
 
-/* Option dropdown background (Firefox + Chromium mới hỗ trợ color-scheme) */
 .field select option,
 .field-compact select option {
   background: #1a2436;
@@ -248,20 +251,31 @@
   background: rgba(148, 163, 184, 0.07);
 }
 
-/* ── COMMAND STRIP ──────────────────────────────────── */
+/* ── COMMAND STRIP (KPI strip) ──────────────────────────────────── */
+/*
+   FIX (2026-05-06): Replace bare 1fr columns with minmax(0, Npx) so cells
+   have a hard ceiling at 24-inch widths. justify-content:center means the
+   strip clusters toward the middle rather than stretching edge-to-edge.
+
+   Default variant: 5 KPI cards (original command-strip)
+   kpi-strip variant: 6 KPI cards (portfolio + pnl + risky + upcoming + open + scan)
+*/
 .command-strip {
-  /* FIX: fixed 5-col template — predictable layout at all widths ≥900px */
-  /* signal-card--wide always occupies the 5th (wider) column */
   display: grid;
-  grid-template-columns: repeat(4, 1fr) 1.5fr;
+  grid-template-columns: repeat(4, minmax(0, 260px)) minmax(0, 360px);
+  justify-content: center;
   gap: 1px;
   background: var(--line);
   border-bottom: 1px solid var(--line);
   container-type: inline-size;
-  /* FIX: cap strip width đồng bộ với workspace — tránh dải hết 2560px */
-  max-width: 1680px;
+  max-width: var(--content-max);
   margin-inline: auto;
   width: 100%;
+}
+
+/* 6-card KPI strip variant */
+.command-strip.kpi-strip {
+  grid-template-columns: repeat(5, minmax(0, 220px)) minmax(0, 340px);
 }
 
 .signal-card {
@@ -271,7 +285,6 @@
   padding: 13px 20px 14px;
   background: var(--surface);
   transition: background .15s;
-  /* FIX: allow text truncation without causing overflow */
   min-width: 0;
   overflow: hidden;
 }
@@ -280,7 +293,6 @@
 .signal-label {
   font-size: .7rem;
   font-weight: 600;
-  /* FIX: reduced letter-spacing so label fits at smaller widths */
   letter-spacing: .05em;
   text-transform: uppercase;
   color: var(--muted);
@@ -297,11 +309,18 @@
   line-height: 1.1;
 }
 
+.signal-sub {
+  font-size: .72rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .signal-card--risk .signal-value { color: var(--danger); }
+.signal-card--pnl  .signal-value { color: var(--success); }
 
 /* ── WAVE 2c: KPI alert state + countUp flash ──────────── */
-
-/* Khi risky > 0: card đổi màu nền nhẹ + border warning */
 .signal-card--alert {
   background: rgba(251, 191, 36, 0.06) !important;
   border-bottom: 2px solid rgba(251, 191, 36, 0.5);
@@ -310,7 +329,6 @@
   color: var(--warning);
 }
 
-/* Flash keyframe: bật sáng nhẹ 1 beat khi giá trị vừa update */
 @keyframes kpi-flash {
   0%   { color: var(--brand-strong); }
   60%  { color: var(--brand); }
@@ -321,7 +339,6 @@
   animation: kpi-flash 0.8s ease-out forwards;
 }
 
-/* Respect reduced-motion: không animate, chỉ đổi màu 1 lần */
 @media (prefers-reduced-motion: reduce) {
   .signal-value.updated {
     animation: none;
@@ -329,30 +346,30 @@
   }
 }
 
-/* At ≥900px the strip has 5 columns; --wide card sits in the last wider slot */
-/* At <600px we collapse to 2 cols and span 2 explicitly */
-@container (min-width: 900px) {
-  /* already handled by the fixed 5-col template — no extra rule needed */
+/* ── BRIEF CONTEXT STRIP ────────────────────────────────
+   FIX (2026-05-06): constrain width + sync alignment với các layer khác
+─────────────────────────────────────────────────────── */
+.brief-context-strip {
+  max-width: var(--content-max);
+  margin-inline: auto;
+  width: 100%;
+  padding-inline: var(--page-px);
 }
 
 /* ── WORKSPACE GRID ──────────────────────────────────── */
 .workspace-grid {
   display: grid;
-  /* FIX: minmax(0, 1fr) — the 0 floor prevents panel-main from overflowing
-     its track and pushing the action-rail outside the viewport */
   grid-template-columns: minmax(0, 1fr) var(--rail-w);
   gap: var(--workspace-gap);
   padding: var(--workspace-gap) var(--page-px);
   flex: 1;
   align-items: start;
   transition: grid-template-columns .2s ease;
-  /* FIX: cap tổng chiều rộng workspace — tránh dải vô hạn trên 24-inch (1920–2560px) */
-  max-width: 1680px;
+  max-width: var(--content-max);
   margin-inline: auto;
   width: 100%;
 }
 
-/* Rail widens when thesis detail inspector is open */
 .workspace-grid.inspector-open {
   grid-template-columns: minmax(0, 1fr) clamp(340px, 30vw, 440px);
 }
@@ -362,8 +379,6 @@
   display: flex;
   flex-direction: column;
   min-height: 480px;
-  /* FIX: explicit min-width:0 so long thesis titles can truncate
-     instead of stretching the column */
   min-width: 0;
   overflow: hidden;
 }
@@ -395,28 +410,43 @@
   scrollbar-width: thin;
   scrollbar-color: var(--line) transparent;
   overscroll-behavior: contain;
-  /* FIX: guard against self-overflow like panel-main */
   min-width: 0;
 }
 
 .action-panel { flex-shrink: 0; }
 
-/* ── PORTFOLIO LAYER ────────────────────────────────── */
+/* ── PORTFOLIO LAYER ────────────────────────────────────
+   FIX (2026-05-06): add max-width + margin-inline auto
+   → bảng Holdings không dải hết 1920px trên màn 24-inch
+─────────────────────────────────────────────────────── */
 .portfolio-layer {
   padding-inline: var(--page-px);
   margin-bottom: var(--layer-gap);
+  max-width: var(--content-max);
+  margin-inline: auto;
+  width: 100%;
 }
 
-/* ── WATCHLIST LAYER ────────────────────────────────── */
+/* ── WATCHLIST LAYER ────────────────────────────────────
+   FIX (2026-05-06): same constraint as portfolio-layer
+─────────────────────────────────────────────────────── */
 .watchlist-layer {
   padding-inline: var(--page-px);
   margin-bottom: var(--layer-gap);
+  max-width: var(--content-max);
+  margin-inline: auto;
+  width: 100%;
 }
 
-/* ── VALIDATION LAYER ───────────────────────────────── */
+/* ── VALIDATION LAYER ───────────────────────────────────
+   FIX (2026-05-06): same constraint as portfolio-layer
+─────────────────────────────────────────────────────── */
 .validation-layer {
   padding-inline: var(--page-px);
   margin-bottom: var(--layer-gap);
+  max-width: var(--content-max);
+  margin-inline: auto;
+  width: 100%;
 }
 
 /* ── PANEL BASE HELPERS ──────────────────────────────── */
@@ -534,9 +564,10 @@
   .detail-shell {
     max-height: none;
   }
-  /* On narrower viewports the strip auto-fills; collapse --wide to full row */
-  .command-strip {
+  .command-strip,
+  .command-strip.kpi-strip {
     grid-template-columns: repeat(3, 1fr) 1.5fr;
+    justify-content: stretch;
   }
   .signal-card--wide { grid-column: span 1; }
 }
@@ -547,18 +578,17 @@
     --page-px: 14px;
     --workspace-gap: 10px;
   }
-  .command-strip {
+  .command-strip,
+  .command-strip.kpi-strip {
     grid-template-columns: 1fr 1fr;
+    justify-content: stretch;
   }
   .signal-card { padding: 11px 14px; }
   .signal-card--wide { grid-column: span 2; }
   .brand-name { display: none; }
   .detail-shell.empty-detail { max-height: 120px; }
   .data-table { font-size: .8rem; }
-  .toolbar {
-    gap: 6px;
-  }
-  /* Compact select on small screens */
+  .toolbar { gap: 6px; }
   .field select,
   .field-compact select {
     min-width: 90px;
