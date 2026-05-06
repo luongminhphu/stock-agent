@@ -1,123 +1,149 @@
-"""Prompt pack for ThesisReviewAgent.
+"""
+Thesis Review Prompt Pack — ai segment.
 
 Owner: ai segment.
-Keep prompts here; agent logic stays in agents/thesis_review.py.
-"""
+Boundary:
+  - Defines SYSTEM_PROMPT and build_user_prompt() for ThesisReviewAgent.
+  - Pure string/schema — no DB, no external I/O.
+  - ThesisReviewOutput schema is the structured output contract used by
+    AIClient.chat() and returned to ReviewService.
 
+This module co-locates the prompt engineering with the schema so every change
+to the output structure is reflected in the prompt in the same diff.
+"""
 from __future__ import annotations
 
-SYSTEM_PROMPT = """Bạn là chuyên gia phân tích đầu tư cổ phiếu Việt Nam (HOSE, HNX, UPCoM).
-Nhiệm vụ: review một investment thesis và đưa ra đánh giá có cấu trúc.
+from typing import Any
 
-Quy tắc:
-- Luôn trả về JSON hợp lệ, không có text thừa bên ngoài JSON.
-- Verdict phải là một trong: BULLISH, BEARISH, NEUTRAL, WATCHLIST.
-- Confidence: 0.0 (rất không chắc) đến 1.0 (rất chắc chắn).
-- risk_signals: danh sách rủi ro cụ thể, có thể đo lường.
-- next_watch_items: sự kiện/data point cần theo dõi tiếp.
-- reasoning: giải thích ngắn gọn, rõ ràng bằng tiếng Việt.
-- assumption_recommendations: với MỖI assumption được cung cấp, đánh giá status và
-  trả về object có target_id (integer ID đúng như đã cho), description, recommended_status
-  (valid | invalid | uncertain), và reason.
-- catalyst_recommendations: với MỖI catalyst PENDING được cung cấp, đánh giá tiến độ
-  và trả về object có target_id (integer ID đúng như đã cho), description,
-  recommended_status (triggered | expired | cancelled | pending), và reason.
-  Chỉ đề xuất status khác "pending" nếu có bằng chứng rõ ràng.
-- Nếu có lịch sử review trước, hãy dùng làm "anchor" để đánh giá sự thay đổi.
-  Chỉ thay đổi verdict khi có lý do cụ thể, rõ ràng. Giải thích delta so với lần trước.
+# ---------------------------------------------------------------------------
+# Structured output schema (Pydantic-compatible TypedDicts kept as dataclasses
+# for zero dependency — consumers cast to Pydantic if needed).
+# The canonical Pydantic version lives in src/ai/schemas.py;
+# this module re-exports the prompt constants only.
+# ---------------------------------------------------------------------------
 
-JSON schema:
-{
-  "verdict": "BULLISH|BEARISH|NEUTRAL|WATCHLIST",
-  "confidence": 0.0,
-  "risk_signals": ["..."],
-  "next_watch_items": ["..."],
-  "reasoning": "...",
-  "assumption_recommendations": [
-    {
-      "target_id": 1,
-      "description": "Tên assumption",
-      "recommended_status": "valid|invalid|uncertain",
-      "reason": "Lý do"
-    }
-  ],
-  "catalyst_recommendations": [
-    {
-      "target_id": 1,
-      "description": "Tên catalyst",
-      "recommended_status": "triggered|expired|cancelled|pending",
-      "reason": "Lý do"
-    }
-  ]
-}
+SYSTEM_PROMPT = """\
+Bạn là chuyên gia phân tích đầu tư chứng khoán Việt Nam (HOSE / HNX / UPCoM).
+Nhiệm vụ của bạn là review một investment thesis và đánh giá mức độ còn hiệu lực của nó.
+
+Bối cảnh thị trường:
+- Biên độ dao động: HOSE ±7%, HNX ±10%, UPCoM ±15% mỗi phiên.
+- Múi giờ: ICT (UTC+7). Phiên giao dịch: 09:00–14:30 ICT.
+- Đơn vị giá: VNĐ. Khối lượng tính bằng cổ phiếu.
+- Thị trường mới nổi — thanh khoản, tâm lý đám đông và chính sách vĩ mô VN
+  ảnh hưởng mạnh hơn các thị trường phát triển.
+
+Nguyên tắc review:
+1. Ưu tiên BẢO TOÀN VỐN trước lợi nhuận.
+2. Chỉ INVALIDATE thesis khi có bằng chứng rõ ràng, không phải chỉ vì giá giảm ngắn hạn.
+3. Phân biệt "thesis sai" vs "thesis đúng nhưng timing sai".
+4. Xét cả yếu tố định tính (quản trị, ngành) lẫn định lượng (giá, volume, tài chính).
+5. Mỗi risk_signal phải có severity: LOW | MEDIUM | HIGH.
+6. next_watch_items là các điều kiện cụ thể cần theo dõi trong 2–4 tuần tới.
+
+Verdicts:
+- BULLISH      : Thesis còn nguyên vẹn, momentum tốt.
+- NEUTRAL      : Thesis chưa invalidate nhưng cần theo dõi.
+- WEAKENING    : Một số assumptions đang lung lay, cần re-evaluate sớm.
+- BEARISH      : Thesis đang bị đe dọa nghiêm trọng, cân nhắc reduce.
+- INVALIDATED  : Thesis đã bị phá vỡ, nên exit hoặc stop-loss ngay.
+
+Output phải là JSON hợp lệ theo schema đã cung cấp. Không thêm nội dung ngoài JSON.
 """
 
 
-def build_review_prompt(
+def build_user_prompt(
     ticker: str,
     thesis_title: str,
     thesis_summary: str,
-    assumptions_with_ids: list[dict[str, object]],
-    catalysts_with_ids: list[dict[str, object]],
-    triggered_catalysts_with_ids: list[dict[str, object]] | None = None,
+    assumptions_with_ids: list[dict[str, Any]],
+    catalysts_with_ids: list[dict[str, Any]],
+    triggered_catalysts_with_ids: list[dict[str, Any]],
     current_price: float | None = None,
     entry_price: float | None = None,
     target_price: float | None = None,
-    memory_context: str = "",  # NEW: episodic + semantic memory block
 ) -> str:
-    """Build the user message for a thesis review.
+    """
+    Build the user-turn prompt for a thesis review.
 
     Args:
-        assumptions_with_ids:          Active assumptions — list[{"id": int, "description": str}].
-        catalysts_with_ids:            PENDING catalysts  — list[{"id": int, "description": str}].
-        triggered_catalysts_with_ids:  TRIGGERED catalysts — list[{"id": int, "description": str}].
-        memory_context:                Rendered memory block from MemoryService (optional).
+        ticker:                       Mã cổ phiếu (VD: "VCB", "VNM").
+        thesis_title:                 Tiêu đề thesis.
+        thesis_summary:               Tóm tắt luận điểm đầu tư.
+        assumptions_with_ids:         List [{"id": int, "description": str}] — assumptions chưa INVALID.
+        catalysts_with_ids:           List [{"id": int, "description": str}] — catalysts PENDING.
+        triggered_catalysts_with_ids: List [{"id": int, "description": str}] — catalysts đã TRIGGERED.
+        current_price:                Giá hiện tại (VNĐ). None nếu không có.
+        entry_price:                  Giá vào lệnh (VNĐ). None nếu chưa có.
+        target_price:                 Giá mục tiêu (VNĐ). None nếu chưa set.
+
+    Returns:
+        Formatted user prompt string.
     """
-    lines = [
-        f"**Thesis Review: {ticker} — {thesis_title}**",
+    lines: list[str] = [
+        f"## Thesis Review Request: {ticker}",
         "",
-        f"Tóm tắt thesis: {thesis_summary}",
+        f"**Ticker:** {ticker}",
+        f"**Title:** {thesis_title}",
+        "",
+        "### Thesis Summary",
+        thesis_summary or "(không có tóm tắt)",
         "",
     ]
 
-    # Memory context injection — AI dùng làm anchor, không override data thực tế
-    if memory_context:
-        lines.append("[Lịch sử AI review trước đây — dùng làm anchor, không phải sự thật tuyệt đối]")
-        lines.append(memory_context)
-        lines.append("")
-
-    if assumptions_with_ids:
-        lines.append("Assumptions (dùng đúng id khi trả về assumption_recommendations):")
-        for a in assumptions_with_ids:
-            lines.append(f"  [id={a['id']}] {a['description']}")
-        lines.append("")
-
-    if catalysts_with_ids:
-        lines.append("Catalysts sắp tới — PENDING (dùng đúng id khi trả về catalyst_recommendations):")
-        for c in catalysts_with_ids:
-            lines.append(f"  [id={c['id']}] {c['description']}")
-        lines.append("")
-
-    if triggered_catalysts_with_ids:
-        lines.append("Catalysts đã kích hoạt — TRIGGERED (tham khảo, không cần recommend):")
-        for c in triggered_catalysts_with_ids:
-            lines.append(f"  [id={c['id']}] {c['description']}")
-        lines.append("")
-
-    price_parts = []
-    if entry_price is not None:
-        price_parts.append(f"Entry: {entry_price:,.0f}")
+    # Price context
+    price_parts: list[str] = []
     if current_price is not None:
-        price_parts.append(f"Current: {current_price:,.0f}")
+        price_parts.append(f"Giá hiện tại: {current_price:,.0f} VNĐ")
+    if entry_price is not None:
+        price_parts.append(f"Giá vào lệnh: {entry_price:,.0f} VNĐ")
+        if current_price is not None:
+            pnl_pct = (current_price - entry_price) / entry_price * 100
+            sign = "+" if pnl_pct >= 0 else ""
+            price_parts.append(f"P&L chưa thực hiện: {sign}{pnl_pct:.1f}%")
     if target_price is not None:
-        price_parts.append(f"Target: {target_price:,.0f}")
+        price_parts.append(f"Giá mục tiêu: {target_price:,.0f} VNĐ")
+        if current_price is not None:
+            upside = (target_price - current_price) / current_price * 100
+            price_parts.append(f"Upside còn lại: {upside:.1f}%")
+
     if price_parts:
-        lines.append("Giá: " + " | ".join(price_parts))
+        lines += ["### Thông tin giá", *price_parts, ""]
+
+    # Assumptions
+    if assumptions_with_ids:
+        lines.append("### Assumptions (đang theo dõi)")
+        for a in assumptions_with_ids:
+            lines.append(f"- [ID {a['id']}] {a['description']}")
+        lines.append("")
+    else:
+        lines += ["### Assumptions", "(không có assumption nào đang active)", ""]
+
+    # Pending catalysts
+    if catalysts_with_ids:
+        lines.append("### Catalysts (chờ xảy ra)")
+        for c in catalysts_with_ids:
+            lines.append(f"- [ID {c['id']}] {c['description']}")
         lines.append("")
 
-    lines.append(
-        "Review thesis này và trả về JSON theo schema đã định nghĩa.\n"
-        "Quan trọng: target_id trong assumption_recommendations và catalyst_recommendations "
-        "phải khớp CHÍNH XÁC với id đã cung cấp ở trên."
-    )
+    # Triggered catalysts
+    if triggered_catalysts_with_ids:
+        lines.append("### Catalysts đã xảy ra")
+        for c in triggered_catalysts_with_ids:
+            lines.append(f"- [ID {c['id']}] {c['description']}")
+        lines.append("")
+
+    lines += [
+        "### Yêu cầu",
+        "Dựa trên thông tin trên, hãy:",
+        "1. Đánh giá từng assumption còn giá trị hay không (VALID / INVALID / UNCERTAIN).",
+        "2. Cập nhật trạng thái catalyst nếu cần (PENDING / TRIGGERED / EXPIRED).",
+        "3. Đưa ra verdict tổng thể (BULLISH / NEUTRAL / WEAKENING / BEARISH / INVALIDATED).",
+        "4. Liệt kê risk signals với severity (LOW / MEDIUM / HIGH).",
+        "5. Đưa ra next_watch_items cụ thể cho 2–4 tuần tới.",
+        "6. Reasoning ngắn gọn (tối đa 300 từ) giải thích verdict.",
+        "",
+        "Trả về JSON theo schema đã định nghĩa. Không giải thích ngoài JSON.",
+    ]
+
     return "\n".join(lines)
