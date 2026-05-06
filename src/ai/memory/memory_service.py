@@ -13,6 +13,7 @@ Callers:
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -119,18 +120,16 @@ class MemoryService:
         """Persist one episodic memory entry in an ISOLATED session.
 
         Always opens its own AsyncSessionLocal session so that a log
-        failure (e.g. table missing, constraint violation) can never
-        poison the caller's transaction.
+        failure can never poison the caller's transaction.
 
         The `session` param is retained for backward compatibility with
-        all existing agents — it is intentionally unused here. Agents
-        do not need to change their call sites.
+        all existing agents — it is intentionally unused here and will
+        be removed in a future wave once all call sites are updated.
 
         Fire-and-forget: all exceptions are swallowed, returns None on
         failure so callers can safely ignore the return value.
         """
         try:
-            # Lazy import avoids circular dependency at module load time.
             from src.platform.db import AsyncSessionLocal  # noqa: PLC0415
 
             async with AsyncSessionLocal() as log_session:
@@ -185,17 +184,43 @@ class MemoryService:
     ) -> MemoryContext:
         """Assemble full memory context for a user.
 
-        Returns an empty MemoryContext (not None) when no data exists,
-        so callers never need to null-check.
+        Each query (episodes, snapshot) fails independently — a failure
+        in one does not abort the other. Returns an empty MemoryContext
+        (not None) when no data exists, so callers never need to null-check.
         """
         try:
             episode_repo = InteractionLogRepository(session)
             snapshot_repo = MemorySnapshotRepository(session)
 
-            episodes, snapshot = await _gather(
+            results = await asyncio.gather(
                 episode_repo.get_recent(user_id, limit=episode_limit),
                 snapshot_repo.get_latest(user_id),
+                return_exceptions=True,
             )
+
+            episodes: list[AIInteractionLog]
+            snapshot: MemorySnapshot | None
+
+            if isinstance(results[0], BaseException):
+                logger.warning(
+                    "memory_service.episodes_failed",
+                    user_id=user_id,
+                    error=str(results[0]),
+                )
+                episodes = []
+            else:
+                episodes = results[0]
+
+            if isinstance(results[1], BaseException):
+                logger.warning(
+                    "memory_service.snapshot_failed",
+                    user_id=user_id,
+                    error=str(results[1]),
+                )
+                snapshot = None
+            else:
+                snapshot = results[1]
+
             return MemoryContext(
                 user_id=user_id,
                 recent_episodes=episodes,
@@ -208,15 +233,3 @@ class MemoryService:
                 error=str(exc),
             )
             return MemoryContext(user_id=user_id)
-
-
-# ---------------------------------------------------------------------------
-# Internal helper
-# ---------------------------------------------------------------------------
-
-import asyncio  # noqa: E402
-
-
-async def _gather(coro_a, coro_b):
-    """Run two coroutines concurrently and return both results."""
-    return await asyncio.gather(coro_a, coro_b)
