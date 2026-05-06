@@ -176,7 +176,7 @@ async def bootstrap() -> None:
                 reason="scheduler_user_id not configured",
             )
 
-    # ── Event Bus + subscribers (start bus FIRST) ──────────────────────────────
+    # ── Event Bus + subscribers (start bus FIRST) ────────────────────────────────────────────
     from src.platform.event_bus import get_event_bus
     bus = get_event_bus()
     await bus.start()
@@ -195,9 +195,11 @@ async def bootstrap() -> None:
 
     if _thesis_review_listener is None:
         from src.thesis.thesis_review_listener import ThesisReviewListener
+        from src.platform.db import AsyncSessionLocal
 
         _thesis_review_listener = ThesisReviewListener(
-            thesis_review_agent=_thesis_review_agent,
+            session_factory=AsyncSessionLocal,
+            review_agent=_thesis_review_agent,
             quote_service=_quote_service,
         )
         _thesis_review_listener.register()
@@ -227,7 +229,7 @@ async def bootstrap() -> None:
                 reason="scheduler_user_id not configured",
             )
 
-    # ── Wave 3: Opportunity Screen (scheduler + subscriber) ───────────────────
+    # ── Wave 3: Opportunity Screen (scheduler + subscriber) ─────────────────────────────────
     # Subscriber registered here (bus already started).
     # Scheduler is initialised here but start() is called by bot on_ready —
     # discord.ext.tasks requires the bot event loop to be running.
