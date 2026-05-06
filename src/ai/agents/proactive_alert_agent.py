@@ -1,242 +1,81 @@
-"""
-Proactive Alert Agent — AI Segment, Wave 3
-
-Subscribes to SignalDetectedEvent from the event bus.
-Calls AI to produce a structured ProactiveRecommendation.
-Emits RecommendationReadyEvent back onto the bus.
+"""ProactiveAlertAgent — Wave 3 stub / Wave 5 full implementation.
 
 Owner: ai segment.
-Dependencies IN:  platform.event_bus, platform.events, ai.client, ai.schemas
-Dependencies OUT: platform.events.RecommendationReadyEvent → bot / briefing segments
+Boundary:
+  - Subscribes to SignalDetectedEvent on the EventBus.
+  - After analysis, emits RecommendationReadyEvent back onto the bus.
+  - NEVER imports Discord, bot, or scheduler internals.
+  - NEVER writes to signal_events directly — that is watchlist segment's job.
 
-Boundary rules:
-- No Discord/bot logic here — bot subscribes RecommendationReadyEvent.
-- No watchlist mutation here — watchlist owns its own state.
-- No thesis logic here — thesis segment owns thesis lifecycle.
+Bootstrap contract (enforced by bootstrap.py)::
+
+    agent = get_proactive_alert_agent(ai_client=...)
+    agent.register()   # subscribes handler on bus; idempotent
 """
 from __future__ import annotations
 
-from datetime import timedelta
-from typing import TYPE_CHECKING
+import logging
 
 from src.platform.event_bus import get_event_bus
-from src.platform.events import (
-    RecommendationReadyEvent,
-    SignalDetectedEvent,
-    ThesisReviewRequestedEvent,
-)
-from src.platform.logging import get_logger
+from src.platform.events import RecommendationReadyEvent, SignalDetectedEvent
 
-if TYPE_CHECKING:
-    from src.ai.client import AIClient
+logger = logging.getLogger(__name__)
 
-from src.ai.schemas import ProactiveRecommendation
-
-logger = get_logger(__name__)
-
-# ─── prompt ───────────────────────────────────────────────────────────────────
-
-_SYSTEM_PROMPT = """\
-Bạn là AI phân tích cổ phiếu chuyên nghiệp cho thị trường chứng khoán Việt Nam (HOSE/HNX/UPCoM).
-Nhiệm vụ: phân tích tín hiệu thị trường và đưa ra khuyến nghị hành động có cấu trúc.
-
-Quy tắc:
-1. Verdict phải là một trong: BUY / SELL / REDUCE / HOLD / WATCH
-2. Urgency phải là một trong: NOW / TODAY / THIS_WEEK / MONITORING
-3. Confidence từ 0.0 đến 1.0 — phản ánh mức độ chắc chắn thật sự, không thổi phồng
-4. Risk signals: liệt kê tối đa 5 rủi ro cụ thể, ngắn gọn
-5. Next watch items: tối đa 3 điều cần theo dõi tiếp theo
-6. Luôn trả lời bằng JSON hợp lệ theo schema đã chỉ định
-7. Reasoning phải ngắn gọn, có thể hành động ngay — không vòng vo lý thuyết
-"""
-
-
-def _build_user_prompt(event: SignalDetectedEvent) -> str:
-    return f"""\
-Tín hiệu phát hiện:
-- Mã cổ phiếu: {event.symbol}
-- Loại tín hiệu: {event.signal_type}
-- Độ mạnh: {event.strength:.2f} / 1.0
-- Confidence ban đầu: {event.confidence:.2f} / 1.0
-- Nguồn: {event.source}
-- Metadata: {event.metadata}
-
-Hãy phân tích tín hiệu này và trả về khuyến nghị đầu tư theo JSON schema:
-{{
-  "symbol": "<mã CK>",
-  "verdict": "BUY|SELL|REDUCE|HOLD|WATCH",
-  "urgency": "NOW|TODAY|THIS_WEEK|MONITORING",
-  "confidence": <0.0-1.0>,
-  "reasoning": "<lý do ngắn gọn, 1-3 câu>",
-  "risk_signals": ["<rủi ro 1>", "<rủi ro 2>"],
-  "next_watch_items": ["<theo dõi 1>", "<theo dõi 2>"],
-  "action": "<hành động cụ thể, ví dụ: Mua breakout trên 95,000>",
-  "source_agent": "proactive_alert",
-  "triggered_by_signal": "{event.signal_type}"
-}}
-"""
-
-
-# ─── agent class ──────────────────────────────────────────────────────────────
+_instance: "ProactiveAlertAgent | None" = None
 
 
 class ProactiveAlertAgent:
     """
-    Listens for SignalDetectedEvent, calls AI, emits RecommendationReadyEvent.
+    Listens for SignalDetectedEvent and produces RecommendationReadyEvent.
 
-    Lifecycle:
-        agent = ProactiveAlertAgent(ai_client)
-        agent.register()   # subscribe to bus — call once at bootstrap
-        ...                # bus worker handles events automatically
-        agent.unregister() # (optional) if dynamic teardown needed
+    Wave 3: stub — logs signal, no AI call yet.
+    Wave 5: full — calls AIClient, builds verdict + risk signals, publishes
+            RecommendationReadyEvent with action/urgency/confidence.
     """
 
-    # Dedup window: same symbol + signal_type won't re-trigger AI within 60 min
-    DEDUP_WINDOW = timedelta(minutes=60)
-
-    # Signal types that warrant a thesis review side-effect
-    _THESIS_REVIEW_SIGNAL_TYPES = {
-        "THESIS_DIVERGENCE",
-        "TREND_REVERSAL",
-        "RISK_SPIKE",
-    }
-
-    def __init__(self, ai_client: "AIClient") -> None:
-        self._client = ai_client
+    def __init__(self, ai_client: object) -> None:
+        self._ai_client = ai_client
         self._registered = False
 
     def register(self) -> None:
-        """Subscribe to SignalDetectedEvent on the global bus."""
+        """Subscribe to SignalDetectedEvent on the global bus. Idempotent."""
         if self._registered:
-            logger.warning("ProactiveAlertAgent already registered — skipping.")
             return
         bus = get_event_bus()
-        bus.subscribe_handler(SignalDetectedEvent, self._handle)
+        bus.subscribe_handler(SignalDetectedEvent, self._handle_signal)
         self._registered = True
-        logger.info("ProactiveAlertAgent registered on event bus.")
+        logger.info("proactive_alert_agent.registered")
 
-    def unregister(self) -> None:
+    async def _handle_signal(self, event: SignalDetectedEvent) -> None:
         """
-        Remove handler from bus.
-        Note: EventBus v1 does not support deregistration —
-        this is a no-op placeholder for future implementation.
+        Wave 3 stub: log and no-op.
+        Wave 5 will:
+          1. Pull context: quote, thesis, recent signals from WatchlistRepository
+          2. Call AIClient with ProactiveAlertPrompt
+          3. Parse ProactiveRecommendation schema
+          4. Publish RecommendationReadyEvent onto bus
+          5. Mark signal_event.processed_at via WatchlistRepository
         """
-        logger.warning(
-            "ProactiveAlertAgent.unregister() called — "
-            "EventBus v1 does not support handler removal. "
-            "Restart process to deregister."
-        )
-
-    # ── internal handler ──────────────────────────────────────────────────────
-
-    async def _handle(self, event: SignalDetectedEvent) -> None:  # type: ignore[override]
-        """Core handler: AI call → emit recommendation."""
         logger.info(
-            "proactive_alert.received",
+            "proactive_alert_agent.signal_received",
             symbol=event.symbol,
             signal_type=event.signal_type,
             strength=event.strength,
             confidence=event.confidence,
+            event_id=event.event_id,
         )
-
-        try:
-            recommendation = await self._call_ai(event)
-        except Exception as exc:
-            logger.exception(
-                "proactive_alert.ai_error",
-                symbol=event.symbol,
-                signal_type=event.signal_type,
-                error=str(exc),
-            )
-            return
-
-        bus = get_event_bus()
-
-        # thesis_id from signal metadata — passed through to embed for context
-        thesis_id = str(event.metadata.get("thesis_id", ""))
-
-        # Emit RecommendationReadyEvent with full rich content → bot/briefing segments
-        rec_event = RecommendationReadyEvent(
-            symbol=recommendation.symbol,
-            action=recommendation.verdict,
-            urgency=recommendation.urgency,
-            confidence=recommendation.confidence,
-            source_agent="proactive_alert",
-            # ── rich fields (Wave 7) ──────────────────────────────────────────
-            reasoning=getattr(recommendation, "reasoning", "") or "",
-            action_detail=getattr(recommendation, "action", "") or "",
-            risk_signals=list(getattr(recommendation, "risk_signals", None) or []),
-            next_watch_items=list(getattr(recommendation, "next_watch_items", None) or []),
-            thesis_id=thesis_id,
-        )
-        await bus.publish(
-            rec_event,
-            dedup_key=f"{recommendation.symbol}:{recommendation.verdict}",
-            dedup_window=self.DEDUP_WINDOW,
-        )
-
-        logger.info(
-            "proactive_alert.recommendation_emitted",
-            symbol=recommendation.symbol,
-            verdict=recommendation.verdict,
-            urgency=recommendation.urgency,
-            confidence=recommendation.confidence,
-            thesis_id=thesis_id or None,
-            recommendation_id=rec_event.recommendation_id,
-        )
-
-        # Side-effect: if signal warrants thesis review, emit ThesisReviewRequestedEvent
-        if event.signal_type in self._THESIS_REVIEW_SIGNAL_TYPES:
-            if thesis_id:
-                await bus.publish(
-                    ThesisReviewRequestedEvent(
-                        thesis_id=thesis_id,
-                        symbol=event.symbol,
-                        reason="signal",
-                    ),
-                    dedup_key=f"thesis_review:{thesis_id}",
-                    dedup_window=timedelta(hours=4),
-                )
-                logger.info(
-                    "proactive_alert.thesis_review_requested",
-                    symbol=event.symbol,
-                    thesis_id=thesis_id,
-                )
-
-    async def _call_ai(self, event: SignalDetectedEvent) -> ProactiveRecommendation:
-        """Call AI client and parse structured response."""
-        return await self._client.chat(
-            system_prompt=_SYSTEM_PROMPT,
-            user_prompt=_build_user_prompt(event),
-            response_schema=ProactiveRecommendation,
-            temperature=0.2,
-            max_tokens=1024,
-        )
+        # TODO Wave 5: implement AI analysis + publish RecommendationReadyEvent
 
 
-# ── module-level convenience ──────────────────────────────────────────────────
-
-_agent_instance: ProactiveAlertAgent | None = None
-
-
-def get_proactive_alert_agent(ai_client: "AIClient | None" = None) -> ProactiveAlertAgent:
-    """
-    Return the module-level ProactiveAlertAgent singleton.
-
-    First call must pass ai_client. Subsequent calls may omit it.
-    """
-    global _agent_instance
-    if _agent_instance is None:
-        if ai_client is None:
-            raise RuntimeError(
-                "ProactiveAlertAgent not initialized. "
-                "Call get_proactive_alert_agent(ai_client) once at bootstrap."
-            )
-        _agent_instance = ProactiveAlertAgent(ai_client)
-    return _agent_instance
+def get_proactive_alert_agent(ai_client: object) -> ProactiveAlertAgent:
+    """Return singleton ProactiveAlertAgent. Creates on first call."""
+    global _instance
+    if _instance is None:
+        _instance = ProactiveAlertAgent(ai_client=ai_client)
+    return _instance
 
 
 def reset_proactive_alert_agent() -> None:
-    """Reset singleton — tests only."""
-    global _agent_instance
-    _agent_instance = None
+    """Reset singleton — for tests only."""
+    global _instance
+    _instance = None

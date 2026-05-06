@@ -131,9 +131,9 @@ class Alert(Base):
     triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     triggered_price: Mapped[float | None] = mapped_column(Float)
     note: Mapped[str | None] = mapped_column(Text)
-    # TODO: re-introduce auto_reactivate (recurring alerts) after adding
-    # migration: op.add_column('alerts', sa.Column('auto_reactivate', sa.Boolean(),
-    #     nullable=False, server_default='false'))
+    auto_reactivate: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -239,3 +239,45 @@ class WatchlistScan(Base):
 
     def __repr__(self) -> str:
         return f"<WatchlistScan user={self.user_id} at={self.scanned_at}>"
+
+
+# ---------------------------------------------------------------------------
+# SignalEvent  (Wave 3 — Event Bus persistence)
+# ---------------------------------------------------------------------------
+
+
+class SignalEvent(Base):
+    """Persisted record of a SignalDetectedEvent emitted by ScanService.
+
+    Owner: watchlist segment.
+    Written by: ScanService (via WatchlistRepository or direct session).
+    Read by:    ProactiveAlertAgent (dedup), readmodel/dashboard (history).
+
+    Boundary rule: ProactiveAlertAgent must NOT import this model directly —
+    it reads signal history through WatchlistRepository.recent_signals().
+    """
+
+    __tablename__ = "signal_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    event_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    ticker: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    signal_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    strength: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="technical")
+    metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    processed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<SignalEvent ticker={self.ticker} type={self.signal_type} "
+            f"strength={self.strength:.2f} processed={'yes' if self.processed_at else 'no'}>"
+        )
