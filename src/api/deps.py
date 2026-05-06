@@ -72,6 +72,18 @@ def get_briefing_agent() -> object:
     return _get_briefing_agent()
 
 
+def get_symbol_registry() -> "SymbolRegistry":  # type: ignore[name-defined]  # noqa: F821
+    """Return a SymbolRegistry instance for ticker → metadata resolution.
+
+    Owner: market segment.
+    Used by routes that need company_name / sector context before calling AI agents.
+    SymbolRegistry is stateless — safe to instantiate per-request.
+    """
+    from src.market.registry import SymbolRegistry
+
+    return SymbolRegistry()
+
+
 async def get_thesis_service(
     session: AsyncSession = Depends(get_db),
 ) -> "ThesisService":  # type: ignore[name-defined]  # noqa: F821

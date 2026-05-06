@@ -42,6 +42,7 @@ from src.ai.schemas import ThesisSuggestionResult
 from src.api.deps import (
     get_current_user_id,
     get_review_service,
+    get_symbol_registry,
     get_thesis_service,
     get_thesis_suggest_agent,
     get_timeline_service,
@@ -68,6 +69,7 @@ from src.api.dto.thesis import (
     ThesisReviewResponse,
     ThesisUpdateRequest,
 )
+from src.market.registry import SymbolNotFoundError, SymbolRegistry
 from src.readmodel.schemas import ConvictionTimelineResponse
 from src.readmodel.timeline_service import ThesisTimelineService
 from src.thesis.models import ThesisStatus
@@ -113,8 +115,13 @@ async def suggest_thesis(
     ticker: str = Query(..., description="Mã cổ phiếu, VD: VNM, HPG, MWG"),
     _user_id: str = Depends(get_current_user_id),
     agent: ThesisSuggestAgent = Depends(get_thesis_suggest_agent),  # type: ignore[type-arg]
+    sym_registry: SymbolRegistry = Depends(get_symbol_registry),
 ) -> ThesisSuggestionResult:
     """Ask AI to draft an investment thesis for a ticker.
+
+    Resolves ticker → company_name + sector + key_metrics via SymbolRegistry
+    (market segment) before calling the AI agent, so the model has correct
+    Vietnamese market context instead of falling back on global training data.
 
     Returns a ThesisSuggestionResult — a *draft* for the investor to review.
     Nothing is persisted. The investor must confirm and call POST /thesis to save.
@@ -122,8 +129,27 @@ async def suggest_thesis(
     Price hints (entry_price_hint, target_price_hint, stop_loss_hint) are
     AI estimates only — do NOT auto-save without user confirmation.
     """
+    # --- Resolve VN market context from registry (market segment) ---
+    company_name = ""
+    sector = ""
+    extra_context = ""
     try:
-        return await agent.suggest(ticker)
+        info = sym_registry.resolve(ticker)
+        company_name = info.name
+        sector = info.sector.value
+        if info.key_metrics:
+            extra_context = f"Key metrics cần theo dõi: {info.key_metrics}"
+    except SymbolNotFoundError:
+        # Graceful fallback: ticker không có trong registry → AI tự suy luận
+        pass
+
+    try:
+        return await agent.suggest(
+            ticker=ticker,
+            company_name=company_name,
+            sector=sector,
+            extra_context=extra_context,
+        )
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
