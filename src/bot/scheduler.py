@@ -653,51 +653,71 @@ class ReminderScheduler:
         frequencies = frequency_map.get(label, [ReminderFrequency.DAILY])
         freq_label = "hàng ngày" if label == "daily" else "hàng tuần"
 
+        # -- Step 1: Fetch due reminders (read-only session) --
         try:
             async with AsyncSessionLocal() as session:
                 svc = ReminderService(session)
                 due = await svc.list_due(frequencies=frequencies)
 
-                if not due:
-                    logger.debug("scheduler.reminder.none_due", label=label)
-                    await self._monitor.record_success(task_name)
-                    return
+            if not due:
+                logger.debug("scheduler.reminder.none_due", label=label)
+                await self._monitor.record_success(task_name)
+                return
 
-                logger.info("scheduler.reminder.firing", label=label, count=len(due))
-
-                now_utc = datetime.datetime.now(tz=datetime.UTC)
-                ict_time = (now_utc + datetime.timedelta(hours=7)).strftime("%H:%M ICT")
-
-                for reminder in due:
-                    ticker = (
-                        reminder.watchlist_item.ticker
-                        if reminder.watchlist_item
-                        else f"item#{reminder.watchlist_item_id}"
-                    )
-                    try:
-                        embed = build_reminder_embed(ticker, freq_label, ict_time)
-                        await channel.send(embed=embed)  # type: ignore[union-attr]
-                        await svc.mark_sent(reminder)
-                        logger.info(
-                            "scheduler.reminder.sent",
-                            ticker=ticker,
-                            reminder_id=reminder.id,
-                            frequency=reminder.frequency,
-                        )
-                    except Exception as exc:
-                        logger.error(
-                            "scheduler.reminder.send_failed",
-                            ticker=ticker,
-                            reminder_id=reminder.id,
-                            error=str(exc),
-                        )
-
-                await session.commit()
-            await self._monitor.record_success(task_name)
-
+            logger.info("scheduler.reminder.firing", label=label, count=len(due))
         except Exception as exc:
-            logger.error("scheduler.reminder.error", label=label, error=str(exc))
+            logger.error("scheduler.reminder.list_failed", label=label, error=str(exc))
             await self._monitor.record_failure(task_name, exc)
+            return
+
+        # -- Step 2: Send + mark_sent per reminder with isolated commit --
+        # Each reminder gets its own session so a crash mid-loop never rolls back
+        # mark_sent() calls that already succeeded.
+        now_utc = datetime.datetime.now(tz=datetime.UTC)
+        ict_time = (now_utc + datetime.timedelta(hours=7)).strftime("%H:%M ICT")
+        sent_count = 0
+
+        for reminder in due:
+            ticker = (
+                reminder.watchlist_item.ticker
+                if reminder.watchlist_item
+                else f"item#{reminder.watchlist_item_id}"
+            )
+            try:
+                embed = build_reminder_embed(ticker, freq_label, ict_time)
+                await channel.send(embed=embed)  # type: ignore[union-attr]
+            except Exception as exc:
+                logger.error(
+                    "scheduler.reminder.send_failed",
+                    ticker=ticker,
+                    reminder_id=reminder.id,
+                    error=str(exc),
+                )
+                continue
+
+            # Commit mark_sent immediately — isolated from other reminders.
+            try:
+                async with AsyncSessionLocal() as mark_session:
+                    mark_svc = ReminderService(mark_session)
+                    await mark_svc.mark_sent(reminder)
+                    await mark_session.commit()
+                logger.info(
+                    "scheduler.reminder.sent",
+                    ticker=ticker,
+                    reminder_id=reminder.id,
+                    frequency=reminder.frequency,
+                )
+                sent_count += 1
+            except Exception as exc:
+                logger.error(
+                    "scheduler.reminder.mark_sent_failed",
+                    ticker=ticker,
+                    reminder_id=reminder.id,
+                    error=str(exc),
+                )
+
+        logger.info("scheduler.reminder.done", label=label, sent=sent_count, total=len(due))
+        await self._monitor.record_success(task_name)
 
 
 # ---------------------------------------------------------------------------
