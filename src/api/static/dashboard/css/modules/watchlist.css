@@ -1,13 +1,12 @@
-/* ─── Watchlist Panel ────────────────────────────────────────────────────────
+/* ─── Watchlist Panel ─────────────────────────────────────────────────────────────
    Owner: modules/watchlist
    Classes: watchlist-layer, wl-toolbar, wl-grid, wl-card, wl-ticker,
             wl-price, wl-change, wl-note, wl-actions, wl-scan-btn
-────────────────────────────────────────────────────────────────────────────── */
 
-/* ── Layer shell ────────────────────────────────────────────────────────────── */
-.watchlist-layer {
-  margin: 0 var(--gap, 16px) var(--gap, 16px);
-}
+   POSITIONING NOTE: .watchlist-layer outer geometry (max-width, margin-inline,
+   padding-inline) is owned exclusively by layout.css. Do NOT set margin or
+   padding on .watchlist-layer here — it will override layout.css centering.
+────────────────────────────────────────────────────────────────────────────── */
 
 /* ── Toolbar: title + add/scan actions ──────────────────────────────────────── */
 .wl-toolbar {
@@ -33,7 +32,7 @@
 .wl-scan-btn svg { flex-shrink: 0; }
 .wl-scan-btn.scanning { opacity: 0.7; pointer-events: none; }
 
-/* ── Empty state ─────────────────────────────────────────────────────────────── */
+/* ── Empty state ──────────────────────────────────────────────────────────────── */
 .wl-empty {
   padding: 28px 16px;
   text-align: center;
@@ -42,7 +41,7 @@
 }
 .wl-empty strong { display: block; margin-bottom: 4px; color: var(--text); font-size: 0.94rem; }
 
-/* ── Card grid ────────────────────────────────────────────────────────────────── */
+/* ── Card grid ──────────────────────────────────────────────────────────────────── */
 .wl-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr));
@@ -65,7 +64,7 @@
   border-color: rgba(125, 211, 252, 0.2);
 }
 
-/* ── Card header row ─────────────────────────────────────────────────────────── */
+/* ── Card header row ───────────────────────────────────────────────────────── */
 .wl-card-head {
   display: flex;
   justify-content: space-between;
@@ -87,7 +86,7 @@
   white-space: nowrap;
 }
 
-/* ── Price block ──────────────────────────────────────────────────────────────── */
+/* ── Price block ──────────────────────────────────────────────────────────────────── */
 .wl-price-row {
   display: flex;
   align-items: baseline;
@@ -125,7 +124,7 @@
 .wl-ceil-badge  { background: rgba(251, 146, 60, 0.18); color: #fb923c; }
 .wl-floor-badge { background: rgba(74, 222, 128, 0.15); color: #4ade80; }
 
-/* ── Note ────────────────────────────────────────────────────────────────────── */
+/* ── Note ───────────────────────────────────────────────────────────────────────────── */
 .wl-note {
   color: var(--muted);
   font-size: 0.76rem;
@@ -163,7 +162,7 @@
   background: rgba(251, 146, 60, 0.1);
 }
 
-/* ── Scan result banner ──────────────────────────────────────────────────────── */
+/* ── Scan result banner ─────────────────────────────────────────────────────────── */
 .wl-scan-result {
   margin-top: 10px;
   padding: 10px 14px;
