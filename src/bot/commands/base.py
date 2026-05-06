@@ -25,6 +25,7 @@ from discord.ext import commands
 from src.platform.db import AsyncSessionLocal
 
 _MAX_EMBED_DESC = 4096  # Discord limit
+_TRUNCATION_SUFFIX = "\n\n`... (truncated)`"
 
 
 class BaseCog(commands.Cog):
@@ -83,6 +84,9 @@ class BaseCog(commands.Cog):
         *,
         ephemeral: bool = True,
     ) -> None:
+        if len(description) > _MAX_EMBED_DESC:
+            keep = _MAX_EMBED_DESC - len(_TRUNCATION_SUFFIX)
+            description = description[:keep] + _TRUNCATION_SUFFIX
         embed = discord.Embed(
             title=f"❌ {title}",
             description=description,
