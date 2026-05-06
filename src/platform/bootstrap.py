@@ -186,8 +186,12 @@ async def bootstrap() -> None:
 
     if _proactive_alert_agent is None:
         from src.ai.agents.proactive_alert_agent import get_proactive_alert_agent
+        from src.platform.db import AsyncSessionLocal
 
-        _proactive_alert_agent = get_proactive_alert_agent(ai_client=_ai_client)  # type: ignore[arg-type]
+        _proactive_alert_agent = get_proactive_alert_agent(
+            ai_client=_ai_client,  # type: ignore[arg-type]
+            session_factory=AsyncSessionLocal,
+        )
         _proactive_alert_agent.register()  # subscribe SignalDetectedEvent on bus
         logger.info("platform.bootstrap.proactive_alert_agent_ready")
 
