@@ -113,42 +113,29 @@ class MemoryService:
 
     @staticmethod
     async def log_interaction(
-        session: AsyncSession,
+        session: AsyncSession,  # kept for backward compat — no longer used for write
         entry: InteractionEntry,
     ) -> AIInteractionLog | None:
-        """Persist one episodic memory entry.
+        """Persist one episodic memory entry in an ISOLATED session.
 
-        Designed to be fire-and-forget from agents:
-          try:
-              await MemoryService.log_interaction(session, entry)
-          except Exception:
-              pass  # never block the main AI call
+        Always opens its own AsyncSessionLocal session so that a log
+        failure (e.g. table missing, constraint violation) can never
+        poison the caller's transaction.
 
-        Returns the saved log row, or None on failure (so callers can
-        safely ignore the return value).
+        The `session` param is retained for backward compatibility with
+        all existing agents — it is intentionally unused here. Agents
+        do not need to change their call sites.
+
+        Fire-and-forget: all exceptions are swallowed, returns None on
+        failure so callers can safely ignore the return value.
         """
         try:
-            log = AIInteractionLog(
-                user_id=entry.user_id,
-                agent_type=entry.agent_type,
-                trigger=entry.trigger,
-                ai_verdict=entry.ai_verdict,
-                ai_confidence=entry.ai_confidence,
-                ai_key_points=entry.ai_key_points,
-                ai_risk_signals=entry.ai_risk_signals,
-                thesis_id=entry.thesis_id,
-                decision_id=entry.decision_id,
-            )
-            log.tickers = entry.tickers
-            repo = InteractionLogRepository(session)
-            saved = await repo.save(log)
-            logger.debug(
-                "memory_service.log_interaction.saved",
-                user_id=entry.user_id,
-                agent_type=entry.agent_type,
-                verdict=entry.ai_verdict,
-            )
-            return saved
+            # Lazy import avoids circular dependency at module load time.
+            from src.platform.db import AsyncSessionLocal  # noqa: PLC0415
+
+            async with AsyncSessionLocal() as log_session:
+                async with log_session.begin():
+                    return await MemoryService._do_log(log_session, entry)
         except Exception as exc:
             logger.warning(
                 "memory_service.log_interaction.failed",
@@ -157,6 +144,34 @@ class MemoryService:
                 error=str(exc),
             )
             return None
+
+    @staticmethod
+    async def _do_log(
+        session: AsyncSession,
+        entry: InteractionEntry,
+    ) -> AIInteractionLog | None:
+        """Internal: write one log row. Caller owns session/transaction."""
+        log = AIInteractionLog(
+            user_id=entry.user_id,
+            agent_type=entry.agent_type,
+            trigger=entry.trigger,
+            ai_verdict=entry.ai_verdict,
+            ai_confidence=entry.ai_confidence,
+            ai_key_points=entry.ai_key_points,
+            ai_risk_signals=entry.ai_risk_signals,
+            thesis_id=entry.thesis_id,
+            decision_id=entry.decision_id,
+        )
+        log.tickers = entry.tickers
+        repo = InteractionLogRepository(session)
+        saved = await repo.save(log)
+        logger.debug(
+            "memory_service.log_interaction.saved",
+            user_id=entry.user_id,
+            agent_type=entry.agent_type,
+            verdict=entry.ai_verdict,
+        )
+        return saved
 
     # ------------------------------------------------------------------
     # Read path
