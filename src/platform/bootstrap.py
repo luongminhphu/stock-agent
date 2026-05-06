@@ -31,7 +31,7 @@ _stress_test_agent: object | None = None
 _replay_agent: object | None = None
 _snapshot_scheduler: object | None = None
 _sector_rotation_agent: object | None = None
-_investor_profile_service: object | None = None  # Wave 1 — Blueprint V2
+_investor_profile_service: tuple | None = None  # (InvestorProfileService class, user_id str)
 _memory_consolidator: object | None = None        # Wave 3 — Blueprint V2 Memory
 
 # PnlService is session-scoped (stateless), so bootstrap stores the class
@@ -134,6 +134,23 @@ async def bootstrap() -> None:
 
         _pnl_service_class = PnlService
         logger.info("platform.bootstrap.pnl_service_ready")
+
+    if _investor_profile_service is None:
+        from src.platform.config import settings
+        from src.platform.investor_profile import InvestorProfileService
+
+        user_id = getattr(settings, "scheduler_user_id", None)
+        if user_id:
+            _investor_profile_service = (InvestorProfileService, str(user_id))
+            logger.info(
+                "platform.bootstrap.investor_profile_service_ready",
+                user_id=str(user_id),
+            )
+        else:
+            logger.warning(
+                "platform.bootstrap.investor_profile_service_skipped",
+                reason="scheduler_user_id not configured",
+            )
 
     if _memory_consolidator is None:
         from src.ai.memory.consolidator import MemoryConsolidator
@@ -285,6 +302,25 @@ def get_pnl_service():
         raise RuntimeError("PnlService not initialised — call bootstrap() first.")
     quote_svc = get_quote_service()
     return lambda session: _pnl_service_class(session, quote_svc)  # type: ignore[misc]
+
+
+def get_investor_profile_service() -> tuple | None:
+    """Return (InvestorProfileService class, user_id) tuple, or None.
+
+    InvestorProfileService is session-scoped — callers instantiate with
+    their own session. Returns None if scheduler_user_id was not configured
+    at bootstrap time; callers should skip gracefully.
+
+    Usage:
+        result = get_investor_profile_service()
+        if result:
+            svc_class, user_id = result
+            async with AsyncSessionLocal() as session:
+                svc = svc_class(session)
+                await svc.build_snapshot(user_id=user_id)
+                await session.commit()
+    """
+    return _investor_profile_service
 
 
 def get_memory_consolidator():

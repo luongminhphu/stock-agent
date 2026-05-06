@@ -4,6 +4,7 @@ Owner: bot segment (adapter only).
 No business logic — calls domain services on schedule.
 
 Registered tasks:
+    InvestorProfileScheduler.snapshot_task     — weekdays 08:20 ICT (before maintenance + brief)
     BriefingScheduler.morning_brief_task       — weekdays 08:45 ICT
     BriefingScheduler.eod_brief_task           — weekdays 15:05 ICT
     WatchlistScanScheduler.scan_task           — every 5 min, weekdays 09:00–15:00 ICT
@@ -34,6 +35,7 @@ from src.bot.commands.watchlist_embeds import build_scan_embed
 from src.briefing.service import BriefingService
 from src.platform.bootstrap import (
     get_briefing_agent,
+    get_investor_profile_service,
     get_memory_consolidator,
     get_pnl_service,
     get_quote_service,
@@ -65,6 +67,86 @@ def _in_market_hours(now_utc: datetime.datetime) -> bool:
     now_naive = now_utc.utctimetuple()
     now_time = datetime.time(hour=now_naive.tm_hour, minute=now_naive.tm_min)
     return _MARKET_OPEN_UTC <= now_time <= _MARKET_CLOSE_UTC
+
+
+# ---------------------------------------------------------------------------
+# InvestorProfileScheduler
+# ---------------------------------------------------------------------------
+
+_INVESTOR_PROFILE_TIME = datetime.time(hour=1, minute=20, tzinfo=datetime.UTC)  # 08:20 ICT
+
+
+class InvestorProfileScheduler:
+    """Build daily InvestorProfileSnapshot at 08:20 ICT (weekdays).
+
+    Runs 10 min before ThesisMaintenanceScheduler (08:30) and
+    25 min before BriefingScheduler (08:45) so the morning brief
+    always has fresh behavioral patterns, win_rate, and lessons.
+
+    Flow:
+        1. get_investor_profile_service() — retrieve (class, user_id) from bootstrap.
+        2. InvestorProfileService.build_snapshot(user_id) — pure data aggregation, no AI.
+        3. session.commit() — persist snapshot.
+        4. Log result; record success/failure in SchedulerMonitor.
+
+    Graceful skip:
+        - If get_investor_profile_service() returns None (scheduler_user_id not set).
+        - All exceptions are caught and recorded; never blocks downstream schedulers.
+    """
+
+    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
+        self._client = client
+        self._monitor = monitor or get_monitor()
+
+    def start(self) -> None:
+        self._monitor.register_task("investor_profile.snapshot")
+        self._snapshot_task.start()
+        logger.info("scheduler.investor_profile.started", time_ict="08:20")
+
+    def stop(self) -> None:
+        self._snapshot_task.cancel()
+        logger.info("scheduler.investor_profile.stopped")
+
+    @tasks.loop(time=_INVESTOR_PROFILE_TIME)
+    async def _snapshot_task(self) -> None:
+        now_utc = datetime.datetime.now(tz=datetime.UTC)
+        if now_utc.weekday() >= 5:
+            return
+
+        task_name = "investor_profile.snapshot"
+
+        result = get_investor_profile_service()
+        if result is None:
+            logger.warning(
+                "scheduler.investor_profile.skipped",
+                reason="investor_profile_service not initialised — scheduler_user_id not set",
+            )
+            return
+
+        svc_class, user_id = result
+
+        try:
+            async with AsyncSessionLocal() as session:
+                svc = svc_class(session)
+                snapshot = await svc.build_snapshot(user_id=user_id)
+                await session.commit()
+
+            logger.info(
+                "scheduler.investor_profile.snapshot_built",
+                user_id=user_id,
+                active_thesis_count=snapshot.active_thesis_count,
+                win_rate_30d=snapshot.win_rate_30d,
+                avg_hold_days=snapshot.avg_hold_days,
+            )
+            await self._monitor.record_success(task_name)
+
+        except Exception as exc:
+            logger.error("scheduler.investor_profile.error", error=str(exc))
+            await self._monitor.record_failure(task_name, exc)
+
+    @_snapshot_task.before_loop
+    async def _before_snapshot(self) -> None:
+        await self._client.wait_until_ready()
 
 
 # ---------------------------------------------------------------------------
