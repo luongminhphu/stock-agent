@@ -157,9 +157,13 @@ class ThesisSuggestAgent:
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.3,
-                response_format={"type": "json_object"},
+                # response_format omitted — sonar-pro rejects "json_object" (HTTP 400).
+                # JSON output is enforced via _SYSTEM_PROMPT instruction instead.
             )
             raw = self._client.extract_text(response)
+            # Strip markdown fences in case model wraps output anyway
+            from src.ai.client import _strip_json_fences
+            raw = _strip_json_fences(raw)
             result = ThesisDraft.model_validate(json.loads(raw))
         except (json.JSONDecodeError, ValidationError) as exc:
             logger.error("thesis_suggest_agent.parse_error", ticker=ticker, error=str(exc))
