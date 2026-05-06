@@ -61,18 +61,20 @@ class AIClient:
         client = AIClient(api_key)
         await client.chat(...)
         await client.aclose()  # call once on shutdown
+
+    response_format note (2026-05):
+        sonar-pro does NOT support {"type": "json_object"}.
+        Supported values: 'text', 'json_schema', 'regex' (or omit entirely).
+        chat() enforces JSON output via system_prompt instruction instead.
+        chat_completion() still accepts response_format for explicit overrides.
     """
 
     BASE_URL = "https://api.perplexity.ai"
-    # sonar-pro: advanced search model with grounding (current as of 2026-04)
-    # Replaces deprecated llama-3.1-sonar-large-128k-online
-    # Ref: https://docs.perplexity.ai/docs/getting-started/models
     DEFAULT_MODEL = "sonar-pro"
 
     def __init__(self, api_key: str, timeout: float = 60.0) -> None:
         self._api_key = api_key
         self._timeout = timeout
-        # Eager init — safe for singleton use without async with
         self._http: httpx.AsyncClient | None = httpx.AsyncClient(
             base_url=self.BASE_URL,
             headers={
@@ -115,9 +117,10 @@ class AIClient:
             model: Override default model.
             temperature: Sampling temperature (lower = more deterministic).
             max_tokens: Max tokens in response.
-            response_format: e.g. {"type": "json_object"} — only 'text',
-                             'json_object', 'json_schema', 'regex' are
-                             supported by Perplexity API.
+            response_format: Optional override. sonar-pro supports only
+                'text', 'json_schema', 'regex'. Do NOT pass
+                {"type": "json_object"} — it will cause HTTP 400.
+                Omit for standard text/JSON-via-prompt output.
 
         Returns:
             Raw API response dict.
@@ -180,6 +183,10 @@ class AIClient:
         This is the primary interface for all agents. Agents should use this
         instead of calling chat_completion() directly.
 
+        JSON output is enforced by prepending a JSON instruction to
+        system_prompt. No response_format is sent to the API — sonar-pro
+        does not support json_object format and will return HTTP 400.
+
         Args:
             system_prompt: System instruction string.
             user_prompt: User message string.
@@ -194,18 +201,29 @@ class AIClient:
         Raises:
             AIError: If response cannot be parsed into response_schema.
         """
+        # Prepend JSON instruction — sonar-pro respects this reliably
+        json_instruction = (
+            "You MUST respond with valid JSON only. "
+            "No markdown, no code fences, no explanation outside JSON."
+        )
+        full_system = f"{json_instruction}\n\n{system_prompt}"
+
         messages = [
-            {"role": "system", "content": system_prompt},
+            {"role": "system", "content": full_system},
             {"role": "user", "content": user_prompt},
         ]
+        # Do NOT pass response_format — sonar-pro rejects json_object (HTTP 400)
         raw = await self.chat_completion(
             messages=messages,
             model=model,
             temperature=temperature,
             max_tokens=max_tokens,
-            response_format={"type": "json_object"},
         )
         content = self.extract_text(raw)
+
+        # Strip markdown fences if model wraps output anyway
+        content = _strip_json_fences(content)
+
         try:
             return response_schema.model_validate(json.loads(content))
         except Exception as exc:
@@ -219,6 +237,20 @@ class AIClient:
             return str(response["choices"][0]["message"]["content"])
         except (KeyError, IndexError) as exc:
             raise AIError(f"Unexpected response shape: {response}") from exc
+
+
+def _strip_json_fences(text: str) -> str:
+    """Remove markdown code fences that some models wrap JSON output in."""
+    text = text.strip()
+    if text.startswith("```"):
+        # Remove opening fence (```json or ```)
+        first_newline = text.find("\n")
+        if first_newline != -1:
+            text = text[first_newline + 1:]
+        # Remove closing fence
+        if text.endswith("```"):
+            text = text[:-3].rstrip()
+    return text
 
 
 # Backward-compat alias — bootstrap.py and any legacy callers still work
