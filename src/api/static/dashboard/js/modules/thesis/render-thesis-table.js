@@ -179,7 +179,7 @@ export function renderThesesTable(list, callbacks = {}) {
       <thead>
         <tr>
           <th>Mã / Hướng</th><th>Tiêu đề</th><th>Score</th>
-          <th>Status</th><th>Cập nhật</th><th></th>
+          <th>Status</th><th>Cập nhật</th><th style="width:1%;white-space:nowrap;"></th>
         </tr>
       </thead>
       <tbody>
@@ -198,7 +198,7 @@ export function renderThesesTable(list, callbacks = {}) {
             </td>
             <td>${badge(t.status)}</td>
             <td style="color:var(--muted);font-size:.82rem;">${fmtDate(t.updated_at)}</td>
-            <td>
+            <td style="width:1%;white-space:nowrap;">
               <div style="display:flex;gap:6px;">
                 <button class="icon-btn edit-thesis-btn" data-id="${t.id}" title="Sửa thesis">✏️</button>
                 <button class="icon-btn danger delete-thesis-btn" data-id="${t.id}" title="Xóa thesis">🗑</button>
