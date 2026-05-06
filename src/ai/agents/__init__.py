@@ -9,7 +9,7 @@ from .pretrade import PreTradeAgent
 from .proactive_alert_agent import ProactiveAlertAgent, get_proactive_alert_agent
 from .replay import ReplayAgent
 from .signal_credibility import SignalCredibilityAgent
-from .suggest_agent import SuggestAgent
+from .suggest_agent import ThesisSuggestAgent
 from .thesis_review import ThesisReviewAgent
 from .watchdog import WatchdogAgent
 
@@ -20,7 +20,7 @@ __all__ = [
     "get_proactive_alert_agent",
     "ReplayAgent",
     "SignalCredibilityAgent",
-    "SuggestAgent",
+    "ThesisSuggestAgent",
     "ThesisReviewAgent",
     "WatchdogAgent",
 ]
