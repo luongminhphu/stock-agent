@@ -18,7 +18,7 @@ class DomainEvent:
     occurred_at: datetime = field(default_factory=datetime.utcnow)
 
 
-# ─── watchlist / signal ───────────────────────────────────────────────────────
+# ─── watchlist / signal ─────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
 class SignalDetectedEvent(DomainEvent):
@@ -39,7 +39,7 @@ class WatchlistScanCompletedEvent(DomainEvent):
     duration_seconds: float = 0.0
 
 
-# ─── portfolio / position ─────────────────────────────────────────────────────
+# ─── portfolio / position ────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
 class PositionRiskBreachedEvent(DomainEvent):
@@ -59,7 +59,7 @@ class PortfolioSnapshotReadyEvent(DomainEvent):
     unrealized_pnl: float = 0.0
 
 
-# ─── thesis ───────────────────────────────────────────────────────────────────
+# ─── thesis ─────────────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
 class ThesisInvalidatedEvent(DomainEvent):
@@ -78,7 +78,30 @@ class ThesisReviewRequestedEvent(DomainEvent):
     reason: str = "scheduled"      # scheduled | signal | manual
 
 
-# ─── AI recommendations ───────────────────────────────────────────────────────
+@dataclass(frozen=True)
+class StressTestCompletedEvent(DomainEvent):
+    """Emitted by thesis.StressTestService after an adversarial stress-test run.
+
+    Consumers:
+      - watchlist.StressTestSubscriber: auto-creates ThesisTriggerAlert rules
+        for broken/weakened assumptions surfaced by the AI.
+
+    Owner: thesis segment (emitter), watchlist segment (subscriber).
+    """
+    thesis_id: str = ""
+    user_id: str = ""
+    symbol: str = ""
+    thesis_title: str = ""
+    verdict: str = ""                        # e.g. BULLISH | WEAKENING | BEARISH | INVALIDATED
+    invalidation_probability: float = 0.0   # 0.0 – 1.0
+    confidence: float = 0.0                 # 0.0 – 1.0
+    suggested_triggers: list[str] = field(default_factory=list)
+    broken_assumption_count: int = 0
+    weakened_assumption_count: int = 0
+    stress_scenario: str = ""
+
+
+# ─── AI recommendations ──────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
 class RecommendationReadyEvent(DomainEvent):
@@ -91,7 +114,7 @@ class RecommendationReadyEvent(DomainEvent):
     recommendation_id: str = field(default_factory=lambda: str(uuid4()))
 
 
-# ─── briefing ─────────────────────────────────────────────────────────────────
+# ─── briefing ──────────────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
 class BriefingRequestedEvent(DomainEvent):
@@ -109,7 +132,7 @@ class BriefingReadyEvent(DomainEvent):
     content_summary: str = ""
 
 
-# ─── market ───────────────────────────────────────────────────────────────────
+# ─── market ─────────────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
 class MarketDataRefreshedEvent(DomainEvent):
@@ -119,7 +142,7 @@ class MarketDataRefreshedEvent(DomainEvent):
     trading_date: str = ""         # YYYY-MM-DD
 
 
-# ─── opportunity screen ───────────────────────────────────────────────────────
+# ─── opportunity screen ─────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
 class OpportunityScreenCompletedEvent(DomainEvent):
