@@ -24,7 +24,7 @@ class DomainEvent:
 class SignalDetectedEvent(DomainEvent):
     """Emitted by watchlist.signal_engine when a tradeable signal is found."""
     symbol: str = ""
-    signal_type: str = ""          # BREAKOUT | TREND_REVERSAL | THESIS_DIVERGENCE | RISK_SPIKE | OPPORTUNITY_SCREEN
+    signal_type: str = ""          # BREAKOUT | TREND_REVERSAL | THESIS_DIVERGENCE | ...
     strength: float = 0.0          # 0.0 – 1.0
     confidence: float = 0.0        # 0.0 – 1.0
     source: str = ""               # e.g. "technical" | "news" | "combined"
@@ -78,53 +78,17 @@ class ThesisReviewRequestedEvent(DomainEvent):
     reason: str = "scheduled"      # scheduled | signal | manual
 
 
-@dataclass(frozen=True)
-class StressTestCompletedEvent(DomainEvent):
-    """Emitted by thesis.StressTestService after AI stress-test finishes.
-
-    Consumers:
-    - watchlist.StressTestSubscriber: auto-creates ThesisTriggerAlert rules
-      for each suggested_trigger when invalidation_probability >= 0.25.
-    - briefing segment (future): inject high-risk thesis context into morning brief.
-
-    suggested_triggers: measurable early-warning conditions identified by AI,
-    e.g. "NIM VCB giảm dưới 3.2% trong Q2 2026" or "NHNN tăng lãi suất cơ bản".
-    """
-    thesis_id: str = ""
-    user_id: str = ""
-    symbol: str = ""
-    thesis_title: str = ""
-    verdict: str = ""                        # BULLISH | BEARISH | NEUTRAL
-    invalidation_probability: float = 0.0   # 0.0 – 1.0
-    confidence: float = 0.0
-    suggested_triggers: list[str] = field(default_factory=list)
-    broken_assumption_count: int = 0
-    weakened_assumption_count: int = 0
-    stress_scenario: str = ""               # macro scenario AI used
-
-
 # ─── AI recommendations ───────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
 class RecommendationReadyEvent(DomainEvent):
-    """Emitted when an AI agent produces a ProactiveRecommendation.
-
-    Rich fields (reasoning, action_detail, risk_signals, next_watch_items,
-    thesis_id) are optional — all default to empty so existing consumers
-    remain backward-compatible.
-    """
+    """Emitted when an AI agent produces a ProactiveRecommendation."""
     symbol: str = ""
     action: str = ""               # BUY | SELL | REDUCE | HOLD | WATCH
     urgency: str = "MONITORING"    # NOW | TODAY | THIS_WEEK | MONITORING
     confidence: float = 0.0
     source_agent: str = ""         # proactive_alert | risk_assessment | opportunity_scout
     recommendation_id: str = field(default_factory=lambda: str(uuid4()))
-    # ── rich content fields (Wave 7) ──────────────────────────────────────────
-    reasoning: str = ""            # Short AI reasoning (1-3 sentences)
-    action_detail: str = ""        # Specific action text, e.g. "Mua breakout trên 93,500"
-    risk_signals: list[str] = field(default_factory=list)    # Up to 5 risk bullets
-    next_watch_items: list[str] = field(default_factory=list) # Up to 3 follow-up items
-    thesis_id: str = ""            # Non-empty when recommendation is thesis-linked
 
 
 # ─── briefing ─────────────────────────────────────────────────────────────────
