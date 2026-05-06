@@ -91,20 +91,34 @@ def _build_sector_embed(
     result: SectorRotationOutput,
     watchlist_filter: list[str] | None = None,
 ) -> discord.Embed:
+    # market_regime is normalized to canonical 4-value enum by the agent.
+    # Extra entries here are belt-and-suspenders for unexpected values.
     regime_emoji = {
         "RISK_ON": "🟢",
         "RISK_OFF": "🔴",
         "TRANSITIONING": "🟡",
         "UNCLEAR": "⚪",
-    }.get(result.market_regime, "")
-    color = {
+        # non-canonical fallbacks
+        "LATE_CYCLE_TRANSITION": "🟡",
+        "EARLY_RECOVERY": "🟢",
+        "MODERATE_GROWTH_EASING_INFLATION": "🟢",
+    }
+    regime_color = {
         "RISK_ON": discord.Color.green(),
         "RISK_OFF": discord.Color.red(),
         "TRANSITIONING": discord.Color.gold(),
-    }.get(result.market_regime, discord.Color.blurple())
+        "UNCLEAR": discord.Color.blurple(),
+        # non-canonical fallbacks
+        "LATE_CYCLE_TRANSITION": discord.Color.gold(),
+        "EARLY_RECOVERY": discord.Color.green(),
+        "MODERATE_GROWTH_EASING_INFLATION": discord.Color.green(),
+    }
+
+    emoji = regime_emoji.get(result.market_regime, "⚪")
+    color = regime_color.get(result.market_regime, discord.Color.blurple())
 
     embed = discord.Embed(
-        title=f"{regime_emoji} Sector Rotation — {result.market_regime}",
+        title=f"{emoji} Sector Rotation — {result.market_regime}",
         description=result.macro_summary,
         color=color,
     )

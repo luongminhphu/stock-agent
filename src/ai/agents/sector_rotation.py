@@ -22,6 +22,21 @@ from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Normalize verbose/non-canonical market_regime values from model → canonical enum.
+# Canonical: RISK_ON | RISK_OFF | TRANSITIONING | UNCLEAR
+_REGIME_MAP: dict[str, str] = {
+    "LATE_CYCLE_TRANSITION": "TRANSITIONING",
+    "EARLY_RECOVERY": "RISK_ON",
+    "MODERATE_GROWTH": "RISK_ON",
+    "MODERATE_GROWTH_EASING_INFLATION": "RISK_ON",
+    "EXPANSION": "RISK_ON",
+    "CONTRACTION": "RISK_OFF",
+    "RECESSION": "RISK_OFF",
+    "STAGFLATION": "RISK_OFF",
+    "RECOVERY": "RISK_ON",
+    "SLOWDOWN": "TRANSITIONING",
+}
+
 
 class SectorSignal(BaseModel):
     sector: str
@@ -96,11 +111,19 @@ class SectorRotationOutput(BaseModel):
         if not isinstance(data, dict):
             return data
 
-        # macro_summary: prefer explicit field, fallback to nested macro_assessment
+        # market_regime: normalize verbose values → canonical 4-value enum
+        raw_regime = str(data.get("market_regime", "")).upper()
+        data["market_regime"] = _REGIME_MAP.get(raw_regime, raw_regime) or "UNCLEAR"
+
+        # macro_summary: prefer explicit field, fallback chain:
+        #   regime_rationale (sonar-pro) → regime_description → macro_assessment.regime
         if not data.get("macro_summary"):
             ma = data.get("macro_assessment", {})
             regime = ma.get("regime", "") if isinstance(ma, dict) else ""
-            desc = data.get("regime_description", "")
+            desc = (
+                data.get("regime_rationale")
+                or data.get("regime_description", "")
+            )
             data["macro_summary"] = f"{regime}: {desc}".strip(": ") or "N/A"
 
         # key_risk: prefer explicit str, fallback to key_risks list
@@ -124,7 +147,6 @@ class SectorRotationOutput(BaseModel):
         # instead of the expected: [{"sector": "Financials", "signal": "ROTATE_IN", ...}]
         raw_signals = data.get("sector_signals")
         if isinstance(raw_signals, dict):
-            # Build lookup from sector_analysis to enrich rationale/tickers
             sector_analysis: list[dict] = data.get("sector_analysis", [])
             analysis_map: dict[str, dict] = {
                 s["sector"]: s
@@ -183,6 +205,13 @@ Quy trình phân tích:
 3. Tính momentum ngành theo performance tương đối
 4. Emit sector signals: ROTATE_IN / ROTATE_OUT / HOLD / WATCH
 5. Chỉ ra key risk và next_watch
+
+RANG BUỘC OUTPUT (bắt buộc):
+- market_regime: CHỈ dùng một trong 4 giá trị: RISK_ON | RISK_OFF | TRANSITIONING | UNCLEAR
+- sector_signals: PHẢI là array of objects [{"sector": ..., "signal": ..., "momentum_score": ..., "rationale": ..., "key_tickers": [...]}]
+  KHÔNG được trả về dạng dict nhóm theo signal {"ROTATE_IN": [...]}
+- macro_summary: string tiếng Việt, tóm tắt ngắn gọn tình hình vĩ mô và market regime
+- momentum_score: float từ 0.0 đến 1.0 (không phải 0-10)
 
 Output: JSON theo schema SectorRotationOutput. Không có markdown, không có prose thêm.
 """
