@@ -19,11 +19,9 @@ Note on schema:
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
-from pydantic import ValidationError
 
 from src.ai.client import AIClient, AIError
 from src.platform.logging import get_logger
@@ -92,6 +90,31 @@ Quy tắc bắt buộc:
 - Giả định phải có dấu hiệu vô hiệu hóa (invalidation_signal) cụ thể
 - Catalyst phải có khung thời gian (SHORT_TERM/MEDIUM_TERM/LONG_TERM)
 - Không đưa ra lời khuyên tài chính — đây là công cụ phân tích
+
+Output PHẢI theo đúng JSON schema sau — field names phải khớp chính xác:
+{
+  "ticker": "VCB",
+  "title": "Tiêu đề thesis ngắn gọn",
+  "summary": "Tóm tắt luận điểm 2-3 câu",
+  "entry_price_suggestion": 85000,
+  "target_price_suggestion": 105000,
+  "stop_loss_suggestion": 78000,
+  "time_horizon": "MEDIUM_TERM",
+  "assumptions": [
+    {
+      "description": "Mô tả giả định cụ thể",
+      "invalidation_signal": "Dấu hiệu vô hiệu hóa giả định"
+    }
+  ],
+  "catalysts": [
+    {
+      "description": "Mô tả catalyst cụ thể",
+      "expected_timeframe": "SHORT_TERM"
+    }
+  ],
+  "risk_summary": "Tóm tắt rủi ro chính",
+  "conviction_level": "MEDIUM"
+}
 """
 
 
@@ -151,25 +174,16 @@ class ThesisSuggestAgent:
         logger.info("thesis_suggest_agent.start", ticker=ticker)
 
         try:
-            response = await self._client.chat_completion(
-                messages=[
-                    {"role": "system", "content": _SYSTEM_PROMPT},
-                    {"role": "user", "content": user_prompt},
-                ],
+            # client.chat() enforces JSON via prompt, strips fences, and parses
+            # into the Pydantic schema — no manual json.loads() needed.
+            result = await self._client.chat(
+                system_prompt=_SYSTEM_PROMPT,
+                user_prompt=user_prompt,
+                response_schema=ThesisDraft,
                 temperature=0.3,
-                # response_format omitted — sonar-pro rejects "json_object" (HTTP 400).
-                # JSON output is enforced via _SYSTEM_PROMPT instruction instead.
             )
-            raw = self._client.extract_text(response)
-            # Strip markdown fences in case model wraps output anyway
-            from src.ai.client import _strip_json_fences
-            raw = _strip_json_fences(raw)
-            result = ThesisDraft.model_validate(json.loads(raw))
-        except (json.JSONDecodeError, ValidationError) as exc:
-            logger.error("thesis_suggest_agent.parse_error", ticker=ticker, error=str(exc))
-            raise ValueError(f"Failed to parse ThesisSuggestAgent response: {exc}") from exc
-        except AIError:
-            logger.error("thesis_suggest_agent.api_error", ticker=ticker)
+        except AIError as exc:
+            logger.error("thesis_suggest_agent.api_error", ticker=ticker, error=str(exc))
             raise
 
         logger.info(
@@ -224,7 +238,6 @@ class ThesisSuggestAgent:
         try:
             from src.ai.memory.memory_service import InteractionEntry, MemoryService
 
-            catalysts = [c.description[:100] for c in (result.catalysts or [])[:3]]
             entry = InteractionEntry(
                 user_id=user_id,
                 agent_type="suggest",
