@@ -11,6 +11,36 @@ import datetime
 
 import discord
 
+# ---------------------------------------------------------------------------
+# Color standard (shared across all embed builders)
+# 🟢 up/positive  🔴 down/negative  🟠 mixed/alert  🔵 info-only
+# ---------------------------------------------------------------------------
+
+_COLOR_GREEN  = 0x57F287  # Discord green
+_COLOR_RED    = 0xED4245  # Discord red
+_COLOR_ORANGE = 0xFF6B35  # mixed / alert
+_COLOR_TEAL   = 0x4F98A3  # info-only (no directional signal)
+
+
+def _price_icon(change_pct: float, has_alerts: bool) -> str:
+    """Return directional color circle, or bell when alert is active."""
+    if has_alerts:
+        return "\U0001f514"  # 🔔
+    return "\U0001f7e2" if change_pct >= 0 else "\U0001f534"  # 🟢 / 🔴
+
+
+def _dominant_color(signals: list) -> int:
+    """Return embed sidebar color based on majority direction of signals."""
+    if not signals:
+        return _COLOR_TEAL
+    ups   = sum(1 for s in signals if s.change_pct >= 0)
+    downs = len(signals) - ups
+    if ups > downs:
+        return _COLOR_GREEN
+    if downs > ups:
+        return _COLOR_RED
+    return _COLOR_ORANGE
+
 
 def build_scan_embed(
     result: object,
@@ -27,11 +57,10 @@ def build_scan_embed(
     """
     signals = getattr(result, "signals", []) or []
     on_signal_reminders = getattr(result, "on_signal_reminders", []) or []
-    triggered_count = getattr(result, "triggered_count", 0)
 
     lines: list[str] = []
     for s in signals:
-        icon = "\U0001f514" if s.has_alerts else "\U0001f4ca"  # 🔔 / 📊
+        icon = _price_icon(s.change_pct, s.has_alerts)
         lines.append(f"{icon} **{s.ticker}** {s.change_pct:+.1f}% \u2014 {s.description}")
 
     for r in on_signal_reminders:
@@ -42,11 +71,10 @@ def build_scan_embed(
         )
         lines.append(f"\u23f0 **{ticker}** \u2014 nh\u1eafc nh\u1edf theo d\u00f5i (ON_SIGNAL)")
 
-    has_triggered = triggered_count > 0
     embed = discord.Embed(
         title="\U0001f4e1 Watchlist Scan",  # 📡
         description="\n".join(lines),
-        color=0xFF6B35 if has_triggered else 0x4F98A3,
+        color=_dominant_color(signals),
     )
 
     ict_time = (now_utc + datetime.timedelta(hours=7)).strftime("%H:%M ICT")

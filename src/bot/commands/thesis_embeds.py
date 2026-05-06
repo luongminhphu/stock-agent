@@ -19,29 +19,29 @@ from src.thesis.models import ReviewVerdict, ThesisStatus
 # ---------------------------------------------------------------------------
 
 _VERDICT_COLOUR: dict[ReviewVerdict, discord.Color] = {
-    ReviewVerdict.BULLISH: discord.Color.green(),
-    ReviewVerdict.BEARISH: discord.Color.red(),
-    ReviewVerdict.NEUTRAL: discord.Color.yellow(),
+    ReviewVerdict.BULLISH:   discord.Color.green(),
+    ReviewVerdict.BEARISH:   discord.Color.red(),
+    ReviewVerdict.NEUTRAL:   discord.Color.yellow(),
     ReviewVerdict.WATCHLIST: discord.Color.blue(),
 }
 
 _VERDICT_ICON: dict[ReviewVerdict, str] = {
-    ReviewVerdict.BULLISH: "\U0001f7e2",   # 🟢
-    ReviewVerdict.BEARISH: "\U0001f534",   # 🔴
-    ReviewVerdict.NEUTRAL: "\U0001f7e1",   # 🟡
-    ReviewVerdict.WATCHLIST: "\U0001f535", # 🔵
+    ReviewVerdict.BULLISH:   "\U0001f7e2",   # 🟢
+    ReviewVerdict.BEARISH:   "\U0001f534",   # 🔴
+    ReviewVerdict.NEUTRAL:   "\U0001f7e1",   # 🟡
+    ReviewVerdict.WATCHLIST: "\U0001f535",   # 🔵
 }
 
 STATUS_ICON: dict[ThesisStatus, str] = {
-    ThesisStatus.ACTIVE: "\U0001f7e2",       # 🟢
-    ThesisStatus.PAUSED: "\u23f8\ufe0f",    # ⏸️
-    ThesisStatus.INVALIDATED: "\u274c",     # ❌
-    ThesisStatus.CLOSED: "\u2705",          # ✅
+    ThesisStatus.ACTIVE:      "\U0001f7e2",     # 🟢
+    ThesisStatus.PAUSED:      "\u23f8\ufe0f",  # ⏸️
+    ThesisStatus.INVALIDATED: "\u274c",         # ❌
+    ThesisStatus.CLOSED:      "\u2705",          # ✅
 }
 
 TARGET_ICON: dict[str, str] = {
     "assumption": "\U0001f4cc",  # 📌
-    "catalyst": "\u26a1",        # ⚡
+    "catalyst":   "\u26a1",      # ⚡
 }
 
 # Drift verdict → icon (string keys from AI output)
@@ -50,6 +50,37 @@ _DRIFT_VERDICT_ICON: dict[str, str] = {
     "bearish": "\U0001f534",   # 🔴
     "neutral": "\U0001f7e1",   # 🟡
 }
+
+# ---------------------------------------------------------------------------
+# Color standard (shared across all embed builders)
+# ---------------------------------------------------------------------------
+
+_COLOR_GREEN  = 0x57F287
+_COLOR_RED    = 0xED4245
+_COLOR_ORANGE = 0xFF6B35
+_COLOR_TEAL   = 0x4F98A3
+
+
+def _dominant_verdict_color(reviews: list) -> int:
+    """Derive sidebar color from dominant verdict in a list of ThesisReview objects."""
+    bullish = sum(1 for r in reviews if str(r.verdict).upper() == "BULLISH")
+    bearish = sum(1 for r in reviews if str(r.verdict).upper() == "BEARISH")
+    if bullish > bearish:
+        return _COLOR_GREEN
+    if bearish > bullish:
+        return _COLOR_RED
+    return _COLOR_TEAL  # neutral/mixed → default info color
+
+
+def _dominant_drift_color(reviews: list[tuple]) -> int:
+    """Derive sidebar color from dominant drift verdict in (DriftSignal, ThesisReview) tuples."""
+    bullish = sum(1 for _, r in reviews if str(r.verdict).upper() == "BULLISH")
+    bearish = sum(1 for _, r in reviews if str(r.verdict).upper() == "BEARISH")
+    if bullish > bearish:
+        return _COLOR_GREEN
+    if bearish > bullish:
+        return _COLOR_RED
+    return _COLOR_ORANGE  # drift alert with no clear direction → orange
 
 
 # ---------------------------------------------------------------------------
@@ -139,7 +170,7 @@ def build_maintenance_embed(
     embed = discord.Embed(
         title="\U0001f527 Thesis Maintenance",  # 🔧
         description="\n".join(lines),
-        color=0x4F98A3,
+        color=_dominant_verdict_color(reviews) if reviews else _COLOR_TEAL,
     )
     ict_time = (now_utc + datetime.timedelta(hours=7)).strftime("%H:%M ICT")
     embed.set_footer(text=f"Auto-maintenance l\u00fac {ict_time}")
@@ -173,7 +204,7 @@ def build_drift_embed(
     embed = discord.Embed(
         title="\u26a1 Thesis Drift Alert",
         description="\n".join(lines),
-        color=0xFF6B35,
+        color=_dominant_drift_color(reviews),
     )
     embed.set_footer(
         text=f"Drift \u2265{settings.thesis_drift_threshold_pct:.0f}% detected l\u00fac {ict_time}"

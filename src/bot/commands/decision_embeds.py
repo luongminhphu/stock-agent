@@ -29,6 +29,26 @@ _VERDICT_ICON: dict[str, str] = {
     "MIXED":     "\U0001f7e1",  # 🟡
 }
 
+# ---------------------------------------------------------------------------
+# Color standard (shared across all embed builders)
+# ---------------------------------------------------------------------------
+
+_COLOR_GREEN  = 0x57F287
+_COLOR_RED    = 0xED4245
+_COLOR_ORANGE = 0xFF6B35
+_COLOR_TEAL   = 0x4F98A3
+
+
+def _batch_outcome_color(results: list[dict]) -> int:
+    """Derive sidebar color from majority outcome in a batch replay list."""
+    correct   = sum(1 for i in results if str(getattr(i.get("decision"), "outcome_verdict", "")).upper() == "CORRECT")
+    incorrect = sum(1 for i in results if str(getattr(i.get("decision"), "outcome_verdict", "")).upper() == "INCORRECT")
+    if correct > incorrect:
+        return _COLOR_GREEN
+    if incorrect > correct:
+        return _COLOR_RED
+    return _COLOR_ORANGE
+
 
 # ---------------------------------------------------------------------------
 # Scheduler embed — batch end-of-day summary
@@ -65,7 +85,7 @@ def build_replay_embed(
     embed = discord.Embed(
         title="\U0001f504 Decision Replay \u2014 K\u1ebft qu\u1ea3 sau horizon",  # 🔄
         description="\n\n".join(lines),
-        color=0x4F98A3,
+        color=_batch_outcome_color(results),
     )
     embed.set_footer(
         text=f"{len(results)} quy\u1ebft \u0111\u1ecbnh \u0111\u01b0\u1ee3c \u0111\u00e1nh gi\u00e1 l\u00fac {ict_time}"
