@@ -110,22 +110,20 @@ class SectorRotationAgent:
         logger.info("sector_rotation_agent.start", sector_count=len(sector_performance))
 
         try:
-            response = await self._client.chat_completion(
-                messages=[
-                    {"role": "system", "content": _SYSTEM_PROMPT},
-                    {"role": "user", "content": user_prompt},
-                ],
+            # Use client.chat() — sonar-pro does NOT support response_format=json_object.
+            # client.chat() enforces JSON via system prompt and parses into Pydantic schema.
+            result = await self._client.chat(
+                system_prompt=_SYSTEM_PROMPT,
+                user_prompt=user_prompt,
+                response_schema=SectorRotationOutput,
                 temperature=0.15,
-                response_format={"type": "json_object"},
             )
-            raw = self._client.extract_text(response)
-            result = SectorRotationOutput.model_validate(json.loads(raw))
-        except (json.JSONDecodeError, Exception) as exc:
-            logger.error("sector_rotation_agent.parse_error", error=str(exc))
-            raise ValueError(f"Failed to parse SectorRotationAgent response: {exc}") from exc
         except AIError:
             logger.error("sector_rotation_agent.api_error")
             raise
+        except Exception as exc:
+            logger.error("sector_rotation_agent.parse_error", error=str(exc))
+            raise ValueError(f"Failed to parse SectorRotationAgent response: {exc}") from exc
 
         logger.info(
             "sector_rotation_agent.complete",
