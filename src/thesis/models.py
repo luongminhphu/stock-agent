@@ -49,6 +49,12 @@ class ThesisStatus(enum.StrEnum):
     PAUSED = "paused"
 
 
+class ThesisDirection(enum.StrEnum):
+    LONG = "LONG"
+    SHORT = "SHORT"
+    NEUTRAL = "NEUTRAL"
+
+
 class AssumptionStatus(enum.StrEnum):
     VALID = "valid"
     INVALID = "invalid"
@@ -107,6 +113,10 @@ class Thesis(Base):
         SAEnum(ThesisStatus, values_callable=_enum_values),
         default=ThesisStatus.ACTIVE,
         index=True,
+    )
+    direction: Mapped[ThesisDirection | None] = mapped_column(
+        SAEnum(ThesisDirection, values_callable=_enum_values),
+        nullable=True,
     )
     score: Mapped[float | None] = mapped_column(Float, nullable=True)
     target_price: Mapped[float | None] = mapped_column(Float, nullable=True)

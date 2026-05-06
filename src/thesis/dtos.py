@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from src.thesis.models import AssumptionStatus, CatalystStatus
+from src.thesis.models import AssumptionStatus, CatalystStatus, ThesisDirection
 
 
 # ---------------------------------------------------------------------------
@@ -23,6 +23,7 @@ class CreateThesisInput:
     ticker: str
     title: str
     summary: str = ""
+    direction: ThesisDirection | None = None
     entry_price: float | None = None
     target_price: float | None = None
     stop_loss: float | None = None
@@ -35,6 +36,7 @@ class CreateThesisInput:
 class UpdateThesisInput:
     title: str | None = None
     summary: str | None = None
+    direction: ThesisDirection | None = None
     entry_price: float | None = None
     target_price: float | None = None
     stop_loss: float | None = None
