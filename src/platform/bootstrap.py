@@ -35,6 +35,7 @@ _investor_profile_service: tuple | None = None  # (InvestorProfileService class,
 _memory_consolidator: object | None = None        # Wave 3 — Blueprint V2 Memory
 _proactive_alert_agent: object | None = None      # Wave 5 — Event-driven alerts
 _thesis_review_listener: object | None = None     # Wave 6 — Thesis review loop
+_briefing_listener: object | None = None          # Wave 8 — Event-driven briefing
 
 # PnlService is session-scoped (stateless), so bootstrap stores the class
 # rather than an instance. get_pnl_service() returns a factory function;
@@ -51,6 +52,7 @@ async def bootstrap() -> None:
     global _stress_test_agent, _replay_agent, _snapshot_scheduler
     global _sector_rotation_agent, _investor_profile_service, _pnl_service_class
     global _memory_consolidator, _proactive_alert_agent, _thesis_review_listener
+    global _briefing_listener
 
     if _quote_service is None:
         from src.market.adapters.factory import build_adapter
@@ -203,6 +205,39 @@ async def bootstrap() -> None:
         )
         _thesis_review_listener.register()  # subscribe ThesisReviewRequestedEvent on bus
         logger.info("platform.bootstrap.thesis_review_listener_ready")
+
+    # ── Wave 8: BriefingListener ───────────────────────────────────────────────
+    # Registered last — subscribes BriefingRequestedEvent.
+    # discord.Client is NOT available at bootstrap time (bot hasn't logged in yet).
+    # Inject via get_briefing_listener().set_client(bot) in bot on_ready
+    # AFTER bootstrap() returns.
+    #
+    # Chain: BriefingScheduler → emit BriefingRequestedEvent
+    #        → BriefingListener._handle() → BriefingService → Discord channel
+    #                                     → emit BriefingReadyEvent
+    if _briefing_listener is None:
+        from src.briefing.briefing_listener import BriefingListener
+        from src.platform.config import settings
+
+        user_id = getattr(settings, "scheduler_user_id", None)
+        if user_id:
+            morning_id = getattr(settings, "morning_channel_id", None)
+            eod_id = getattr(settings, "eod_channel_id", None)
+            _briefing_listener = BriefingListener(
+                morning_channel_id=int(morning_id) if morning_id else None,
+                eod_channel_id=int(eod_id) if eod_id else None,
+                user_id=str(user_id),
+            )
+            _briefing_listener.register()  # subscribe BriefingRequestedEvent on bus
+            logger.info(
+                "platform.bootstrap.briefing_listener_ready",
+                user_id=str(user_id),
+            )
+        else:
+            logger.warning(
+                "platform.bootstrap.briefing_listener_skipped",
+                reason="scheduler_user_id not configured",
+            )
 
 
 async def shutdown() -> None:
@@ -400,3 +435,13 @@ def get_thesis_review_listener():
     if _thesis_review_listener is None:
         raise RuntimeError("ThesisReviewListener not initialised — call bootstrap() first.")
     return _thesis_review_listener
+
+
+def get_briefing_listener():
+    """Return the BriefingListener singleton.
+
+    Returns None if scheduler_user_id was not configured at bootstrap time.
+    The listener is registered on the event bus after bootstrap.
+    Call set_client(bot) after bot login to inject the discord.Client.
+    """
+    return _briefing_listener

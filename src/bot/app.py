@@ -47,6 +47,7 @@ def create_bot() -> commands.Bot:
 
         try:
             await bootstrap()
+            _inject_briefing_listener(bot)  # Wave 8: inject discord.Client after login
             await _register_cogs(bot)
             _start_briefing_scheduler(bot)
             _start_scan_scheduler(bot)
@@ -152,6 +153,25 @@ async def _register_cogs(bot: commands.Bot) -> None:
             "DecisionCog", "SchedulerTriggerCog", "HealthCog", "SectorRotationCog",
         ],
     )
+
+
+def _inject_briefing_listener(bot: commands.Bot) -> None:
+    """Inject discord.Client into BriefingListener after bot login.
+
+    bootstrap() registers BriefingListener on the event bus but cannot
+    pass discord.Client (bot hasn't logged in yet at bootstrap time).
+    This call completes the wiring immediately after on_ready fires.
+    """
+    from src.platform.bootstrap import get_briefing_listener
+    listener = get_briefing_listener()
+    if listener is not None:
+        listener.set_client(bot)
+        logger.info("bot.briefing_listener.client_injected")
+    else:
+        logger.warning(
+            "bot.briefing_listener.not_available",
+            reason="scheduler_user_id not configured — BriefingListener skipped at bootstrap",
+        )
 
 
 def _start_briefing_scheduler(bot: commands.Bot) -> None:

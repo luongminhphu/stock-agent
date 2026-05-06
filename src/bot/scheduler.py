@@ -18,6 +18,11 @@ Registered tasks:
 Note:
     MORNING_CHANNEL_ID and EOD_CHANNEL_ID must be set in settings.
     SCHEDULER_USER_ID is the service account used for scheduled tasks.
+
+Wave 8:
+    BriefingScheduler no longer calls BriefingService directly.
+    It emits BriefingRequestedEvent → BriefingListener (briefing segment)
+    handles delivery. Bot is a thin timing adapter only.
 """
 
 from __future__ import annotations
@@ -27,14 +32,11 @@ import datetime
 import discord
 from discord.ext import tasks
 
-from src.bot.commands.briefing import build_brief_embed
 from src.bot.commands.decision_embeds import build_replay_embed
 from src.bot.commands.reminder_embeds import build_reminder_embed
 from src.bot.commands.thesis_embeds import build_drift_embed, build_maintenance_embed
 from src.bot.commands.watchlist_embeds import build_scan_embed
-from src.briefing.service import BriefingService
 from src.platform.bootstrap import (
-    get_briefing_agent,
     get_investor_profile_service,
     get_memory_consolidator,
     get_pnl_service,
@@ -46,7 +48,6 @@ from src.platform.config import settings
 from src.platform.db import AsyncSessionLocal
 from src.platform.logging import get_logger
 from src.platform.scheduler_monitor import SchedulerMonitor, get_monitor
-from src.watchlist.service import WatchlistService
 
 logger = get_logger(__name__)
 
@@ -158,7 +159,12 @@ _EOD_TIME     = datetime.time(hour=8, minute=5,  tzinfo=datetime.UTC)  # 15:05 I
 
 
 class BriefingScheduler:
-    """Attach to a discord.Client after login."""
+    """Emit BriefingRequestedEvent on schedule. Attach to a discord.Client after login.
+
+    Wave 8: scheduler is now a thin timing adapter only.
+    All briefing domain logic (BriefingService, Discord delivery) lives in
+    BriefingListener (briefing segment). Bot emits the event; briefing handles the rest.
+    """
 
     def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
         self._client = client
@@ -180,7 +186,7 @@ class BriefingScheduler:
     async def _morning_task(self) -> None:
         if datetime.datetime.now(tz=datetime.UTC).weekday() >= 5:
             return
-        await self._send_brief(phase="morning")
+        await self._emit_brief(phase="morning")
 
     @_morning_task.before_loop
     async def _before_morning(self) -> None:
@@ -190,54 +196,45 @@ class BriefingScheduler:
     async def _eod_task(self) -> None:
         if datetime.datetime.now(tz=datetime.UTC).weekday() >= 5:
             return
-        await self._send_brief(phase="eod")
+        await self._emit_brief(phase="eod")
 
     @_eod_task.before_loop
     async def _before_eod(self) -> None:
         await self._client.wait_until_ready()
 
-    async def _send_brief(self, phase: str) -> None:
+    async def _emit_brief(self, phase: str) -> None:
+        """Emit BriefingRequestedEvent — bot's only responsibility for briefing.
+
+        BriefingListener (briefing segment) handles the rest:
+        BriefingService call, embed build, Discord delivery, BriefingReadyEvent emit.
+        """
+        from src.platform.event_bus import get_event_bus
+        from src.platform.events import BriefingRequestedEvent
+
         task_name = f"briefing.{phase}"
-        channel_id = getattr(
-            settings, "morning_channel_id" if phase == "morning" else "eod_channel_id", None
-        )
         user_id = getattr(settings, "scheduler_user_id", None)
 
-        if not channel_id or not user_id:
+        if not user_id:
             logger.warning(
                 "scheduler.briefing.skipped",
                 phase=phase,
-                reason="channel_id or user_id not configured",
+                reason="scheduler_user_id not configured",
             )
             return
 
-        channel = self._client.get_channel(int(channel_id))
-        if channel is None:
-            logger.warning("scheduler.briefing.channel_not_found", channel_id=channel_id)
-            return
-
         try:
-            async with AsyncSessionLocal() as session:
-                svc = BriefingService(
-                    watchlist_service=WatchlistService(session=session),
-                    quote_service=get_quote_service(),
-                    briefing_agent=get_briefing_agent(),
-                    pnl_service=get_pnl_service()(session),
-                    session=session,
+            bus = get_event_bus()
+            await bus.publish(
+                BriefingRequestedEvent(
+                    brief_type=phase,
+                    triggered_by="scheduler",
                 )
-                if phase == "morning":
-                    brief = await svc.generate_morning_brief(user_id=str(user_id))
-                else:
-                    brief = await svc.generate_eod_brief(user_id=str(user_id))
-                await session.commit()
-
-            embed = build_brief_embed(brief, phase=phase)
-            await channel.send(embed=embed)  # type: ignore[union-attr]
-            logger.info("scheduler.briefing.sent", phase=phase, channel_id=channel_id)
+            )
+            logger.info("scheduler.briefing.event_emitted", phase=phase)
             await self._monitor.record_success(task_name)
 
         except Exception as exc:
-            logger.error("scheduler.briefing.error", phase=phase, error=str(exc))
+            logger.error("scheduler.briefing.emit_error", phase=phase, error=str(exc))
             await self._monitor.record_failure(task_name, exc)
 
 
@@ -651,7 +648,7 @@ class ReminderScheduler:
             "weekly": [ReminderFrequency.WEEKLY],
         }
         frequencies = frequency_map.get(label, [ReminderFrequency.DAILY])
-        freq_label = "hàng ngày" if label == "daily" else "hàng tuần"
+        freq_label = "h\u00e0ng ng\u00e0y" if label == "daily" else "h\u00e0ng tu\u1ea7n"
 
         # -- Step 1: Fetch due reminders (read-only session) --
         try:
