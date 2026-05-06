@@ -5,10 +5,13 @@ Consumes QuoteService (market segment) via injection.
 Consumes SignalCredibilityAgent (ai segment) via optional injection.
 
 Responsibility boundary:
-  ScanService            → detect which alerts are triggered, build ScanSignal/ScanResult
+  ScanService            → detect triggered alerts + build ScanSignal/ScanResult
+  SignalEngine           → classify ScanSignal → SignalReport (typed taxonomy)
   AlertService           → mutate alert state (mark_triggered), persist fired alerts
   ReminderService        → owns cooldown logic for ON_SIGNAL reminders
-  SignalCredibilityAgent → score signal credibility (optional enrichment, graceful degrade)
+  SignalCredibilityAgent → score signal credibility (optional enrichment)
+  EventBus               → emit SignalDetectedEvent / WatchlistScanCompletedEvent
+                           (ScanService emits; handlers live in other segments)
 
 ScanService calls AlertService.process_triggered() after collecting all
 triggered alerts for a ticker. It does NOT call alert.mark_triggered() directly.
@@ -26,16 +29,20 @@ is responsible for committing the session after scan_user() returns.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.platform.event_bus import get_event_bus
+from src.platform.events import SignalDetectedEvent, WatchlistScanCompletedEvent
 from src.platform.logging import get_logger
 from src.watchlist.alert_service import AlertService
 from src.watchlist.models import Alert, AlertStatus, Reminder, WatchlistScan
 from src.watchlist.reminder_service import ReminderService
 from src.watchlist.repository import WatchlistRepository
+from src.watchlist.signal_engine import SignalEngine, SignalReport
 
 logger = get_logger(__name__)
 
@@ -51,6 +58,10 @@ class ScanSignal:
     notes: list[str] = field(default_factory=list)
     # Optional credibility enrichment — None if agent unavailable or evaluation failed
     credibility: object | None = field(default=None, repr=False)
+    # Volume ratio vs average — set by _scan_ticker when available
+    _volume_ratio: float = field(default=1.0, repr=False)
+    # Typed signal reports from SignalEngine — populated by scan_user()
+    signal_reports: list[SignalReport] = field(default_factory=list, repr=False)
 
     @property
     def has_alerts(self) -> bool:
@@ -58,6 +69,7 @@ class ScanSignal:
 
     @property
     def signal_type(self) -> str:
+        """Legacy property — kept for backward compat with bot/briefing adapters."""
         if self.triggered_alerts:
             return "alert_triggered"
         if abs(self.change_pct) >= 3:
@@ -118,6 +130,10 @@ class ScanService:
     Detects signals only — delegates alert state mutation to AlertService
     and reminder cooldown logic to ReminderService.
     Optionally enriches signals with credibility scores via SignalCredibilityAgent.
+
+    V2: After each scan, runs SignalEngine on each ScanSignal and emits
+    SignalDetectedEvent / WatchlistScanCompletedEvent via EventBus.
+    Existing ScanResult contract is unchanged.
     """
 
     def __init__(
@@ -125,6 +141,7 @@ class ScanService:
         session: AsyncSession,
         quote_service: object | None = None,
         credibility_agent: object | None = None,
+        signal_engine: SignalEngine | None = None,
     ) -> None:
         self._session = session
         self._repo = WatchlistRepository(session)
@@ -132,11 +149,14 @@ class ScanService:
         self._reminder_service = ReminderService(session)
         self._quote_service = quote_service
         self._credibility_agent = credibility_agent
+        # Default engine with HOSE/HNX-appropriate thresholds
+        self._signal_engine = signal_engine or SignalEngine()
 
     async def scan_user(self, user_id: str) -> ScanResult:
         if self._quote_service is None:
             raise ScanServiceNotConfiguredError("ScanService requires a QuoteService adapter.")
 
+        start_time = time.monotonic()
         items = await self._repo.list_for_user(user_id)
         tickers = sorted({i.ticker for i in items})
         result = ScanResult(scanned_at=datetime.now(UTC))
@@ -146,17 +166,13 @@ class ScanService:
             return result
 
         # Bulk-fetch all quotes in a single call — avoids N serial round-trips.
-        # Falls back to per-ticker get_quote when a ticker is missing from bulk result
-        # (e.g. delisted symbol, adapter limitation).
         bulk_quote_map: dict[str, object] = {}
         try:
             bulk_quotes = await self._quote_service.get_bulk_quotes(tickers)  # type: ignore[union-attr]
             bulk_quote_map = {q.ticker: q for q in bulk_quotes}
         except Exception as exc:
             logger.warning("scan.bulk_quote_failed", tickers=tickers, error=str(exc))
-            # bulk failed — per-ticker fallback handled inside loop
 
-        # price_map used by AlertService.process_triggered for triggered_price field
         price_map: dict[str, float] = {}
 
         for ticker in tickers:
@@ -164,9 +180,10 @@ class ScanService:
                 signal = await self._scan_ticker(ticker, items, bulk_quote_map)
                 price_map[ticker] = signal.current_price
                 if signal.has_alerts or abs(signal.change_pct) >= 3:
-                    # Enrich signal with credibility score (graceful degrade)
                     if self._credibility_agent is not None:
                         signal = await self._enrich_credibility(signal)
+                    # ── V2: classify via SignalEngine ───────────────────────
+                    signal.signal_reports = self._signal_engine.evaluate(signal)
                     result.signals.append(signal)
             except Exception as exc:
                 logger.warning("scan.ticker_error", ticker=ticker, error=str(exc))
@@ -177,10 +194,14 @@ class ScanService:
         if all_triggered:
             await self._alert_service.process_triggered(all_triggered, price_map)
 
-        # Fire ON_SIGNAL reminders for tickers that had any signal this tick
+        # Fire ON_SIGNAL reminders
         if result.signals:
             signal_tickers = [s.ticker for s in result.signals]
             result.on_signal_reminders = await self._fire_on_signal_reminders(signal_tickers)
+
+        # ── V2: emit events via EventBus ─────────────────────────────
+        duration = time.monotonic() - start_time
+        await self._emit_events(result, len(tickers), duration)
 
         logger.info(
             "scan.complete",
@@ -189,6 +210,7 @@ class ScanService:
             triggered=result.triggered_count,
             credibility_enriched=sum(1 for s in result.signals if s.credibility is not None),
             on_signal_reminders=len(result.on_signal_reminders),
+            signal_reports=sum(len(s.signal_reports) for s in result.signals),
         )
 
         await self._persist_snapshot(user_id, result)
@@ -228,7 +250,6 @@ class ScanService:
         """
         quote = bulk_quote_map.get(ticker)
         if quote is None:
-            # Fallback: ticker missing from bulk result — try individual fetch
             logger.debug("scan.bulk_miss_fallback", ticker=ticker)
             quote = await self._quote_service.get_quote(ticker)  # type: ignore[union-attr]
 
@@ -236,6 +257,7 @@ class ScanService:
             ticker=ticker,
             current_price=quote.price,  # type: ignore[union-attr]
             change_pct=quote.change_pct,  # type: ignore[union-attr]
+            _volume_ratio=getattr(quote, "volume_ratio", 1.0),
         )
 
         all_alerts: list[Alert] = []
@@ -243,24 +265,18 @@ class ScanService:
             if item.ticker == ticker:
                 all_alerts.extend(a for a in item.alerts if a.status == AlertStatus.ACTIVE)
 
-        volume_ratio = getattr(quote, "volume_ratio", 1.0)
-
         for alert in all_alerts:
             if alert.is_triggered_by(
                 current_price=quote.price,  # type: ignore[union-attr]
                 change_pct=quote.change_pct,  # type: ignore[union-attr]
-                volume_ratio=volume_ratio,
+                volume_ratio=signal._volume_ratio,
             ):
                 signal.triggered_alerts.append(alert)
 
         return signal
 
     async def _enrich_credibility(self, signal: ScanSignal) -> ScanSignal:
-        """Enrich a ScanSignal with credibility score. Failures are swallowed.
-
-        Imports are local to avoid hard-coupling ai segment into watchlist at module level.
-        The optional credibility_agent injection keeps the boundary clean.
-        """
+        """Enrich a ScanSignal with credibility score. Failures are swallowed."""
         try:
             from src.ai.agents.signal_credibility import SignalCredibilityResult  # noqa: F401
             from src.ai.prompts.signal_credibility import SignalCredibilityContext
@@ -270,9 +286,9 @@ class ScanService:
                 signal_type=signal.signal_type,
                 current_price=signal.current_price,
                 change_pct=signal.change_pct,
-                volume_ratio=getattr(signal, "_volume_ratio", 1.0),
-                price_5d_trend=0.0,   # TODO: inject from market.price_history once available
-                recent_news="N/A",    # TODO: inject from market.news_service once available
+                volume_ratio=signal._volume_ratio,
+                price_5d_trend=0.0,
+                recent_news="N/A",
                 has_upcoming_earnings=False,
                 alert_note=(
                     signal.triggered_alerts[0].note
@@ -296,6 +312,69 @@ class ScanService:
                 error=str(exc),
             )
         return signal
+
+    async def _emit_events(self, result: ScanResult, total_scanned: int, duration: float) -> None:
+        """
+        V2: Emit domain events after scan completes.
+        - SignalDetectedEvent   per actionable SignalReport
+        - WatchlistScanCompletedEvent once per scan cycle
+
+        Failures are fully isolated — event emission never breaks scan.
+        """
+        bus = get_event_bus()
+        total_signals_emitted = 0
+
+        for scan_signal in result.signals:
+            for report in scan_signal.signal_reports:
+                if not report.is_actionable():
+                    logger.debug(
+                        "scan.signal_below_threshold",
+                        symbol=report.symbol,
+                        signal_type=report.signal_type,
+                        strength=report.strength,
+                        confidence=report.confidence,
+                    )
+                    continue
+                try:
+                    event = SignalDetectedEvent(
+                        symbol=report.symbol,
+                        signal_type=report.signal_type,
+                        strength=report.strength,
+                        confidence=report.confidence,
+                        source=report.source,
+                        metadata=report.metadata,
+                    )
+                    emitted = await bus.publish(
+                        event,
+                        dedup_key=report.dedup_key,
+                    )
+                    if emitted:
+                        total_signals_emitted += 1
+                        logger.info(
+                            "scan.event_emitted",
+                            symbol=report.symbol,
+                            signal_type=report.signal_type,
+                            strength=report.strength,
+                            confidence=report.confidence,
+                        )
+                except Exception as exc:
+                    logger.warning(
+                        "scan.event_emit_failed",
+                        symbol=report.symbol,
+                        error=str(exc),
+                    )
+
+        # Always emit scan-completed summary event
+        try:
+            await bus.publish(
+                WatchlistScanCompletedEvent(
+                    symbols_scanned=total_scanned,
+                    signals_found=total_signals_emitted,
+                    duration_seconds=round(duration, 3),
+                )
+            )
+        except Exception as exc:
+            logger.warning("scan.scan_completed_event_failed", error=str(exc))
 
     async def _fire_on_signal_reminders(self, tickers: list[str]) -> list[Reminder]:
         """Query and mark ON_SIGNAL reminders due for the given tickers."""

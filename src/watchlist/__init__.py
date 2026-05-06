@@ -9,6 +9,9 @@ Public API:
     Results:     ScanResult, ScanSignal
     Errors:      WatchlistItemNotFoundError, WatchlistItemAlreadyExistsError,
                  AlertNotFoundError, ScanServiceNotConfiguredError
+
+    --- Blueprint V2: Signal Engine ---
+    SignalEngine, SignalReport, SignalType
 """
 
 from src.watchlist.models import (
@@ -34,6 +37,7 @@ from src.watchlist.service import (
     WatchlistItemNotFoundError,
     WatchlistService,
 )
+from src.watchlist.signal_engine import SignalEngine, SignalReport, SignalType
 
 __all__ = [
     # Models
@@ -60,4 +64,8 @@ __all__ = [
     "WatchlistItemAlreadyExistsError",
     "AlertNotFoundError",
     "ScanServiceNotConfiguredError",
+    # V2: Signal Engine
+    "SignalEngine",
+    "SignalReport",
+    "SignalType",
 ]
