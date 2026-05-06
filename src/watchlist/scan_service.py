@@ -12,6 +12,8 @@ Responsibility boundary:
   SignalCredibilityAgent → score signal credibility (optional enrichment)
   EventBus               → emit SignalDetectedEvent / WatchlistScanCompletedEvent
                            (ScanService emits; handlers live in other segments)
+  SignalEventRepository  → persist SignalEvent rows to signal_events table
+                           (DB audit trail, decoupled from bus delivery)
 
 ScanService calls AlertService.process_triggered() after collecting all
 triggered alerts for a ticker. It does NOT call alert.mark_triggered() directly.
@@ -39,9 +41,9 @@ from src.platform.event_bus import get_event_bus
 from src.platform.events import SignalDetectedEvent, WatchlistScanCompletedEvent
 from src.platform.logging import get_logger
 from src.watchlist.alert_service import AlertService
-from src.watchlist.models import Alert, AlertStatus, Reminder, WatchlistScan
+from src.watchlist.models import Alert, AlertStatus, Reminder, SignalEvent, WatchlistScan
 from src.watchlist.reminder_service import ReminderService
-from src.watchlist.repository import WatchlistRepository
+from src.watchlist.repository import SignalEventRepository, WatchlistRepository
 from src.watchlist.signal_engine import SignalEngine, SignalReport
 
 logger = get_logger(__name__)
@@ -133,6 +135,8 @@ class ScanService:
 
     V2: After each scan, runs SignalEngine on each ScanSignal and emits
     SignalDetectedEvent / WatchlistScanCompletedEvent via EventBus.
+    Each actionable SignalReport is also persisted to signal_events table
+    via SignalEventRepository before bus publish.
     Existing ScanResult contract is unchanged.
     """
 
@@ -145,6 +149,7 @@ class ScanService:
     ) -> None:
         self._session = session
         self._repo = WatchlistRepository(session)
+        self._signal_event_repo = SignalEventRepository(session)
         self._alert_service = AlertService(session)
         self._reminder_service = ReminderService(session)
         self._quote_service = quote_service
@@ -199,7 +204,7 @@ class ScanService:
             signal_tickers = [s.ticker for s in result.signals]
             result.on_signal_reminders = await self._fire_on_signal_reminders(signal_tickers)
 
-        # ── V2: emit events via EventBus ─────────────────────────────
+        # ── V2: persist + emit events via EventBus ───────────────────
         duration = time.monotonic() - start_time
         await self._emit_events(result, len(tickers), duration)
 
@@ -315,11 +320,16 @@ class ScanService:
 
     async def _emit_events(self, result: ScanResult, total_scanned: int, duration: float) -> None:
         """
-        V2: Emit domain events after scan completes.
-        - SignalDetectedEvent   per actionable SignalReport
-        - WatchlistScanCompletedEvent once per scan cycle
+        V2: Persist SignalEvent to DB + emit domain events after scan completes.
 
-        Failures are fully isolated — event emission never breaks scan.
+        Order per actionable SignalReport:
+          1. Persist SignalEvent row → signal_events table (audit trail)
+          2. Publish SignalDetectedEvent → EventBus (real-time delivery)
+
+        Both steps are independently fault-tolerant — a persist failure does NOT
+        block bus publish, and vice versa. Scan flow is never interrupted.
+
+        Finally, always emit WatchlistScanCompletedEvent regardless of signals found.
         """
         bus = get_event_bus()
         total_signals_emitted = 0
@@ -335,15 +345,47 @@ class ScanService:
                         confidence=report.confidence,
                     )
                     continue
+
+                # Build the typed domain event first — shared by both persist + bus
+                event = SignalDetectedEvent(
+                    symbol=report.symbol,
+                    signal_type=report.signal_type,
+                    strength=report.strength,
+                    confidence=report.confidence,
+                    source=report.source,
+                    metadata=report.metadata,
+                )
+
+                # ── Step 1: Persist to signal_events table ──────────────────
                 try:
-                    event = SignalDetectedEvent(
-                        symbol=report.symbol,
+                    signal_event_row = SignalEvent(
+                        user_id=None,
+                        ticker=report.symbol,
                         signal_type=report.signal_type,
                         strength=report.strength,
                         confidence=report.confidence,
                         source=report.source,
                         metadata=report.metadata,
+                        event_id=event.event_id,
+                        occurred_at=event.occurred_at,
                     )
+                    await self._signal_event_repo.save(signal_event_row)
+                    logger.debug(
+                        "scan.signal_event_persisted",
+                        symbol=report.symbol,
+                        signal_type=report.signal_type,
+                        event_id=event.event_id,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "scan.signal_event_persist_failed",
+                        symbol=report.symbol,
+                        signal_type=report.signal_type,
+                        error=str(exc),
+                    )
+
+                # ── Step 2: Publish to EventBus ─────────────────────────────
+                try:
                     emitted = await bus.publish(
                         event,
                         dedup_key=report.dedup_key,

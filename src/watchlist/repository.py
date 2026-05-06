@@ -5,13 +5,17 @@ Owner: watchlist segment.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.watchlist.models import Alert, AlertStatus, Reminder, WatchlistItem, WatchlistScan
+
+if TYPE_CHECKING:
+    from src.watchlist.models import SignalEvent
 
 
 class WatchlistRepository:
@@ -128,3 +132,72 @@ class WatchlistRepository:
         )
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
+
+
+# ── Signal Events ──────────────────────────────────────────────────────────────
+
+
+class SignalEventRepository:
+    """Persist and query SignalEvent rows (signal_events table).
+
+    Owner: watchlist segment.
+    Called only by ScanService._emit_events() — no other writer.
+    Reader: ProactiveAlertAgent (ai segment) via list_pending / mark_processed.
+    """
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def save(self, event: "SignalEvent") -> "SignalEvent":
+        """Stage a new SignalEvent row and flush (no commit — caller owns tx)."""
+        self._session.add(event)
+        await self._session.flush()
+        return event
+
+    async def list_pending(self, limit: int = 100) -> list["SignalEvent"]:
+        """Return unprocessed signal events ordered oldest-first.
+
+        An event is 'pending' when processed_at IS NULL.
+        Used by ProactiveAlertAgent to drain the inbox.
+        """
+        from src.watchlist.models import SignalEvent  # local import avoids circular at module level
+
+        stmt = (
+            select(SignalEvent)
+            .where(SignalEvent.processed_at.is_(None))
+            .order_by(SignalEvent.occurred_at.asc())
+            .limit(limit)
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def mark_processed(self, event: "SignalEvent") -> None:
+        """Stamp processed_at = now(UTC) and flush."""
+        event.processed_at = datetime.now(UTC)
+        await self._session.flush()
+
+    async def list_for_symbol(
+        self,
+        symbol: str,
+        user_id: str | None = None,
+        limit: int = 50,
+    ) -> list["SignalEvent"]:
+        """Return recent signal events for a ticker, newest-first.
+
+        Args:
+            symbol:  Ticker (case-insensitive — normalised to upper).
+            user_id: Optional filter by user.
+            limit:   Max rows returned.
+        """
+        from src.watchlist.models import SignalEvent
+
+        stmt = (
+            select(SignalEvent)
+            .where(SignalEvent.ticker == symbol.upper())
+            .order_by(SignalEvent.occurred_at.desc())
+            .limit(limit)
+        )
+        if user_id:
+            stmt = stmt.where(SignalEvent.user_id == user_id)
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
