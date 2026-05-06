@@ -40,10 +40,15 @@ class SectorSignal(BaseModel):
     @field_validator("momentum_score", mode="before")
     @classmethod
     def coerce_momentum(cls, v: Any) -> float:
+        """Normalize to 0-1 scale. Model may return 0-10 scale."""
         if v is None:
             return 0.5
         try:
-            return max(0.0, min(1.0, float(v)))
+            score = float(v)
+            # Normalize 0-10 scale → 0-1
+            if score > 1.0:
+                score = score / 10.0
+            return max(0.0, min(1.0, score))
         except (TypeError, ValueError):
             return 0.5
 
@@ -102,13 +107,44 @@ class SectorRotationOutput(BaseModel):
         if not data.get("key_risk"):
             risks = data.get("key_risks", [])
             if isinstance(risks, list) and risks:
-                data["key_risk"] = " | ".join(str(r) for r in risks[:3])
+                # key_risks may be list of str or list of dicts with a "risk" key
+                parts = []
+                for r in risks[:3]:
+                    parts.append(r.get("risk", str(r)) if isinstance(r, dict) else str(r))
+                data["key_risk"] = " | ".join(parts)
             else:
                 data["key_risk"] = str(risks) if risks else "N/A"
 
         # next_watch: coerce list → str early so field_validator also works
         if isinstance(data.get("next_watch"), list):
             data["next_watch"] = " | ".join(str(i) for i in data["next_watch"])
+
+        # sector_signals: normalize dict-of-lists → list[SectorSignal dicts]
+        # Model sometimes returns: {"ROTATE_IN": ["Financials"], "HOLD": [...], ...}
+        # instead of the expected: [{"sector": "Financials", "signal": "ROTATE_IN", ...}]
+        raw_signals = data.get("sector_signals")
+        if isinstance(raw_signals, dict):
+            # Build lookup from sector_analysis to enrich rationale/tickers
+            sector_analysis: list[dict] = data.get("sector_analysis", [])
+            analysis_map: dict[str, dict] = {
+                s["sector"]: s
+                for s in sector_analysis
+                if isinstance(s, dict) and "sector" in s
+            }
+            normalized: list[dict] = []
+            for signal_type, sectors in raw_signals.items():
+                if not isinstance(sectors, list):
+                    continue
+                for sector_name in sectors:
+                    detail = analysis_map.get(str(sector_name), {})
+                    normalized.append({
+                        "sector": str(sector_name),
+                        "signal": str(signal_type),
+                        "momentum_score": detail.get("momentum_score", 0.5),
+                        "rationale": detail.get("rationale", ""),
+                        "key_tickers": detail.get("top_movers", detail.get("key_tickers", [])),
+                    })
+            data["sector_signals"] = normalized
 
         # top_rotate_in / top_rotate_out: derive from sector_signals if missing
         signals = data.get("sector_signals", [])
