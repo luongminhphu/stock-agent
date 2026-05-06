@@ -140,7 +140,7 @@ class BriefingScheduler:
                     watchlist_service=WatchlistService(session=session),
                     quote_service=get_quote_service(),
                     briefing_agent=get_briefing_agent(),
-                    pnl_service=get_pnl_service(),
+                    pnl_service=get_pnl_service()(session),
                     session=session,
                 )
                 if phase == "morning":
@@ -874,8 +874,6 @@ class MemoryConsolidatorScheduler:
                 )
                 await self._monitor.record_success(task_name)
             else:
-                # Consolidator returned None — not enough episodes or AI failed.
-                # This is not an error — just log and move on.
                 logger.info(
                     "scheduler.memory_consolidator.skipped_by_consolidator",
                     reason="not enough episodes or AI call failed",

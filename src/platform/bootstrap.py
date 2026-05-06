@@ -35,8 +35,8 @@ _investor_profile_service: object | None = None  # Wave 1 — Blueprint V2
 _memory_consolidator: object | None = None        # Wave 3 — Blueprint V2 Memory
 
 # PnlService is session-scoped (stateless), so bootstrap stores the class
-# rather than an instance. get_pnl_service() returns the class; callers
-# instantiate with their own session: PnlService(session).
+# rather than an instance. get_pnl_service() returns a factory function;
+# callers instantiate with their own session: get_pnl_service()(session).
 _pnl_service_class: type | None = None
 
 
@@ -273,14 +273,18 @@ def get_snapshot_scheduler():
 
 
 def get_pnl_service():
-    """Return the PnlService class (not an instance).
+    """Return a factory function: factory(session) -> PnlService instance.
 
-    PnlService is session-scoped. Callers must instantiate with their session:
+    PnlService is session-scoped. quote_service is bound automatically from
+    the bootstrap singleton so callers never need to import it directly.
+
+    Usage:
         pnl_svc = get_pnl_service()(session)
     """
     if _pnl_service_class is None:
         raise RuntimeError("PnlService not initialised — call bootstrap() first.")
-    return _pnl_service_class
+    quote_svc = get_quote_service()
+    return lambda session: _pnl_service_class(session, quote_svc)  # type: ignore[misc]
 
 
 def get_memory_consolidator():
