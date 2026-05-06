@@ -33,6 +33,7 @@ _snapshot_scheduler: object | None = None
 _sector_rotation_agent: object | None = None
 _investor_profile_service: tuple | None = None  # (InvestorProfileService class, user_id str)
 _memory_consolidator: object | None = None        # Wave 3 — Blueprint V2 Memory
+_proactive_alert_agent: object | None = None      # Wave 5 — Event-driven alerts
 
 # PnlService is session-scoped (stateless), so bootstrap stores the class
 # rather than an instance. get_pnl_service() returns a factory function;
@@ -48,7 +49,7 @@ async def bootstrap() -> None:
     global _thesis_suggest_agent, _briefing_agent, _why_agent, _pretrade_agent
     global _stress_test_agent, _replay_agent, _snapshot_scheduler
     global _sector_rotation_agent, _investor_profile_service, _pnl_service_class
-    global _memory_consolidator
+    global _memory_consolidator, _proactive_alert_agent
 
     if _quote_service is None:
         from src.market.adapters.factory import build_adapter
@@ -172,6 +173,21 @@ async def bootstrap() -> None:
                 reason="scheduler_user_id not configured",
             )
 
+    # ── Wave 5: Event Bus + ProactiveAlertAgent ────────────────────────────────
+    # Start the bus worker BEFORE registering any handlers so no events
+    # are lost between registration and the first queue drain.
+    from src.platform.event_bus import get_event_bus
+    bus = get_event_bus()
+    await bus.start()
+    logger.info("platform.bootstrap.event_bus_ready")
+
+    if _proactive_alert_agent is None:
+        from src.ai.agents.proactive_alert_agent import get_proactive_alert_agent
+
+        _proactive_alert_agent = get_proactive_alert_agent(ai_client=_ai_client)  # type: ignore[arg-type]
+        _proactive_alert_agent.register()  # subscribe SignalDetectedEvent on bus
+        logger.info("platform.bootstrap.proactive_alert_agent_ready")
+
 
 async def shutdown() -> None:
     """Gracefully release resources held by singletons.
@@ -180,6 +196,22 @@ async def shutdown() -> None:
     Safe to call even if bootstrap() was never called (all singletons are None).
     """
     global _quote_service, _ohlcv_service, _ai_client
+
+    # Stop event bus first — drain pending events before closing AI client
+    try:
+        from src.platform.event_bus import get_event_bus
+        bus = get_event_bus()
+        await bus.stop()
+        dead = bus.dead_letters
+        if dead:
+            logger.warning(
+                "platform.shutdown.event_bus_dead_letters",
+                count=len(dead),
+                entries=[str(d) for d in dead],
+            )
+        logger.info("platform.shutdown.event_bus_stopped")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("platform.shutdown.event_bus_stop_failed", error=str(exc))
 
     if _quote_service is not None:
         try:
@@ -330,3 +362,14 @@ def get_memory_consolidator():
     (graceful degrade — MemoryConsolidatorScheduler checks for None before running).
     """
     return _memory_consolidator
+
+
+def get_proactive_alert_agent():
+    """Return the ProactiveAlertAgent singleton.
+
+    Raises RuntimeError if bootstrap() has not been called.
+    The agent is always registered on the event bus after bootstrap.
+    """
+    if _proactive_alert_agent is None:
+        raise RuntimeError("ProactiveAlertAgent not initialised — call bootstrap() first.")
+    return _proactive_alert_agent
