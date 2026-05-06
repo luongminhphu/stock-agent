@@ -5,11 +5,11 @@ Callers: ai/agents/*.py only.
 
 Builds an InvestorContext from:
   - platform.investor_profile (static profile + risk settings)
-  - thesis segment (active theses summary)
+  - thesis segment (ThesisHealthSnapshot — typed, urgency-aware)  ← V3 upgrade
   - thesis.lesson_service (recent decision lessons)
   - portfolio segment (portfolio bias — sector exposure, P&L tilt)
-  - market.registry (sector key_metrics per position ticker)  ← NEW in V2-3
-  - ai.memory (MemoryContext — episodic + semantic memory)    ← NEW in V2
+  - market.registry (sector key_metrics per position ticker)  ← V2-3
+  - ai.memory (MemoryContext — episodic + semantic memory)    ← V2
 
 Boundary rule:
   ContextBuilder knows ABOUT domain segments but does NOT own their logic.
@@ -19,12 +19,19 @@ Backward compatibility:
   ContextBuilder(session) still works exactly as before.
   memory injection is additive — if MemoryService fails, context is still built.
   sector context injection is additive — if registry fails, context is still built.
+  thesis health injection replaces the old flat summary — same slot in
+  InvestorContext.active_thesis_summary; zero signature change for agents.
 
 Wave 3 fix:
   _fetch_investor_profile() now calls svc.get_profile(user_id=user_id) which
   exists on InvestorProfileService. Previously called svc.get_profile() on a
   method that did not exist → always raised AttributeError → profile block
   was always empty despite data being available in DB.
+
+V3 (ThesisHealthSnapshot):
+  _fetch_thesis_summary() replaced by _fetch_thesis_health().
+  Produces urgency-sorted, stop-loss-proximity-aware block instead of a
+  flat text dump. Falls back to old summary method if import fails.
 """
 
 from __future__ import annotations
@@ -52,7 +59,7 @@ class InvestorContext:
     trading_style: str = ""
     notes: str = ""
 
-    # From thesis segment
+    # From thesis segment (V3: ThesisHealthSnapshot formatted block)
     active_thesis_summary: str = ""
 
     # From thesis.lesson_service
@@ -61,7 +68,7 @@ class InvestorContext:
     # From portfolio segment + market.registry (V2-3)
     portfolio_bias: str = ""
 
-    # From ai.memory (NEW in V2)
+    # From ai.memory (V2)
     memory_context_block: str = ""
 
 
@@ -74,7 +81,7 @@ class ContextBuilder:
         profile_str = render_for_agent(ctx)
     """
 
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: "AsyncSession") -> None:
         self._session = session
 
     async def build(self, user_id: str | None = None) -> InvestorContext:
@@ -85,7 +92,7 @@ class ContextBuilder:
         """
         results = await asyncio.gather(
             self._fetch_investor_profile(user_id),
-            self._fetch_thesis_summary(user_id),
+            self._fetch_thesis_health(user_id),
             self._fetch_recent_lessons(user_id),
             self._fetch_portfolio_bias(user_id),
             self._fetch_memory_context(user_id),
@@ -121,7 +128,54 @@ class ContextBuilder:
             logger.warning("context_builder.investor_profile_failed", error=str(exc))
             return {}
 
-    async def _fetch_thesis_summary(self, user_id: str | None) -> str:
+    async def _fetch_thesis_health(self, user_id: str | None) -> str:
+        """Build thesis context using ThesisHealthSnapshot (V3).
+
+        Returns urgency-sorted, stop-loss-proximity-aware thesis block.
+        Falls back to flat summary if ThesisHealthSnapshot is unavailable.
+        Never raises — thesis failure must not block AI calls.
+        """
+        if not user_id:
+            return ""
+        try:
+            from src.thesis.health_snapshot import build_thesis_health_snapshots
+
+            snapshots = await build_thesis_health_snapshots(
+                self._session, user_id=user_id
+            )
+            if not snapshots:
+                return ""
+
+            lines = [f"Thesis health ({len(snapshots)} active):"]
+            for snap in snapshots:
+                lines.append(f"  {snap.format_for_prompt()}")
+
+            # Urgency summary line — draw agent's attention to AT_RISK
+            at_risk = [s for s in snapshots if s.urgency_flag in ("AT_RISK", "INVALIDATED")]
+            review_due = [s for s in snapshots if s.urgency_flag == "REVIEW_DUE"]
+            if at_risk:
+                tickers = ", ".join(s.ticker for s in at_risk)
+                lines.append(
+                    f"  ⚠️  AT_RISK/INVALIDATED: {tickers} — "
+                    f"xem xét ngay, có thể cần action."
+                )
+            if review_due:
+                tickers = ", ".join(s.ticker for s in review_due)
+                lines.append(f"  🔔 Cần review: {tickers}")
+
+            return "\n".join(lines)
+
+        except Exception as exc:
+            logger.warning(
+                "context_builder.thesis_health_failed",
+                user_id=user_id,
+                error=str(exc),
+            )
+            # Fallback to old flat summary on import/runtime error
+            return await self._fetch_thesis_summary_fallback(user_id)
+
+    async def _fetch_thesis_summary_fallback(self, user_id: str | None) -> str:
+        """Legacy flat thesis summary — used as fallback only."""
         try:
             from src.thesis.service import ThesisService
 
@@ -130,7 +184,7 @@ class ContextBuilder:
             if not theses:
                 return ""
             lines = []
-            for t in theses[:5]:  # cap at 5 to avoid prompt bloat
+            for t in theses[:5]:
                 ticker = getattr(t, "ticker", "?")
                 direction = getattr(t, "direction", "")
                 summary = getattr(t, "summary", "") or ""
@@ -142,7 +196,7 @@ class ContextBuilder:
                 lines.append(line)
             return "Active theses:\n" + "\n".join(lines)
         except Exception as exc:
-            logger.warning("context_builder.thesis_summary_failed", error=str(exc))
+            logger.warning("context_builder.thesis_summary_fallback_failed", error=str(exc))
             return ""
 
     async def _fetch_recent_lessons(self, user_id: str | None) -> str:
@@ -275,21 +329,21 @@ def render_for_agent(ctx: InvestorContext) -> str:
     # Investor profile
     profile_lines: list[str] = []
     if ctx.risk_appetite:
-        profile_lines.append(f"  Khẩu vị rủi ro: {ctx.risk_appetite}")
+        profile_lines.append(f"  Kh\u1ea9u v\u1ecb r\u1ee7i ro: {ctx.risk_appetite}")
     if ctx.trading_style:
         profile_lines.append(f"  Trading style: {ctx.trading_style}")
     if ctx.preferred_sectors:
-        profile_lines.append(f"  Ngành ưu tiên: {', '.join(ctx.preferred_sectors)}")
+        profile_lines.append(f"  Ng\u00e0nh \u01b0u ti\u00ean: {', '.join(ctx.preferred_sectors)}")
     if ctx.avoid_list:
-        profile_lines.append(f"  Tránh: {', '.join(ctx.avoid_list)}")
+        profile_lines.append(f"  Tr\u00e1nh: {', '.join(ctx.avoid_list)}")
     if ctx.notes:
-        profile_lines.append(f"  Ghi chú: {ctx.notes}")
+        profile_lines.append(f"  Ghi ch\u00fa: {ctx.notes}")
     if profile_lines:
         parts.append("[Investor profile]\n" + "\n".join(profile_lines))
 
-    # Active theses
+    # Active theses (V3: ThesisHealthSnapshot block)
     if ctx.active_thesis_summary:
-        parts.append(f"[{ctx.active_thesis_summary}]")
+        parts.append(f"[Thesis health]\n{ctx.active_thesis_summary}")
 
     # Recent lessons
     if ctx.recent_lessons:
@@ -297,7 +351,7 @@ def render_for_agent(ctx: InvestorContext) -> str:
 
     # Portfolio — V2-3: formatted with sector context injected
     if ctx.portfolio_bias:
-        parts.append(f"[Portfolio hiện tại]\n{ctx.portfolio_bias}")
+        parts.append(f"[Portfolio hi\u1ec7n t\u1ea1i]\n{ctx.portfolio_bias}")
 
     # Memory — episodic + semantic
     if ctx.memory_context_block:
