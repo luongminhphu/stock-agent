@@ -26,9 +26,12 @@ from src.portfolio.repository import PortfolioRepository
 
 logger = get_logger(__name__)
 
-# Threshold dưới đây coi là hòa vốn (tránh float == 0.0 với realized_pnl VND).
+# Threshold đưới đây coi là hòa vốn (tránh float == 0.0 với realized_pnl VND).
 # 1.0 VND là đủ nhỏ để không nhầm với lời/lỗ thực tế.
 _BREAKEVEN_EPSILON = 1.0
+
+# Maximum rows get_trade_history will fetch in a single call.
+_TRADE_HISTORY_MAX_LIMIT = 200
 
 
 @runtime_checkable
@@ -134,6 +137,11 @@ class PnlService:
                 "PnlService requires a QuoteServiceProtocol instance. "
                 "Pass quote_service=get_quote_service() from bootstrap."
             )
+        if not isinstance(quote_service, QuoteServiceProtocol):
+            raise TypeError(
+                f"quote_service must implement QuoteServiceProtocol "
+                f"(has get_quote method), got: {type(quote_service).__name__}"
+            )
         self._session = session
         self._repo = PortfolioRepository(session)
         self._quote_service = quote_service
@@ -200,7 +208,11 @@ class PnlService:
 
         Snapshots all columns eagerly while the session is open so callers
         can safely iterate after session close without DetachedInstanceError.
+
+        limit is clamped to [1, _TRADE_HISTORY_MAX_LIMIT] to prevent
+        accidental unbounded queries.
         """
+        limit = max(1, min(limit, _TRADE_HISTORY_MAX_LIMIT))
         trades = await self._repo.list_trades(user_id, ticker=ticker, limit=limit)
         return [
             TradeSnapshot(
@@ -221,6 +233,12 @@ class PnlService:
     # ------------------------------------------------------------------
 
     async def _calc_position_pnl(self, position: Position) -> PositionPnl:
+        if position.qty <= 0 or position.avg_cost <= 0:
+            raise ValueError(
+                f"Corrupt position data for {position.ticker}: "
+                f"qty={position.qty}, avg_cost={position.avg_cost} — "
+                "both must be positive."
+            )
         quote = await self._quote_service.get_quote(position.ticker)
         current_price = quote.price  # type: ignore[union-attr]
         unrealized_pnl = (current_price - position.avg_cost) * position.qty
