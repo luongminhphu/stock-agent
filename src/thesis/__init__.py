@@ -5,6 +5,7 @@ Public API:
     Enums:        ThesisStatus, AssumptionStatus, CatalystStatus, ReviewVerdict
     Repository:   ThesisRepository
     Services:     ThesisService, ScoringService, InvalidationService
+    Listeners:    ThesisReviewListener  (Wave 6 — event-driven review loop)
     DTOs:         CreateThesisInput, UpdateThesisInput
     Errors:       ThesisNotFoundError, ThesisAlreadyClosedError
     Results:      InvalidationCheckResult
@@ -31,6 +32,7 @@ from src.thesis.service import (
     ThesisService,
     UpdateThesisInput,
 )
+from src.thesis.thesis_review_listener import ThesisReviewListener
 
 __all__ = [
     # Models
@@ -50,6 +52,8 @@ __all__ = [
     "ThesisService",
     "ScoringService",
     "InvalidationService",
+    # Listeners
+    "ThesisReviewListener",
     # DTOs
     "CreateThesisInput",
     "UpdateThesisInput",

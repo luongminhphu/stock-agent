@@ -34,6 +34,7 @@ _sector_rotation_agent: object | None = None
 _investor_profile_service: tuple | None = None  # (InvestorProfileService class, user_id str)
 _memory_consolidator: object | None = None        # Wave 3 — Blueprint V2 Memory
 _proactive_alert_agent: object | None = None      # Wave 5 — Event-driven alerts
+_thesis_review_listener: object | None = None     # Wave 6 — Thesis review loop
 
 # PnlService is session-scoped (stateless), so bootstrap stores the class
 # rather than an instance. get_pnl_service() returns a factory function;
@@ -49,7 +50,7 @@ async def bootstrap() -> None:
     global _thesis_suggest_agent, _briefing_agent, _why_agent, _pretrade_agent
     global _stress_test_agent, _replay_agent, _snapshot_scheduler
     global _sector_rotation_agent, _investor_profile_service, _pnl_service_class
-    global _memory_consolidator, _proactive_alert_agent
+    global _memory_consolidator, _proactive_alert_agent, _thesis_review_listener
 
     if _quote_service is None:
         from src.market.adapters.factory import build_adapter
@@ -187,6 +188,21 @@ async def bootstrap() -> None:
         _proactive_alert_agent = get_proactive_alert_agent(ai_client=_ai_client)  # type: ignore[arg-type]
         _proactive_alert_agent.register()  # subscribe SignalDetectedEvent on bus
         logger.info("platform.bootstrap.proactive_alert_agent_ready")
+
+    # ── Wave 6: ThesisReviewListener ──────────────────────────────────────────
+    # Registered AFTER ProactiveAlertAgent so the full chain is wired in order:
+    # SignalDetectedEvent → ProactiveAlertAgent → ThesisReviewRequestedEvent
+    #                                           → ThesisReviewListener → ReviewService
+    #                                                                   → ThesisInvalidatedEvent
+    if _thesis_review_listener is None:
+        from src.thesis.thesis_review_listener import ThesisReviewListener
+
+        _thesis_review_listener = ThesisReviewListener(
+            thesis_review_agent=_thesis_review_agent,
+            quote_service=_quote_service,
+        )
+        _thesis_review_listener.register()  # subscribe ThesisReviewRequestedEvent on bus
+        logger.info("platform.bootstrap.thesis_review_listener_ready")
 
 
 async def shutdown() -> None:
@@ -373,3 +389,14 @@ def get_proactive_alert_agent():
     if _proactive_alert_agent is None:
         raise RuntimeError("ProactiveAlertAgent not initialised — call bootstrap() first.")
     return _proactive_alert_agent
+
+
+def get_thesis_review_listener():
+    """Return the ThesisReviewListener singleton.
+
+    Raises RuntimeError if bootstrap() has not been called.
+    The listener is registered on the event bus after bootstrap.
+    """
+    if _thesis_review_listener is None:
+        raise RuntimeError("ThesisReviewListener not initialised — call bootstrap() first.")
+    return _thesis_review_listener
