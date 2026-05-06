@@ -18,7 +18,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Any, Callable, Coroutine, Type, TypeVar
 
-from .events import DomainEvent
+from src.platform.events import DomainEvent
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,8 @@ class EventBus:
     """
     Async in-process event bus.
 
-    Usage:
+    Usage::
+
         bus = get_event_bus()
 
         @bus.subscribe(SignalDetectedEvent)
@@ -110,7 +111,7 @@ class EventBus:
             event:        The domain event to publish.
             dedup_key:    Optional dedup key. If provided, duplicate events
                           within `dedup_window` are silently dropped.
-                          Useful for signal spam prevention (e.g. same symbol + signal_type).
+                          Useful for signal spam prevention.
             dedup_window: How long to suppress re-delivery for the same dedup_key.
 
         Returns:
