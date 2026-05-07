@@ -57,6 +57,7 @@ def create_bot() -> commands.Bot:
             _start_reminder_scheduler(bot)
             _start_decision_replay_scheduler(bot)
             _start_recommendation_listener(bot)  # Wave 4: event-driven alerts
+            _start_opportunity_screen_scheduler(bot)  # Wave 3: sector rotation 09:10 ICT
             await _sync_tree(bot)
             logger.info(
                 "bot.ready",
@@ -221,3 +222,36 @@ def _start_recommendation_listener(bot: commands.Bot) -> None:
     from src.bot.recommendation_listener import RecommendationListener
     listener = RecommendationListener(bot)
     listener.register()
+
+
+def _start_opportunity_screen_scheduler(bot: commands.Bot) -> None:
+    """Wire Wave 3: OpportunityScreenScheduler → sector rotation at 09:10 ICT daily.
+
+    bootstrap() initialises the singleton and registers OpportunityScreenSubscriber
+    on the event bus, but scheduler.start() must be called here (after bot login)
+    because discord.ext.tasks requires the bot event loop to be running.
+
+    Also injects discord.Client into the subscriber so it can deliver
+    sector rotation output to the morning Discord channel.
+    """
+    from src.platform.bootstrap import (
+        get_opportunity_screen_scheduler,
+        get_opportunity_screen_subscriber,
+    )
+
+    scheduler = get_opportunity_screen_scheduler()
+    if scheduler is None:
+        logger.warning(
+            "bot.opportunity_screen_scheduler.not_available",
+            reason="bootstrap did not initialise OpportunityScreenScheduler",
+        )
+        return
+
+    scheduler.start()
+    logger.info("bot.opportunity_screen_scheduler.started")
+
+    # Inject discord.Client so subscriber can post to morning channel
+    subscriber = get_opportunity_screen_subscriber()
+    if subscriber is not None and hasattr(subscriber, "set_client"):
+        subscriber.set_client(bot)
+        logger.info("bot.opportunity_screen_subscriber.client_injected")
