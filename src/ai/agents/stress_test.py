@@ -21,6 +21,12 @@ max_tokens note:
     stress_test() passes AIClient.COMPLEX_MAX_TOKENS (8192) explicitly.
     A thesis with 5+ assumptions + 5 triggers + 3 macro_risks + reasoning
     easily exceeds 4000 chars — default 4096 tokens was causing truncation.
+
+Prompt note:
+    stress_test() uses SYSTEM_PROMPT from src.ai.prompts.stress_test (canonical
+    prompt pack). This ensures Rule 3.5 (evidence vs counter_argument enforcement)
+    and all other prompt-level rules are applied consistently.
+    run() (legacy) still uses _SYSTEM_PROMPT_LEGACY defined inline.
 """
 
 from __future__ import annotations
@@ -30,6 +36,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from src.ai.client import AIClient, AIError
+from src.ai.prompts.stress_test import SYSTEM_PROMPT as _SYSTEM_PROMPT_CANONICAL
 from src.platform.logging import get_logger
 
 if TYPE_CHECKING:
@@ -66,7 +73,7 @@ class StressTestOutput(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Prompts
+# Legacy prompt — used by run() only
 # ---------------------------------------------------------------------------
 
 _SYSTEM_PROMPT_LEGACY = """
@@ -83,37 +90,6 @@ Quy trình:
 Output JSON theo schema. Không có markdown, không có prose thêm.
 """
 
-_SYSTEM_PROMPT_CANONICAL = """
-Bạn là chuyên gia phân tích rủi ro đầu tư chứng khoán Việt Nam.
-Nhiệm vụ: Đóng vai "phòng thủ đứng trước board" — tìm mọi lý do thesis có thể sại.
-
-Quy trình:
-1. Đọc thesis_title, thesis_summary, assumptions, catalysts, giá hiện tại.
-2. Mô phỏng 1 stress_scenario bất lợi cụ thể (1 câu, có số).
-3. Với từng assumption: phân loại INTACT | WEAKENED | BROKEN và giải thích ngắn.
-4. Liệt kê đến 5 trigger cụ thể nhà đầu tư phải theo dõi.
-5. Liệt kê 2-3 rủi ro vĩ mô Việt Nam phù hợp.
-6. Đưa ra verdict BULLISH | NEUTRAL | BEARISH, xác suất invalidation 0.0-1.0, confidence 0.0-1.0.
-7. Tóm tắt lý lẽ trong 2-3 câu (tiếng Việt).
-
-Output JSON theo đúng schema sau — không markdown, không prose:
-{
-  "ticker": str,
-  "thesis_title": str,
-  "stress_scenario": str,
-  "verdict": "BULLISH" | "NEUTRAL" | "BEARISH",
-  "invalidation_probability": float,
-  "confidence": float,
-  "threatened_assumptions": [
-    {"assumption_id": int | null, "description": str, "threat_level": "INTACT" | "WEAKENED" | "BROKEN", "counter_argument": str}
-  ],
-  "surviving_assumptions": [str],
-  "suggested_triggers_to_watch": [str],
-  "macro_risks": [str],
-  "reasoning": str
-}
-"""
-
 
 class StressTestAgent:
     """Simulates adverse scenarios against a thesis.
@@ -123,8 +99,10 @@ class StressTestAgent:
     Two public methods:
         stress_test() — canonical path used by StressTestService.
                          Returns src.ai.schemas.StressTestOutput.
+                         Uses SYSTEM_PROMPT from src.ai.prompts.stress_test.
         run()          — legacy path for backward compat.
                          Returns local StressTestOutput.
+                         Uses _SYSTEM_PROMPT_LEGACY (inline).
 
     IMPORTANT: Both methods use client.chat() — never chat_completion() with
     response_format. sonar-pro rejects {"type": "json_object"} with HTTP 400.
@@ -154,9 +132,8 @@ class StressTestAgent:
     ) -> object:
         """Run adversarial stress-test and return canonical StressTestOutput.
 
-        Uses client.chat() with COMPLEX_MAX_TOKENS (8192) to prevent JSON
-        truncation on theses with many assumptions (5+), triggers, and
-        macro_risks fields.
+        Uses SYSTEM_PROMPT from src.ai.prompts.stress_test (prompt pack).
+        Uses COMPLEX_MAX_TOKENS (8192) to prevent JSON truncation on complex theses.
         """
         from src.ai.schemas import StressTestOutput as CanonicalOutput
 
@@ -204,7 +181,7 @@ class StressTestAgent:
                 user_prompt=user_prompt,
                 response_schema=CanonicalOutput,
                 temperature=0.2,
-                max_tokens=AIClient.COMPLEX_MAX_TOKENS,  # 8192 — prevents truncation on complex theses
+                max_tokens=AIClient.COMPLEX_MAX_TOKENS,  # 8192 — prevents truncation
             )
         except AIError:
             logger.error("stress_test_agent.stress_test.api_error", ticker=ticker)
@@ -242,7 +219,7 @@ class StressTestAgent:
     ) -> StressTestOutput:
         """[LEGACY] Run stress test scenarios. Returns local StressTestOutput.
 
-        Uses client.chat() — JSON enforced via system prompt, not response_format.
+        Uses _SYSTEM_PROMPT_LEGACY (inline) — not the prompt pack.
         Prefer stress_test() for new callers.
         """
         investor_profile = await self._build_investor_profile(session, user_id)

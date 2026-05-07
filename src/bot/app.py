@@ -169,9 +169,11 @@ def _inject_briefing_listener(bot: commands.Bot) -> None:
         listener.set_client(bot)
         logger.info("bot.briefing_listener.client_injected")
     else:
-        logger.warning(
+        logger.error(
             "bot.briefing_listener.not_available",
-            reason="scheduler_user_id not configured — BriefingListener skipped at bootstrap",
+            reason="scheduler_user_id not configured — BriefingListener skipped at bootstrap. "
+                   "Morning and EOD briefs will NOT be delivered. "
+                   "Set SCHEDULER_USER_ID in env to enable automatic briefings.",
         )
 
 
@@ -202,7 +204,13 @@ def _start_drift_scheduler(bot: commands.Bot) -> None:
 def _start_snapshot_scheduler() -> None:
     from src.platform.bootstrap import get_snapshot_scheduler
     scheduler = get_snapshot_scheduler()
-    scheduler.start()  # type: ignore[union-attr]
+    if scheduler is None:
+        logger.warning(
+            "bot.snapshot_scheduler.not_available",
+            reason="get_snapshot_scheduler() returned None — scheduler_user_id may not be configured",
+        )
+        return
+    scheduler.start()
 
 
 def _start_reminder_scheduler(bot: commands.Bot) -> None:
