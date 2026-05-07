@@ -84,9 +84,11 @@ class SectorRotationOutput(BaseModel):
     top_rotate_out: list[str] = Field(default_factory=list)
     sector_signals: list[SectorSignal]
     macro_summary: str
-    key_risk: str
+    # key_risk and next_watch default to "" so Pydantic accepts partial LLM responses;
+    # normalize_model_output fills in meaningful values from key_risks / sector context.
+    key_risk: str = Field(default="")
     confidence: str = Field(default="MEDIUM", description="HIGH | MEDIUM | LOW")
-    next_watch: str
+    next_watch: str = Field(default="")
 
     @field_validator("next_watch", "key_risk", "macro_summary", mode="before")
     @classmethod
@@ -145,6 +147,15 @@ class SectorRotationOutput(BaseModel):
         # next_watch: coerce list → str early so field_validator also works
         if isinstance(data.get("next_watch"), list):
             data["next_watch"] = " | ".join(str(i) for i in data["next_watch"])
+
+        # next_watch: fallback to top WATCH signals if LLM omits the field
+        if not data.get("next_watch"):
+            signals = data.get("sector_signals", [])
+            watch_sectors = [
+                s["sector"] for s in signals
+                if isinstance(s, dict) and s.get("signal") == "WATCH"
+            ][:3]
+            data["next_watch"] = " | ".join(watch_sectors) if watch_sectors else "N/A"
 
         # sector_signals: normalize dict-of-lists → list[SectorSignal dicts]
         # Model sometimes returns: {"ROTATE_IN": ["Financials"], "HOLD": [...], ...}
@@ -216,6 +227,8 @@ RANG BUỘC OUTPUT (bắt buộc):
   KHÔNG được trả về dạng dict nhóm theo signal {"ROTATE_IN": [...]}
 - macro_summary: string tiếng Việt, tóm tắt ngắn gọn tình hình vĩ mô và market regime
 - momentum_score: float từ 0.0 đến 1.0 (không phải 0-10)
+- key_risk: string mô tả rủi ro chính cần theo dõi
+- next_watch: string mô tả sector/ticker cần quan sát tiếp theo
 
 Output: JSON theo schema SectorRotationOutput. Không có markdown, không có prose thêm.
 """
