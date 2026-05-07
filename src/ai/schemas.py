@@ -538,7 +538,11 @@ class ThreatenedAssumption(BaseModel):
     description: str = Field(description="Nội dung assumption đang bị test")
     threat_level: ThreatLevel
     evidence: str = Field(
-        description="Bằng chứng cụ thể: giá, tin tức, số liệu macro đang mâu thuẫn"
+        default="",
+        description=(
+            "Bằng chứng cụ thể: giá, tin tức, số liệu macro đang mâu thuẫn. "
+            "Rỗng nếu AI không cung cấp — xem counter_argument để có context."
+        ),
     )
     counter_argument: str = Field(
         description="Counter-argument mạnh nhất AI tìm được để phủ nhận assumption này"
