@@ -8,7 +8,7 @@ parse into one of these schemas.
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # ---------------------------------------------------------------------------
 # Shared enums
@@ -111,6 +111,23 @@ class ThesisReviewOutput(BaseModel):
             "user phải xác nhận trước khi apply."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_field_names(cls, data: object) -> object:
+        """Rename sonar-pro alias fields to canonical names before field validation.
+
+        sonar-pro occasionally uses:
+          confidence_pct (int 0-100) instead of confidence
+
+        Renaming here ensures the existing coerce_confidence field_validator
+        (which normalises >1.0 values) handles the value correctly.
+        """
+        if not isinstance(data, dict):
+            return data
+        if "confidence" not in data and "confidence_pct" in data:
+            data["confidence"] = data.pop("confidence_pct")
+        return data
 
     @field_validator("confidence", mode="before")
     @classmethod

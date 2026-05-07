@@ -37,6 +37,10 @@ _REGIME_MAP: dict[str, str] = {
     "SLOWDOWN": "TRANSITIONING",
 }
 
+# sonar-pro response regularly reaches 1400+ tokens for 12-sector analysis.
+# 4096 gives comfortable headroom without hitting rate-limit cost threshold.
+_MAX_TOKENS = 4096
+
 
 class SectorSignal(BaseModel):
     sector: str
@@ -267,6 +271,7 @@ class SectorRotationAgent:
                 user_prompt=user_prompt,
                 response_schema=SectorRotationOutput,
                 temperature=0.15,
+                max_tokens=_MAX_TOKENS,
             )
         except AIError:
             logger.error("sector_rotation_agent.api_error")
