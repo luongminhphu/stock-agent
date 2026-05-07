@@ -65,6 +65,26 @@ class CatalystRecommendation(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def _coerce_str_list(v: object, key: str) -> list[object]:
+    """Extract ``key`` from each dict item, falling back to str(item).
+
+    Shared helper for risk_signals and next_watch_items validators — both
+    suffer from the same sonar-pro habit of returning structured dicts
+    instead of plain strings.
+    """
+    if isinstance(v, str):
+        return [v]
+    if not isinstance(v, list):
+        return []
+    coerced: list[object] = []
+    for item in v:
+        if isinstance(item, dict):
+            coerced.append(item.get(key) or str(item))
+        else:
+            coerced.append(item)
+    return coerced
+
+
 class ThesisReviewOutput(BaseModel):
     """Structured output from ThesisReviewAgent."""
 
@@ -117,24 +137,19 @@ class ThesisReviewOutput(BaseModel):
         instead of the specified list[str]. Extract the 'signal' text;
         fall back to str(item) for any other dict shape.
         """
-        if isinstance(v, str):
-            return [v]
-        if not isinstance(v, list):
-            return []
-        coerced: list[object] = []
-        for item in v:
-            if isinstance(item, dict):
-                coerced.append(item.get("signal") or str(item))
-            else:
-                coerced.append(item)
-        return coerced
+        return _coerce_str_list(v, "signal")
 
     @field_validator("next_watch_items", mode="before")
     @classmethod
-    def ensure_list(cls, v: object) -> list[object]:
-        if isinstance(v, str):
-            return [v]
-        return v  # type: ignore[return-value]
+    def coerce_next_watch_items(cls, v: object) -> list[object]:
+        """Coerce list[dict] → list[str] when AI returns structured watch objects.
+
+        sonar-pro sometimes returns next_watch_items as:
+            [{"item": "Q1 2026 earnings...", "action": "hold/add on dips."}, ...]
+        instead of the specified list[str]. Extract the 'item' text;
+        fall back to str(item) for any other dict shape.
+        """
+        return _coerce_str_list(v, "item")
 
     @field_validator("assumption_recommendations", "catalyst_recommendations", mode="before")
     @classmethod
