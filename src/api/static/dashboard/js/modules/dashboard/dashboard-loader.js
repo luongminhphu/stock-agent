@@ -117,7 +117,8 @@ export async function loadDashboard() {
 
     renderCatalystList(catalysts?.items ?? catalysts ?? []);
     renderSnapshots({
-      latest_scan_at:            latestScan?.created_at ?? latestScan?.generated_at ?? null,
+      // WatchlistScan trả về `scanned_at` — fallback created_at cho backward compat
+      latest_scan_at:            latestScan?.scanned_at ?? latestScan?.created_at ?? latestScan?.generated_at ?? null,
       latest_scan_summary:       latestScan?.summary ?? latestScan?.headline ?? null,
       latest_morning_brief_at:   latestMorningBrief?.created_at ?? latestMorningBrief?.generated_at ?? null,
       latest_morning_brief_data: latestMorningBrief ?? null,
