@@ -2,18 +2,21 @@
 
 Owner: ai segment.
 Callers:
-    - thesis.review_service (optional enrichment step)
-    - bot/commands/stress_test (direct Discord command)
+    - thesis.StressTestService          → stress_test()  [primary path]
+    - thesis.review_service (optional)  → run()          [legacy enrichment]
+    - bot/commands/stress_test          → via StressTestService only
 
 Boundary:
     - Accepts raw thesis data + scenario descriptions (no domain model imports).
-    - Returns StressTestOutput (Pydantic schema, owned by ai segment).
+    - Returns src.ai.schemas.StressTestOutput (canonical) from stress_test().
+    - Returns local StressTestOutput from run() for backward compat.
     - Does NOT write DB, does NOT call thesis repositories.
 
 Design note:
-    ScenarioResult.impact_on_thesis uses a controlled vocabulary
-    (INVALIDATES | WEAKENS | NEUTRAL | STRENGTHENS) so callers can gate
-    on severity without parsing free-text.
+    The canonical StressTestOutput lives in src.ai.schemas and is the
+    schema used by StressTestService, StressTestSubscriber, and the
+    Discord embed formatter. The local StressTestOutput is kept only
+    for callers that haven't migrated to stress_test() yet.
 """
 
 from __future__ import annotations
@@ -33,7 +36,13 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Legacy local schema — kept for run() backward compat only
+# New callers must use src.ai.schemas.StressTestOutput
+# ---------------------------------------------------------------------------
+
 class ScenarioResult(BaseModel):
+    """[DEPRECATED] Use src.ai.schemas.StressTestOutput instead."""
     scenario_name: str
     probability: str = Field(..., description="HIGH | MEDIUM | LOW")
     impact_on_thesis: str = Field(
@@ -45,6 +54,7 @@ class ScenarioResult(BaseModel):
 
 
 class StressTestOutput(BaseModel):
+    """[DEPRECATED] Use src.ai.schemas.StressTestOutput instead."""
     ticker: str
     overall_resilience: str = Field(..., description="STRONG | MODERATE | WEAK | FRAGILE")
     scenario_results: list[ScenarioResult]
@@ -53,7 +63,11 @@ class StressTestOutput(BaseModel):
     confidence: str = Field(..., description="HIGH | MEDIUM | LOW")
 
 
-_SYSTEM_PROMPT = """
+# ---------------------------------------------------------------------------
+# Prompts
+# ---------------------------------------------------------------------------
+
+_SYSTEM_PROMPT_LEGACY = """
 Bạn là chuyên gia phân tích rủi ro đầu tư chứng khoán Việt Nam.
 
 Nhiệm vụ: Stress-test một investment thesis bằng cách mô phỏng các kịch bản bất lợi.
@@ -67,15 +81,171 @@ Quy trình:
 Output: JSON theo schema StressTestOutput. Không có markdown, không có prose thêm.
 """
 
+_SYSTEM_PROMPT_CANONICAL = """
+Bạn là chuyên gia phân tích rủi ro đầu tư chứng khoán Việt Nam.
+Nhiệm vụ: Đóng vai "phòng thủ đứng trước board" — tìm mọi lý do thesis có thể sại.
+
+Quy trình:
+1. Đọc thesis_title, thesis_summary, assumptions, catalysts, giá hiện tại.
+2. Mô phỏng 1 stress_scenario bất lợi cụ thể (1 câu, có số).
+3. Với từng assumption: phân loại INTACT | WEAKENED | BROKEN và giải thích ngắn.
+4. Liệt kê đến 5 trigger cụ thể nhà đầu tư phải theo dõi.
+5. Liệt kê 2-3 rủi ro vĩ mô Việt Nam phù hợp.
+6. Đưa ra verdict BULLISH | NEUTRAL | BEARISH, xác suất invalidation 0.0-1.0, confidence 0.0-1.0.
+7. Tóm tắt lý lẽ trong 2-3 câu (tiếng Việt).
+
+Output JSON theo đúng schema sau — không markdown, không prose:
+{
+  "ticker": str,
+  "thesis_title": str,
+  "stress_scenario": str,
+  "verdict": "BULLISH" | "NEUTRAL" | "BEARISH",
+  "invalidation_probability": float,
+  "confidence": float,
+  "threatened_assumptions": [
+    {"assumption_id": int | null, "description": str, "threat_level": "INTACT" | "WEAKENED" | "BROKEN", "counter_argument": str}
+  ],
+  "surviving_assumptions": [str],
+  "suggested_triggers_to_watch": [str],
+  "macro_risks": [str],
+  "reasoning": str
+}
+"""
+
 
 class StressTestAgent:
     """Simulates adverse scenarios against a thesis.
 
     Owner: ai segment.
+
+    Two public methods:
+        stress_test() — canonical path used by StressTestService.
+                         Returns src.ai.schemas.StressTestOutput.
+        run()          — legacy path for backward compat.
+                         Returns local StressTestOutput.
     """
 
     def __init__(self, client: AIClient) -> None:
         self._client = client
+
+    # ------------------------------------------------------------------
+    # Canonical method — used by StressTestService
+    # ------------------------------------------------------------------
+
+    async def stress_test(
+        self,
+        ticker: str,
+        thesis_title: str,
+        thesis_summary: str,
+        assumptions: list[dict],
+        catalysts: list[str],
+        current_price: float | None = None,
+        entry_price: float | None = None,
+        target_price: float | None = None,
+        stop_loss: float | None = None,
+        macro_context: str = "",
+        session: "AsyncSession | None" = None,
+        user_id: str | None = None,
+    ) -> "CanonicalStressTestOutput":
+        """Run adversarial stress-test and return canonical StressTestOutput.
+
+        This is the primary entry point — called by StressTestService.
+
+        Args:
+            ticker:         Stock ticker.
+            thesis_title:   Short thesis title.
+            thesis_summary: Full thesis text.
+            assumptions:    List of dicts with keys: id, description, status.
+            catalysts:      List of pending catalyst descriptions.
+            current_price:  Current market price (optional).
+            entry_price:    Investor entry price (optional).
+            target_price:   Target price (optional).
+            stop_loss:      Stop-loss price (optional).
+            macro_context:  Pre-built macro/sector context string.
+            session:        AsyncSession for memory context injection.
+            user_id:        User ID for memory logging.
+
+        Returns:
+            src.ai.schemas.StressTestOutput
+        """
+        from src.ai.schemas import StressTestOutput as CanonicalOutput
+
+        investor_profile = await self._build_investor_profile(session, user_id)
+
+        # Build assumptions block with IDs
+        assumptions_text = "\n".join(
+            f"- [{a.get('id', '?')}] {a.get('description', '')} (status: {a.get('status', 'valid')})"
+            for a in assumptions
+        ) or "(chưa có assumptions)"
+
+        catalysts_text = "\n".join(f"- {c}" for c in catalysts) or "(không có catalyst pending)"
+
+        price_block = ""
+        if current_price is not None:
+            price_block = f"Giá hiện tại: {current_price:,.0f} VNĐ"
+            if entry_price:
+                pnl = (current_price - entry_price) / entry_price * 100
+                price_block += f" | Entry: {entry_price:,.0f} | P&L: {pnl:+.1f}%"
+            if target_price:
+                upside = (target_price - current_price) / current_price * 100
+                price_block += f" | Target: {target_price:,.0f} (+{upside:.1f}%)"
+            if stop_loss:
+                downside = (stop_loss - current_price) / current_price * 100
+                price_block += f" | Stop: {stop_loss:,.0f} ({downside:.1f}%)"
+
+        user_prompt = (
+            f"Ticker: {ticker}\n"
+            f"Thesis: {thesis_title}\n\n"
+            f"## Summary\n{thesis_summary}\n\n"
+            f"## Assumptions\n{assumptions_text}\n\n"
+            f"## Catalysts (pending)\n{catalysts_text}\n"
+        )
+        if price_block:
+            user_prompt += f"\n## Price Context\n{price_block}\n"
+        if macro_context:
+            user_prompt += f"\n## Market Context\n{macro_context}\n"
+        if investor_profile:
+            user_prompt += f"\n{investor_profile}"
+
+        logger.info("stress_test_agent.stress_test.start", ticker=ticker, thesis_title=thesis_title)
+
+        try:
+            response = await self._client.chat_completion(
+                messages=[
+                    {"role": "system", "content": _SYSTEM_PROMPT_CANONICAL},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.2,
+                response_format={"type": "json_object"},
+            )
+            raw = self._client.extract_text(response)
+            result = CanonicalOutput.model_validate(json.loads(raw))
+        except (json.JSONDecodeError, ValidationError) as exc:
+            logger.error("stress_test_agent.stress_test.parse_error", ticker=ticker, error=str(exc))
+            raise ValueError(f"Failed to parse StressTestAgent.stress_test response: {exc}") from exc
+        except AIError:
+            logger.error("stress_test_agent.stress_test.api_error", ticker=ticker)
+            raise
+
+        logger.info(
+            "stress_test_agent.stress_test.complete",
+            ticker=ticker,
+            verdict=str(result.verdict),
+            invalidation_prob=result.invalidation_probability,
+        )
+
+        await self._log_interaction_canonical(
+            session=session,
+            user_id=user_id,
+            ticker=ticker,
+            result=result,
+        )
+
+        return result
+
+    # ------------------------------------------------------------------
+    # Legacy method — backward compat for review_service etc.
+    # ------------------------------------------------------------------
 
     async def run(
         self,
@@ -83,28 +253,13 @@ class StressTestAgent:
         thesis_summary: str,
         assumptions: list[str],
         scenarios: list[str] | None = None,
-        session: AsyncSession | None = None,
+        session: "AsyncSession | None" = None,
         user_id: str | None = None,
         trigger: str = "stress_test",
     ) -> StressTestOutput:
-        """Run stress test scenarios against a thesis.
+        """[LEGACY] Run stress test scenarios. Returns local StressTestOutput.
 
-        Args:
-            ticker:          Stock ticker (e.g. "VCB").
-            thesis_summary:  Plain-text thesis description.
-            assumptions:     Active assumption strings.
-            scenarios:       Optional custom scenarios. If None, AI generates defaults.
-            session:         Optional AsyncSession. When provided, investor profile +
-                             memory context are injected into the prompt.
-            user_id:         Optional user_id for memory logging.
-            trigger:         Trigger label for episodic log.
-
-        Returns:
-            StressTestOutput with per-scenario analysis.
-
-        Raises:
-            AIError: API call failed after retries.
-            ValueError: Response cannot be parsed.
+        Prefer stress_test() for new callers.
         """
         investor_profile = await self._build_investor_profile(session, user_id)
         scenario_block = (
@@ -122,12 +277,12 @@ class StressTestAgent:
         if investor_profile:
             user_prompt += f"\n\n{investor_profile}"
 
-        logger.info("stress_test_agent.start", ticker=ticker)
+        logger.info("stress_test_agent.run.start", ticker=ticker)
 
         try:
             response = await self._client.chat_completion(
                 messages=[
-                    {"role": "system", "content": _SYSTEM_PROMPT},
+                    {"role": "system", "content": _SYSTEM_PROMPT_LEGACY},
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.2,
@@ -136,19 +291,18 @@ class StressTestAgent:
             raw = self._client.extract_text(response)
             result = StressTestOutput.model_validate(json.loads(raw))
         except (json.JSONDecodeError, ValidationError) as exc:
-            logger.error("stress_test_agent.parse_error", ticker=ticker, error=str(exc))
-            raise ValueError(f"Failed to parse StressTestAgent response: {exc}") from exc
+            logger.error("stress_test_agent.run.parse_error", ticker=ticker, error=str(exc))
+            raise ValueError(f"Failed to parse StressTestAgent.run response: {exc}") from exc
         except AIError:
-            logger.error("stress_test_agent.api_error", ticker=ticker)
+            logger.error("stress_test_agent.run.api_error", ticker=ticker)
             raise
 
         logger.info(
-            "stress_test_agent.complete",
+            "stress_test_agent.run.complete",
             ticker=ticker,
             resilience=result.overall_resilience,
         )
 
-        # --- Memory: log interaction (Layer 2) ---
         await self._log_interaction(
             session=session,
             user_id=user_id,
@@ -167,7 +321,6 @@ class StressTestAgent:
         """Build investor profile block via ContextBuilder (includes memory).
 
         Returns empty string when session is None or any error occurs.
-        Owner of assembly logic: ai.ContextBuilder.
         """
         if session is None:
             return ""
@@ -180,6 +333,43 @@ class StressTestAgent:
             logger.warning("stress_test_agent.investor_profile_failed", error=str(exc))
             return ""
 
+    async def _log_interaction_canonical(
+        self,
+        session,
+        user_id: str | None,
+        ticker: str,
+        result,  # src.ai.schemas.StressTestOutput
+    ) -> None:
+        """Memory log for canonical stress_test() path. Fire-and-forget."""
+        if session is None or not user_id:
+            return
+        try:
+            from src.ai.memory.memory_service import InteractionEntry, MemoryService
+
+            threatened = getattr(result, "threatened_assumptions", []) or []
+            critical = [
+                f"{a.description[:60]}: {a.threat_level}"
+                for a in threatened
+                if str(getattr(a, "threat_level", "")).upper() in ("BROKEN", "WEAKENED")
+            ][:5]
+            entry = InteractionEntry(
+                user_id=user_id,
+                agent_type="stress_test",
+                trigger="stress_test_canonical",
+                tickers=[ticker],
+                ai_verdict=str(getattr(result, "verdict", "")),
+                ai_confidence=float(getattr(result, "confidence", 0.0)),
+                ai_key_points=getattr(result, "reasoning", "")[:300] if getattr(result, "reasoning", "") else None,
+                ai_risk_signals="\n".join(critical) if critical else None,
+            )
+            await MemoryService.log_interaction(session, entry)
+        except Exception as exc:
+            logger.warning(
+                "stress_test_agent.memory_log_canonical_failed",
+                ticker=ticker,
+                error=str(exc),
+            )
+
     async def _log_interaction(
         self,
         session,
@@ -188,7 +378,7 @@ class StressTestAgent:
         result: StressTestOutput,
         trigger: str,
     ) -> None:
-        """Fire-and-forget memory log. Never raises."""
+        """Memory log for legacy run() path. Fire-and-forget."""
         if session is None or not user_id:
             return
         try:
@@ -216,3 +406,12 @@ class StressTestAgent:
                 ticker=ticker,
                 error=str(exc),
             )
+
+
+# ---------------------------------------------------------------------------
+# Re-export type alias for type checkers
+# ---------------------------------------------------------------------------
+try:
+    from src.ai.schemas import StressTestOutput as CanonicalStressTestOutput
+except ImportError:
+    CanonicalStressTestOutput = None  # type: ignore[assignment,misc]
