@@ -67,10 +67,17 @@ class AIClient:
         Supported values: 'text', 'json_schema', 'regex' (or omit entirely).
         chat() enforces JSON output via system_prompt instruction instead.
         chat_completion() still accepts response_format for explicit overrides.
+
+    max_tokens defaults:
+        DEFAULT_MAX_TOKENS = 4096  — baseline for most agents.
+        COMPLEX_MAX_TOKENS  = 8192 — for agents with many assumptions/fields
+            (stress_test, briefing). Pass explicitly via max_tokens param.
     """
 
     BASE_URL = "https://api.perplexity.ai"
     DEFAULT_MODEL = "sonar-pro"
+    DEFAULT_MAX_TOKENS = 4096    # raised from 2048 — prevents truncation on medium outputs
+    COMPLEX_MAX_TOKENS = 8192    # for stress_test / briefing with many fields
 
     def __init__(self, api_key: str, timeout: float = 60.0) -> None:
         self._api_key = api_key
@@ -107,7 +114,7 @@ class AIClient:
         messages: list[dict[str, str]],
         model: str | None = None,
         temperature: float = 0.2,
-        max_tokens: int = 2048,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
         response_format: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Low-level chat completion — returns raw API response dict.
@@ -116,7 +123,8 @@ class AIClient:
             messages: List of {role, content} dicts.
             model: Override default model.
             temperature: Sampling temperature (lower = more deterministic).
-            max_tokens: Max tokens in response.
+            max_tokens: Max tokens in response. Default: DEFAULT_MAX_TOKENS (4096).
+                Use COMPLEX_MAX_TOKENS (8192) for stress_test / briefing agents.
             response_format: Optional override. sonar-pro supports only
                 'text', 'json_schema', 'regex'. Do NOT pass
                 {"type": "json_object"} — it will cause HTTP 400.
@@ -176,7 +184,7 @@ class AIClient:
         response_schema: Type[T],
         model: str | None = None,
         temperature: float = 0.2,
-        max_tokens: int = 2048,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
     ) -> T:
         """High-level chat — builds messages, calls API, parses into Pydantic schema.
 
@@ -193,7 +201,9 @@ class AIClient:
             response_schema: Pydantic BaseModel class to parse response into.
             model: Override default model.
             temperature: Sampling temperature.
-            max_tokens: Max tokens in response.
+            max_tokens: Max tokens in response. Default: DEFAULT_MAX_TOKENS (4096).
+                Pass AIClient.COMPLEX_MAX_TOKENS (8192) for agents with many
+                fields: stress_test (5+ assumptions), briefing, sector_rotation.
 
         Returns:
             Parsed instance of response_schema.

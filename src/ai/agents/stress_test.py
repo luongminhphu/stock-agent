@@ -16,6 +16,11 @@ Design note:
     sonar-pro does NOT support response_format={"type": "json_object"}.
     All AI calls use client.chat() which enforces JSON via system prompt.
     Never pass response_format to chat_completion() in this file.
+
+max_tokens note:
+    stress_test() passes AIClient.COMPLEX_MAX_TOKENS (8192) explicitly.
+    A thesis with 5+ assumptions + 5 triggers + 3 macro_risks + reasoning
+    easily exceeds 4000 chars — default 4096 tokens was causing truncation.
 """
 
 from __future__ import annotations
@@ -149,7 +154,9 @@ class StressTestAgent:
     ) -> object:
         """Run adversarial stress-test and return canonical StressTestOutput.
 
-        Uses client.chat() — JSON enforced via system prompt, not response_format.
+        Uses client.chat() with COMPLEX_MAX_TOKENS (8192) to prevent JSON
+        truncation on theses with many assumptions (5+), triggers, and
+        macro_risks fields.
         """
         from src.ai.schemas import StressTestOutput as CanonicalOutput
 
@@ -197,6 +204,7 @@ class StressTestAgent:
                 user_prompt=user_prompt,
                 response_schema=CanonicalOutput,
                 temperature=0.2,
+                max_tokens=AIClient.COMPLEX_MAX_TOKENS,  # 8192 — prevents truncation on complex theses
             )
         except AIError:
             logger.error("stress_test_agent.stress_test.api_error", ticker=ticker)
