@@ -21,11 +21,11 @@ Session strategy:
 """
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Any
 
 from src.platform.event_bus import get_event_bus
 from src.platform.events import RecommendationReadyEvent, SignalDetectedEvent
+from src.platform.logging import get_logger
 from src.ai.prompts.proactive_alert import (
     ProactiveAlertOutput,
     SYSTEM_PROMPT,
@@ -35,7 +35,7 @@ from src.ai.prompts.proactive_alert import (
 if TYPE_CHECKING:
     from src.ai.client import AIClient
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _instance: "ProactiveAlertAgent | None" = None
 

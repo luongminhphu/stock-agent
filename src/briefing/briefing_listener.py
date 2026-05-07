@@ -14,7 +14,6 @@ Boundary:
 """
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -22,8 +21,9 @@ if TYPE_CHECKING:
 
 from src.platform.event_bus import get_event_bus
 from src.platform.events import BriefingReadyEvent, BriefingRequestedEvent
+from src.platform.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class BriefingListener:
