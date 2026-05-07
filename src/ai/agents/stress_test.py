@@ -23,9 +23,11 @@ max_tokens note:
     easily exceeds 4000 chars — default 4096 tokens was causing truncation.
 
 Prompt note:
-    stress_test() uses SYSTEM_PROMPT from src.ai.prompts.stress_test (canonical
-    prompt pack). This ensures Rule 3.5 (evidence vs counter_argument enforcement)
-    and all other prompt-level rules are applied consistently.
+    stress_test() uses SYSTEM_PROMPT + build_user_prompt() from
+    src.ai.prompts.stress_test (canonical prompt pack). build_user_prompt()
+    embeds a schema_example JSON block that anchors AI output format,
+    ensuring all required top-level fields (ticker, thesis_title, verdict,
+    confidence, reasoning) are always present in the response.
     run() (legacy) still uses _SYSTEM_PROMPT_LEGACY defined inline.
 """
 
@@ -37,6 +39,7 @@ from pydantic import BaseModel, Field
 
 from src.ai.client import AIClient, AIError
 from src.ai.prompts.stress_test import SYSTEM_PROMPT as _SYSTEM_PROMPT_CANONICAL
+from src.ai.prompts.stress_test import build_user_prompt as _build_user_prompt
 from src.platform.logging import get_logger
 
 if TYPE_CHECKING:
@@ -99,7 +102,8 @@ class StressTestAgent:
     Two public methods:
         stress_test() — canonical path used by StressTestService.
                          Returns src.ai.schemas.StressTestOutput.
-                         Uses SYSTEM_PROMPT from src.ai.prompts.stress_test.
+                         Uses SYSTEM_PROMPT + build_user_prompt() from
+                         src.ai.prompts.stress_test (prompt pack).
         run()          — legacy path for backward compat.
                          Returns local StressTestOutput.
                          Uses _SYSTEM_PROMPT_LEGACY (inline).
@@ -132,20 +136,27 @@ class StressTestAgent:
     ) -> object:
         """Run adversarial stress-test and return canonical StressTestOutput.
 
-        Uses SYSTEM_PROMPT from src.ai.prompts.stress_test (prompt pack).
+        Uses SYSTEM_PROMPT + build_user_prompt() from src.ai.prompts.stress_test.
+        build_user_prompt() embeds a schema_example JSON block that anchors AI
+        output format — all required top-level fields are always present.
         Uses COMPLEX_MAX_TOKENS (8192) to prevent JSON truncation on complex theses.
         """
         from src.ai.schemas import StressTestOutput as CanonicalOutput
 
         investor_profile = await self._build_investor_profile(session, user_id)
 
-        assumptions_text = "\n".join(
-            f"- [{a.get('id', '?')}] {a.get('description', '')} (status: {a.get('status', 'valid')})"
+        assumptions_list = [
+            {
+                "id": a.get("id", 0),
+                "description": a.get("description", ""),
+                "status": a.get("status", "valid"),
+            }
             for a in assumptions
-        ) or "(chưa có assumptions)"
+        ]
 
-        catalysts_text = "\n".join(f"- {c}" for c in catalysts) or "(không có catalyst pending)"
+        catalysts_list = list(catalysts)
 
+        # Build macro_context string — price context prepended if available
         price_block = ""
         if current_price is not None:
             price_block = f"Giá hiện tại: {current_price:,.0f} VNĐ"
@@ -159,19 +170,23 @@ class StressTestAgent:
                 downside = (stop_loss - current_price) / current_price * 100
                 price_block += f" | Stop: {stop_loss:,.0f} ({downside:.1f}%)"
 
-        user_prompt = (
-            f"Ticker: {ticker}\n"
-            f"Thesis: {thesis_title}\n\n"
-            f"## Summary\n{thesis_summary}\n\n"
-            f"## Assumptions\n{assumptions_text}\n\n"
-            f"## Catalysts (pending)\n{catalysts_text}\n"
-        )
-        if price_block:
-            user_prompt += f"\n## Price Context\n{price_block}\n"
-        if macro_context:
-            user_prompt += f"\n## Market Context\n{macro_context}\n"
+        full_macro_context = "\n".join(filter(None, [price_block, macro_context]))
+
         if investor_profile:
-            user_prompt += f"\n{investor_profile}"
+            full_macro_context = "\n".join(filter(None, [full_macro_context, investor_profile]))
+
+        user_prompt = _build_user_prompt(
+            ticker=ticker,
+            thesis_title=thesis_title,
+            thesis_summary=thesis_summary,
+            assumptions=assumptions_list,
+            catalysts=catalysts_list,
+            current_price=current_price,
+            entry_price=entry_price,
+            target_price=target_price,
+            stop_loss=stop_loss,
+            macro_context=full_macro_context,
+        )
 
         logger.info("stress_test_agent.stress_test.start", ticker=ticker, thesis_title=thesis_title)
 

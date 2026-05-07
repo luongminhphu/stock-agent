@@ -606,8 +606,26 @@ class StressTestOutput(BaseModel):
     )
     @classmethod
     def ensure_str_list(cls, v: object) -> list[object]:
+        """Coerce various AI output shapes to list[str].
+
+        Handles three cases sonar-pro returns in practice:
+          1. str          → wrap in list
+          2. dict         → AI returns macro_risks as {"systematic": [...], "idiosyncratic": [...]}
+                            flatten all values into labelled strings:
+                            "systematic: <item>", "idiosyncratic: <item>"
+          3. list         → return as-is (normal case)
+          4. anything else → empty list (safe fallback)
+        """
         if isinstance(v, str):
             return [v]
+        if isinstance(v, dict):
+            result: list[object] = []
+            for key, val in v.items():
+                if isinstance(val, list):
+                    result.extend(f"{key}: {item}" for item in val)
+                else:
+                    result.append(f"{key}: {val}")
+            return result
         if not isinstance(v, list):
             return []
         return v  # type: ignore[return-value]
