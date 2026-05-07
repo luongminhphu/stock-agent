@@ -59,6 +59,11 @@
      - .brief-context-strip: thêm box-sizing:border-box
        → padding-inline không overflow max-width, brief text canh lề
        đồng bộ với watchlist-layer / workspace-grid
+
+   FIX LOG (2026-05-08):
+     - .signal-card--wide .signal-sub: white-space:normal + overflow:visible
+       + text-overflow:unset + line-height:1.5
+       → scan summary (DGC; NVL; PC1...) no longer clipped to 1 line
 */
 
 /* ── SKIP LINK ──────────────────────────────────── */
@@ -327,6 +332,15 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* FIX (2026-05-08): scan summary in wide card must wrap — multi-ticker text
+   is too long for a single nowrap line inside overflow:hidden container */
+.signal-card--wide .signal-sub {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  line-height: 1.5;
 }
 
 .signal-card--risk .signal-value { color: var(--danger); }
