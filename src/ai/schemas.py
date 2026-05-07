@@ -92,7 +92,44 @@ class ThesisReviewOutput(BaseModel):
         ),
     )
 
-    @field_validator("risk_signals", "next_watch_items", mode="before")
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def coerce_confidence(cls, v: object) -> float:
+        """Coerce AI int scale (0-100) to float (0.0-1.0).
+
+        sonar-pro sometimes returns confidence as an integer 0-100
+        instead of the specified 0.0-1.0 float. Divide by 100 when
+        the value clearly exceeds the valid range.
+        """
+        try:
+            f = float(v)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return 0.0
+        return f / 100.0 if f > 1.0 else f
+
+    @field_validator("risk_signals", mode="before")
+    @classmethod
+    def coerce_risk_signals(cls, v: object) -> list[object]:
+        """Coerce list[dict] → list[str] when AI returns structured risk objects.
+
+        sonar-pro sometimes returns risk_signals as:
+            [{"signal": "...", "severity": "HIGH"}, ...]
+        instead of the specified list[str]. Extract the 'signal' text;
+        fall back to str(item) for any other dict shape.
+        """
+        if isinstance(v, str):
+            return [v]
+        if not isinstance(v, list):
+            return []
+        coerced: list[object] = []
+        for item in v:
+            if isinstance(item, dict):
+                coerced.append(item.get("signal") or str(item))
+            else:
+                coerced.append(item)
+        return coerced
+
+    @field_validator("next_watch_items", mode="before")
     @classmethod
     def ensure_list(cls, v: object) -> list[object]:
         if isinstance(v, str):
