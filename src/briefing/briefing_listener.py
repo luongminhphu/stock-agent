@@ -59,6 +59,7 @@ class BriefingListener:
             get_briefing_agent,
             get_pnl_service,
             get_quote_service,
+            get_sector_rotation_agent,
         )
         from src.platform.db import AsyncSessionLocal
         from src.watchlist.service import WatchlistService
@@ -101,6 +102,7 @@ class BriefingListener:
                     briefing_agent=get_briefing_agent(),
                     pnl_service=get_pnl_service()(session),
                     session=session,
+                    sector_rotation_agent=get_sector_rotation_agent(),
                 )
                 if phase == "morning":
                     brief = await svc.generate_morning_brief(user_id=self._user_id)
