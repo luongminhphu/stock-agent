@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     eod_channel_id: str = ""
     scheduler_user_id: str = ""
 
+    # Alert channel — Wave 4 proactive alerts (RecommendationListener)
+    # Bỏ trống = dùng chung morning_channel_id
+    discord_alert_channel_id: str = ""
+
     # Thesis Drift Detector
     thesis_drift_threshold_pct: float = 5.0   # Trigger review khi |drift| >= threshold
     thesis_drift_cooldown_hours: float = 4.0  # Không re-trigger trong N giờ sau lần review gần nhất
@@ -94,6 +98,15 @@ class Settings(BaseSettings):
     def briefing_scheduler_enabled(self) -> bool:
         """True only when all three scheduler fields are configured."""
         return bool(self.morning_channel_id or self.eod_channel_id) and bool(self.scheduler_user_id)
+
+    @property
+    def alert_channel_id(self) -> str:
+        """Resolve alert channel: discord_alert_channel_id → morning_channel_id.
+
+        RecommendationListener dùng property này để không cần hardcode fallback chain.
+        Nếu muốn tách channel riêng cho AI alert, set DISCORD_ALERT_CHANNEL_ID trong .env.
+        """
+        return self.discord_alert_channel_id or self.morning_channel_id
 
     @property
     def is_single_user(self) -> bool:

@@ -69,7 +69,7 @@ class RecommendationListener:
             logger.error(
                 "recommendation_listener.no_channel",
                 symbol=event.symbol,
-                hint="Set DISCORD_ALERT_CHANNEL_ID in settings",
+                hint="Set DISCORD_ALERT_CHANNEL_ID (or MORNING_CHANNEL_ID as fallback) in .env",
             )
             return
 
@@ -98,14 +98,13 @@ class RecommendationListener:
     async def _get_alert_channel(
         self,
     ) -> discord.TextChannel | None:
+        """Resolve the Discord alert channel via settings.alert_channel_id.
+
+        Priority (defined in Settings): discord_alert_channel_id → morning_channel_id.
+        Set DISCORD_ALERT_CHANNEL_ID in .env to use a dedicated alert channel;
+        leave it blank to share the morning briefing channel.
         """
-        Resolve the Discord alert channel.
-        Priority: settings.discord_alert_channel_id → settings.discord_channel_id
-        """
-        channel_id_str = (
-            getattr(settings, "discord_alert_channel_id", None)
-            or getattr(settings, "discord_channel_id", None)
-        )
+        channel_id_str = settings.alert_channel_id or None
         if not channel_id_str:
             return None
 
