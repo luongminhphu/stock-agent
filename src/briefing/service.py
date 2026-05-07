@@ -9,6 +9,7 @@ Responsibilities:
 - collect active thesis context from thesis segment (optional)
 - collect past decision lessons from thesis segment (optional, via LessonService)
 - collect investor profile context from ai segment (optional, via ContextBuilder)
+- collect sector rotation signal from ai segment (optional, via SectorRotationAgent)
 - call BriefingAgent for morning/EOD narrative
 - persist BriefSnapshot via BriefSnapshotRepository
 - return structured BriefOutput to adapters
@@ -51,21 +52,26 @@ class BriefingService:
     """Orchestrates morning and end-of-day brief generation.
 
     Args:
-        watchlist_service:  reads user watchlist tickers.
-        quote_service:      fetches bulk market quotes.
-        briefing_agent:     AI agent that writes the brief narrative.
-        pnl_service:        optional — reads open position P&L for portfolio context.
-                            Pass None to skip portfolio section gracefully.
-        thesis_service:     optional — reads active theses for thesis context injection.
-                            When provided, stop_loss levels and key assumptions are
-                            formatted and sent to the AI so it can force ACT_TODAY
-                            for any ticker approaching invalidation.
-                            Pass None to skip thesis section gracefully.
-        session:            AsyncSession for persisting BriefSnapshot, reading past
-                            decision lessons via LessonService, and building investor
-                            profile context via ContextBuilder.
-                            Pass None to skip persistence, lesson injection, and
-                            investor profile injection.
+        watchlist_service:      reads user watchlist tickers.
+        quote_service:          fetches bulk market quotes.
+        briefing_agent:         AI agent that writes the brief narrative.
+        pnl_service:            optional — reads open position P&L for portfolio context.
+                                Pass None to skip portfolio section gracefully.
+        thesis_service:         optional — reads active theses for thesis context injection.
+                                When provided, stop_loss levels and key assumptions are
+                                formatted and sent to the AI so it can force ACT_TODAY
+                                for any ticker approaching invalidation.
+                                Pass None to skip thesis section gracefully.
+        session:                AsyncSession for persisting BriefSnapshot, reading past
+                                decision lessons via LessonService, and building investor
+                                profile context via ContextBuilder.
+                                Pass None to skip persistence, lesson injection, and
+                                investor profile injection.
+        sector_rotation_agent:  optional — AI agent that detects sector divergence signals.
+                                When provided, its actionable_insight and top watchlist
+                                crosscheck items are appended to market_context so the
+                                BriefingAgent can factor in rotation dynamics.
+                                Pass None (default) to skip — preserves existing behavior.
     """
 
     def __init__(
@@ -76,6 +82,7 @@ class BriefingService:
         pnl_service: object | None = None,
         thesis_service: object | None = None,
         session: AsyncSession | None = None,
+        sector_rotation_agent: object | None = None,
     ) -> None:
         self._watchlist_service = watchlist_service
         self._quote_service = quote_service
@@ -84,6 +91,7 @@ class BriefingService:
         self._thesis_service = thesis_service
         self._session = session
         self._repo = BriefSnapshotRepository(session) if session is not None else None
+        self._sector_rotation_agent = sector_rotation_agent
 
     async def generate_morning_brief(self, user_id: str) -> BriefOutput:
         ctx = await self._collect_contexts(user_id, phase="morning")
@@ -95,6 +103,7 @@ class BriefingService:
             has_thesis=bool(ctx["thesis_context"]),
             has_lessons=bool(ctx["past_lessons"]),
             has_investor_profile=bool(ctx["investor_profile"]),
+            has_sector_rotation=bool(ctx["sector_rotation_injected"]),
             context_source=ctx["context_source"],
         )
         result = await self._agent.morning_brief(
@@ -118,6 +127,7 @@ class BriefingService:
             has_thesis=bool(ctx["thesis_context"]),
             has_lessons=bool(ctx["past_lessons"]),
             has_investor_profile=bool(ctx["investor_profile"]),
+            has_sector_rotation=bool(ctx["sector_rotation_injected"]),
             context_source=ctx["context_source"],
         )
         result = await self._agent.eod_brief(
@@ -149,7 +159,7 @@ class BriefingService:
 
         Returns a dict with keys:
           tickers, market_context, portfolio_context, thesis_context,
-          past_lessons, investor_profile, context_source.
+          past_lessons, investor_profile, context_source, sector_rotation_injected.
         """
         tickers = await self._get_watchlist_tickers(user_id)
         market_context = await self._build_market_context(tickers, phase=phase)
@@ -172,6 +182,12 @@ class BriefingService:
             thesis_context = await self._build_thesis_context(user_id)
             past_lessons = await self._build_lesson_context(user_id)
 
+        # Sector rotation block is already embedded inside market_context.
+        # We track whether it was injected for observability in logs only.
+        sector_rotation_injected = (
+            self._sector_rotation_agent is not None and bool(tickers)
+        )
+
         return {
             "tickers": tickers,
             "market_context": market_context,
@@ -180,6 +196,7 @@ class BriefingService:
             "past_lessons": past_lessons,
             "investor_profile": investor_profile,
             "context_source": context_source,
+            "sector_rotation_injected": sector_rotation_injected,
         }
 
     async def _persist(
@@ -255,7 +272,52 @@ class BriefingService:
         lines.append(
             "Tập trung vào mã biến động mạnh, tín hiệu risk-on/risk-off, và watchlist-specific alerts."
         )
+
+        # Sector rotation block — optional, non-blocking.
+        # Appended after the price snapshot so the AI can cross-reference
+        # individual ticker moves against sector-level divergence signals.
+        rotation_block = await self._build_sector_rotation_block(tickers)
+        if rotation_block:
+            lines.append(rotation_block)
+
         return "\n".join(lines)
+
+    async def _build_sector_rotation_block(self, tickers: list[str]) -> str:
+        """Build sector rotation divergence block for market context injection.
+
+        Calls SectorRotationAgent.analyze(tickers) and formats actionable_insight
+        plus the top 3 watchlist_crosscheck items into a plain-text block.
+
+        Non-blocking: returns "" if agent is not injected, output is empty,
+        or any error occurs. Brief generation must never be blocked by this.
+
+        Owner: briefing (adapter). Rotation logic stays in ai segment.
+        Cap: watchlist_crosscheck[:3] to avoid context bloat.
+        """
+        if self._sector_rotation_agent is None or not tickers:
+            return ""
+        try:
+            result = await self._sector_rotation_agent.analyze(tickers=tickers)  # type: ignore[attr-defined]
+            if not result:
+                return ""
+
+            actionable = getattr(result, "actionable_insight", None)
+            crosscheck = getattr(result, "watchlist_crosscheck", None) or []
+
+            if not actionable and not crosscheck:
+                return ""
+
+            lines = ["", "--- Sector Rotation Signal ---"]
+            if actionable:
+                lines.append(f"Tín hiệu rotation: {actionable}")
+            if crosscheck:
+                lines.append("Divergence watchlist:")
+                for item in crosscheck[:3]:
+                    lines.append(f"  • {item}")
+            return "\n".join(lines)
+        except Exception as exc:
+            logger.warning("briefing.sector_rotation_block_failed", error=str(exc))
+            return ""
 
     async def _build_portfolio_context(self, user_id: str) -> str:
         """Build portfolio P&L snapshot string for AI context injection.
