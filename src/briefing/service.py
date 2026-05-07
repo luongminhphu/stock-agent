@@ -17,6 +17,14 @@ Non-responsibilities:
 - no Discord formatting (see formatter.py)
 - no HTTP route logic
 - no scheduler logic
+
+Context dedup rule (Wave 1):
+  When ContextBuilder successfully produces a non-empty investor_profile block,
+  that block already contains thesis health, portfolio bias, and recent lessons.
+  In that case, the individual thesis_context / portfolio_context / past_lessons
+  strings are zeroed out before being passed to the agent so each fact reaches
+  the AI exactly once. The individual _build_* methods are kept intact as
+  fallback for when session is None (scheduler, tests without DB).
 """
 
 from __future__ import annotations
@@ -87,6 +95,7 @@ class BriefingService:
             has_thesis=bool(ctx["thesis_context"]),
             has_lessons=bool(ctx["past_lessons"]),
             has_investor_profile=bool(ctx["investor_profile"]),
+            context_source=ctx["context_source"],
         )
         result = await self._agent.morning_brief(
             market_context=ctx["market_context"],
@@ -109,6 +118,7 @@ class BriefingService:
             has_thesis=bool(ctx["thesis_context"]),
             has_lessons=bool(ctx["past_lessons"]),
             has_investor_profile=bool(ctx["investor_profile"]),
+            context_source=ctx["context_source"],
         )
         result = await self._agent.eod_brief(
             market_context=ctx["market_context"],
@@ -128,18 +138,48 @@ class BriefingService:
     async def _collect_contexts(self, user_id: str, phase: str) -> dict:
         """Gather all context strings needed by morning and EOD brief generation.
 
-        Runs context builders sequentially (each is individually fault-tolerant).
-        Returns a dict with keys: tickers, market_context, portfolio_context,
-        thesis_context, past_lessons, investor_profile.
+        Dedup rule:
+          ContextBuilder (via _build_investor_profile_context) already assembles
+          thesis health, portfolio bias, and recent lessons into investor_profile.
+          When investor_profile is non-empty we zero out the three overlapping
+          individual context strings so the AI receives each fact exactly once.
+
+          When session is None (scheduler, tests), investor_profile is always ""
+          and the individual builders run as normal fallback.
+
+        Returns a dict with keys:
+          tickers, market_context, portfolio_context, thesis_context,
+          past_lessons, investor_profile, context_source.
         """
         tickers = await self._get_watchlist_tickers(user_id)
+        market_context = await self._build_market_context(tickers, phase=phase)
+
+        # Try ContextBuilder first — it aggregates thesis + portfolio + lessons
+        investor_profile = await self._build_investor_profile_context(user_id)
+
+        if investor_profile:
+            # ContextBuilder produced a full block — skip individual builders
+            # to avoid sending the same facts twice to the AI.
+            context_source = "context_builder"
+            portfolio_context = ""
+            thesis_context = ""
+            past_lessons = ""
+        else:
+            # Fallback: session=None or ContextBuilder found no data.
+            # Run individual builders so the brief is never empty-handed.
+            context_source = "individual_builders"
+            portfolio_context = await self._build_portfolio_context(user_id)
+            thesis_context = await self._build_thesis_context(user_id)
+            past_lessons = await self._build_lesson_context(user_id)
+
         return {
             "tickers": tickers,
-            "market_context": await self._build_market_context(tickers, phase=phase),
-            "portfolio_context": await self._build_portfolio_context(user_id),
-            "thesis_context": await self._build_thesis_context(user_id),
-            "past_lessons": await self._build_lesson_context(user_id),
-            "investor_profile": await self._build_investor_profile_context(user_id),
+            "market_context": market_context,
+            "portfolio_context": portfolio_context,
+            "thesis_context": thesis_context,
+            "past_lessons": past_lessons,
+            "investor_profile": investor_profile,
+            "context_source": context_source,
         }
 
     async def _persist(
@@ -185,8 +225,8 @@ class BriefingService:
         now = datetime.now().strftime("%H:%M %d/%m/%Y")
         if not tickers:
             return (
-                f"Th\u1eddi \u0111i\u1ec3m: {now}. Kh\u00f4ng c\u00f3 m\u00e3 n\u00e0o trong watchlist. "
-                f"H\u00e3y vi\u1ebft {phase} brief \u1edf m\u1ee9c th\u1ecb tr\u01b0\u1eddng chung, nh\u1ea5n m\u1ea1nh qu\u1ea3n tr\u1ecb r\u1ee7i ro."
+                f"Thời điểm: {now}. Không có mã nào trong watchlist. "
+                f"Hãy viết {phase} brief ở mức thị trường chung, nhấn mạnh quản trị rủi ro."
             )
 
         try:
@@ -194,31 +234,34 @@ class BriefingService:
         except Exception as exc:
             logger.warning("briefing.quote_fetch_failed", tickers=tickers, error=str(exc))
             return (
-                f"Th\u1eddi \u0111i\u1ec3m: {now}. Kh\u00f4ng l\u1ea5y \u0111\u01b0\u1ee3c quote cho watchlist {', '.join(tickers)}. "
-                f"H\u00e3y vi\u1ebft {phase} brief th\u1eadn tr\u1ecdng, n\u00eau r\u00f5 thi\u1ebfu d\u1eef li\u1ec7u gi\u00e1 realtime."
+                f"Thời điểm: {now}. Không lấy được quote cho watchlist {', '.join(tickers)}. "
+                f"Hãy viết {phase} brief thận trọng, nêu rõ thiếu dữ liệu giá realtime."
             )
 
-        lines = [f"Th\u1eddi \u0111i\u1ec3m: {now}. Pha: {phase}.", "Watchlist snapshot:"]
+        lines = [f"Thời điểm: {now}. Pha: {phase}.", "Watchlist snapshot:"]
         for q in quotes:
             try:
                 info = symbol_registry.resolve(q.ticker)
-                meta = f" | {info.name} | Ng\u00e0nh: {info.sector}"
+                meta = f" | {info.name} | Ngành: {info.sector}"
             except Exception:
                 meta = ""
 
             volume = getattr(q, "volume", None)
             volume_text = f", volume={volume:,}" if volume is not None else ""
             lines.append(
-                f"- {q.ticker}{meta}: gi\u00e1={q.price:,.0f}, change={q.change:,.0f}, "
+                f"- {q.ticker}{meta}: giá={q.price:,.0f}, change={q.change:,.0f}, "
                 f"change_pct={q.change_pct:.2f}%{volume_text}"
             )
         lines.append(
-            "T\u1eadp trung v\u00e0o m\u00e3 bi\u1ebfn \u0111\u1ed9ng m\u1ea1nh, t\u00edn hi\u1ec7u risk-on/risk-off, v\u00e0 watchlist-specific alerts."
+            "Tập trung vào mã biến động mạnh, tín hiệu risk-on/risk-off, và watchlist-specific alerts."
         )
         return "\n".join(lines)
 
     async def _build_portfolio_context(self, user_id: str) -> str:
         """Build portfolio P&L snapshot string for AI context injection.
+
+        Fallback path — only called when ContextBuilder did not produce an
+        investor_profile block (session=None or no data found).
 
         Returns empty string if pnl_service is not injected, portfolio is
         empty, or any error occurs — brief generation must never be blocked
@@ -232,24 +275,24 @@ class BriefingService:
                 return ""
 
             lines = [
-                f"Portfolio: {len(pnl.positions)} v\u1ecb th\u1ebf \u0111ang m\u1edf, "
-                f"t\u1ed5ng gi\u00e1 tr\u1ecb th\u1ecb tr\u01b0\u1eddng={pnl.total_market_value:,.0f} VN\u0110, "
-                f"l\u00e3i/l\u1ed7 ch\u01b0a th\u1ef1c hi\u1ec7n={pnl.total_unrealized_pnl:+,.0f} VN\u0110 "
+                f"Portfolio: {len(pnl.positions)} vị thế đang mở, "
+                f"tổng giá trị thị trường={pnl.total_market_value:,.0f} VNĐ, "
+                f"lãi/lỗ chưa thực hiện={pnl.total_unrealized_pnl:+,.0f} VNĐ "
                 f"({pnl.total_unrealized_pct:+.2f}%).",
-                "Chi ti\u1ebft t\u1eebng v\u1ecb th\u1ebf:",
+                "Chi tiết từng vị thế:",
             ]
             for pos in pnl.positions:
                 pct_str = f"{pos.unrealized_pct:+.2f}%"
-                pnl_str = f"{pos.unrealized_pnl:+,.0f} VN\u0110"
+                pnl_str = f"{pos.unrealized_pnl:+,.0f} VNĐ"
                 lines.append(
-                    f"- {pos.ticker}: gi\u00e1 v\u1ed1n={pos.avg_cost:,.0f}, "
-                    f"gi\u00e1 hi\u1ec7n t\u1ea1i={pos.current_price:,.0f}, "
-                    f"l\u00e3i/l\u1ed7={pnl_str} ({pct_str}), "
-                    f"kh\u1ed1i l\u01b0\u1ee3ng={pos.qty:,.0f}"
+                    f"- {pos.ticker}: giá vốn={pos.avg_cost:,.0f}, "
+                    f"giá hiện tại={pos.current_price:,.0f}, "
+                    f"lãi/lỗ={pnl_str} ({pct_str}), "
+                    f"khối lượng={pos.qty:,.0f}"
                 )
             if pnl.errors:
                 lines.append(
-                    f"L\u01b0u \u00fd: kh\u00f4ng l\u1ea5y \u0111\u01b0\u1ee3c gi\u00e1 cho {', '.join(pnl.errors.keys())} \u2014 b\u1ecf qua c\u00e1c m\u00e3 n\u00e0y."
+                    f"Lưu ý: không lấy được giá cho {', '.join(pnl.errors.keys())} — bỏ qua các mã này."
                 )
             return "\n".join(lines)
         except Exception as exc:
@@ -258,6 +301,9 @@ class BriefingService:
 
     async def _build_thesis_context(self, user_id: str) -> str:
         """Build active thesis summary string for AI context injection.
+
+        Fallback path — only called when ContextBuilder did not produce an
+        investor_profile block (session=None or no data found).
 
         Formats each active thesis as: ticker, title, stop_loss (if set),
         and up to 3 key assumptions. This gives the AI enough data to
@@ -276,12 +322,12 @@ class BriefingService:
             if not theses:
                 return ""
 
-            lines = [f"C\u00f3 {len(theses)} thesis \u0111ang active:"]
+            lines = [f"Có {len(theses)} thesis đang active:"]
             for t in theses:
                 stop_loss_str = (
                     f", stop_loss={t.stop_loss:,.0f}"
                     if getattr(t, "stop_loss", None) is not None
-                    else " (ch\u01b0a \u0111\u1eb7t stop_loss)"
+                    else " (chưa đặt stop_loss)"
                 )
                 target_str = (
                     f", target={t.target_price:,.0f}"
@@ -294,10 +340,10 @@ class BriefingService:
                 assumptions = getattr(t, "assumptions", []) or []
                 for a in assumptions[:3]:
                     desc = getattr(a, "description", str(a))
-                    lines.append(f"  \u2022 Gi\u1ea3 \u0111\u1ecbnh: {desc}")
+                    lines.append(f"  • Giả định: {desc}")
             lines.append(
-                "N\u1ebfu gi\u00e1 hi\u1ec7n t\u1ea1i (t\u1eeb Watchlist snapshot) \u0111ang ti\u1ebfp c\u1eadn stop_loss c\u1ee7a b\u1ea5t k\u1ef3 thesis \u2014"
-                " xu\u1ea5t ACT_TODAY cho ticker \u0111\u00f3."
+                "Nếu giá hiện tại (từ Watchlist snapshot) đang tiếp cận stop_loss của bất kỳ thesis —"
+                " xuất ACT_TODAY cho ticker đó."
             )
             return "\n".join(lines)
         except Exception as exc:
@@ -306,6 +352,9 @@ class BriefingService:
 
     async def _build_lesson_context(self, user_id: str) -> str:
         """Build past decision lesson string for AI personalisation.
+
+        Fallback path — only called when ContextBuilder did not produce an
+        investor_profile block (session=None or no data found).
 
         Queries the last 5 evaluated DecisionLog records for this user via
         LessonService and returns a formatted string for prompt injection.
@@ -329,6 +378,16 @@ class BriefingService:
         Calls ContextBuilder(session).build(user_id) → render_for_agent() to
         produce a pre-rendered plain-text block that BriefingAgent injects into
         the morning/EOD prompt for personalised prioritized_actions.
+
+        This block already contains:
+          - [Investor profile] — risk appetite, avoid list, preferred sectors
+          - [Thesis health]    — ThesisHealthSnapshot V3 (urgency-sorted)
+          - [Portfolio hiện tại] — P&L with sector key_metrics
+          - [Recent lessons]   — last 3 decision lessons
+
+        When this method returns a non-empty string, _collect_contexts() will
+        skip the individual portfolio/thesis/lesson builders to avoid sending
+        the same facts twice to the AI.
 
         Owner: ai segment (ContextBuilder). This method is a thin adapter —
         it does NOT contain profile assembly logic.
