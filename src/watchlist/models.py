@@ -41,6 +41,7 @@ class AlertConditionType(enum.StrEnum):
     CHANGE_PCT_UP = "change_pct_up"
     CHANGE_PCT_DOWN = "change_pct_down"
     VOLUME_SPIKE = "volume_spike"
+    THESIS_TRIGGER = "thesis_trigger"  # narrative watch rule from StressTestSubscriber
 
 
 class AlertStatus(enum.StrEnum):
@@ -134,6 +135,12 @@ class Alert(Base):
     auto_reactivate: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
+    # --- Thesis trigger rule fields (nullable — only set for THESIS_TRIGGER alerts) ---
+    label: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    thesis_id: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
+    dedup_key: Mapped[str | None] = mapped_column(String(128), index=True, nullable=True)
+    source_event_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    priority: Mapped[str | None] = mapped_column(String(16), nullable=True)  # HIGH / MEDIUM / LOW
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -153,7 +160,12 @@ class Alert(Base):
         change_pct: float,
         volume_ratio: float,
     ) -> bool:
-        """Check if this alert should fire. Does NOT mutate state."""
+        """Check if this alert should fire. Does NOT mutate state.
+
+        THESIS_TRIGGER alerts are narrative watch rules — they are never
+        triggered automatically by price/volume data. They must be
+        dismissed or reactivated manually by the investor.
+        """
         if self.status != AlertStatus.ACTIVE:
             return False
         match self.condition_type:
@@ -167,6 +179,8 @@ class Alert(Base):
                 return change_pct <= -self.threshold
             case AlertConditionType.VOLUME_SPIKE:
                 return volume_ratio >= self.threshold
+            case AlertConditionType.THESIS_TRIGGER:
+                return False  # narrative-only; never auto-triggered
             case _:
                 return False
 
