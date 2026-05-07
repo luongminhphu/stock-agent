@@ -28,6 +28,13 @@ Quy tắc bắt buộc:
    - BROKEN   = đã có bằng chứng HIỆN TẠI phủ nhận (giá, số liệu, tin tức gần nhất)
    - WEAKENED = scenario có khả năng phủ nhận trong 3-6 tháng tới
    - INTACT   = scenario không ảnh hưởng đến assumption này
+3.5. evidence vs counter_argument PHẢI KHÁC NHAU và ĐỀU BẮT BUỘC:
+   - evidence    = BẰNG CHỨNG THỰC TẾ đang có: giá, số liệu gần nhất, tin tức đã xảy ra.
+                   Ví dụ tốt: "VN-Index -8% trong 3 tuần, dư nợ margin toàn ngành giảm 12% QoQ theo SSI Research"
+                   Nếu không có bằng chứng cụ thể: "Chưa có bằng chứng thực tế — scenario còn hypothetical"
+                   KHÔNG ĐƯỢC để trống hoặc null.
+   - counter_argument = LẬP LUẬN phủ nhận assumption: lý do logic tại sao assumption có thể sai.
+   Hai field này KHÔNG được lặp lại nhau. evidence = dữ kiện, counter_argument = luận điểm.
 4. macro_risks: liệt kê riêng rủi ro idiosyncratic (đặc thù cổ phiếu) và
    systematic (ngành / vĩ mô). Label rõ từng loại.
 5. suggested_triggers_to_watch: PHẢI là số liệu / sự kiện CÓ THỂ ĐO ĐƯỢC.
@@ -114,8 +121,11 @@ def build_user_prompt(
                     "assumption_id": 0,
                     "description": "...",
                     "threat_level": "BROKEN|WEAKENED|INTACT",
-                    "evidence": "Bằng chứng cụ thể hiện tại (giá / số liệu / tin tức)",
-                    "counter_argument": "Lý do mạnh nhất để phủ nhận assumption này",
+                    "evidence": (
+                        "BẰNG CHỨNG THỰC TẾ: giá / số liệu / tin tức đã xảy ra. "
+                        "KHÔNG để trống. Nếu chưa có: 'Chưa có bằng chứng thực tế — scenario còn hypothetical'"
+                    ),
+                    "counter_argument": "LẬP LUẬN logic tại sao assumption này có thể sai — khác với evidence",
                 }
             ],
             "surviving_assumptions": ["assumption vẫn INTACT trong scenario trên..."],
