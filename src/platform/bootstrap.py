@@ -36,6 +36,7 @@ _memory_consolidator: object | None = None
 _proactive_alert_agent: object | None = None
 _thesis_review_listener: object | None = None
 _briefing_listener: object | None = None
+_stress_test_subscriber: object | None = None  # G4: StressTest → Watchlist bridge
 _opportunity_screen_scheduler: object | None = None  # Wave 3
 _opportunity_screen_subscriber: object | None = None  # Wave 3
 
@@ -51,7 +52,7 @@ async def bootstrap() -> None:
     global _stress_test_agent, _replay_agent, _snapshot_scheduler
     global _sector_rotation_agent, _investor_profile_service, _pnl_service_class
     global _memory_consolidator, _proactive_alert_agent, _thesis_review_listener
-    global _briefing_listener
+    global _briefing_listener, _stress_test_subscriber
     global _opportunity_screen_scheduler, _opportunity_screen_subscriber
 
     if _quote_service is None:
@@ -228,6 +229,26 @@ async def bootstrap() -> None:
                 "platform.bootstrap.briefing_listener_skipped",
                 reason="scheduler_user_id not configured",
             )
+
+    # ── G4: StressTest → Watchlist trigger bridge ────────────────────────────
+    # StressTestService emits StressTestCompletedEvent after every AI run.
+    # StressTestSubscriber consumes it and auto-creates ThesisTriggerAlert rules
+    # in the watchlist segment — thesis segment has zero knowledge of watchlist.
+    #
+    # Dedup is double-guarded:
+    #   1. EventBus dedup_window=2h  — suppresses re-emit on bot retry
+    #   2. DB dedup_key "stress:{thesis_id}:{idx}" — survives restarts
+    if _stress_test_subscriber is None:
+        from src.watchlist.stress_test_subscriber import StressTestSubscriber
+        from src.platform.db import AsyncSessionLocal
+
+        _stress_test_subscriber = StressTestSubscriber(
+            session_factory=AsyncSessionLocal,
+            min_invalidation_prob=0.25,   # skip kịch bản xác suất thấp
+            max_triggers_per_test=5,      # cap noise từ AI output dài
+        )
+        _stress_test_subscriber.register()
+        logger.info("platform.bootstrap.stress_test_subscriber_ready")
 
     # ── Wave 3: Opportunity Screen (scheduler + subscriber) ─────────────────────────────────
     # Subscriber registered here (bus already started).
@@ -435,6 +456,14 @@ def get_thesis_review_listener():
 
 def get_briefing_listener():
     return _briefing_listener
+
+
+def get_stress_test_subscriber():
+    """Return the StressTestSubscriber singleton.
+
+    Returns None if bootstrap() has not been called yet.
+    """
+    return _stress_test_subscriber
 
 
 def get_opportunity_screen_scheduler():
