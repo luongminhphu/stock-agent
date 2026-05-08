@@ -18,7 +18,7 @@ from src.bot.commands.base import BaseCog
 from src.briefing.formatter import format_eod_brief, format_morning_brief
 from src.briefing.service import BriefingService
 from src.platform.bootstrap import get_briefing_agent, get_pnl_service, get_quote_service
-from src.platform.db import async_session_factory
+from src.platform.db import get_session
 from src.platform.logging import get_logger
 from src.watchlist.service import WatchlistService
 
@@ -72,7 +72,7 @@ class BriefFeedbackView(discord.ui.View):
     async def _record(self, interaction: discord.Interaction, outcome: str) -> None:
         """Persist feedback and send ephemeral confirmation."""
         try:
-            async with async_session_factory() as session:
+            async with get_session() as session:
                 svc = BriefingService(
                     watchlist_service=WatchlistService(session=session),
                     quote_service=get_quote_service(),
