@@ -50,6 +50,7 @@ class BriefingAgent:
         thesis_context: str = "",
         past_lessons: str = "",
         investor_profile: str = "",
+        feedback_summary: str = "",
         # Memory wiring params (optional, backward-compat)
         session: AsyncSession | None = None,
         user_id: str | None = None,
@@ -68,6 +69,11 @@ class BriefingAgent:
                                ContextBuilder.render_for_agent(). When provided,
                                the AI personalises prioritized_actions against the
                                investor's risk appetite, avoid list, and patterns.
+            feedback_summary:  Optional feedback calibration string from
+                               BriefingService._build_feedback_context(). When
+                               provided, the AI adjusts action count and specificity
+                               based on the user's historical acted_rate. Does not
+                               override risk_appetite from investor_profile.
             session:           Optional AsyncSession for memory logging.
             user_id:           Optional user_id for memory logging.
             trigger:           Trigger label for episodic log (default: morning_brief).
@@ -80,6 +86,7 @@ class BriefingAgent:
             thesis_context=thesis_context,
             past_lessons=past_lessons,
             investor_profile=investor_profile,
+            feedback_summary=feedback_summary,
         )
         logger.debug(
             "briefing_agent.morning_brief.calling_ai",
@@ -88,6 +95,7 @@ class BriefingAgent:
             has_thesis=bool(thesis_context),
             has_lessons=bool(past_lessons),
             has_investor_profile=bool(investor_profile),
+            has_feedback_summary=bool(feedback_summary),
         )
         result: BriefOutput = await self._client.chat(
             system_prompt=SYSTEM_PROMPT,
@@ -121,6 +129,7 @@ class BriefingAgent:
         thesis_context: str = "",
         past_lessons: str = "",
         investor_profile: str = "",
+        feedback_summary: str = "",
         # Memory wiring params (optional, backward-compat)
         session: AsyncSession | None = None,
         user_id: str | None = None,
@@ -140,6 +149,9 @@ class BriefingAgent:
             thesis_context:    Optional active thesis summary string.
             past_lessons:      Optional formatted lesson history from LessonService.
             investor_profile:  Optional pre-rendered investor profile block.
+            feedback_summary:  Optional feedback calibration string. Same semantics
+                               as morning_brief — adjusts action specificity only,
+                               never overrides investor_profile constraints.
             session:           Optional AsyncSession for memory logging.
             user_id:           Optional user_id for memory logging.
         """
@@ -151,6 +163,7 @@ class BriefingAgent:
             thesis_context=thesis_context,
             past_lessons=past_lessons,
             investor_profile=investor_profile,
+            feedback_summary=feedback_summary,
         )
         logger.debug(
             "briefing_agent.eod_brief.calling_ai",
@@ -159,6 +172,7 @@ class BriefingAgent:
             has_thesis=bool(thesis_context),
             has_lessons=bool(past_lessons),
             has_investor_profile=bool(investor_profile),
+            has_feedback_summary=bool(feedback_summary),
         )
         result: BriefOutput = await self._client.chat(
             system_prompt=SYSTEM_PROMPT,

@@ -41,6 +41,16 @@ Nếu được cung cấp INVESTOR PROFILE:
 - Dùng avoid để bỏ qua các ticker/sector nhà đầu tư không muốn tiếp cận.
 - Tham chiếu patterns/lessons để cá nhân hóa reason trong mỗi action.
 
+Nếu được cung cấp FEEDBACK LỊCH SỬ (acted_rate):
+- acted_rate < 25%: giới hạn tối đa 2 ACT_TODAY. Mỗi action phải hoàn chỉnh trong 1 câu,
+  không có subordinate clause.
+- acted_rate 25-65%: giữ nguyên số lượng action. Đảm bảo mỗi ACT_TODAY có confidence >= 0.7.
+  WATCH_MORE và SKIP_TODAY phải có reason phân biệt rõ ràng, không được viết chung chung.
+- acted_rate > 65%: giữ nguyên số lượng và độ chi tiết. Tập trung vào reason đủ rõ
+  để user tự tin thực hiện mà không cần thêm thông tin.
+- KHÔNG dùng feedback để thay đổi risk_appetite hay bỏ qua avoid list —
+  các rule đó thuộc INVESTOR PROFILE và có độ ưu tiên cao hơn.
+
 JSON schema:
 {
   "headline": "string — TỐI ĐA 15 từ, mô tả tâm lý/xu hướng chính, không liệt kê ticker",
@@ -85,20 +95,24 @@ def build_morning_prompt(
     thesis_context: str = "",
     past_lessons: str = "",
     investor_profile: str = "",
+    feedback_summary: str = "",
 ) -> str:
     """Build morning brief prompt.
 
     Args:
-        market_context: Market data string (quotes, indices, news summary).
+        market_context:    Market data string (quotes, indices, news summary).
         watchlist_tickers: List of ticker symbols in the user's watchlist.
-        extra_context: Optional free-form additional context.
+        extra_context:     Optional free-form additional context.
         portfolio_context: Optional portfolio P&L snapshot string.
-        thesis_context: Optional active thesis summary string.
-        past_lessons: Optional formatted string from LessonService.
-        investor_profile: Optional pre-rendered investor profile block from
+        thesis_context:    Optional active thesis summary string.
+        past_lessons:      Optional formatted string from LessonService.
+        investor_profile:  Optional pre-rendered investor profile block from
             ContextBuilder.render_for_agent(). When provided, AI personalises
             actions against the investor's risk appetite, avoid list, and
             known behavioral patterns.
+        feedback_summary:  Optional feedback calibration string from
+            BriefingService._build_feedback_context(). When provided, AI
+            adjusts action count and specificity based on acted_rate.
     """
     ticker_str = ", ".join(watchlist_tickers) if watchlist_tickers else "(không có watchlist)"
     prompt = f"""[MORNING BRIEF — Phiên hôm nay]
@@ -119,6 +133,9 @@ Watchlist cần theo dõi: {ticker_str}
 
     if past_lessons:
         prompt += f"\nLịch sử quyết định của nhà đầu tư này (dùng để cá nhân hóa phân tích):\n{past_lessons}\n"
+
+    if feedback_summary:
+        prompt += f"\nFeedback lịch sử:\n{feedback_summary}\n"
 
     if extra_context:
         prompt += f"\nThông tin bổ sung:\n{extra_context}\n"
@@ -152,6 +169,11 @@ Watchlist cần theo dõi: {ticker_str}
             " nếu có pattern thua lỗ từng xảy ra → nâng thêm cảnh báo trong reason."
             " Nếu có tín hiệu tương tự từng CORRECT → tăng confidence cho action tương ứng."
         )
+    if feedback_summary:
+        prompt += (
+            " Điều chỉnh số lượng và độ cụ thể của prioritized_actions"
+            " theo FEEDBACK LỊCH SỬ ở trên."
+        )
     return prompt
 
 
@@ -163,6 +185,7 @@ def build_eod_prompt(
     thesis_context: str = "",
     past_lessons: str = "",
     investor_profile: str = "",
+    feedback_summary: str = "",
 ) -> str:
     """Build EOD brief prompt.
 
@@ -177,6 +200,8 @@ def build_eod_prompt(
                            triggering ACT_TODAY recommendation for next session.
         past_lessons:      Optional formatted lesson history from LessonService.
         investor_profile:  Optional pre-rendered investor profile block.
+        feedback_summary:  Optional feedback calibration string. Same semantics
+                           as morning prompt — adjusts action specificity only.
     """
     ticker_str = ", ".join(watchlist_tickers) if watchlist_tickers else "(không có watchlist)"
     prompt = f"""[EOD BRIEF — Tổng kết phiên]
@@ -197,6 +222,9 @@ Watchlist cần review: {ticker_str}
 
     if past_lessons:
         prompt += f"\nLịch sử quyết định của nhà đầu tư này (dùng để cá nhân hóa phân tích):\n{past_lessons}\n"
+
+    if feedback_summary:
+        prompt += f"\nFeedback lịch sử:\n{feedback_summary}\n"
 
     if extra_context:
         prompt += f"\nThông tin bổ sung:\n{extra_context}\n"
@@ -227,5 +255,10 @@ Watchlist cần review: {ticker_str}
         prompt += (
             " Tham chiếu lịch sử quyết định để cá nhân hóa prioritized_actions cho phiên tới:"
             " nếu có pattern thua lỗ từng xảy ra → nâng thêm cảnh báo trong reason."
+        )
+    if feedback_summary:
+        prompt += (
+            " Điều chỉnh số lượng và độ cụ thể của prioritized_actions"
+            " theo FEEDBACK LỊCH SỬ ở trên."
         )
     return prompt

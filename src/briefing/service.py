@@ -10,6 +10,7 @@ Responsibilities:
 - collect past decision lessons from thesis segment (optional, via LessonService)
 - collect investor profile context from ai segment (optional, via ContextBuilder)
 - collect sector rotation signal from ai segment (optional, via SectorRotationAgent)
+- collect brief feedback summary from readmodel segment (optional, via DashboardService)
 - call BriefingAgent for morning/EOD narrative
 - persist BriefSnapshot via BriefSnapshotRepository
 - return BriefResult(output, snapshot_id) to adapters
@@ -27,6 +28,13 @@ Context dedup rule (Wave 1):
   strings are zeroed out before being passed to the agent so each fact reaches
   the AI exactly once. The individual _build_* methods are kept intact as
   fallback for when session is None (scheduler, tests without DB).
+
+Feedback calibration (Wave 3):
+  _build_feedback_context() reads acted_rate from readmodel (lazy import).
+  Requires minimum 10 feedback samples to inject — below that threshold the
+  block is empty and brief generation is unaffected. The feedback string
+  instructs the AI to adjust action count/specificity but never overrides
+  risk_appetite from investor_profile.
 """
 
 from __future__ import annotations
@@ -80,10 +88,11 @@ class BriefingService:
                                 for any ticker approaching invalidation.
                                 Pass None to skip thesis section gracefully.
         session:                AsyncSession for persisting BriefSnapshot, reading past
-                                decision lessons via LessonService, and building investor
-                                profile context via ContextBuilder.
-                                Pass None to skip persistence, lesson injection, and
-                                investor profile injection.
+                                decision lessons via LessonService, building investor
+                                profile context via ContextBuilder, and reading feedback
+                                summary via DashboardService (Wave 3).
+                                Pass None to skip persistence, lesson injection,
+                                investor profile injection, and feedback injection.
         sector_rotation_agent:  optional — AI agent that detects sector divergence signals.
                                 When provided, its actionable_insight and top watchlist
                                 crosscheck items are appended to market_context so the
@@ -121,6 +130,7 @@ class BriefingService:
             has_lessons=bool(ctx["past_lessons"]),
             has_investor_profile=bool(ctx["investor_profile"]),
             has_sector_rotation=bool(ctx["sector_rotation_injected"]),
+            has_feedback_summary=bool(ctx["feedback_summary"]),
             context_source=ctx["context_source"],
         )
         result = await self._agent.morning_brief(
@@ -130,6 +140,7 @@ class BriefingService:
             thesis_context=ctx["thesis_context"],
             past_lessons=ctx["past_lessons"],
             investor_profile=ctx["investor_profile"],
+            feedback_summary=ctx["feedback_summary"],
         )
         snapshot_id = await self._persist(
             user_id=user_id, phase="morning", output=result, tickers=ctx["tickers"]
@@ -147,6 +158,7 @@ class BriefingService:
             has_lessons=bool(ctx["past_lessons"]),
             has_investor_profile=bool(ctx["investor_profile"]),
             has_sector_rotation=bool(ctx["sector_rotation_injected"]),
+            has_feedback_summary=bool(ctx["feedback_summary"]),
             context_source=ctx["context_source"],
         )
         result = await self._agent.eod_brief(
@@ -156,6 +168,7 @@ class BriefingService:
             thesis_context=ctx["thesis_context"],
             past_lessons=ctx["past_lessons"],
             investor_profile=ctx["investor_profile"],
+            feedback_summary=ctx["feedback_summary"],
         )
         snapshot_id = await self._persist(
             user_id=user_id, phase="eod", output=result, tickers=ctx["tickers"]
@@ -224,9 +237,15 @@ class BriefingService:
           When session is None (scheduler, tests), investor_profile is always ""
           and the individual builders run as normal fallback.
 
+        Feedback (Wave 3):
+          _build_feedback_context() is independent of the dedup rule — it reads
+          acted_rate from readmodel and is always attempted when session is set.
+          Returns "" when sample < 10 or any error occurs.
+
         Returns a dict with keys:
           tickers, market_context, portfolio_context, thesis_context,
-          past_lessons, investor_profile, context_source, sector_rotation_injected.
+          past_lessons, investor_profile, feedback_summary,
+          context_source, sector_rotation_injected.
         """
         tickers = await self._get_watchlist_tickers(user_id)
         market_context = await self._build_market_context(tickers, phase=phase)
@@ -249,6 +268,9 @@ class BriefingService:
             thesis_context = await self._build_thesis_context(user_id)
             past_lessons = await self._build_lesson_context(user_id)
 
+        # Feedback summary — independent of dedup rule, always attempted.
+        feedback_summary = await self._build_feedback_context(user_id)
+
         # Sector rotation block is already embedded inside market_context.
         # We track whether it was injected for observability in logs only.
         sector_rotation_injected = (
@@ -262,6 +284,7 @@ class BriefingService:
             "thesis_context": thesis_context,
             "past_lessons": past_lessons,
             "investor_profile": investor_profile,
+            "feedback_summary": feedback_summary,
             "context_source": context_source,
             "sector_rotation_injected": sector_rotation_injected,
         }
@@ -499,4 +522,75 @@ class BriefingService:
             return render_for_agent(ctx)
         except Exception as exc:
             logger.warning("briefing.investor_profile_context_failed", error=str(exc))
+            return ""
+
+    async def _build_feedback_context(self, user_id: str) -> str:
+        """Build feedback calibration string for AI tone adjustment.
+
+        Cross-segment read: calls readmodel.DashboardService (lazy import to
+        avoid circular dependency at module load time).
+
+        Requires minimum 10 feedback samples in the last 30 days before
+        injecting — below that threshold the string is empty and brief
+        generation is unaffected.
+
+        The three tone buckets map acted_rate to concrete output rules:
+          low  (<25%): max 2 ACT_TODAY, 1-sentence actions
+          mid  (25-65%): keep count, require confidence >= 0.7 for ACT_TODAY
+          high (>65%): keep count and detail, focus on clear reason
+
+        Feedback NEVER overrides risk_appetite from investor_profile —
+        that constraint is documented in SYSTEM_PROMPT.
+
+        Never raises — all exceptions are logged and swallowed.
+        """
+        if self._session is None:
+            return ""
+        try:
+            from src.readmodel.dashboard_service import DashboardService  # lazy import
+
+            summary = await DashboardService(self._session).get_brief_feedback_summary(user_id)
+
+            acted_rate = summary.get("acted_rate_30d")
+            total = summary.get("total_feedbacks_30d", 0)
+
+            if acted_rate is None or total < 10:
+                return ""
+
+            if acted_rate < 0.25:
+                tone = (
+                    "acted_rate thấp (<25%) — user thường bỏ qua brief. "
+                    "Viết action cực kỳ ngắn, cụ thể, có thể thực hiện ngay trong 1 bước. "
+                    "Giảm số lượng ACT_TODAY xuống còn tối đa 2."
+                )
+                tone_bucket = "low"
+            elif acted_rate > 0.65:
+                tone = (
+                    "acted_rate cao (>65%) — user thường follow brief. "
+                    "Giữ nguyên độ chi tiết hiện tại. "
+                    "Đảm bảo reason đủ rõ để user tự tin thực hiện."
+                )
+                tone_bucket = "high"
+            else:
+                tone = (
+                    "acted_rate trung bình — user hành động có chọn lọc. "
+                    "Ưu tiên ACT_TODAY có confidence >= 0.7. "
+                    "WATCH_MORE và SKIP_TODAY nên có reason phân biệt rõ ràng."
+                )
+                tone_bucket = "mid"
+
+            logger.info(
+                "briefing.feedback_context_built",
+                user_id=user_id,
+                acted_rate=acted_rate,
+                total_feedbacks=total,
+                tone_bucket=tone_bucket,
+            )
+
+            return (
+                f"Feedback 30 ngày qua: acted_rate={acted_rate:.0%} "
+                f"(trên {total} briefs). {tone}"
+            )
+        except Exception as exc:
+            logger.warning("briefing.feedback_context_failed", user_id=user_id, error=str(exc))
             return ""
