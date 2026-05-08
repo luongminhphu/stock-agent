@@ -285,7 +285,7 @@ async def get_scan_latest_single_user(
 
 
 # ---------------------------------------------------------------------------
-# 6. Latest brief snapshot
+# 6. Brief snapshots + feedback
 # ---------------------------------------------------------------------------
 
 
@@ -306,6 +306,33 @@ async def get_brief_latest_single_user(
 ) -> dict[str, Any] | None:
     svc = DashboardService(session)
     return await svc.get_brief_latest(_default_user_id(), phase=phase)
+
+
+@router.get("/dashboard/{user_id}/brief/feedback-summary")
+async def get_brief_feedback_summary(
+    user_id: str,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    days: Annotated[int, Query(ge=1, le=90, description="Window tính acted_rate (ngày)")] = 30,
+) -> dict[str, Any]:
+    """Brief feedback summary: last outcome + acted rate trong N ngày gần nhất.
+
+    Response shape:
+        last_feedback_outcome  — "acted" | "watching" | "skipped" | null
+        last_feedback_at       — ISO timestamp | null
+        acted_rate_30d         — float 0.0-1.0 | null (null nếu chưa có feedback)
+        total_feedbacks_30d    — int
+    """
+    svc = DashboardService(session)
+    return await svc.get_brief_feedback_summary(user_id, days=days)
+
+
+@router.get("/dashboard/brief/feedback-summary")
+async def get_brief_feedback_summary_single_user(
+    session: Annotated[AsyncSession, Depends(get_db)],
+    days: Annotated[int, Query(ge=1, le=90, description="Window tính acted_rate (ngày)")] = 30,
+) -> dict[str, Any]:
+    svc = DashboardService(session)
+    return await svc.get_brief_feedback_summary(_default_user_id(), days=days)
 
 
 # ---------------------------------------------------------------------------

@@ -3,16 +3,17 @@
 Owner: readmodel segment.
 
 Endpoints served (via src/api/routes/readmodel.py):
-    get_stats()                  — delegates to StatsService
-    get_theses_list()            — delegates to ThesisQueryService
-    get_thesis_detail()          — delegates to ThesisQueryService
-    get_upcoming_catalysts()     — delegates to ThesisQueryService
-    get_scan_latest()            — snapshot scan gan nhat (WatchlistScan)
-    get_brief_latest()           — snapshot brief gan nhat (BriefSnapshot)
-    get_verdict_accuracy()       — delegates to BacktestingService
-    get_thesis_performances()    — delegates to BacktestingService
-    get_price_snapshots()        — delegates to BacktestingService
-    get_portfolio()              — delegates to PortfolioQueryService
+    get_stats()                     — delegates to StatsService
+    get_theses_list()               — delegates to ThesisQueryService
+    get_thesis_detail()             — delegates to ThesisQueryService
+    get_upcoming_catalysts()        — delegates to ThesisQueryService
+    get_scan_latest()               — snapshot scan gan nhat (WatchlistScan)
+    get_brief_latest()              — snapshot brief gan nhat (BriefSnapshot)
+    get_brief_feedback_summary()    — feedback summary cho brief (BriefFeedback)
+    get_verdict_accuracy()          — delegates to BacktestingService
+    get_thesis_performances()       — delegates to BacktestingService
+    get_price_snapshots()           — delegates to BacktestingService
+    get_portfolio()                 — delegates to PortfolioQueryService
 
 Design rules:
 - This class is a thin facade — no query logic lives here.
@@ -23,9 +24,10 @@ Design rules:
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.logging import get_logger
@@ -171,6 +173,73 @@ class DashboardService:
         except Exception as exc:
             logger.warning("get_brief_latest.db_error", error=str(exc))
             return None
+
+    async def get_brief_feedback_summary(
+        self, user_id: str, days: int = 30
+    ) -> dict[str, Any]:
+        """Return brief feedback summary for user.
+
+        Schema:
+            last_feedback_outcome  — "acted" | "watching" | "skipped" | None
+            last_feedback_at       — ISO timestamp | None
+            acted_rate_30d         — float 0.0-1.0 | None (None khi chua co feedback nao)
+            total_feedbacks_30d    — int
+        """
+        try:
+            from src.briefing.models import BriefFeedback
+        except ImportError:
+            logger.warning(
+                "get_brief_feedback_summary.import_error",
+                detail="BriefFeedback model not available",
+            )
+            return {
+                "last_feedback_outcome": None,
+                "last_feedback_at": None,
+                "acted_rate_30d": None,
+                "total_feedbacks_30d": 0,
+            }
+
+        try:
+            # Latest feedback row for this user
+            latest = (
+                await self._session.execute(
+                    select(BriefFeedback)
+                    .where(BriefFeedback.user_id == user_id)
+                    .order_by(BriefFeedback.created_at.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+
+            # 30-day window stats
+            since = datetime.now(UTC) - timedelta(days=days)
+            rows_30d = (
+                await self._session.execute(
+                    select(BriefFeedback.outcome)
+                    .where(
+                        BriefFeedback.user_id == user_id,
+                        BriefFeedback.created_at >= since,
+                    )
+                )
+            ).scalars().all()
+
+            total = len(rows_30d)
+            acted_count = sum(1 for o in rows_30d if o == "acted")
+            acted_rate = round(acted_count / total, 3) if total > 0 else None
+
+            return {
+                "last_feedback_outcome": latest.outcome if latest else None,
+                "last_feedback_at": latest.created_at.isoformat() if latest else None,
+                "acted_rate_30d": acted_rate,
+                "total_feedbacks_30d": total,
+            }
+        except Exception as exc:
+            logger.warning("get_brief_feedback_summary.db_error", error=str(exc))
+            return {
+                "last_feedback_outcome": None,
+                "last_feedback_at": None,
+                "acted_rate_30d": None,
+                "total_feedbacks_30d": 0,
+            }
 
     # ------------------------------------------------------------------
     # 7-9. Backtesting — delegates to BacktestingService
