@@ -31,10 +31,10 @@ def schema_block(model: type[BaseModel]) -> str:
 
     Usage::
 
-        SYSTEM_PROMPT = f"""
+        SYSTEM_PROMPT = f\"""
         Bạn là ... (persona + rules)
         {schema_block(MyOutput)}
-        """
+        \"""
     """
     schema = model.model_json_schema()
     schema_str = json.dumps(schema, ensure_ascii=False, indent=2)
