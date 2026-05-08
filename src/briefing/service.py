@@ -12,7 +12,8 @@ Responsibilities:
 - collect sector rotation signal from ai segment (optional, via SectorRotationAgent)
 - call BriefingAgent for morning/EOD narrative
 - persist BriefSnapshot via BriefSnapshotRepository
-- return structured BriefOutput to adapters
+- return BriefResult(output, snapshot_id) to adapters
+- record user feedback (acted/watching/skipped) via record_feedback()
 
 Non-responsibilities:
 - no Discord formatting (see formatter.py)
@@ -31,6 +32,7 @@ Context dedup rule (Wave 1):
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,7 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.ai.agents.briefing import BriefingAgent
 from src.ai.context_builder import ContextBuilder, render_for_agent
 from src.ai.schemas import BriefOutput
-from src.briefing.models import BriefSnapshot
+from src.briefing.models import BriefFeedback, BriefSnapshot
 from src.briefing.repository import BriefSnapshotRepository
 from src.market.registry import registry as symbol_registry
 from src.platform.logging import get_logger
@@ -46,6 +48,21 @@ from src.thesis.lesson_service import LessonService
 from src.watchlist.service import WatchlistService
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class BriefResult:
+    """Return value of generate_morning_brief / generate_eod_brief.
+
+    Keeps BriefOutput and the persisted snapshot_id together so bot adapters
+    can attach feedback buttons without a second DB query.
+
+    snapshot_id is None when persistence was skipped (session=None or flush
+    failed — brief was still delivered, just not persisted).
+    """
+
+    output: BriefOutput
+    snapshot_id: int | None
 
 
 class BriefingService:
@@ -93,7 +110,7 @@ class BriefingService:
         self._repo = BriefSnapshotRepository(session) if session is not None else None
         self._sector_rotation_agent = sector_rotation_agent
 
-    async def generate_morning_brief(self, user_id: str) -> BriefOutput:
+    async def generate_morning_brief(self, user_id: str) -> BriefResult:
         ctx = await self._collect_contexts(user_id, phase="morning")
         logger.info(
             "briefing.generate_morning",
@@ -114,10 +131,12 @@ class BriefingService:
             past_lessons=ctx["past_lessons"],
             investor_profile=ctx["investor_profile"],
         )
-        await self._persist(user_id=user_id, phase="morning", output=result, tickers=ctx["tickers"])
-        return result
+        snapshot_id = await self._persist(
+            user_id=user_id, phase="morning", output=result, tickers=ctx["tickers"]
+        )
+        return BriefResult(output=result, snapshot_id=snapshot_id)
 
-    async def generate_eod_brief(self, user_id: str) -> BriefOutput:
+    async def generate_eod_brief(self, user_id: str) -> BriefResult:
         ctx = await self._collect_contexts(user_id, phase="eod")
         logger.info(
             "briefing.generate_eod",
@@ -138,8 +157,56 @@ class BriefingService:
             past_lessons=ctx["past_lessons"],
             investor_profile=ctx["investor_profile"],
         )
-        await self._persist(user_id=user_id, phase="eod", output=result, tickers=ctx["tickers"])
-        return result
+        snapshot_id = await self._persist(
+            user_id=user_id, phase="eod", output=result, tickers=ctx["tickers"]
+        )
+        return BriefResult(output=result, snapshot_id=snapshot_id)
+
+    async def record_feedback(
+        self,
+        brief_snapshot_id: int,
+        user_id: str,
+        outcome: str,
+    ) -> None:
+        """Persist a user feedback row for a brief snapshot.
+
+        outcome must be one of: "acted" | "watching" | "skipped".
+        Append-only — does not overwrite previous feedback rows.
+        Failures are logged and swallowed so a DB error never surfaces
+        to the Discord interaction handler.
+        """
+        if self._session is None:
+            logger.warning(
+                "briefing.record_feedback.no_session",
+                brief_snapshot_id=brief_snapshot_id,
+                user_id=user_id,
+                outcome=outcome,
+            )
+            return
+        try:
+            feedback = BriefFeedback(
+                brief_snapshot_id=brief_snapshot_id,
+                user_id=user_id,
+                outcome=outcome,
+            )
+            self._session.add(feedback)
+            await self._session.flush()
+            await self._session.commit()
+            logger.info(
+                "briefing.feedback_saved",
+                feedback_id=feedback.id,
+                brief_snapshot_id=brief_snapshot_id,
+                user_id=user_id,
+                outcome=outcome,
+            )
+        except Exception as exc:
+            logger.error(
+                "briefing.feedback_save_failed",
+                brief_snapshot_id=brief_snapshot_id,
+                user_id=user_id,
+                outcome=outcome,
+                error=str(exc),
+            )
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -205,12 +272,15 @@ class BriefingService:
         phase: str,
         output: BriefOutput,
         tickers: list[str],
-    ) -> None:
-        """Save a BriefSnapshot if a session was injected. Failures are
-        logged and swallowed so a DB error never blocks the brief delivery.
+    ) -> int | None:
+        """Save a BriefSnapshot if a session was injected.
+
+        Returns the snapshot id on success, None if persistence was skipped
+        or failed. Failures are logged and swallowed so a DB error never
+        blocks the brief delivery.
         """
         if self._repo is None:
-            return
+            return None
         try:
             snapshot = BriefSnapshot(
                 user_id=user_id,
@@ -226,6 +296,7 @@ class BriefingService:
                 snapshot_id=snapshot.id,
                 ticker_count=len(tickers),
             )
+            return snapshot.id
         except Exception as exc:
             logger.error(
                 "briefing.snapshot_save_failed",
@@ -233,6 +304,7 @@ class BriefingService:
                 phase=phase,
                 error=str(exc),
             )
+            return None
 
     async def _get_watchlist_tickers(self, user_id: str) -> list[str]:
         items = await self._watchlist_service.list_items(user_id=user_id)
@@ -274,8 +346,6 @@ class BriefingService:
         )
 
         # Sector rotation block — optional, non-blocking.
-        # Appended after the price snapshot so the AI can cross-reference
-        # individual ticker moves against sector-level divergence signals.
         rotation_block = await self._build_sector_rotation_block(tickers)
         if rotation_block:
             lines.append(rotation_block)
@@ -324,10 +394,6 @@ class BriefingService:
 
         Fallback path — only called when ContextBuilder did not produce an
         investor_profile block (session=None or no data found).
-
-        Returns empty string if pnl_service is not injected, portfolio is
-        empty, or any error occurs — brief generation must never be blocked
-        by portfolio data unavailability.
         """
         if self._pnl_service is None:
             return ""
@@ -366,14 +432,6 @@ class BriefingService:
 
         Fallback path — only called when ContextBuilder did not produce an
         investor_profile block (session=None or no data found).
-
-        Formats each active thesis as: ticker, title, stop_loss (if set),
-        and up to 3 key assumptions. This gives the AI enough data to
-        detect when a price is approaching invalidation territory.
-
-        Returns empty string if thesis_service is not injected, no active
-        theses exist, or any error occurs — brief generation must never be
-        blocked by thesis data unavailability.
         """
         if self._thesis_service is None:
             return ""
@@ -417,13 +475,6 @@ class BriefingService:
 
         Fallback path — only called when ContextBuilder did not produce an
         investor_profile block (session=None or no data found).
-
-        Queries the last 5 evaluated DecisionLog records for this user via
-        LessonService and returns a formatted string for prompt injection.
-
-        Returns empty string if session is not injected, no evaluated
-        decisions exist yet, or any error occurs — brief generation must
-        never be blocked by lesson data unavailability.
         """
         if self._session is None:
             return ""
@@ -437,28 +488,9 @@ class BriefingService:
     async def _build_investor_profile_context(self, user_id: str) -> str:
         """Build investor profile block via ContextBuilder.
 
-        Calls ContextBuilder(session).build(user_id) → render_for_agent() to
-        produce a pre-rendered plain-text block that BriefingAgent injects into
-        the morning/EOD prompt for personalised prioritized_actions.
-
-        This block already contains:
-          - [Investor profile] — risk appetite, avoid list, preferred sectors
-          - [Thesis health]    — ThesisHealthSnapshot V3 (urgency-sorted)
-          - [Portfolio hiện tại] — P&L with sector key_metrics
-          - [Recent lessons]   — last 3 decision lessons
-
         When this method returns a non-empty string, _collect_contexts() will
         skip the individual portfolio/thesis/lesson builders to avoid sending
         the same facts twice to the AI.
-
-        Owner: ai segment (ContextBuilder). This method is a thin adapter —
-        it does NOT contain profile assembly logic.
-
-        Returns empty string when:
-        - session is not injected (scheduler/test without DB)
-        - ContextBuilder finds no data in any source
-        - any unexpected error occurs
-        Brief generation must never be blocked by profile unavailability.
         """
         if self._session is None:
             return ""
