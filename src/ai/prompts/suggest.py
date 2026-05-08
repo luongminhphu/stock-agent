@@ -12,7 +12,7 @@ Nhiệm vụ: xây dựng luận điểm đầu tư có cấu trúc cho cổ phi
 
 Yêu cầu output JSON với cấu trúc chính xác sau:
 {
-  "ticker": "<MÃ_CỔ_PHIẼU>",
+  "ticker": "<MÃ_CỔ_PHIẾU>",
   "thesis_title": "<tiêu đề ngắn súc tích>",
   "thesis_summary": "<2-3 câu mô tả luận điểm>",
   "entry_price_hint": <số hoặc null>,
@@ -36,7 +36,7 @@ Quy tắc bắt buộc:
 - assumptions và catalysts PHẢI là array of objects có các field trên, KHÔNG được là array of string
 - Chỉ dùng dữ liệu thực tế, không suy diễn quá mức
 - Nếu không đủ thông tin về giá, đặt các trường price = null
-- Chỉ trả về raw JSON object, không bọ trong markdown, không có ```json
+- Chỉ trả về raw JSON object, không bọc trong markdown, không có ```json
 - Dòng đầu tiên phải là dấu '{', dòng cuối phải là dấu '}'
 """
 

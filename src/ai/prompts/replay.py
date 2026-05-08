@@ -13,6 +13,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from src.ai.prompts._spec import PromptSpec, schema_block
+from src.ai.schemas import ReplayOutput
+
 
 @dataclass
 class ReplayContext:
@@ -51,22 +54,16 @@ Quy tắc bắt buộc:
 3. `what_went_right` và `what_went_wrong` phải là các bullet ngắn, rất cụ thể.
 4. `pattern_detected` chỉ điền khi thật sự có dấu hiệu hành vi lặp lại từ context; nếu không có thì để null.
 5. `suggested_adjustment` phải actionable, ngắn gọn.
-6. Trả về JSON hợp lệ, không có markdown.
+6. `confidence` phải là string: "HIGH" | "MEDIUM" | "LOW".
+7. Trả về JSON hợp lệ, không có markdown.
 
-JSON schema:
-{
-  "decision_id": <int>,
-  "ticker": "...",
-  "decision_type": "BUY" | "SELL" | "HOLD" | "ADD" | "REDUCE",
-  "outcome_verdict": "CORRECT" | "INCORRECT" | "MIXED",
-  "what_went_right": ["..."],
-  "what_went_wrong": ["..."],
-  "key_lesson": "...",
-  "pattern_detected": "..." | null,
-  "suggested_adjustment": "..." | null,
-  "confidence": "HIGH" | "MEDIUM" | "LOW"
-}
-"""
+""" + schema_block(ReplayOutput)
+
+SPEC = PromptSpec(
+    agent_name="ReplayAgent",
+    system_prompt=SYSTEM_PROMPT,
+    output_schema=ReplayOutput,
+)
 
 
 def build_user_prompt(ctx: ReplayContext) -> str:
@@ -106,4 +103,4 @@ Kết quả sau {ctx.outcome_horizon_days} ngày:
 - P&L: {outcome_pnl}
 - Nhận định sơ bộ: {ctx.outcome_verdict_hint or 'N/A'}
 
-Hãy phân tích quyết định này và trả về JSON theo schema đã định."""
+Hãy phân tích quyết định này và trả về JSON theo schema ở trên."""

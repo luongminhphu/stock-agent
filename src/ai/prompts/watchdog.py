@@ -13,6 +13,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from src.ai.prompts._spec import PromptSpec, schema_block
+from src.ai.schemas import WatchdogOutput
+
 
 @dataclass
 class AssumptionSnapshot:
@@ -48,30 +51,21 @@ Bạn là chuyên gia giám sát luận điểm đầu tư cho thị trường c
 Nhiệm vụ: Đánh giá sức khoẻ tổng thể của một thesis đầu tư dựa trên trạng thái hiện tại của từng assumption, giá cổ phiếu, và bối cảnh vĩ mô.
 
 Quy tắc bắt buộc:
-1. Phải đánh giá TỪ̀NG assumption riêng lẻ — không được gộp chung.
+1. Phải đánh giá TỪNG assumption riêng lẻ — không được gộp chung.
 2. `threat_level` cho mỗi assumption: "none" | "low" | "medium" | "high".
 3. `threat_reason` phải gắn với dữ liệu cụ thể — không được nói chung chung.
 4. `recommended_action`: "HOLD" | "REVIEW_SOON" | "REVIEW_URGENT" | "CONSIDER_EXIT".
 5. `overall_health`: "HEALTHY" khi health_score ≥70, "WARNING" 40–69, "CRITICAL" <40.
 6. Trả về JSON hợp lệ, không có markdown hoặc giải thích ngoài JSON.
+7. `confidence` phải là string: "HIGH" | "MEDIUM" | "LOW".
 
-JSON schema:
-{
-  "health_score": <int 0-100>,
-  "overall_health": "HEALTHY" | "WARNING" | "CRITICAL",
-  "threatened_assumptions": [
-    {
-      "assumption_id": <int>,
-      "description": "...",
-      "threat_level": "none" | "low" | "medium" | "high",
-      "threat_reason": "..."
-    }
-  ],
-  "recommended_action": "HOLD" | "REVIEW_SOON" | "REVIEW_URGENT" | "CONSIDER_EXIT",
-  "summary": "<1-2 câu tóm tắt tình trạng thesis>",
-  "confidence": "HIGH" | "MEDIUM" | "LOW"
-}
-"""
+""" + schema_block(WatchdogOutput)
+
+SPEC = PromptSpec(
+    agent_name="WatchdogAgent",
+    system_prompt=SYSTEM_PROMPT,
+    output_schema=WatchdogOutput,
+)
 
 
 def build_user_prompt(ctx: WatchdogContext, investor_profile: str = "") -> str:
@@ -131,7 +125,7 @@ Assumptions ({len(ctx.assumptions)}):
 Bối cảnh vĩ mô: {ctx.macro_context}
 Tin tức gần nhất: {ctx.recent_news}{stale_note}
 
-Đánh giá sức khoẻ thesis và trả về JSON theo schema đã định."""
+Đánh giá sức khoẻ thesis và trả về JSON theo schema ở trên."""
 
     if investor_profile:
         prompt += f"\n\n{investor_profile}"

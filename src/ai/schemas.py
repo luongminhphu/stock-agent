@@ -30,6 +30,30 @@ class RiskLevel(StrEnum):
 
 
 # ---------------------------------------------------------------------------
+# Shared validators
+# ---------------------------------------------------------------------------
+
+
+def _coerce_confidence(v: object) -> float:
+    """Coerce AI confidence output to float 0.0-1.0.
+
+    Handles three shapes returned in practice:
+      - float 0.0-1.0  → pass through
+      - int/float >1.0 → divide by 100 (AI used 0-100 scale)
+      - str 'HIGH' | 'MEDIUM' | 'LOW' → map to 0.85 / 0.60 / 0.35
+      - anything else  → 0.0
+    """
+    _STR_MAP = {"HIGH": 0.85, "MEDIUM": 0.60, "LOW": 0.35}
+    if isinstance(v, str):
+        return _STR_MAP.get(v.upper(), 0.0)
+    try:
+        f = float(v)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0.0
+    return f / 100.0 if f > 1.0 else f
+
+
+# ---------------------------------------------------------------------------
 # Thesis Review — AI recommendations (user must confirm before applying)
 # ---------------------------------------------------------------------------
 
@@ -255,6 +279,7 @@ class BriefOutput(BaseModel):
     )
     # Deprecated: kept for backward compat with old BriefSnapshot records and bot renders.
     # New code should read prioritized_actions instead.
+    # Do NOT add new callers referencing this field — remove when bot fully migrated.
     action_items: list[str] = Field(
         default_factory=list,
         description="[DEPRECATED] Flat action list. Superseded by prioritized_actions.",
@@ -717,6 +742,144 @@ class SectorRotationOutput(BaseModel):
     @field_validator("leading_sectors", "lagging_sectors", "watchlist_crosscheck", mode="before")
     @classmethod
     def ensure_sector_list(cls, v: object) -> list[object]:
+        if not isinstance(v, list):
+            return []
+        return v  # type: ignore[return-value]
+
+
+# ---------------------------------------------------------------------------
+# Watchdog  (used by WatchdogAgent)
+# ---------------------------------------------------------------------------
+
+
+class OverallHealth(StrEnum):
+    HEALTHY  = "HEALTHY"
+    WARNING  = "WARNING"
+    CRITICAL = "CRITICAL"
+
+
+class WatchdogThreatLevel(StrEnum):
+    NONE   = "none"
+    LOW    = "low"
+    MEDIUM = "medium"
+    HIGH   = "high"
+
+
+class WatchdogRecommendedAction(StrEnum):
+    HOLD           = "HOLD"
+    REVIEW_SOON    = "REVIEW_SOON"
+    REVIEW_URGENT  = "REVIEW_URGENT"
+    CONSIDER_EXIT  = "CONSIDER_EXIT"
+
+
+class ThreatenedAssumptionWatchdog(BaseModel):
+    """Evaluation of a single assumption threat level."""
+
+    assumption_id: int
+    description: str
+    threat_level: WatchdogThreatLevel
+    threat_reason: str
+
+
+class WatchdogOutput(BaseModel):
+    """Structured output from WatchdogAgent."""
+
+    health_score: int = Field(ge=0, le=100)
+    overall_health: OverallHealth
+    threatened_assumptions: list[ThreatenedAssumptionWatchdog] = Field(default_factory=list)
+    recommended_action: WatchdogRecommendedAction
+    summary: str
+    confidence: float = Field(ge=0.0, le=1.0)
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def coerce_confidence(cls, v: object) -> float:
+        return _coerce_confidence(v)
+
+    @field_validator("threatened_assumptions", mode="before")
+    @classmethod
+    def ensure_list(cls, v: object) -> list[object]:
+        if not isinstance(v, list):
+            return []
+        return v  # type: ignore[return-value]
+
+
+# ---------------------------------------------------------------------------
+# Decision Replay  (used by ReplayAgent)
+# ---------------------------------------------------------------------------
+
+
+class OutcomeVerdict(StrEnum):
+    CORRECT   = "CORRECT"
+    INCORRECT = "INCORRECT"
+    MIXED     = "MIXED"
+
+
+class ReplayOutput(BaseModel):
+    """Structured output from ReplayAgent."""
+
+    decision_id: int
+    ticker: str
+    decision_type: str  # BUY | SELL | HOLD | ADD | REDUCE
+    outcome_verdict: OutcomeVerdict
+    what_went_right: list[str] = Field(default_factory=list)
+    what_went_wrong: list[str] = Field(default_factory=list)
+    key_lesson: str
+    pattern_detected: str | None = None
+    suggested_adjustment: str | None = None
+    confidence: float = Field(ge=0.0, le=1.0)
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def coerce_confidence(cls, v: object) -> float:
+        return _coerce_confidence(v)
+
+    @field_validator("what_went_right", "what_went_wrong", mode="before")
+    @classmethod
+    def ensure_str_list(cls, v: object) -> list[object]:
+        if isinstance(v, str):
+            return [v]
+        if not isinstance(v, list):
+            return []
+        return v  # type: ignore[return-value]
+
+
+# ---------------------------------------------------------------------------
+# Signal Credibility  (used by SignalCredibilityAgent)
+# ---------------------------------------------------------------------------
+
+
+class SignalVerdict(StrEnum):
+    STRONG   = "STRONG"
+    MODERATE = "MODERATE"
+    WEAK     = "WEAK"
+    NOISE    = "NOISE"
+
+
+class SignalCredibilityOutput(BaseModel):
+    """Structured output from SignalCredibilityAgent."""
+
+    score: int = Field(ge=0, le=100)
+    verdict: SignalVerdict
+    supporting_factors: list[str] = Field(default_factory=list)
+    failure_risks: list[str] = Field(
+        default_factory=list,
+        description="Ít nhất 2 lý do cụ thể vì sao tín hiệu có thể là false positive",
+    )
+    volume_confirmed: bool
+    trend_aligned: bool
+    confidence: float = Field(ge=0.0, le=1.0)
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def coerce_confidence(cls, v: object) -> float:
+        return _coerce_confidence(v)
+
+    @field_validator("supporting_factors", "failure_risks", mode="before")
+    @classmethod
+    def ensure_str_list(cls, v: object) -> list[object]:
+        if isinstance(v, str):
+            return [v]
         if not isinstance(v, list):
             return []
         return v  # type: ignore[return-value]

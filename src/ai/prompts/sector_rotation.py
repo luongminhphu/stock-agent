@@ -6,7 +6,22 @@ Owner: ai segment.
 
 from __future__ import annotations
 
-from src.ai.schemas import SectorFlow
+from src.ai.prompts._spec import PromptSpec
+from src.ai.schemas import SectorFlow, SectorRotationOutput
+
+# NOTE: schema_block không dùng ở đây vì prompt đã embed inline JSON example
+# (schema đủ chi tiết để model follow, thêm schema_block sẽ gây trùng lặp).
+# Nếu SectorRotationOutput thay đổi cấu trúc đáng kể, hãy cập nhật inline JSON dưới đây.
+SYSTEM_PROMPT = (
+    "Bạn là chuyên gia phân tích dòng tiền thị trường chứng khoán Việt Nam.\n"
+    "Nhiệm vụ: phân tích dữ liệu sector được cung cấp và xác định xu hướng rotation hôm nay."
+)
+
+SPEC = PromptSpec(
+    agent_name="SectorRotationAgent",
+    system_prompt=SYSTEM_PROMPT,
+    output_schema=SectorRotationOutput,
+)
 
 
 def build_sector_rotation_prompt(
