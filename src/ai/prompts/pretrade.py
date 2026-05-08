@@ -4,6 +4,9 @@ Owner: ai segment.
 
 from __future__ import annotations
 
+from src.ai.prompts._spec import PromptSpec, schema_block
+from src.ai.schemas import PreTradeCheckOutput
+
 SYSTEM_PROMPT = """\
 Bạn là AI trading advisor chuyên thị trường chứng khoán Việt Nam (HOSE, HNX, UPCoM).
 Nhiệm vụ: cross-check nhiều nguồn dữ liệu và đưa ra pre-trade verdict trước khi nhà đầu tư vào lệnh.
@@ -35,9 +38,13 @@ Nếu được cung cấp lịch sử quyết định của nhà đầu tư:
 - Tham chiếu các pattern đã xảy ra trước để cá nhân hóa phân tích.
 - Nếu hiện tại có dấu hiệu giống pattern thua lỗ → đưa vào risk_flags với mức độ rõ ràng.
 - Nếu có tín hiệu tương tự pattern thành công → ghi nhận trong reasoning, tăng confidence.
+""" + schema_block(PreTradeCheckOutput)
 
-Trả lời bằng JSON hợp lệ theo schema được cung cấp, không thêm text ngoài JSON.
-"""
+SPEC = PromptSpec(
+    agent_name="PreTradeAgent",
+    system_prompt=SYSTEM_PROMPT,
+    output_schema=PreTradeCheckOutput,
+)
 
 
 def build_pretrade_prompt(

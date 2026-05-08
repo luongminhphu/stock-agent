@@ -1,6 +1,10 @@
 """Prompt pack for WhyAgent — explain price movement.
 Owner: ai segment.
 """
+from __future__ import annotations
+
+from src.ai.prompts._spec import PromptSpec, schema_block
+from src.ai.schemas import WhyOutput
 
 SYSTEM_PROMPT = """Bạn là chuyên gia phân tích kỹ thuật và cơ bản thị trường chứng khoán Việt Nam.
 Nhiệm vụ: Giải thích nguyên nhân tăng/giảm đột biến của một MÃ CỔ PHIẾU niêm yết trên sàn HOSE/HNX/UPCoM.
@@ -13,7 +17,13 @@ Quy tắc:
 - Vĩ mô chỉ được đề cập nếu có liên hệ trực tiếp và rõ ràng đến công ty hoặc ngành của mã đó.
 - Nếu thiếu dữ liệu, ghi rõ trong data_quality, KHÔNG bịa đặt nguyên nhân, KHÔNG suy luận từ tên mã.
 - confidence thấp khi thiếu tin tức hoặc dữ liệu giá xác nhận.
-"""
+""" + schema_block(WhyOutput)
+
+SPEC = PromptSpec(
+    agent_name="WhyAgent",
+    system_prompt=SYSTEM_PROMPT,
+    output_schema=WhyOutput,
+)
 
 
 def build_why_prompt(
@@ -47,7 +57,7 @@ Dữ liệu OHLCV gần nhất:
         prompt += f"\nThông tin bổ sung:\n{extra_context}\n"
 
     prompt += (
-        "\nYêu cầu: Giải thích nguyên nhân biến động của CỔ PHIẾU này theo JSON schema đã định nghĩa. "
+        "\nYêu cầu: Giải thích nguyên nhân biến động của CỔ PHIẾU này theo JSON schema ở trên. "
         "Ưu tiên nguyên nhân có bằng chứng dữ liệu rõ ràng. "
         "Không suy diễn từ tên mã hoặc địa danh."
     )

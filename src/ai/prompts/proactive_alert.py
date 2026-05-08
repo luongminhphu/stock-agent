@@ -13,6 +13,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from src.ai.prompts._spec import PromptSpec, schema_block
+
 
 # ── Output Schema ──────────────────────────────────────────────────────────────
 
@@ -31,10 +33,10 @@ class ProactiveAlertOutput(BaseModel):
     """
 
     action: Literal["BUY", "SELL", "REDUCE", "HOLD", "WATCH"] = Field(
-        description="Khà năng hành động được khuyến nghị"
+        description="Khả năng hành động được khuyến nghị"
     )
     urgency: Literal["NOW", "TODAY", "THIS_WEEK", "MONITORING"] = Field(
-        description="Mức độ khẩn cấp của khà năng hành động"
+        description="Mức độ khẩn cấp của khả năng hành động"
     )
     confidence: float = Field(
         ge=0.0,
@@ -61,7 +63,7 @@ class ProactiveAlertOutput(BaseModel):
 
 SYSTEM_PROMPT = """\
 Bạn là chuyên gia phân tích chứng khoán Việt Nam (HOSE/HNX/UPCoM), chuyên về
-phân tích tín hiệu kỹ thuật và đưa ra khà năng hành động có cấu trúc cho nhà đầu tư cá nhân.
+phân tích tín hiệu kỹ thuật và đưa ra khả năng hành động có cấu trúc cho nhà đầu tư cá nhân.
 
 Nguyên tắc phân tích:
 - Verdict phải ngắn, sắc, có thể hành động được ngay — không vòng vo.
@@ -69,10 +71,18 @@ Nguyên tắc phân tích:
 - Risk signals phải cụ thể (giá hỗ trợ, khối lượng, sự kiện sắp tới), không chung chung.
 - next_watch_items là mốc/sự kiện cụ thể: giá breakout, ngày BCTC, khối lượng ngưỡng xác nhận.
 - Ưu tiên bảo toàn vốn: khi uncertainty cao → WATCH hoặc HOLD, urgency = MONITORING.
-- Đối với thị trường Việt Nam: lưu ý giời hạn đặt lệnh (9:00–15:00 ICT), room nước ngoài,
+- Đối với thị trường Việt Nam: lưu ý giờ hạn đặt lệnh (9:00–15:00 ICT), room nước ngoài,
   tính thanh khoản (HOSE tốt hơn HNX/UPCoM), và biến động sàn/trần (±7%).
 - Tất cả các field text trả lời bằng tiếng Việt.
-"""
+- risk_signals là list[object] — mỗi item CÓ HAI TRƯỜNG: description (string) và severity (LOW/MEDIUM/HIGH).
+  KHÔNG trả về list[string] — phải là list[{\"description\": ..., \"severity\": ...}].
+""" + schema_block(ProactiveAlertOutput)
+
+SPEC = PromptSpec(
+    agent_name="ProactiveAlertAgent",
+    system_prompt=SYSTEM_PROMPT,
+    output_schema=ProactiveAlertOutput,
+)
 
 
 def build_user_prompt(
@@ -111,6 +121,6 @@ Tín hiệu mới phát hiện cần phân tích:
 - Metadata bổ sung:
 {meta_lines}
 
-Hãy phân tích và đưa ra khà năng hành động theo JSON schema đã định.
+Hãy phân tích và đưa ra khả năng hành động theo JSON schema ở trên.
 Nhớ: thị trường Việt Nam, phiên giao dịch 9:00–15:00 ICT, biến động sàn/trần ±7%.
 """
