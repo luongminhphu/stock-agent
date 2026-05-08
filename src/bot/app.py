@@ -49,6 +49,11 @@ def create_bot() -> commands.Bot:
             await bootstrap()
             _inject_briefing_listener(bot)  # Wave 8: inject discord.Client after login
             await _register_cogs(bot)
+
+            # Sync tree immediately after cogs are loaded — before schedulers start.
+            # This ensures slash commands are registered even if a scheduler raises.
+            await _sync_tree(bot)
+
             _start_briefing_scheduler(bot)
             _start_scan_scheduler(bot)
             _start_thesis_maintenance_scheduler(bot)
@@ -58,7 +63,6 @@ def create_bot() -> commands.Bot:
             _start_decision_replay_scheduler(bot)
             _start_recommendation_listener(bot)  # Wave 4: event-driven alerts
             _start_opportunity_screen_scheduler(bot)  # Wave 3: sector rotation 09:10 ICT
-            await _sync_tree(bot)
             logger.info(
                 "bot.ready",
                 user=str(bot.user),
