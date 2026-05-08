@@ -40,6 +40,7 @@ Feedback calibration (Wave 3):
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -247,12 +248,22 @@ class BriefingService:
           past_lessons, investor_profile, feedback_summary,
           context_source, sector_rotation_injected.
         """
+        t_total = time.monotonic()
+
+        t0 = time.monotonic()
         tickers = await self._get_watchlist_tickers(user_id)
+        watchlist_ms = round((time.monotonic() - t0) * 1000)
+
+        t0 = time.monotonic()
         market_context = await self._build_market_context(tickers, phase=phase)
+        market_context_ms = round((time.monotonic() - t0) * 1000)
 
         # Try ContextBuilder first — it aggregates thesis + portfolio + lessons
+        t0 = time.monotonic()
         investor_profile = await self._build_investor_profile_context(user_id)
+        context_builder_ms = round((time.monotonic() - t0) * 1000)
 
+        individual_builders_ms: int | None = None
         if investor_profile:
             # ContextBuilder produced a full block — skip individual builders
             # to avoid sending the same facts twice to the AI.
@@ -264,12 +275,34 @@ class BriefingService:
             # Fallback: session=None or ContextBuilder found no data.
             # Run individual builders so the brief is never empty-handed.
             context_source = "individual_builders"
+            t0 = time.monotonic()
             portfolio_context = await self._build_portfolio_context(user_id)
             thesis_context = await self._build_thesis_context(user_id)
             past_lessons = await self._build_lesson_context(user_id)
+            individual_builders_ms = round((time.monotonic() - t0) * 1000)
 
         # Feedback summary — independent of dedup rule, always attempted.
+        t0 = time.monotonic()
         feedback_summary = await self._build_feedback_context(user_id)
+        feedback_ms = round((time.monotonic() - t0) * 1000)
+
+        total_ms = round((time.monotonic() - t_total) * 1000)
+
+        log_kwargs: dict = dict(
+            user_id=user_id,
+            phase=phase,
+            context_source=context_source,
+            ticker_count=len(tickers),
+            watchlist_ms=watchlist_ms,
+            market_context_ms=market_context_ms,
+            context_builder_ms=context_builder_ms,
+            feedback_ms=feedback_ms,
+            total_ms=total_ms,
+        )
+        if individual_builders_ms is not None:
+            log_kwargs["individual_builders_ms"] = individual_builders_ms
+
+        logger.info("briefing.collect_contexts_complete", **log_kwargs)
 
         # Sector rotation block is already embedded inside market_context.
         # We track whether it was injected for observability in logs only.
@@ -518,7 +551,19 @@ class BriefingService:
         if self._session is None:
             return ""
         try:
+            t0 = time.monotonic()
             ctx = await ContextBuilder(self._session).build(user_id=user_id)
+            context_builder_build_ms = round((time.monotonic() - t0) * 1000)
+            logger.debug(
+                "briefing.context_builder_build_complete",
+                user_id=user_id,
+                has_profile=bool(ctx.risk_appetite),
+                has_thesis=bool(ctx.active_thesis_summary),
+                has_lessons=bool(ctx.recent_lessons),
+                has_portfolio=bool(ctx.portfolio_bias),
+                has_memory=bool(ctx.memory_context_block),
+                build_ms=context_builder_build_ms,
+            )
             return render_for_agent(ctx)
         except Exception as exc:
             logger.warning("briefing.investor_profile_context_failed", error=str(exc))
