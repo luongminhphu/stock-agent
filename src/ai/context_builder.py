@@ -32,11 +32,19 @@ V3 (ThesisHealthSnapshot):
   _fetch_thesis_summary() replaced by _fetch_thesis_health().
   Produces urgency-sorted, stop-loss-proximity-aware block instead of a
   flat text dump. Falls back to old summary method if import fails.
+
+Session safety:
+  build() runs each _fetch_* inside session.begin_nested() (SAVEPOINT).
+  A DB-level failure in any fetch aborts only that savepoint — the outer
+  session stays healthy. This prevents "current transaction is aborted"
+  cascade on downstream SELECTs and INSERTs.
+  asyncio.gather() was intentionally removed: concurrent execution on a
+  shared AsyncSession is not safe when one coroutine can abort the PG
+  transaction mid-flight.
 """
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -85,27 +93,37 @@ class ContextBuilder:
         self._session = session
 
     async def build(self, user_id: str | None = None) -> InvestorContext:
-        """Fetch all context layers concurrently and assemble InvestorContext.
+        """Fetch all context layers sequentially, each in an isolated SAVEPOINT.
 
-        All sub-fetches are fire-and-forget — if any fails, the rest still
-        succeed. ContextBuilder never blocks AI calls due to data errors.
+        Each sub-fetch runs inside session.begin_nested() so that a DB-level
+        failure (constraint violation, schema mismatch, etc.) rolls back only
+        that savepoint — the outer session stays healthy for all subsequent
+        queries in the same request.
+
+        Note: asyncio.gather() was intentionally removed. Running multiple
+        coroutines concurrently on a shared AsyncSession is unsafe when any
+        one of them can abort the PostgreSQL transaction mid-flight, causing
+        all later queries to fail with "current transaction is aborted".
         """
-        results = await asyncio.gather(
-            self._fetch_investor_profile(user_id),
-            self._fetch_thesis_health(user_id),
-            self._fetch_recent_lessons(user_id),
-            self._fetch_portfolio_bias(user_id),
-            self._fetch_memory_context(user_id),
-            return_exceptions=True,
-        )
-
         ctx = InvestorContext()
-        _apply_profile(ctx, results[0])
-        _apply_thesis(ctx, results[1])
-        _apply_lessons(ctx, results[2])
-        _apply_portfolio(ctx, results[3])
-        _apply_memory(ctx, results[4])
-
+        fetch_apply_pairs = [
+            (self._fetch_investor_profile, _apply_profile),
+            (self._fetch_thesis_health,    _apply_thesis),
+            (self._fetch_recent_lessons,   _apply_lessons),
+            (self._fetch_portfolio_bias,   _apply_portfolio),
+            (self._fetch_memory_context,   _apply_memory),
+        ]
+        for fetch_fn, apply_fn in fetch_apply_pairs:
+            try:
+                async with self._session.begin_nested():
+                    result = await fetch_fn(user_id)
+                apply_fn(ctx, result)
+            except Exception as exc:
+                logger.warning(
+                    "context_builder.fetch_isolated_failed",
+                    fn=fetch_fn.__name__,
+                    error=str(exc),
+                )
         return ctx
 
     # ------------------------------------------------------------------
@@ -156,12 +174,12 @@ class ContextBuilder:
             if at_risk:
                 tickers = ", ".join(s.ticker for s in at_risk)
                 lines.append(
-                    f"  ⚠️  AT_RISK/INVALIDATED: {tickers} — "
-                    f"xem xét ngay, có thể cần action."
+                    f"  \u26a0\ufe0f  AT_RISK/INVALIDATED: {tickers} — "
+                    f"xem x\u00e9t ngay, c\u00f3 th\u1ec3 c\u1ea7n action."
                 )
             if review_due:
                 tickers = ", ".join(s.ticker for s in review_due)
-                lines.append(f"  🔔 Cần review: {tickers}")
+                lines.append(f"  \U0001f514 C\u1ea7n review: {tickers}")
 
             return "\n".join(lines)
 

@@ -206,7 +206,7 @@ class ScanService:
 
         # ── V2: persist + emit events via EventBus ───────────────────
         duration = time.monotonic() - start_time
-        await self._emit_events(result, len(tickers), duration)
+        await self._emit_events(result, len(tickers), duration, user_id=user_id)
 
         logger.info(
             "scan.complete",
@@ -318,7 +318,13 @@ class ScanService:
             )
         return signal
 
-    async def _emit_events(self, result: ScanResult, total_scanned: int, duration: float) -> None:
+    async def _emit_events(
+        self,
+        result: ScanResult,
+        total_scanned: int,
+        duration: float,
+        user_id: str = "",
+    ) -> None:
         """
         V2: Persist SignalEvent to DB + emit domain events after scan completes.
 
@@ -359,7 +365,7 @@ class ScanService:
                 # ── Step 1: Persist to signal_events table ──────────────────
                 try:
                     signal_event_row = SignalEvent(
-                        user_id=None,
+                        user_id=user_id,
                         ticker=report.symbol,
                         signal_type=report.signal_type,
                         strength=report.strength,
