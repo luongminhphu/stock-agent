@@ -218,6 +218,14 @@ export function renderBriefCard(phase, brief, dateStr) {
             </table>
           </div>` : ''}
       </div>
+
+      ${brief.id != null ? `
+        <div class="brief-feedback-bar" data-brief-id="${brief.id}">
+          <span class="fb-prompt">Brief này có hữu ích không?</span>
+          <button class="fb-btn" data-outcome="acted">✅ Đã hành động</button>
+          <button class="fb-btn" data-outcome="watching">👀 Theo dõi</button>
+          <button class="fb-btn" data-outcome="skipped">⏭ Bỏ qua</button>
+        </div>` : ''}
     </div>`;
 }
 

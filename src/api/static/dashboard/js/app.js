@@ -1,6 +1,6 @@
 /**
- * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard + Wave D lesson loop + Wave E brief ticker)
- * Responsibility: import ất cả modules, wire events, khởi động dashboard.
+ * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard + Wave D lesson loop + Wave E brief ticker + Wave F brief feedback)
+ * Responsibility: import tất cả modules, wire events, khởi động dashboard.
  * Rule: KHÔNG chứa business logic. Chỉ bootstrap + wiring.
  */
 
@@ -23,6 +23,7 @@ import {
   openDecisionModal,
 } from './modules/decision/decision-loader.js';
 import { loadLeaderboard }      from './modules/leaderboard/leaderboard-service.js';
+import { bindFeedbackEvents }   from './modules/briefing/brief-feedback.js';
 import { state }                from './state/dashboard-state.js';
 
 // ---------------------------------------------------------------------------
@@ -160,6 +161,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 1b. Wave E: brief ticker chips → thesis detail
   bindBriefTickerClick();
+
+  // 1c. Wave F: brief feedback buttons → POST /briefing/{id}/feedback
+  bindFeedbackEvents();
 
   // 2. Bind thesis form + delete confirm (submit handlers)
   bindThesisFormEvents({
