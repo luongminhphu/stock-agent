@@ -391,3 +391,11 @@
   font-size: 0.7rem;
   user-select: none;
 }
+
+/* ── Generate Brief Controls ─────────────────────────────────────────────── */
+.brief-strip-header {
+  display: flex;
+  gap: 6px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line);
+}

@@ -113,6 +113,34 @@
 
           <!-- ── BRIEFING ───────────────────────────────────────────────── -->
           <div class="brief-context-strip" id="briefContextStrip">
+            <div class="brief-strip-header">
+              <button
+                id="generateMorningBtn"
+                class="icon-text-btn"
+                type="button"
+                data-generate-brief="morning"
+                aria-label="Tạo Morning Brief"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2l2.09 6.26L20 10l-5.91 1.74L12 18l-2.09-6.26L4 10l5.91-1.74L12 2z"/>
+                </svg>
+                Morning Brief
+              </button>
+              <button
+                id="generateEodBtn"
+                class="icon-text-btn"
+                type="button"
+                data-generate-brief="eod"
+                aria-label="Tạo EOD Brief"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                </svg>
+                EOD Brief
+              </button>
+            </div>
             <div id="morningBriefWrap" class="brief-tab-pane" role="tabpanel"></div>
             <div id="eodBriefWrap" class="brief-tab-pane hidden" role="tabpanel"></div>
           </div>
