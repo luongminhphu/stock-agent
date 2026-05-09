@@ -8,6 +8,8 @@ Responsibilities:
 - Evaluate realized outcome after a review horizon (30/90 days, configurable).
 - Call ReplayAgent to produce personalized lessons.
 - Persist AI-generated key_lesson and pattern_detected back to DecisionLog.
+- After persisting a key_lesson, request an AI review of the linked thesis
+  (lesson → thesis review loop closure).
 
 Non-responsibilities:
 - Does not send notifications.
@@ -140,22 +142,12 @@ class DecisionService:
         rows = (await self._session.execute(stmt)).scalars().all()
         return list(rows)
 
-    async def list_pending_outcome_evaluations(self) -> list[DecisionLog]:
-        """Decisions that reached horizon but do not have realized outcome yet."""
-        stmt = select(DecisionLog).where(DecisionLog.outcome_evaluated_at.is_(None))
-        rows = (await self._session.execute(stmt)).scalars().all()
-        now = datetime.now(UTC)
-        return [
-            r for r in rows
-            if r.decision_at + timedelta(days=r.review_horizon_days) <= now
-        ]
-
     async def list_lessons(
         self,
         user_id: str,
         *,
         ticker: str | None = None,
-        limit: int = 10,
+        limit: int = 20,
     ) -> list[DecisionLog]:
         """Return decisions that have an AI-generated key_lesson, newest first."""
         limit = min(max(limit, 1), 50)
@@ -285,7 +277,12 @@ class DecisionService:
         decision_id: int,
         user_id: str,
     ) -> DecisionReplayEnvelope:
-        """Load, ownership-check, evaluate if needed, analyze, persist lesson."""
+        """Load, ownership-check, evaluate if needed, analyze, persist lesson.
+
+        After persisting a key_lesson, publishes ThesisReviewRequestedEvent so
+        the thesis review listener can run an AI review on the linked thesis.
+        Fire-and-forget: thesis review failure never blocks the replay response.
+        """
         row = await self._get_decision_or_raise(decision_id)
         if str(row.user_id) != str(user_id):
             raise DecisionNotFoundError(
@@ -303,8 +300,57 @@ class DecisionService:
                 key_lesson=getattr(envelope.replay, "key_lesson", None),
                 pattern_detected=getattr(envelope.replay, "pattern_detected", None),
             )
+            # Close the lesson → thesis review loop: if a key_lesson was produced,
+            # request an AI review of the linked thesis so it can incorporate the
+            # new evidence. Guard: only ACTIVE theses qualify.
+            if getattr(envelope.replay, "key_lesson", None) and row.thesis_id:
+                await self._maybe_request_thesis_review(row.thesis_id, row.ticker)
 
         return envelope
+
+    async def _maybe_request_thesis_review(
+        self,
+        thesis_id: int,
+        ticker: str,
+    ) -> None:
+        """Publish ThesisReviewRequestedEvent after a lesson is persisted.
+
+        Guard: thesis must be ACTIVE — non-active theses are silently skipped.
+        Fire-and-forget: any exception is logged as WARNING, never re-raised.
+
+        Owner: thesis segment (decision → thesis review loop).
+        """
+        try:
+            thesis = await self._repo.get_by_id(thesis_id)
+            if thesis is None or thesis.status != "active":
+                logger.info(
+                    "decision_service.skip_thesis_review_request",
+                    thesis_id=thesis_id,
+                    reason="not_active_or_not_found",
+                    status=str(thesis.status) if thesis else "not_found",
+                )
+                return
+
+            from src.platform.event_bus import get_event_bus
+            from src.platform.events import ThesisReviewRequestedEvent
+
+            await get_event_bus().publish(ThesisReviewRequestedEvent(
+                thesis_id=str(thesis_id),
+                symbol=ticker,
+                reason="lesson_from_replay",
+            ))
+            logger.info(
+                "decision_service.thesis_review_requested_after_lesson",
+                thesis_id=thesis_id,
+                ticker=ticker,
+            )
+        except Exception as exc:
+            logger.warning(
+                "decision_service.thesis_review_request_failed",
+                thesis_id=thesis_id,
+                ticker=ticker,
+                error=str(exc),
+            )
 
     async def _get_decision_or_raise(self, decision_id: int) -> DecisionLog:
         stmt = select(DecisionLog).where(DecisionLog.id == decision_id)
@@ -342,14 +388,10 @@ class DecisionService:
             if pnl_pct <= -5:
                 return "INCORRECT"
             return "MIXED"
-
         if decision_type in {"SELL", "REDUCE"}:
             if pnl_pct <= -5:
                 return "CORRECT"
             if pnl_pct >= 5:
                 return "INCORRECT"
             return "MIXED"
-
-        if abs(pnl_pct) < 5:
-            return "CORRECT"
         return "MIXED"
