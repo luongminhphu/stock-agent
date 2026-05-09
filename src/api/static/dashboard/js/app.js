@@ -1,60 +1,72 @@
 /**
  * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard)
- * Owner: dashboard (static adapter)
+ * Responsibility: import tất cả modules, wire events, khởi động dashboard.
+ * Rule: KHÔNG chứa business logic. Chỉ bootstrap + wiring.
  */
 
-import { loadBriefing }          from './modules/briefing/briefing-loader.js';
-import { loadPortfolio }         from './modules/portfolio/portfolio-loader.js';
-import { loadWatchlist }         from './modules/watchlist/watchlist-loader.js';
-import { loadTheses }            from './modules/thesis/thesis-loader.js';
-import { loadBacktesting }       from './modules/backtesting/backtesting-loader.js';
-import { loadDashboardSummary }  from './modules/dashboard/dashboard-loader.js';
-import { loadLeaderboard }       from './modules/leaderboard/leaderboard-loader.js';
+import { el, openModal, closeModal } from './utils/dom.js';
+import { loadDashboard, loadBacktesting } from './modules/dashboard/dashboard-loader.js';
+import { loadThesisDetail }     from './modules/thesis/thesis-service.js';
+import {
+  openNewThesisModal,
+  openEditThesisModal,
+  bindThesisFormEvents,
+} from './modules/thesis/thesis-form.js';
+import { bindSuggestEvents }    from './modules/thesis/thesis-suggest.js';
+import { loadPortfolio }        from './modules/portfolio/portfolio-loader.js';
+import { loadWatchlist, handleAddTicker } from './modules/watchlist/watchlist-loader.js';
 import {
   loadDecisions,
   loadLessons,
   bindDecisionFormEvents,
   openDecisionModal,
 } from './modules/decision/decision-loader.js';
+import { loadLeaderboard }      from './modules/leaderboard/leaderboard-service.js';
+import { state }                from './state/dashboard-state.js';
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Brief tab switching
 // ---------------------------------------------------------------------------
-
-const el = id => document.getElementById(id);
-
-// ---------------------------------------------------------------------------
-// Brief tab switcher
-// ---------------------------------------------------------------------------
-
 function bindBriefTabs() {
   const tabBar = document.querySelector('.brief-tab-bar');
   if (!tabBar) return;
 
-  tabBar.addEventListener('click', async (e) => {
+  tabBar.addEventListener('click', e => {
     const btn = e.target.closest('.brief-tab');
     if (!btn) return;
 
-    const target = btn.dataset.tab;
+    const targetId = btn.getAttribute('aria-controls');
+    if (!targetId) return;
 
-    tabBar.querySelectorAll('.brief-tab').forEach(t => t.classList.remove('active'));
+    tabBar.querySelectorAll('.brief-tab').forEach(t => {
+      t.classList.remove('active');
+      t.setAttribute('aria-selected', 'false');
+    });
+    document.querySelectorAll('.brief-tab-pane').forEach(p => {
+      p.classList.add('hidden');
+    });
+
     btn.classList.add('active');
+    btn.setAttribute('aria-selected', 'true');
+    document.getElementById(targetId)?.classList.remove('hidden');
+  });
+}
 
-    const morningWrap = el('morningBriefWrap');
-    const eodWrap     = el('eodBriefWrap');
+// ---------------------------------------------------------------------------
+// Watchlist add modal: wire form submit
+// ---------------------------------------------------------------------------
+function bindWatchlistAddModal() {
+  const form = document.getElementById('watchlistAddForm');
+  if (!form) return;
 
-    if (target === 'morning') {
-      morningWrap?.classList.remove('hidden');
-      eodWrap?.classList.add('hidden');
-    } else {
-      morningWrap?.classList.add('hidden');
-      eodWrap?.classList.remove('hidden');
-      // Lazy-load EOD on first switch
-      const wrap = el('eodBriefWrap');
-      if (wrap && (wrap.innerHTML.includes('Đang tải') || wrap.children.length === 0)) {
-        await loadBriefing('eod');
-      }
-    }
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const ticker = form.querySelector('#wlTickerInput')?.value?.trim();
+    const note   = form.querySelector('#wlNoteInput')?.value?.trim() ?? '';
+    if (!ticker) return;
+    closeModal('watchlistAddModal');
+    form.reset();
+    await handleAddTicker(ticker, note);
   });
 }
 
@@ -83,7 +95,7 @@ function bindDecisionTabs() {
     } else {
       decisionsPane?.classList.add('hidden');
       lessonsPane?.classList.remove('hidden');
-      // Lazy-load lessons on first switch
+      // Lazy-load lessons on first switch — fix: correct operator precedence
       const wrap = el('lessonsListWrap');
       if (wrap && (wrap.innerHTML.includes('Đang tải') || wrap.children.length === 0)) {
         await loadLessons();
@@ -95,7 +107,6 @@ function bindDecisionTabs() {
 // ---------------------------------------------------------------------------
 // Leaderboard sort wiring
 // ---------------------------------------------------------------------------
-
 function bindLeaderboardSort() {
   const sortBar = document.querySelector('.lb-sort-bar');
   if (!sortBar) return;
@@ -107,8 +118,7 @@ function bindLeaderboardSort() {
     sortBar.querySelectorAll('[data-lb-sort]').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
 
-    const sortBy = btn.dataset.lbSort;
-    loadLeaderboard(sortBy);
+    loadLeaderboard(btn.dataset.lbSort);
   });
 }
 
@@ -120,37 +130,93 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 1. Bind brief tab switcher
   bindBriefTabs();
 
-  // 2. Load morning briefing immediately (default tab)
-  await loadBriefing('morning');
+  // 2. Bind thesis form + delete confirm (submit handlers)
+  bindThesisFormEvents({
+    onThesisSaved: async (thesisId) => {
+      await loadDashboard();
+      if (thesisId) await loadThesisDetail(thesisId);
+      await loadPortfolio();
+    },
+  });
 
-  // 3. Portfolio
-  loadPortfolio();
+  // 3. Bind AI suggest buttons
+  bindSuggestEvents();
 
-  // 4. Watchlist
-  loadWatchlist();
+  // 4. Toolbar buttons
+  el('newThesisBtn')?.addEventListener('click', openNewThesisModal);
+  el('reloadBtn')?.addEventListener('click', async () => {
+    await loadDashboard();
+    await loadBacktesting();
+    await loadPortfolio();
+    await loadWatchlist();
+    await loadDecisions();
+    loadLeaderboard();
+  });
+  el('statusFilter')?.addEventListener('change', loadDashboard);
 
-  // 5. Theses
-  loadTheses();
+  // 5. Form row add buttons
+  el('addFormAssumptionBtn')?.addEventListener('click', () => {
+    import('./modules/thesis/thesis-form.js').then(({ makeAssumptionRow }) => {
+      el('thesisFormAssumptionRows')?.appendChild(makeAssumptionRow());
+    });
+  });
+  el('addFormCatalystBtn')?.addEventListener('click', () => {
+    import('./modules/thesis/thesis-form.js').then(({ makeCatalystRow }) => {
+      el('thesisFormCatalystRows')?.appendChild(makeCatalystRow());
+    });
+  });
 
-  // 6. Backtesting
-  loadBacktesting();
+  // 6. Modal close buttons (data-close attribute pattern)
+  document.addEventListener('click', e => {
+    const btn = e.target.closest('[data-close]');
+    if (btn) closeModal(btn.dataset.close);
+  });
 
-  // 7. Dashboard summary / KPIs
-  loadDashboardSummary();
+  // 7. AI Apply confirm
+  el('aiApplyConfirmBtn')?.addEventListener('click', async () => {
+    const { thesisApiBase, sendJson } = await import('./api/client.js');
+    const { showToast } = await import('./utils/dom.js');
+    if (!state.aiApplyThesisId || !state.aiSelectedRecIds.length) return;
+    const btn = el('aiApplyConfirmBtn');
+    btn.disabled = true;
+    btn.textContent = 'Đang áp dụng…';
+    try {
+      await sendJson(
+        `${thesisApiBase()}/${state.aiApplyThesisId}/recommendations/apply`,
+        'POST',
+        { recommendation_ids: state.aiSelectedRecIds },
+      );
+      closeModal('aiApplyModal');
+      showToast('✅ Đã áp dụng gợi ý AI');
+      await loadThesisDetail(state.aiApplyThesisId);
+    } catch (err) {
+      showToast(`Lỗi áp dụng: ${err.message}`, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Xác nhận áp dụng';
+      state.aiApplyThesisId   = null;
+      state.aiSelectedRecIds  = [];
+    }
+  });
 
-  // 8. Leaderboard
-  bindLeaderboardSort();
-  loadLeaderboard('score');
+  // 8. Watchlist add modal form
+  bindWatchlistAddModal();
 
   // 9. Decision section wiring
-  // openDecisionModal() fetch thesis list trước khi show modal —
-  // bindDecisionFormEvents() wire form submit
   el('newDecisionBtn')?.addEventListener('click', openDecisionModal);
   bindDecisionFormEvents();
   bindDecisionTabs();
 
-  // 10. Initial parallel loads
+  // 10. Leaderboard wiring
+  bindLeaderboardSort();
+
+  // 11. Initial parallel load
   await Promise.all([
+    loadDashboard(),
+    loadBacktesting(),
+    loadPortfolio(),
+    loadWatchlist(),
     loadDecisions(),
+    loadLeaderboard('score'),
   ]);
 });
