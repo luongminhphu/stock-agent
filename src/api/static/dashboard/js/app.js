@@ -1,5 +1,5 @@
 /**
- * app.js — Entry point (Wave 7 + Wave 2b watchlist)
+ * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions)
  * Responsibility: import tất cả modules, wire events, khởi động dashboard.
  * Rule: KHÔNG chứa business logic. Chỉ bootstrap + wiring.
  */
@@ -15,6 +15,11 @@ import {
 import { bindSuggestEvents }    from './modules/thesis/thesis-suggest.js';
 import { loadPortfolio }        from './modules/portfolio/portfolio-loader.js';
 import { loadWatchlist, handleAddTicker } from './modules/watchlist/watchlist-loader.js';
+import {
+  loadDecisions,
+  loadLessons,
+  bindDecisionFormEvents,
+} from './modules/decision/decision-loader.js';
 import { state }                from './state/dashboard-state.js';
 
 // ---------------------------------------------------------------------------
@@ -66,6 +71,40 @@ function bindWatchlistAddModal() {
 }
 
 // ---------------------------------------------------------------------------
+// Decision tab switching (Decisions | Lessons)
+// ---------------------------------------------------------------------------
+function bindDecisionTabs() {
+  const tabBar = document.querySelector('.dec-tab-bar');
+  if (!tabBar) return;
+
+  tabBar.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.dec-tab');
+    if (!btn) return;
+
+    const target = btn.dataset.tab;
+
+    tabBar.querySelectorAll('.dec-tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+
+    const decisionsPane = el('decisionsPane');
+    const lessonsPane   = el('lessonsPane');
+
+    if (target === 'decisions') {
+      decisionsPane?.classList.remove('hidden');
+      lessonsPane?.classList.add('hidden');
+    } else {
+      decisionsPane?.classList.add('hidden');
+      lessonsPane?.classList.remove('hidden');
+      // Lazy-load lessons on first switch
+      const wrap = el('lessonsListWrap');
+      if (wrap && wrap.innerHTML.includes('Đang tải') || wrap?.children.length === 0) {
+        await loadLessons();
+      }
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Bootstrap
 // ---------------------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', async () => {
@@ -93,6 +132,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadBacktesting();
     await loadPortfolio();
     await loadWatchlist();
+    await loadDecisions();
   });
   el('statusFilter')?.addEventListener('change', loadDashboard);
 
@@ -144,11 +184,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 8. Watchlist add modal form
   bindWatchlistAddModal();
 
-  // 9. Initial load (watchlist song song với các section khác)
+  // 9. Decision section wiring
+  el('newDecisionBtn')?.addEventListener('click', () => openModal('decisionModal'));
+  bindDecisionFormEvents();
+  bindDecisionTabs();
+
+  // 10. Initial load (tất cả song song)
   await Promise.all([
     loadDashboard(),
     loadBacktesting(),
     loadPortfolio(),
     loadWatchlist(),
+    loadDecisions(),
   ]);
 });

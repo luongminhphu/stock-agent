@@ -14,7 +14,7 @@
     <a class="skip-link" href="#main-content">Bỏ qua điều hướng</a>
     <div class="shell">
 
-      <!-- ── TOPBAR ─────────────────────────────────────────────────────── -->
+      <!-- ── TOPBAR ─────────────────────────────────────────────────────────────────── -->
       <header class="topbar">
         <div class="brand-block">
           <svg class="brand-logo" aria-label="stock-agent" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -52,7 +52,7 @@
 
       <div id="errorBanner" class="error-banner hidden" role="alert"></div>
 
-      <!-- ── KPI STRIP (replaces command-strip, adds portfolio KPIs) ──── -->
+      <!-- ── KPI STRIP ──────────────────────────────────────────────────────────────── -->
       <section class="command-strip kpi-strip" aria-label="Tổng quan danh mục">
         <article class="signal-card signal-card--portfolio">
           <span class="signal-label">Portfolio value</span>
@@ -86,16 +86,16 @@
         </article>
       </section>
 
-      <!-- ── BRIEF CONTENT STRIP ─────────────────────────────────────── -->
+      <!-- ── BRIEF CONTENT STRIP ──────────────────────────────────────────────────────────────── -->
       <div class="brief-context-strip" id="briefContextStrip">
         <div id="morningBriefWrap" class="brief-tab-pane" role="tabpanel"></div>
         <div id="eodBriefWrap" class="brief-tab-pane hidden" role="tabpanel"></div>
       </div>
 
-      <!-- ══ ① PORTFOLIO → ② WATCHLIST → ③ THESIS → ④ BACKTESTING ═══ -->
+      <!-- ══ ① PORTFOLIO → ② WATCHLIST → ③ THESIS → ④ BACKTESTING → ⑤ DECISIONS ══ -->
       <main id="main-content">
 
-        <!-- ── ① PORTFOLIO LAYER ────────────────────────────────────────── -->
+        <!-- ── ① PORTFOLIO LAYER ──────────────────────────────────────────────────────────── -->
         <section class="panel glass portfolio-layer" aria-labelledby="portfolioTitle">
           <div class="panel-header split-header">
             <div>
@@ -110,7 +110,7 @@
           <div id="portfolioSection">Đang tải…</div>
         </section>
 
-        <!-- ── ② WATCHLIST LAYER ────────────────────────────────────────── -->
+        <!-- ── ② WATCHLIST LAYER ──────────────────────────────────────────────────────────── -->
         <section class="panel glass watchlist-layer" aria-labelledby="watchlistTitle">
           <div class="panel-header split-header">
             <div>
@@ -122,7 +122,7 @@
           <div id="watchlistSection">Đang tải…</div>
         </section>
 
-        <!-- ── ③ THESIS WORKSPACE ────────────────────────────────────────── -->
+        <!-- ── ③ THESIS WORKSPACE ──────────────────────────────────────────────────────────── -->
         <div class="workspace-grid" aria-label="Thesis board và action rail">
 
           <section class="panel panel-main glass" aria-labelledby="thesisBoardTitle">
@@ -181,7 +181,7 @@
           </aside>
         </div>
 
-        <!-- ── ④ BACKTESTING LAYER ──────────────────────────────────────── -->
+        <!-- ── ④ BACKTESTING LAYER ──────────────────────────────────────────────────────────── -->
         <section class="panel glass validation-layer backtesting-panel" aria-labelledby="backtestTitle">
           <div class="panel-header split-header">
             <div>
@@ -218,6 +218,30 @@
               </div>
             </div>
 
+          </div>
+        </section>
+
+        <!-- ── ⑤ DECISION LOG & LESSONS ──────────────────────────────────────────────────────────── -->
+        <section class="panel glass decision-layer" aria-labelledby="decisionTitle">
+          <div class="dec-panel-header">
+            <div>
+              <p class="eyebrow">⑤ Decision Log &amp; AI Lessons</p>
+              <h2 id="decisionTitle">Ghi lại quyết định &amp; Bài học từ AI Replay</h2>
+            </div>
+            <button id="newDecisionBtn" class="primary-btn" type="button">+ Log Decision</button>
+          </div>
+
+          <!-- Tab: Decisions | Lessons -->
+          <div class="dec-tab-bar" role="tablist" aria-label="Decision views">
+            <button class="dec-tab active" role="tab" data-tab="decisions">📋 Decisions</button>
+            <button class="dec-tab" role="tab" data-tab="lessons">🧠 AI Lessons</button>
+          </div>
+
+          <div id="decisionsPane">
+            <div id="decisionsTableWrap">Đang tải…</div>
+          </div>
+          <div id="lessonsPane" class="hidden">
+            <div id="lessonsListWrap">Đang tải…</div>
           </div>
         </section>
 
@@ -343,7 +367,7 @@
           </div>
           <div class="form-field">
             <label for="assumptionRationaleField">Lý do / Cơ sở</label>
-            <textarea id="assumptionRationaleField" name="rationale" placeholder="Tại sao giả định này quan trọng?"></textarea>
+            <textarea id="assumptionRationaleField" name="rationale" placeholder="Tại sao giả định này quan trọ ng?"></textarea>
           </div>
           <div class="form-row">
             <div class="form-field">
@@ -441,7 +465,7 @@
         <p id="deleteModalMsg" style="color:var(--muted); line-height:1.6;"></p>
         <div class="modal-footer">
           <button type="button" class="ghost-btn" data-close="deleteModal">Hủy</button>
-          <button type="button" id="deleteConfirmBtn" class="danger-btn" style="min-height:46px; padding:0 20px; font-size:1rem;">Xóa</button>
+          <button type="button" id="deleteConfirmBtn" class="danger-btn" style="min-height:46px; padding:0 20px; font-size:1rem;">Đẳ</button>
         </div>
       </div>
     </dialog>
@@ -469,6 +493,55 @@
       </div>
     </dialog>
 
-    <script data-cfasync="false" type="module" src="/static/dashboard/js/app.js?v=9"></script>
+    <!-- ── Decision Log Modal ── -->
+    <dialog id="decisionModal" aria-labelledby="decisionModalTitle">
+      <div class="modal-inner">
+        <div class="modal-header">
+          <h2 id="decisionModalTitle">📋 Log Decision</h2>
+          <button class="modal-close" data-close="decisionModal" aria-label="Đóng">&#x2715;</button>
+        </div>
+        <form id="decisionForm" class="form-grid" novalidate>
+          <div class="form-row">
+            <div class="form-field">
+              <label for="decTickerInput">Mã CK *</label>
+              <input id="decTickerInput" name="ticker" placeholder="VNM, HPG…" required autocomplete="off" style="text-transform:uppercase;" />
+            </div>
+            <div class="form-field">
+              <label for="decTypeSelect">Loại quyết định *</label>
+              <select id="decTypeSelect" name="decision_type" required>
+                <option value="BUY">MUA</option>
+                <option value="SELL">BÁN</option>
+                <option value="HOLD">GIỮ</option>
+                <option value="SKIP">BỎ (chưa làm gì)</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-field">
+              <label for="decPriceInput">Giá tại điểm quyết định *</label>
+              <input id="decPriceInput" name="price_at_decision" type="number" min="0" step="100" placeholder="85000" required />
+            </div>
+            <div class="form-field">
+              <label for="decHorizonInput">Review sau (ngày)</label>
+              <input id="decHorizonInput" name="review_horizon_days" type="number" min="1" max="365" placeholder="30" value="30" />
+            </div>
+          </div>
+          <div class="form-field">
+            <label for="decThesisIdInput">Thesis ID liên kết (tuỳ chọn)</label>
+            <input id="decThesisIdInput" name="thesis_id" type="number" placeholder="ID thesis nếu có…" />
+          </div>
+          <div class="form-field">
+            <label for="decRationaleInput">Lý do quyết định</label>
+            <textarea id="decRationaleInput" name="rationale" placeholder="VD: Breakout khỏi vùng tích lũy, volume tăng mạnh, thesis vẫn còn hợp lệ…"></textarea>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="ghost-btn" data-close="decisionModal">Hủy</button>
+            <button type="submit" class="primary-btn" id="decisionSubmitBtn">Lưu Decision</button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+
+    <script data-cfasync="false" type="module" src="/static/dashboard/js/app.js?v=10"></script>
   </body>
 </html>
