@@ -18,6 +18,14 @@ export function thesisApiBase() {
 }
 
 /**
+ * Base URL cho briefing endpoints
+ * @returns {string}
+ */
+export function briefingApiBase() {
+  return '/api/v1/briefing';
+}
+
+/**
  * Headers mặc định cho mọi request
  * @returns {Record<string, string>}
  */
