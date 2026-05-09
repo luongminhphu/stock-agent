@@ -95,10 +95,11 @@
       <!-- ── WAVE A: LEADERBOARD STRIP ──────────────────────────────────────────────────────────────────────── -->
       <!--
         Segment owner : readmodel
-        API           : GET /api/v1/readmodel/leaderboard?sort_by=score&limit=5
+        API           : GET /api/v1/readmodel/leaderboard?sort_by=score|pnl&limit=5
         JS owner      : js/modules/leaderboard/leaderboard-service.js  (Wave A impl)
         Render target : #leaderboardStrip  →  ol#leaderboardList
         Skeleton      : .lb-skel items injected by JS on load
+        sort_by valid values: "score" | "pnl"  (backend Literal — conviction removed)
       -->
       <section
         id="leaderboardStrip"
@@ -113,7 +114,6 @@
           </div>
           <div class="lb-sort-bar" role="group" aria-label="Sắp xếp leaderboard">
             <button class="lb-sort-btn active" data-sort="score" type="button">Score</button>
-            <button class="lb-sort-btn" data-sort="conviction" type="button">Conviction</button>
             <button class="lb-sort-btn" data-sort="pnl" type="button">P&amp;L</button>
           </div>
         </div>
