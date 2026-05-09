@@ -43,8 +43,8 @@ function setKpi(id, value, sub, alert = false) {
 
 function updateDecisionKpis(items) {
   const total     = items.length;
-  const evaluated = items.filter(d => d.reviewed_at);
-  const wins      = evaluated.filter(d => d.outcome_verdict === 'correct').length;
+  const evaluated = items.filter(d => d.outcome_evaluated_at);
+  const wins      = evaluated.filter(d => d.outcome_verdict === 'CORRECT').length;
   const winRate   = evaluated.length
     ? Math.round(wins / evaluated.length * 100)
     : null;
@@ -52,7 +52,7 @@ function updateDecisionKpis(items) {
   const sellCount = items.filter(d => d.decision_type === 'SELL').length;
   const now       = Date.now();
   const pending   = items.filter(d => {
-    if (d.reviewed_at) return false;
+    if (d.outcome_evaluated_at) return false;
     const due = new Date(d.decision_at).getTime()
       + (d.review_horizon_days ?? 30) * 86_400_000;
     return due < now;
