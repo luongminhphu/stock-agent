@@ -10,6 +10,12 @@
  *   bindDecisionFormEvents()    — alias for bindLogDecisionModal (app.js compat)
  *   evaluateDecision(id, row)   — POST evaluate, reload table
  *   replayDecision(id, row)     — GET replay, show inline panel
+ *
+ * Loop closure:
+ *   After a successful replay that produces key_lesson, dispatches
+ *   CustomEvent('decision:lesson-persisted', { ticker, thesis_id })
+ *   so thesis-service.js can mark the relevant thesis row for review
+ *   without any direct import dependency between the two modules.
  */
 
 import { getJson, sendJson, thesisApiBase } from '../../api/client.js';
@@ -215,6 +221,15 @@ export async function replayDecision(decisionId, replayWrap, btnEl) {
     const result = await getJson(`/api/v1/decisions/${decisionId}/replay`);
     renderReplayPanel(replayWrap, result);
     lessonsLoaded = false;
+
+    // Close the lesson → thesis review UI loop:
+    // Dispatch a CustomEvent so thesis-service.js can badge the thesis row
+    // and show a toast — without any direct import between the two modules.
+    if (result.key_lesson && result.thesis_id) {
+      document.dispatchEvent(new CustomEvent('decision:lesson-persisted', {
+        detail: { ticker: result.ticker, thesis_id: String(result.thesis_id) },
+      }));
+    }
   } catch (err) {
     if (replayWrap) replayWrap.innerHTML = `<p class="error-text">Lỗi replay: ${err.message}</p>`;
   } finally {
