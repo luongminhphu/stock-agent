@@ -194,6 +194,20 @@
 .brief-item::before      { content: '·'; color: var(--faint); flex-shrink: 0; margin-top: 1px; }
 .brief-item.action::before { content: '→'; color: var(--brand); font-weight: 700; }
 
+/* Action item ticker chip — clickable */
+.brief-item--ticker {
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.brief-item--ticker:hover {
+  background: rgba(125, 211, 252, 0.07);
+  color: var(--brand);
+}
+.brief-item--ticker:active {
+  background: rgba(125, 211, 252, 0.14);
+}
+
 /* Summary fallback block */
 .brief-summary {
   font-size: 0.8rem;
@@ -264,3 +278,116 @@
 .bt-chg.pos { color: #4ade80; }
 .bt-chg.neg { color: #f87171; }
 .bt-note { font-size: 0.74rem; color: var(--muted); line-height: 1.4; }
+
+/* ── Wave F: Brief Feedback Bar ───────────────────────────────────────────── */
+.brief-feedback-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.12);
+  flex-wrap: wrap;
+}
+
+.fb-prompt {
+  font-size: 0.7rem;
+  color: var(--faint);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  margin-right: 2px;
+  white-space: nowrap;
+}
+
+.fb-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(148, 163, 184, 0.06);
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.02em;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+  white-space: nowrap;
+}
+.fb-btn:hover:not(:disabled) {
+  background: rgba(125, 211, 252, 0.08);
+  border-color: rgba(125, 211, 252, 0.3);
+  color: var(--brand);
+}
+.fb-btn:active:not(:disabled) {
+  background: rgba(125, 211, 252, 0.15);
+}
+.fb-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Per-outcome selected highlight */
+.fb-btn[data-outcome="acted"].fb-selected {
+  background: rgba(74, 222, 128, 0.12);
+  border-color: rgba(74, 222, 128, 0.35);
+  color: #4ade80;
+}
+.fb-btn[data-outcome="watching"].fb-selected {
+  background: rgba(251, 191, 36, 0.12);
+  border-color: rgba(251, 191, 36, 0.35);
+  color: #fbbf24;
+}
+.fb-btn[data-outcome="skipped"].fb-selected {
+  background: rgba(148, 163, 184, 0.1);
+  border-color: rgba(148, 163, 184, 0.3);
+  color: var(--muted);
+}
+
+/* Confirmation state — replaces buttons after submit */
+.fb-confirmed {
+  font-size: 0.72rem;
+  color: var(--brand);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* ── Wave A: Brief Feedback KPI strip ────────────────────────────────────── */
+.fb-kpi-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 2px;
+}
+.fb-rate {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.fb-rate-good { background: rgba(74, 222, 128, 0.12);  color: #4ade80; }
+.fb-rate-low  { background: rgba(248, 113, 113, 0.1);  color: #f87171; }
+
+.fb-outcome {
+  font-size: 0.72rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.fb-outcome.fb-acted    { color: #4ade80; }
+.fb-outcome.fb-watching { color: #fbbf24; }
+.fb-outcome.fb-skipped  { color: var(--muted); }
+
+.fb-total {
+  font-size: 0.7rem;
+  color: var(--faint);
+}
+.fb-sep {
+  color: var(--line-strong);
+  font-size: 0.7rem;
+  user-select: none;
+}
