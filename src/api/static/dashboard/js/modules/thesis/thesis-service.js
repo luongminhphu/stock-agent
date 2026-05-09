@@ -2,14 +2,14 @@
  * thesis-service.js
  * Owner: modules/thesis
  * Responsibility: API calls + side effects liên quan đến thesis lifecycle.
- * - loadThesisDetail()
+ * - loadThesisDetail()   ← Wave C: inject thesis event timeline
  * - triggerAiReview()
  * - openApplyAiReviewModal()
  * - confirmDeleteThesis / Assumption / Catalyst
  */
 
 import { el, showToast, openModal, closeModal } from '../../utils/dom.js';
-import { esc } from '../../utils/format.js';
+import { esc, fmtDate } from '../../utils/format.js';
 import { thesisApiBase, getJson, sendJson } from '../../api/client.js';
 import { state } from '../../state/dashboard-state.js';
 import { renderThesisDetailHTML, emptyDetailHTML } from './render-thesis-table.js';
@@ -19,8 +19,7 @@ import { fetchQuote, renderQuoteStrip } from './market-quote.js';
 import { loadConvictionTimeline } from './render-conviction-timeline.js';
 
 // ---------------------------------------------------------------------------
-// Skeleton HTML cho detail-shell
-// Mirrors layout: heading → badges row → 3-col stats → 2-col columns
+// Skeleton HTML
 // ---------------------------------------------------------------------------
 function detailSkeletonHTML() {
   return `
@@ -64,27 +63,83 @@ function detailSkeletonHTML() {
 }
 
 // ---------------------------------------------------------------------------
+// Wave C: render thesis event timeline từ /readmodel/thesis/{id}/timeline
+// Gọi async sau render chính — không block UI.
+// ---------------------------------------------------------------------------
+const TIMELINE_EVENT_META = {
+  created:              { icon: '🚀', label: 'Tạo thesis'           },
+  assumption_changed:   { icon: '🔄', label: 'Assumption thay đổi'  },
+  catalyst_triggered:   { icon: '⚡', label: 'Catalyst kích hoạt'   },
+  review_added:         { icon: '📋', label: 'AI Review'             },
+  verdict_changed:      { icon: '🎯', label: 'Verdict đổi'          },
+  score_updated:        { icon: '📊', label: 'Score cập nhật'       },
+  status_changed:       { icon: '🏷',  label: 'Trạng thái đổi'      },
+  decision_logged:      { icon: '📝', label: 'Decision ghi lại'     },
+  invalidated:          { icon: '❌', label: 'Thesis bị invalidate'  },
+};
+
+function renderThesisTimeline(slot, events) {
+  if (!events?.length) {
+    slot.innerHTML = '<p class="tl-empty">Chưa có sự kiện nào.</p>';
+    return;
+  }
+
+  slot.innerHTML = `
+    <div class="tl-section">
+      <div class="tl-section-title">📅 Lịch sử thesis</div>
+      <ol class="tl-list">
+        ${events.map(ev => {
+          const meta  = TIMELINE_EVENT_META[ev.event_type] ?? { icon: '•', label: ev.event_type };
+          const dateStr = ev.occurred_at ? fmtDate(ev.occurred_at) : '';
+          const detail  = ev.detail ?? ev.description ?? ev.summary ?? null;
+          return `
+            <li class="tl-item">
+              <span class="tl-icon" aria-hidden="true">${meta.icon}</span>
+              <div class="tl-content">
+                <div class="tl-label">${esc(meta.label)}</div>
+                ${detail ? `<div class="tl-detail">${esc(detail)}</div>` : ''}
+                ${dateStr ? `<div class="tl-date">${dateStr}</div>` : ''}
+              </div>
+            </li>`;
+        }).join('')}
+      </ol>
+    </div>`;
+}
+
+async function loadThesisTimeline(thesisId, detailWrap) {
+  const slot = detailWrap.querySelector(`#thesisTimelineSlot-${thesisId}`);
+  if (!slot) return;
+  try {
+    const res    = await getJson(`/api/v1/readmodel/thesis/${thesisId}/timeline`);
+    // Guard: user có thể đã click sang thesis khác
+    if (!detailWrap.contains(slot)) return;
+    const events = Array.isArray(res) ? res : (res?.events ?? res?.items ?? []);
+    renderThesisTimeline(slot, events);
+  } catch {
+    if (detailWrap.contains(slot)) {
+      slot.innerHTML = '<p class="tl-empty muted">Không tải được lịch sử.</p>';
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Load detail panel
 // ---------------------------------------------------------------------------
 export async function loadThesisDetail(thesisId) {
   const wrap = el('thesisDetail');
-  // WAVE 2d: real skeleton thay vì spinner trơ
   wrap.classList.remove('empty-detail');
   wrap.innerHTML = detailSkeletonHTML();
   try {
-    // WAVE 3b: fetch quote SONG SONG với 4 thesis calls — không chặn nhau
     const [thesis, assumptions, catalysts, reviews] = await Promise.all([
       getJson(`${thesisApiBase()}/${thesisId}`),
       getJson(`${thesisApiBase()}/${thesisId}/assumptions`).catch(() => []),
       getJson(`${thesisApiBase()}/${thesisId}/catalysts`).catch(() => []),
       getJson(`${thesisApiBase()}/${thesisId}/reviews`).catch(() => []),
     ]);
-    // FIX: guard thesis null/undefined
     if (!thesis) {
       wrap.innerHTML = emptyDetailHTML();
       return;
     }
-    // Render detail HTML ngay (quote slot + conviction timeline slot hiển skeleton tự động)
     wrap.innerHTML = renderThesisDetailHTML(thesis, assumptions, catalysts, reviews);
     wireDetailActions(thesisId, wrap);
 
@@ -92,7 +147,6 @@ export async function loadThesisDetail(thesisId) {
       ? (fn) => requestIdleCallback(fn, { timeout: 3000 })
       : (fn) => setTimeout(fn, 0);
 
-    // WAVE 3b: fetch quote bất đồng bộ
     scheduleIdle(async () => {
       const slot = wrap.querySelector('#quoteStripSlot');
       if (!slot) return;
@@ -101,12 +155,15 @@ export async function loadThesisDetail(thesisId) {
       slot.innerHTML = renderQuoteStrip(quote, thesis);
     });
 
-    // Conviction timeline: fetch async, không block quote
     scheduleIdle(async () => {
-      // Guard: slot vẫn thuộc về đúng thesis (user có thể click sang thesis khác)
       const slot = wrap.querySelector(`#convictionTimelineSlot-${thesisId}`);
       if (!slot) return;
       await loadConvictionTimeline(thesisId);
+    });
+
+    // Wave C: thesis event timeline — fire-and-forget, không block quote/conviction
+    scheduleIdle(async () => {
+      await loadThesisTimeline(thesisId, wrap);
     });
 
   } catch (err) {
@@ -136,7 +193,6 @@ export async function triggerAiReview(thesisId) {
     }
     result.innerHTML = renderReviewRecommendResult(thesisId, data);
     result.classList.remove('hidden');
-    // Refresh conviction timeline sau khi có review mới → snapshot mới
     await loadConvictionTimeline(thesisId);
   } catch (err) {
     result.innerHTML = `<div class="error-banner" style="margin:0;">AI review lỗi: ${esc(err.message)}</div>`;

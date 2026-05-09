@@ -17,6 +17,7 @@ import {
   initCallsTabs,
 } from '../backtesting/render-backtesting.js';
 import { renderCatalystList, renderSnapshots } from '../briefing/render-brief.js';
+import { loadLeaderboard } from './leaderboard-loader.js';
 import { countUp, flashValue } from '../../utils/animate.js';
 
 function wireDeleteThesis(id) {
@@ -90,6 +91,7 @@ export async function loadDashboard() {
       stats, theses, verdictAccuracy, catalysts,
       latestScan, latestMorningBrief, latestEodBrief,
       portfolioTrades,
+      briefFeedback,           // Wave A
     ] = await Promise.all([
       getJson(`${base}/stats`).catch(() => null),
       getJson(`${base}/theses?status=${status}`).catch(() => []),
@@ -99,6 +101,7 @@ export async function loadDashboard() {
       getJson(`${base}/brief/latest?phase=morning`).catch(() => null),
       getJson(`${base}/brief/latest?phase=eod`).catch(() => null),
       getJson(`${base}/portfolio/trades`).catch(() => null),
+      getJson(`${base}/brief/feedback-summary`).catch(() => null),  // Wave A
     ]);
 
     renderSummary(stats, portfolioTrades);
@@ -117,14 +120,17 @@ export async function loadDashboard() {
 
     renderCatalystList(catalysts?.items ?? catalysts ?? []);
     renderSnapshots({
-      // WatchlistScan trả về `scanned_at` — fallback created_at cho backward compat
       latest_scan_at:            latestScan?.scanned_at ?? latestScan?.created_at ?? latestScan?.generated_at ?? null,
       latest_scan_summary:       latestScan?.summary ?? latestScan?.headline ?? null,
       latest_morning_brief_at:   latestMorningBrief?.created_at ?? latestMorningBrief?.generated_at ?? null,
       latest_morning_brief_data: latestMorningBrief ?? null,
       latest_eod_brief_at:       latestEodBrief?.created_at ?? latestEodBrief?.generated_at ?? null,
       latest_eod_brief_data:     latestEodBrief ?? null,
+      brief_feedback:            briefFeedback ?? null,            // Wave A
     });
+
+    // Wave B: leaderboard — fire-and-forget, không block main render
+    loadLeaderboard().catch(() => null);
 
     if (state.selectedThesisId) {
       const t = state.theses.find(x => x.id === state.selectedThesisId);
@@ -214,7 +220,7 @@ export function renderSummary(s, portfolio) {
     riskyEl.classList.toggle('kpi-safe',  riskyVal === 0);
   }
 
-  // ── Portfolio KPIs từ /portfolio/trades ──────────────────────────────
+  // Portfolio KPIs
   const pvNode      = el('portfolioValue');
   const pvSubNode   = el('portfolioValueSub');
   const pnlNode     = el('unrealizedPnl');
@@ -242,25 +248,21 @@ export function renderSummary(s, portfolio) {
       if (pnl != null) {
         const sign = pnl >= 0 ? '+' : '';
         pnlNode.textContent = sign + fmtVnd(pnl);
-        pnlNode.classList.toggle('kpi-positive', pnl >= 0);
-        pnlNode.classList.toggle('kpi-negative', pnl < 0);
+        pnlNode.className = pnl >= 0 ? 'kpi-safe' : 'kpi-risky';
         flashValue(pnlNode, pnl >= 0);
       } else {
         pnlNode.textContent = '—';
       }
     }
+
     if (pnlPctNode) {
       if (pct != null) {
         const sign = pct >= 0 ? '+' : '';
-        // pnl_service.py trả về % thô (e.g. 19.20), không phải decimal ratio
-        pnlPctNode.textContent = `${sign}${pct.toFixed(2)}%`;
+        pnlPctNode.textContent = `${sign}${Number(pct).toFixed(2)}%`;
+        pnlPctNode.className = pct >= 0 ? 'kpi-safe' : 'kpi-risky';
       } else {
         pnlPctNode.textContent = '';
       }
     }
-  } else {
-    // portfolio/trades call failed — giữ nguyên dấu "—"
-    if (pvNode  && pvNode.textContent  === '—') pvNode.textContent  = '—';
-    if (pnlNode && pnlNode.textContent === '—') pnlNode.textContent = '—';
   }
 }
