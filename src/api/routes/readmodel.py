@@ -67,6 +67,10 @@ async def _ensure_scan_snapshot(
         quote_service=get_quote_service(),
     )
     await scan_svc.scan_user_if_stale(user_id=user_id, max_age_minutes=30)
+    # ScanService._persist_snapshot() only calls session.add() — the scheduler
+    # commits its own transaction. On the HTTP on-demand path, we must commit
+    # here so the follow-up get_scan_latest() query can see the new row.
+    await session.commit()
     return await svc.get_scan_latest(user_id)
 
 
