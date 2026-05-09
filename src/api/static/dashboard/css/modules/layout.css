@@ -77,6 +77,14 @@
      - Added: .cluster inner overrides
        → prevent double padding/margin on .watchlist-layer, .portfolio-layer,
          .workspace-grid, .validation-layer, .lb-strip when nested in .cluster
+
+   FIX LOG (2026-05-09c):
+     - .validation-layer: add padding-inline + box-sizing guard
+       → backtesting panel won't bleed to viewport edge if ever used outside .cluster
+     - .dec-panel-header: replace hardcoded 18px/22px with var(--panel-pad) token
+       → consistent visual rhythm with all other .panel-header blocks
+     - .list max-height: 300px → clamp(220px, 30vh, 300px)
+       → avoids over-tall list on short-viewport mobile
 */
 
 /* ── SKIP LINK ──────────────────────────────────── */
@@ -487,9 +495,15 @@
 }
 
 /* ── BACKTESTING / VALIDATION LAYER ──────────────── */
+/*
+   FIX (2026-05-09c): add padding-inline + box-sizing so backtesting panel
+   never bleeds to viewport edge if used outside a .cluster wrapper.
+*/
 .validation-layer {
   max-width: var(--content-max);
   margin-inline: auto;
+  padding-inline: var(--page-px);
+  box-sizing: border-box;
   width: 100%;
 }
 
@@ -626,7 +640,8 @@
   flex-direction: column;
   gap: 0;
   overflow-y: auto;
-  max-height: 300px;
+  /* FIX (2026-05-09c): clamp avoids over-tall list on short-viewport mobile */
+  max-height: clamp(220px, 30vh, 300px);
 }
 
 .list-item {
@@ -772,12 +787,16 @@
 .scan-result-inline.hidden { display: none; }
 
 /* ── Decision panel header ──────────────────────────────────────────────────── */
+/*
+   FIX (2026-05-09c): use var(--panel-pad) token instead of hardcoded 18px/22px
+   → consistent visual rhythm with all other .panel-header blocks
+*/
 .dec-panel-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 18px 22px 14px;
+  padding: 16px var(--panel-pad) 12px;
   border-bottom: 1px solid var(--line, rgba(148,163,184,.12));
   flex-wrap: wrap;
 }
@@ -812,6 +831,7 @@
 .cluster .lb-strip {
   margin-inline: 0;
   max-width: 100%;
+  padding-inline: 0;
 }
 
 /* ── Responsive: cluster + dec-panel-header on mobile ──────────────────────── */

@@ -84,6 +84,7 @@ function bindBriefTickerClick() {
 
 // ---------------------------------------------------------------------------
 // Watchlist add modal: wire form submit
+// FIX: ID phải match index.html — watchlistTickerInput / watchlistNoteInput
 // ---------------------------------------------------------------------------
 function bindWatchlistAddModal() {
   const form = document.getElementById('watchlistAddForm');
@@ -91,8 +92,8 @@ function bindWatchlistAddModal() {
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const ticker = form.querySelector('#wlTickerInput')?.value?.trim();
-    const note   = form.querySelector('#wlNoteInput')?.value?.trim() ?? '';
+    const ticker = form.querySelector('#watchlistTickerInput')?.value?.trim();
+    const note   = form.querySelector('#watchlistNoteInput')?.value?.trim() ?? '';
     if (!ticker) return;
     closeModal('watchlistAddModal');
     form.reset();
