@@ -1,5 +1,5 @@
 /**
- * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions)
+ * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard)
  * Responsibility: import tất cả modules, wire events, khởi động dashboard.
  * Rule: KHÔNG chứa business logic. Chỉ bootstrap + wiring.
  */
@@ -21,6 +21,7 @@ import {
   bindDecisionFormEvents,
   openDecisionModal,
 } from './modules/decision/decision-loader.js';
+import { loadLeaderboard }      from './modules/leaderboard/leaderboard-service.js';
 import { state }                from './state/dashboard-state.js';
 
 // ---------------------------------------------------------------------------
@@ -120,6 +121,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (thesisId) await loadThesisDetail(thesisId);
       // Reload portfolio khi thesis thay đổi (có thể ảnh hưởng view=thesis)
       await loadPortfolio();
+      // Reload leaderboard khi thesis thay đổi
+      await loadLeaderboard();
     },
   });
 
@@ -134,6 +137,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadPortfolio();
     await loadWatchlist();
     await loadDecisions();
+    await loadLeaderboard();
   });
   el('statusFilter')?.addEventListener('change', loadDashboard);
 
@@ -199,5 +203,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadPortfolio(),
     loadWatchlist(),
     loadDecisions(),
+    loadLeaderboard(),
   ]);
 });

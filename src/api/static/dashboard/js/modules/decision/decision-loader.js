@@ -3,7 +3,7 @@
  * Owner: dashboard (static adapter)
  *
  * Exports:
- *   loadDecisions()             — fetch + render decisions table
+ *   loadDecisions()             — fetch + render decisions table + update KPI strip
  *   loadLessons(force?)         — lazy fetch + render lessons cards
  *   bindDecisionTabs()          — wire Decisions | Lessons tab toggle
  *   bindLogDecisionModal()      — wire Log Decision modal (open/submit)
@@ -22,7 +22,59 @@ import {
 let lessonsLoaded = false;
 
 // ---------------------------------------------------------------------------
-// Public: load & render decisions
+// Private: update Wave B KPI strip (client-side aggregate)
+// ---------------------------------------------------------------------------
+
+function setKpi(id, value, sub, alert = false) {
+  const card  = document.getElementById(id);
+  if (!card) return;
+  const valEl = card.querySelector('.dec-kpi-value');
+  const subEl = card.querySelector('.dec-kpi-sub');
+  if (valEl) {
+    valEl.textContent = value ?? '—';
+    valEl.classList.add('updated');          // flash animation
+    setTimeout(() => valEl.classList.remove('updated'), 900);
+  }
+  if (subEl && sub !== undefined) subEl.textContent = sub;
+  if (card.classList.contains('dec-kpi-card--alert')) {
+    card.dataset.zero = alert ? 'false' : 'true';
+  }
+}
+
+function updateDecisionKpis(items) {
+  const total     = items.length;
+  const evaluated = items.filter(d => d.reviewed_at);
+  const wins      = evaluated.filter(d => d.outcome_verdict === 'correct').length;
+  const winRate   = evaluated.length
+    ? Math.round(wins / evaluated.length * 100)
+    : null;
+  const buyCount  = items.filter(d => d.decision_type === 'BUY').length;
+  const sellCount = items.filter(d => d.decision_type === 'SELL').length;
+  const now       = Date.now();
+  const pending   = items.filter(d => {
+    if (d.reviewed_at) return false;
+    const due = new Date(d.decision_at).getTime()
+      + (d.review_horizon_days ?? 30) * 86_400_000;
+    return due < now;
+  }).length;
+
+  setKpi('dkpiTotal',    total,    undefined);
+  setKpi('dkpiWinRate',  winRate !== null ? `${winRate}%` : '—', `${evaluated.length} evaluated`);
+  setKpi('dkpiBuyCount', `${buyCount} / ${sellCount}`);
+  setKpi('dkpiPending',  pending,  'quá hạn review', pending > 0);
+
+  // win-rate colour tier
+  const rateEl = document.querySelector('#dkpiWinRate .dec-kpi-value');
+  if (rateEl && winRate !== null) {
+    rateEl.classList.remove('rate-high', 'rate-mid', 'rate-low');
+    rateEl.classList.add(
+      winRate >= 60 ? 'rate-high' : winRate >= 40 ? 'rate-mid' : 'rate-low'
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Public: load & render decisions + update KPI strip
 // ---------------------------------------------------------------------------
 
 export async function loadDecisions() {
@@ -31,10 +83,12 @@ export async function loadDecisions() {
   wrap.innerHTML = '<p class="loading-text">Đang tải decisions…</p>';
   try {
     const data = await getJson('/api/v1/decisions?limit=50');
-    renderDecisionsTable(wrap, Array.isArray(data) ? data : [], {
+    const items = Array.isArray(data) ? data : (data.items ?? []);
+    renderDecisionsTable(wrap, items, {
       onEvaluate: evaluateDecision,
       onReplay:   replayDecision,
     });
+    updateDecisionKpis(items);
   } catch (err) {
     wrap.innerHTML = `<p class="error-text">Lỗi tải decisions: ${err.message}</p>`;
   }
