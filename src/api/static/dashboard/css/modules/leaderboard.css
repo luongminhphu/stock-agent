@@ -1,0 +1,201 @@
+/* ─── Leaderboard Strip ─────────────────────────────────────────────────────
+   Owner   : modules/leaderboard
+   Wave A  : HTML #leaderboardStrip + ol#leaderboardList
+   API     : GET /api/v1/readmodel/leaderboard?sort_by=score&limit=5
+   JS owner: js/modules/leaderboard/leaderboard-service.js
+
+   TOKEN MAP (from variables.css):
+     --bg / --surface / --surface-2 / --surface-3
+     --text / --muted / --faint / --line / --line-strong
+     --brand / --brand-strong / --success / --warning / --danger / --violet
+     --radius-lg / --radius-md / --radius-sm
+     --page-px / --content-max / --layer-gap  (from layout.css)
+─────────────────────────────────────────────────────────────────────────── */
+
+/* ── Outer strip geometry ────────────────────────────────────────────────── */
+.lb-strip {
+  padding-inline: var(--page-px);
+  padding-block: 14px 16px;
+  margin-bottom: var(--layer-gap);
+  max-width: var(--content-max);
+  margin-inline: auto;
+  width: 100%;
+}
+
+/* ── Header: eyebrow + sort buttons ─────────────────────────────────────── */
+.lb-strip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.lb-sort-bar {
+  display: flex;
+  gap: 4px;
+}
+
+.lb-sort-btn {
+  padding: 5px 14px;
+  border-radius: 99px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.lb-sort-btn:hover {
+  color: var(--text);
+  background: rgba(125, 211, 252, 0.06);
+}
+.lb-sort-btn.active {
+  color: var(--brand);
+  background: rgba(125, 211, 252, 0.1);
+  border-color: rgba(125, 211, 252, 0.3);
+}
+
+/* ── List container ─────────────────────────────────────────────────────── */
+.lb-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr));
+  gap: 8px;
+}
+
+/* ── Individual item ─────────────────────────────────────────────────────── */
+.lb-item {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.12s;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+}
+.lb-item:hover {
+  background: rgba(125, 211, 252, 0.05);
+  border-color: rgba(125, 211, 252, 0.2);
+  transform: translateY(-1px);
+}
+
+/* ── Rank number + medal colours ─────────────────────────────────────────── */
+.lb-rank {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+  text-transform: uppercase;
+  line-height: 1;
+}
+.lb-rank[data-rank="1"] { color: #fbbf24; }  /* gold */
+.lb-rank[data-rank="2"] { color: #94a3b8; }  /* silver */
+.lb-rank[data-rank="3"] { color: #b45309; }  /* bronze */
+
+/* ── Ticker + direction row ───────────────────────────────────────────────── */
+.lb-ticker-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.lb-ticker {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--brand);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.lb-title {
+  font-size: 0.76rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* ── Score / metric value ────────────────────────────────────────────────── */
+.lb-metric {
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.lb-metric-label {
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.lb-metric.up   { color: var(--success); }
+.lb-metric.down { color: var(--danger);  }
+
+/* Score tier icon aligned right ─────────────────────────────────────────── */
+.lb-tier {
+  margin-left: auto;
+  font-size: 0.7rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* ── Skeleton item (before fetch completes) ──────────────────────────────── */
+.lb-item--skel {
+  pointer-events: none;
+  cursor: default;
+  transform: none !important;
+}
+.lb-item--skel:hover {
+  background: rgba(255, 255, 255, 0.025);
+  border-color: rgba(148, 163, 184, 0.1);
+}
+
+/* ── Loading state on the strip itself ───────────────────────────────────── */
+.lb-strip[aria-busy="true"] .lb-sort-btn {
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+/* ── Empty state ─────────────────────────────────────────────────────────── */
+.lb-empty {
+  grid-column: 1 / -1;
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+/* ── Responsive: narrow → horizontal scroll list ─────────────────────────── */
+@media (max-width: 768px) {
+  .lb-list {
+    grid-template-columns: repeat(5, minmax(160px, 1fr));
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+  }
+}
+@media (max-width: 480px) {
+  .lb-list {
+    grid-template-columns: repeat(5, minmax(140px, 1fr));
+  }
+  .lb-strip-header { flex-direction: column; align-items: flex-start; }
+}

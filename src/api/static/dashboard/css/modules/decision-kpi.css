@@ -1,0 +1,141 @@
+/* ─── Decision KPI Strip ────────────────────────────────────────────────────
+   Owner   : modules/decision  (extension of decision.css)
+   Wave B  : HTML #decisionKpiStrip inside .decision-layer
+   Data    : client-side aggregate từ GET /api/v1/decisions
+   JS owner: js/modules/decisions/decision-service.js
+
+   Classes:
+     .dec-kpi-strip          — flex row chứa 4 KPI card
+     .dec-kpi-card           — individual KPI tile
+     .dec-kpi-card--alert    — highlight khi pending evaluations > 0
+     .dec-kpi-label          — uppercase label nhỏ
+     .dec-kpi-value          — số to, tabular-nums
+     .dec-kpi-sub            — sub-label phụ
+
+   TOKEN MAP (từ variables.css):
+     --surface / --surface-2 / --line / --muted / --faint
+     --brand / --success / --warning / --danger / --text
+     --radius-sm
+─────────────────────────────────────────────────────────────────────────── */
+
+/* ── Strip container ─────────────────────────────────────────────────────── */
+.dec-kpi-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+  /* subtle separator từ header bên trên */
+  padding-top: 2px;
+}
+
+/* ── Individual KPI card ─────────────────────────────────────────────────── */
+.dec-kpi-card {
+  flex: 1 1 130px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 16px 13px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: var(--radius-sm);
+  min-width: 0;
+  overflow: hidden;
+  transition: background 0.15s, border-color 0.15s;
+}
+.dec-kpi-card:hover {
+  background: rgba(125, 211, 252, 0.04);
+  border-color: rgba(125, 211, 252, 0.15);
+}
+
+/* ── Alert variant: pending evaluations quá hạn ─────────────────────────── */
+.dec-kpi-card--alert {
+  background: rgba(251, 191, 36, 0.05);
+  border-color: rgba(251, 191, 36, 0.25);
+}
+.dec-kpi-card--alert:hover {
+  background: rgba(251, 191, 36, 0.08);
+  border-color: rgba(251, 191, 36, 0.4);
+}
+.dec-kpi-card--alert .dec-kpi-value {
+  color: var(--warning);
+}
+.dec-kpi-card--alert .dec-kpi-label {
+  color: rgba(251, 191, 36, 0.7);
+}
+/* ── Hide alert variant when value is zero ───────────────────────────────── */
+.dec-kpi-card--alert[data-zero="true"] {
+  background: rgba(255, 255, 255, 0.025);
+  border-color: rgba(148, 163, 184, 0.1);
+}
+.dec-kpi-card--alert[data-zero="true"] .dec-kpi-value {
+  color: var(--text);
+}
+.dec-kpi-card--alert[data-zero="true"] .dec-kpi-label {
+  color: var(--muted);
+}
+
+/* ── Typography ──────────────────────────────────────────────────────────── */
+.dec-kpi-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dec-kpi-value {
+  font-size: clamp(1.2rem, 0.9rem + 0.8vw, 1.55rem);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  line-height: 1.1;
+  /* skeleton fallback sizing */
+  min-height: 1.55rem;
+  display: flex;
+  align-items: center;
+}
+
+.dec-kpi-sub {
+  font-size: 0.7rem;
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Win-rate colour coding ──────────────────────────────────────────────── */
+#dkpiWinRate .dec-kpi-value.rate-high { color: var(--success); } /* ≥ 60% */
+#dkpiWinRate .dec-kpi-value.rate-mid  { color: var(--warning); } /* 40–60% */
+#dkpiWinRate .dec-kpi-value.rate-low  { color: var(--danger);  } /* < 40% */
+
+/* ── countUp flash animation (mirrors signal-value.updated) ──────────────── */
+@keyframes dec-kpi-flash {
+  0%   { color: var(--brand-strong); }
+  60%  { color: var(--brand); }
+  100% { color: inherit; }
+}
+.dec-kpi-value.updated {
+  animation: dec-kpi-flash 0.8s ease-out forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dec-kpi-value.updated { animation: none; color: var(--brand); }
+}
+
+/* ── Skeleton state: .dec-kpi-value chứa .skel child ────────────────────── */
+.dec-kpi-value .skel {
+  height: 1.2rem;
+  border-radius: 4px;
+}
+
+/* ── Responsive: 2 col on very small screens ─────────────────────────────── */
+@media (max-width: 600px) {
+  .dec-kpi-strip { gap: 6px; }
+  .dec-kpi-card  { flex: 1 1 calc(50% - 6px); padding: 10px 12px; }
+  .dec-kpi-value { font-size: 1.15rem; }
+}
+@media (max-width: 380px) {
+  .dec-kpi-card  { flex: 1 1 100%; }
+}
