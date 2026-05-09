@@ -1,6 +1,6 @@
 /**
- * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard + Wave D lesson loop)
- * Responsibility: import tất cả modules, wire events, khởi động dashboard.
+ * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard + Wave D lesson loop + Wave E brief ticker)
+ * Responsibility: import ất cả modules, wire events, khởi động dashboard.
  * Rule: KHÔNG chứa business logic. Chỉ bootstrap + wiring.
  */
 
@@ -54,6 +54,33 @@ function bindBriefTabs() {
 }
 
 // ---------------------------------------------------------------------------
+// Wave E: Brief ticker chip click → loadThesisDetail
+// Delegates from document (chips are re-rendered on each brief refresh).
+// ---------------------------------------------------------------------------
+function bindBriefTickerClick() {
+  document.addEventListener('click', e => {
+    const chip = e.target.closest('[data-brief-ticker]');
+    if (!chip) return;
+    const ticker = chip.dataset.briefTicker?.toUpperCase();
+    if (!ticker) return;
+    const thesis = state.theses.find(t => t.ticker?.toUpperCase() === ticker);
+    if (!thesis) return; // silent skip — ticker not in watchlist
+    loadThesisDetail(thesis.id);
+    document.getElementById('thesesTableWrap')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+
+  // Keyboard: Enter / Space
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const chip = e.target.closest('[data-brief-ticker]');
+    if (!chip) return;
+    e.preventDefault();
+    chip.click();
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Watchlist add modal: wire form submit
 // ---------------------------------------------------------------------------
 function bindWatchlistAddModal() {
@@ -98,7 +125,7 @@ function bindDecisionTabs() {
       lessonsPane?.classList.remove('hidden');
       // Lazy-load lessons on first switch — fix: correct operator precedence
       const wrap = el('lessonsListWrap');
-      if (wrap && (wrap.innerHTML.includes('Đang tải') || wrap.children.length === 0)) {
+      if (wrap && (wrap.innerHTML.includes('\u0110ang tải') || wrap.children.length === 0)) {
         await loadLessons();
       }
     }
@@ -130,6 +157,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 1. Bind brief tab switcher
   bindBriefTabs();
+
+  // 1b. Wave E: brief ticker chips → thesis detail
+  bindBriefTickerClick();
 
   // 2. Bind thesis form + delete confirm (submit handlers)
   bindThesisFormEvents({
@@ -180,7 +210,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!state.aiApplyThesisId || !state.aiSelectedRecIds.length) return;
     const btn = el('aiApplyConfirmBtn');
     btn.disabled = true;
-    btn.textContent = 'Đang áp dụng…';
+    btn.textContent = '\u0110ang áp dụng…';
     try {
       await sendJson(
         `${thesisApiBase()}/${state.aiApplyThesisId}/recommendations/apply`,
@@ -188,7 +218,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         { recommendation_ids: state.aiSelectedRecIds },
       );
       closeModal('aiApplyModal');
-      showToast('✅ Đã áp dụng gợi ý AI');
+      showToast('\u2705 \u0110ã áp dụng gợi ý AI');
       await loadThesisDetail(state.aiApplyThesisId);
     } catch (err) {
       showToast(`Lỗi áp dụng: ${err.message}`, 'error');
