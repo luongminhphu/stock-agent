@@ -12,7 +12,7 @@
  *   replayDecision(id, row)     — GET replay, show inline panel
  */
 
-import { getJson, sendJson } from '../../api/client.js';
+import { getJson, sendJson, thesisApiBase } from '../../api/client.js';
 import {
   renderDecisionsTable,
   renderLessonsCards,
@@ -177,7 +177,7 @@ async function populateThesisSelect() {
   if (!sel) return;
   sel.innerHTML = '<option value="">Đang tải…</option>';
   try {
-    const theses = await getJson('/api/v1/theses?status=active&limit=50');
+    const theses = await getJson(`${thesisApiBase()}?status=active&limit=50`);
     const list = Array.isArray(theses) ? theses : (theses.items ?? []);
     if (!list.length) {
       sel.innerHTML = '<option value="">Không có thesis active</option>';
