@@ -16,7 +16,7 @@ import { getJson, sendJson } from '../../api/client.js';
 import {
   renderDecisionsTable,
   renderLessonsCards,
-  showReplayPanel,
+  renderReplayPanel,
 } from './decision-renderer.js';
 
 let lessonsLoaded = false;
@@ -31,7 +31,10 @@ export async function loadDecisions() {
   wrap.innerHTML = '<p class="loading-text">Đang tải decisions…</p>';
   try {
     const data = await getJson('/api/v1/decisions?limit=50');
-    renderDecisionsTable(wrap, Array.isArray(data) ? data : []);
+    renderDecisionsTable(wrap, Array.isArray(data) ? data : [], {
+      onEvaluate: evaluateDecision,
+      onReplay:   replayDecision,
+    });
   } catch (err) {
     wrap.innerHTML = `<p class="error-text">Lỗi tải decisions: ${err.message}</p>`;
   }
@@ -134,36 +137,34 @@ export function bindLogDecisionModal() {
 export const bindDecisionFormEvents = bindLogDecisionModal;
 
 // ---------------------------------------------------------------------------
-// Public: evaluate a decision (called from table row button)
+// Public: evaluate a decision (called from renderer callback)
 // ---------------------------------------------------------------------------
 
-export async function evaluateDecision(decisionId, rowEl) {
-  const btn = rowEl?.querySelector('[data-action="evaluate"]');
-  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+export async function evaluateDecision(decisionId, btnEl) {
+  if (btnEl) { btnEl.disabled = true; btnEl.textContent = '…'; }
   try {
     await sendJson(`/api/v1/decisions/${decisionId}/evaluate`, 'POST', null);
     await loadDecisions();
   } catch (err) {
     alert(`Lỗi evaluate: ${err.message}`);
-    if (btn) { btn.disabled = false; btn.textContent = 'Evaluate'; }
+    if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Evaluate'; }
   }
 }
 
 // ---------------------------------------------------------------------------
-// Public: replay a decision (called from table row button)
+// Public: replay a decision (called from renderer callback)
 // ---------------------------------------------------------------------------
 
-export async function replayDecision(decisionId, rowEl) {
-  const btn = rowEl?.querySelector('[data-action="replay"]');
-  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+export async function replayDecision(decisionId, replayWrap, btnEl) {
+  if (btnEl) { btnEl.disabled = true; btnEl.textContent = '…'; }
   try {
     const result = await getJson(`/api/v1/decisions/${decisionId}/replay`);
-    showReplayPanel(rowEl, result);
+    renderReplayPanel(replayWrap, result);
     lessonsLoaded = false;
   } catch (err) {
-    alert(`Lỗi replay: ${err.message}`);
+    if (replayWrap) replayWrap.innerHTML = `<p class="error-text">Lỗi replay: ${err.message}</p>`;
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '🧠 Replay'; }
+    if (btnEl) { btnEl.disabled = false; btnEl.textContent = '🧠 Replay'; }
   }
 }
 
@@ -192,7 +193,7 @@ async function populateThesisSelect() {
 }
 
 // ---------------------------------------------------------------------------
-// Private: open modal + populate thesis select (wired by app.js via newDecisionBtn)
+// Public: open modal + populate thesis select
 // ---------------------------------------------------------------------------
 
 export async function openDecisionModal() {
