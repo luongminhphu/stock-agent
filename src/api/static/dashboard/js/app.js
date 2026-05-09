@@ -19,6 +19,7 @@ import {
   loadDecisions,
   loadLessons,
   bindDecisionFormEvents,
+  openDecisionModal,
 } from './modules/decision/decision-loader.js';
 import { state }                from './state/dashboard-state.js';
 
@@ -185,7 +186,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   bindWatchlistAddModal();
 
   // 9. Decision section wiring
-  el('newDecisionBtn')?.addEventListener('click', () => openModal('decisionModal'));
+  // openDecisionModal() fetch thesis list trước khi show modal —
+  // không dùng openModal() generic vì sẽ bỏ trống dropdown thesis.
+  el('newDecisionBtn')?.addEventListener('click', openDecisionModal);
   bindDecisionFormEvents();
   bindDecisionTabs();
 
