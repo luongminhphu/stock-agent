@@ -101,6 +101,7 @@ class BriefingAgent:
             system_prompt=SYSTEM_PROMPT,
             user_prompt=prompt,
             response_schema=BriefOutput,
+            max_tokens=AIClient.COMPLEX_MAX_TOKENS,
         )
         logger.info(
             "briefing_agent.morning_brief.done",
@@ -178,6 +179,7 @@ class BriefingAgent:
             system_prompt=SYSTEM_PROMPT,
             user_prompt=prompt,
             response_schema=BriefOutput,
+            max_tokens=AIClient.COMPLEX_MAX_TOKENS,
         )
         logger.info(
             "briefing_agent.eod_brief.done",
