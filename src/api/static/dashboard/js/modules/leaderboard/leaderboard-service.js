@@ -1,9 +1,13 @@
 /**
  * leaderboard-service.js — Wave A: Thesis Leaderboard Strip
  * Owner  : readmodel (query) + dashboard (static adapter)
- * API    : GET /api/v1/readmodel/leaderboard?sort_by=score&limit=5
+ * API    : GET /api/v1/readmodel/leaderboard?sort_by=score|pnl&limit=5
  * HTML   : #leaderboardStrip  →  ol#leaderboardList
  * CSS    : css/modules/leaderboard.css
+ *
+ * LeaderboardEntry fields (from readmodel/schemas.py):
+ *   rank, thesis_id, ticker, title, score, pnl_pct,
+ *   last_verdict, status, created_at
  *
  * Exports:
  *   loadLeaderboard(sortBy?)  — fetch + render, wires sort buttons on first call
@@ -34,10 +38,11 @@ export async function loadLeaderboard(sortBy = 'score') {
   }
 
   try {
+    // LeaderboardResponse shape: { user_id, sort_by, entries: [...] }
     const data  = await getJson(
       `/api/v1/readmodel/leaderboard?sort_by=${sortBy}&limit=${LIMIT}`
     );
-    const items = Array.isArray(data) ? data : (data.items ?? []);
+    const items = Array.isArray(data) ? data : (data.entries ?? []);
     _render(list, items, sortBy);
   } catch (err) {
     list.innerHTML = `<li class="lb-empty">Không tải được leaderboard: ${err.message}</li>`;
@@ -50,34 +55,29 @@ export async function loadLeaderboard(sortBy = 'score') {
 // Private: render list items
 // ---------------------------------------------------------------------------
 
+// Compute tier client-side from score (0–100)
 const TIER_LABEL = score =>
-  score >= 80 ? '🔥 Strong' :
-  score >= 60 ? '✅ Good'   :
-  score >= 40 ? '⚠️ Watch'  : '🔴 Risky';
+  score == null  ? ''           :
+  score >= 80    ? '🔥 Strong'  :
+  score >= 60    ? '✅ Good'    :
+  score >= 40    ? '⚠️ Watch'   : '🔴 Risky';
 
+// Backend only supports sort_by: "score" | "pnl"
 function _metricDisplay(item, sortBy) {
-  switch (sortBy) {
-    case 'conviction':
-      return {
-        value : item.conviction_score != null ? item.conviction_score : '—',
-        label : 'Conviction',
-        cls   : '',
-      };
-    case 'pnl': {
-      const pnl = item.pnl_pct;
-      return {
-        value : pnl != null ? `${pnl > 0 ? '+' : ''}${pnl.toFixed(1)}%` : '—',
-        label : 'P&L',
-        cls   : pnl == null ? '' : pnl > 0 ? 'up' : 'down',
-      };
-    }
-    default: // score
-      return {
-        value : item.score != null ? item.score : '—',
-        label : 'Score',
-        cls   : '',
-      };
+  if (sortBy === 'pnl') {
+    const pnl = item.pnl_pct;
+    return {
+      value : pnl != null ? `${pnl > 0 ? '+' : ''}${pnl.toFixed(1)}%` : '—',
+      label : 'P&L',
+      cls   : pnl == null ? '' : pnl > 0 ? 'up' : 'down',
+    };
   }
+  // default: score
+  return {
+    value : item.score != null ? item.score : '—',
+    label : 'Score',
+    cls   : '',
+  };
 }
 
 function _render(listEl, items, sortBy) {
@@ -87,20 +87,22 @@ function _render(listEl, items, sortBy) {
   }
 
   listEl.innerHTML = items.map((item, idx) => {
-    const rank   = idx + 1;
-    const metric = _metricDisplay(item, sortBy);
-    const tier   = item.score != null ? TIER_LABEL(item.score) : '';
+    const rank    = item.rank ?? (idx + 1);
+    const metric  = _metricDisplay(item, sortBy);
+    const tier    = TIER_LABEL(item.score);
+    const verdict = item.last_verdict ? `<span class="lb-verdict">${_esc(item.last_verdict)}</span>` : '';
     return `
       <li class="lb-item" role="listitem">
         <span class="lb-rank" data-rank="${rank}">#${rank}</span>
         <div class="lb-ticker-row">
           <span class="lb-ticker">${_esc(item.ticker ?? '—')}</span>
           <span class="lb-title">${_esc(item.title ?? '')}</span>
+          ${verdict}
         </div>
         <div class="lb-metric ${metric.cls}">
           ${_esc(String(metric.value))}
           <span class="lb-metric-label">${metric.label}</span>
-          <span class="lb-tier">${tier}</span>
+          ${tier ? `<span class="lb-tier">${tier}</span>` : ''}
         </div>
       </li>
     `.trim();
@@ -109,6 +111,7 @@ function _render(listEl, items, sortBy) {
 
 // ---------------------------------------------------------------------------
 // Private: sort button wiring + active state
+// Sort options: score | pnl  (conviction removed — not in LeaderboardEntry)
 // ---------------------------------------------------------------------------
 
 function _wireSortButtons() {
@@ -116,7 +119,10 @@ function _wireSortButtons() {
   strip?.querySelector('.lb-sort-bar')?.addEventListener('click', e => {
     const btn = e.target.closest('.lb-sort-btn');
     if (!btn || btn.dataset.sort === _current) return;
-    loadLeaderboard(btn.dataset.sort);
+    const sort = btn.dataset.sort;
+    // Guard: only allow valid backend values
+    if (sort !== 'score' && sort !== 'pnl') return;
+    loadLeaderboard(sort);
   });
 }
 
