@@ -1,13 +1,22 @@
-/* ─── Decision Log & Lessons Panel ───────────────────────────────────────────
+/* ─── Decision Log & Lessons Panel ─────────────────────────────────────────────
    Owner: modules/decision
    Classes: decision-layer, dec-tab-bar, dec-table, dec-row,
             dec-ticker, dec-type, dec-verdict, dec-pnl,
             lesson-grid, lesson-card, replay-panel
 
    POSITIONING NOTE: outer geometry owned by layout.css.
-────────────────────────────────────────────────────────────────────────────── */
+──────────────────────────────────────────────────────────────────────────────── */
 
-/* ── Section header actions ──────────────────────────────────────────────────── */
+/* ── Decision layer outer geometry (mirrors .validation-layer pattern) ──────── */
+.decision-layer {
+  padding-inline: var(--page-px);
+  margin-bottom: var(--layer-gap);
+  max-width: var(--content-max);
+  margin-inline: auto;
+  width: 100%;
+}
+
+/* ── Section header actions ─────────────────────────────────────────────────────────── */
 .dec-panel-header {
   display: flex;
   justify-content: space-between;
@@ -17,7 +26,7 @@
   margin-bottom: 14px;
 }
 
-/* ── Tab bar (reuses .brief-tab-bar pattern) ─────────────────────────────────── */
+/* ── Tab bar (reuses .brief-tab-bar pattern) ────────────────────────────────────── */
 .dec-tab-bar {
   display: flex;
   gap: 4px;
@@ -44,7 +53,7 @@
   border-color: rgba(125, 211, 252, 0.3);
 }
 
-/* ── Empty state ──────────────────────────────────────────────────────────────── */
+/* ── Empty state ────────────────────────────────────────────────────────────────────────────── */
 .dec-empty {
   padding: 28px 16px;
   text-align: center;
@@ -58,7 +67,7 @@
   font-size: 0.94rem;
 }
 
-/* ── Decisions table ─────────────────────────────────────────────────────────── */
+/* ── Decisions table ──────────────────────────────────────────────────────────────────────────── */
 .dec-table {
   width: 100%;
   border-collapse: collapse;
@@ -88,7 +97,7 @@
 /* Tabular numbers */
 .tabular { font-variant-numeric: tabular-nums; }
 
-/* ── Ticker ─────────────────────────────────────────────────────────────────── */
+/* ── Ticker ────────────────────────────────────────────────────────────────────────────────────── */
 .dec-ticker {
   font-size: 0.92rem;
   font-weight: 700;
@@ -96,7 +105,7 @@
   letter-spacing: 0.04em;
 }
 
-/* ── Decision type badges ────────────────────────────────────────────────────── */
+/* ── Decision type badges ────────────────────────────────────────────────────────────────────────── */
 .dec-type {
   display: inline-block;
   padding: 2px 8px;
@@ -111,7 +120,7 @@
 .dec-type-hold { background: rgba(125, 211, 252, 0.12); color: #7dd3fc; }
 .dec-type-skip { background: rgba(148, 163, 184, 0.1);  color: var(--muted); }
 
-/* ── Verdict badges ─────────────────────────────────────────────────────────── */
+/* ── Verdict badges ───────────────────────────────────────────────────────────────────────────── */
 .dec-verdict {
   display: inline-block;
   padding: 2px 8px;
@@ -125,7 +134,7 @@
 .dec-verdict-mixed     { background: rgba(250, 204, 21,  0.12); color: #facc15; }
 .dec-verdict.muted     { font-size: 0.72rem; }
 
-/* ── PnL ─────────────────────────────────────────────────────────────────────── */
+/* ── PnL ──────────────────────────────────────────────────────────────────────────────────────────── */
 .dec-pnl {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
@@ -135,7 +144,7 @@
 .dec-pnl.down { color: #fb923c; }
 .dec-pnl.muted { color: var(--muted); }
 
-/* ── Rationale cell ─────────────────────────────────────────────────────────── */
+/* ── Rationale cell ────────────────────────────────────────────────────────────────────────────── */
 .dec-rationale {
   max-width: 220px;
   color: var(--muted);
@@ -147,7 +156,7 @@
   font-size: 0.75rem;
 }
 
-/* ── Action buttons ─────────────────────────────────────────────────────────── */
+/* ── Action buttons ────────────────────────────────────────────────────────────────────────────── */
 .dec-actions {
   white-space: nowrap;
   display: flex;
@@ -160,7 +169,7 @@
   padding: 0 10px;
 }
 
-/* ── Replay expand row ──────────────────────────────────────────────────────── */
+/* ── Replay expand row ───────────────────────────────────────────────────────────────────────────── */
 .dec-replay-row.hidden { display: none; }
 .dec-replay-wrap {
   padding: 4px 0 10px;
@@ -171,7 +180,7 @@
   padding: 8px 10px;
 }
 
-/* ── Replay panel ─────────────────────────────────────────────────────────────── */
+/* ── Replay panel ──────────────────────────────────────────────────────────────────────────────────────── */
 .replay-panel {
   background: rgba(125, 211, 252, 0.04);
   border: 1px solid rgba(125, 211, 252, 0.12);
@@ -239,7 +248,7 @@
   margin-top: 6px;
 }
 
-/* ── Lessons grid ─────────────────────────────────────────────────────────────── */
+/* ── Lessons grid ─────────────────────────────────────────────────────────────────────────────────────── */
 .lesson-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
