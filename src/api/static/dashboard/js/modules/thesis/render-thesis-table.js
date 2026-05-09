@@ -14,8 +14,6 @@ export function emptyDetailHTML() {
 
 /**
  * WAVE 2d — skeleton cho danh sách thesis table.
- * Hiển thị N hàng placeholder trước khi data về.
- * @param {number} rows  số hàng skeleton (default 5)
  */
 export function thesisTableSkeletonHTML(rows = 5) {
   const cols = 6;
@@ -40,10 +38,28 @@ export function thesisTableSkeletonHTML(rows = 5) {
 }
 
 /**
+ * Wave C: slot HTML cho thesis event timeline.
+ * Render placeholder skeleton ngay lập tức;
+ * thesis-service.js swap nội dung sau khi fetch xong.
+ */
+function thesisTimelineSlotHTML(thesisId) {
+  return `
+    <div id="thesisTimelineSlot-${thesisId}" class="tl-slot" aria-live="polite">
+      <div class="tl-section">
+        <div class="tl-section-title">📅 Lịch sử thesis</div>
+        <div class="tl-skeleton">
+          <div class="skel skel-text" style="width:55%;"></div>
+          <div class="skel skel-text" style="width:40%;"></div>
+          <div class="skel skel-text" style="width:65%;"></div>
+        </div>
+      </div>
+    </div>`;
+}
+
+/**
  * Render toàn bộ detail panel cho một thesis.
- * WAVE 3b: thêm quote-strip-placeholder ngay sau detail-head.
- *   - Placeholder (skeleton) được render ngay lập tức (số 0 đồng bộ).
- *   - thesis-service.js sẽ fetch quote song song rồi swap innerHTML của #quoteStripSlot.
+ * WAVE 3b: quote-strip-placeholder async.
+ * Wave C:  thesisTimelineSlot async (sau conviction timeline).
  */
 export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
   const assumList = Array.isArray(assumptions) ? assumptions : (assumptions?.items ?? []);
@@ -123,6 +139,9 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
     <!-- Conviction Timeline slot — filled async by thesis-service -->
     ${convictionTimelineSlotHTML(t.id)}
 
+    <!-- Wave C: Thesis Event Timeline slot — filled async by thesis-service -->
+    ${thesisTimelineSlotHTML(t.id)}
+
     ${renderReviewRecommendSection(t.id)}
   `;
 }
@@ -158,14 +177,6 @@ export function renderCatItem(c) {
     </div>`;
 }
 
-/**
- * Render bảng danh sách theses.
- * @param {Array}  list
- * @param {Object} callbacks  - { onSelect, onEdit, onDelete } — tất cả optional
- *
- * FIX: inline default trong destructure để tránh crash khi callbacks bị undefined
- * (ví dụ do module cache cũ hoặc caller không truyền arg)
- */
 export function renderThesesTable(list, callbacks = {}) {
   const { onSelect = null, onEdit = null, onDelete = null } = callbacks ?? {};
   const wrap = document.getElementById('thesesTableWrap');
