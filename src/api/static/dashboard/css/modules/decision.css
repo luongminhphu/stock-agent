@@ -1,0 +1,281 @@
+/* ─── Decision Log & Lessons Panel ───────────────────────────────────────────
+   Owner: modules/decision
+   Classes: decision-layer, dec-tab-bar, dec-table, dec-row,
+            dec-ticker, dec-type, dec-verdict, dec-pnl,
+            lesson-grid, lesson-card, replay-panel
+
+   POSITIONING NOTE: outer geometry owned by layout.css.
+────────────────────────────────────────────────────────────────────────────── */
+
+/* ── Section header actions ──────────────────────────────────────────────────── */
+.dec-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+/* ── Tab bar (reuses .brief-tab-bar pattern) ─────────────────────────────────── */
+.dec-tab-bar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+.dec-tab {
+  padding: 6px 16px;
+  border-radius: 99px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.dec-tab:hover {
+  color: var(--text);
+  background: rgba(125, 211, 252, 0.06);
+}
+.dec-tab.active {
+  color: var(--brand, #7dd3fc);
+  background: rgba(125, 211, 252, 0.1);
+  border-color: rgba(125, 211, 252, 0.3);
+}
+
+/* ── Empty state ──────────────────────────────────────────────────────────────── */
+.dec-empty {
+  padding: 28px 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+.dec-empty strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text);
+  font-size: 0.94rem;
+}
+
+/* ── Decisions table ─────────────────────────────────────────────────────────── */
+.dec-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+}
+.dec-table th {
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  white-space: nowrap;
+}
+.dec-table td {
+  padding: 10px 10px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.06);
+  vertical-align: middle;
+}
+.dec-row:hover td {
+  background: rgba(125, 211, 252, 0.03);
+}
+.dec-row:last-child td { border-bottom: none; }
+
+/* Tabular numbers */
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* ── Ticker ─────────────────────────────────────────────────────────────────── */
+.dec-ticker {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--brand, #7dd3fc);
+  letter-spacing: 0.04em;
+}
+
+/* ── Decision type badges ────────────────────────────────────────────────────── */
+.dec-type {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.dec-type-buy  { background: rgba(74, 222, 128, 0.15); color: #4ade80; }
+.dec-type-sell { background: rgba(251, 146, 60,  0.15); color: #fb923c; }
+.dec-type-hold { background: rgba(125, 211, 252, 0.12); color: #7dd3fc; }
+.dec-type-skip { background: rgba(148, 163, 184, 0.1);  color: var(--muted); }
+
+/* ── Verdict badges ─────────────────────────────────────────────────────────── */
+.dec-verdict {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.dec-verdict-correct   { background: rgba(74, 222, 128, 0.12); color: #4ade80; }
+.dec-verdict-incorrect { background: rgba(251, 146, 60,  0.15); color: #fb923c; }
+.dec-verdict-mixed     { background: rgba(250, 204, 21,  0.12); color: #facc15; }
+.dec-verdict.muted     { font-size: 0.72rem; }
+
+/* ── PnL ─────────────────────────────────────────────────────────────────────── */
+.dec-pnl {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 0.84rem;
+}
+.dec-pnl.up   { color: #4ade80; }
+.dec-pnl.down { color: #fb923c; }
+.dec-pnl.muted { color: var(--muted); }
+
+/* ── Rationale cell ─────────────────────────────────────────────────────────── */
+.dec-rationale {
+  max-width: 220px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.dec-date {
+  white-space: nowrap;
+  color: var(--faint);
+  font-size: 0.75rem;
+}
+
+/* ── Action buttons ─────────────────────────────────────────────────────────── */
+.dec-actions {
+  white-space: nowrap;
+  display: flex;
+  gap: 6px;
+}
+.dec-btn-evaluate,
+.dec-btn-replay {
+  font-size: 0.76rem;
+  min-height: 28px;
+  padding: 0 10px;
+}
+
+/* ── Replay expand row ──────────────────────────────────────────────────────── */
+.dec-replay-row.hidden { display: none; }
+.dec-replay-wrap {
+  padding: 4px 0 10px;
+}
+.dec-replay-error {
+  color: #fb923c;
+  font-size: 0.82rem;
+  padding: 8px 10px;
+}
+
+/* ── Replay panel ─────────────────────────────────────────────────────────────── */
+.replay-panel {
+  background: rgba(125, 211, 252, 0.04);
+  border: 1px solid rgba(125, 211, 252, 0.12);
+  border-radius: 12px;
+  padding: 14px 16px;
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+.replay-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.replay-confidence {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.replay-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.replay-col h4 {
+  font-size: 0.78rem;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+.replay-col ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.replay-col ul li {
+  font-size: 0.8rem;
+  color: var(--muted);
+  padding-left: 8px;
+  position: relative;
+}
+.replay-col ul li::before {
+  content: '·';
+  position: absolute;
+  left: 0;
+  color: var(--faint);
+}
+.replay-lesson {
+  padding: 8px 10px;
+  background: rgba(250, 204, 21, 0.06);
+  border-left: 2px solid rgba(250, 204, 21, 0.3);
+  border-radius: 0 6px 6px 0;
+  font-size: 0.82rem;
+  margin-top: 8px;
+  color: var(--text);
+}
+.replay-pattern,
+.replay-adjust {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+/* ── Lessons grid ─────────────────────────────────────────────────────────────── */
+.lesson-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
+  gap: 12px;
+}
+.lesson-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 14px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.lesson-card:hover {
+  background: rgba(125, 211, 252, 0.04);
+  border-color: rgba(125, 211, 252, 0.18);
+}
+.lesson-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+.lesson-date {
+  margin-left: auto;
+  font-size: 0.7rem;
+  color: var(--faint);
+}
+.lesson-text {
+  font-size: 0.84rem;
+  color: var(--text);
+  line-height: 1.6;
+}
+.lesson-pattern {
+  font-size: 0.76rem;
+  color: var(--muted);
+}
