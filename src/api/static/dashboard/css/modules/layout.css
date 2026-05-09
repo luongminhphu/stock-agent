@@ -72,6 +72,11 @@
        → inline scan chip next to watchlist Scan now button
      - Added: .dec-panel-header
        → header row for Cluster C Decision Log & AI Lessons panel
+
+   FIX LOG (2026-05-09b):
+     - Added: .cluster inner overrides
+       → prevent double padding/margin on .watchlist-layer, .portfolio-layer,
+         .workspace-grid, .validation-layer, .lb-strip when nested in .cluster
 */
 
 /* ── SKIP LINK ──────────────────────────────────── */
@@ -790,6 +795,23 @@
   margin: 0;
   line-height: 1.25;
   color: var(--text, #ecf3ff);
+}
+
+/* ── Cluster inner override: prevent double padding/margin ────────────────── */
+.cluster .watchlist-layer,
+.cluster .portfolio-layer {
+  margin-inline: 0;
+  width: 100%;
+}
+
+.cluster .workspace-grid {
+  padding-inline: 0;
+}
+
+.cluster .validation-layer,
+.cluster .lb-strip {
+  margin-inline: 0;
+  max-width: 100%;
 }
 
 /* ── Responsive: cluster + dec-panel-header on mobile ──────────────────────── */

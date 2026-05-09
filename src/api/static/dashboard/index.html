@@ -110,20 +110,7 @@
                 <p class="eyebrow">① Watchlist &amp; Tín hiệu</p>
                 <h2 id="watchlistTitle">👁 Mã đang theo dõi</h2>
               </div>
-              <div class="panel-actions">
-                <span id="watchlistScanResult" class="scan-result-inline hidden" aria-live="polite"></span>
-                <button
-                  id="watchlistScanBtn"
-                  class="icon-text-btn"
-                  type="button"
-                  aria-label="Scan toàn bộ watchlist để phát hiện tín hiệu mới"
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-                  </svg>
-                  Scan now
-                </button>
-              </div>
+              <div class="panel-actions"></div>
             </div>
             <div id="watchlistSection">Đang tải…</div>
           </section>
@@ -525,8 +512,8 @@
               </select>
             </div>
             <div class="form-field">
-              <label for="catalystTimelineField">Timeline</label>
-              <input id="catalystTimelineField" name="expected_timeline" placeholder="Q3 2025" />
+              <label for="catalystExpectedAtField">Ngày kỳ vọng</label>
+              <input id="catalystExpectedAtField" name="expected_at" type="date" />
             </div>
           </div>
           <div class="modal-footer">
@@ -534,35 +521,6 @@
             <button type="submit" class="primary-btn">Lưu Catalyst</button>
           </div>
         </form>
-      </div>
-    </dialog>
-
-    <dialog id="aiApplyModal" aria-labelledby="aiApplyModalTitle">
-      <div class="modal-inner">
-        <div class="modal-header">
-          <h2 id="aiApplyModalTitle">Áp dụng gợi ý từ AI</h2>
-          <button class="modal-close" data-close="aiApplyModal" aria-label="Đóng">&#x2715;</button>
-        </div>
-        <p class="muted" style="font-size:0.82rem;">Chọn những assumption/catalyst bạn muốn cập nhật theo gợi ý của AI.</p>
-        <div id="aiApplyModalBody" class="review-columns" style="margin-top:10px;"></div>
-        <div class="modal-footer">
-          <button type="button" class="ghost-btn" data-close="aiApplyModal">Hủy</button>
-          <button type="button" class="primary-btn" id="aiApplyConfirmBtn">Xác nhận áp dụng</button>
-        </div>
-      </div>
-    </dialog>
-
-    <dialog id="deleteModal" aria-labelledby="deleteModalTitle">
-      <div class="modal-inner">
-        <div class="modal-header">
-          <h2 id="deleteModalTitle" style="color:var(--danger);">Xác nhận xóa</h2>
-          <button class="modal-close" data-close="deleteModal" aria-label="Đóng">&#x2715;</button>
-        </div>
-        <p id="deleteModalMsg" style="color:var(--muted); line-height:1.6;"></p>
-        <div class="modal-footer">
-          <button type="button" class="ghost-btn" data-close="deleteModal">Hủy</button>
-          <button type="button" id="deleteConfirmBtn" class="danger-btn" style="min-height:46px; padding:0 20px; font-size:1rem;">Xóa</button>
-        </div>
       </div>
     </dialog>
 
@@ -574,16 +532,16 @@
         </div>
         <form id="watchlistAddForm" class="form-grid" novalidate>
           <div class="form-field">
-            <label for="wlTickerInput">Mã cổ phiếu *</label>
-            <input id="wlTickerInput" name="ticker" placeholder="VNM, HPG, VIC…" required autocomplete="off" style="text-transform:uppercase;" />
+            <label for="watchlistTickerInput">Mã CK *</label>
+            <input id="watchlistTickerInput" name="ticker" placeholder="VNM, HPG, VIC…" required style="text-transform:uppercase;" />
           </div>
           <div class="form-field">
-            <label for="wlNoteInput">Ghi chú (tùy chọn)</label>
-            <input id="wlNoteInput" name="note" placeholder="VD: Chờ breakout, theo dõi KQKD Q2…" />
+            <label for="watchlistNoteInput">Ghi chú</label>
+            <input id="watchlistNoteInput" name="note" placeholder="Lý do theo dõi…" />
           </div>
           <div class="modal-footer">
             <button type="button" class="ghost-btn" data-close="watchlistAddModal">Hủy</button>
-            <button type="submit" class="primary-btn">➕ Thêm vào watchlist</button>
+            <button type="submit" class="primary-btn">Thêm vào Watchlist</button>
           </div>
         </form>
       </div>
@@ -592,50 +550,59 @@
     <dialog id="decisionModal" aria-labelledby="decisionModalTitle">
       <div class="modal-inner">
         <div class="modal-header">
-          <h2 id="decisionModalTitle">📋 Log Decision</h2>
-          <button class="modal-close" data-close-modal aria-label="Đóng">&#x2715;</button>
+          <h2 id="decisionModalTitle">Log Decision</h2>
+          <button class="modal-close" data-close="decisionModal" aria-label="Đóng">&#x2715;</button>
         </div>
         <form id="decisionForm" class="form-grid" novalidate>
-          <div class="form-field">
-            <label for="decisionThesisSelect">Thesis liên kết *</label>
-            <select id="decisionThesisSelect" name="thesis_id" required>
-              <option value="">Đang tải…</option>
-            </select>
-            <span class="field-hint">Chọn thesis — mã CK sẽ tự điền theo</span>
+          <div class="form-row">
+            <div class="form-field">
+              <label for="decTickerField">Mã CK *</label>
+              <input id="decTickerField" name="ticker" placeholder="VNM" required style="text-transform:uppercase" />
+            </div>
+            <div class="form-field">
+              <label for="decActionField">Hành động *</label>
+              <select id="decActionField" name="action">
+                <option value="buy">MUA</option>
+                <option value="sell">BÁN</option>
+                <option value="hold">GIỮ</option>
+                <option value="skip">BỎ QUA</option>
+              </select>
+            </div>
           </div>
           <div class="form-row">
             <div class="form-field">
-              <label for="decTypeSelect">Loại quyết định *</label>
-              <select id="decTypeSelect" name="decision_type" required>
-                <option value="BUY">MUA</option>
-                <option value="SELL">BÁN</option>
-                <option value="HOLD">GIỮ</option>
-                <option value="SKIP">Bỏ (chưa làm gì)</option>
-              </select>
+              <label for="decPriceField">Giá thực hiện</label>
+              <input id="decPriceField" name="price" type="number" placeholder="85000" step="100" />
             </div>
             <div class="form-field">
-              <label for="decHorizonInput">Review sau (ngày)</label>
-              <input id="decHorizonInput" name="review_horizon_days" type="number" min="1" max="365" placeholder="30" value="30" />
+              <label for="decQtyField">Khối lượng</label>
+              <input id="decQtyField" name="quantity" type="number" placeholder="1000" step="100" />
             </div>
           </div>
           <div class="form-field">
-            <label for="decRationaleInput">Lý do quyết định *</label>
-            <textarea id="decRationaleInput" name="rationale" rows="4"
-              placeholder="VD: Breakout khỏi vùng tích lũy, volume tăng mạnh, thesis vẫn còn hợp lệ…" required></textarea>
+            <label for="decReasonField">Lý do quyết định</label>
+            <textarea id="decReasonField" name="reasoning" placeholder="Tại sao quyết định này? Thesis nào dẫn đến hành động này?" rows="3"></textarea>
           </div>
           <div class="form-field">
-            <label for="decBriefSummaryInput">Tóm tắt ngắn (tuỳ chọn)</label>
-            <input id="decBriefSummaryInput" name="brief_summary"
-              placeholder="VD: Breakout + thesis hợp lệ → MUA" />
+            <label for="decEmotionField">Cảm xúc lúc ra quyết định</label>
+            <select id="decEmotionField" name="emotion_tag">
+              <option value="">— chọn —</option>
+              <option value="confident">Tự tin</option>
+              <option value="uncertain">Không chắc</option>
+              <option value="fearful">Lo sợ</option>
+              <option value="greedy">Tham lam</option>
+              <option value="fomo">FOMO</option>
+              <option value="disciplined">Kỷ luật</option>
+            </select>
           </div>
           <div class="modal-footer">
-            <button type="button" class="ghost-btn" data-close-modal>Hủy</button>
-            <button type="submit" class="primary-btn" id="decisionSubmitBtn">Lưu Decision</button>
+            <button type="button" class="ghost-btn" data-close="decisionModal">Hủy</button>
+            <button type="submit" class="primary-btn">Lưu Decision</button>
           </div>
         </form>
       </div>
     </dialog>
 
-    <script data-cfasync="false" type="module" src="/static/dashboard/js/app.js?v=12"></script>
+    <script type="module" src="/static/dashboard/js/app.js?v=12"></script>
   </body>
 </html>
