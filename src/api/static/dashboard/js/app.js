@@ -1,5 +1,5 @@
 /**
- * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard)
+ * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard + Wave D lesson loop)
  * Responsibility: import tất cả modules, wire events, khởi động dashboard.
  * Rule: KHÔNG chứa business logic. Chỉ bootstrap + wiring.
  */
@@ -7,6 +7,7 @@
 import { el, openModal, closeModal } from './utils/dom.js';
 import { loadDashboard, loadBacktesting } from './modules/dashboard/dashboard-loader.js';
 import { loadThesisDetail }     from './modules/thesis/thesis-service.js';
+import { bindLessonPersistedEvent } from './modules/thesis/thesis-service.js';
 import {
   openNewThesisModal,
   openEditThesisModal,
@@ -206,6 +207,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   el('newDecisionBtn')?.addEventListener('click', openDecisionModal);
   bindDecisionFormEvents();
   bindDecisionTabs();
+  bindLessonPersistedEvent(); // Wave D: close replay → thesis review UI loop
 
   // 10. Leaderboard wiring
   bindLeaderboardSort();
