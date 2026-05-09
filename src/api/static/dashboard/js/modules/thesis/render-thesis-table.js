@@ -178,7 +178,7 @@ export function renderThesesTable(list, callbacks = {}) {
     <table>
       <thead>
         <tr>
-          <th>Mã / Hướng</th><th>Tiêu đề</th><th>Score</th>
+          <th>Mã</th><th>Tiêu đề</th><th>Score</th>
           <th>Status</th><th>Cập nhật</th><th style="width:1%;white-space:nowrap;"></th>
         </tr>
       </thead>
@@ -186,8 +186,10 @@ export function renderThesesTable(list, callbacks = {}) {
         ${list.map(t => `
           <tr data-id="${t.id}" class="${t.id === state.selectedThesisId ? 'is-selected' : ''}">
             <td class="ticker-cell">
-              <strong>${esc(t.ticker)}</strong>
-              ${t.direction ? `<span>${badge(t.direction)}</span>` : ''}
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap;">
+                <strong>${esc(t.ticker)}</strong>
+                ${t.direction ? badge(t.direction) : ''}
+              </div>
             </td>
             <td>${esc(t.title ?? '—')}</td>
             <td class="${scoreClass(t.score)}">
