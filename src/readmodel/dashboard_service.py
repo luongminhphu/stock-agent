@@ -134,7 +134,7 @@ class DashboardService:
 
     async def get_brief_latest(self, user_id: str, phase: str = "morning") -> dict[str, Any] | None:
         try:
-            from src.briefing.models import BriefSnapshot
+            from src.briefing.models import BriefSnapshot, BriefFeedback
         except ImportError:
             logger.warning(
                 "get_brief_latest.import_error", detail="BriefSnapshot model not available"
@@ -162,12 +162,23 @@ class DashboardService:
             except (json.JSONDecodeError, TypeError):
                 parsed_content = {"summary": row.content, "content": row.content}
 
+            # Lấy feedback outcome mới nhất cho brief snapshot này
+            feedback_outcome = (
+                await self._session.execute(
+                    select(BriefFeedback.outcome)
+                    .where(BriefFeedback.brief_snapshot_id == row.id)
+                    .order_by(BriefFeedback.created_at.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+
             return {
                 "id": row.id,
                 "user_id": row.user_id,
                 "phase": row.phase,
                 "content": row.content,
                 "created_at": row.created_at.isoformat() if row.created_at else None,
+                "feedback_outcome": feedback_outcome,
                 **parsed_content,
             }
         except Exception as exc:

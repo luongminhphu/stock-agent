@@ -106,7 +106,7 @@ export function renderFeedbackKpi(data) {
 // ---------------------------------------------------------------------------
 // Brief card (morning / eod)
 // ---------------------------------------------------------------------------
-export function renderBriefCard(phase, brief, dateStr) {
+export function renderBriefCard(phase, brief, dateStr, existingOutcome = null) {
   const isEod = phase === 'eod';
   const label = isEod ? 'End-of-Day Brief' : 'Morning Brief';
   const icon  = isEod ? '🌙' : '🌅';
@@ -123,6 +123,8 @@ export function renderBriefCard(phase, brief, dateStr) {
   const watchlistAlerts = Array.isArray(brief.watchlist_alerts) ? brief.watchlist_alerts : [];
   const actionItems     = Array.isArray(brief.action_items)     ? brief.action_items     : [];
   const tickerSummaries = Array.isArray(brief.ticker_summaries) ? brief.ticker_summaries : [];
+
+  const ometa = existingOutcome ? (OUTCOME_META[existingOutcome] ?? null) : null;
 
   return `
     <div class="brief-card phase-${isEod ? 'eod' : 'morning'}">
@@ -221,10 +223,13 @@ export function renderBriefCard(phase, brief, dateStr) {
 
       ${brief.id != null ? `
         <div class="brief-feedback-bar" data-brief-id="${brief.id}">
-          <span class="fb-prompt">Brief này có hữu ích không?</span>
-          <button class="fb-btn" data-outcome="acted">✅ Đã hành động</button>
-          <button class="fb-btn" data-outcome="watching">👀 Theo dõi</button>
-          <button class="fb-btn" data-outcome="skipped">⏭ Bỏ qua</button>
+          ${ometa
+            ? `<span class="fb-confirmed">${ometa.icon} ${ometa.label}</span>`
+            : `<span class="fb-prompt">Brief này có hữu ích không?</span>
+               <button class="fb-btn" data-outcome="acted">✅ Đã hành động</button>
+               <button class="fb-btn" data-outcome="watching">👀 Theo dõi</button>
+               <button class="fb-btn" data-outcome="skipped">⏭ Bỏ qua</button>`
+          }
         </div>` : ''}
     </div>`;
 }
@@ -272,6 +277,7 @@ export function renderSnapshots(data) {
       'morning',
       data.latest_morning_brief_data,
       data.latest_morning_brief_at ? fmtDate(data.latest_morning_brief_at) : null,
+      data.latest_morning_brief_data?.feedback_outcome ?? null,
     );
   }
 
@@ -282,6 +288,7 @@ export function renderSnapshots(data) {
       'eod',
       data.latest_eod_brief_data,
       data.latest_eod_brief_at ? fmtDate(data.latest_eod_brief_at) : null,
+      data.latest_eod_brief_data?.feedback_outcome ?? null,
     );
   }
 
