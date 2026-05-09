@@ -1,126 +1,199 @@
 /**
- * decision-loader.js
- * Owner: modules/decision
- * Responsibility: fetch /api/v1/decisions + /api/v1/lessons,
- *                 handle log/evaluate/replay actions,
- *                 delegate render sang decision-renderer.js
- * Rule: KHÔNG chứa DOM manipulation trực tiếp (ngoài error fallback).
- *       KHÔNG chứa business logic. Chỉ fetch → action → render.
+ * decision-loader.js — Decision Log & Lessons tab logic
+ * Owner: dashboard (static adapter)
+ *
+ * Responsibilities:
+ *   - Load and render decision table (Tab: Decisions)
+ *   - Load and render lesson cards (Tab: Lessons, lazy)
+ *   - Wire Log Decision modal (POST /decisions — requires thesis_id)
+ *   - Inline Evaluate and Replay actions per row
+ *
+ * Contract notes:
+ *   POST /decisions body: { thesis_id, decision_type, rationale,
+ *                           brief_summary?, active_signal?, review_horizon_days? }
+ *   ticker and price_at_decision are derived server-side from the linked thesis.
  */
 
-import { el, showToast, openModal, closeModal } from '../../utils/dom.js';
-import { getJson, sendJson } from '../../api/client.js';
+import { apiFetch } from '../../api.js';
 import {
   renderDecisionsTable,
   renderLessonsCards,
-  renderReplayPanel,
+  showReplayPanel,
 } from './decision-renderer.js';
 
-const DECISIONS_BASE = '/api/v1/decisions';
-const LESSONS_BASE   = '/api/v1/lessons';
+let lessonsLoaded = false;
 
-// ── Public: load decisions tab ───────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Public: load & render decisions
+// ---------------------------------------------------------------------------
+
 export async function loadDecisions() {
-  const wrap = el('decisionsTableWrap');
+  const wrap = document.getElementById('decisionsTableWrap');
   if (!wrap) return;
-
-  wrap.innerHTML = '<p class="muted" style="padding:16px">Đang tải decisions…</p>';
-
+  wrap.innerHTML = '<p class="loading-text">Đang tải decisions…</p>';
   try {
-    const data = await getJson(`${DECISIONS_BASE}?limit=100`);
-    renderDecisionsTable(wrap, data ?? [], {
-      onEvaluate:  handleEvaluate,
-      onReplay:    handleReplay,
+    const data = await apiFetch('/api/v1/decisions?limit=50');
+    renderDecisionsTable(wrap, Array.isArray(data) ? data : []);
+  } catch (err) {
+    wrap.innerHTML = `<p class="error-text">Lỗi tải decisions: ${err.message}</p>`;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Public: load & render lessons (lazy)
+// ---------------------------------------------------------------------------
+
+export async function loadLessons(force = false) {
+  if (lessonsLoaded && !force) return;
+  const wrap = document.getElementById('lessonsListWrap');
+  if (!wrap) return;
+  wrap.innerHTML = '<p class="loading-text">Đang tải lessons…</p>';
+  try {
+    const data = await apiFetch('/api/v1/lessons?limit=20&lookback_days=180');
+    renderLessonsCards(wrap, Array.isArray(data) ? data : []);
+    lessonsLoaded = true;
+  } catch (err) {
+    wrap.innerHTML = `<p class="error-text">Lỗi tải lessons: ${err.message}</p>`;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Public: wire decision tabs
+// ---------------------------------------------------------------------------
+
+export function bindDecisionTabs() {
+  const tabs = document.querySelectorAll('[data-decision-tab]');
+  const panes = {
+    decisions: document.getElementById('decisionsPane'),
+    lessons: document.getElementById('lessonsPane'),
+  };
+
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      const target = tab.dataset.decisionTab;
+      Object.entries(panes).forEach(([key, pane]) => {
+        if (!pane) return;
+        pane.classList.toggle('hidden', key !== target);
+      });
+      if (target === 'lessons') loadLessons();
     });
-  } catch (err) {
-    wrap.innerHTML = `<p class="empty-state">Lỗi tải decisions: ${err.message}</p>`;
-    console.error('[decision-loader] loadDecisions error:', err);
-  }
+  });
 }
 
-// ── Public: load lessons tab ─────────────────────────────────────────────────
-export async function loadLessons(ticker = null) {
-  const wrap = el('lessonsListWrap');
-  if (!wrap) return;
+// ---------------------------------------------------------------------------
+// Public: wire Log Decision modal
+// ---------------------------------------------------------------------------
 
-  wrap.innerHTML = '<p class="muted" style="padding:16px">Đang tải lessons…</p>';
+export function bindLogDecisionModal() {
+  const openBtn = document.getElementById('newDecisionBtn');
+  const modal   = document.getElementById('decisionModal');
+  const form    = document.getElementById('decisionForm');
+  const closeBtn = modal?.querySelector('[data-close-modal]');
 
-  try {
-    const q = ticker ? `?ticker=${encodeURIComponent(ticker)}&limit=30` : '?limit=30';
-    const data = await getJson(`${LESSONS_BASE}${q}`);
-    renderLessonsCards(wrap, data ?? []);
-  } catch (err) {
-    wrap.innerHTML = `<p class="empty-state">Lỗi tải lessons: ${err.message}</p>`;
-    console.error('[decision-loader] loadLessons error:', err);
-  }
-}
+  if (!openBtn || !modal || !form) return;
 
-// ── Public: bind decision modal form ─────────────────────────────────────────
-export function bindDecisionFormEvents() {
-  const form = el('decisionForm');
-  if (!form) return;
+  openBtn.addEventListener('click', async () => {
+    await populateThesisSelect();
+    modal.showModal();
+  });
 
-  form.addEventListener('submit', async (e) => {
+  closeBtn?.addEventListener('click', () => modal.close());
+  modal.addEventListener('click', e => { if (e.target === modal) modal.close(); });
+
+  form.addEventListener('submit', async e => {
     e.preventDefault();
-    const btn = el('decisionSubmitBtn');
-    btn && (btn.disabled = true) && (btn.textContent = 'Đang lưu…');
+    const submitBtn = form.querySelector('[type="submit"]');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Đang lưu…';
 
     try {
       const payload = {
-        ticker:                form.querySelector('#decTickerInput')?.value?.trim().toUpperCase(),
-        decision_type:         form.querySelector('#decTypeSelect')?.value,
-        price_at_decision:     parseFloat(form.querySelector('#decPriceInput')?.value),
-        thesis_id:             parseInt(form.querySelector('#decThesisIdInput')?.value) || null,
-        rationale:             form.querySelector('#decRationaleInput')?.value?.trim() || null,
-        review_horizon_days:   parseInt(form.querySelector('#decHorizonInput')?.value) || 30,
+        thesis_id:           parseInt(form.thesis_id.value, 10),
+        decision_type:       form.decision_type.value,
+        rationale:           form.rationale.value.trim(),
+        brief_summary:       form.brief_summary?.value?.trim() || null,
+        review_horizon_days: parseInt(form.review_horizon_days.value, 10) || 30,
       };
 
-      if (!payload.ticker || !payload.price_at_decision) {
-        showToast('Vui lòng nhập Mã CK và Giá quyết định.', 'error');
+      if (!payload.thesis_id || !payload.decision_type || !payload.rationale) {
+        alert('Vui lòng điền đầy đủ Thesis, Loại quyết định và Rationale.');
         return;
       }
 
-      await sendJson(DECISIONS_BASE, 'POST', payload);
-      closeModal('decisionModal');
+      await apiFetch('/api/v1/decisions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      modal.close();
       form.reset();
-      showToast(`✅ Đã log decision ${payload.decision_type} ${payload.ticker}`);
       await loadDecisions();
     } catch (err) {
-      showToast(`Lỗi log decision: ${err.message}`, 'error');
+      alert(`Lỗi lưu decision: ${err.message}`);
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = 'Lưu Decision'; }
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Lưu Decision';
     }
   });
 }
 
-// ── Internal: evaluate outcome ────────────────────────────────────────────────
-async function handleEvaluate(decisionId, btnEl) {
-  if (btnEl) { btnEl.disabled = true; btnEl.textContent = '⏳…'; }
+// ---------------------------------------------------------------------------
+// Public: evaluate a decision (called from table row button)
+// ---------------------------------------------------------------------------
+
+export async function evaluateDecision(decisionId, rowEl) {
+  const btn = rowEl?.querySelector('[data-action="evaluate"]');
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
   try {
-    await sendJson(`${DECISIONS_BASE}/${decisionId}/evaluate`, 'POST');
-    showToast('✅ Đã evaluate outcome');
+    await apiFetch(`/api/v1/decisions/${decisionId}/evaluate`, { method: 'POST' });
     await loadDecisions();
   } catch (err) {
-    showToast(`Lỗi evaluate: ${err.message}`, 'error');
-  } finally {
-    if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Evaluate'; }
+    alert(`Lỗi evaluate: ${err.message}`);
+    if (btn) { btn.disabled = false; btn.textContent = 'Evaluate'; }
   }
 }
 
-// ── Internal: AI replay ────────────────────────────────────────────────────────
-async function handleReplay(decisionId, replayWrap, btnEl) {
-  if (btnEl) { btnEl.disabled = true; btnEl.textContent = '⏳ AI…'; }
+// ---------------------------------------------------------------------------
+// Public: replay a decision (called from table row button)
+// ---------------------------------------------------------------------------
+
+export async function replayDecision(decisionId, rowEl) {
+  const btn = rowEl?.querySelector('[data-action="replay"]');
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
   try {
-    const result = await getJson(`${DECISIONS_BASE}/${decisionId}/replay`);
-    renderReplayPanel(replayWrap, result);
-    showToast('🧠 AI Replay hoàn tất');
-    // Also refresh lessons tab in background
-    loadLessons();
+    const result = await apiFetch(`/api/v1/decisions/${decisionId}/replay`);
+    showReplayPanel(rowEl, result);
+    lessonsLoaded = false; // invalidate lessons cache
   } catch (err) {
-    replayWrap.innerHTML = `<p class="dec-replay-error">Lỗi replay: ${err.message}</p>`;
-    replayWrap.classList.remove('hidden');
-    showToast(`Lỗi replay: ${err.message}`, 'error');
+    alert(`Lỗi replay: ${err.message}`);
   } finally {
-    if (btnEl) { btnEl.disabled = false; btnEl.textContent = '🧠 Replay'; }
+    if (btn) { btn.disabled = false; btn.textContent = '🧠 Replay'; }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Private: populate thesis <select> inside the modal
+// ---------------------------------------------------------------------------
+
+async function populateThesisSelect() {
+  const sel = document.getElementById('decisionThesisSelect');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Đang tải…</option>';
+  try {
+    const theses = await apiFetch('/api/v1/theses?status=active&limit=50');
+    const list = Array.isArray(theses) ? theses : (theses.items ?? []);
+    if (!list.length) {
+      sel.innerHTML = '<option value="">Không có thesis active</option>';
+      return;
+    }
+    sel.innerHTML = '<option value="">-- Chọn Thesis --</option>' +
+      list.map(t =>
+        `<option value="${t.id}">[${t.ticker}] ${t.title ?? t.ticker}</option>`
+      ).join('');
+  } catch {
+    sel.innerHTML = '<option value="">Lỗi tải thesis</option>';
   }
 }

@@ -107,6 +107,39 @@ class DecisionService:
         )
         return row
 
+    async def list_decisions(
+        self,
+        user_id: str,
+        *,
+        evaluated_only: bool = False,
+        ticker: str | None = None,
+        limit: int = 50,
+    ) -> list[DecisionLog]:
+        """List decision logs for a user, newest first.
+
+        Args:
+            user_id:        Filter to this user's decisions only.
+            evaluated_only: When True, return only decisions with a realized outcome.
+            ticker:         Optional — narrow to one ticker symbol (uppercased).
+            limit:          Max rows (1-200, default 50).
+
+        Returns:
+            List of DecisionLog rows ordered by decision_at DESC.
+        """
+        limit = min(max(limit, 1), 200)
+        stmt = (
+            select(DecisionLog)
+            .where(DecisionLog.user_id == user_id)
+            .order_by(DecisionLog.decision_at.desc())
+            .limit(limit)
+        )
+        if evaluated_only:
+            stmt = stmt.where(DecisionLog.outcome_evaluated_at.is_not(None))
+        if ticker:
+            stmt = stmt.where(DecisionLog.ticker == ticker.upper().strip())
+        rows = (await self._session.execute(stmt)).scalars().all()
+        return list(rows)
+
     async def list_pending_outcome_evaluations(self) -> list[DecisionLog]:
         """Decisions that reached horizon but do not have realized outcome yet."""
         stmt = select(DecisionLog).where(DecisionLog.outcome_evaluated_at.is_(None))
@@ -124,16 +157,7 @@ class DecisionService:
         ticker: str | None = None,
         limit: int = 10,
     ) -> list[DecisionLog]:
-        """Return decisions that have an AI-generated key_lesson, newest first.
-
-        Args:
-            user_id: Filter to this user's decisions only.
-            ticker:  Optional — narrow to one ticker symbol (uppercased).
-            limit:   Max rows to return (default 10, max 50).
-
-        Returns:
-            List of DecisionLog rows ordered by decision_at DESC.
-        """
+        """Return decisions that have an AI-generated key_lesson, newest first."""
         limit = min(max(limit, 1), 50)
         stmt = (
             select(DecisionLog)
@@ -175,11 +199,7 @@ class DecisionService:
         return row
 
     async def analyze_decision(self, decision_id: int) -> DecisionReplayEnvelope:
-        """Run AI replay analysis after outcome is evaluated.
-
-        Passes session + user_id to replay_agent.analyze() so the agent
-        can fire-and-forget the episodic memory log (Layer 2).
-        """
+        """Run AI replay analysis after outcome is evaluated."""
         row = await self._get_decision_or_raise(decision_id)
         if row.outcome_evaluated_at is None:
             raise ValueError("Decision outcome not evaluated yet")
@@ -188,7 +208,7 @@ class DecisionService:
             return DecisionReplayEnvelope(
                 decision_id=row.id,
                 ticker=row.ticker,
-                outcome_verdict=row.outcome_verdict,
+                outcome_verdict=str(row.outcome_verdict) if row.outcome_verdict else None,
                 replay=None,
             )
 
@@ -218,7 +238,7 @@ class DecisionService:
         return DecisionReplayEnvelope(
             decision_id=row.id,
             ticker=row.ticker,
-            outcome_verdict=row.outcome_verdict,
+            outcome_verdict=str(row.outcome_verdict) if row.outcome_verdict else None,
             replay=replay,
         )
 
@@ -229,26 +249,7 @@ class DecisionService:
         key_lesson: str | None,
         pattern_detected: str | None,
     ) -> DecisionLog:
-        """Write AI-generated lesson and pattern back to DecisionLog.
-
-        Called by DecisionReplayScheduler after analyze_decision() succeeds.
-        This closes the learning loop: ReplayAgent insight -> stored in DB ->
-        surfaced by LessonService -> injected into future briefing / pretrade prompts.
-
-        Only updates fields that have a non-None value -- never overwrites
-        an existing lesson with None.
-
-        Args:
-            decision_id:       PK of the DecisionLog to update.
-            key_lesson:        The primary takeaway from ReplayAgent (1-2 sentences).
-            pattern_detected:  Short label for the pattern, e.g. 'breakout_chasing'.
-
-        Returns:
-            Updated DecisionLog row (refreshed).
-
-        Raises:
-            ValueError: If decision_id not found.
-        """
+        """Write AI-generated lesson and pattern back to DecisionLog."""
         row = await self._get_decision_or_raise(decision_id)
         updated = False
 
@@ -284,23 +285,7 @@ class DecisionService:
         decision_id: int,
         user_id: str,
     ) -> DecisionReplayEnvelope:
-        """Load, ownership-check, evaluate if needed, analyze, persist lesson.
-
-        This is the single entry-point for the /replay command. Encapsulates
-        the full pipeline so bot adapters never touch DecisionLog ORM directly
-        and ownership rules live in exactly one place.
-
-        Args:
-            decision_id: PK of the DecisionLog to replay.
-            user_id:     Requesting user — must match DecisionLog.user_id.
-
-        Returns:
-            DecisionReplayEnvelope with verdict + AI replay output.
-
-        Raises:
-            DecisionNotFoundError: decision not found or not owned by user_id.
-            ValueError:            outcome cannot be evaluated (missing price).
-        """
+        """Load, ownership-check, evaluate if needed, analyze, persist lesson."""
         row = await self._get_decision_or_raise(decision_id)
         if str(row.user_id) != str(user_id):
             raise DecisionNotFoundError(
@@ -342,7 +327,7 @@ class DecisionService:
         if not thesis.snapshots:
             return None
         latest = max(thesis.snapshots, key=lambda s: s.created_at)
-        return float(latest.score)
+        return float(latest.score) if latest.score is not None else None
 
     def _infer_current_health_score(self, thesis: Thesis) -> int | None:
         if not thesis.snapshots:

@@ -14,6 +14,12 @@ Endpoints:
 
 All routes are scoped to the authenticated owner via get_current_user_id.
 No business logic here — thin adapter delegating to domain services.
+
+Contract notes:
+- POST /decisions requires thesis_id (NOT NULL FK on DecisionLog).
+  ticker and price_at_decision are derived by DecisionService from the linked thesis
+  and quote_service — callers must NOT send them in the request body.
+- GET /decisions delegates filtering to DecisionService.list_decisions().
 """
 
 from __future__ import annotations
@@ -34,23 +40,28 @@ router = APIRouter(tags=["decisions"])
 # ---------------------------------------------------------------------------
 
 class LogDecisionRequest(BaseModel):
-    ticker: str = Field(..., min_length=1, max_length=10)
-    decision_type: str = Field(..., description="BUY | SELL | HOLD | SKIP")
-    thesis_id: int | None = Field(None, description="Optional linked thesis")
-    price_at_decision: float = Field(..., gt=0)
-    thesis_score_at_decision: float | None = Field(None, ge=0, le=100)
-    rationale: str | None = Field(None, max_length=2000)
+    """Request body for POST /decisions.
+
+    thesis_id is required — DecisionService derives ticker and current price
+    from the linked Thesis + quote_service automatically.
+    """
+    thesis_id: int = Field(..., description="ID of the linked Thesis (required — NOT NULL FK)")
+    decision_type: str = Field(..., description="BUY | SELL | HOLD | ADD | REDUCE")
+    rationale: str = Field(..., min_length=1, max_length=2000)
+    brief_summary: str | None = Field(None, max_length=500)
+    active_signal: str | None = Field(None, max_length=100)
     review_horizon_days: int = Field(30, ge=1, le=365)
 
 
 class DecisionResponse(BaseModel):
     id: int
     user_id: str
+    thesis_id: int
     ticker: str
     decision_type: str
-    price_at_decision: float
+    price_at_decision: float | None
     thesis_score_at_decision: float | None
-    rationale: str | None
+    rationale: str
     review_horizon_days: int
     outcome_pnl_pct: float | None
     outcome_verdict: str | None
@@ -64,14 +75,15 @@ class DecisionResponse(BaseModel):
         return cls(
             id=d.id,  # type: ignore[attr-defined]
             user_id=d.user_id,  # type: ignore[attr-defined]
+            thesis_id=d.thesis_id,  # type: ignore[attr-defined]
             ticker=d.ticker,  # type: ignore[attr-defined]
-            decision_type=d.decision_type,  # type: ignore[attr-defined]
+            decision_type=str(d.decision_type),  # type: ignore[attr-defined]
             price_at_decision=d.price_at_decision,  # type: ignore[attr-defined]
             thesis_score_at_decision=d.thesis_score_at_decision,  # type: ignore[attr-defined]
             rationale=d.rationale,  # type: ignore[attr-defined]
             review_horizon_days=d.review_horizon_days,  # type: ignore[attr-defined]
             outcome_pnl_pct=d.outcome_pnl_pct,  # type: ignore[attr-defined]
-            outcome_verdict=str(d.outcome_verdict) if d.outcome_verdict else None,  # type: ignore[attr-defined]
+            outcome_verdict=str(d.outcome_verdict) if d.outcome_verdict is not None else None,  # type: ignore[attr-defined]
             key_lesson=d.key_lesson,  # type: ignore[attr-defined]
             pattern_detected=d.pattern_detected,  # type: ignore[attr-defined]
             decision_at=d.decision_at.isoformat(),  # type: ignore[attr-defined]
@@ -120,17 +132,25 @@ async def log_decision(
     user_id: Annotated[str, Depends(get_current_user_id)],
     svc=Depends(get_decision_service),
 ) -> DecisionResponse:
-    """Log a trade decision for future outcome evaluation and replay."""
-    decision = await svc.log_decision(
-        user_id=user_id,
-        ticker=body.ticker.upper().strip(),
-        decision_type=body.decision_type.upper().strip(),
-        thesis_id=body.thesis_id,
-        price_at_decision=body.price_at_decision,
-        thesis_score_at_decision=body.thesis_score_at_decision,
-        rationale=body.rationale,
-        review_horizon_days=body.review_horizon_days,
-    )
+    """Log a trade decision for future outcome evaluation and replay.
+
+    ticker and price_at_decision are derived automatically from the linked
+    thesis and quote_service — do not pass them in the request body.
+    """
+    try:
+        decision = await svc.log_decision(
+            user_id=user_id,
+            thesis_id=body.thesis_id,
+            decision_type=body.decision_type.upper().strip(),
+            rationale=body.rationale,
+            brief_summary=body.brief_summary,
+            active_signal=body.active_signal,
+            review_horizon_days=body.review_horizon_days,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
     return DecisionResponse.from_orm(decision)
 
 
@@ -148,7 +168,7 @@ async def list_decisions(
 ) -> list[DecisionResponse]:
     """List trade decisions for the current user."""
     decisions = await svc.list_decisions(
-        user_id=user_id,
+        user_id,
         evaluated_only=evaluated_only,
         ticker=ticker.upper().strip() if ticker else None,
         limit=limit,
@@ -199,17 +219,21 @@ async def replay_decision(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
 
     r = envelope.replay
-    d = envelope.decision
+    d_id = envelope.decision_id
+    # Reload row for up-to-date fields after analysis
+    rows = await svc.list_decisions(user_id, limit=200)
+    matched = next((row for row in rows if row.id == d_id), None)
+
     return ReplayResponse(
-        decision_id=d.id,
-        outcome_verdict=str(d.outcome_verdict) if d.outcome_verdict else None,
-        outcome_pnl_pct=d.outcome_pnl_pct,
+        decision_id=d_id,
+        outcome_verdict=envelope.outcome_verdict,
+        outcome_pnl_pct=matched.outcome_pnl_pct if matched else None,
         what_went_right=getattr(r, "what_went_right", []) or [],
         what_went_wrong=getattr(r, "what_went_wrong", []) or [],
         key_lesson=getattr(r, "key_lesson", None),
         pattern_detected=getattr(r, "pattern_detected", None),
         suggested_adjustment=getattr(r, "suggested_adjustment", None),
-        confidence=getattr(r, "confidence", 0.0),
+        confidence=getattr(r, "confidence", 0.0) or 0.0,
     )
 
 
@@ -229,9 +253,7 @@ async def list_lessons(
     lookback_days: int = Query(90, ge=1, le=365),
     lesson_svc=Depends(get_lesson_service),
 ) -> list[LessonSnippetResponse]:
-    """Return recent AI lessons from the Decision Replay loop.
-    Used by dashboard and debugging tools.
-    """
+    """Return recent AI lessons from the Decision Replay loop."""
     snippets = await lesson_svc.get_recent_lessons(
         user_id,
         ticker=ticker.upper().strip() if ticker else None,
