@@ -1,20 +1,9 @@
 /**
  * decision-loader.js — Decision Log & Lessons tab logic
  * Owner: dashboard (static adapter)
- *
- * Responsibilities:
- *   - Load and render decision table (Tab: Decisions)
- *   - Load and render lesson cards (Tab: Lessons, lazy)
- *   - Wire Log Decision modal (POST /decisions — requires thesis_id)
- *   - Inline Evaluate and Replay actions per row
- *
- * Contract notes:
- *   POST /decisions body: { thesis_id, decision_type, rationale,
- *                           brief_summary?, active_signal?, review_horizon_days? }
- *   ticker and price_at_decision are derived server-side from the linked thesis.
  */
 
-import { apiFetch } from '../../api.js';
+import { getJson, sendJson } from '../../api/client.js';
 import {
   renderDecisionsTable,
   renderLessonsCards,
@@ -32,7 +21,7 @@ export async function loadDecisions() {
   if (!wrap) return;
   wrap.innerHTML = '<p class="loading-text">Đang tải decisions…</p>';
   try {
-    const data = await apiFetch('/api/v1/decisions?limit=50');
+    const data = await getJson('/api/v1/decisions?limit=50');
     renderDecisionsTable(wrap, Array.isArray(data) ? data : []);
   } catch (err) {
     wrap.innerHTML = `<p class="error-text">Lỗi tải decisions: ${err.message}</p>`;
@@ -49,7 +38,7 @@ export async function loadLessons(force = false) {
   if (!wrap) return;
   wrap.innerHTML = '<p class="loading-text">Đang tải lessons…</p>';
   try {
-    const data = await apiFetch('/api/v1/lessons?limit=20&lookback_days=180');
+    const data = await getJson('/api/v1/lessons?limit=20&lookback_days=180');
     renderLessonsCards(wrap, Array.isArray(data) ? data : []);
     lessonsLoaded = true;
   } catch (err) {
@@ -87,9 +76,9 @@ export function bindDecisionTabs() {
 // ---------------------------------------------------------------------------
 
 export function bindLogDecisionModal() {
-  const openBtn = document.getElementById('newDecisionBtn');
-  const modal   = document.getElementById('decisionModal');
-  const form    = document.getElementById('decisionForm');
+  const openBtn  = document.getElementById('newDecisionBtn');
+  const modal    = document.getElementById('decisionModal');
+  const form     = document.getElementById('decisionForm');
   const closeBtn = modal?.querySelector('[data-close-modal]');
 
   if (!openBtn || !modal || !form) return;
@@ -122,12 +111,7 @@ export function bindLogDecisionModal() {
         return;
       }
 
-      await apiFetch('/api/v1/decisions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
+      await sendJson('/api/v1/decisions', 'POST', payload);
       modal.close();
       form.reset();
       await loadDecisions();
@@ -148,7 +132,7 @@ export async function evaluateDecision(decisionId, rowEl) {
   const btn = rowEl?.querySelector('[data-action="evaluate"]');
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
   try {
-    await apiFetch(`/api/v1/decisions/${decisionId}/evaluate`, { method: 'POST' });
+    await sendJson(`/api/v1/decisions/${decisionId}/evaluate`, 'POST', null);
     await loadDecisions();
   } catch (err) {
     alert(`Lỗi evaluate: ${err.message}`);
@@ -164,9 +148,9 @@ export async function replayDecision(decisionId, rowEl) {
   const btn = rowEl?.querySelector('[data-action="replay"]');
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
   try {
-    const result = await apiFetch(`/api/v1/decisions/${decisionId}/replay`);
+    const result = await getJson(`/api/v1/decisions/${decisionId}/replay`);
     showReplayPanel(rowEl, result);
-    lessonsLoaded = false; // invalidate lessons cache
+    lessonsLoaded = false;
   } catch (err) {
     alert(`Lỗi replay: ${err.message}`);
   } finally {
@@ -183,7 +167,7 @@ async function populateThesisSelect() {
   if (!sel) return;
   sel.innerHTML = '<option value="">Đang tải…</option>';
   try {
-    const theses = await apiFetch('/api/v1/theses?status=active&limit=50');
+    const theses = await getJson('/api/v1/theses?status=active&limit=50');
     const list = Array.isArray(theses) ? theses : (theses.items ?? []);
     if (!list.length) {
       sel.innerHTML = '<option value="">Không có thesis active</option>';
