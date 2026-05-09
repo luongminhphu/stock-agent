@@ -2,10 +2,11 @@
  * thesis-service.js
  * Owner: modules/thesis
  * Responsibility: API calls + side effects liên quan đến thesis lifecycle.
- * - loadThesisDetail()   ← Wave C: inject thesis event timeline
+ * - loadThesisDetail()           ← Wave C: inject thesis event timeline
  * - triggerAiReview()
  * - openApplyAiReviewModal()
  * - confirmDeleteThesis / Assumption / Catalyst
+ * - bindLessonPersistedEvent()   ← Wave D: listen decision:lesson-persisted
  */
 
 import { el, showToast, openModal, closeModal } from '../../utils/dom.js';
@@ -320,4 +321,49 @@ export function confirmDeleteCatalyst(thesisId, catId) {
     await loadThesisDetail(thesisId);
   };
   openModal('deleteModal');
+}
+
+// ---------------------------------------------------------------------------
+// Wave D: close decision → thesis review UI loop
+// ---------------------------------------------------------------------------
+/**
+ * Listens for CustomEvent('decision:lesson-persisted') dispatched by
+ * decision-loader.js after a successful AI replay with key_lesson.
+ *
+ * On receive:
+ *   1. Finds the thesis row in the table by [data-thesis-id="<thesis_id>"]
+ *      and injects a 🧠 badge if not already present.
+ *   2. Shows a toast pointing the user to review the thesis.
+ *   3. If the detail panel is currently showing that thesis, reloads it
+ *      so the updated state (new timeline event, conviction score) is visible.
+ *
+ * Called once from app.js init — no import from decision-loader.js needed.
+ */
+export function bindLessonPersistedEvent() {
+  document.addEventListener('decision:lesson-persisted', (e) => {
+    const { ticker, thesis_id: thesisIdStr } = e.detail ?? {};
+    if (!thesisIdStr) return;
+
+    const thesisId = Number(thesisIdStr);
+
+    // 1. Badge the thesis row
+    const row = document.querySelector(`[data-thesis-id="${thesisId}"]`);
+    if (row && !row.querySelector('.thesis-lesson-badge')) {
+      const badge = document.createElement('span');
+      badge.className = 'thesis-lesson-badge';
+      badge.title = 'Có AI lesson mới từ Decision Replay — cân nhắc review thesis';
+      badge.textContent = '🧠';
+      // Inject after the ticker/title cell (first td)
+      const firstCell = row.querySelector('td');
+      if (firstCell) firstCell.appendChild(badge);
+    }
+
+    // 2. Toast
+    showToast(`🧠 AI lesson mới cho ${ticker ?? 'thesis'} — xem lại thesis để cập nhật assumptions.`);
+
+    // 3. Reload detail if currently open
+    if (state.selectedThesisId === thesisId) {
+      loadThesisDetail(thesisId);
+    }
+  });
 }
