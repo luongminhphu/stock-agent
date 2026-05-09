@@ -20,6 +20,9 @@ from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
 
+# NEUTRAL is considered "correct" when price stays within this band (absolute %)
+NEUTRAL_ACCURACY_THRESHOLD = 5.0
+
 
 class BacktestingService:
     def __init__(self, session: AsyncSession) -> None:
@@ -82,7 +85,11 @@ class BacktestingService:
             bucket = stats[verdict]
             bucket["total"] += 1
             bucket["pnl_sum"] += pnl
-            if verdict in ("BULLISH", "WATCHLIST") and pnl >= 0 or verdict == "BEARISH" and pnl < 0:
+            if verdict in ("BULLISH", "WATCHLIST") and pnl >= 0:
+                bucket["hits"] += 1
+            elif verdict == "BEARISH" and pnl < 0:
+                bucket["hits"] += 1
+            elif verdict == "NEUTRAL" and abs(pnl) < NEUTRAL_ACCURACY_THRESHOLD:
                 bucket["hits"] += 1
 
         result = []
@@ -90,11 +97,7 @@ class BacktestingService:
             b = stats[verdict]
             total = b["total"]
             avg_pnl = round(b["pnl_sum"] / total, 2) if total else None
-            accuracy_pct = (
-                None
-                if verdict == "NEUTRAL"
-                else (round(b["hits"] / total * 100, 2) if total else None)
-            )
+            accuracy_pct = round(b["hits"] / total * 100, 2) if total else None
             result.append(
                 {
                     "verdict": verdict,
