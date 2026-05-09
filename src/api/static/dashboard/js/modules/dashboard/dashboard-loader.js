@@ -71,13 +71,87 @@ function showLoadingSkeletons() {
   }
 }
 
-/** Format số VNĐ compact: 1,234,567 → "1.23M" hoặc "1,234,567" */
+/** Format số VNĐ compact */
 function fmtVnd(val) {
   if (val == null || isNaN(val)) return '—';
   const abs = Math.abs(val);
   if (abs >= 1_000_000_000) return (val / 1_000_000_000).toFixed(2) + 'B';
   if (abs >= 1_000_000)     return (val / 1_000_000).toFixed(2) + 'M';
   return new Intl.NumberFormat('vi-VN').format(Math.round(val));
+}
+
+// ---------------------------------------------------------------------------
+// Wave Dashboard-1: Action Surface
+// Derives from stats + catalysts already fetched in loadDashboard().
+// Renders actionable nudges above the brief strip.
+// Hidden when all signals = 0 (no noise on clean days).
+// ---------------------------------------------------------------------------
+export function renderActionSurface(stats, catalysts) {
+  const wrap = el('actionSurface');
+  if (!wrap) return;
+
+  const reviewsToday  = parseInt(stats?.reviews_today         ?? stats?.review_count_today  ?? 0, 10);
+  const riskyCount    = parseInt(stats?.risky_theses          ?? stats?.risky_thesis_count  ?? 0, 10);
+  const upcoming7d    = parseInt(stats?.upcoming_catalysts_7d ?? stats?.upcoming_7d          ?? 0, 10);
+
+  const items = [];
+
+  if (reviewsToday > 0) {
+    items.push({
+      icon: '⚠️',
+      cls: 'as-item--warn',
+      text: `${reviewsToday} thesis cần review hôm nay`,
+      target: 'thesesTableWrap',
+      label: 'Review ngay',
+    });
+  }
+
+  if (riskyCount > 0) {
+    items.push({
+      icon: '🔴',
+      cls: 'as-item--danger',
+      text: `${riskyCount} thesis có score thấp (< 40)`,
+      target: 'thesesTableWrap',
+      label: 'Xem thesis',
+    });
+  }
+
+  if (upcoming7d > 0) {
+    items.push({
+      icon: '📅',
+      cls: 'as-item--info',
+      text: `${upcoming7d} catalyst trong 7 ngày tới`,
+      target: 'catalystList',
+      label: 'Xem lịch',
+    });
+  }
+
+  if (!items.length) {
+    wrap.classList.add('hidden');
+    wrap.innerHTML = '';
+    return;
+  }
+
+  wrap.classList.remove('hidden');
+  wrap.innerHTML = `
+    <div class="as-label">🎯 Việc cần làm hôm nay</div>
+    <div class="as-items">
+      ${items.map(item => `
+        <div class="as-item ${item.cls}">
+          <span class="as-icon">${item.icon}</span>
+          <span class="as-text">${item.text}</span>
+          <button class="as-cta" data-scroll-to="${item.target}" type="button">${item.label} →</button>
+        </div>
+      `).join('')}
+    </div>`;
+
+  // Wire scroll-to buttons
+  wrap.querySelectorAll('[data-scroll-to]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = document.getElementById(btn.dataset.scrollTo);
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
 }
 
 export async function loadDashboard() {
@@ -91,7 +165,7 @@ export async function loadDashboard() {
       stats, theses, verdictAccuracy, catalysts,
       latestScan, latestMorningBrief, latestEodBrief,
       portfolioTrades,
-      briefFeedback,           // Wave A
+      briefFeedback,
     ] = await Promise.all([
       getJson(`${base}/stats`).catch(() => null),
       getJson(`${base}/theses?status=${status}`).catch(() => []),
@@ -101,10 +175,13 @@ export async function loadDashboard() {
       getJson(`${base}/brief/latest?phase=morning`).catch(() => null),
       getJson(`${base}/brief/latest?phase=eod`).catch(() => null),
       getJson(`${base}/portfolio/trades`).catch(() => null),
-      getJson(`${base}/brief/feedback-summary`).catch(() => null),  // Wave A
+      getJson(`${base}/brief/feedback-summary`).catch(() => null),
     ]);
 
     renderSummary(stats, portfolioTrades);
+
+    // Wave Dashboard-1: action surface — derive from already-fetched data
+    renderActionSurface(stats, catalysts?.items ?? catalysts ?? []);
 
     state.theses = theses?.items ?? theses ?? [];
     renderThesesTable(state.theses, {
@@ -126,10 +203,10 @@ export async function loadDashboard() {
       latest_morning_brief_data: latestMorningBrief ?? null,
       latest_eod_brief_at:       latestEodBrief?.created_at ?? latestEodBrief?.generated_at ?? null,
       latest_eod_brief_data:     latestEodBrief ?? null,
-      brief_feedback:            briefFeedback ?? null,            // Wave A
+      brief_feedback:            briefFeedback ?? null,
     });
 
-    // Wave B: leaderboard — fire-and-forget, không block main render
+    // Leaderboard — fire-and-forget
     loadLeaderboard().catch(() => null);
 
     if (state.selectedThesisId) {

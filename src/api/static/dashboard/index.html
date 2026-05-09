@@ -55,7 +55,7 @@
 
         <!-- ══════════════════════════════════════════════════════════════════
              CLUSTER A — "Hôm nay cần làm gì?"
-             Morning context: KPI → Briefing → Watchlist → Portfolio
+             Morning context: KPI → Action Surface → Briefing → Watchlist → Portfolio
         ══════════════════════════════════════════════════════════════════ -->
         <div class="cluster" aria-label="Cluster A: Hôm nay cần làm gì?">
           <div class="cluster-label">
@@ -96,6 +96,20 @@
               <span class="signal-sub" id="latestScanSummary">Chưa có scan snapshot.</span>
             </article>
           </section>
+
+          <!-- ── ACTION SURFACE ─────────────────────────────────────────── -->
+          <!--
+            Segment owner : dashboard (readmodel derive)
+            JS owner      : modules/dashboard/dashboard-loader.js → renderActionSurface()
+            Populated from: stats + catalysts already fetched in loadDashboard()
+            Hidden when   : all signals = 0 (class "hidden" retained)
+          -->
+          <div
+            id="actionSurface"
+            class="action-surface hidden"
+            aria-live="polite"
+            aria-label="Việc cần làm hôm nay"
+          ></div>
 
           <!-- ── BRIEFING ───────────────────────────────────────────────── -->
           <div class="brief-context-strip" id="briefContextStrip">
@@ -199,11 +213,6 @@
           </div>
 
           <!-- ── LEADERBOARD ────────────────────────────────────────────── -->
-          <!--
-            Segment owner : readmodel
-            API           : GET /api/v1/readmodel/leaderboard?sort_by=score|pnl&limit=5
-            JS owner      : js/modules/leaderboard/leaderboard-service.js
-          -->
           <section
             id="leaderboardStrip"
             class="panel glass lb-strip"
@@ -603,6 +612,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="/static/dashboard/js/app.js?v=12"></script>
+    <script type="module" src="/static/dashboard/js/app.js?v=13"></script>
   </body>
 </html>

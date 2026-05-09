@@ -66,9 +66,6 @@ function formatScanHtml(text) {
 
 // ---------------------------------------------------------------------------
 // Wave A: Brief Feedback KPI strip
-// Renders acted_rate_30d + last_feedback_outcome + total_feedbacks_30d
-// vào element #briefFeedbackKpi (nếu có trong HTML).
-// Safe: nếu element không tồn tại hoặc data null → no-op.
 // ---------------------------------------------------------------------------
 const OUTCOME_META = {
   acted:    { icon: '✅', label: 'Đã hành động', cls: 'fb-acted'   },
@@ -146,7 +143,7 @@ export function renderBriefCard(phase, brief, dateStr) {
 
       <div class="brief-body">
         ${summary
-          ? `<div class="brief-summary">${esc(summary)}</div>`
+          ? `<div class="brief-summary">${esc(summary).replace(/\n/g, '<br>')}</div>`
           : ''}
 
         ${keyMovers.length ? `
@@ -177,9 +174,14 @@ export function renderBriefCard(phase, brief, dateStr) {
         ${actionItems.length ? `
           <div class="brief-section">
             <div class="brief-section-title">✅ Action Items</div>
-            ${actionItems.map(a =>
-              `<div class="brief-item action">${esc(a)}</div>`
-            ).join('')}
+            ${actionItems.map(a => {
+              const tickerMatch = typeof a === 'string' && a.match(/^([A-Z]{2,5})\b/);
+              return tickerMatch
+                ? `<div class="brief-item action brief-item--ticker"
+                     data-brief-ticker="${esc(tickerMatch[1])}"
+                     role="button" tabindex="0">${esc(a)}</div>`
+                : `<div class="brief-item action">${esc(a)}</div>`;
+            }).join('')}
           </div>` : ''}
 
         ${tickerSummaries.length ? `
@@ -275,10 +277,8 @@ export function renderSnapshots(data) {
     );
   }
 
-  // Wave A: brief feedback KPI (data key injected by dashboard-loader)
+  // Wave A: brief feedback KPI
   renderFeedbackKpi(data.brief_feedback ?? null);
 
   wireBriefTabs();
 }
-
-export function renderSnapshots_alias(data) { return renderSnapshots(data); }
