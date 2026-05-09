@@ -64,6 +64,14 @@
      - .signal-card--wide .signal-sub: white-space:normal + overflow:visible
        + text-overflow:unset + line-height:1.5
        → scan summary (DGC; NVL; PC1...) no longer clipped to 1 line
+
+   FIX LOG (2026-05-09):
+     - Added: .cluster, .cluster-label, .cluster-badge
+       → Cluster A/B/C group wrappers for index.html reorder
+     - Added: .scan-result-inline
+       → inline scan chip next to watchlist Scan now button
+     - Added: .dec-panel-header
+       → header row for Cluster C Decision Log & AI Lessons panel
 */
 
 /* ── SKIP LINK ──────────────────────────────────── */
@@ -343,265 +351,332 @@
   line-height: 1.5;
 }
 
-.signal-card--risk .signal-value { color: var(--danger); }
-.signal-card--pnl  .signal-value { color: var(--success); }
+.signal-card--wide { grid-column: span 1; }
 
-/* ── WAVE 2c: KPI alert state + countUp flash ──────────── */
-.signal-card--alert {
-  background: rgba(251, 191, 36, 0.06) !important;
-  border-bottom: 2px solid rgba(251, 191, 36, 0.5);
-}
-.signal-card--alert .signal-value {
-  color: var(--warning);
-}
+.signal-card--portfolio .signal-value,
+.signal-card--pnl       .signal-value { font-size: clamp(1rem, 0.85rem + 0.5vw, 1.3rem); }
 
-@keyframes kpi-flash {
-  0%   { color: var(--brand-strong); }
-  60%  { color: var(--brand); }
-  100% { color: inherit; }
-}
+.signal-card--risk .signal-value { color: var(--warning); }
 
-.signal-value.updated {
-  animation: kpi-flash 0.8s ease-out forwards;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .signal-value.updated {
-    animation: none;
-    color: var(--brand);
-  }
-}
-
-/* ── BRIEF CONTEXT STRIP ────────────────────────────────
-   FIX (2026-05-06a): constrain width + sync alignment với các layer khác
-   FIX (2026-05-06b): box-sizing:border-box → padding-inline không overflow
-     max-width, brief text canh lề đồng bộ với watchlist-layer / workspace-grid
-─────────────────────────────────────────────────────── */
+/* ── BRIEF CONTEXT STRIP ──────────────────────────── */
 .brief-context-strip {
   max-width: var(--content-max);
   margin-inline: auto;
   width: 100%;
+  /* FIX (2026-05-06a): padding-inline aligns brief text with workspace grid */
   padding-inline: var(--page-px);
+  /* FIX (2026-05-06b): prevent padding from adding to max-width */
   box-sizing: border-box;
 }
 
-/* ── WORKSPACE GRID ──────────────────────────────────── */
+/* ── WORKSPACE GRID ─────────────────────────────────── */
+/*
+   FIX: minmax(0, 1fr) prevents panel-main from overflowing the grid track
+   at narrow viewports (where content > track width).
+   FIX (2026-05-05): max-width + margin-inline auto → cap at 1680px on big screens
+*/
 .workspace-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--rail-w);
   gap: var(--workspace-gap);
-  padding: var(--workspace-gap) var(--page-px);
-  flex: 1;
-  align-items: start;
-  transition: grid-template-columns .2s ease;
+  padding: 0 var(--page-px);
   max-width: var(--content-max);
   margin-inline: auto;
   width: 100%;
 }
 
-.workspace-grid.inspector-open {
-  grid-template-columns: minmax(0, 1fr) clamp(340px, 30vw, 440px);
-}
-
-/* ── PANEL MAIN (thesis board) ──────────────────────── */
-.panel-main {
+/* ── PANEL: generic glass card ────────────────────── */
+.panel {
   display: flex;
   flex-direction: column;
-  min-height: 480px;
+  border-radius: 12px;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.panel.glass {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+.panel-main {
   min-width: 0;
   overflow: hidden;
 }
 
-/* ── DETAIL SHELL (sticky inspector) ────────────────── */
-.detail-shell {
-  border-top: 1px solid var(--line);
-  padding: var(--panel-pad);
-  overflow-y: auto;
-  max-height: 420px;
-  transition: max-height .25s ease, opacity .2s ease;
-}
-.detail-shell.empty-detail {
-  max-height: 180px;
+.panel-header {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px var(--panel-pad) 12px;
+  border-bottom: 1px solid var(--line);
 }
 
-/* ── ACTION RAIL ────────────────────────────────────── */
+.split-header {
+  align-items: center;
+}
+
+.panel-header .eyebrow {
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.panel-header h2 {
+  font-size: .95rem;
+  font-weight: 700;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.panel-hint {
+  font-size: .72rem;
+  color: var(--muted);
+  line-height: 1.5;
+  max-width: 42ch;
+  text-align: right;
+}
+
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* ── ACTION RAIL ──────────────────────────────────── */
 .action-rail {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  position: sticky;
-  top: calc(var(--topbar-h) + var(--strip-h) + var(--workspace-gap));
-  max-height: calc(100dvh - var(--topbar-h) - var(--strip-h) - var(--workspace-gap) * 2 - 8px);
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--line) transparent;
-  overscroll-behavior: contain;
+  gap: var(--workspace-gap);
   min-width: 0;
 }
 
-.action-panel { flex-shrink: 0; }
+.action-panel {
+  flex: 0 0 auto;
+}
 
-/* ── PORTFOLIO LAYER ────────────────────────────────────
-   FIX (2026-05-06a): add max-width + margin-inline auto
-   → bảng Holdings không dải hết 1920px trên màn 24-inch
-─────────────────────────────────────────────────────── */
+/* ── PORTFOLIO LAYER ──────────────────────────────── */
+/*
+   FIX (2026-05-06a): max-width cap at --content-max so table doesn't
+   stretch edge-to-edge on 1920px+ screens.
+*/
 .portfolio-layer {
-  padding-inline: var(--page-px);
-  margin-bottom: var(--layer-gap);
+  margin: 0 var(--page-px);
   max-width: var(--content-max);
+  width: calc(100% - var(--page-px) * 2);
   margin-inline: auto;
-  width: 100%;
 }
 
-/* ── WATCHLIST LAYER ────────────────────────────────────
-   FIX (2026-05-06a): same constraint as portfolio-layer
-─────────────────────────────────────────────────────── */
+/* ── WATCHLIST LAYER ──────────────────────────────── */
 .watchlist-layer {
-  padding-inline: var(--page-px);
-  margin-bottom: var(--layer-gap);
+  margin: 0 var(--page-px);
   max-width: var(--content-max);
+  width: calc(100% - var(--page-px) * 2);
   margin-inline: auto;
-  width: 100%;
 }
 
-/* ── VALIDATION LAYER ───────────────────────────────────
-   FIX (2026-05-06a): same constraint as portfolio-layer
-─────────────────────────────────────────────────────── */
+/* ── BACKTESTING / VALIDATION LAYER ──────────────── */
 .validation-layer {
-  padding-inline: var(--page-px);
-  margin-bottom: var(--layer-gap);
   max-width: var(--content-max);
   margin-inline: auto;
   width: 100%;
 }
 
-/* ── PANEL BASE HELPERS ──────────────────────────────── */
-.panel-hint {
-  font-size: .78rem;
+/* ── DETAIL SHELL ──────────────────────────────────── */
+.detail-shell {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--panel-pad);
+}
+
+.empty-detail {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  max-height: 200px;
+  overflow: hidden;
+}
+
+.empty-detail-copy {
+  text-align: center;
+  padding: 24px;
+}
+
+.empty-detail-copy h3 {
+  font-size: .95rem;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+
+.empty-detail-copy p {
+  font-size: .8rem;
   color: var(--muted);
-  max-width: 52ch;
+  max-width: 34ch;
+  margin: 0 auto;
   line-height: 1.5;
 }
 
-/* ── PORTFOLIO STYLES ────────────────────────────────── */
-.portfolio-tab-bar {
+/* ── SNAPSHOT GRID (inside action-rail cards) ──────── */
+.snapshot-grid {
   display: flex;
-  gap: 4px;
-  margin-bottom: 16px;
+  flex-direction: column;
+  gap: 0;
+}
+
+.snapshot-card {
+  padding: 12px var(--panel-pad);
   border-bottom: 1px solid var(--line);
 }
+.snapshot-card:last-child { border-bottom: none; }
 
-.portfolio-tab {
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  padding: 8px 18px;
-  cursor: pointer;
-  font-size: .88rem;
-  font-weight: 500;
+.snapshot-label {
+  display: block;
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
   color: var(--muted);
-  transition: color .15s, border-color .15s;
-  margin-bottom: -1px;
-  min-height: 44px;
-  white-space: nowrap;
-}
-.portfolio-tab.active,
-.portfolio-tab:hover {
-  color: var(--text);
-  border-bottom-color: var(--brand);
-}
-.portfolio-tab:active { opacity: .75; }
-
-.portfolio-pane.hidden { display: none; }
-
-.portfolio-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 16px;
+  margin-bottom: 4px;
 }
 
-.summary-chip {
-  background: rgba(148, 163, 184, 0.07);
-  border: 1px solid var(--line);
-  border-radius: 20px;
-  padding: 4px 14px;
+/* ── ERROR / LOADING STATES ────────────────────────── */
+.loading-text {
+  padding: 16px;
+  color: var(--muted);
   font-size: .82rem;
-  color: var(--muted);
+  text-align: center;
 }
 
-.table-scroll {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+.error-text {
+  padding: 16px;
+  color: var(--danger);
+  font-size: .82rem;
 }
 
+/* ── FOOTER ────────────────────────────────────────── */
+.footer-note {
+  padding: 12px var(--page-px);
+  font-size: .7rem;
+  color: var(--faint);
+  border-top: 1px solid var(--line);
+  text-align: center;
+  margin-top: auto;
+}
+
+.footer-note code {
+  background: rgba(148,163,184,.08);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: .68rem;
+}
+
+/* ── DATA TABLE (shared across modules) ────────────── */
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: .84rem;
+  font-size: .82rem;
 }
-.data-table th {
+
+.data-table thead th {
+  padding: 8px 12px;
   text-align: left;
-  padding: 8px 10px;
+  font-size: .68rem;
   font-weight: 600;
-  border-bottom: 1px solid var(--line-strong);
-  white-space: nowrap;
+  letter-spacing: .05em;
+  text-transform: uppercase;
   color: var(--muted);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
 }
-.data-table td {
-  padding: 9px 10px;
+
+.data-table tbody td {
+  padding: 8px 12px;
   border-bottom: 1px solid var(--line);
   vertical-align: middle;
-  color: var(--text);
 }
-.data-table tbody tr:hover { background: rgba(148, 163, 184, 0.04); }
-.data-table .num { text-align: right; font-variant-numeric: tabular-nums; }
-.pnl-positive { color: var(--success); }
-.pnl-negative { color: var(--danger); }
 
-/* ── VERDICT BADGES ─────────────────────────────────────── */
-.verdict-badge {
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 12px;
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.data-table tbody tr:hover td {
+  background: rgba(148,163,184,.04);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── LIST (inside action panels) ───────────────────── */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow-y: auto;
+  max-height: 300px;
+}
+
+.list-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px var(--panel-pad);
+  border-bottom: 1px solid var(--line);
+  font-size: .82rem;
+  transition: background .12s;
+}
+.list-item:last-child { border-bottom: none; }
+.list-item:hover { background: rgba(148,163,184,.04); }
+
+.list-ticker {
+  font-weight: 700;
+  color: var(--brand);
+  font-size: .82rem;
+  min-width: 40px;
+  flex-shrink: 0;
+}
+
+.list-desc {
+  flex: 1;
+  color: var(--muted);
   font-size: .78rem;
-  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
-.badge-bullish   { background: rgba(74,222,128,.14);  color: var(--success); }
-.badge-bearish   { background: rgba(248,113,113,.14); color: var(--danger); }
-.badge-neutral   { background: rgba(251,191,36,.14);  color: var(--warning); }
-.badge-watchlist { background: rgba(148,163,184,.12); color: var(--muted); }
-.badge-unknown   { background: rgba(148,163,184,.08); color: var(--faint); }
 
-/* ── RESPONSIVE — 900px ────────────────────────────────── */
-@media (max-width: 900px) {
-  .workspace-grid,
-  .workspace-grid.inspector-open {
-    grid-template-columns: 1fr;
-    padding: 12px var(--page-px);
-  }
-  .action-rail {
-    position: static;
-    max-height: none;
-    overflow: visible;
-    overscroll-behavior: auto;
-  }
-  .detail-shell {
-    max-height: none;
-  }
-  .command-strip,
-  .command-strip.kpi-strip {
-    grid-template-columns: repeat(3, 1fr) 1.5fr;
-    justify-content: stretch;
-  }
-  .signal-card--wide { grid-column: span 1; }
+.list-meta {
+  font-size: .72rem;
+  color: var(--faint);
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
-/* ── RESPONSIVE — 600px ────────────────────────────────── */
+/* ── RESPONSIVE ─────────────────────────────────────── */
+@media (max-width: 1199px) {
+  .workspace-grid {
+    grid-template-columns: minmax(0, 1fr) clamp(240px, 28vw, 320px);
+  }
+}
+
+@media (max-width: 899px) {
+  .workspace-grid {
+    grid-template-columns: 1fr;
+  }
+  .action-rail {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  }
+}
+
 @media (max-width: 600px) {
   :root {
     --page-px: 14px;
@@ -623,4 +698,104 @@
     min-width: 90px;
     font-size: .78rem;
   }
+}
+
+/* ── Cluster groups (Cluster A / B / C labels) ─────────────────────────────── */
+.cluster {
+  display: flex;
+  flex-direction: column;
+  gap: var(--layer-gap, 18px);
+  margin-bottom: 32px;
+  padding-inline: var(--page-px);
+}
+
+/* strip sections that sit inside cluster still need their own h-padding removed
+   because .cluster already handles it */
+.cluster .command-strip,
+.cluster .brief-context-strip {
+  padding-inline: 0;
+  margin-inline: 0;
+  max-width: 100%;
+  width: 100%;
+}
+
+.cluster-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0 6px;
+  border-bottom: 1px solid var(--line, rgba(148,163,184,.18));
+  font-size: .7rem;
+  font-weight: 600;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--muted, #96a7c6);
+  margin-bottom: 4px;
+}
+
+.cluster-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  background: var(--brand, #7dd3fc);
+  color: var(--bg, #0d1726);
+  font-size: .66rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  flex-shrink: 0;
+}
+
+/* ── Watchlist scan result inline ───────────────────────────────────────────── */
+.scan-result-inline {
+  display: inline-flex;
+  align-items: center;
+  font-size: .76rem;
+  color: var(--muted, #96a7c6);
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(148,163,184,.06);
+  border: 1px solid var(--line, rgba(148,163,184,.18));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
+  transition: opacity .2s;
+}
+.scan-result-inline.hidden { display: none; }
+
+/* ── Decision panel header ──────────────────────────────────────────────────── */
+.dec-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid var(--line, rgba(148,163,184,.12));
+  flex-wrap: wrap;
+}
+.dec-panel-header .eyebrow {
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--muted, #96a7c6);
+  margin-bottom: 4px;
+}
+.dec-panel-header h2 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0;
+  line-height: 1.25;
+  color: var(--text, #ecf3ff);
+}
+
+/* ── Responsive: cluster + dec-panel-header on mobile ──────────────────────── */
+@media (max-width: 600px) {
+  .cluster { padding-inline: 10px; gap: 14px; margin-bottom: 24px; }
+  .cluster-label { font-size: .65rem; }
+  .dec-panel-header { padding: 12px 14px 10px; flex-direction: column; gap: 10px; }
+  .scan-result-inline { max-width: 100%; }
 }
