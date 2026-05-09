@@ -1,6 +1,15 @@
 /**
  * decision-loader.js — Decision Log & Lessons tab logic
  * Owner: dashboard (static adapter)
+ *
+ * Exports:
+ *   loadDecisions()             — fetch + render decisions table
+ *   loadLessons(force?)         — lazy fetch + render lessons cards
+ *   bindDecisionTabs()          — wire Decisions | Lessons tab toggle
+ *   bindLogDecisionModal()      — wire Log Decision modal (open/submit)
+ *   bindDecisionFormEvents()    — alias for bindLogDecisionModal (app.js compat)
+ *   evaluateDecision(id, row)   — POST evaluate, reload table
+ *   replayDecision(id, row)     — GET replay, show inline panel
  */
 
 import { getJson, sendJson } from '../../api/client.js';
@@ -76,17 +85,11 @@ export function bindDecisionTabs() {
 // ---------------------------------------------------------------------------
 
 export function bindLogDecisionModal() {
-  const openBtn  = document.getElementById('newDecisionBtn');
   const modal    = document.getElementById('decisionModal');
   const form     = document.getElementById('decisionForm');
   const closeBtn = modal?.querySelector('[data-close-modal]');
 
-  if (!openBtn || !modal || !form) return;
-
-  openBtn.addEventListener('click', async () => {
-    await populateThesisSelect();
-    modal.showModal();
-  });
+  if (!modal || !form) return;
 
   closeBtn?.addEventListener('click', () => modal.close());
   modal.addEventListener('click', e => { if (e.target === modal) modal.close(); });
@@ -123,6 +126,12 @@ export function bindLogDecisionModal() {
     }
   });
 }
+
+/**
+ * Alias for bindLogDecisionModal — kept for backward compat with app.js
+ * which imports { bindDecisionFormEvents }.
+ */
+export const bindDecisionFormEvents = bindLogDecisionModal;
 
 // ---------------------------------------------------------------------------
 // Public: evaluate a decision (called from table row button)
@@ -180,4 +189,13 @@ async function populateThesisSelect() {
   } catch {
     sel.innerHTML = '<option value="">Lỗi tải thesis</option>';
   }
+}
+
+// ---------------------------------------------------------------------------
+// Private: open modal + populate thesis select (wired by app.js via newDecisionBtn)
+// ---------------------------------------------------------------------------
+
+export async function openDecisionModal() {
+  await populateThesisSelect();
+  document.getElementById('decisionModal')?.showModal();
 }
