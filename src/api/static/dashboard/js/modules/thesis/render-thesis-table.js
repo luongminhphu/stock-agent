@@ -91,7 +91,7 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
     ${t.summary ? `<p class="detail-summary">${esc(t.summary)}</p>` : ''}
 
     <div class="detail-grid">
-      <div class="detail-stat"><span>Score</span><strong class="${scoreClass(t.score)}">${fmtScore(t.score)}/100</strong>${t.score_tier ? `<span style="color:var(--muted);font-size:.82rem;">${esc(t.score_tier_icon ?? '')} ${esc(t.score_tier)}</span>` : ''}</div>
+      <div class="detail-stat"><span>Score</span><strong class="${scoreClass(t.score)}">${fmtScore(t.score)}/100</strong>${t.score_tier ? `<span style="color:var(--muted);font-size:.82rem;">${esc(t.score_tier_icon ?? '')} ${esc(t.score_tier ?? '')}</span>` : ''}</div>
       <div class="detail-stat"><span>Entry</span><strong>${t.entry_price ? fmt(t.entry_price) + '₫' : '—'}</strong></div>
       <div class="detail-stat"><span>Target</span><strong>${t.target_price ? fmt(t.target_price) + '₫' : '—'}</strong></div>
       <div class="detail-stat"><span>Stop loss</span><strong>${t.stop_loss ? fmt(t.stop_loss) + '₫' : '—'}</strong></div>
@@ -99,84 +99,59 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
       <div class="detail-stat"><span>Cập nhật</span><strong style="font-size:.9rem;">${fmtDate(t.updated_at)}</strong></div>
     </div>
 
+    ${renderScoreBreakdown(t.score_breakdown)}
+
     <div class="detail-columns">
-      <div class="detail-section">
-        <div class="detail-section-header">
-          <h3>Assumptions (${assumList.length})</h3>
-          <button class="ghost-btn" style="min-height:34px;padding:0 12px;font-size:.82rem;" id="addAssumBtn">+ Thêm</button>
+      <div class="detail-col">
+        <div class="col-header">
+          <h3>Assumptions <span class="count-badge">${assumList.length}</span></h3>
+          <button class="icon-btn" id="addAssumBtn" title="Thêm assumption">＋</button>
         </div>
-        <div class="detail-list" id="assumptionList">
-          ${assumList.length ? assumList.map(renderAssumItem).join('') : '<p class="empty-state">Chưa có assumption.</p>'}
-        </div>
+        ${assumList.length ? assumList.map(a => `
+          <div class="item-row item-row--${a.status?.toLowerCase() ?? 'unknown'}" data-assum-id="${a.id}">
+            <div class="item-row-body">
+              <span class="item-text">${esc(a.description ?? '—')}</span>
+              <span class="badge badge--${a.status?.toLowerCase() ?? 'unknown'}">${esc(a.status ?? '—')}</span>
+            </div>
+            <div class="item-row-actions">
+              <button class="icon-btn edit-assum-btn" data-id="${a.id}" title="Sửa">✏️</button>
+              <button class="icon-btn danger delete-assum-btn" data-id="${a.id}" title="Xóa">🗑</button>
+            </div>
+          </div>`).join('') : '<p class="empty-state">Chưa có assumption nào.</p>'}
       </div>
-      <div class="detail-section">
-        <div class="detail-section-header">
-          <h3>Catalysts (${catList.length})</h3>
-          <button class="ghost-btn" style="min-height:34px;padding:0 12px;font-size:.82rem;" id="addCatBtn">+ Thêm</button>
+
+      <div class="detail-col">
+        <div class="col-header">
+          <h3>Catalysts <span class="count-badge">${catList.length}</span></h3>
+          <button class="icon-btn" id="addCatBtn" title="Thêm catalyst">＋</button>
         </div>
-        <div class="detail-list" id="catalystDetailList">
-          ${catList.length ? catList.map(renderCatItem).join('') : '<p class="empty-state">Chưa có catalyst.</p>'}
-        </div>
+        ${catList.length ? catList.map(c => `
+          <div class="item-row item-row--${c.status?.toLowerCase() ?? 'unknown'}" data-cat-id="${c.id}">
+            <div class="item-row-body">
+              <span class="item-text">${esc(c.description ?? '—')}</span>
+              <span class="badge badge--${c.status?.toLowerCase() ?? 'unknown'}">${esc(c.status ?? '—')}</span>
+            </div>
+            <div class="item-row-actions">
+              <button class="icon-btn edit-cat-btn" data-id="${c.id}" title="Sửa">✏️</button>
+              <button class="icon-btn danger delete-cat-btn" data-id="${c.id}" title="Xóa">🗑</button>
+            </div>
+          </div>`).join('') : '<p class="empty-state">Chưa có catalyst nào.</p>'}
       </div>
     </div>
 
-    ${revList.length ? `
-      <div style="margin-top:18px;">
-        <h3 style="margin-bottom:12px;">Review gần nhất</h3>
-        ${revList.slice(0, 3).map(r => `
-          <div class="review-card">
-            <div class="review-head">
-              <span class="review-meta">${fmtDate(r.reviewed_at)}</span>
-              ${badge(r.verdict)}
-              <span style="color:var(--muted);font-size:.82rem;">Conf: ${r.confidence ?? '—'}</span>
-            </div>
-            <p class="review-reasoning">${esc(r.reasoning ?? '')}</p>
-          </div>`).join('')}
-      </div>` : ''}
+    ${renderReviewRecommendSection(revList)}
 
-    ${renderScoreBreakdown(t.score_breakdown)}
-
-    <!-- Conviction Timeline slot — filled async by thesis-service -->
     ${convictionTimelineSlotHTML(t.id)}
 
-    <!-- Wave C: Thesis Event Timeline slot — filled async by thesis-service -->
-    ${thesisTimelineSlotHTML(t.id)}
-
-    ${renderReviewRecommendSection(t.id)}
-  `;
+    ${thesisTimelineSlotHTML(t.id)}`;
 }
 
-export function renderAssumItem(a) {
-  return `
-    <div class="detail-item" data-assum-id="${a.id}">
-      <div class="detail-item-row">
-        <span style="font-weight:600;font-size:.9rem;">${esc(a.description)}</span>
-        <div class="detail-item-actions">
-          ${badge(a.status)}
-          <button class="icon-btn edit-assum-btn" data-id="${a.id}" title="Sửa">✏️</button>
-          <button class="icon-btn danger delete-assum-btn" data-id="${a.id}" title="Xóa">🗑</button>
-        </div>
-      </div>
-      ${a.rationale ? `<p>${esc(a.rationale)}</p>` : ''}
-    </div>`;
-}
-
-export function renderCatItem(c) {
-  return `
-    <div class="detail-item" data-cat-id="${c.id}">
-      <div class="detail-item-row">
-        <span style="font-weight:600;font-size:.9rem;">${esc(c.description)}</span>
-        <div class="detail-item-actions">
-          ${badge(c.status)}
-          <button class="icon-btn edit-cat-btn" data-id="${c.id}" title="Sửa">✏️</button>
-          <button class="icon-btn danger delete-cat-btn" data-id="${c.id}" title="Xóa">🗑</button>
-        </div>
-      </div>
-      ${c.expected_timeline ? `<p>📅 ${esc(c.expected_timeline)}</p>` : ''}
-      ${c.rationale ? `<p>${esc(c.rationale)}</p>` : ''}
-    </div>`;
-}
-
+/**
+ * Render thesis list table (left panel).
+ * data-ticker + data-thesis-id on each <tr> enables the lesson→review
+ * UI loop: decision-loader dispatches 'decision:lesson-persisted' with
+ * a ticker, thesis-service finds the row via [data-ticker] and adds a badge.
+ */
 export function renderThesesTable(list, callbacks = {}) {
   const { onSelect = null, onEdit = null, onDelete = null } = callbacks ?? {};
   const wrap = document.getElementById('thesesTableWrap');
@@ -195,7 +170,7 @@ export function renderThesesTable(list, callbacks = {}) {
       </thead>
       <tbody>
         ${list.map(t => `
-          <tr data-id="${t.id}" class="${t.id === state.selectedThesisId ? 'is-selected' : ''}">
+          <tr data-id="${t.id}" data-ticker="${esc(t.ticker)}" data-thesis-id="${t.id}" class="${t.id === state.selectedThesisId ? 'is-selected' : ''}">
             <td class="ticker-cell">
               <div style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap;">
                 <strong>${esc(t.ticker)}</strong>
@@ -229,11 +204,13 @@ export function renderThesesTable(list, callbacks = {}) {
       wrap.querySelectorAll('tbody tr').forEach(r => r.classList.toggle('is-selected', r.dataset.id === id));
       onSelect?.(id);
     });
+    row.querySelector('.edit-thesis-btn')?.addEventListener('click', e => {
+      e.stopPropagation();
+      onEdit?.(row.dataset.id);
+    });
+    row.querySelector('.delete-thesis-btn')?.addEventListener('click', e => {
+      e.stopPropagation();
+      onDelete?.(row.dataset.id);
+    });
   });
-  wrap.querySelectorAll('.edit-thesis-btn').forEach(btn =>
-    btn.addEventListener('click', e => { e.stopPropagation(); onEdit?.(btn.dataset.id); })
-  );
-  wrap.querySelectorAll('.delete-thesis-btn').forEach(btn =>
-    btn.addEventListener('click', e => { e.stopPropagation(); onDelete?.(btn.dataset.id); })
-  );
 }
