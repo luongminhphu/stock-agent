@@ -92,6 +92,41 @@
         <div id="eodBriefWrap" class="brief-tab-pane hidden" role="tabpanel"></div>
       </div>
 
+      <!-- ── WAVE A: LEADERBOARD STRIP ──────────────────────────────────────────────────────────────────────── -->
+      <!--
+        Segment owner : readmodel
+        API           : GET /api/v1/readmodel/leaderboard?sort_by=score&limit=5
+        JS owner      : js/modules/leaderboard/leaderboard-service.js  (Wave A impl)
+        Render target : #leaderboardStrip  →  ol#leaderboardList
+        Skeleton      : .lb-skel items injected by JS on load
+      -->
+      <section
+        id="leaderboardStrip"
+        class="panel glass lb-strip"
+        aria-labelledby="lbStripTitle"
+        aria-live="polite"
+      >
+        <div class="lb-strip-header">
+          <div>
+            <p class="eyebrow">🏆 Thesis Leaderboard</p>
+            <h2 id="lbStripTitle" class="sr-only">Top theses theo score</h2>
+          </div>
+          <div class="lb-sort-bar" role="group" aria-label="Sắp xếp leaderboard">
+            <button class="lb-sort-btn active" data-sort="score" type="button">Score</button>
+            <button class="lb-sort-btn" data-sort="conviction" type="button">Conviction</button>
+            <button class="lb-sort-btn" data-sort="pnl" type="button">P&amp;L</button>
+          </div>
+        </div>
+        <ol id="leaderboardList" class="lb-list" aria-label="Danh sách leaderboard">
+          <!-- Skeleton rows — swapped by leaderboard-service.js after fetch -->
+          <li class="lb-item lb-item--skel" aria-hidden="true"><div class="skel skel-text" style="width:100%;height:2.4rem;"></div></li>
+          <li class="lb-item lb-item--skel" aria-hidden="true"><div class="skel skel-text" style="width:100%;height:2.4rem;"></div></li>
+          <li class="lb-item lb-item--skel" aria-hidden="true"><div class="skel skel-text" style="width:100%;height:2.4rem;"></div></li>
+          <li class="lb-item lb-item--skel" aria-hidden="true"><div class="skel skel-text" style="width:100%;height:2.4rem;"></div></li>
+          <li class="lb-item lb-item--skel" aria-hidden="true"><div class="skel skel-text" style="width:100%;height:2.4rem;"></div></li>
+        </ol>
+      </section>
+
       <!-- ══ ① PORTFOLIO → ② WATCHLIST → ③ THESIS → ④ BACKTESTING → ⑤ DECISIONS ══ -->
       <main id="main-content">
 
@@ -229,6 +264,38 @@
               <h2 id="decisionTitle">Ghi lại quyết định &amp; Bài học từ AI Replay</h2>
             </div>
             <button id="newDecisionBtn" class="primary-btn" type="button">+ Log Decision</button>
+          </div>
+
+          <!-- WAVE B: Decision KPI strip ──────────────────────────────────────────────
+               Segment owner : decisions (client-side aggregate từ GET /api/v1/decisions)
+               JS owner      : js/modules/decisions/decision-service.js  (Wave B impl)
+               Render target : #decisionKpiStrip
+               Cards         : total | win-rate | avg horizon | pending evaluations
+          ─────────────────────────────────────────────────────────────────────────── -->
+          <div
+            id="decisionKpiStrip"
+            class="dec-kpi-strip"
+            aria-label="Decision KPI tổng quan"
+            aria-live="polite"
+          >
+            <article class="dec-kpi-card" id="dkpiTotal">
+              <span class="dec-kpi-label">Tổng decisions</span>
+              <strong class="dec-kpi-value"><div class="skel skel-text" style="width:2rem;"></div></strong>
+            </article>
+            <article class="dec-kpi-card" id="dkpiWinRate">
+              <span class="dec-kpi-label">Win rate</span>
+              <strong class="dec-kpi-value"><div class="skel skel-text" style="width:3rem;"></div></strong>
+              <span class="dec-kpi-sub">evaluated</span>
+            </article>
+            <article class="dec-kpi-card" id="dkpiBuyCount">
+              <span class="dec-kpi-label">MUA / BÁN</span>
+              <strong class="dec-kpi-value"><div class="skel skel-text" style="width:3.5rem;"></div></strong>
+            </article>
+            <article class="dec-kpi-card dec-kpi-card--alert" id="dkpiPending">
+              <span class="dec-kpi-label">Chờ evaluate</span>
+              <strong class="dec-kpi-value"><div class="skel skel-text" style="width:2rem;"></div></strong>
+              <span class="dec-kpi-sub">quá hạn review</span>
+            </article>
           </div>
 
           <!-- Tab: Decisions | Lessons -->
