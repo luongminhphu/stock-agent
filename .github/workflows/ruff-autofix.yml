@@ -8,9 +8,9 @@ on:
         required: false
         default: "main"
       unsafe_fixes:
-        description: "Apply --unsafe-fixes as well? (default: true)"
+        description: "Apply --unsafe-fixes as well? (default: false)"
         required: false
-        default: "true"
+        default: "false"
         type: choice
         options: ["true", "false"]
 
@@ -40,7 +40,7 @@ jobs:
         run: ruff check src/ tests/ --fix
 
       - name: Run ruff check --unsafe-fixes
-        if: ${{ github.event.inputs.unsafe_fixes != 'false' }}
+        if: ${{ github.event.inputs.unsafe_fixes == 'true' }}
         run: ruff check src/ tests/ --unsafe-fixes --fix
 
       - name: Run ruff format

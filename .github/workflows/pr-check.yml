@@ -51,7 +51,7 @@ jobs:
         run: ruff check src/ tests/
 
       - name: Test with coverage gate
-        run: pytest --tb=short -q --cov=src --cov-fail-under=60
+        run: pytest --tb=short -q --cov=src --cov-fail-under=70
         env:
           ENVIRONMENT: test
           MOCK_MARKET: "true"
