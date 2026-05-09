@@ -4,7 +4,7 @@
  */
 
 import { el }               from '../../utils/dom.js';
-import { apiBase, getJson } from '../../api/client.js';
+import { apiBase, briefingApiBase, getJson } from '../../api/client.js';
 import { state }            from '../../state/dashboard-state.js';
 import { renderThesesTable, thesisTableSkeletonHTML, emptyDetailHTML } from '../thesis/render-thesis-table.js';
 import { loadThesisDetail }    from '../thesis/thesis-service.js';
@@ -155,8 +155,9 @@ export function renderActionSurface(stats, catalysts) {
 }
 
 export async function loadDashboard() {
-  const status = el('statusFilter')?.value ?? 'active';
-  const base   = apiBase();
+  const status  = el('statusFilter')?.value ?? 'active';
+  const base    = apiBase();
+  const briefBase = briefingApiBase();
   el('errorBanner')?.classList.add('hidden');
   showLoadingSkeletons();
 
@@ -172,10 +173,10 @@ export async function loadDashboard() {
       getJson(`${base}/backtesting/verdict-accuracy`).catch(() => null),
       getJson(`${base}/catalysts/upcoming?days=30`).catch(() => []),
       getJson(`${base}/scan/latest`).catch(() => null),
-      getJson(`${base}/brief/latest?phase=morning`).catch(() => null),
-      getJson(`${base}/brief/latest?phase=eod`).catch(() => null),
+      getJson(`${briefBase}/latest?phase=morning`).catch(() => null),
+      getJson(`${briefBase}/latest?phase=eod`).catch(() => null),
       getJson(`${base}/portfolio/trades`).catch(() => null),
-      getJson(`${base}/brief/feedback-summary`).catch(() => null),
+      getJson(`${briefBase}/feedback-summary`).catch(() => null),
     ]);
 
     renderSummary(stats, portfolioTrades);

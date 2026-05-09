@@ -6,10 +6,12 @@
  *                 rendered brief cards.
  */
 
+import { briefingApiBase } from '../../api/client.js';
+
 /**
  * bindFeedbackEvents()
  * Wire once at bootstrap. Listens for clicks on .fb-btn inside
- * .brief-feedback-bar[data-brief-id] and POSTs to /briefing/{id}/feedback.
+ * .brief-feedback-bar[data-brief-id] and POSTs to /api/v1/briefing/{id}/feedback.
  */
 export function bindFeedbackEvents() {
   document.addEventListener('click', async e => {
@@ -27,7 +29,7 @@ export function bindFeedbackEvents() {
     btn.classList.add('fb-selected');
 
     try {
-      const res = await fetch(`/briefing/${briefId}/feedback`, {
+      const res = await fetch(`${briefingApiBase()}/${briefId}/feedback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ outcome }),
