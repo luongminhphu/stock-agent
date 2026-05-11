@@ -14,7 +14,7 @@ import { esc, fmtDate } from '../../utils/format.js';
 import { thesisApiBase, getJson, sendJson } from '../../api/client.js';
 import { state } from '../../state/dashboard-state.js';
 import { renderThesisDetailHTML, emptyDetailHTML } from './render-thesis-table.js';
-import { wireDetailActions } from './thesis-form.js';
+import { wireDetailActions } from './wire-detail-actions.js';
 import { renderReviewRecommendResult } from './render-ai-review.js';
 import { fetchQuote, renderQuoteStrip } from './market-quote.js';
 import { loadConvictionTimeline } from './render-conviction-timeline.js';
@@ -112,7 +112,6 @@ async function loadThesisTimeline(thesisId, detailWrap) {
   if (!slot) return;
   try {
     const res    = await getJson(`/api/v1/readmodel/thesis/${thesisId}/timeline`);
-    // Guard: user có thể đã click sang thesis khác
     if (!detailWrap.contains(slot)) return;
     const events = Array.isArray(res) ? res : (res?.events ?? res?.items ?? []);
     renderThesisTimeline(slot, events);
@@ -142,6 +141,8 @@ export async function loadThesisDetail(thesisId) {
       return;
     }
     wrap.innerHTML = renderThesisDetailHTML(thesis, assumptions, catalysts, reviews);
+
+    // wire-detail-actions.js: no circular dep — safe to call here
     wireDetailActions(thesisId, wrap);
 
     const scheduleIdle = window.requestIdleCallback
@@ -162,7 +163,6 @@ export async function loadThesisDetail(thesisId) {
       await loadConvictionTimeline(thesisId);
     });
 
-    // Wave C: thesis event timeline — fire-and-forget, không block quote/conviction
     scheduleIdle(async () => {
       await loadThesisTimeline(thesisId, wrap);
     });
@@ -326,19 +326,6 @@ export function confirmDeleteCatalyst(thesisId, catId) {
 // ---------------------------------------------------------------------------
 // Wave D: close decision → thesis review UI loop
 // ---------------------------------------------------------------------------
-/**
- * Listens for CustomEvent('decision:lesson-persisted') dispatched by
- * decision-loader.js after a successful AI replay with key_lesson.
- *
- * On receive:
- *   1. Finds the thesis row in the table by [data-thesis-id="<thesis_id>"]
- *      and injects a 🧠 badge if not already present.
- *   2. Shows a toast pointing the user to review the thesis.
- *   3. If the detail panel is currently showing that thesis, reloads it
- *      so the updated state (new timeline event, conviction score) is visible.
- *
- * Called once from app.js init — no import from decision-loader.js needed.
- */
 export function bindLessonPersistedEvent() {
   document.addEventListener('decision:lesson-persisted', (e) => {
     const { ticker, thesis_id: thesisIdStr } = e.detail ?? {};
@@ -346,22 +333,18 @@ export function bindLessonPersistedEvent() {
 
     const thesisId = Number(thesisIdStr);
 
-    // 1. Badge the thesis row
     const row = document.querySelector(`[data-thesis-id="${thesisId}"]`);
     if (row && !row.querySelector('.thesis-lesson-badge')) {
       const badge = document.createElement('span');
       badge.className = 'thesis-lesson-badge';
       badge.title = 'Có AI lesson mới từ Decision Replay — cân nhắc review thesis';
       badge.textContent = '🧠';
-      // Inject after the ticker/title cell (first td)
       const firstCell = row.querySelector('td');
       if (firstCell) firstCell.appendChild(badge);
     }
 
-    // 2. Toast
     showToast(`🧠 AI lesson mới cho ${ticker ?? 'thesis'} — xem lại thesis để cập nhật assumptions.`);
 
-    // 3. Reload detail if currently open
     if (state.selectedThesisId === thesisId) {
       loadThesisDetail(thesisId);
     }
