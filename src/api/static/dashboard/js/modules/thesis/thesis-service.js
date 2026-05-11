@@ -79,49 +79,92 @@ const TIMELINE_EVENT_META = {
   invalidated:          { icon: '❌', label: 'Thesis bị invalidate'  },
 };
 
+const TIMELINE_MAX = 30;
+
 /**
  * Serialize event detail thành string có thể đọc được.
  * Fix: ev.detail có thể là object (e.g. {old_status, new_status}) → [object Object]
  */
 function formatEventDetail(raw) {
   if (raw == null) return null;
-  if (typeof raw === 'string') return raw;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    return trimmed.length ? trimmed : null;
+  }
   if (typeof raw === 'number' || typeof raw === 'boolean') return String(raw);
-  // Object: render key → value pairs, e.g. "old_status: active · new_status: paused"
+  // Object: render key → value pairs, e.g. "old status: active · new status: paused"
   try {
-    return Object.entries(raw)
-      .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v ?? '—'}`)
-      .join(' · ');
+    const pairs = Object.entries(raw)
+      .filter(([, v]) => v != null && v !== '')
+      .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`);
+    return pairs.length ? pairs.join(' · ') : null;
   } catch {
     return JSON.stringify(raw);
   }
 }
 
-function renderThesisTimeline(slot, events) {
-  if (!events?.length) {
+/**
+ * Trả về true nếu event có đủ thông tin để hiển thị (không trống).
+ * Event không có detail, description, summary đều null → ẩn.
+ */
+function isEventVisible(ev) {
+  if (!ev || !ev.event_type) return false;
+  const detail = formatEventDetail(ev.detail ?? ev.description ?? ev.summary ?? null);
+  // Event type "created" luôn hiển thị dù không có detail
+  if (ev.event_type === 'created') return true;
+  return detail != null;
+}
+
+function renderThesisTimeline(slot, rawEvents) {
+  if (!rawEvents?.length) {
     slot.innerHTML = '<p class="tl-empty">Chưa có sự kiện nào.</p>';
     return;
   }
 
+  // 1. Filter events không có nội dung
+  const visible = rawEvents.filter(isEventVisible);
+
+  if (!visible.length) {
+    slot.innerHTML = '<p class="tl-empty">Chưa có sự kiện nào có nội dung.</p>';
+    return;
+  }
+
+  // 2. Sort mới nhất lên đầu
+  const sorted = [...visible].sort((a, b) => {
+    const ta = a.occurred_at ? new Date(a.occurred_at).getTime() : 0;
+    const tb = b.occurred_at ? new Date(b.occurred_at).getTime() : 0;
+    return tb - ta;
+  });
+
+  // 3. Cap 30 events gần nhất
+  const totalVisible = sorted.length;
+  const events = sorted.slice(0, TIMELINE_MAX);
+  const truncated = totalVisible - events.length;
+
   slot.innerHTML = `
     <div class="tl-section">
-      <div class="tl-section-title">📅 Lịch sử thesis</div>
+      <div class="tl-section-title">
+        📅 Lịch sử thesis
+        <span class="tl-count-badge">${events.length}${truncated > 0 ? `/${totalVisible}` : ''} sự kiện</span>
+      </div>
       <ol class="tl-list">
-        ${events.map(ev => {
+        ${events.map((ev, idx) => {
           const meta    = TIMELINE_EVENT_META[ev.event_type] ?? { icon: '•', label: ev.event_type };
           const dateStr = ev.occurred_at ? fmtDate(ev.occurred_at) : '';
           const detail  = formatEventDetail(ev.detail ?? ev.description ?? ev.summary ?? null);
+          const isFirst = idx === 0;
           return `
-            <li class="tl-item">
+            <li class="tl-item${isFirst ? ' tl-item--latest' : ''}">
               <span class="tl-icon" aria-hidden="true">${meta.icon}</span>
               <div class="tl-content">
-                <div class="tl-label">${esc(meta.label)}</div>
+                <div class="tl-label">${esc(meta.label)}${isFirst ? ' <span class="tl-latest-tag">mới nhất</span>' : ''}</div>
                 ${detail ? `<div class="tl-detail">${esc(detail)}</div>` : ''}
                 ${dateStr ? `<div class="tl-date">${dateStr}</div>` : ''}
               </div>
             </li>`;
         }).join('')}
       </ol>
+      ${truncated > 0 ? `<p class="tl-truncated-note">Đang hiển thị 30 sự kiện gần nhất. Còn ${truncated} sự kiện cũ hơn không hiển thị.</p>` : ''}
     </div>`;
 }
 
