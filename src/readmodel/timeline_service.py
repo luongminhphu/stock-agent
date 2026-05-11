@@ -12,6 +12,7 @@ import json
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.readmodel.event_text import filter_events
 from src.readmodel.schemas import (
     ConvictionBreakdown,
     ConvictionPoint,
@@ -30,7 +31,7 @@ class ThesisTimelineService:
         self._session = session
 
     # ------------------------------------------------------------------
-    # General event timeline (existing)
+    # General event timeline
     # ------------------------------------------------------------------
 
     async def get_timeline(self, thesis_id: int) -> ThesisTimelineResponse | None:
@@ -154,17 +155,16 @@ class ThesisTimelineService:
                 )
             )
 
-        events.sort(key=lambda e: e.ts)
-
+        # filter_events: drop null/empty + keep 30 latest, oldest → newest
         return ThesisTimelineResponse(
             thesis_id=thesis.id,
             ticker=thesis.ticker,
             title=thesis.title,
-            events=events,
+            events=filter_events(events),
         )
 
     # ------------------------------------------------------------------
-    # Focused review timeline — 5 AI reviews g\u1ea7n nh\u1ea5t
+    # Focused review timeline — 5 AI reviews gần nhất
     # ------------------------------------------------------------------
 
     async def get_review_timeline(
@@ -172,10 +172,10 @@ class ThesisTimelineService:
         thesis_id: int,
         limit: int = 5,
     ) -> ReviewTimelineResponse | None:
-        """Tr\u1ea3 v\u1ec1 `limit` AI reviews g\u1ea7n nh\u1ea5t c\u1ee7a m\u1ed9t thesis, m\u1edbi nh\u1ea5t tr\u01b0\u1edbc.
+        """Trả về `limit` AI reviews gần nhất của một thesis, mới nhất trước.
 
-        Ch\u1ec9 query ThesisReview \u2014 kh\u00f4ng join b\u1ea3ng kh\u00e1c.
-        risk_signals / next_watch_items \u0111\u01b0\u1ee3c parse t\u1eeb JSON string v\u1edbi fallback [].
+        Chỉ query ThesisReview — không join bảng khác.
+        risk_signals / next_watch_items được parse từ JSON string với fallback [].
         """
         from src.thesis.models import Thesis, ThesisReview
 
@@ -230,17 +230,17 @@ class ThesisTimelineService:
         thesis_id: int,
         limit: int = 20,
     ) -> ConvictionTimelineResponse | None:
-        """Tr\u1ea3 v\u1ec1 c\u1ed7 conviction score theo th\u1eddi gian cho m\u1ed9t thesis.
+        """Trả về cỗ conviction score theo thời gian cho một thesis.
 
-        M\u1ed7i point \u1ee9ng v\u1edbi m\u1ed9t ThesisSnapshot. Verdict + confidence \u0111\u01b0\u1ee3c l\u1ea5y
-        t\u1eeb ThesisReview g\u1ea7n nh\u1ea5t tr\u01b0\u1edbc (ho\u1eb7c \u0111\u00fang b\u1eb1ng) snapshotted_at.
+        Mỗi point ứng với một ThesisSnapshot. Verdict + confidence được lấy
+        từ ThesisReview gần nhất trước (hoặc đúng bằng) snapshotted_at.
 
         Score coalesce: score_at_snapshot (scheduler snapshots) OR score
         (review-triggered snapshots). Rows where both are NULL are skipped.
 
-        Breakdown \u0111\u01b0\u1ee3c parse t\u1eeb score_breakdown JSON column (nullable cho legacy rows).
-        Trend = so s\u00e1nh avg(3 \u0111i\u1ec3m \u0111\u1ea7u) vs avg(3 \u0111i\u1ec3m cu\u1ed1i); \u0394 > 5 \u2192 improving,
-        \u0394 < -5 \u2192 declining, else stable. < 2 \u0111i\u1ec3m \u2192 insufficient_data.
+        Breakdown được parse từ score_breakdown JSON column (nullable cho legacy rows).
+        Trend = so sánh avg(3 điểm đầu) vs avg(3 điểm cuối); Δ > 5 → improving,
+        Δ < -5 → declining, else stable. < 2 điểm → insufficient_data.
         """
         from src.thesis.models import Thesis, ThesisReview, ThesisSnapshot
         from src.thesis.scoring_service import score_tier
@@ -272,8 +272,6 @@ class ThesisTimelineService:
         # Build points
         points: list[ConvictionPoint] = []
         for snap in snapshots:
-            # Coalesce: scheduler snapshots use score_at_snapshot,
-            # review-triggered snapshots use score. Skip if both are NULL.
             score = snap.score_at_snapshot if snap.score_at_snapshot is not None else snap.score
             if score is None:
                 continue
@@ -281,7 +279,6 @@ class ThesisTimelineService:
             tier_label, tier_icon = score_tier(score)
             breakdown = _parse_breakdown(snap.score_breakdown)
 
-            # Nearest review at or before snapshotted_at
             nearest = _nearest_prior_review(reviews, snap.snapshotted_at)
             verdict = None
             confidence = None
@@ -330,7 +327,7 @@ class ThesisTimelineService:
 
 
 def _parse_json_list(raw: str | None) -> list[str]:
-    """Parse JSON string \u2192 list[str]. Returns [] on null / malformed input."""
+    """Parse JSON string → list[str]. Returns [] on null / malformed input."""
     if not raw:
         return []
     try:
@@ -343,7 +340,7 @@ def _parse_json_list(raw: str | None) -> list[str]:
 
 
 def _parse_breakdown(raw: str | None) -> ConvictionBreakdown | None:
-    """Parse score_breakdown JSON column \u2192 ConvictionBreakdown. None on legacy/null."""
+    """Parse score_breakdown JSON column → ConvictionBreakdown. None on legacy/null."""
     if not raw:
         return None
     try:
@@ -368,17 +365,17 @@ def _nearest_prior_review(reviews: list, snapshot_ts) -> object | None:  # type:
         if r.reviewed_at <= snapshot_ts:
             best = r
         else:
-            break  # already past snapshot_ts thanks to ascending order
+            break
     return best
 
 
 def _compute_trend(points: list[ConvictionPoint]) -> str:
     """Compare avg score of first-3 vs last-3 data points.
 
-    \u0394 > +5  \u2192 improving
-    \u0394 < -5  \u2192 declining
-    else    \u2192 stable
-    < 2 pts \u2192 insufficient_data
+    Δ > +5  → improving
+    Δ < -5  → declining
+    else    → stable
+    < 2 pts → insufficient_data
     """
     if len(points) < 2:
         return ConvictionTrend.INSUFFICIENT_DATA
