@@ -64,7 +64,6 @@ function thesisTimelineSlotHTML(thesisId) {
 export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
   const assumList = Array.isArray(assumptions) ? assumptions : (assumptions?.items ?? []);
   const catList   = Array.isArray(catalysts)   ? catalysts   : (catalysts?.items ?? []);
-  const revList   = Array.isArray(reviews)     ? reviews     : (reviews?.items ?? []);
 
   return `
     <div class="detail-head">
@@ -139,7 +138,7 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
       </div>
     </div>
 
-    ${renderReviewRecommendSection(revList)}
+    ${renderReviewRecommendSection(t.id)}
 
     ${convictionTimelineSlotHTML(t.id)}
 
