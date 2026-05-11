@@ -79,6 +79,24 @@ const TIMELINE_EVENT_META = {
   invalidated:          { icon: '❌', label: 'Thesis bị invalidate'  },
 };
 
+/**
+ * Serialize event detail thành string có thể đọc được.
+ * Fix: ev.detail có thể là object (e.g. {old_status, new_status}) → [object Object]
+ */
+function formatEventDetail(raw) {
+  if (raw == null) return null;
+  if (typeof raw === 'string') return raw;
+  if (typeof raw === 'number' || typeof raw === 'boolean') return String(raw);
+  // Object: render key → value pairs, e.g. "old_status: active · new_status: paused"
+  try {
+    return Object.entries(raw)
+      .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v ?? '—'}`)
+      .join(' · ');
+  } catch {
+    return JSON.stringify(raw);
+  }
+}
+
 function renderThesisTimeline(slot, events) {
   if (!events?.length) {
     slot.innerHTML = '<p class="tl-empty">Chưa có sự kiện nào.</p>';
@@ -90,9 +108,9 @@ function renderThesisTimeline(slot, events) {
       <div class="tl-section-title">📅 Lịch sử thesis</div>
       <ol class="tl-list">
         ${events.map(ev => {
-          const meta  = TIMELINE_EVENT_META[ev.event_type] ?? { icon: '•', label: ev.event_type };
+          const meta    = TIMELINE_EVENT_META[ev.event_type] ?? { icon: '•', label: ev.event_type };
           const dateStr = ev.occurred_at ? fmtDate(ev.occurred_at) : '';
-          const detail  = ev.detail ?? ev.description ?? ev.summary ?? null;
+          const detail  = formatEventDetail(ev.detail ?? ev.description ?? ev.summary ?? null);
           return `
             <li class="tl-item">
               <span class="tl-icon" aria-hidden="true">${meta.icon}</span>
@@ -142,7 +160,6 @@ export async function loadThesisDetail(thesisId) {
     }
     wrap.innerHTML = renderThesisDetailHTML(thesis, assumptions, catalysts, reviews);
 
-    // wire-detail-actions.js: no circular dep — safe to call here
     wireDetailActions(thesisId, wrap);
 
     const scheduleIdle = window.requestIdleCallback

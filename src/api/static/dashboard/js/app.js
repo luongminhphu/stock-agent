@@ -66,13 +66,12 @@ function bindBriefTickerClick() {
     const ticker = chip.dataset.briefTicker?.toUpperCase();
     if (!ticker) return;
     const thesis = state.theses.find(t => t.ticker?.toUpperCase() === ticker);
-    if (!thesis) return; // silent skip — ticker not in watchlist
+    if (!thesis) return;
     loadThesisDetail(thesis.id);
     document.getElementById('thesesTableWrap')
       ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 
-  // Keyboard: Enter / Space
   document.addEventListener('keydown', e => {
     if (e.key !== 'Enter' && e.key !== ' ') return;
     const chip = e.target.closest('[data-brief-ticker]');
@@ -84,7 +83,6 @@ function bindBriefTickerClick() {
 
 // ---------------------------------------------------------------------------
 // Watchlist add modal: wire form submit
-// FIX: ID phải match index.html — watchlistTickerInput / watchlistNoteInput
 // ---------------------------------------------------------------------------
 function bindWatchlistAddModal() {
   const form = document.getElementById('watchlistAddForm');
@@ -126,7 +124,6 @@ function bindDecisionTabs() {
     } else {
       decisionsPane?.classList.add('hidden');
       lessonsPane?.classList.remove('hidden');
-      // Lazy-load lessons on first switch — fix: correct operator precedence
       const wrap = el('lessonsListWrap');
       if (wrap && (wrap.innerHTML.includes('\u0110ang tải') || wrap.children.length === 0)) {
         await loadLessons();
@@ -158,6 +155,23 @@ function bindLeaderboardSort() {
 // ---------------------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', async () => {
 
+  // ── Error boundary: surface module-load failures visibly ──────────────────
+  // ES module import errors are silent by default — button clicks do nothing.
+  // This catches top-level bootstrap errors and shows a toast.
+  window.addEventListener('error', (e) => {
+    if (e.filename?.includes('/static/dashboard/')) {
+      const banner = document.getElementById('errorBanner');
+      if (banner) {
+        banner.textContent = `⚠️ Dashboard lỗi tải module: ${e.message} (${e.filename?.split('/').pop()}:${e.lineno})`;
+        banner.classList.remove('hidden');
+      }
+      console.error('[stock-agent] module error:', e.message, e.filename, e.lineno);
+    }
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    console.error('[stock-agent] unhandled promise rejection:', e.reason);
+  });
+
   // 1. Bind brief tab switcher
   bindBriefTabs();
 
@@ -183,7 +197,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   bindSuggestEvents();
 
   // 4. Toolbar buttons
-  el('newThesisBtn')?.addEventListener('click', openNewThesisModal);
+  el('newThesisBtn')?.addEventListener('click', () => {
+    try {
+      openNewThesisModal();
+    } catch (err) {
+      console.error('[stock-agent] openNewThesisModal failed:', err);
+      const banner = document.getElementById('errorBanner');
+      if (banner) {
+        banner.textContent = `⚠️ Không thể mở modal Thesis mới: ${err.message}`;
+        banner.classList.remove('hidden');
+      }
+    }
+  });
   el('reloadBtn')?.addEventListener('click', async () => {
     await loadDashboard();
     await loadBacktesting();
@@ -246,7 +271,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   el('newDecisionBtn')?.addEventListener('click', openDecisionModal);
   bindDecisionFormEvents();
   bindDecisionTabs();
-  bindLessonPersistedEvent(); // Wave D: close replay → thesis review UI loop
+  bindLessonPersistedEvent();
 
   // 10. Leaderboard wiring
   bindLeaderboardSort();
