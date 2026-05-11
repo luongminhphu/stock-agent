@@ -5,7 +5,7 @@ Pure utility: không import ORM, không gọi DB, không có side-effect.
 
 Hai public API:
   flatten_detail(detail)  → str  (single event detail → text)
-  filter_events(events)   → list[TimelineEvent]  (lọc null/rỗng + giữ 30 gần nhất, oldest→newest)
+  filter_events(events)   → list[TimelineEvent]  (lọc null/rỗng + giữ 30 gần nhất, newest→oldest)
 """
 
 from __future__ import annotations
@@ -61,16 +61,13 @@ def _is_empty(v: Any) -> bool:
 def _fmt_value(key: str, v: Any) -> str:
     """Format một value thành chuỗi đẹp dựa trên key hint."""
     if isinstance(v, float):
-        # Tỉ lệ phần trăm
         if key in ("confidence", "pnl_pct", "assumption_health",
                    "catalyst_progress", "risk_reward", "review_confidence"):
             pct = v * 100 if key == "confidence" and 0 <= v <= 1 else v
             sign = "+" if pct > 0 and key == "pnl_pct" else ""
             return f"{sign}{pct:.1f}%"
-        # Giá VND (số lớn)
         if key in ("entry_price", "target_price", "stop_loss", "price") and v > 100:
             return f"{v:,.0f} ₫"
-        # Score 0–100
         if key in ("score", "final_score") and 0 <= v <= 100:
             return f"{v:.1f}"
         return f"{v:.2f}"
@@ -144,15 +141,14 @@ def _event_is_meaningful(event: TimelineEvent) -> bool:
 
 
 def filter_events(events: list[TimelineEvent]) -> list[TimelineEvent]:
-    """Lọc và giữ tối đa 30 events gần nhất, sắp xếp oldest → newest.
+    """Lọc và giữ tối đa 30 events gần nhất, sắp xếp newest → oldest.
 
     Pipeline:
       1. Bỏ events null/rỗng (summary rỗng VÀ detail rỗng/null).
-      2. Sort ascending by ts (oldest → newest).
-      3. Giữ 30 event cuối (gần nhất theo thời gian).
+      2. Sort descending by ts → newest event ở index 0.
+      3. Giữ 30 event đầu (gần nhất theo thời gian).
 
-    Input list không bị mutate. Output luôn oldest → newest.
+    Input list không bị mutate. Output luôn newest → oldest.
     """
     meaningful = [e for e in events if _event_is_meaningful(e)]
-    sorted_events = sorted(meaningful, key=lambda e: e.ts)
-    return sorted_events[-_MAX_EVENTS:]
+    return sorted(meaningful, key=lambda e: e.ts, reverse=True)[:_MAX_EVENTS]
