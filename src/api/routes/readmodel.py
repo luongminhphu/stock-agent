@@ -24,6 +24,7 @@ from src.api.deps import get_db
 from src.readmodel.dashboard_service import DashboardService
 from src.readmodel.leaderboard_service import LeaderboardService
 from src.readmodel.schemas import (
+    ConvictionTimelineResponse,
     LeaderboardResponse,
     ThesisTimelineResponse,
 )
@@ -540,7 +541,7 @@ async def get_leaderboard_single_user(
 
 
 # ---------------------------------------------------------------------------
-# Thesis timeline
+# Thesis timeline — general event log
 # ---------------------------------------------------------------------------
 
 
@@ -551,6 +552,24 @@ async def get_thesis_timeline(
 ) -> ThesisTimelineResponse:
     svc = ThesisTimelineService(session)
     result = await svc.get_timeline(thesis_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Thesis {thesis_id} not found")
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Conviction Score Timeline
+# ---------------------------------------------------------------------------
+
+
+@router.get("/thesis/{thesis_id}/conviction-timeline", response_model=ConvictionTimelineResponse)
+async def get_conviction_timeline(
+    thesis_id: int,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=100, description="Số data-point tối đa trả về")] = 20,
+) -> ConvictionTimelineResponse:
+    svc = ThesisTimelineService(session)
+    result = await svc.get_conviction_timeline(thesis_id, limit=limit)
     if result is None:
         raise HTTPException(status_code=404, detail=f"Thesis {thesis_id} not found")
     return result
