@@ -11,8 +11,9 @@ Flow:
     4. Persist ThesisReview ORM record
     5. Auto-apply AI recommendations (ACCEPTED) → update assumption/catalyst status
     6. Reload thesis (fresh) → recompute full score with breakdown → persist
-    7. Persist ThesisSnapshot with score_breakdown (JSON) for conviction timeline
-    8. Return ThesisReview
+    7. Clamp score delta to MAX_SCORE_DELTA_PER_REVIEW to avoid single-event score spikes
+    8. Persist ThesisSnapshot with score_breakdown (JSON) for conviction timeline
+    9. Return ThesisReview
 """
 
 from __future__ import annotations
@@ -42,6 +43,11 @@ from src.thesis.scoring_service import ScoringService
 from src.thesis.service import ThesisNotFoundError
 
 logger = get_logger(__name__)
+
+# Wave 2: Maximum score change allowed in a single review cycle.
+# Prevents a single INVALID assumption flip from causing a score spike > 20 pts.
+# Tune upward only if thesis with many assumptions shows unnaturally flat curves.
+MAX_SCORE_DELTA_PER_REVIEW: float = 20.0
 
 
 class QuoteReader(Protocol):
@@ -285,6 +291,11 @@ class ReviewService:
     ) -> ThesisReview:
         """Map ThesisReviewOutput → ThesisReview ORM, auto-apply recommendations,
         reload thesis fresh, recompute full score with breakdown, persist snapshot.
+
+        Wave 2: score delta is clamped to MAX_SCORE_DELTA_PER_REVIEW so a single
+        assumption flip cannot cause an unnaturally large score spike on the
+        conviction chart. The raw computed score is still stored in score_breakdown
+        for auditability — only thesis.score (persisted) is clamped.
         """
         review = ThesisReview(
             thesis_id=thesis.id,
@@ -302,7 +313,26 @@ class ReviewService:
 
         fresh_thesis = await self._repo.get_by_id(thesis.id)
         if fresh_thesis is not None:
-            new_score, breakdown = self._scoring.compute_with_breakdown(fresh_thesis)
+            raw_score, breakdown = self._scoring.compute_with_breakdown(fresh_thesis)
+
+            # Wave 2: clamp score delta to avoid single-event spikes on the chart.
+            prev_score: float = fresh_thesis.score if fresh_thesis.score is not None else raw_score
+            delta = raw_score - prev_score
+            delta_capped = abs(delta) > MAX_SCORE_DELTA_PER_REVIEW
+            if delta_capped:
+                direction = 1.0 if delta > 0 else -1.0
+                new_score = round(prev_score + direction * MAX_SCORE_DELTA_PER_REVIEW, 2)
+                logger.info(
+                    "review_service.score_delta_capped",
+                    thesis_id=thesis.id,
+                    prev_score=prev_score,
+                    raw_score=raw_score,
+                    capped_score=new_score,
+                    delta=round(delta, 2),
+                    cap=MAX_SCORE_DELTA_PER_REVIEW,
+                )
+            else:
+                new_score = raw_score
 
             if fresh_thesis.score != new_score:
                 fresh_thesis.score = new_score
@@ -311,6 +341,7 @@ class ReviewService:
                     "review_service.score_updated",
                     thesis_id=thesis.id,
                     score=new_score,
+                    delta_capped=delta_capped,
                 )
 
             snapshot = ThesisSnapshot(
@@ -327,6 +358,7 @@ class ReviewService:
                 thesis_id=thesis.id,
                 score=new_score,
                 breakdown=breakdown,
+                delta_capped=delta_capped,
             )
 
         return review

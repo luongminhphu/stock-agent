@@ -8,6 +8,7 @@ Read-only. No writes. No AI calls.
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +27,11 @@ from src.readmodel.schemas import (
 )
 
 _REASONING_SUMMARY_MAX = 200  # chars truncated for conviction drawer
+
+# Wave 3: tolerance windows for review-to-snapshot matching.
+# Raise REVIEWED_KIND_TOLERANCE_SECS if scheduler + review jitter is larger.
+_NEAREST_REVIEW_LOOKAHEAD_SECS: int = 14400   # 4 h — catch reviews that run after snapshot
+_REVIEWED_KIND_TOLERANCE_SECS: int = 300      # 5 min — mark point as 'reviewed' kind
 
 
 class ThesisTimelineService:
@@ -246,9 +252,16 @@ class ThesisTimelineService:
         Δ < -5 → declining, else stable. < 2 điểm → insufficient_data.
 
         kind:
-          'reviewed'  — snapshot has a co-occurring review (reviewed_at == snapshotted_at
-                         within 60s tolerance, or snapshot was review-triggered).
+          'reviewed'  — snapshot has a co-occurring review within
+                        _REVIEWED_KIND_TOLERANCE_SECS (default 5 min).
           'snapshot'  — regular scheduler snapshot.
+
+        Wave 3 — review lookahead:
+          _nearest_prior_review() now also considers reviews up to
+          _NEAREST_REVIEW_LOOKAHEAD_SECS (default 4 h) AFTER snapshotted_at.
+          This fixes the race condition where the AI review job fires a few
+          seconds after the scheduler snapshot, causing the snapshot point
+          to incorrectly inherit the previous (stale) review.
 
         reasoning_summary: first _REASONING_SUMMARY_MAX chars of nearest.reasoning.
         risk_signals: parsed list from nearest.risk_signals JSON.
@@ -305,7 +318,11 @@ class ThesisTimelineService:
             tier_label, tier_icon = score_tier(score)
             breakdown = _parse_breakdown(snap.score_breakdown)
 
-            nearest = _nearest_prior_review(reviews, snap.snapshotted_at)
+            nearest = _nearest_prior_review(
+                reviews,
+                snap.snapshotted_at,
+                lookahead_secs=_NEAREST_REVIEW_LOOKAHEAD_SECS,
+            )
             verdict = None
             confidence = None
             reasoning_summary = None
@@ -321,8 +338,8 @@ class ThesisTimelineService:
                 confidence = float(nearest.confidence or 0)
                 reasoning_summary = _truncate(nearest.reasoning, _REASONING_SUMMARY_MAX)
                 risk_signals = _parse_json_list(nearest.risk_signals)
-                # Mark as 'reviewed' if review co-occurs within 60s of snapshot
-                if abs((nearest.reviewed_at - snap.snapshotted_at).total_seconds()) <= 60:
+                # Mark as 'reviewed' if review co-occurs within tolerance window of snapshot
+                if abs((nearest.reviewed_at - snap.snapshotted_at).total_seconds()) <= _REVIEWED_KIND_TOLERANCE_SECS:
                     kind = "reviewed"
 
             points.append(
@@ -422,18 +439,41 @@ def _truncate(text: str | None, max_chars: int) -> str | None:
     return text[:max_chars] + ("\u2026" if len(text) > max_chars else "")
 
 
-def _nearest_prior_review(reviews: list, snapshot_ts) -> object | None:  # type: ignore[type-arg]
-    """Return review with reviewed_at <= snapshot_ts, latest first. O(n) scan.
+def _nearest_prior_review(
+    reviews: list,  # type: ignore[type-arg]
+    snapshot_ts,
+    lookahead_secs: int = 14400,
+) -> object | None:  # type: ignore[type-arg]
+    """Return the review closest to snapshot_ts within the search window.
+
+    Search window: [snapshot_ts - ∞, snapshot_ts + lookahead_secs].
+
+    Strategy:
+      1. Prefer the latest review with reviewed_at <= snapshot_ts (prior review).
+      2. If no prior review exists, fall back to the earliest review within
+         lookahead_secs AFTER snapshot_ts (covers scheduler/review race condition).
 
     reviews must be sorted ascending by reviewed_at (caller guarantees this).
+
+    Args:
+        reviews:        All ThesisReview rows for the thesis, asc by reviewed_at.
+        snapshot_ts:    The snapshotted_at timestamp of the conviction point.
+        lookahead_secs: How far forward (in seconds) to look for a review when
+                        no prior review exists. Default: 14400 (4 h).
     """
-    best = None
+    lookahead = timedelta(seconds=lookahead_secs)
+    best_prior: object | None = None
+    first_after: object | None = None
+
     for r in reviews:
         if r.reviewed_at <= snapshot_ts:
-            best = r
-        else:
-            break
-    return best
+            best_prior = r
+        elif first_after is None and (r.reviewed_at - snapshot_ts) <= lookahead:
+            first_after = r
+            # No break — keep scanning to update best_prior for any remaining prior reviews.
+            # Once first_after is set we still need to find the true latest prior review.
+
+    return best_prior if best_prior is not None else first_after
 
 
 def _compute_trend(points: list[ConvictionPoint]) -> str:
