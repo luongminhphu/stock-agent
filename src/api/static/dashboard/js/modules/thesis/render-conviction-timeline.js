@@ -4,16 +4,17 @@
  * Responsibility: fetch + render Conviction Timeline — dual chart (score × price),
  *                 event list, breakdown drawer.
  *
- * Flow:
- *   1. thesis-service.js calls loadConvictionTimeline(thesisId) after detail HTML is in DOM.
- *   2. This module fetches GET /api/v1/thesis/:id/conviction-timeline.
- *   3. Renders dual Chart.js charts + event list into #convictionTimelineSlot-{id}.
+ * ConvictionPoint field mapping (aligned with readmodel/schemas.py):
+ *   p.price              — price_at_snapshot (float|null)
+ *   p.kind               — "snapshot" | "reviewed"
+ *   p.reasoning_summary  — truncated reasoning string|null
+ *   p.risk_signals       — string[]
  *
  * Backward compat: convictionTimelineSlotHTML() and loadConvictionTimeline() signatures unchanged.
  * Chart.js + annotation plugin loaded lazily from CDN on first call.
  */
 
-import { esc, fmtDate, fmtScore, scoreClass } from '../../utils/format.js';
+import { esc, fmtDate } from '../../utils/format.js';
 import { thesisApiBase, getJson } from '../../api/client.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -38,9 +39,9 @@ function tierColor(score) {
 }
 
 const TREND_META = {
-  improving:         { icon: '↑', label: 'Improving',       cls: 'cv-trend--up' },
-  declining:         { icon: '↓', label: 'Declining',       cls: 'cv-trend--down' },
-  stable:            { icon: '→', label: 'Stable',          cls: 'cv-trend--stable' },
+  improving:         { icon: '↑', label: 'Improving',        cls: 'cv-trend--up' },
+  declining:         { icon: '↓', label: 'Declining',        cls: 'cv-trend--down' },
+  stable:            { icon: '→', label: 'Stable',           cls: 'cv-trend--stable' },
   insufficient_data: { icon: '—', label: 'Insufficient data', cls: '' },
 };
 
@@ -64,7 +65,6 @@ const VERDICT_CLS = {
 
 const EVENT_KIND_ICON = {
   reviewed: '🤖',
-  catalyst: '⚡',
   snapshot: '📸',
   created:  '🔬',
   updated:  '✏️',
@@ -118,29 +118,29 @@ function cssVar(name) {
 
 /**
  * Map ConvictionTimelineResponse.points[] → parallel arrays for charts + events.
+ * Uses p.price (not p.price_at_snapshot) — aligned with ConvictionPoint schema.
  */
 function parsePoints(points) {
   const labels  = points.map(p => fmtDate(p.snapshotted_at));
   const scores  = points.map(p => Number(p.score ?? 0));
-  const prices  = points.map(p => p.price_at_snapshot != null ? Number(p.price_at_snapshot) : null);
+  // p.price = price_at_snapshot from schema (field is named 'price' in ConvictionPoint)
+  const prices  = points.map(p => p.price != null ? Number(p.price) : null);
 
-  // Build events list: keep only points that have a meaningful event kind
-  const eventKinds = new Set(['reviewed', 'catalyst', 'created', 'snapshot']);
-  const events = points
-    .map((p, idx) => ({ p, idx }))
-    .filter(({ p }) => eventKinds.has(p.kind) || p.verdict != null)
-    .map(({ p, idx }) => ({
-      idx,
-      kind:      p.kind ?? 'snapshot',
-      verdict:   p.verdict ? String(p.verdict).toUpperCase() : null,
-      confidence:p.confidence != null ? Math.round(Number(p.confidence) * (Number(p.confidence) <= 1 ? 100 : 1)) : null,
-      score:     Number(p.score ?? 0),
-      price:     p.price_at_snapshot != null ? Number(p.price_at_snapshot) : null,
-      date:      p.snapshotted_at,
-      reasoning: p.reasoning_summary ?? null,
-      risks:     Array.isArray(p.risk_signals) ? p.risk_signals : [],
-      breakdown: p.breakdown ?? null,
-    }));
+  // Build events: all points are potential events; filter to meaningful ones for the list
+  const events = points.map((p, idx) => ({
+    idx,
+    kind:             p.kind ?? 'snapshot',
+    verdict:          p.verdict ? String(p.verdict).toUpperCase() : null,
+    confidence:       p.confidence != null
+                        ? Math.round(Number(p.confidence) * (Number(p.confidence) <= 1 ? 100 : 1))
+                        : null,
+    score:            Number(p.score ?? 0),
+    price:            p.price != null ? Number(p.price) : null,
+    date:             p.snapshotted_at,
+    reasoning:        p.reasoning_summary ?? null,    // from schema: reasoning_summary
+    risks:            Array.isArray(p.risk_signals) ? p.risk_signals : [],
+    breakdown:        p.breakdown ?? null,
+  }));
 
   return { labels, scores, prices, events };
 }
@@ -161,14 +161,12 @@ function buildConvictionAnnotations(events) {
   });
   // Event lines
   events.forEach((e, i) => {
-    const isReview   = e.kind === 'reviewed';
-    const isCatalyst = e.kind === 'catalyst';
-    if (!isReview && !isCatalyst) return;
+    if (e.kind !== 'reviewed') return;
     anns[`evLine${i}`] = {
       type: 'line', xMin: e.idx, xMax: e.idx,
-      borderColor: isReview ? 'rgba(109,170,69,.45)' : 'rgba(253,171,67,.45)',
+      borderColor: 'rgba(109,170,69,.45)',
       borderWidth: 1.5,
-      borderDash: isReview ? [5, 3] : [2, 2],
+      borderDash: [5, 3],
     };
   });
   return anns;
@@ -184,14 +182,12 @@ function buildPriceAnnotations(events, entryPrice) {
     };
   }
   events.forEach((e, i) => {
-    const isReview   = e.kind === 'reviewed';
-    const isCatalyst = e.kind === 'catalyst';
-    if (!isReview && !isCatalyst) return;
+    if (e.kind !== 'reviewed') return;
     anns[`evLine${i}`] = {
       type: 'line', xMin: e.idx, xMax: e.idx,
-      borderColor: isReview ? 'rgba(109,170,69,.35)' : 'rgba(253,171,67,.35)',
+      borderColor: 'rgba(109,170,69,.35)',
       borderWidth: 1.2,
-      borderDash: isReview ? [5, 3] : [2, 2],
+      borderDash: [5, 3],
     };
   });
   return anns;
@@ -321,7 +317,10 @@ function buildPriceChart(canvasEl, { labels, prices, events, entryPrice }) {
 
 function renderEventList(events) {
   if (!events.length) return '<p class="cv-empty">Chưa có sự kiện nào.</p>';
-  return events.map(e => {
+  // Show only reviewed points and last snapshot (most informative)
+  const shown = events.filter(e => e.kind === 'reviewed' || e.verdict != null || e === events[events.length - 1]);
+  const list = shown.length ? shown : events.slice(-5);
+  return list.map(e => {
     const icon = EVENT_KIND_ICON[e.kind] || '📌';
     const vtag = e.verdict
       ? `<span class="cv-vtag ${VERDICT_CLS[e.verdict] || 'cv-vtag--hold'}">${esc(e.verdict)}</span>`
@@ -395,16 +394,13 @@ function wireEventList(containerEl, events) {
       if (!ev) return;
 
       if (activeIdx === idx) {
-        // toggle close
         activeIdx = null;
         el.setAttribute('aria-expanded', 'false');
         el.classList.remove('cv-ev--active');
-        const existing = containerEl.querySelector('.cv-drawer');
-        if (existing) existing.remove();
+        containerEl.querySelector('.cv-drawer')?.remove();
         return;
       }
 
-      // close previous
       containerEl.querySelectorAll('.cv-ev').forEach(e => {
         e.classList.remove('cv-ev--active');
         e.setAttribute('aria-expanded', 'false');
@@ -418,7 +414,6 @@ function wireEventList(containerEl, events) {
       const drawer = document.createElement('div');
       drawer.innerHTML = renderDrawer(ev);
       el.after(drawer.firstElementChild);
-
       drawer.firstElementChild?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
     };
 
@@ -435,7 +430,6 @@ function buildScaffold({ data, labels, scores, prices, events }) {
   const trend = data.trend ?? 'insufficient_data';
   const tm = TREND_META[trend] ?? TREND_META.insufficient_data;
   const hasPrices = prices.some(p => p != null);
-  const latest = data.points[data.points.length - 1];
   const delta = data.earliest_score != null && data.latest_score != null
     ? (Number(data.latest_score) - Number(data.earliest_score)).toFixed(1)
     : null;
@@ -445,6 +439,10 @@ function buildScaffold({ data, labels, scores, prices, events }) {
   const tierLegend = TIER.map(t =>
     `<div class="cv-tier-pill"><div class="cv-tier-sq" style="background:${t.color}"></div>${t.label}</div>`
   ).join('');
+
+  // Event list: only reviewed points + last point
+  const shownEvents = events.filter(e => e.kind === 'reviewed' || e.verdict != null || e === events[events.length - 1]);
+  const listEvents  = shownEvents.length ? shownEvents : events.slice(-5);
 
   return `
     <div class="cv-section detail-section">
@@ -466,25 +464,24 @@ function buildScaffold({ data, labels, scores, prices, events }) {
           <div class="cv-leg"><div class="cv-leg-dot" style="background:var(--primary,#4f98a3)"></div>Conviction</div>
           ${hasPrices ? '<div class="cv-leg"><div class="cv-leg-dot" style="background:var(--gold,#e8af34)"></div>Giá</div>' : ''}
           <div class="cv-leg cv-leg--line" style="--lc:rgba(109,170,69,.7)">AI Review</div>
-          <div class="cv-leg cv-leg--dot-line" style="--lc:rgba(253,171,67,.7)">Catalyst</div>
         </div>
         <div class="cv-canvas-wrap cv-canvas--conviction">
           <canvas id="cvChart-${data.ticker}"></canvas>
         </div>
         ${hasPrices ? `
           <div class="cv-canvas-wrap cv-canvas--price">
-            <p class="cv-price-label">Giá cổ phiếu · ${data.entry_price ? `Entry: ${Number(data.entry_price).toLocaleString('vi-VN')}₫` : ''}</p>
+            <p class="cv-price-label">Giá cổ phiếu ${data.entry_price ? `· Entry: ${Number(data.entry_price).toLocaleString('vi-VN')}₫` : ''}</p>
             <canvas id="priceChart-${data.ticker}"></canvas>
           </div>` : ''}
         <div class="cv-tier-strip">${tierLegend}</div>
       </div>
 
       <!-- Event list -->
-      ${events.length ? `
+      ${listEvents.length ? `
         <div class="cv-event-panel">
           <div class="cv-event-hd">
-            <span class="cv-event-title">Sự kiện</span>
-            <span class="cv-chip">${events.length}</span>
+            <span class="cv-event-title">AI Reviews</span>
+            <span class="cv-chip">${listEvents.length}</span>
           </div>
           <div class="cv-event-list" id="cvEventList-${data.ticker}">
             ${renderEventList(events)}
@@ -538,21 +535,18 @@ export async function loadConvictionTimeline(thesisId) {
 
     const { labels, scores, prices, events } = parsePoints(data.points);
 
-    // Mount conviction chart
     const cvCanvas = document.getElementById(`cvChart-${ticker}`);
     if (cvCanvas) {
       const inst = buildConvictionChart(cvCanvas, { labels, scores, events });
       _chartInstances.set(`${ticker}:cv`, inst);
     }
 
-    // Mount price chart
     const prCanvas = document.getElementById(`priceChart-${ticker}`);
     if (prCanvas) {
       const inst = buildPriceChart(prCanvas, { labels, prices, events, entryPrice: data.entry_price });
       if (inst) _chartInstances.set(`${ticker}:pr`, inst);
     }
 
-    // Wire event list
     const listEl = document.getElementById(`cvEventList-${ticker}`);
     if (listEl && events.length) wireEventList(listEl, events);
 

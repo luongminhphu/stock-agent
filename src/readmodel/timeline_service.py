@@ -25,6 +25,8 @@ from src.readmodel.schemas import (
     TimelineEventKind,
 )
 
+_REASONING_SUMMARY_MAX = 200  # chars truncated for conviction drawer
+
 
 class ThesisTimelineService:
     def __init__(self, session: AsyncSession) -> None:
@@ -241,6 +243,15 @@ class ThesisTimelineService:
         Breakdown được parse từ score_breakdown JSON column (nullable cho legacy rows).
         Trend = so sánh avg(3 điểm đầu) vs avg(3 điểm cuối); Δ > 5 → improving,
         Δ < -5 → declining, else stable. < 2 điểm → insufficient_data.
+
+        kind:
+          'reviewed'  — snapshot has a co-occurring review (reviewed_at == snapshotted_at
+                         within 60s tolerance, or snapshot was review-triggered).
+          'snapshot'  — regular scheduler snapshot.
+
+        reasoning_summary: first _REASONING_SUMMARY_MAX chars of nearest.reasoning.
+        risk_signals: parsed list from nearest.risk_signals JSON.
+        entry_price: exposed from Thesis.entry_price for price chart annotation.
         """
         from src.thesis.models import Thesis, ThesisReview, ThesisSnapshot
         from src.thesis.scoring_service import score_tier
@@ -282,6 +293,10 @@ class ThesisTimelineService:
             nearest = _nearest_prior_review(reviews, snap.snapshotted_at)
             verdict = None
             confidence = None
+            reasoning_summary = None
+            risk_signals: list[str] = []
+            kind = "snapshot"
+
             if nearest is not None:
                 verdict = (
                     str(nearest.verdict.value)
@@ -289,6 +304,11 @@ class ThesisTimelineService:
                     else str(nearest.verdict)
                 )
                 confidence = float(nearest.confidence or 0)
+                reasoning_summary = _truncate(nearest.reasoning, _REASONING_SUMMARY_MAX)
+                risk_signals = _parse_json_list(nearest.risk_signals)
+                # Mark as 'reviewed' if review co-occurs within 60s of snapshot
+                if abs((nearest.reviewed_at - snap.snapshotted_at).total_seconds()) <= 60:
+                    kind = "reviewed"
 
             points.append(
                 ConvictionPoint(
@@ -302,6 +322,9 @@ class ThesisTimelineService:
                     confidence=confidence,
                     price=snap.price_at_snapshot,
                     pnl_pct=snap.pnl_pct,
+                    kind=kind,
+                    reasoning_summary=reasoning_summary,
+                    risk_signals=risk_signals,
                 )
             )
 
@@ -318,6 +341,7 @@ class ThesisTimelineService:
             latest_score=latest_score,
             earliest_score=earliest_score,
             total=len(points),
+            entry_price=thesis.entry_price,
         )
 
 
@@ -353,6 +377,16 @@ def _parse_breakdown(raw: str | None) -> ConvictionBreakdown | None:
         )
     except (json.JSONDecodeError, TypeError, ValueError, KeyError):
         return None
+
+
+def _truncate(text: str | None, max_chars: int) -> str | None:
+    """Truncate string to max_chars, appending '…' if truncated. Returns None if empty."""
+    if not text:
+        return None
+    text = text.strip()
+    if not text:
+        return None
+    return text[:max_chars] + ("…" if len(text) > max_chars else "")
 
 
 def _nearest_prior_review(reviews: list, snapshot_ts) -> object | None:  # type: ignore[type-arg]

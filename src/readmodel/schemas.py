@@ -204,6 +204,13 @@ class ConvictionPoint(BaseModel):
     Sourced from ThesisSnapshot + nearest ThesisReview before that snapshot.
     breakdown may be None for legacy snapshots created before score_breakdown column.
     price may be None for review-triggered snapshots (price_at_snapshot not set).
+
+    kind:
+      'snapshot'  — regular scheduler snapshot (no AI review at this exact moment)
+      'reviewed'  — snapshot co-occurs with or follows immediately after an AI review
+
+    reasoning_summary: first 200 chars of nearest prior review.reasoning. None if no review yet.
+    risk_signals: list parsed from nearest prior review.risk_signals JSON. [] if none.
     """
 
     snapshot_id: int
@@ -216,6 +223,11 @@ class ConvictionPoint(BaseModel):
     confidence: float | None = None      # AI confidence at nearest prior review
     price: float | None = None           # price_at_snapshot; None for review-triggered snapshots
     pnl_pct: float | None = None         # vs thesis entry_price
+
+    # Enriched fields (Option B)
+    kind: str = "snapshot"               # "snapshot" | "reviewed"
+    reasoning_summary: str | None = None # truncated reasoning from nearest prior review
+    risk_signals: list[str] = []         # parsed from nearest prior review.risk_signals
 
 
 class ConvictionTrend(str):
@@ -232,6 +244,7 @@ class ConvictionTimelineResponse(BaseModel):
     trend: computed by comparing avg of first-3 vs last-3 data points.
            Δ > +5  → improving | Δ < -5  → declining | else → stable.
            < 2 data-points → insufficient_data.
+    entry_price: from Thesis.entry_price, used by price chart to draw entry dashed line.
     """
 
     thesis_id: int
@@ -242,6 +255,7 @@ class ConvictionTimelineResponse(BaseModel):
     latest_score: float | None            # score of newest point, None if no snapshots
     earliest_score: float | None          # score of oldest point, None if < 2 snapshots
     total: int                            # number of data-points returned
+    entry_price: float | None = None      # from Thesis.entry_price (for price chart annotation)
 
 
 # ---------------------------------------------------------------------------
@@ -300,7 +314,7 @@ class PortfolioSummary(BaseModel):
 
     # Aggregate (chỉ có giá trị khi có ít nhất 1 position có đủ dữ liệu)
     total_cost_basis: float | None        # tổng vốn đầu tư (VND)
-    total_market_value: float | None      # tổng giá trị thị trường (VND)
+    total_market_value: float | None      # tổng giá trị thị trượng (VND)
     total_pnl_abs: float | None           # lãi/lỗ tổng (VND)
     total_pnl_pct: float | None           # lãi/lỗ % bình quân gia quyền
 
