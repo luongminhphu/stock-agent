@@ -12,6 +12,14 @@ Boundary:
   - KHÔNG chứa domain rule cứng về thesis hay portfolio.
   - KHÔNG schedule ThesisReview trực tiếp — chỉ trả thesis_review_triggers để caller quyết định.
   - bot và api KHÔNG gọi agent này trực tiếp — chỉ qua BriefingService.
+
+Changelog:
+  - Added feedback_summary param (optional, backward-compat, default="").
+    Passed through to build_user_prompt → AI calibrates urgency/confidence
+    against user's historical acted/ignored/disagreed patterns (rule 13).
+  - Deepened thesis cross-check: agent now passes full thesis dicts to
+    build_user_prompt. Callers should include assumptions/catalysts/
+    invalidation_conditions in active_theses for deep cross-check.
 """
 
 from __future__ import annotations
@@ -88,8 +96,9 @@ class SignalEngineAgent:
         signal_output = await engine.run(
             watchdog_outputs=watchdog_results,
             stress_outputs=stress_results,
-            active_theses=thesis_summaries,
+            active_theses=thesis_summaries,  # include assumptions/catalysts for deep cross-check
             portfolio_data=await portfolio_query_service.get_portfolio(user_id, price_map),
+            feedback_summary=await feedback_service.render_calibration_string(user_id),
         )
         # inject signal_output into BriefingAgent context
     """
@@ -104,6 +113,7 @@ class SignalEngineAgent:
         stress_outputs: list[dict[str, Any]],
         active_theses: list[dict[str, Any]],
         portfolio_data: dict[str, Any] | None = None,
+        feedback_summary: str = "",
     ) -> SignalEngineOutput:
         """Run signal engine. Returns SignalEngineOutput.
 
@@ -113,8 +123,15 @@ class SignalEngineAgent:
         Args:
             watchdog_outputs:  list of WatchdogOutput.model_dump() per ticker.
             stress_outputs:    list of StressTestOutput.model_dump() per ticker.
-            active_theses:     list of thesis summary dicts.
+            active_theses:     list of thesis summary dicts. For deep thesis cross-check
+                               (prompt rule 12), include: assumptions, catalysts,
+                               invalidation_conditions alongside id/ticker/title/status/score.
+                               Shallow dicts still work — cross-check degrades gracefully.
             portfolio_data:    PortfolioQueryService.get_portfolio() output. None = skip.
+            feedback_summary:  Pre-rendered calibration string from FeedbackService.
+                               Empty string = skip feedback calibration (rule 13).
+                               Example: "acted_rate=0.3 | ignored_sectors=[banking] |
+                                         regret_ignores=2 | total_events=8"
         """
         generated_at = datetime.now(UTC).isoformat()
         portfolio_context = (
@@ -129,6 +146,7 @@ class SignalEngineAgent:
             active_theses=active_theses,
             portfolio_risk_context=portfolio_context.model_dump(),
             generated_at=generated_at,
+            feedback_summary=feedback_summary,
         )
 
         try:
@@ -145,9 +163,10 @@ class SignalEngineAgent:
             raw.portfolio_context = portfolio_context
             raw.generated_at = generated_at
             logger.info(
-                "SignalEngine: %d signals, %d review triggers — %s",
+                "SignalEngine: %d signals, %d review triggers, feedback_calibrated=%s — %s",
                 len(raw.ranked_signals),
                 len(raw.thesis_review_triggers),
+                bool(feedback_summary.strip()),
                 raw.signal_summary,
             )
             return raw
