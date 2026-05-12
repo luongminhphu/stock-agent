@@ -91,18 +91,6 @@ function changePctClass(pct) {
   return 'quote-change--flat';
 }
 
-/**
- * Định dạng volume thanh khoản: 1.2M CP, 850K CP, …
- * Trả '—' khi volume null hoặc = 0 (ngoài giờ / chưa có khớp lệnh).
- * VCI matchVolume đã được nhân 100 (lô→CP) ở adapter trước khi đến đây.
- */
-function fmtVol(v) {
-  if (v == null || v === 0) return '—';
-  if (v >= 1_000_000) return (v / 1_000_000).toFixed(1) + 'M CP';
-  if (v >= 1_000)     return (v / 1_000).toFixed(0) + 'K CP';
-  return v.toLocaleString('vi-VN') + ' CP';
-}
-
 // ─── Render ──────────────────────────────────────────────────────────────────
 
 /**
@@ -125,12 +113,6 @@ export function renderQuoteStrip(quote, thesis) {
   const { vsEntry, toTarget, vsEntryUp } = calcThesisContext(
     quote.price, thesis?.entry_price, thesis?.target_price
   );
-
-  // Volume bar: chỉ hiện khi có volume thực (> 0)
-  // Tỷ lệ tham chiếu: 5 triệu CP = 100% bar (mid-cap HOSE)
-  const hasVol = quote.volume != null && quote.volume > 0;
-  const volRatio = hasVol ? Math.min(1, quote.volume / 5_000_000) : 0;
-  const volBarPct = (volRatio * 100).toFixed(0);
 
   // Formatted change pct
   const changePctStr = quote.change_pct != null
@@ -158,7 +140,7 @@ export function renderQuoteStrip(quote, thesis) {
         </span>
       </div>
 
-      <!-- Meta chips: O/H/L + vol + thesis context -->
+      <!-- Meta chips: O/H/L + thesis context (Khối lượng removed — always — outside trading hours) -->
       <div class="quote-strip-meta">
         <div class="quote-chip">
           <span class="qc-label">Mở cửa</span>
@@ -171,11 +153,6 @@ export function renderQuoteStrip(quote, thesis) {
         <div class="quote-chip">
           <span class="qc-label">Thấp</span>
           <span class="qc-val quote-price--down">${quote.low != null ? fmt(quote.low) + '₫' : '—'}</span>
-        </div>
-        <div class="quote-chip">
-          <span class="qc-label">Khối lượng</span>
-          <span class="qc-val">${fmtVol(quote.volume)}</span>
-          ${hasVol ? `<div class="quote-vol-bar"><div class="quote-vol-fill" style="width:${volBarPct}%"></div></div>` : ''}
         </div>
         ${vsEntry ? `
         <div class="quote-chip quote-chip--thesis ${vsEntryUp ? 'thesis-up' : 'thesis-down'}">
