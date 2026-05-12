@@ -19,6 +19,11 @@ Note:
     MORNING_CHANNEL_ID and EOD_CHANNEL_ID must be set in settings.
     SCHEDULER_USER_ID is the service account used for scheduled tasks.
 
+Channel routing:
+    Briefing, ThesisMaintenance, InvestorProfile, DecisionReplay → morning_channel_id
+    Proactive alerts (WatchlistScan, ThesisDrift, Reminder)      → alert_channel_id
+        alert_channel_id = DISCORD_ALERT_CHANNEL_ID if set, else morning_channel_id
+
 Wave 8:
     BriefingScheduler no longer calls BriefingService directly.
     It emits BriefingRequestedEvent → BriefingListener (briefing segment)
@@ -254,7 +259,7 @@ class WatchlistScanScheduler:
     - Sends embed only when signals exist (alert_triggered or strong_move).
     - ON_SIGNAL reminders piggyback on the same embed — no extra message.
     - Does NOT call AI — zero token cost.
-    - Reuses morning_channel_id + scheduler_user_id from settings.
+    - Channel: settings.alert_channel_id (DISCORD_ALERT_CHANNEL_ID → morning_channel_id).
     """
 
     def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
@@ -278,11 +283,11 @@ class WatchlistScanScheduler:
 
         task_name = "watchlist.scan"
         user_id = getattr(settings, "scheduler_user_id", None)
-        channel_id = getattr(settings, "morning_channel_id", None)
+        channel_id = settings.alert_channel_id or None
         if not user_id or not channel_id:
             logger.warning(
                 "scheduler.scan.skipped",
-                reason="scheduler_user_id or morning_channel_id not configured",
+                reason="scheduler_user_id or alert_channel_id not configured",
             )
             return
 
@@ -492,6 +497,8 @@ class ThesisDriftScheduler:
 
     Cooldown is enforced inside DriftService (default 4h) — ReviewService is
     never called twice for the same thesis within the cooldown window.
+
+    Channel: settings.alert_channel_id (DISCORD_ALERT_CHANNEL_ID → morning_channel_id).
     """
 
     def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
@@ -520,11 +527,11 @@ class ThesisDriftScheduler:
 
         task_name = "thesis.drift"
         user_id = getattr(settings, "scheduler_user_id", None)
-        channel_id = getattr(settings, "morning_channel_id", None)
+        channel_id = settings.alert_channel_id or None
         if not user_id or not channel_id:
             logger.warning(
                 "scheduler.drift.skipped",
-                reason="scheduler_user_id or morning_channel_id not configured",
+                reason="scheduler_user_id or alert_channel_id not configured",
             )
             return
 
@@ -623,7 +630,10 @@ _REMINDER_WEEKLY_TIME = datetime.time(hour=1, minute=0, tzinfo=datetime.UTC)   #
 
 
 class ReminderScheduler:
-    """Fire watchlist reminders via Discord based on investor-set frequency."""
+    """Fire watchlist reminders via Discord based on investor-set frequency.
+
+    Channel: settings.alert_channel_id (DISCORD_ALERT_CHANNEL_ID → morning_channel_id).
+    """
 
     def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
         self._client = client
@@ -668,9 +678,9 @@ class ReminderScheduler:
         from src.watchlist.reminder_service import ReminderService
 
         task_name = f"reminder.{label}"
-        channel_id = getattr(settings, "morning_channel_id", None)
+        channel_id = settings.alert_channel_id or None
         if not channel_id:
-            logger.warning("scheduler.reminder.skipped", label=label, reason="morning_channel_id not configured")
+            logger.warning("scheduler.reminder.skipped", label=label, reason="alert_channel_id not configured")
             return
 
         channel = self._client.get_channel(int(channel_id))
