@@ -9,21 +9,19 @@
 
 /* ── Decision layer outer geometry (mirrors .validation-layer pattern) ──────── */
 .decision-layer {
-  padding-inline: var(--page-px);
+  /* padding-inline handled by .cluster wrapper — do NOT re-declare here */
   margin-bottom: var(--layer-gap);
   max-width: var(--content-max);
   margin-inline: auto;
   width: 100%;
+  box-sizing: border-box;
 }
 
 /* ── Section header actions ─────────────────────────────────────────────────────────── */
+/* .dec-panel-header geometry is defined in layout.css (uses var(--panel-pad)).
+   Only decision-specific overrides here: */
 .dec-panel-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 14px;
+  margin-bottom: var(--layer-gap, 16px);
 }
 
 /* ── Tab bar (reuses .brief-tab-bar pattern) ────────────────────────────────────── */
