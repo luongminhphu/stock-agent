@@ -39,6 +39,8 @@ _briefing_listener: object | None = None
 _stress_test_subscriber: object | None = None  # G4: StressTest → Watchlist bridge
 _opportunity_screen_scheduler: object | None = None  # Wave 3
 _opportunity_screen_subscriber: object | None = None  # Wave 3
+_signal_engine_agent: object | None = None   # Wave 2b: cross-check engine
+_signal_engine_listener: object | None = None  # Wave 2b: event handler
 
 _pnl_service_class: type | None = None
 
@@ -54,6 +56,7 @@ async def bootstrap() -> None:
     global _memory_consolidator, _proactive_alert_agent, _thesis_review_listener
     global _briefing_listener, _stress_test_subscriber
     global _opportunity_screen_scheduler, _opportunity_screen_subscriber
+    global _signal_engine_agent, _signal_engine_listener
 
     if _quote_service is None:
         from src.market.adapters.factory import build_adapter
@@ -177,6 +180,16 @@ async def bootstrap() -> None:
                 reason="scheduler_user_id not configured",
             )
 
+    # ── Wave 2b: SignalEngineAgent ────────────────────────────────────────────
+    # Cross-check engine: watchlist × thesis × portfolio → ranked signals.
+    # Instantiated before the event bus so the listener can reference it during
+    # register(). Agent itself has no bus dependency.
+    if _signal_engine_agent is None:
+        from src.ai.agents.signal_engine import SignalEngineAgent
+
+        _signal_engine_agent = SignalEngineAgent(client=_ai_client)  # type: ignore[arg-type]
+        logger.info("platform.bootstrap.signal_engine_agent_ready")
+
     # ── Event Bus + subscribers (start bus FIRST) ────────────────────────────────────────────
     from src.platform.event_bus import get_event_bus
     bus = get_event_bus()
@@ -293,6 +306,38 @@ async def bootstrap() -> None:
         else:
             logger.warning(
                 "platform.bootstrap.opportunity_screen_subscriber_skipped",
+                reason="scheduler_user_id not configured",
+            )
+
+    # ── Wave 2b: SignalEngineListener ─────────────────────────────────────────
+    # Subscribes SignalEngineRequestedEvent (emitted by bot.SignalEngineScheduler).
+    # Wires watchlist × thesis × watchdog × portfolio → SignalEngineAgent.
+    # Emits SignalEngineCompletedEvent (consumed by BriefingListener).
+    # discord.Client injected later via listener.set_client(bot) in on_ready.
+    if _signal_engine_listener is None:
+        from src.ai.signal_engine_listener import get_signal_engine_listener
+        from src.ai.agents.watchdog import WatchdogAgent
+        from src.platform.config import settings
+        from src.platform.db import AsyncSessionLocal
+
+        user_id = getattr(settings, "scheduler_user_id", None)
+        morning_id = getattr(settings, "morning_channel_id", None)
+        if user_id:
+            _signal_engine_listener = get_signal_engine_listener(
+                signal_engine_agent=_signal_engine_agent,
+                watchdog_agent=WatchdogAgent(ai_client=_ai_client),  # type: ignore[arg-type]
+                session_factory=AsyncSessionLocal,
+                morning_channel_id=int(morning_id) if morning_id else None,
+                user_id=str(user_id),
+            )
+            _signal_engine_listener.register()
+            logger.info(
+                "platform.bootstrap.signal_engine_listener_ready",
+                user_id=str(user_id),
+            )
+        else:
+            logger.warning(
+                "platform.bootstrap.signal_engine_listener_skipped",
                 reason="scheduler_user_id not configured",
             )
 
@@ -482,3 +527,22 @@ def get_opportunity_screen_subscriber():
     Returns None if scheduler_user_id was not configured.
     """
     return _opportunity_screen_subscriber
+
+
+def get_signal_engine_agent():
+    """Return the SignalEngineAgent singleton (Wave 2b).
+
+    Raises RuntimeError if bootstrap() has not been called yet.
+    """
+    if _signal_engine_agent is None:
+        raise RuntimeError("SignalEngineAgent not initialised — call bootstrap() first.")
+    return _signal_engine_agent
+
+
+def get_signal_engine_listener():
+    """Return the SignalEngineListener singleton (Wave 2b).
+
+    Returns None if scheduler_user_id was not configured.
+    Call listener.set_client(bot) in bot on_ready to inject discord.Client.
+    """
+    return _signal_engine_listener
