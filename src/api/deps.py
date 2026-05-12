@@ -15,6 +15,9 @@ from src.platform.bootstrap import (
     get_briefing_agent as _get_briefing_agent,
 )
 from src.platform.bootstrap import (
+    get_ohlcv_service as _get_ohlcv_svc,
+)
+from src.platform.bootstrap import (
     get_quote_service as _get_qs,
 )
 from src.platform.bootstrap import (
@@ -57,6 +60,15 @@ async def get_current_user_id() -> str:
 
 def get_quote_service() -> object:
     return _get_qs()
+
+
+def get_ohlcv_service() -> object:
+    """Return the OHLCVService singleton (initialised at bootstrap).
+
+    Owner: market segment.
+    Used by GET /market/ohlcv/{ticker}.
+    """
+    return _get_ohlcv_svc()
 
 
 def get_thesis_review_agent() -> object:
