@@ -81,6 +81,8 @@ function updateDecisionKpis(items) {
 
 // ---------------------------------------------------------------------------
 // Public: load & render decisions + update KPI strip
+// Fetch 20 most-recent decisions (newest first) for the table.
+// KPI strip aggregates the returned slice — enough for a working signal.
 // ---------------------------------------------------------------------------
 
 export async function loadDecisions() {
@@ -88,7 +90,7 @@ export async function loadDecisions() {
   if (!wrap) return;
   wrap.innerHTML = '<p class="loading-text">Đang tải decisions…</p>';
   try {
-    const data = await getJson('/api/v1/decisions?limit=50');
+    const data = await getJson('/api/v1/decisions?limit=20&order=desc');
     const items = Array.isArray(data) ? data : (data.items ?? []);
     renderDecisionsTable(wrap, items, {
       onEvaluate: evaluateDecision,
@@ -102,6 +104,7 @@ export async function loadDecisions() {
 
 // ---------------------------------------------------------------------------
 // Public: load & render lessons (lazy)
+// Fetch 20 most-recent lessons, newest on top.
 // ---------------------------------------------------------------------------
 
 export async function loadLessons(force = false) {
@@ -110,7 +113,7 @@ export async function loadLessons(force = false) {
   if (!wrap) return;
   wrap.innerHTML = '<p class="loading-text">Đang tải lessons…</p>';
   try {
-    const data = await getJson('/api/v1/lessons?limit=20&lookback_days=180');
+    const data = await getJson('/api/v1/lessons?limit=20&lookback_days=180&sort_by=created_at&order=desc');
     renderLessonsCards(wrap, Array.isArray(data) ? data : []);
     lessonsLoaded = true;
   } catch (err) {

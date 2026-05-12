@@ -86,15 +86,23 @@
      - .list max-height: 300px → clamp(220px, 30vh, 300px)
        → avoids over-tall list on short-viewport mobile
 
-   FIX LOG (2026-05-12):
+   FIX LOG (2026-05-12a):
      - .cluster inner overrides: add .decision-layer to same reset group as
        .validation-layer + .lb-strip → decision panel aligns with all other
-       full-width panels inside cluster (margin-inline:0, width:100%, padding-inline:0)
-     - .cluster .validation-layer / .lb-strip: add width:100% (was missing)
-       → consistent contract across all cluster full-width panel resets
+       full-width panels inside cluster
+     - .cluster .validation-layer / .lb-strip: add width:100%
+
+   FIX LOG (2026-05-12b):
+     - .watchlist-layer / .portfolio-layer: replace margin-based geometry
+       (margin: 0 var(--page-px); width: calc(100% - px*2)) with
+       padding-inline: var(--page-px) + box-sizing: border-box + width: 100%
+       → same contract as validation-layer / decision-layer / lb-strip
+       → eliminates double-inset when nested inside .cluster
+     - .cluster .watchlist-layer / .cluster .portfolio-layer: now only need
+       padding-inline: 0 override (margin + width already 0/100% in base)
 */
 
-/* ── SKIP LINK ──────────────────────────────────── */
+/* ── SKIP LINK ──────────────────────────────────────────────────────────────── */
 .skip-link {
   position: absolute;
   top: -100%;
@@ -111,29 +119,26 @@
 }
 .skip-link:focus { top: 0; }
 
-/* ── CSS CUSTOM PROPERTIES (layout-scoped) ─────────── */
+/* ── CSS CUSTOM PROPERTIES (layout-scoped) ─────────────────────────────────── */
 :root {
   --topbar-h:      52px;
   --strip-h:       56px;
-  /* FIX: rail rộng hơn ở màn lớn — tránh bị cứng 360px trên 1920px+ */
   --rail-w:        clamp(280px, 22vw, 420px);
-  /* FIX: gutter lớn hơn ở màn lớn — tránh sát mép trên 24-inch */
   --page-px:       clamp(16px, 3vw, 48px);
   --workspace-gap: 16px;
   --layer-gap:     16px;
   --panel-pad:     clamp(14px, 2vw, 20px);
-  /* FIX: shared content max-width — single token used by all full-width layers */
   --content-max:   1680px;
 }
 
-/* ── SHELL ──────────────────────────────────────── */
+/* ── SHELL ──────────────────────────────────────────────────────────────────── */
 .shell {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
 }
 
-/* ── TOPBAR ──────────────────────────────────────── */
+/* ── TOPBAR ─────────────────────────────────────────────────────────────────── */
 .topbar {
   position: sticky;
   top: 0;
@@ -183,11 +188,7 @@
   margin-left: auto;
 }
 
-/* ── TOOLBAR: "LỌC TRẠNG THÁI" SELECT ─────────────────
-   FIX (Wave 2d bugfix): browser-native <select> không kế thừa dark theme,
-   cần override toàn bộ appearance + styling cho đúng với topbar.
-─────────────────────────────────────────────── */
-
+/* ── TOOLBAR: "LỌC TRẠNG THÁI" SELECT ─────────────────────────────────────── */
 .field {
   display: flex;
   align-items: center;
@@ -264,8 +265,7 @@
   color: var(--text);
 }
 
-/* ───────────────────────────────────────────────────────── */
-
+/* ── ICON BUTTON ────────────────────────────────────────────────────────────── */
 .icon-btn {
   display: inline-flex;
   align-items: center;
@@ -292,15 +292,7 @@
   background: rgba(148, 163, 184, 0.07);
 }
 
-/* ── COMMAND STRIP (KPI strip) ──────────────────────────────────── */
-/*
-   FIX (2026-05-06a): Replace bare 1fr columns with minmax(0, Npx) so cells
-   have a hard ceiling at 24-inch widths. justify-content:center means the
-   strip clusters toward the middle rather than stretching edge-to-edge.
-
-   Default variant: 5 KPI cards (original command-strip)
-   kpi-strip variant: 6 KPI cards (portfolio + pnl + risky + upcoming + open + scan)
-*/
+/* ── COMMAND STRIP (KPI strip) ─────────────────────────────────────────────── */
 .command-strip {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 260px)) minmax(0, 360px);
@@ -314,7 +306,6 @@
   width: 100%;
 }
 
-/* 6-card KPI strip variant */
 .command-strip.kpi-strip {
   grid-template-columns: repeat(5, minmax(0, 220px)) minmax(0, 340px);
 }
@@ -328,8 +319,6 @@
   transition: background .15s;
   min-width: 0;
   overflow: hidden;
-  /* FIX (2026-05-06b): fill grid row height so all cards sit at the same
-     top edge regardless of content height differences */
   align-self: stretch;
   justify-content: flex-start;
 }
@@ -362,8 +351,6 @@
   text-overflow: ellipsis;
 }
 
-/* FIX (2026-05-08): scan summary in wide card must wrap — multi-ticker text
-   is too long for a single nowrap line inside overflow:hidden container */
 .signal-card--wide .signal-sub {
   white-space: normal;
   overflow: visible;
@@ -378,23 +365,16 @@
 
 .signal-card--risk .signal-value { color: var(--warning); }
 
-/* ── BRIEF CONTEXT STRIP ──────────────────────────── */
+/* ── BRIEF CONTEXT STRIP ────────────────────────────────────────────────────── */
 .brief-context-strip {
   max-width: var(--content-max);
   margin-inline: auto;
   width: 100%;
-  /* FIX (2026-05-06a): padding-inline aligns brief text with workspace grid */
   padding-inline: var(--page-px);
-  /* FIX (2026-05-06b): prevent padding from adding to max-width */
   box-sizing: border-box;
 }
 
-/* ── WORKSPACE GRID ─────────────────────────────────── */
-/*
-   FIX: minmax(0, 1fr) prevents panel-main from overflowing the grid track
-   at narrow viewports (where content > track width).
-   FIX (2026-05-05): max-width + margin-inline auto → cap at 1680px on big screens
-*/
+/* ── WORKSPACE GRID ─────────────────────────────────────────────────────────── */
 .workspace-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--rail-w);
@@ -405,7 +385,7 @@
   width: 100%;
 }
 
-/* ── PANEL: generic glass card ────────────────────── */
+/* ── PANEL: generic glass card ──────────────────────────────────────────────── */
 .panel {
   display: flex;
   flex-direction: column;
@@ -469,7 +449,7 @@
   flex-shrink: 0;
 }
 
-/* ── ACTION RAIL ──────────────────────────────────── */
+/* ── ACTION RAIL ────────────────────────────────────────────────────────────── */
 .action-rail {
   display: flex;
   flex-direction: column;
@@ -481,31 +461,33 @@
   flex: 0 0 auto;
 }
 
-/* ── PORTFOLIO LAYER ──────────────────────────────── */
+/* ── PORTFOLIO LAYER ────────────────────────────────────────────────────────── */
 /*
-   FIX (2026-05-06a): max-width cap at --content-max so table doesn't
-   stretch edge-to-edge on 1920px+ screens.
+   FIX (2026-05-12b): replace margin-based geometry with padding-inline pattern
+   → same contract as validation-layer / decision-layer / lb-strip
+   → .cluster override only needs padding-inline: 0
 */
 .portfolio-layer {
-  margin: 0 var(--page-px);
+  padding-inline: var(--page-px);
+  box-sizing: border-box;
+  width: 100%;
   max-width: var(--content-max);
-  width: calc(100% - var(--page-px) * 2);
   margin-inline: auto;
 }
 
-/* ── WATCHLIST LAYER ──────────────────────────────── */
-.watchlist-layer {
-  margin: 0 var(--page-px);
-  max-width: var(--content-max);
-  width: calc(100% - var(--page-px) * 2);
-  margin-inline: auto;
-}
-
-/* ── BACKTESTING / VALIDATION LAYER ──────────────── */
+/* ── WATCHLIST LAYER ────────────────────────────────────────────────────────── */
 /*
-   FIX (2026-05-09c): add padding-inline + box-sizing so backtesting panel
-   never bleeds to viewport edge if used outside a .cluster wrapper.
+   FIX (2026-05-12b): same fix as portfolio-layer above
 */
+.watchlist-layer {
+  padding-inline: var(--page-px);
+  box-sizing: border-box;
+  width: 100%;
+  max-width: var(--content-max);
+  margin-inline: auto;
+}
+
+/* ── BACKTESTING / VALIDATION LAYER ────────────────────────────────────────── */
 .validation-layer {
   max-width: var(--content-max);
   margin-inline: auto;
@@ -514,7 +496,7 @@
   width: 100%;
 }
 
-/* ── DETAIL SHELL ──────────────────────────────────── */
+/* ── DETAIL SHELL ───────────────────────────────────────────────────────────── */
 .detail-shell {
   flex: 1 1 auto;
   overflow-y: auto;
@@ -550,7 +532,7 @@
   line-height: 1.5;
 }
 
-/* ── SNAPSHOT GRID (inside action-rail cards) ──────── */
+/* ── SNAPSHOT GRID ──────────────────────────────────────────────────────────── */
 .snapshot-grid {
   display: flex;
   flex-direction: column;
@@ -573,7 +555,7 @@
   margin-bottom: 4px;
 }
 
-/* ── ERROR / LOADING STATES ────────────────────────── */
+/* ── ERROR / LOADING STATES ─────────────────────────────────────────────────── */
 .loading-text {
   padding: 16px;
   color: var(--muted);
@@ -587,7 +569,7 @@
   font-size: .82rem;
 }
 
-/* ── FOOTER ────────────────────────────────────────── */
+/* ── FOOTER ─────────────────────────────────────────────────────────────────── */
 .footer-note {
   padding: 12px var(--page-px);
   font-size: .7rem;
@@ -604,7 +586,7 @@
   font-size: .68rem;
 }
 
-/* ── DATA TABLE (shared across modules) ────────────── */
+/* ── DATA TABLE (shared across modules) ─────────────────────────────────────── */
 .data-table {
   width: 100%;
   border-collapse: collapse;
@@ -641,13 +623,12 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ── LIST (inside action panels) ───────────────────── */
+/* ── LIST (inside action panels) ────────────────────────────────────────────── */
 .list {
   display: flex;
   flex-direction: column;
   gap: 0;
   overflow-y: auto;
-  /* FIX (2026-05-09c): clamp avoids over-tall list on short-viewport mobile */
   max-height: clamp(220px, 30vh, 300px);
 }
 
@@ -687,7 +668,7 @@
   white-space: nowrap;
 }
 
-/* ── RESPONSIVE ─────────────────────────────────────── */
+/* ── RESPONSIVE ─────────────────────────────────────────────────────────────── */
 @media (max-width: 1199px) {
   .workspace-grid {
     grid-template-columns: minmax(0, 1fr) clamp(240px, 28vw, 320px);
@@ -727,7 +708,7 @@
   }
 }
 
-/* ── Cluster groups (Cluster A / B / C labels) ─────────────────────────────── */
+/* ── Cluster groups ─────────────────────────────────────────────────────────── */
 .cluster {
   display: flex;
   flex-direction: column;
@@ -736,8 +717,6 @@
   padding-inline: var(--page-px);
 }
 
-/* strip sections that sit inside cluster still need their own h-padding removed
-   because .cluster already handles it */
 .cluster .command-strip,
 .cluster .brief-context-strip {
   padding-inline: 0;
@@ -794,10 +773,6 @@
 .scan-result-inline.hidden { display: none; }
 
 /* ── Decision panel header ──────────────────────────────────────────────────── */
-/*
-   FIX (2026-05-09c): use var(--panel-pad) token instead of hardcoded 18px/22px
-   → consistent visual rhythm with all other .panel-header blocks
-*/
 .dec-panel-header {
   display: flex;
   align-items: flex-start;
@@ -823,16 +798,22 @@
   color: var(--text, #ecf3ff);
 }
 
-/* ── Cluster inner override: prevent double padding/margin ────────────────── */
+/* ── Cluster inner overrides ────────────────────────────────────────────────── */
 /*
-   FIX (2026-05-12): Unified contract for all full-width panels inside .cluster.
-   All panels must reset their own outer geometry and let .cluster own the gutter.
-   Rule: margin-inline:0 | max-width:100% | width:100% | padding-inline:0
+   Unified contract: all full-width panels inside .cluster reset their own
+   outer geometry — .cluster owns the gutter via padding-inline: var(--page-px).
+
+   .watchlist-layer / .portfolio-layer: only need padding-inline reset because
+   base definition now uses padding-inline (not margin shorthand).
+
+   .validation-layer / .lb-strip / .decision-layer: also reset margin-inline
+   + max-width as extra guard (their base uses margin-inline: auto).
 */
 .cluster .watchlist-layer,
 .cluster .portfolio-layer {
+  padding-inline: 0;
   margin-inline: 0;
-  width: 100%;
+  max-width: 100%;
 }
 
 .cluster .workspace-grid {
@@ -848,7 +829,7 @@
   padding-inline: 0;
 }
 
-/* ── Responsive: cluster + dec-panel-header on mobile ──────────────────────── */
+/* ── Responsive: cluster + dec-panel-header on mobile ───────────────────────── */
 @media (max-width: 600px) {
   .cluster { padding-inline: 10px; gap: 14px; margin-bottom: 24px; }
   .cluster-label { font-size: .65rem; }
