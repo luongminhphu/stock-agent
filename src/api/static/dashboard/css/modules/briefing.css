@@ -1,1 +1,328 @@
+/* ─── Briefing: Tabs, Card & Body ──────────────────────────────────────── */
 
+/* ── Tab bar ─────────────────────────────────────────────────────────────── */
+.brief-tab-bar {
+  display: flex;
+  gap: 4px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.brief-tab {
+  padding: 8px 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color .15s, border-color .15s;
+  margin-bottom: -1px;
+}
+.brief-tab:hover  { color: var(--text); }
+.brief-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* ── Tab pane ────────────────────────────────────────────────────────────── */
+.brief-tab-pane { overflow-y: auto; flex: 1 1 auto; }
+.brief-tab-pane.hidden { display: none; }
+
+/* ── Brief card ──────────────────────────────────────────────────────────── */
+.brief-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: none;
+  border-radius: 0;
+  overflow: hidden;
+}
+.brief-card + .brief-card { margin-top: 0; }
+
+.brief-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.brief-phase-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  font-size: 0.88rem;
+  flex-shrink: 0;
+}
+.phase-morning .brief-phase-icon { background: rgba(232, 175, 52, 0.12); }
+.phase-eod     .brief-phase-icon { background: rgba(85, 145, 199, 0.12); }
+
+.brief-phase-label {
+  font-size: 0.66rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+.brief-date {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* ── Sentiment badge ──────────────────────────────────────────────────────── */
+.sentiment-badge {
+  margin-left: auto;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.sent-risk-on   { background: rgba(109,170,69,.15);  color: #6daa45; }
+.sent-risk-off  { background: rgba(161, 44, 123,.15); color: #d163a7; }
+.sent-mixed     { background: rgba(232,175,52,.15);  color: #e8af34; }
+.sent-uncertain { background: rgba(120,120,120,.12); color: var(--muted); }
+
+/* ── Brief headline ──────────────────────────────────────────────────────── */
+.brief-headline {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text);
+  padding: 10px 14px 0;
+  line-height: 1.35;
+}
+
+/* ── Brief body ──────────────────────────────────────────────────────────── */
+.brief-body {
+  padding: 10px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.brief-summary {
+  font-size: 0.82rem;
+  color: var(--text-secondary, var(--muted));
+  line-height: 1.5;
+}
+
+/* ── Brief sections (movers, alerts, actions) ────────────────────────────── */
+.brief-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.brief-section-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.brief-item {
+  font-size: 0.82rem;
+  color: var(--text);
+  padding: 3px 0;
+  line-height: 1.4;
+}
+.brief-item.action {
+  color: var(--accent);
+  cursor: default;
+}
+.brief-item--ticker {
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+.brief-item--ticker:hover { opacity: .75; }
+
+/* ── Key Movers pills ────────────────────────────────────────────────────── */
+.brief-movers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.mover-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  background: var(--surface-alt, rgba(255,255,255,.06));
+  color: var(--text);
+}
+.mover-pill.up   { background: rgba(109,170,69,.15);  color: #6daa45; }
+.mover-pill.down { background: rgba(161,44,123,.15);  color: #d163a7; }
+.mover-pill .chg { font-size: 0.7rem; opacity: .85; }
+
+/* ── Ticker summary table ────────────────────────────────────────────────── */
+.brief-ticker-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+.brief-ticker-table th {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  padding: 0 6px 4px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+.brief-ticker-table td {
+  padding: 5px 6px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.brief-ticker-table tr:last-child td { border-bottom: none; }
+
+.bt-ticker { font-weight: 700; color: var(--text); font-size: 0.82rem; }
+.bt-note   { font-size: 0.72rem; color: var(--muted); margin-top: 1px; }
+.bt-signal {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: rgba(255,255,255,.07);
+  color: var(--text);
+}
+.bt-signal.bullish, .bt-signal.buy, .bt-signal.strong-buy { background: rgba(109,170,69,.15); color: #6daa45; }
+.bt-signal.bearish, .bt-signal.sell, .bt-signal.strong-sell { background: rgba(161,44,123,.15); color: #d163a7; }
+.bt-signal.neutral, .bt-signal.hold, .bt-signal.watch { background: rgba(232,175,52,.12); color: #e8af34; }
+
+.bt-chg { text-align: right; font-weight: 600; font-size: 0.8rem; }
+.bt-chg.pos { color: #6daa45; }
+.bt-chg.neg { color: #d163a7; }
+
+/* ── Brief empty state ───────────────────────────────────────────────────── */
+.brief-empty {
+  padding: 24px 14px;
+  font-size: 0.82rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* ── Feedback bar ────────────────────────────────────────────────────────── */
+.brief-feedback-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.fb-prompt {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-right: 2px;
+}
+
+.fb-btn {
+  padding: 3px 9px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: 999px;
+  background: rgba(255,255,255,.06);
+  color: var(--text);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: background .13s, opacity .13s;
+}
+.fb-btn:hover    { background: rgba(255,255,255,.12); }
+.fb-btn:disabled { opacity: .45; cursor: not-allowed; }
+.fb-btn.fb-selected { background: var(--accent); color: #fff; border-color: transparent; }
+
+.fb-confirmed {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* ── Wave A: Brief Feedback KPI strip ───────────────────────────────────── */
+.fb-kpi-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 4px 0 2px;
+}
+.fb-rate {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.fb-rate-good { background: rgba(109,170,69,.15); color: #6daa45; }
+.fb-rate-low  { background: rgba(187,101,59,.15); color: #bb653b; }
+.fb-outcome {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.fb-total {
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+.fb-sep {
+  font-size: 0.65rem;
+  color: var(--muted);
+  opacity: .5;
+}
+
+.fb-acted    { color: #6daa45; }
+.fb-watching { color: #e8af34; }
+.fb-skipped  { color: var(--muted); }
+
+/* ── Scan text colours ───────────────────────────────────────────────────── */
+.scan-text .up   { color: #6daa45; }
+.scan-text .down { color: #d163a7; }
+
+/* ── Generate Brief Controls ─────────────────────────────────────────────── */
+.brief-strip-header {
+  display: flex;
+  gap: 6px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* ── Brief review date row & staleness badge ─────────────────────────────── */
+.brief-date-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 1px;
+}
+
+.brief-age-badge {
+  font-size: 0.65rem;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.6;
+}
+.age-fresh  { background: rgba(109, 170, 69, 0.15);  color: var(--color-success, #6daa45); }
+.age-recent { background: rgba(79, 152, 163, 0.15);  color: var(--color-primary, #4f98a3); }
+.age-today  { background: rgba(232, 175, 52, 0.15);  color: var(--color-gold, #e8af34);    }
+.age-stale  { background: rgba(187, 101, 59, 0.15);  color: var(--color-warning, #bb653b); }
