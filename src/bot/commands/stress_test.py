@@ -20,16 +20,16 @@ from src.thesis.stress_test_service import StressTestService
 logger = get_logger(__name__)
 
 _VERDICT_COLOUR = {
-    Verdict.BULLISH:   discord.Color.green(),
-    Verdict.NEUTRAL:   discord.Color.gold(),
-    Verdict.BEARISH:   discord.Color.red(),
-    Verdict.WATCHLIST: discord.Color.blurple(),
+    Verdict.BULLISH: discord.Color.green(),
+    Verdict.NEUTRAL: discord.Color.gold(),
+    Verdict.BEARISH: discord.Color.red(),
 }
 
 _THREAT_EMOJI = {
-    ThreatLevel.INTACT:   "🟢",
-    ThreatLevel.WEAKENED: "🟡",
-    ThreatLevel.BROKEN:   "🔴",
+    ThreatLevel.LOW:      "🟢",
+    ThreatLevel.MEDIUM:   "🟡",
+    ThreatLevel.HIGH:     "🔴",
+    ThreatLevel.CRITICAL: "💀",
 }
 
 
