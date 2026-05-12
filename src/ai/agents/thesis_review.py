@@ -102,6 +102,7 @@ class ThesisReviewAgent:
             session=session,
             user_id=user_id,
             ticker=ticker,
+            thesis_id=thesis_id,
         )
 
         messages = [
@@ -185,8 +186,13 @@ async def _fetch_memory_for_review(
     session,
     user_id: str | None,
     ticker: str,
+    thesis_id: int | None = None,
 ) -> str:
-    """Fetch episodic + semantic memory filtered to this ticker.
+    """Fetch episodic + semantic memory scoped to this thesis and ticker.
+
+    Scoping layers (defense-in-depth):
+      1. thesis_id filter in get_memory_context() — primary scope
+      2. ticker filter applied here — secondary scope for cross-thesis safety
 
     Returns empty string if session/user_id missing or memory unavailable.
     Never raises — memory failure must not block AI review calls.
@@ -197,12 +203,16 @@ async def _fetch_memory_for_review(
         from src.ai.memory.memory_service import MemoryService
 
         mem_ctx = await MemoryService.get_memory_context(
-            session, user_id=user_id, episode_limit=10
+            session,
+            user_id=user_id,
+            episode_limit=10,
+            thesis_id=thesis_id,
         )
         if mem_ctx.is_empty():
             return ""
 
-        # Filter episodes to this ticker only — tránh noise từ thesis khác
+        # Secondary filter: ticker-level scope on top of thesis_id scope.
+        # Catches edge cases where thesis_id was not recorded on old entries.
         filtered_episodes = [
             ep for ep in mem_ctx.recent_episodes
             if not ep.tickers or ticker in ep.tickers
@@ -215,6 +225,7 @@ async def _fetch_memory_for_review(
         logger.debug(
             "thesis_review_agent.memory_fetched",
             ticker=ticker,
+            thesis_id=thesis_id,
             episodes=len(filtered_episodes),
             has_snapshot=mem_ctx.latest_snapshot is not None,
         )

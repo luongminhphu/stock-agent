@@ -181,8 +181,20 @@ class MemoryService:
         session: AsyncSession,
         user_id: str,
         episode_limit: int = 15,
+        thesis_id: int | None = None,
     ) -> MemoryContext:
         """Assemble full memory context for a user.
+
+        Args:
+            session:       Active AsyncSession.
+            user_id:       Owner of the memory.
+            episode_limit: Max raw episodes fetched before filtering.
+            thesis_id:     Optional — when provided, filters episodes to
+                           those logged for this thesis (ep.thesis_id matches)
+                           or legacy rows with no thesis_id (ep.thesis_id is
+                           None). This prevents cross-thesis memory bleed.
+                           Callers that omit thesis_id get the full user-level
+                           memory (backward-compatible).
 
         Each query (episodes, snapshot) fails independently — a failure
         in one does not abort the other. Returns an empty MemoryContext
@@ -220,6 +232,21 @@ class MemoryService:
                 snapshot = None
             else:
                 snapshot = results[1]
+
+            # Scope episodes to thesis when caller provides thesis_id.
+            # Legacy rows (ep.thesis_id is None) are kept to avoid losing
+            # historical context that was logged before thesis_id tracking.
+            if thesis_id is not None and episodes:
+                episodes = [
+                    ep for ep in episodes
+                    if ep.thesis_id is None or ep.thesis_id == thesis_id
+                ]
+                logger.debug(
+                    "memory_service.episodes_filtered_by_thesis",
+                    user_id=user_id,
+                    thesis_id=thesis_id,
+                    count=len(episodes),
+                )
 
             return MemoryContext(
                 user_id=user_id,
