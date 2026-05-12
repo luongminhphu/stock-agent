@@ -14,6 +14,8 @@ Registered tasks:
     ReminderScheduler.weekly_task              — Mondays 08:00 ICT (WEEKLY reminders)
     DecisionReplayScheduler.replay_task        — weekdays 15:15 ICT (after market close)
     MemoryConsolidatorScheduler.consolidate    — Sundays 09:00 ICT (weekly memory distill)
+    SignalEngineScheduler.morning_task         — weekdays 08:40 ICT (before morning brief)
+    SignalEngineScheduler.eod_task             — weekdays 15:10 ICT (after market close)
 
 Note:
     MORNING_CHANNEL_ID and EOD_CHANNEL_ID must be set in settings.
@@ -23,11 +25,17 @@ Channel routing:
     Briefing, ThesisMaintenance, InvestorProfile, DecisionReplay → morning_channel_id
     Proactive alerts (WatchlistScan, ThesisDrift, Reminder)      → alert_channel_id
         alert_channel_id = DISCORD_ALERT_CHANNEL_ID if set, else morning_channel_id
+    SignalEngineScheduler emits events only — no channel routing, no Discord message.
 
 Wave 8:
     BriefingScheduler no longer calls BriefingService directly.
     It emits BriefingRequestedEvent → BriefingListener (briefing segment)
     handles delivery. Bot is a thin timing adapter only.
+
+Wave 2 (Signal Engine):
+    SignalEngineScheduler emits SignalEngineRequestedEvent → ai.SignalEngineListener
+    runs watchlist × thesis × portfolio cross-check → emits SignalEngineCompletedEvent
+    → briefing.BriefingListener injects summary into brief context.
 """
 
 from __future__ import annotations
@@ -291,7 +299,7 @@ class WatchlistScanScheduler:
             )
             return
 
-        # ── Step 0: Reactivate cooled-down alerts (isolated commit) ──────────
+        # ── Step 0: Reactivate cooled-down alerts (isolated commit) ───────────────────
         # Non-blocking: scan always continues regardless of reactivation outcome.
         # Only affects alerts with auto_reactivate=True that have passed
         # their cooldown window (settings.alert_reactivate_cooldown_hours).
@@ -314,7 +322,7 @@ class WatchlistScanScheduler:
         except Exception as exc:
             logger.warning("scheduler.scan.reactivate_failed", error=str(exc))
 
-        # ── Step 1: Scan ─────────────────────────────────────────────────────
+        # ── Step 1: Scan ──────────────────────────────────────────────────────────────────────
         try:
             from src.watchlist.scan_service import ScanService
 
@@ -1037,6 +1045,100 @@ class MemoryConsolidatorScheduler:
     @_consolidate_task.before_loop
     async def _before_consolidate(self) -> None:
         await self._client.wait_until_ready()
+
+
+# ---------------------------------------------------------------------------
+# SignalEngineScheduler
+# ---------------------------------------------------------------------------
+
+_SIGNAL_ENGINE_MORNING_TIME = datetime.time(hour=1, minute=40, tzinfo=datetime.UTC)  # 08:40 ICT
+_SIGNAL_ENGINE_EOD_TIME     = datetime.time(hour=8, minute=10, tzinfo=datetime.UTC)  # 15:10 ICT
+
+
+class SignalEngineScheduler:
+    """Trigger AI signal engine before morning brief and after market close.
+
+    Owner: bot segment (adapter only).
+    No business logic — emits SignalEngineRequestedEvent only.
+    ai.SignalEngineListener handles: watchlist × thesis × portfolio cross-check,
+    ranked signal output, and SignalEngineCompletedEvent emission.
+    BriefingListener subscribes to SignalEngineCompletedEvent to enrich brief context.
+
+    Schedule:
+        08:40 ICT — morning run  (5 min before BriefingScheduler morning brief)
+        15:10 ICT — eod run      (5 min before DecisionReplayScheduler)
+
+    Graceful skip:
+        - Weekends.
+        - scheduler_user_id not set → warning, no emit.
+    """
+
+    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
+        self._client = client
+        self._monitor = monitor or get_monitor()
+
+    def start(self) -> None:
+        self._monitor.register_task("signal_engine.morning")
+        self._monitor.register_task("signal_engine.eod")
+        self._morning_task.start()
+        self._eod_task.start()
+        logger.info("scheduler.signal_engine.started")
+
+    def stop(self) -> None:
+        self._morning_task.cancel()
+        self._eod_task.cancel()
+        logger.info("scheduler.signal_engine.stopped")
+
+    @tasks.loop(time=_SIGNAL_ENGINE_MORNING_TIME)
+    async def _morning_task(self) -> None:
+        if datetime.datetime.now(tz=datetime.UTC).weekday() >= 5:
+            return
+        await self._emit(phase="morning")
+
+    @_morning_task.before_loop
+    async def _before_morning(self) -> None:
+        await self._client.wait_until_ready()
+
+    @tasks.loop(time=_SIGNAL_ENGINE_EOD_TIME)
+    async def _eod_task(self) -> None:
+        if datetime.datetime.now(tz=datetime.UTC).weekday() >= 5:
+            return
+        await self._emit(phase="eod")
+
+    @_eod_task.before_loop
+    async def _before_eod(self) -> None:
+        await self._client.wait_until_ready()
+
+    async def _emit(self, phase: str) -> None:
+        from src.platform.event_bus import get_event_bus
+        from src.platform.events import SignalEngineRequestedEvent
+
+        task_name = f"signal_engine.{phase}"
+        user_id = getattr(settings, "scheduler_user_id", None)
+
+        if not user_id:
+            logger.warning(
+                "scheduler.signal_engine.skipped",
+                phase=phase,
+                reason="scheduler_user_id not configured",
+            )
+            return
+
+        try:
+            bus = get_event_bus()
+            await bus.publish(
+                SignalEngineRequestedEvent(
+                    phase=phase,
+                    triggered_by="scheduler",
+                    user_id=str(user_id),
+                )
+            )
+            logger.info("scheduler.signal_engine.event_emitted", phase=phase)
+            await self._monitor.record_success(task_name)
+
+        except Exception as exc:
+            logger.error("scheduler.signal_engine.emit_error", phase=phase, error=str(exc))
+            await self._monitor.record_failure(task_name, exc)
 
 
 # ---------------------------------------------------------------------------
