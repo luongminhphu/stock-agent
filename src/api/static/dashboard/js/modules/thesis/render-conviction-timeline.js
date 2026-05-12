@@ -306,11 +306,12 @@ function buildDualChart(canvasEl, { labels, scores, prices, events, entryPrice }
             title: c => '📅 ' + c[0].label,
             label: c => {
               if (c.dataset.label === 'Conviction') {
-                return `Conviction: ${Number(c.parsed.y).toFixed(1)} / 100`;
+                return `Conviction: ${Number(c.parsed.y).toFixed(1)}`;
               }
-              return c.parsed.y != null
-                ? `Giá: ${Number(c.parsed.y).toLocaleString('vi-VN')}₫`
-                : 'Giá: N/A';
+              if (c.dataset.label === 'Giá') {
+                return `Giá: ${Number(c.parsed.y).toLocaleString('vi-VN')}₫`;
+              }
+              return c.dataset.label + ': ' + c.parsed.y;
             },
           },
         },
@@ -318,50 +319,42 @@ function buildDualChart(canvasEl, { labels, scores, prices, events, entryPrice }
       },
       scales: {
         x: {
-          grid: { color: gridColor, drawTicks: false },
-          border: { display: false },
-          ticks: { color: muted, font: tickFont, maxRotation: 0, maxTicksLimit: 8 },
+          grid: { color: gridColor },
+          ticks: { color: muted, font: tickFont, maxRotation: 30, autoSkip: true, maxTicksLimit: 8 },
         },
-        // Left axis — Conviction score 0–100
         y: {
-          type: 'linear',
-          position: 'left',
           min: 0,
           max: 100,
-          grid: { color: gridColor, drawTicks: false },
-          border: { display: false },
-          ticks: { color: primary, font: tickFont, stepSize: 20 },
-          title: { display: true, text: 'Score', color: primary, font: { size: 9 } },
-        },
-        // Right axis — Price VND (only if price data present)
-        ...(hasPrices ? {
-          y1: {
-            type: 'linear',
-            position: 'right',
-            grid: { drawOnChartArea: false },
-            border: { display: false },
-            ticks: {
-              color: gold,
-              font: { size: 10 },
-              callback: v => (v / 1000).toFixed(0) + 'k',
-            },
-            title: { display: true, text: 'Giá', color: gold, font: { size: 9 } },
+          position: 'left',
+          grid: { color: gridColor },
+          ticks: { color: muted, font: tickFont, stepSize: 20,
+            callback: v => v === 0 ? '' : v,
           },
-        } : {}),
+        },
+        y1: hasPrices ? {
+          position: 'right',
+          grid: { drawOnChartArea: false },
+          ticks: {
+            color: gold,
+            font: tickFont,
+            callback: v => Number(v).toLocaleString('vi-VN', { notation: 'compact', maximumFractionDigits: 0 }),
+          },
+        } : undefined,
       },
     },
   });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Event list HTML
+// Event list renderer
+// FIX (2026-05-12): reverse before map → newest review at top
 // ─────────────────────────────────────────────────────────────────────────────
 
 function renderEventList(events) {
   if (!events.length) return '<p class="cv-empty">Chưa có sự kiện nào.</p>';
   const shown = events.filter(e => e.kind === 'reviewed' || e.verdict != null || e === events[events.length - 1]);
   const list = shown.length ? shown : events.slice(-5);
-  return list.map(e => {
+  return list.slice().reverse().map(e => {
     const icon  = EVENT_KIND_ICON[e.kind] || '📌';
     const vtag  = e.verdict
       ? `<span class="cv-vtag ${VERDICT_CLS[e.verdict] || 'cv-vtag--hold'}">${esc(e.verdict)}</span>`
@@ -434,49 +427,37 @@ function wireEventList(containerEl, events) {
       const ev = events.find(e => e.idx === idx);
       if (!ev) return;
 
-      if (activeIdx === idx) {
-        activeIdx = null;
-        el.setAttribute('aria-expanded', 'false');
-        el.classList.remove('cv-ev--active');
-        containerEl.querySelector('.cv-drawer')?.remove();
-        return;
-      }
+      const isOpen = el.getAttribute('aria-expanded') === 'true';
 
-      containerEl.querySelectorAll('.cv-ev').forEach(e => {
-        e.classList.remove('cv-ev--active');
+      // Close all drawers
+      evEls.forEach(e => {
         e.setAttribute('aria-expanded', 'false');
+        const d = e.querySelector('.cv-drawer');
+        if (d) d.remove();
       });
-      containerEl.querySelector('.cv-drawer')?.remove();
 
-      activeIdx = idx;
-      el.classList.add('cv-ev--active');
-      el.setAttribute('aria-expanded', 'true');
-
-      const drawer = document.createElement('div');
-      drawer.innerHTML = renderDrawer(ev);
-      el.after(drawer.firstElementChild);
-      drawer.firstElementChild?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+      if (!isOpen) {
+        el.setAttribute('aria-expanded', 'true');
+        el.insertAdjacentHTML('beforeend', renderDrawer(ev));
+        activeIdx = idx;
+      } else {
+        activeIdx = null;
+      }
     };
 
     el.addEventListener('click', handler);
-    el.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler(); }
-    });
+    el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler(); } });
   });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Main HTML scaffold
+// Scaffold HTML builder
 // ─────────────────────────────────────────────────────────────────────────────
 
 function buildScaffold({ data, labels, scores, prices, events }) {
-  const trend = data.trend ?? 'insufficient_data';
-  const tm = TREND_META[trend] ?? TREND_META.insufficient_data;
-  const hasPrices = prices.some(p => p != null);
-  const delta = data.earliest_score != null && data.latest_score != null
-    ? (Number(data.latest_score) - Number(data.earliest_score)).toFixed(1)
-    : null;
-  const deltaSign  = delta > 0 ? '+' : '';
+  const tm = TREND_META[data.trend ?? 'insufficient_data'] ?? TREND_META.insufficient_data;
+  const delta = data.delta_score ?? null;
+  const deltaSign = delta > 0 ? '+' : '';
   const deltaClass = delta > 0 ? 'cv-delta--up' : delta < 0 ? 'cv-delta--down' : '';
 
   const tierLegend = TIER.map(t =>
@@ -489,6 +470,8 @@ function buildScaffold({ data, labels, scores, prices, events }) {
   const entryLabel = data.entry_price
     ? `· Entry: ${Number(data.entry_price).toLocaleString('vi-VN')}₫`
     : '';
+
+  const hasPrices = prices.some(p => p != null);
 
   return `
     <div class="cv-section detail-section">
@@ -558,41 +541,40 @@ export async function loadConvictionTimeline(thesisId) {
   slot.innerHTML = `
     <div class="detail-section" aria-busy="true">
       <div class="detail-section-header"><h3>Conviction Timeline</h3></div>
-      <div style="margin:12px 0;"><div class="skel" style="height:72px;border-radius:6px;"></div></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        ${[1,2,3].map(() => '<div class="skel skel-badge" style="width:64px;"></div>').join('')}
-      </div>
+      <div class="loading-text" style="padding:24px;">Đang tải conviction timeline…</div>
     </div>`;
 
   try {
     await ensureChartJs();
-    const data = await getJson(`${thesisApiBase()}/${thesisId}/conviction-timeline?limit=20`);
-    if (!data) { slot.innerHTML = ''; return; }
+    const data = await getJson(`${thesisApiBase()}/${thesisId}/conviction-timeline`);
 
-    const ticker = data.ticker ?? String(thesisId);
-    destroyCharts(ticker);
-
-    slot.innerHTML = renderConvictionTimeline(data);
-
-    const { labels, scores, prices, events } = parsePoints(data.points);
-
-    const canvas = document.getElementById(`cvChart-${ticker}`);
-    if (canvas) {
-      const inst = buildDualChart(canvas, {
-        labels, scores, prices, events,
-        entryPrice: data.entry_price ?? null,
-      });
-      _chartInstances.set(`${ticker}:dual`, inst);
+    if (!data || !Array.isArray(data.points) || !data.points.length) {
+      slot.innerHTML = `
+        <div class="detail-section">
+          <div class="detail-section-header"><h3>Conviction Timeline</h3></div>
+          <p class="empty-state">Chưa có snapshot nào. Trigger AI review để tạo điểm dữ liệu đầu tiên.</p>
+        </div>`;
+      return;
     }
 
-    const listEl = document.getElementById(`cvEventList-${ticker}`);
+    const { labels, scores, prices, events } = parsePoints(data.points);
+    slot.innerHTML = buildScaffold({ data, labels, scores, prices, events });
+
+    const canvasEl = slot.querySelector(`#cvChart-${data.ticker}`);
+    if (canvasEl) {
+      destroyCharts(data.ticker);
+      const chart = buildDualChart(canvasEl, { labels, scores, prices, events, entryPrice: data.entry_price });
+      _chartInstances.set(`${data.ticker}:dual`, chart);
+    }
+
+    const listEl = slot.querySelector(`#cvEventList-${data.ticker}`);
     if (listEl && events.length) wireEventList(listEl, events);
 
   } catch (err) {
     slot.innerHTML = `
       <div class="detail-section">
         <div class="detail-section-header"><h3>Conviction Timeline</h3></div>
-        <p class="empty-state" style="font-size:.8rem;">Chưa tải được timeline: ${esc(err.message)}</p>
+        <p class="error-text">Lỗi load timeline: ${esc(err.message)}</p>
       </div>`;
   }
 }
