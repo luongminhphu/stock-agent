@@ -8,8 +8,12 @@ from .briefing import BriefingAgent
 from .pretrade import PreTradeAgent
 from .proactive_alert_agent import ProactiveAlertAgent, get_proactive_alert_agent
 from .replay import ReplayAgent
+from .sector_rotation import SectorRotationAgent
 from .signal_credibility import SignalCredibilityAgent
+from .signal_engine import SignalEngineAgent
+from .stress_test import StressTestAgent
 from .suggest_agent import ThesisSuggestAgent
+from .thesis_judge import ThesisJudgeAgent
 from .thesis_review import ThesisReviewAgent
 from .watchdog import WatchdogAgent
 
@@ -19,8 +23,12 @@ __all__ = [
     "ProactiveAlertAgent",
     "get_proactive_alert_agent",
     "ReplayAgent",
+    "SectorRotationAgent",
     "SignalCredibilityAgent",
+    "SignalEngineAgent",
+    "StressTestAgent",
     "ThesisSuggestAgent",
+    "ThesisJudgeAgent",
     "ThesisReviewAgent",
     "WatchdogAgent",
 ]
