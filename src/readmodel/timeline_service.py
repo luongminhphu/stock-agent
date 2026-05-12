@@ -231,6 +231,7 @@ class ThesisTimelineService:
         self,
         thesis_id: int,
         limit: int = 20,
+        current_price: float | None = None,
     ) -> ConvictionTimelineResponse | None:
         """Trả về cỗ conviction score theo thời gian cho một thesis.
 
@@ -255,6 +256,17 @@ class ThesisTimelineService:
 
         Ordering: fetch `limit` NEWEST snapshots (desc), then reverse to chronological
         (asc) so the chart always shows the most recent data without truncating old-first.
+
+        Price gap handling:
+          Option B — forward-fill: if price_at_snapshot is None on a point, carry forward
+            the last known price so the price dataset length always matches conviction.
+            Points filled this way are marked with price_filled=True.
+          Option C — live price fallback: if the last point still has no price after
+            forward-fill, and current_price is provided by the caller (e.g. from a live
+            quote fetched by the API/bot adapter), it is injected into that last point.
+            This covers the edge case where today's AI review ran before the market
+            snapshot job.
+            current_price does NOT propagate backwards — only the last point is affected.
         """
         from src.thesis.models import Thesis, ThesisReview, ThesisSnapshot
         from src.thesis.scoring_service import score_tier
@@ -330,6 +342,24 @@ class ThesisTimelineService:
                     risk_signals=risk_signals,
                 )
             )
+
+        # ------------------------------------------------------------------
+        # Option B: forward-fill price gaps across all points
+        # ------------------------------------------------------------------
+        last_known_price: float | None = None
+        for point in points:
+            if point.price is not None:
+                last_known_price = point.price
+            elif last_known_price is not None:
+                point.price = last_known_price
+                point.price_filled = True  # type: ignore[attr-defined]
+
+        # ------------------------------------------------------------------
+        # Option C: live price fallback for the last point only
+        # ------------------------------------------------------------------
+        if points and points[-1].price is None and current_price is not None:
+            points[-1].price = current_price
+            points[-1].price_filled = True  # type: ignore[attr-defined]
 
         trend = _compute_trend(points)
         latest_score = points[-1].score if points else None
