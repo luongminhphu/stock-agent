@@ -1020,3 +1020,391 @@ class SignalCredibilityOutput(BaseModel):
         if not isinstance(v, list):
             return []
         return v  # type: ignore[return-value]
+
+
+# ---------------------------------------------------------------------------
+# Intelligence Loop — Wave 1 schemas
+# ---------------------------------------------------------------------------
+
+
+class SignalUrgency(StrEnum):
+    """Urgency level của một ranked signal từ SignalEngine."""
+
+    CRITICAL = "CRITICAL"  # Cần hành động ngay hôm nay
+    HIGH     = "HIGH"      # Cần theo dõi trong 1-2 phiên
+    MEDIUM   = "MEDIUM"    # Cần review trong tuần
+    LOW      = "LOW"       # Thông tin nền, không urgent
+
+
+class Signal(BaseModel):
+    """Một tín hiệu đã được AI rank và cross-check với thesis + portfolio.
+
+    Là building block của SignalEngineOutput.ranked_signals.
+    Downstream: briefing (narrative injection), readmodel (NOW bucket),
+    bot (ACT_TODAY card), watchlist (priority update).
+    """
+
+    ticker: str
+    urgency: SignalUrgency
+    signal_type: str = Field(
+        description=(
+            "Loại tín hiệu. VD: 'thesis_threshold_met', 'technical_breakout', "
+            "'thesis_conflict', 'portfolio_concentration', 'catalyst_triggered'"
+        )
+    )
+    headline: str = Field(description="1 câu mô tả tín hiệu, actionable. VD: 'VHM vượt threshold entry trong thesis'")
+    thesis_context: str | None = Field(
+        default=None,
+        description=(
+            "Liên kết với thesis hiện tại nếu có. "
+            "VD: 'Thesis chờ P/B < 1.2 — hiện tại 1.18, đã trigger'. "
+            "None nếu không có thesis cho ticker này."
+        ),
+    )
+    portfolio_context: str | None = Field(
+        default=None,
+        description=(
+            "Liên kết với portfolio exposure nếu có. "
+            "VD: 'Đang hold 12% NAV — signal này ảnh hưởng trực tiếp'. "
+            "None nếu không có position."
+        ),
+    )
+    recommended_action: str = Field(
+        description="Hành động đề xuất cụ thể. VD: 'Review entry plan', 'Set alert at 28,500'"
+    )
+    confidence: float = Field(ge=0.0, le=1.0)
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def coerce_conf(cls, v: object) -> float:
+        return _coerce_confidence(v)
+
+
+class RiskAlert(BaseModel):
+    """Cảnh báo rủi ro cross-segment từ SignalEngine.
+
+    Khác với Signal (opportunity-focused), RiskAlert là cờ đỏ:
+    portfolio concentration, thesis invalidation risk, macro shock.
+    """
+
+    alert_type: str = Field(
+        description=(
+            "Loại rủi ro. VD: 'portfolio_concentration', 'thesis_invalidation_risk', "
+            "'macro_regime_shift', 'correlated_exposure'"
+        )
+    )
+    severity: RiskLevel
+    description: str = Field(description="Mô tả rủi ro cụ thể, có số liệu nếu có")
+    affected_tickers: list[str] = Field(
+        default_factory=list,
+        description="Các tickers bị ảnh hưởng bởi rủi ro này",
+    )
+    mitigation_hint: str = Field(
+        default="",
+        description="Gợi ý giảm thiểu rủi ro. Rỗng nếu AI không có đề xuất cụ thể.",
+    )
+
+
+class OpportunityHint(BaseModel):
+    """Cửa sổ cơ hội ngắn hạn được SignalEngine phát hiện."""
+
+    ticker: str
+    opportunity_type: str = Field(
+        description=(
+            "VD: 'entry_window', 'add_position', 'sector_rotation_play', 'catalyst_proximity'"
+        )
+    )
+    time_sensitivity: str = Field(
+        description="Khung thời gian còn hiệu lực. VD: 'Hôm nay', 'Trong tuần', '1-2 phiên'"
+    )
+    rationale: str = Field(description="Lý do tại sao đây là cơ hội ngay lúc này")
+    condition: str | None = Field(
+        default=None,
+        description="Điều kiện để cơ hội trở thành hành động cụ thể. None = đã actionable ngay.",
+    )
+
+
+class SignalEngineOutput(BaseModel):
+    """Structured output from SignalEngineAgent.
+
+    Owner: ai segment.
+    Input: watchlist × thesis × portfolio × market × feedback_history.
+    Output feeds: briefing (narrative), watchlist (priority), thesis (review trigger),
+                  readmodel (NOW bucket), bot (ACT_TODAY cards).
+
+    Đây là trái tim của Intelligence Loop — mọi segment khác đều consume output này.
+    """
+
+    snapshot_date: str = Field(description="Ngày chạy signal engine, format YYYY-MM-DD")
+    ranked_signals: list[Signal] = Field(
+        default_factory=list,
+        description=(
+            "Signals đã rank theo urgency × confidence, từ cao đến thấp. "
+            "Max 10 signals — chỉ giữ những gì thực sự actionable."
+        ),
+    )
+    thesis_review_triggers: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Tickers cần ThesisJudgeAgent review ngay. "
+            "AI điền khi có mâu thuẫn giữa market data và thesis assumptions."
+        ),
+    )
+    risk_alerts: list[RiskAlert] = Field(
+        default_factory=list,
+        description="Cờ đỏ cross-segment. Ưu tiên hiển thị trước ranked_signals.",
+    )
+    opportunity_windows: list[OpportunityHint] = Field(
+        default_factory=list,
+        description="Cửa sổ cơ hội ngắn hạn được phát hiện qua cross-check.",
+    )
+    portfolio_concentration_note: str = Field(
+        default="",
+        description=(
+            "Nhận xét về concentration risk của portfolio hiện tại. "
+            "VD: 'Over-weight BĐS 65% — 3 thesis có thể invalidate đồng thời nếu lãi suất tăng'. "
+            "Rỗng nếu portfolio không có vấn đề concentration."
+        ),
+    )
+    confidence: float = Field(ge=0.0, le=1.0, description="Độ tin cậy tổng thể của engine run này")
+    reasoning_summary: str = Field(
+        description="Tóm tắt ngắn logic của engine run này. Dùng cho debug và audit trail."
+    )
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def coerce_conf(cls, v: object) -> float:
+        return _coerce_confidence(v)
+
+    @field_validator(
+        "ranked_signals", "risk_alerts", "opportunity_windows", "thesis_review_triggers",
+        mode="before",
+    )
+    @classmethod
+    def ensure_list(cls, v: object) -> list[object]:
+        if not isinstance(v, list):
+            return []
+        return v  # type: ignore[return-value]
+
+    @model_validator(mode="after")
+    def cap_ranked_signals(self) -> "SignalEngineOutput":
+        """Giới hạn ranked_signals tối đa 10 items, giữ urgency cao nhất trước."""
+        _urgency_order = {
+            SignalUrgency.CRITICAL: 0,
+            SignalUrgency.HIGH: 1,
+            SignalUrgency.MEDIUM: 2,
+            SignalUrgency.LOW: 3,
+        }
+        if len(self.ranked_signals) > 10:
+            self.ranked_signals = sorted(
+                self.ranked_signals,
+                key=lambda s: (_urgency_order.get(s.urgency, 9), -s.confidence),
+            )[:10]
+        return self
+
+
+# ---------------------------------------------------------------------------
+# Thesis Judge  (used by ThesisJudgeAgent — Wave 1)
+# ---------------------------------------------------------------------------
+
+
+class ThesisConvictionDelta(StrEnum):
+    """Hướng thay đổi conviction so với lần review trước."""
+
+    STRENGTHENING = "STRENGTHENING"  # Thesis đang được thực tế ủng hộ thêm
+    STABLE        = "STABLE"         # Không có thay đổi đáng kể
+    WEAKENING     = "WEAKENING"      # Một số assumption bắt đầu lung lay
+    INVALIDATING  = "INVALIDATING"   # Thesis đang trên đường bị phủ nhận
+
+
+class ThesisJudgeVerdict(StrEnum):
+    ON_TRACK    = "ON_TRACK"    # Thesis diễn ra đúng kế hoạch
+    WEAKENING   = "WEAKENING"   # Thesis còn hiệu lực nhưng đang yếu dần
+    INVALIDATED = "INVALIDATED" # Thesis đã bị thực tế phủ nhận
+    STRENGTHENING = "STRENGTHENING"  # Thesis mạnh hơn kỳ vọng ban đầu
+
+
+class ChallengedAssumption(BaseModel):
+    """Một assumption đang bị thực tế thách thức.
+
+    Dùng bởi ThesisJudgeOutput để chỉ ra assumption cụ thể nào
+    không còn đúng — không phải toàn bộ thesis.
+    """
+
+    assumption_id: int = Field(
+        default=0,
+        description="Assumption.id trong DB. 0 nếu assumption là free-text.",
+    )
+    description: str = Field(description="Nội dung assumption bị thách thức")
+    challenge_evidence: str = Field(
+        description=(
+            "Bằng chứng cụ thể từ market/news/macro đang mâu thuẫn với assumption này. "
+            "Phải có số liệu hoặc sự kiện cụ thể — không được chung chung."
+        )
+    )
+    severity: Literal["minor", "major", "critical"] = Field(
+        description=(
+            "minor = ảnh hưởng nhỏ, thesis vẫn valid; "
+            "major = cần review; "
+            "critical = có thể invalidate thesis"
+        )
+    )
+
+
+class ThesisJudgeOutput(BaseModel):
+    """Structured output from ThesisJudgeAgent.
+
+    Owner: ai segment.
+    Triggered by: SignalEngine.thesis_review_triggers hoặc manual /review command.
+    Output feeds: briefing (narrative), readmodel (thesis health score),
+                  watchlist (alert nếu INVALIDATED), bot (verdict card).
+
+    Không tự persist — ThesisService nhận output này và tạo ThesisReview record
+    với status PENDING, chờ user confirm.
+    """
+
+    ticker: str
+    thesis_id: int = Field(description="Thesis.id trong DB")
+    verdict: ThesisJudgeVerdict
+    conviction_delta: ThesisConvictionDelta = Field(
+        description="Thesis conviction đang thay đổi theo hướng nào so với trước?"
+    )
+    confidence: float = Field(ge=0.0, le=1.0)
+    challenged_assumptions: list[ChallengedAssumption] = Field(
+        default_factory=list,
+        description=(
+            "Các assumption đang bị thực tế thách thức. "
+            "Rỗng nếu tất cả assumptions vẫn intact."
+        ),
+    )
+    new_risks: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Rủi ro mới xuất hiện chưa được capture trong thesis ban đầu. "
+            "AI điền khi phát hiện risk factor không có trong assumptions hay catalysts."
+        ),
+    )
+    action: Literal["hold", "reduce", "review", "exit_signal"] = Field(
+        description=(
+            "hold = giữ nguyên position và thesis; "
+            "reduce = cân nhắc giảm position; "
+            "review = cần review thesis ngay; "
+            "exit_signal = thesis đã bị invalidate, xem xét thoát"
+        )
+    )
+    reasoning: str = Field(
+        description="Lý giải tổng hợp của AI, 2-3 câu, dùng cho briefing narrative."
+    )
+    days_since_written: int = Field(
+        default=0,
+        description="Số ngày từ khi thesis được viết — context cho AI và user.",
+    )
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def coerce_conf(cls, v: object) -> float:
+        return _coerce_confidence(v)
+
+    @field_validator("challenged_assumptions", mode="before")
+    @classmethod
+    def ensure_challenged_list(cls, v: object) -> list[object]:
+        if not isinstance(v, list):
+            return []
+        return v  # type: ignore[return-value]
+
+    @field_validator("new_risks", mode="before")
+    @classmethod
+    def ensure_str_list(cls, v: object) -> list[object]:
+        if isinstance(v, str):
+            return [v]
+        if not isinstance(v, list):
+            return []
+        return v  # type: ignore[return-value]
+
+
+# ---------------------------------------------------------------------------
+# Feedback Event  (Wave 1 — feedback_store contract)
+# ---------------------------------------------------------------------------
+
+
+class UserFeedbackAction(StrEnum):
+    """Hành động user thực hiện sau khi nhận signal / brief / recommendation."""
+
+    ACTED     = "acted"     # User đã hành động theo đề xuất
+    IGNORED   = "ignored"   # User đọc nhưng bỏ qua
+    DISAGREED = "disagreed" # User không đồng ý với AI
+    DEFERRED  = "deferred"  # User đồng ý nhưng chưa làm ngay
+
+
+class FeedbackOutcome(StrEnum):
+    """Kết quả thực tế sau N ngày — điền muộn hơn khi có thông tin."""
+
+    CORRECT   = "correct"   # AI đúng, user làm đúng
+    WRONG     = "wrong"     # AI sai hoặc user làm sai
+    MIXED     = "mixed"     # Một phần đúng
+    UNKNOWN   = "unknown"   # Chưa đủ thời gian để đánh giá
+
+
+class FeedbackEvent(BaseModel):
+    """Ghi lại phản hồi của user với một signal / recommendation cụ thể.
+
+    Owner: platform segment (persist) + ai segment (consume for learning).
+    Không phải AI output — đây là user input được structured để
+    signal_engine consume trong vòng lặp tiếp theo.
+
+    signal_source: agent hoặc capability đã tạo ra signal.
+    VD: 'signal_engine:VHM', 'watchdog:TCB', 'brief:morning_20260513'
+
+    outcome: điền muộn hơn (sau N ngày) khi user có thể đánh giá kết quả thực tế.
+    Rỗng lúc đầu — bot có thể nhắc user fill sau 5-10 ngày.
+    """
+
+    signal_id: str = Field(
+        description=(
+            "ID định danh signal / recommendation. "
+            "Format: '{source}:{ticker}:{date}' hoặc UUID. "
+            "VD: 'signal_engine:VHM:2026-05-13'"
+        )
+    )
+    ticker: str | None = Field(
+        default=None,
+        description="Ticker liên quan. None nếu signal là market-level.",
+    )
+    signal_source: str = Field(
+        description=(
+            "Agent / capability đã tạo signal. "
+            "VD: 'signal_engine', 'watchdog', 'brief', 'stress_test', 'pre_trade'"
+        )
+    )
+    user_action: UserFeedbackAction
+    reason: str | None = Field(
+        default=None,
+        description=(
+            "Lý do user thực hiện action này. Opt-in — không bắt buộc. "
+            "VD: 'Thesis chưa đủ catalyst', 'Giá còn cao', 'Không đồng ý với risk assessment'"
+        ),
+    )
+    outcome: FeedbackOutcome = Field(
+        default=FeedbackOutcome.UNKNOWN,
+        description="Kết quả thực tế — điền muộn hơn. Default UNKNOWN.",
+    )
+    outcome_note: str | None = Field(
+        default=None,
+        description="Ghi chú về kết quả. VD: 'Giá tăng 8% sau 5 ngày như AI dự báo'.",
+    )
+    signal_confidence_at_time: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Confidence của AI lúc tạo signal — snapshot để calibrate sau này. "
+            "Copy từ Signal.confidence hoặc relevant output field."
+        ),
+    )
+
+    @field_validator("signal_confidence_at_time", mode="before")
+    @classmethod
+    def coerce_conf(cls, v: object) -> float | None:
+        if v is None:
+            return None
+        return _coerce_confidence(v)
