@@ -85,6 +85,13 @@
        → consistent visual rhythm with all other .panel-header blocks
      - .list max-height: 300px → clamp(220px, 30vh, 300px)
        → avoids over-tall list on short-viewport mobile
+
+   FIX LOG (2026-05-12):
+     - .cluster inner overrides: add .decision-layer to same reset group as
+       .validation-layer + .lb-strip → decision panel aligns with all other
+       full-width panels inside cluster (margin-inline:0, width:100%, padding-inline:0)
+     - .cluster .validation-layer / .lb-strip: add width:100% (was missing)
+       → consistent contract across all cluster full-width panel resets
 */
 
 /* ── SKIP LINK ──────────────────────────────────── */
@@ -817,6 +824,11 @@
 }
 
 /* ── Cluster inner override: prevent double padding/margin ────────────────── */
+/*
+   FIX (2026-05-12): Unified contract for all full-width panels inside .cluster.
+   All panels must reset their own outer geometry and let .cluster own the gutter.
+   Rule: margin-inline:0 | max-width:100% | width:100% | padding-inline:0
+*/
 .cluster .watchlist-layer,
 .cluster .portfolio-layer {
   margin-inline: 0;
@@ -828,9 +840,11 @@
 }
 
 .cluster .validation-layer,
-.cluster .lb-strip {
+.cluster .lb-strip,
+.cluster .decision-layer {
   margin-inline: 0;
   max-width: 100%;
+  width: 100%;
   padding-inline: 0;
 }
 
