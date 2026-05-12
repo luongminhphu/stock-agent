@@ -243,6 +243,60 @@ class PrioritizedAction(BaseModel):
         description="Độ tin cậy của AI với action này. Hiển thị nếu < 0.7.",
     )
 
+    # Intelligence Spine extensions — optional, AI có thể không điền
+    condition: str | None = Field(
+        default=None,
+        description=(
+            "Điều kiện kích hoạt action này. "
+            "VD: 'Chỉ nếu TCB về dưới 29,000'. None = unconditional."
+        ),
+    )
+    if_ignored_consequence: str | None = Field(
+        default=None,
+        description=(
+            "Hậu quả cụ thể nếu bỏ qua action này. "
+            "VD: 'Holding 15% không có exit plan khi thesis đang yếu'."
+        ),
+    )
+    causal_source: str | None = Field(
+        default=None,
+        description=(
+            "Agent hoặc signal đã trigger action này. "
+            "VD: 'stress_test:VHM', 'watchdog:TCB', 'briefing:market_context'."
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Intelligence Spine — Action Queue
+# ---------------------------------------------------------------------------
+
+
+class ActionQueue(BaseModel):
+    """Distilled action list từ prioritized_actions của BriefOutput.
+
+    Được populate bởi BriefOutput.build_action_queue model_validator sau khi
+    AI trả về — không yêu cầu AI tự điền trực tiếp.
+
+    Downstream (bot formatter, readmodel) nên dùng field này thay vì tự
+    sort/filter prioritized_actions.
+
+    top_action: ACT_TODAY item có confidence cao nhất. None nếu không có.
+    queue: full list sorted ACT_TODAY → WATCH_MORE → SKIP_TODAY, max 5.
+    signal_summary: header line cho Discord. Format: "🔴 TCB, VHM  🟡 HPG"
+    """
+
+    top_action: PrioritizedAction | None = Field(default=None)
+    queue: list[PrioritizedAction] = Field(default_factory=list)
+    signal_summary: str = Field(
+        default="",
+        description=(
+            "1-line summary cho bot header. "
+            "Format: '🔴 <urgent tickers>  🟡 <watch tickers>'. "
+            "VD: '🔴 TCB, VHM  🟡 HPG' hoặc '🔴 0 urgent  🟡 HPG, SSI'."
+        ),
+    )
+
 
 class WatchlistTickerSummary(BaseModel):
     ticker: str
@@ -304,6 +358,15 @@ class BriefOutput(BaseModel):
             "hoặc gợi ý cần chú ý. Rỗng nếu không có portfolio data."
         ),
     )
+    action_queue: ActionQueue = Field(
+        default_factory=ActionQueue,
+        description=(
+            "Derived từ prioritized_actions — không do AI điền trực tiếp. "
+            "Populated bởi build_action_queue model_validator. "
+            "Downstream (bot, formatter, readmodel) dùng field này thay vì "
+            "tự sort/filter prioritized_actions."
+        ),
+    )
 
     @field_validator("prioritized_actions", mode="before")
     @classmethod
@@ -311,6 +374,55 @@ class BriefOutput(BaseModel):
         if not isinstance(v, list):
             return []
         return v  # type: ignore[return-value]
+
+    @model_validator(mode="after")
+    def build_action_queue(self) -> "BriefOutput":
+        """Derive ActionQueue từ prioritized_actions sau khi AI parse xong.
+
+        Logic:
+        - queue: sorted ACT_TODAY → WATCH_MORE → SKIP_TODAY, max 5,
+                 tiebreak by confidence descending
+        - top_action: ACT_TODAY item có confidence cao nhất; None nếu không có
+        - signal_summary: "🔴 <urgent tickers>  🟡 <watch tickers>"
+                          ticker label khi có ticker, fallback "0 urgent" / "0 watch"
+
+        Guard: nếu prioritized_actions rỗng, giữ nguyên default ActionQueue.
+        """
+        actions = self.prioritized_actions
+        if not actions:
+            return self
+
+        _priority_order = {
+            ActionPriority.ACT_TODAY: 0,
+            ActionPriority.WATCH_MORE: 1,
+            ActionPriority.SKIP_TODAY: 2,
+        }
+        sorted_actions = sorted(
+            actions,
+            key=lambda a: (_priority_order.get(a.priority, 9), -a.confidence),
+        )[:5]
+
+        act_today = [a for a in sorted_actions if a.priority == ActionPriority.ACT_TODAY]
+        watch_more = [a for a in sorted_actions if a.priority == ActionPriority.WATCH_MORE]
+
+        top = max(act_today, key=lambda a: a.confidence) if act_today else None
+
+        urgent_str = (
+            ", ".join(a.ticker for a in act_today if a.ticker)
+            or "0 urgent"
+        )
+        watch_str = (
+            ", ".join(a.ticker for a in watch_more if a.ticker)
+            or "0 watch"
+        )
+        signal_summary = f"🔴 {urgent_str}  🟡 {watch_str}"
+
+        self.action_queue = ActionQueue(
+            top_action=top,
+            queue=sorted_actions,
+            signal_summary=signal_summary,
+        )
+        return self
 
 
 # ---------------------------------------------------------------------------
