@@ -578,3 +578,81 @@ export async function loadConvictionTimeline(thesisId) {
       </div>`;
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Spark chart — mini inline version cho thesis table row
+// ─────────────────────────────────────────────────────────────────────────────
+
+const _sparkInstances = new Map();
+
+/**
+ * Destroy spark chart instance để tránh memory leak khi table re-render.
+ */
+export function destroySpark(thesisId) {
+  const key = `spark:${thesisId}`;
+  if (_sparkInstances.has(key)) { _sparkInstances.get(key).destroy(); _sparkInstances.delete(key); }
+}
+
+/**
+ * Render spark chart vào canvasEl từ conviction-timeline points.
+ * Dùng cho thesis table row — không cần annotation plugin.
+ * Color theo tierColor() của latest score — nhất quán với full chart.
+ */
+export function renderSparkChart(canvasEl, points, thesisId) {
+  destroySpark(thesisId);
+  if (!points?.length) return;
+
+  const scores = points.map(p => Number(p.score ?? 0));
+  const latest = scores[scores.length - 1];
+  const color  = tierColor(latest);
+
+  const ctx = canvasEl.getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 0, 40);
+  grad.addColorStop(0, hexToRgba(color, 0.3));
+  grad.addColorStop(1, hexToRgba(color, 0));
+
+  const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: scores.map((_, i) => i),
+      datasets: [{
+        data: scores,
+        borderColor: color,
+        backgroundColor: grad,
+        borderWidth: 1.5,
+        tension: 0.4,
+        fill: true,
+        pointRadius: 0,
+        pointHoverRadius: 3,
+      }],
+    },
+    options: {
+      responsive: false,
+      animation: false,
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: {
+        x: { display: false },
+        y: { display: false, min: 0, max: 100 },
+      },
+    },
+  });
+
+  _sparkInstances.set(`spark:${thesisId}`, chart);
+  return chart;
+}
+
+/**
+ * Fetch conviction-timeline rồi render spark vào canvasEl.
+ * Gọi bởi IntersectionObserver trong render-thesis-table.js.
+ * Silent fail — spark là progressive enhancement, không block table render.
+ */
+export async function loadSparkChart(thesisId, canvasEl) {
+  try {
+    await ensureChartJs();
+    const data = await getJson(`${thesisApiBase()}/${thesisId}/conviction-timeline`);
+    if (!data?.points?.length) return;
+    renderSparkChart(canvasEl, data.points, thesisId);
+  } catch (_) {
+    // silent fail
+  }
+}
