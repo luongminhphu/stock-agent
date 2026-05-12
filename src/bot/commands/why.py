@@ -16,14 +16,14 @@ from src.platform.logging import get_logger
 logger = get_logger(__name__)
 
 _DIR_EMOJI = {
-    MovementDirection.UP: "📈",
-    MovementDirection.DOWN: "📉",
-    MovementDirection.FLAT: "➡️",
+    MovementDirection.UP:       "📈",
+    MovementDirection.DOWN:     "📉",
+    MovementDirection.SIDEWAYS: "➡️",
 }
 _DIR_COLOR = {
-    MovementDirection.UP: discord.Color.green(),
-    MovementDirection.DOWN: discord.Color.red(),
-    MovementDirection.FLAT: discord.Color.greyple(),
+    MovementDirection.UP:       discord.Color.green(),
+    MovementDirection.DOWN:     discord.Color.red(),
+    MovementDirection.SIDEWAYS: discord.Color.greyple(),
 }
 
 
@@ -44,7 +44,8 @@ class WhyCog(BaseCog):
             await self.send_error(
                 interaction,
                 title="Phân tích thất bại",
-                description=f"Không thể phân tích `{ticker.upper()}`.\n`{exc}`",
+                description=f"Không thể phân tích `{ticker.upper()}`.
+`{exc}`",
             )
             return
 
