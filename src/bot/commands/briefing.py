@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import discord
 from discord import app_commands
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.ai.schemas import BriefOutput, MarketSentiment
 from src.bot.commands.base import BaseCog
@@ -25,10 +24,14 @@ from src.watchlist.service import WatchlistService
 logger = get_logger(__name__)
 
 _SENTIMENT_COLOUR = {
-    MarketSentiment.BULLISH:  discord.Color.green(),
-    MarketSentiment.BEARISH:  discord.Color.red(),
-    MarketSentiment.NEUTRAL:  discord.Color.greyple(),
-    MarketSentiment.MIXED:    discord.Color.gold(),
+    MarketSentiment.RISK_ON:   discord.Color.green(),
+    MarketSentiment.RISK_OFF:  discord.Color.red(),
+    MarketSentiment.MIXED:     discord.Color.gold(),
+    MarketSentiment.UNCERTAIN: discord.Color.greyple(),
+    # Legacy fallbacks
+    MarketSentiment.BULLISH:   discord.Color.green(),
+    MarketSentiment.BEARISH:   discord.Color.red(),
+    MarketSentiment.NEUTRAL:   discord.Color.greyple(),
 }
 
 _OUTCOME_LABEL = {
@@ -96,7 +99,6 @@ class BriefFeedbackView(discord.ui.View):
         await interaction.response.send_message(
             f"Ghi nhận: **{label}**", ephemeral=True
         )
-        # Disable all buttons after response to prevent double-click
         for child in self.children:
             if isinstance(child, discord.ui.Button):
                 child.disabled = True
@@ -144,7 +146,6 @@ class BriefingCog(BaseCog):
 
         embed = build_brief_embed(brief_result.output, phase=phase)
 
-        # Attach feedback buttons only when snapshot was persisted
         if brief_result.snapshot_id is not None:
             view = BriefFeedbackView(
                 snapshot_id=brief_result.snapshot_id,

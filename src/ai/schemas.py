@@ -1,4 +1,10 @@
-"""\nStructured output schemas for all AI agents.\n\nThese Pydantic models define the contract between the AI layer and\ncalling segments. All structured responses from Perplexity must\nparse into one of these schemas.\n"""
+"""
+Structured output schemas for all AI agents.
+
+These Pydantic models define the contract between the AI layer and
+calling segments. All structured responses from Perplexity must
+parse into one of these schemas.
+"""
 
 from enum import StrEnum
 from typing import Literal
@@ -119,10 +125,21 @@ class ThesisReviewOutput(BaseModel):
 
 
 class MarketSentiment(StrEnum):
-    BULLISH = "BULLISH"
-    BEARISH = "BEARISH"
-    NEUTRAL = "NEUTRAL"
-    MIXED = "MIXED"
+    """Market sentiment values used by BriefingAgent.
+
+    Canonical values (AI prompt instructs these): RISK_ON, RISK_OFF, MIXED, UNCERTAIN.
+    Legacy values (kept for backward compat with old BriefSnapshot DB records): BULLISH, BEARISH, NEUTRAL.
+    """
+
+    # Canonical — AI prompt: brief.py instructs "RISK_ON | RISK_OFF | MIXED | UNCERTAIN"
+    RISK_ON   = "RISK_ON"
+    RISK_OFF  = "RISK_OFF"
+    MIXED     = "MIXED"
+    UNCERTAIN = "UNCERTAIN"
+    # Legacy — kept for backward compat; do not use in new prompts
+    BULLISH   = "BULLISH"
+    BEARISH   = "BEARISH"
+    NEUTRAL   = "NEUTRAL"
 
 
 class ActionPriority(StrEnum):
@@ -139,6 +156,12 @@ class PrioritizedAction(BaseModel):
     action: str = Field(description="Short action description")
     rationale: str = Field(description="Why this action at this priority")
     confidence: float = Field(ge=0.0, le=1.0, default=0.5)
+
+    # NOTE: 'reason' is an alias for 'rationale' consumed by formatter.py.
+    # formatter.py reads a.reason; Pydantic exposes it via property below.
+    @property
+    def reason(self) -> str:
+        return self.rationale
 
     @field_validator("confidence", mode="before")
     @classmethod
@@ -177,8 +200,13 @@ class WatchlistTickerSummary(BaseModel):
     """Per-ticker summary in a brief."""
 
     ticker: str
-    verdict: Verdict
-    one_liner: str = Field(description="One-sentence summary for this ticker")
+    price: float = Field(default=0.0, description="Current price")
+    change_pct: float = Field(default=0.0, description="Price change % today")
+    signal: str = Field(default="neutral", description="bullish | bearish | neutral")
+    one_line: str = Field(description="One-sentence summary for this ticker")
+    watch_reason: str = Field(default="", description="Why this is on watchlist")
+    verdict: Verdict = Verdict.NEUTRAL
+    one_liner: str = Field(default="", description="Alias for one_line (legacy)")
     confidence: float = Field(ge=0.0, le=1.0, default=0.5)
 
     @field_validator("confidence", mode="before")
@@ -253,17 +281,7 @@ class BriefOutput(BaseModel):
 
     @model_validator(mode="after")
     def build_action_queue(self) -> "BriefOutput":
-        """Derive ActionQueue từ prioritized_actions sau khi AI parse xong.
-
-        Logic:
-        - queue: sorted ACT_TODAY → WATCH_MORE → SKIP_TODAY, max 5,
-                 tiebreak by confidence descending
-        - top_action: ACT_TODAY item có confidence cao nhất; None nếu không có
-        - signal_summary: "🔴 <urgent tickers>  🟡 <watch tickers>"
-                          ticker label khi có ticker, fallback "0 urgent" / "0 watch"
-
-        Guard: nếu prioritized_actions rỗng, giữ nguyên default ActionQueue.
-        """
+        """Derive ActionQueue từ prioritized_actions sau khi AI parse xong."""
         actions = self.prioritized_actions
         if not actions:
             return self
@@ -719,7 +737,6 @@ class SectorRotationOutput(BaseModel):
     @model_validator(mode="after")
     def normalize_model_output(self) -> "SectorRotationOutput":
         """Normalize verbose/non-canonical market_regime values from model."""
-        # top_rotate_in / top_rotate_out: derive from sector_signals if missing
         if not self.top_rotate_in and self.sector_signals:
             self.top_rotate_in = [
                 s.sector
@@ -736,7 +753,6 @@ class SectorRotationOutput(BaseModel):
                     key=lambda s: -s.strength,
                 )[:3]
             ]
-        # confidence: derive from avg signal confidence float if top-level missing
         if self.confidence == 0.0 and self.sector_signals:
             strengths = [s.strength for s in self.sector_signals if s.strength > 0]
             if strengths:
@@ -979,10 +995,7 @@ class Signal(BaseModel):
 
 
 class RankedSignal(Signal):
-    """Signal with additional rank metadata from SignalEngineAgent.
-
-    Extends Signal with cross-signal context fields populated by the engine.
-    """
+    """Signal with additional rank metadata from SignalEngineAgent."""
 
     rank_score: float = Field(
         default=0.0,
@@ -1012,11 +1025,7 @@ class RankedSignal(Signal):
 
 
 class PortfolioRiskNote(BaseModel):
-    """Rule-based portfolio risk context. Not AI-generated.
-
-    Built by _build_portfolio_context() in SignalEngineAgent.
-    Injected into SignalEngineOutput.portfolio_context.
-    """
+    """Rule-based portfolio risk context. Not AI-generated."""
 
     top_concentration: list[str] = Field(
         default_factory=list,
@@ -1070,74 +1079,19 @@ class OpportunityHint(BaseModel):
 
 
 class SignalEngineOutput(BaseModel):
-    """Structured output from SignalEngineAgent.
+    """Structured output from SignalEngineAgent."""
 
-    Owner: ai segment.
-    Input: watchlist × thesis × portfolio × market × feedback_history.
-    Output feeds: briefing (narrative), watchlist (priority), thesis (review trigger),
-                  readmodel (NOW bucket), bot (ACT_TODAY cards).
-
-    Fields added for agent alignment (not AI-generated):
-      generated_at      — ISO timestamp of the engine run
-      signal_summary    — 1-line summary for bot header (🔴/🟡 format)
-      portfolio_context — rule-based PortfolioRiskNote from _build_portfolio_context()
-    """
-
-    snapshot_date: str = Field(
-        default="",
-        description="Ngày chạy signal engine, format YYYY-MM-DD",
-    )
-    # Agent-populated runtime fields (not from AI structured call)
-    generated_at: str = Field(
-        default="",
-        description="ISO 8601 timestamp khi engine chạy. Set bởi SignalEngineAgent.run().",
-    )
-    signal_summary: str = Field(
-        default="",
-        description=(
-            "1-line summary cho bot header. "
-            "Format: '🔴 <urgent tickers>  🟡 <watch tickers>'. "
-            "Set bởi agent sau khi AI call — không do AI điền."
-        ),
-    )
-    portfolio_context: PortfolioRiskNote = Field(
-        default_factory=PortfolioRiskNote,
-        description=(
-            "Rule-based portfolio risk context. "
-            "Set bởi _build_portfolio_context() — không do AI điền."
-        ),
-    )
-    ranked_signals: list[RankedSignal] = Field(
-        default_factory=list,
-        description=(
-            "Signals đã rank theo urgency × confidence, từ cao đến thấp. "
-            "Max 10 signals — chỉ giữ những gì thực sự actionable."
-        ),
-    )
-    thesis_review_triggers: list[str] = Field(
-        default_factory=list,
-        description=(
-            "Tickers cần ThesisJudgeAgent review ngay. "
-            "AI điền khi có mâu thuẫn giữa market data và thesis assumptions."
-        ),
-    )
-    risk_alerts: list[RiskAlert] = Field(
-        default_factory=list,
-        description="Cờ đỏ cross-segment. Ưu tiên hiển thị trước ranked_signals.",
-    )
-    opportunity_windows: list[OpportunityHint] = Field(
-        default_factory=list,
-        description="Cửa sổ cơ hội ngắn hạn được phát hiện qua cross-check.",
-    )
-    portfolio_concentration_note: str = Field(
-        default="",
-        description="Nhận xét về concentration risk. Rỗng nếu không có vấn đề.",
-    )
+    snapshot_date: str = Field(default="", description="Ngày chạy signal engine, format YYYY-MM-DD")
+    generated_at: str = Field(default="", description="ISO 8601 timestamp khi engine chạy.")
+    signal_summary: str = Field(default="", description="1-line summary cho bot header.")
+    portfolio_context: PortfolioRiskNote = Field(default_factory=PortfolioRiskNote)
+    ranked_signals: list[RankedSignal] = Field(default_factory=list)
+    thesis_review_triggers: list[str] = Field(default_factory=list)
+    risk_alerts: list[RiskAlert] = Field(default_factory=list)
+    opportunity_windows: list[OpportunityHint] = Field(default_factory=list)
+    portfolio_concentration_note: str = Field(default="")
     confidence: float = Field(ge=0.0, le=1.0, description="Độ tin cậy tổng thể")
-    reasoning_summary: str = Field(
-        default="",
-        description="Tóm tắt ngắn logic của engine run. Dùng cho debug và audit trail.",
-    )
+    reasoning_summary: str = Field(default="")
 
     @field_validator("confidence", mode="before")
     @classmethod
@@ -1184,13 +1138,7 @@ class ChallengedAssumption(BaseModel):
 
 
 class ThesisJudgeOutput(BaseModel):
-    """Structured output from ThesisJudgeAgent.
-
-    Owner: ai segment.
-    Triggered by: SignalEngine.thesis_review_triggers hoặc manual /review command.
-    Output feeds: briefing (narrative), readmodel (thesis health score),
-                  watchlist (alert nếu INVALIDATED), bot (verdict card).
-    """
+    """Structured output from ThesisJudgeAgent."""
 
     ticker: str
     thesis_id: str

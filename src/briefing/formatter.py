@@ -15,17 +15,25 @@ from collections import defaultdict
 from src.ai.schemas import ActionPriority, BriefOutput, MarketSentiment, PrioritizedAction
 
 _SENTIMENT_EMOJI = {
-    MarketSentiment.BULLISH:  "🟢",
-    MarketSentiment.BEARISH:  "🔴",
-    MarketSentiment.NEUTRAL:  "⚪",
-    MarketSentiment.MIXED:    "🟡",
+    MarketSentiment.RISK_ON:   "🟢",
+    MarketSentiment.RISK_OFF:  "🔴",
+    MarketSentiment.MIXED:     "🟡",
+    MarketSentiment.UNCERTAIN: "❓",
+    # Legacy fallbacks
+    MarketSentiment.BULLISH:   "🟢",
+    MarketSentiment.BEARISH:   "🔴",
+    MarketSentiment.NEUTRAL:   "⚪",
 }
 
 _SENTIMENT_LABEL = {
-    MarketSentiment.BULLISH:  "Bullish",
-    MarketSentiment.BEARISH:  "Bearish",
-    MarketSentiment.NEUTRAL:  "Neutral",
-    MarketSentiment.MIXED:    "Mixed",
+    MarketSentiment.RISK_ON:   "Risk-On",
+    MarketSentiment.RISK_OFF:  "Risk-Off",
+    MarketSentiment.MIXED:     "Mixed",
+    MarketSentiment.UNCERTAIN: "Uncertain",
+    # Legacy fallbacks
+    MarketSentiment.BULLISH:   "Bullish",
+    MarketSentiment.BEARISH:   "Bearish",
+    MarketSentiment.NEUTRAL:   "Neutral",
 }
 
 # Bucket config: (emoji, header label, show_reason, bold_ticker)
@@ -35,36 +43,15 @@ _PRIORITY_CONFIG: dict[ActionPriority, tuple[str, str, bool, bool]] = {
     ActionPriority.SKIP_TODAY: ("⚪",  "Bỏ qua hôm nay",     False, False),
 }
 
-# Discord Embed description hard limit; we stay 96 chars below to leave
-# room for the dropped-sections notice appended at the end.
 _DISCORD_CHAR_LIMIT = 4096
 _DEFAULT_CHAR_LIMIT = _DISCORD_CHAR_LIMIT - 96
 
 
 def _inline(text: str) -> str:
-    """Collapse stray single newlines to a space so tickers stay inline.
-
-    Double newlines (paragraph breaks) are preserved intentionally.
-    """
     return re.sub(r"(?<!\n)\n(?!\n)", " ", text).strip()
 
 
 def _format_prioritized_actions(actions: list[PrioritizedAction]) -> list[str]:
-    """Render prioritized_actions into Discord markdown lines.
-
-    Layout per bucket:
-
-      🔴 **Hành động hôm nay**
-      • **VCB** Review stop-loss trước 9h  — _Giá tiếp cận stop 82,000_ [conf: 0.6]
-
-      🟡 **Theo dõi thêm**
-      • VNM Chờ xác nhận volume phiên tiếp theo  — _Volume chưa đủ_
-
-      ⚪ _Bỏ qua: HPG, MSN_
-
-    SKIP_TODAY is collapsed to a single comma-joined line to save vertical space.
-    ACT_TODAY and WATCH_MORE render one bullet per action.
-    """
     if not actions:
         return []
 
@@ -74,7 +61,6 @@ def _format_prioritized_actions(actions: list[PrioritizedAction]) -> list[str]:
 
     lines: list[str] = []
 
-    # Render in fixed order: ACT_TODAY → WATCH_MORE → SKIP_TODAY
     for priority in (ActionPriority.ACT_TODAY, ActionPriority.WATCH_MORE, ActionPriority.SKIP_TODAY):
         items = buckets.get(priority)
         if not items:
@@ -83,7 +69,6 @@ def _format_prioritized_actions(actions: list[PrioritizedAction]) -> list[str]:
         emoji, header, show_reason, bold_ticker = _PRIORITY_CONFIG[priority]
 
         if priority == ActionPriority.SKIP_TODAY:
-            # Collapse to single line: ⚪ _Bỏ qua: HPG, MSN, VHM_
             tickers_or_actions = ", ".join(
                 (a.ticker or a.action[:20]) for a in items
             )
@@ -96,10 +81,10 @@ def _format_prioritized_actions(actions: list[PrioritizedAction]) -> list[str]:
             action_text = _inline(a.action)
             line = f"\u2022 {ticker_part}{action_text}"
 
-            if show_reason and a.reason:
-                line += f"  \u2014 _{_inline(a.reason)}_"
+            reason = getattr(a, "reason", None) or getattr(a, "rationale", None)
+            if show_reason and reason:
+                line += f"  \u2014 _{_inline(reason)}_"
 
-            # Flag low confidence explicitly so investor knows to double-check
             if a.confidence < 0.7:
                 line += f" `conf:{a.confidence:.0%}`"
 
@@ -109,16 +94,6 @@ def _format_prioritized_actions(actions: list[PrioritizedAction]) -> list[str]:
 
 
 def _build_sections(brief: BriefOutput, brief_type: str) -> list[list[str]]:
-    """Return brief content as an ordered list of line-groups (sections).
-
-    Each section is a list[str] that should be appended together.
-    Sections are ordered by investor priority:
-        1. Header (always included — never dropped)
-        2. Watchlist alerts
-        3. Prioritized actions / action items
-        4. Ticker summaries
-        5. Portfolio summary
-    """
     emoji = _SENTIMENT_EMOJI.get(brief.sentiment, "⚪")
     label = _SENTIMENT_LABEL.get(brief.sentiment, str(brief.sentiment))
 
@@ -155,13 +130,19 @@ def _build_sections(brief: BriefOutput, brief_type: str) -> list[list[str]]:
     if brief.ticker_summaries:
         block = ["", "**📊 Ticker**"]
         for ts in brief.ticker_summaries:
-            signal_emoji = {"bullish": "🟢", "bearish": "🔴", "neutral": "🟡"}.get(ts.signal, "⚪")
-            pct = f"+{ts.change_pct:.1f}%" if ts.change_pct >= 0 else f"{ts.change_pct:.1f}%"
-            block.append(
-                f"{signal_emoji} **{ts.ticker}** `{ts.price:,.0f}` ({pct}) \u2014 {ts.one_line}"
+            signal_emoji = {"bullish": "🟢", "bearish": "🔴", "neutral": "🟡"}.get(
+                getattr(ts, "signal", "neutral"), "⚪"
             )
-            if ts.watch_reason:
-                block.append(f"  \u21b3 _{ts.watch_reason}_")
+            price = getattr(ts, "price", 0.0)
+            change_pct = getattr(ts, "change_pct", 0.0)
+            one_line = getattr(ts, "one_line", "") or getattr(ts, "one_liner", "")
+            watch_reason = getattr(ts, "watch_reason", "")
+            pct = f"+{change_pct:.1f}%" if change_pct >= 0 else f"{change_pct:.1f}%"
+            block.append(
+                f"{signal_emoji} **{ts.ticker}** `{price:,.0f}` ({pct}) \u2014 {one_line}"
+            )
+            if watch_reason:
+                block.append(f"  \u21b3 _{watch_reason}_")
         sections.append(block)
 
     if brief.portfolio_summary:
@@ -174,25 +155,6 @@ def _build_sections(brief: BriefOutput, brief_type: str) -> list[list[str]]:
 
 
 def format_brief(brief: BriefOutput, brief_type: str = "brief", char_limit: int = _DEFAULT_CHAR_LIMIT) -> str:
-    """Format a BriefOutput as a Discord-ready markdown string.
-
-    Assembles sections in priority order and stops adding sections once
-    char_limit would be exceeded. Appends a notice when sections are
-    dropped so the investor knows the brief was clipped.
-
-    Prefers prioritized_actions over deprecated action_items.
-    Falls back to action_items if prioritized_actions is empty
-    (backward compat with old BriefSnapshot records).
-
-    Args:
-        brief:      Structured output from BriefingAgent.
-        brief_type: Label shown in the header (e.g. "Morning Brief", "EOD Brief").
-        char_limit: Max characters before a dropped-sections notice is appended.
-                    Defaults to 4000 to leave headroom within Discord's 4096 limit.
-
-    Returns:
-        Multi-line string with Discord markdown formatting, within char_limit.
-    """
     sections = _build_sections(brief, brief_type)
 
     assembled: list[str] = []
@@ -201,7 +163,6 @@ def format_brief(brief: BriefOutput, brief_type: str = "brief", char_limit: int 
     for i, section in enumerate(sections):
         candidate = "\n".join(assembled + section)
         if i == 0:
-            # Header is always included — it is always shorter than char_limit
             assembled += section
         elif len(candidate) <= char_limit:
             assembled += section
@@ -216,10 +177,8 @@ def format_brief(brief: BriefOutput, brief_type: str = "brief", char_limit: int 
 
 
 def format_morning_brief(brief: BriefOutput) -> str:
-    """Convenience wrapper for morning brief formatting."""
     return format_brief(brief, brief_type="Morning Brief")
 
 
 def format_eod_brief(brief: BriefOutput) -> str:
-    """Convenience wrapper for EOD brief formatting."""
     return format_brief(brief, brief_type="EOD Brief")
