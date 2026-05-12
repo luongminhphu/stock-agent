@@ -40,7 +40,7 @@ _stress_test_subscriber: object | None = None  # G4: StressTest → Watchlist br
 _opportunity_screen_scheduler: object | None = None  # Wave 3
 _opportunity_screen_subscriber: object | None = None  # Wave 3
 _signal_engine_agent: object | None = None   # Wave 2b: cross-check engine
-_signal_engine_listener: object | None = None  # Wave 2b: event handler — wired in Wave B2
+_signal_engine_listener: object | None = None  # Wave B2: fully wired
 
 _pnl_service_class: type | None = None
 
@@ -240,7 +240,7 @@ async def bootstrap() -> None:
                 reason="scheduler_user_id not configured",
             )
 
-    # ── G4: StressTest → Watchlist trigger bridge ─────────────────────────────
+    # ── G4: StressTest → Watchlist trigger bridge ───────────────────────────
     if _stress_test_subscriber is None:
         from src.watchlist.stress_test_subscriber import StressTestSubscriber
         from src.platform.db import AsyncSessionLocal
@@ -275,20 +275,26 @@ async def bootstrap() -> None:
         _opportunity_screen_subscriber.register()
         logger.info("platform.bootstrap.opportunity_screen_subscriber_ready")
 
-    # ── Wave 2b: SignalEngineListener (Wave B2 — deps not yet wired) ──────────
-    # SignalEngineListener requires watchdog_service, stress_test_service, and
-    # thesis_query — none available as singletons yet (session-scoped services).
-    # Wave B2 will introduce query-service adapters using session_factory pattern
-    # and enable this block. Until then we skip gracefully.
-    #
-    # TODO(Wave B2): wire WatchlistQueryService, StressTestQueryService,
-    #                ThesisQueryService and instantiate SignalEngineListener here.
+    # ── Wave B2: SignalEngineListener ──────────────────────────────────────────
+    # All 3 required deps are now available as session_factory-backed singletons.
+    # portfolio_query and feedback_service remain optional (None = degraded gracefully).
     if _signal_engine_listener is None:
-        logger.warning(
-            "platform.bootstrap.signal_engine_listener_skipped",
-            reason="deps not wired yet — pending Wave B2 (WatchlistQueryService, "
-                   "StressTestQueryService, ThesisQueryService)",
+        from src.ai.signal_engine_listener import SignalEngineListener
+        from src.thesis.watchlist_query_service import WatchlistQueryService
+        from src.thesis.stress_test_query_service import StressTestQueryService
+        from src.thesis.thesis_query_service import ThesisQueryService
+        from src.platform.db import AsyncSessionLocal
+
+        _signal_engine_listener = SignalEngineListener(
+            ai_client=_ai_client,  # type: ignore[arg-type]
+            watchdog_service=WatchlistQueryService(session_factory=AsyncSessionLocal),
+            stress_test_service=StressTestQueryService(session_factory=AsyncSessionLocal),
+            thesis_query=ThesisQueryService(session_factory=AsyncSessionLocal),
+            portfolio_query=None,   # Wave B3: wire when PortfolioQueryService ready
+            feedback_service=None,  # Wave B3: wire when FeedbackService ready
         )
+        _signal_engine_listener.register()
+        logger.info("platform.bootstrap.signal_engine_listener_ready")
 
     logger.info("platform.bootstrap.complete")
 
@@ -485,6 +491,11 @@ def get_signal_engine_agent():
     if _signal_engine_agent is None:
         raise RuntimeError("SignalEngineAgent not initialised — call bootstrap() first.")
     return _signal_engine_agent
+
+
+def get_signal_engine_listener():
+    """Return SignalEngineListener singleton, or None if not initialised."""
+    return _signal_engine_listener
 
 
 def get_opportunity_screen_scheduler():
