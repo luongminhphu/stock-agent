@@ -37,6 +37,17 @@ def _parse_json_field(value: str | None) -> list | dict | None:
         return value  # type: ignore[return-value]
 
 
+def _pnl_status(pnl_pct: float | None) -> str | None:
+    """Return a display label for P&L direction used by downstream renderers."""
+    if pnl_pct is None:
+        return None
+    if pnl_pct > 5:
+        return "profit"
+    if pnl_pct < -3:
+        return "loss"
+    return "neutral"
+
+
 class ThesisQueryService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -130,12 +141,16 @@ class ThesisQueryService:
 
             current_price: float | None = price_map.get(t.ticker)
             pos_data = position_map.get(t.ticker)
+            quantity: float | None = pos_data[0] if pos_data else None
             avg_cost: float | None = pos_data[1] if pos_data else None
             effective_entry: float | None = avg_cost if avg_cost else t.entry_price
 
             pnl_pct: float | None = None
+            pnl_abs: float | None = None
             if current_price and effective_entry and effective_entry > 0:
                 pnl_pct = round((current_price - effective_entry) / effective_entry * 100, 2)
+                if quantity and quantity > 0:
+                    pnl_abs = round(quantity * (current_price - effective_entry), 0)
 
             result.append(
                 {
@@ -152,6 +167,10 @@ class ThesisQueryService:
                     "stop_loss": t.stop_loss,
                     "current_price": current_price,
                     "pnl_pct": pnl_pct,
+                    "pnl_abs": pnl_abs,
+                    "pnl_status": _pnl_status(pnl_pct),
+                    "quantity": quantity,
+                    "has_position": bool(quantity and quantity > 0),
                     "created_at": t.created_at.isoformat() if t.created_at else None,
                     "updated_at": t.updated_at.isoformat() if t.updated_at else None,
                     "last_verdict": str(r.last_verdict) if r.last_verdict else None,
