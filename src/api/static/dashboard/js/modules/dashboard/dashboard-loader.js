@@ -322,24 +322,29 @@ export function renderSummary(s, portfolio) {
       pvSubNode.textContent = n > 0 ? `${n} vị thế` : '';
     }
 
+    // Unrealized P&L: số to (signal-value) + % nhỏ (signal-sub), màu theo dấu pnl
     if (pnlNode) {
       if (pnl != null) {
-        const sign = pnl >= 0 ? '+' : '';
+        const sign     = pnl >= 0 ? '+' : '';
+        const colorCls = pnl >= 0 ? 'kpi-safe' : 'kpi-risky';
+
         pnlNode.textContent = sign + fmtVnd(pnl);
-        pnlNode.className = pnl >= 0 ? 'kpi-safe' : 'kpi-risky';
+        pnlNode.className   = 'signal-value ' + colorCls;
+
+        if (pnlPctNode) {
+          const pctSign = (pct ?? 0) >= 0 ? '+' : '';
+          pnlPctNode.textContent = pct != null ? `${pctSign}${Number(pct).toFixed(2)}%` : '';
+          pnlPctNode.className   = 'signal-sub ' + colorCls;
+        }
+
         flashValue(pnlNode, pnl >= 0);
       } else {
         pnlNode.textContent = '—';
-      }
-    }
-
-    if (pnlPctNode) {
-      if (pct != null) {
-        const sign = pct >= 0 ? '+' : '';
-        pnlPctNode.textContent = `${sign}${Number(pct).toFixed(2)}%`;
-        pnlPctNode.className = pct >= 0 ? 'kpi-safe' : 'kpi-risky';
-      } else {
-        pnlPctNode.textContent = '';
+        pnlNode.className   = 'signal-value';
+        if (pnlPctNode) {
+          pnlPctNode.textContent = '';
+          pnlPctNode.className   = 'signal-sub';
+        }
       }
     }
   }
