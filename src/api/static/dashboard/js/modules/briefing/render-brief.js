@@ -104,6 +104,29 @@ export function renderFeedbackKpi(data) {
 }
 
 // ---------------------------------------------------------------------------
+// fmtReviewAge — returns { timeStr, ageBadge } for brief header timestamp
+// ---------------------------------------------------------------------------
+function fmtReviewAge(isoStr) {
+  if (!isoStr) return { timeStr: null, ageBadge: null };
+  const d     = new Date(isoStr);
+  const now   = new Date();
+  const diffH = (now - d) / 3_600_000;
+
+  const timeStr = d.toLocaleString('vi-VN', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+
+  let ageBadge = null;
+  if (diffH < 1)        ageBadge = { cls: 'age-fresh',  label: 'Vừa cập nhật' };
+  else if (diffH < 6)   ageBadge = { cls: 'age-recent', label: `${Math.floor(diffH)}h trước` };
+  else if (diffH < 24)  ageBadge = { cls: 'age-today',  label: `${Math.floor(diffH)}h trước` };
+  else                  ageBadge = { cls: 'age-stale',  label: `${Math.floor(diffH / 24)}d trước` };
+
+  return { timeStr, ageBadge };
+}
+
+// ---------------------------------------------------------------------------
 // Brief card (morning / eod)
 // ---------------------------------------------------------------------------
 export function renderBriefCard(phase, brief, dateStr, existingOutcome = null) {
@@ -126,13 +149,20 @@ export function renderBriefCard(phase, brief, dateStr, existingOutcome = null) {
 
   const ometa = existingOutcome ? (OUTCOME_META[existingOutcome] ?? null) : null;
 
+  const { timeStr: reviewTime, ageBadge: reviewBadge } = fmtReviewAge(brief.created_at ?? brief.generated_at);
+
   return `
     <div class="brief-card phase-${isEod ? 'eod' : 'morning'}">
       <div class="brief-header">
         <div class="brief-phase-icon">${icon}</div>
         <div>
           <div class="brief-phase-label">${label}</div>
-          <div class="brief-date">${dateStr ?? fmtDate(brief.created_at)}</div>
+          <div class="brief-date-row">
+            <span class="brief-date">🕐 ${reviewTime ?? dateStr ?? '—'}</span>
+            ${reviewBadge
+              ? `<span class="brief-age-badge ${reviewBadge.cls}">${reviewBadge.label}</span>`
+              : ''}
+          </div>
         </div>
         ${smeta
           ? `<span class="sentiment-badge ${smeta.cls}">${smeta.icon} ${smeta.label}</span>`
