@@ -5,6 +5,15 @@
    Utilities (.hidden, .spinner, .empty-state, …) → utilities.css
 ──────────────────────────────────────────────────────────────────────────── */
 
+/* ── Google Fonts: Roboto ───────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap');
+
+/* ── Font token override ────────────────────────────────────────────────────── */
+:root {
+  --font-body: 'Roboto', 'Inter', 'Helvetica Neue', sans-serif;
+  --font-mono: 'Roboto Mono', 'Fira Code', 'Cascadia Code', monospace;
+}
+
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 body {
