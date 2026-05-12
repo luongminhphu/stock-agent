@@ -172,14 +172,17 @@ class DashboardService:
                 )
             ).scalar_one_or_none()
 
+            # IMPORTANT: unpack parsed_content FIRST, then override with authoritative
+            # row fields so that any "created_at" / "id" / "phase" keys inside the
+            # stored JSON blob cannot shadow the real BriefSnapshot column values.
             return {
+                **parsed_content,
                 "id": row.id,
                 "user_id": row.user_id,
                 "phase": row.phase,
                 "content": row.content,
                 "created_at": row.created_at.isoformat() if row.created_at else None,
                 "feedback_outcome": feedback_outcome,
-                **parsed_content,
             }
         except Exception as exc:
             logger.warning("get_brief_latest.db_error", error=str(exc))
