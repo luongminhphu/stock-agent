@@ -24,6 +24,24 @@
   margin-bottom: var(--layer-gap, 16px);
 }
 
+/* ── Inner content padding — mirrors .panel-header horizontal rhythm ──────── */
+/* These blocks sit directly inside .decision-layer (whose padding-inline is   */
+/* reset to 0 by .cluster). They declare their own padding-inline to match     */
+/* the visual rhythm of .panel-header { padding: 16px var(--panel-pad) }       */
+/* used by all other panels (①–⑥).                                            */
+.dec-kpi-strip {
+  padding-inline: var(--panel-pad);
+}
+
+.dec-tab-bar {
+  padding-inline: var(--panel-pad);
+}
+
+.dec-content-pane {
+  padding-inline: var(--panel-pad);
+  padding-bottom: var(--panel-pad);
+}
+
 /* ── Tab bar (reuses .brief-tab-bar pattern) ────────────────────────────────────── */
 .dec-tab-bar {
   display: flex;
