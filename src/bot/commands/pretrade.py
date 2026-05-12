@@ -15,41 +15,50 @@ from src.platform.logging import get_logger
 logger = get_logger(__name__)
 
 _DECISION_META: dict[TradeDecision, dict] = {
-    TradeDecision.GO: {
+    TradeDecision.BUY: {
         "emoji": "\u2705",
         "label": "GO",
         "color": discord.Color.green(),
     },
-    TradeDecision.WAIT: {
+    TradeDecision.HOLD: {
         "emoji": "\u23f3",
         "label": "WAIT",
         "color": discord.Color.yellow(),
     },
-    TradeDecision.AVOID: {
+    TradeDecision.SELL: {
         "emoji": "\u274c",
         "label": "AVOID",
         "color": discord.Color.red(),
     },
+    TradeDecision.REDUCE: {
+        "emoji": "\u26a0\ufe0f",
+        "label": "REDUCE",
+        "color": discord.Color.orange(),
+    },
 }
 
 _ALIGNMENT_ICON: dict[AlignmentStatus, str] = {
-    AlignmentStatus.SUPPORT: "\u2705",
+    AlignmentStatus.ALIGNED: "\u2705",
     AlignmentStatus.NEUTRAL: "\u27a1\ufe0f",
-    AlignmentStatus.CONFLICT: "\u26a0\ufe0f",
-    AlignmentStatus.NO_DATA: "\u2753",
+    AlignmentStatus.MISALIGNED: "\u26a0\ufe0f",
 }
 
 # Category icon cho resolution steps
 _CATEGORY_ICON: dict[ResolutionCategory, str] = {
-    ResolutionCategory.PRICE:  "\U0001f4b0",  # 💰
-    ResolutionCategory.VOLUME: "\U0001f4ca",  # 📊
-    ResolutionCategory.NEWS:   "\U0001f4f0",  # 📰
-    ResolutionCategory.THESIS: "\U0001f4cb",  # 📋
-    ResolutionCategory.MACRO:  "\U0001f30d",  # 🌍
+    ResolutionCategory.THESIS_CONFLICT:    "\U0001f4cb",  # 📋
+    ResolutionCategory.RISK_LIMIT:         "\U0001f6a8",  # 🚨
+    ResolutionCategory.TIMING:             "\U0001f4b0",  # 💰
+    ResolutionCategory.MARKET_CONDITION:   "\U0001f4ca",  # 📊
+    ResolutionCategory.PORTFOLIO_BALANCE:  "\U0001f30d",  # 🌍
 }
 
-# Priority badge
-_PRIORITY_BADGE = {1: "[P1]", 2: "[P2]", 3: "[P3]"}
+# Priority badge — matches ResolutionStep.priority Literal
+_PRIORITY_BADGE = {
+    "BLOCKING": "[P1]",
+    "HIGH":     "[P2]",
+    "MEDIUM":   "[P3]",
+    "LOW":      "[P4]",
+}
 
 
 class PretradeCog(BaseCog):
@@ -87,7 +96,7 @@ class PretradeCog(BaseCog):
 
 
 def _build_pretrade_embed(result) -> discord.Embed:
-    meta = _DECISION_META.get(result.decision, _DECISION_META[TradeDecision.WAIT])
+    meta = _DECISION_META.get(result.decision, _DECISION_META[TradeDecision.HOLD])
     conf_bar = "\u2588" * round(result.confidence * 10) + "\u2591" * (10 - round(result.confidence * 10))
 
     embed = discord.Embed(
@@ -124,21 +133,20 @@ def _build_pretrade_embed(result) -> discord.Embed:
             inline=False,
         )
 
-    # Resolution Path — chỉ hiện khi decision != GO và có steps
+    # Resolution Path — chỉ hiện khi decision != BUY và có steps
     resolution_path = getattr(result, "resolution_path", []) or []
-    if resolution_path and result.decision != TradeDecision.GO:
-        # Sort by priority ascending (P1 trước), AI đã sort nhưng guard lại cho chắc
-        steps = sorted(resolution_path, key=lambda s: s.priority)
+    if resolution_path and result.decision != TradeDecision.BUY:
+        steps = sorted(resolution_path, key=lambda s: list(_PRIORITY_BADGE.keys()).index(s.priority) if s.priority in _PRIORITY_BADGE else 99)
         lines: list[str] = []
         for step in steps:
             cat_icon = _CATEGORY_ICON.get(step.category, "\u2022")
             badge = _PRIORITY_BADGE.get(step.priority, "[P?]")
             lines.append(
-                f"`{badge}` {cat_icon} **{step.condition}**"
-                f"\n\u00a0\u00a0\u00a0\u00a0\u21b3 {step.current_status}"
+                f"`{badge}` {cat_icon} **{step.issue}**"
+                f"\n\u00a0\u00a0\u00a0\u00a0\u21b3 {step.resolution}"
             )
         embed.add_field(
-            name="\U0001f5fa\ufe0f L\u1ed9 tr\u00ecnh → GO",  # 🗺️ Lộ trình → GO
+            name="\U0001f5fa\ufe0f L\u1ed9 tr\u00ecnh \u2192 GO",  # 🗺️ Lộ trình → GO
             value="\n".join(lines),
             inline=False,
         )
