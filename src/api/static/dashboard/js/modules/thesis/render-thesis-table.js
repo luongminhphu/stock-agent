@@ -1,7 +1,7 @@
 import { esc, fmtDate, fmtScore, badge, fmt, scoreClass } from '../../utils/format.js';
 import { renderScoreBreakdown } from './render-score.js';
 import { renderReviewRecommendSection } from './render-ai-review.js';
-import { convictionTimelineSlotHTML } from './render-conviction-timeline.js';
+import { convictionTimelineSlotHTML, loadSparkChart, destroySpark } from './render-conviction-timeline.js';
 import { quoteStripSkeletonHTML } from './market-quote.js';
 import { state } from '../../state/dashboard-state.js';
 
@@ -16,13 +16,14 @@ export function emptyDetailHTML() {
  * WAVE 2d — skeleton cho danh sách thesis table.
  */
 export function thesisTableSkeletonHTML(rows = 5) {
-  const cols = 6;
+  const cols = 7;
   const headerCells = Array.from({ length: cols }, () =>
     `<th><div class="skel skel-text" style="width:${30 + Math.random() * 40 | 0}%;"></div></th>`
   ).join('');
   const bodyRows = Array.from({ length: rows }, () => {
     const cells = Array.from({ length: cols }, (_, i) => {
       if (i === cols - 1) return `<td><div class="skel skel-badge" style="width:64px;"></div></td>`;
+      if (i === 3) return `<td><div class="skel" style="width:80px;height:36px;border-radius:4px;"></div></td>`;
       const w = [48, 72, 36, 52, 60, 40][i] ?? 50;
       return `<td><div class="skel skel-text" style="width:${w}%;"></div></td>`;
     }).join('');
@@ -150,6 +151,9 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
  * data-ticker + data-thesis-id on each <tr> enables the lesson→review
  * UI loop: decision-loader dispatches 'decision:lesson-persisted' with
  * a ticker, thesis-service finds the row via [data-ticker] and adds a badge.
+ *
+ * Spark chart: lazy-loaded per row via IntersectionObserver.
+ * destroySpark() called before re-render to prevent Chart.js instance leaks.
  */
 export function renderThesesTable(list, callbacks = {}) {
   const { onSelect = null, onEdit = null, onDelete = null } = callbacks ?? {};
@@ -159,11 +163,15 @@ export function renderThesesTable(list, callbacks = {}) {
     return;
   }
 
+  // Destroy existing spark instances trước khi re-render
+  list.forEach(t => destroySpark(t.id));
+
   wrap.innerHTML = `
     <table>
       <thead>
         <tr>
           <th>Mã</th><th>Tiêu đề</th><th>Score</th>
+          <th style="width:80px;text-align:center;">Trend</th>
           <th>Status</th><th>Cập nhật</th><th style="width:1%;white-space:nowrap;"></th>
         </tr>
       </thead>
@@ -183,6 +191,16 @@ export function renderThesesTable(list, callbacks = {}) {
                 ${(t.score_tier || t.score_tier_icon) ? `<span style="font-size:.78rem;color:var(--muted);">${esc(t.score_tier_icon ?? '')} ${esc(t.score_tier ?? '')}</span>` : ''}
               </div>
             </td>
+            <td style="padding:4px 8px;vertical-align:middle;">
+              <canvas
+                id="spark-${t.id}"
+                width="80"
+                height="36"
+                data-thesis-id="${t.id}"
+                aria-label="Conviction trend for ${esc(t.ticker)}"
+                style="display:block;"
+              ></canvas>
+            </td>
             <td>${badge(t.status)}</td>
             <td style="color:var(--muted);font-size:.82rem;">${fmtDate(t.updated_at)}</td>
             <td style="width:1%;white-space:nowrap;">
@@ -195,6 +213,7 @@ export function renderThesesTable(list, callbacks = {}) {
       </tbody>
     </table>`;
 
+  // Row click + action buttons
   wrap.querySelectorAll('tbody tr').forEach(row => {
     row.addEventListener('click', e => {
       if (e.target.closest('.edit-thesis-btn') || e.target.closest('.delete-thesis-btn')) return;
@@ -212,4 +231,17 @@ export function renderThesesTable(list, callbacks = {}) {
       onDelete?.(row.dataset.id);
     });
   });
+
+  // Lazy-load spark charts khi row visible
+  const sparkObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      const canvas = entry.target;
+      const id = canvas.dataset.thesisId;
+      sparkObserver.unobserve(canvas);
+      loadSparkChart(id, canvas);
+    });
+  }, { rootMargin: '100px' });
+
+  wrap.querySelectorAll('canvas[data-thesis-id]').forEach(c => sparkObserver.observe(c));
 }
