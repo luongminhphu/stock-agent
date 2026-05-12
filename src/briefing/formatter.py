@@ -15,17 +15,17 @@ from collections import defaultdict
 from src.ai.schemas import ActionPriority, BriefOutput, MarketSentiment, PrioritizedAction
 
 _SENTIMENT_EMOJI = {
-    MarketSentiment.RISK_ON: "🟢",
-    MarketSentiment.RISK_OFF: "🔴",
-    MarketSentiment.MIXED: "🟡",
-    MarketSentiment.UNCERTAIN: "⚪",
+    MarketSentiment.BULLISH:  "🟢",
+    MarketSentiment.BEARISH:  "🔴",
+    MarketSentiment.NEUTRAL:  "⚪",
+    MarketSentiment.MIXED:    "🟡",
 }
 
 _SENTIMENT_LABEL = {
-    MarketSentiment.RISK_ON: "Risk-On",
-    MarketSentiment.RISK_OFF: "Risk-Off",
-    MarketSentiment.MIXED: "Mixed",
-    MarketSentiment.UNCERTAIN: "Uncertain",
+    MarketSentiment.BULLISH:  "Bullish",
+    MarketSentiment.BEARISH:  "Bearish",
+    MarketSentiment.NEUTRAL:  "Neutral",
+    MarketSentiment.MIXED:    "Mixed",
 }
 
 # Bucket config: (emoji, header label, show_reason, bold_ticker)
