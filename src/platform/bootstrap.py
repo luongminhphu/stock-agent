@@ -40,7 +40,7 @@ _stress_test_subscriber: object | None = None  # G4: StressTest → Watchlist br
 _opportunity_screen_scheduler: object | None = None  # Wave 3
 _opportunity_screen_subscriber: object | None = None  # Wave 3
 _signal_engine_agent: object | None = None   # Wave 2b: cross-check engine
-_signal_engine_listener: object | None = None  # Wave 2b: event handler
+_signal_engine_listener: object | None = None  # Wave 2b: event handler — wired in Wave B2
 
 _pnl_service_class: type | None = None
 
@@ -275,23 +275,20 @@ async def bootstrap() -> None:
         _opportunity_screen_subscriber.register()
         logger.info("platform.bootstrap.opportunity_screen_subscriber_ready")
 
-    # ── Wave 2b: SignalEngineListener (register AFTER bus is started) ─────────
+    # ── Wave 2b: SignalEngineListener (Wave B2 — deps not yet wired) ──────────
+    # SignalEngineListener requires watchdog_service, stress_test_service, and
+    # thesis_query — none available as singletons yet (session-scoped services).
+    # Wave B2 will introduce query-service adapters using session_factory pattern
+    # and enable this block. Until then we skip gracefully.
+    #
+    # TODO(Wave B2): wire WatchlistQueryService, StressTestQueryService,
+    #                ThesisQueryService and instantiate SignalEngineListener here.
     if _signal_engine_listener is None:
-        try:
-            from src.ai.signal_engine_listener import SignalEngineListener
-            from src.platform.db import AsyncSessionLocal
-
-            _signal_engine_listener = SignalEngineListener(
-                agent=_signal_engine_agent,
-                session_factory=AsyncSessionLocal,
-            )
-            _signal_engine_listener.register()
-            logger.info("platform.bootstrap.signal_engine_listener_ready")
-        except ImportError:
-            logger.warning(
-                "platform.bootstrap.signal_engine_listener_skipped",
-                reason="SignalEngineListener not found — skipping (optional)",
-            )
+        logger.warning(
+            "platform.bootstrap.signal_engine_listener_skipped",
+            reason="deps not wired yet — pending Wave B2 (WatchlistQueryService, "
+                   "StressTestQueryService, ThesisQueryService)",
+        )
 
     logger.info("platform.bootstrap.complete")
 
