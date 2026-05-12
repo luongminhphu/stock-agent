@@ -25,10 +25,10 @@ from src.watchlist.service import WatchlistService
 logger = get_logger(__name__)
 
 _SENTIMENT_COLOUR = {
-    MarketSentiment.RISK_ON: discord.Color.green(),
-    MarketSentiment.RISK_OFF: discord.Color.red(),
-    MarketSentiment.MIXED: discord.Color.gold(),
-    MarketSentiment.UNCERTAIN: discord.Color.greyple(),
+    MarketSentiment.BULLISH:  discord.Color.green(),
+    MarketSentiment.BEARISH:  discord.Color.red(),
+    MarketSentiment.NEUTRAL:  discord.Color.greyple(),
+    MarketSentiment.MIXED:    discord.Color.gold(),
 }
 
 _OUTCOME_LABEL = {
