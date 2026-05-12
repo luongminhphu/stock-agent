@@ -1,8 +1,13 @@
 /**
  * render-conviction-timeline.js
  * Owner: modules/thesis  (readmodel render layer)
- * Responsibility: fetch + render Conviction Timeline — dual chart (score × price),
+ * Responsibility: fetch + render Conviction Timeline — dual-axis chart (score × price),
  *                 event list, breakdown drawer.
+ *
+ * Chart layout:
+ *   Y-left  (y)  — Conviction score 0–100, tier zones as background
+ *   Y-right (y1) — Price VND, entry price dashed annotation
+ *   Both datasets share the same X-axis and canvas.
  *
  * ConvictionPoint field mapping (aligned with readmodel/schemas.py):
  *   p.price              — price_at_snapshot (float|null)
@@ -10,8 +15,7 @@
  *   p.reasoning_summary  — truncated reasoning string|null
  *   p.risk_signals       — string[]
  *
- * Backward compat: convictionTimelineSlotHTML() and loadConvictionTimeline() signatures unchanged.
- * Chart.js + annotation plugin loaded lazily from CDN on first call.
+ * Backward compat: convictionTimelineSlotHTML() and loadConvictionTimeline() unchanged.
  */
 
 import { esc, fmtDate } from '../../utils/format.js';
@@ -109,17 +113,14 @@ function ensureChartJs() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Data helpers
+// Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
 function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-/**
- * Convert a 6-digit hex color string to rgba() with the given alpha.
- * e.g. hexToRgba('#d163a7', 0.08) → 'rgba(209,99,167,0.08)'
- */
+/** Convert 6-digit hex → rgba(r,g,b,alpha). */
 function hexToRgba(hex, alpha) {
   const h = hex.replace('#', '');
   const r = parseInt(h.slice(0, 2), 16);
@@ -128,62 +129,85 @@ function hexToRgba(hex, alpha) {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-/**
- * Map ConvictionTimelineResponse.points[] → parallel arrays for charts + events.
- * Uses p.price (not p.price_at_snapshot) — aligned with ConvictionPoint schema.
- */
 function parsePoints(points) {
-  const labels  = points.map(p => fmtDate(p.snapshotted_at));
-  const scores  = points.map(p => Number(p.score ?? 0));
-  // p.price = price_at_snapshot from schema (field is named 'price' in ConvictionPoint)
-  const prices  = points.map(p => p.price != null ? Number(p.price) : null);
+  const labels = points.map(p => fmtDate(p.snapshotted_at));
+  const scores = points.map(p => Number(p.score ?? 0));
+  const prices = points.map(p => p.price != null ? Number(p.price) : null);
 
-  // Build events: all points are potential events; filter to meaningful ones for the list
   const events = points.map((p, idx) => ({
     idx,
-    kind:             p.kind ?? 'snapshot',
-    verdict:          p.verdict ? String(p.verdict).toUpperCase() : null,
-    confidence:       p.confidence != null
-                        ? Math.round(Number(p.confidence) * (Number(p.confidence) <= 1 ? 100 : 1))
-                        : null,
-    score:            Number(p.score ?? 0),
-    price:            p.price != null ? Number(p.price) : null,
-    date:             p.snapshotted_at,
-    reasoning:        p.reasoning_summary ?? null,    // from schema: reasoning_summary
-    risks:            Array.isArray(p.risk_signals) ? p.risk_signals : [],
-    breakdown:        p.breakdown ?? null,
+    kind:       p.kind ?? 'snapshot',
+    verdict:    p.verdict ? String(p.verdict).toUpperCase() : null,
+    confidence: p.confidence != null
+                  ? Math.round(Number(p.confidence) * (Number(p.confidence) <= 1 ? 100 : 1))
+                  : null,
+    score:      Number(p.score ?? 0),
+    price:      p.price != null ? Number(p.price) : null,
+    date:       p.snapshotted_at,
+    reasoning:  p.reasoning_summary ?? null,
+    risks:      Array.isArray(p.risk_signals) ? p.risk_signals : [],
+    breakdown:  p.breakdown ?? null,
   }));
 
   return { labels, scores, prices, events };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Chart annotations
+// Dual-axis chart annotations
 // ─────────────────────────────────────────────────────────────────────────────
 
-function buildConvictionAnnotations(events) {
+/**
+ * Build all annotations for the merged dual-axis chart:
+ *  - Tier background zones (scaleID: 'y' — left axis, score)
+ *  - Entry price horizontal line (scaleID: 'y1' — right axis, price)
+ *  - AI review vertical lines (cross both axes, no scaleID needed)
+ */
+function buildDualAnnotations(events, entryPrice) {
   const anns = {};
 
-  // Tier background zones — drawTime 'beforeDatasetsDraw' ensures the line renders on top
+  // Tier zones — bound to left score axis
   TIER.forEach((t, i) => {
     anns[`zone${i}`] = {
       type: 'box',
+      yScaleID: 'y',
       yMin: t.min,
       yMax: t.max,
-      backgroundColor: hexToRgba(t.color, 0.08),
+      backgroundColor: hexToRgba(t.color, 0.07),
       borderWidth: 0,
       drawTime: 'beforeDatasetsDraw',
     };
   });
 
-  // Vertical lines at AI review events
+  // Entry price line — bound to right price axis
+  if (entryPrice) {
+    anns.entry = {
+      type: 'line',
+      yScaleID: 'y1',
+      yMin: entryPrice,
+      yMax: entryPrice,
+      borderColor: 'rgba(180,180,180,.4)',
+      borderWidth: 1.2,
+      borderDash: [5, 4],
+      drawTime: 'beforeDatasetsDraw',
+      label: {
+        content: 'Entry',
+        display: true,
+        position: 'end',
+        color: 'rgba(180,180,180,.7)',
+        font: { size: 9 },
+        padding: { x: 4, y: 2 },
+      },
+    };
+  }
+
+  // AI review vertical lines — cross entire chart height
   events.forEach((e, i) => {
     if (e.kind !== 'reviewed') return;
     anns[`evLine${i}`] = {
       type: 'line',
       xMin: e.idx,
       xMax: e.idx,
-      borderColor: 'rgba(109,170,69,.45)',
+      borderColor: 'rgba(109,170,69,.5)',
       borderWidth: 1.5,
       borderDash: [5, 3],
       drawTime: 'beforeDatasetsDraw',
@@ -193,142 +217,137 @@ function buildConvictionAnnotations(events) {
   return anns;
 }
 
-function buildPriceAnnotations(events, entryPrice) {
-  const anns = {};
-  if (entryPrice) {
-    anns.entry = {
-      type: 'line', yMin: entryPrice, yMax: entryPrice,
-      borderColor: 'rgba(128,128,128,.35)', borderWidth: 1.2, borderDash: [5, 4],
-      drawTime: 'beforeDatasetsDraw',
-      label: { content: 'Entry', display: true, position: 'start', color: 'rgba(128,128,128,.7)', font: { size: 9 } },
-    };
-  }
-  events.forEach((e, i) => {
-    if (e.kind !== 'reviewed') return;
-    anns[`evLine${i}`] = {
-      type: 'line', xMin: e.idx, xMax: e.idx,
-      borderColor: 'rgba(109,170,69,.35)',
-      borderWidth: 1.2,
-      borderDash: [5, 3],
-      drawTime: 'beforeDatasetsDraw',
-    };
-  });
-  return anns;
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
-// Chart renderers
+// Chart renderer — single dual-axis canvas
 // ─────────────────────────────────────────────────────────────────────────────
 
 const _chartInstances = new Map();
 
-function destroyCharts(slotId) {
-  ['cv', 'pr'].forEach(k => {
-    const key = `${slotId}:${k}`;
-    if (_chartInstances.has(key)) { _chartInstances.get(key).destroy(); _chartInstances.delete(key); }
-  });
+function destroyCharts(ticker) {
+  const key = `${ticker}:dual`;
+  if (_chartInstances.has(key)) { _chartInstances.get(key).destroy(); _chartInstances.delete(key); }
 }
 
-function buildConvictionChart(canvasEl, { labels, scores, events }) {
+function buildDualChart(canvasEl, { labels, scores, prices, events, entryPrice }) {
   const ctx = canvasEl.getContext('2d');
-  const grad = ctx.createLinearGradient(0, 0, 0, 240);
-  grad.addColorStop(0, 'rgba(79,152,163,.28)');
-  grad.addColorStop(1, 'rgba(79,152,163,0)');
+  const hasPrices = prices.some(p => p != null);
 
-  const muted = cssVar('--muted') || '#797876';
+  // Gradients
+  const gradScore = ctx.createLinearGradient(0, 0, 0, 260);
+  gradScore.addColorStop(0, 'rgba(79,152,163,.22)');
+  gradScore.addColorStop(1, 'rgba(79,152,163,0)');
+
+  const gradPrice = ctx.createLinearGradient(0, 0, 0, 260);
+  gradPrice.addColorStop(0, 'rgba(232,175,52,.15)');
+  gradPrice.addColorStop(1, 'rgba(232,175,52,0)');
+
+  const muted   = cssVar('--muted')       || '#797876';
   const surface = cssVar('--surface-dyn') || '#2d2c2a';
-  const border = cssVar('--border') || '#393836';
-  const gridColor = 'rgba(128,128,128,.07)';
-  const tickFont = { size: 10, family: "'Satoshi', system-ui, sans-serif" };
+  const border  = cssVar('--border')      || '#393836';
+  const primary = cssVar('--primary')     || '#4f98a3';
+  const gold    = cssVar('--gold')        || '#e8af34';
+  const gridColor = 'rgba(128,128,128,.06)';
+  const tickFont  = { size: 10, family: "'Satoshi', system-ui, sans-serif" };
+
+  const datasets = [
+    {
+      label: 'Conviction',
+      data: scores,
+      yAxisID: 'y',
+      borderColor: primary,
+      backgroundColor: gradScore,
+      borderWidth: 2.5,
+      tension: 0.4,
+      fill: true,
+      pointRadius: 4,
+      pointHoverRadius: 7,
+      pointBackgroundColor: scores.map(tierColor),
+      pointBorderColor: primary,
+      pointBorderWidth: 1.5,
+      order: 1,
+    },
+  ];
+
+  if (hasPrices) {
+    datasets.push({
+      label: 'Giá',
+      data: prices,
+      yAxisID: 'y1',
+      borderColor: gold,
+      backgroundColor: gradPrice,
+      borderWidth: 2,
+      tension: 0.4,
+      fill: true,
+      pointRadius: 2.5,
+      pointHoverRadius: 6,
+      pointBackgroundColor: gold,
+      spanGaps: true,
+      order: 2,
+    });
+  }
 
   return new Chart(ctx, {
     type: 'line',
-    data: {
-      labels,
-      datasets: [{
-        label: 'Conviction',
-        data: scores,
-        borderColor: cssVar('--primary') || '#4f98a3',
-        backgroundColor: grad,
-        borderWidth: 2.5,
-        tension: 0.4,
-        fill: true,
-        pointRadius: 4.5,
-        pointHoverRadius: 7,
-        pointBackgroundColor: scores.map(tierColor),
-        pointBorderColor: cssVar('--primary') || '#4f98a3',
-        pointBorderWidth: 1.5,
-      }],
-    },
+    data: { labels, datasets },
     options: {
-      responsive: true, maintainAspectRatio: false,
+      responsive: true,
+      maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: { display: false },
         tooltip: {
-          backgroundColor: surface, titleColor: cssVar('--text') || '#cdccca',
-          bodyColor: muted, borderColor: border, borderWidth: 1, padding: 10,
+          backgroundColor: surface,
+          titleColor: cssVar('--text') || '#cdccca',
+          bodyColor: muted,
+          borderColor: border,
+          borderWidth: 1,
+          padding: 10,
           callbacks: {
             title: c => '📅 ' + c[0].label,
-            label: c => `Conviction: ${Number(c.parsed.y).toFixed(1)} / 100`,
+            label: c => {
+              if (c.dataset.label === 'Conviction') {
+                return `Conviction: ${Number(c.parsed.y).toFixed(1)} / 100`;
+              }
+              return c.parsed.y != null
+                ? `Giá: ${Number(c.parsed.y).toLocaleString('vi-VN')}₫`
+                : 'Giá: N/A';
+            },
           },
         },
-        annotation: { annotations: buildConvictionAnnotations(events) },
+        annotation: { annotations: buildDualAnnotations(events, entryPrice) },
       },
       scales: {
-        x: { grid: { color: gridColor, drawTicks: false }, border: { display: false }, ticks: { color: muted, font: tickFont, maxRotation: 0, maxTicksLimit: 8 } },
-        y: { min: 0, max: 100, grid: { color: gridColor, drawTicks: false }, border: { display: false }, ticks: { color: muted, font: tickFont, stepSize: 20 }, title: { display: true, text: 'Score (0–100)', color: muted, font: { size: 10 } } },
-      },
-    },
-  });
-}
-
-function buildPriceChart(canvasEl, { labels, prices, events, entryPrice }) {
-  if (!prices.some(p => p != null)) return null;
-  const ctx = canvasEl.getContext('2d');
-  const grad = ctx.createLinearGradient(0, 0, 0, 110);
-  grad.addColorStop(0, 'rgba(232,175,52,.22)');
-  grad.addColorStop(1, 'rgba(232,175,52,0)');
-
-  const muted = cssVar('--muted') || '#797876';
-  const surface = cssVar('--surface-dyn') || '#2d2c2a';
-  const border = cssVar('--border') || '#393836';
-  const gridColor = 'rgba(128,128,128,.07)';
-  const tickFont = { size: 10, family: "'Satoshi', system-ui, sans-serif" };
-
-  return new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [{
-        label: 'Giá',
-        data: prices,
-        borderColor: cssVar('--gold') || '#e8af34',
-        backgroundColor: grad,
-        borderWidth: 2, tension: 0.4, fill: true,
-        pointRadius: 2.5, pointHoverRadius: 6,
-        pointBackgroundColor: cssVar('--gold') || '#e8af34',
-        spanGaps: true,
-      }],
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: surface, titleColor: cssVar('--text') || '#cdccca',
-          bodyColor: muted, borderColor: border, borderWidth: 1, padding: 10,
-          callbacks: {
-            title: c => '📅 ' + c[0].label,
-            label: c => c.parsed.y != null ? `Giá: ${Number(c.parsed.y).toLocaleString('vi-VN')}₫` : 'N/A',
-          },
+        x: {
+          grid: { color: gridColor, drawTicks: false },
+          border: { display: false },
+          ticks: { color: muted, font: tickFont, maxRotation: 0, maxTicksLimit: 8 },
         },
-        annotation: { annotations: buildPriceAnnotations(events, entryPrice) },
-      },
-      scales: {
-        x: { grid: { color: gridColor, drawTicks: false }, border: { display: false }, ticks: { color: muted, font: tickFont, maxRotation: 0, maxTicksLimit: 8 } },
-        y: { grid: { color: gridColor, drawTicks: false }, border: { display: false }, ticks: { color: muted, font: { size: 10 }, callback: v => (v / 1000).toFixed(0) + 'k' } },
+        // Left axis — Conviction score 0–100
+        y: {
+          type: 'linear',
+          position: 'left',
+          min: 0,
+          max: 100,
+          grid: { color: gridColor, drawTicks: false },
+          border: { display: false },
+          ticks: { color: primary, font: tickFont, stepSize: 20 },
+          title: { display: true, text: 'Score', color: primary, font: { size: 9 } },
+        },
+        // Right axis — Price VND (only if price data present)
+        ...(hasPrices ? {
+          y1: {
+            type: 'linear',
+            position: 'right',
+            grid: { drawOnChartArea: false },
+            border: { display: false },
+            ticks: {
+              color: gold,
+              font: { size: 10 },
+              callback: v => (v / 1000).toFixed(0) + 'k',
+            },
+            title: { display: true, text: 'Giá', color: gold, font: { size: 9 } },
+          },
+        } : {}),
       },
     },
   });
@@ -340,15 +359,14 @@ function buildPriceChart(canvasEl, { labels, prices, events, entryPrice }) {
 
 function renderEventList(events) {
   if (!events.length) return '<p class="cv-empty">Chưa có sự kiện nào.</p>';
-  // Show only reviewed points and last snapshot (most informative)
   const shown = events.filter(e => e.kind === 'reviewed' || e.verdict != null || e === events[events.length - 1]);
   const list = shown.length ? shown : events.slice(-5);
   return list.map(e => {
-    const icon = EVENT_KIND_ICON[e.kind] || '📌';
-    const vtag = e.verdict
+    const icon  = EVENT_KIND_ICON[e.kind] || '📌';
+    const vtag  = e.verdict
       ? `<span class="cv-vtag ${VERDICT_CLS[e.verdict] || 'cv-vtag--hold'}">${esc(e.verdict)}</span>`
       : '';
-    const conf = e.confidence != null ? `<span class="cv-chip">Conf ${e.confidence}%</span>` : '';
+    const conf  = e.confidence != null ? `<span class="cv-chip">Conf ${e.confidence}%</span>` : '';
     const price = e.price ? `<span class="cv-chip">${Number(e.price).toLocaleString('vi-VN')}₫</span>` : '';
     return `
       <div class="cv-ev" data-ev-idx="${e.idx}" role="button" tabindex="0" aria-expanded="false">
@@ -441,7 +459,9 @@ function wireEventList(containerEl, events) {
     };
 
     el.addEventListener('click', handler);
-    el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler(); } });
+    el.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler(); }
+    });
   });
 }
 
@@ -456,16 +476,19 @@ function buildScaffold({ data, labels, scores, prices, events }) {
   const delta = data.earliest_score != null && data.latest_score != null
     ? (Number(data.latest_score) - Number(data.earliest_score)).toFixed(1)
     : null;
-  const deltaSign = delta > 0 ? '+' : '';
+  const deltaSign  = delta > 0 ? '+' : '';
   const deltaClass = delta > 0 ? 'cv-delta--up' : delta < 0 ? 'cv-delta--down' : '';
 
   const tierLegend = TIER.map(t =>
     `<div class="cv-tier-pill"><div class="cv-tier-sq" style="background:${t.color}"></div>${t.label}</div>`
   ).join('');
 
-  // Event list: only reviewed points + last point
   const shownEvents = events.filter(e => e.kind === 'reviewed' || e.verdict != null || e === events[events.length - 1]);
   const listEvents  = shownEvents.length ? shownEvents : events.slice(-5);
+
+  const entryLabel = data.entry_price
+    ? `· Entry: ${Number(data.entry_price).toLocaleString('vi-VN')}₫`
+    : '';
 
   return `
     <div class="cv-section detail-section">
@@ -481,21 +504,16 @@ function buildScaffold({ data, labels, scores, prices, events }) {
         </div>
       </div>
 
-      <!-- Conviction chart -->
+      <!-- Dual-axis chart -->
       <div class="cv-chart-card">
         <div class="cv-chart-legend">
           <div class="cv-leg"><div class="cv-leg-dot" style="background:var(--primary,#4f98a3)"></div>Conviction</div>
-          ${hasPrices ? '<div class="cv-leg"><div class="cv-leg-dot" style="background:var(--gold,#e8af34)"></div>Giá</div>' : ''}
+          ${hasPrices ? `<div class="cv-leg"><div class="cv-leg-dot" style="background:var(--gold,#e8af34)"></div>Giá ${entryLabel}</div>` : ''}
           <div class="cv-leg cv-leg--line" style="--lc:rgba(109,170,69,.7)">AI Review</div>
         </div>
-        <div class="cv-canvas-wrap cv-canvas--conviction">
+        <div class="cv-canvas-wrap cv-canvas--dual">
           <canvas id="cvChart-${data.ticker}"></canvas>
         </div>
-        ${hasPrices ? `
-          <div class="cv-canvas-wrap cv-canvas--price">
-            <p class="cv-price-label">Giá cổ phiếu ${data.entry_price ? `· Entry: ${Number(data.entry_price).toLocaleString('vi-VN')}₫` : ''}</p>
-            <canvas id="priceChart-${data.ticker}"></canvas>
-          </div>` : ''}
         <div class="cv-tier-strip">${tierLegend}</div>
       </div>
 
@@ -558,16 +576,13 @@ export async function loadConvictionTimeline(thesisId) {
 
     const { labels, scores, prices, events } = parsePoints(data.points);
 
-    const cvCanvas = document.getElementById(`cvChart-${ticker}`);
-    if (cvCanvas) {
-      const inst = buildConvictionChart(cvCanvas, { labels, scores, events });
-      _chartInstances.set(`${ticker}:cv`, inst);
-    }
-
-    const prCanvas = document.getElementById(`priceChart-${ticker}`);
-    if (prCanvas) {
-      const inst = buildPriceChart(prCanvas, { labels, prices, events, entryPrice: data.entry_price });
-      if (inst) _chartInstances.set(`${ticker}:pr`, inst);
+    const canvas = document.getElementById(`cvChart-${ticker}`);
+    if (canvas) {
+      const inst = buildDualChart(canvas, {
+        labels, scores, prices, events,
+        entryPrice: data.entry_price ?? null,
+      });
+      _chartInstances.set(`${ticker}:dual`, inst);
     }
 
     const listEl = document.getElementById(`cvEventList-${ticker}`);
