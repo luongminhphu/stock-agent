@@ -117,6 +117,18 @@ function cssVar(name) {
 }
 
 /**
+ * Convert a 6-digit hex color string to rgba() with the given alpha.
+ * e.g. hexToRgba('#d163a7', 0.08) → 'rgba(209,99,167,0.08)'
+ */
+function hexToRgba(hex, alpha) {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+/**
  * Map ConvictionTimelineResponse.points[] → parallel arrays for charts + events.
  * Uses p.price (not p.price_at_snapshot) — aligned with ConvictionPoint schema.
  */
@@ -151,24 +163,33 @@ function parsePoints(points) {
 
 function buildConvictionAnnotations(events) {
   const anns = {};
-  // Tier background zones
+
+  // Tier background zones — drawTime 'beforeDatasetsDraw' ensures the line renders on top
   TIER.forEach((t, i) => {
     anns[`zone${i}`] = {
-      type: 'box', yMin: t.min, yMax: t.max,
-      backgroundColor: t.color.replace(')', ', 0.055)').replace('rgb', 'rgba').replace('#', 'rgba(').replace(/rgba\(#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})/, (_,r,g,b)=>`rgba(${parseInt(r,16)},${parseInt(g,16)},${parseInt(b,16)}`),
+      type: 'box',
+      yMin: t.min,
+      yMax: t.max,
+      backgroundColor: hexToRgba(t.color, 0.08),
       borderWidth: 0,
+      drawTime: 'beforeDatasetsDraw',
     };
   });
-  // Event lines
+
+  // Vertical lines at AI review events
   events.forEach((e, i) => {
     if (e.kind !== 'reviewed') return;
     anns[`evLine${i}`] = {
-      type: 'line', xMin: e.idx, xMax: e.idx,
+      type: 'line',
+      xMin: e.idx,
+      xMax: e.idx,
       borderColor: 'rgba(109,170,69,.45)',
       borderWidth: 1.5,
       borderDash: [5, 3],
+      drawTime: 'beforeDatasetsDraw',
     };
   });
+
   return anns;
 }
 
@@ -178,6 +199,7 @@ function buildPriceAnnotations(events, entryPrice) {
     anns.entry = {
       type: 'line', yMin: entryPrice, yMax: entryPrice,
       borderColor: 'rgba(128,128,128,.35)', borderWidth: 1.2, borderDash: [5, 4],
+      drawTime: 'beforeDatasetsDraw',
       label: { content: 'Entry', display: true, position: 'start', color: 'rgba(128,128,128,.7)', font: { size: 9 } },
     };
   }
@@ -188,6 +210,7 @@ function buildPriceAnnotations(events, entryPrice) {
       borderColor: 'rgba(109,170,69,.35)',
       borderWidth: 1.2,
       borderDash: [5, 3],
+      drawTime: 'beforeDatasetsDraw',
     };
   });
   return anns;
