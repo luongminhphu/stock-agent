@@ -592,6 +592,9 @@ class ThesisDriftScheduler:
             channel = self._client.get_channel(int(channel_id))
             if channel is None:
                 logger.warning("scheduler.drift.channel_not_found", channel_id=channel_id)
+                await self._monitor.record_failure(
+                    task_name, RuntimeError(f"channel {channel_id} not found")
+                )
                 return
 
             embed = build_drift_embed(reviews, now_utc)
@@ -670,6 +673,9 @@ class ReminderScheduler:
         channel = self._client.get_channel(int(channel_id))
         if channel is None:
             logger.warning("scheduler.reminder.channel_not_found", channel_id=channel_id)
+            await self._monitor.record_failure(
+                task_name, RuntimeError(f"channel {channel_id} not found")
+            )
             return
 
         frequency_map = {
@@ -677,7 +683,7 @@ class ReminderScheduler:
             "weekly": [ReminderFrequency.WEEKLY],
         }
         frequencies = frequency_map.get(label, [ReminderFrequency.DAILY])
-        freq_label = "h\u00e0ng ng\u00e0y" if label == "daily" else "h\u00e0ng tu\u1ea7n"
+        freq_label = "hàng ngày" if label == "daily" else "hàng tuần"
 
         # -- Step 1: Fetch due reminders (read-only session) --
         try:
