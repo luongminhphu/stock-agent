@@ -6,7 +6,7 @@ All response models are Pydantic — no SQLAlchemy objects cross this boundary.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel
 
@@ -42,3 +42,14 @@ class QuoteResponse(BaseModel):
     # Metadata
     timestamp: datetime | None = None
     note: str | None = None
+
+
+class CandleResponse(BaseModel):
+    """Single OHLCV candle — minimal shape for FE price chart."""
+
+    date: date
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: int
