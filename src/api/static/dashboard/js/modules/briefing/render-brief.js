@@ -104,8 +104,10 @@ export function renderFeedbackKpi(data) {
 }
 
 // ---------------------------------------------------------------------------
-// fmtReviewAge — returns { timeStr, ageBadge } for brief header timestamp
-// ageBadge computed from brief generated_at (freshness of analysis)
+// fmtReviewAge — returns { timeStr, ageBadge } computed from brief.created_at
+// • timeStr  → shown next to clock icon (when THIS brief was generated)
+// • ageBadge → freshness label (Vừa cập nhật / Xh trước / Xd trước)
+// Morning and EoD differ because each brief has its own created_at.
 // ---------------------------------------------------------------------------
 function fmtReviewAge(isoStr) {
   if (!isoStr) return { timeStr: null, ageBadge: null };
@@ -128,26 +130,13 @@ function fmtReviewAge(isoStr) {
 }
 
 // ---------------------------------------------------------------------------
-// fmtScanTime — format scan timestamp for clock display
-// ---------------------------------------------------------------------------
-function fmtScanTime(isoStr) {
-  if (!isoStr) return null;
-  const d = new Date(isoStr);
-  return d.toLocaleString('vi-VN', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  });
-}
-
-// ---------------------------------------------------------------------------
 // Brief card (morning / eod)
 // @param {string}      phase            'morning' | 'eod'
 // @param {object|null} brief            brief data object
-// @param {string|null} dateStr          fallback date label
+// @param {string|null} dateStr          fallback date label (used only if brief.created_at missing)
 // @param {string|null} existingOutcome  feedback outcome key
-// @param {string|null} scanAt           ISO timestamp of latest scan (shown on clock icon)
 // ---------------------------------------------------------------------------
-export function renderBriefCard(phase, brief, dateStr, existingOutcome = null, scanAt = null) {
+export function renderBriefCard(phase, brief, dateStr, existingOutcome = null) {
   const isEod = phase === 'eod';
   const label = isEod ? 'End-of-Day Brief' : 'Morning Brief';
   const icon  = isEod ? '🌙' : '🌅';
@@ -167,13 +156,10 @@ export function renderBriefCard(phase, brief, dateStr, existingOutcome = null, s
 
   const ometa = existingOutcome ? (OUTCOME_META[existingOutcome] ?? null) : null;
 
-  // clock icon: shows WHEN the underlying scan data was collected
-  // age badge: freshness of the brief analysis (generated_at)
-  const scanTimeStr = fmtScanTime(scanAt);
-  const { ageBadge } = fmtReviewAge(brief.created_at ?? brief.generated_at);
-
-  // fallback: if no scanAt, degrade to brief generated_at or dateStr
-  const clockLabel = scanTimeStr ?? dateStr ?? '—';
+  // timeStr: when this brief was generated (differs between morning vs eod)
+  // ageBadge: freshness relative to now
+  const { timeStr, ageBadge } = fmtReviewAge(brief.created_at ?? brief.generated_at);
+  const clockLabel = timeStr ?? dateStr ?? '—';
 
   return `
     <div class="brief-card phase-${isEod ? 'eod' : 'morning'}">
@@ -182,7 +168,7 @@ export function renderBriefCard(phase, brief, dateStr, existingOutcome = null, s
         <div>
           <div class="brief-phase-label">${label}</div>
           <div class="brief-date-row">
-            <span class="brief-date" title="Thời điểm chạy scan">🕐 ${clockLabel}</span>
+            <span class="brief-date" title="Thời điểm generate brief">🕐 ${clockLabel}</span>
             ${ageBadge
               ? `<span class="brief-age-badge ${ageBadge.cls}">${ageBadge.label}</span>`
               : ''}
@@ -324,10 +310,7 @@ export function renderSnapshots(data) {
   if (scanAt)  scanAt.textContent = data.latest_scan_at ? fmtDate(data.latest_scan_at) : '—';
   if (scanSum) scanSum.innerHTML  = formatScanHtml(data.latest_scan_summary ?? null) || 'Chưa có scan snapshot.';
 
-  // latest_scan_at passed into both brief cards so clock icon shows scan time
-  const latestScanAt = data.latest_scan_at ?? null;
-
-  // Morning brief
+  // Morning brief — clock shows morning brief's own created_at
   const morningWrap = el('morningBriefWrap');
   if (morningWrap) {
     morningWrap.innerHTML = renderBriefCard(
@@ -335,11 +318,10 @@ export function renderSnapshots(data) {
       data.latest_morning_brief_data,
       data.latest_morning_brief_at ? fmtDate(data.latest_morning_brief_at) : null,
       data.latest_morning_brief_data?.feedback_outcome ?? null,
-      latestScanAt,
     );
   }
 
-  // EOD brief
+  // EOD brief — clock shows eod brief's own created_at
   const eodWrap = el('eodBriefWrap');
   if (eodWrap) {
     eodWrap.innerHTML = renderBriefCard(
@@ -347,7 +329,6 @@ export function renderSnapshots(data) {
       data.latest_eod_brief_data,
       data.latest_eod_brief_at ? fmtDate(data.latest_eod_brief_at) : null,
       data.latest_eod_brief_data?.feedback_outcome ?? null,
-      latestScanAt,
     );
   }
 
