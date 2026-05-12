@@ -7,7 +7,9 @@ No business logic — all domain work is delegated to segment services.
 Route groups:
     /health                — liveness + readiness probes
     /dashboard             — static dashboard shell (wave 3 UI)
-    /static/dashboard/     — CSS + JS assets for the shell
+    /dashboard/css/        — dashboard stylesheets
+    /dashboard/js/         — dashboard scripts
+    /static/               — other static assets
     /api/v1/market         — quote, OHLCV
     /api/v1/thesis         — thesis CRUD + review
     /api/v1/watchlist      — watchlist management
@@ -59,7 +61,7 @@ _FAVICON_SVG = (
 # - JS / CSS: no-cache + must-revalidate — browser revalidates every request
 #   via ETag/Last-Modified. 304 if unchanged (no body sent).
 # - Everything else (images, fonts): 10-minute cache — safe default.
-_CACHE_NO_STORE       = "no-store, no-cache, must-revalidate"
+_CACHE_NO_STORE        = "no-store, no-cache, must-revalidate"
 _CACHE_MUST_REVALIDATE = "no-cache, must-revalidate"
 _CACHE_SHORT           = "public, max-age=600"
 
@@ -134,11 +136,13 @@ def create_app() -> FastAPI:
             headers={"cache-control": "public, max-age=86400"},
         )
 
-    # Mount static assets with proper Cache-Control headers.
-    # JS/CSS/HTML use no-cache+must-revalidate so browsers always revalidate after deploy.
+    # Mount generic static assets (non-dashboard).
     if _STATIC_DIR.exists():
         app.mount("/static", _CacheBustedStaticFiles(directory=_STATIC_DIR), name="static")
 
+    # Serve dashboard HTML with no-store cache header so index.html is always
+    # fresh. This explicit route is registered BEFORE the /dashboard asset mount
+    # so FastAPI matches it first for the exact path GET /dashboard.
     @app.get("/dashboard", include_in_schema=False)
     async def serve_dashboard() -> FileResponse:
         """Serve static dashboard shell with no-store cache header.
@@ -148,6 +152,7 @@ def create_app() -> FastAPI:
         on every deploy, so stale sub-resources are never silently reused.
 
         HTML is at src/api/static/dashboard/index.html.
+        CSS/JS sub-resources are served by the /dashboard StaticFiles mount below.
         API data is fetched client-side from /api/v1/readmodel/dashboard/{user_id}/...
         """
         return FileResponse(
@@ -155,7 +160,24 @@ def create_app() -> FastAPI:
             headers={"cache-control": _CACHE_NO_STORE},
         )
 
-    # Register routers — order matters for OpenAPI grouping
+    # Mount dashboard assets at /dashboard so that relative paths in index.html
+    # (css/variables.css, js/main.js, …) resolve correctly.
+    #
+    # Why html=False: the explicit @app.get("/dashboard") route above owns
+    # index.html serving (with no-store). html=False prevents StaticFiles from
+    # intercepting GET /dashboard and serving the file with the wrong cache header.
+    #
+    # Mount order: registered AFTER the explicit route. FastAPI's router checks
+    # exact routes before mounts, so GET /dashboard → FileResponse (no-store);
+    # GET /dashboard/css/variables.css → StaticFiles (must-revalidate).
+    if _DASHBOARD_DIR.exists():
+        app.mount(
+            "/dashboard",
+            _CacheBustedStaticFiles(directory=_DASHBOARD_DIR, html=False),
+            name="dashboard-assets",
+        )
+
+    # Register API routers — order matters for OpenAPI grouping
     app.include_router(health_router)
     app.include_router(market_router, prefix="/api/v1")
     app.include_router(thesis_router, prefix="/api/v1")
