@@ -211,6 +211,13 @@ class ConvictionPoint(BaseModel):
 
     reasoning_summary: first 200 chars of nearest prior review.reasoning. None if no review yet.
     risk_signals: list parsed from nearest prior review.risk_signals JSON. [] if none.
+
+    price_filled:
+      True when price was not available in price_at_snapshot and was filled by one of:
+        - Option B: forward-fill from the last known price in the series.
+        - Option C: live current_price injected by the API/bot caller for the last point.
+      Consumers (FE, bot) can use this flag to render filled points differently
+      (e.g. dashed line, lighter dot, tooltip disclaimer).
     """
 
     snapshot_id: int
@@ -223,8 +230,9 @@ class ConvictionPoint(BaseModel):
     confidence: float | None = None      # AI confidence at nearest prior review
     price: float | None = None           # price_at_snapshot; None for review-triggered snapshots
     pnl_pct: float | None = None         # vs thesis entry_price
+    price_filled: bool = False           # True if price was forward-filled or live-injected
 
-    # Enriched fields (Option B)
+    # Enriched fields
     kind: str = "snapshot"               # "snapshot" | "reviewed"
     reasoning_summary: str | None = None # truncated reasoning from nearest prior review
     risk_signals: list[str] = []         # parsed from nearest prior review.risk_signals
