@@ -157,7 +157,7 @@ class ThesisTimelineService:
                 )
             )
 
-        # filter_events: drop null/empty + keep 30 latest, oldest → newest
+        # filter_events: drop null/empty + keep 30 latest, oldest -> newest
         return ThesisTimelineResponse(
             thesis_id=thesis.id,
             ticker=thesis.ticker,
@@ -252,6 +252,9 @@ class ThesisTimelineService:
         reasoning_summary: first _REASONING_SUMMARY_MAX chars of nearest.reasoning.
         risk_signals: parsed list from nearest.risk_signals JSON.
         entry_price: exposed from Thesis.entry_price for price chart annotation.
+
+        Ordering: fetch `limit` NEWEST snapshots (desc), then reverse to chronological
+        (asc) so the chart always shows the most recent data without truncating old-first.
         """
         from src.thesis.models import Thesis, ThesisReview, ThesisSnapshot
         from src.thesis.scoring_service import score_tier
@@ -263,14 +266,14 @@ class ThesisTimelineService:
         if thesis is None:
             return None
 
-        # --- Load snapshots (oldest first) ---
+        # --- Load the N most-recent snapshots, then reverse to oldest-first for chart ---
         snaps_result = await self._session.execute(
             select(ThesisSnapshot)
             .where(ThesisSnapshot.thesis_id == thesis_id)
-            .order_by(ThesisSnapshot.snapshotted_at.asc())
+            .order_by(ThesisSnapshot.snapshotted_at.desc())
             .limit(limit)
         )
-        snapshots = snaps_result.scalars().all()
+        snapshots = list(reversed(snaps_result.scalars().all()))
 
         # --- Load all reviews for this thesis (needed for nearest-prior lookup) ---
         reviews_result = await self._session.execute(
@@ -386,7 +389,7 @@ def _truncate(text: str | None, max_chars: int) -> str | None:
     text = text.strip()
     if not text:
         return None
-    return text[:max_chars] + ("…" if len(text) > max_chars else "")
+    return text[:max_chars] + ("\u2026" if len(text) > max_chars else "")
 
 
 def _nearest_prior_review(reviews: list, snapshot_ts) -> object | None:  # type: ignore[type-arg]
