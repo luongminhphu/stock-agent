@@ -31,6 +31,30 @@ from src.watchlist.repository import WatchlistRepository
 
 logger = get_logger(__name__)
 
+# ---------------------------------------------------------------------------
+# Condition-aware cooldown config for bulk reactivation.
+#
+# Only types listed here are ever auto-reactivated by reactivate_cooled_down().
+# Types NOT listed (PRICE_ABOVE, PRICE_BELOW, THESIS_TRIGGER) are one-shot
+# and must be reactivated manually via reactivate() or dismissed.
+#
+# Rationale:
+#   CHANGE_PCT_UP / CHANGE_PCT_DOWN — threshold (≥3%) filters intra-session
+#     noise well enough; 4h cooldown prevents double-fire within same session.
+#   VOLUME_SPIKE — volume surge can persist all session; 24h cooldown ensures
+#     at most one alert per trading day.
+#   PRICE_ABOVE / PRICE_BELOW — price can oscillate around threshold repeatedly;
+#     re-arming automatically creates high noise. Investor must decide.
+#   THESIS_TRIGGER — narrative watch rule from AI stress-test; never
+#     auto-triggered or auto-reactivated (investor action required).
+# ---------------------------------------------------------------------------
+
+_REACTIVATE_COOLDOWN_HOURS: dict[AlertConditionType, int] = {
+    AlertConditionType.CHANGE_PCT_UP:   4,
+    AlertConditionType.CHANGE_PCT_DOWN: 4,
+    AlertConditionType.VOLUME_SPIKE:    24,
+}
+
 
 class AlertNotFoundError(Exception):
     """Raised when an alert cannot be found or does not belong to the user."""
@@ -307,55 +331,66 @@ class AlertService:
     async def reactivate_cooled_down(
         self,
         user_id: str,
-        cooldown_hours: int = 4,
+        cooldown_hours: int = 4,  # kept for backward compat; ignored internally
     ) -> list[Alert]:
-        """Reactivate TRIGGERED alerts that have passed their cooldown window.
+        """Reactivate TRIGGERED alerts that have passed their condition-specific cooldown.
 
-        Only affects alerts where auto_reactivate=True. One-shot alerts
-        (auto_reactivate=False, the default) are never touched.
+        Uses _REACTIVATE_COOLDOWN_HOURS to determine which condition types are
+        eligible and how long their cooldown window is. Types not in the mapping
+        (PRICE_ABOVE, PRICE_BELOW, THESIS_TRIGGER) are never auto-reactivated.
 
         Called by WatchlistScanScheduler at the start of each scan tick,
         in an isolated session before ScanService.scan_user() runs.
 
         Args:
             user_id:        Owner of the alerts.
-            cooldown_hours: Hours to wait after triggered_at before re-arming.
-                            Default 4h — matches thesis_drift_cooldown_hours.
-                            Pass 0 to reactivate all eligible alerts immediately.
+            cooldown_hours: Deprecated — kept for call-site backward compatibility.
+                            Cooldown is now determined per condition type via
+                            _REACTIVATE_COOLDOWN_HOURS. This parameter is ignored.
 
         Returns:
             List of Alert instances that were reset to ACTIVE this tick.
             Empty list if none were eligible.
         """
-        cutoff = datetime.now(UTC) - timedelta(hours=cooldown_hours)
-        stmt = select(Alert).where(
-            and_(
-                Alert.user_id == user_id,
-                Alert.status == AlertStatus.TRIGGERED,
-                Alert.auto_reactivate.is_(True),
-                Alert.triggered_at < cutoff,
+        now = datetime.now(UTC)
+        reactivated: list[Alert] = []
+
+        for condition_type, hours in _REACTIVATE_COOLDOWN_HOURS.items():
+            cutoff = now - timedelta(hours=hours)
+            stmt = select(Alert).where(
+                and_(
+                    Alert.user_id == user_id,
+                    Alert.status == AlertStatus.TRIGGERED,
+                    Alert.condition_type == condition_type,
+                    Alert.triggered_at < cutoff,
+                )
             )
-        )
-        result = await self._session.execute(stmt)
-        alerts = result.scalars().all()
+            result = await self._session.execute(stmt)
+            alerts = result.scalars().all()
 
-        for alert in alerts:
-            alert.status = AlertStatus.ACTIVE
-            alert.triggered_at = None
-            alert.triggered_price = None
-            self._session.add(alert)
+            for alert in alerts:
+                alert.status = AlertStatus.ACTIVE
+                alert.triggered_at = None
+                alert.triggered_price = None
+                self._session.add(alert)
 
-        if alerts:
+            reactivated.extend(alerts)
+
+        if reactivated:
             await self._session.flush()
             logger.info(
                 "alert_service.bulk_reactivated",
                 user_id=user_id,
-                count=len(alerts),
-                tickers=sorted({a.ticker for a in alerts}),
-                cooldown_hours=cooldown_hours,
+                count=len(reactivated),
+                tickers=sorted({a.ticker for a in reactivated}),
+                by_type={
+                    ct.value: sum(1 for a in reactivated if a.condition_type == ct)
+                    for ct in _REACTIVATE_COOLDOWN_HOURS
+                    if any(a.condition_type == ct for a in reactivated)
+                },
             )
 
-        return list(alerts)
+        return reactivated
 
     # ------------------------------------------------------------------
     # Internal helpers
