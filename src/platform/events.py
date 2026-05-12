@@ -114,6 +114,41 @@ class RecommendationReadyEvent(DomainEvent):
     recommendation_id: str = field(default_factory=lambda: str(uuid4()))
 
 
+@dataclass(frozen=True)
+class SignalEngineRequestedEvent(DomainEvent):
+    """Emitted by bot.SignalEngineScheduler to trigger the signal engine run.
+
+    Consumed by: ai.SignalEngineListener
+    Produced by: bot segment (scheduler adapter only — no business logic here)
+
+    phase:
+        morning — runs 08:40 ICT, 5 min before BriefingScheduler morning brief.
+        eod     — runs 15:10 ICT, 5 min before DecisionReplayScheduler.
+    """
+    phase: str = "morning"          # morning | eod
+    triggered_by: str = "scheduler"
+    user_id: str = ""
+
+
+@dataclass(frozen=True)
+class SignalEngineCompletedEvent(DomainEvent):
+    """Emitted by ai.SignalEngineListener after signal cross-check run completes.
+
+    Consumed by: briefing.BriefingListener — injects summary into brief context
+    so morning/eod brief carries real verdict instead of raw data dump.
+
+    Produced by: ai segment (SignalEngineListener)
+
+    summary: short narrative paragraph ready for BriefingService to embed.
+    """
+    phase: str = "morning"
+    ranked_signal_count: int = 0
+    thesis_review_trigger_count: int = 0
+    risk_alert_count: int = 0
+    opportunity_count: int = 0
+    summary: str = ""               # AI-generated narrative for BriefingService
+
+
 # ─── briefing ──────────────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
