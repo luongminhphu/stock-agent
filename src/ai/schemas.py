@@ -619,6 +619,31 @@ class StressTestOutput(BaseModel):
     )
     reasoning: str = Field(description="Lý giải tổng thể của AI về kết quả stress-test")
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_probability_alias(cls, data: object) -> object:
+        """Rename trigger_probability → invalidation_probability nếu AI dùng tên cũ.
+
+        sonar-pro đôi khi trả về tên field cũ từ các prompt version trước.
+        Normalize ở đây để field_validator coerce_probability xử lý được.
+        """
+        if not isinstance(data, dict):
+            return data
+        if "invalidation_probability" not in data and "trigger_probability" in data:
+            data["invalidation_probability"] = data.pop("trigger_probability")
+        return data
+
+    @field_validator("invalidation_probability", "confidence", mode="before")
+    @classmethod
+    def coerce_probability(cls, v: object) -> float:
+        """Coerce int 0-100 → float 0.0-1.0 cho cả invalidation_probability và confidence.
+
+        sonar-pro đôi khi trả về các probability field dưới dạng int 0-100
+        thay vì float 0.0-1.0 đã chỉ định. Reuse _coerce_confidence() vì
+        cùng logic: chia 100 khi value > 1.0.
+        """
+        return _coerce_confidence(v)
+
     @field_validator("threatened_assumptions", mode="before")
     @classmethod
     def ensure_threatened_list(cls, v: object) -> list[object]:
