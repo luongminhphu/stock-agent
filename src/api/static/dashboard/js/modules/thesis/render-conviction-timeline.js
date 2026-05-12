@@ -1,266 +1,562 @@
 /**
  * render-conviction-timeline.js
- * Owner: modules/thesis
- * Responsibility: fetch + render Conviction Score Timeline cho thesis detail.
+ * Owner: modules/thesis  (readmodel render layer)
+ * Responsibility: fetch + render Conviction Timeline — dual chart (score × price),
+ *                 event list, breakdown drawer.
  *
  * Flow:
- *   1. thesis-service.js gọi loadConvictionTimeline(thesisId) sau khi detail HTML đã vào DOM.
- *   2. Module này fetch GET /api/v1/thesis/:id/conviction-timeline.
- *   3. Render SVG sparkline + breakdown mini-grid + trend badge vào #convictionTimelineSlot.
+ *   1. thesis-service.js calls loadConvictionTimeline(thesisId) after detail HTML is in DOM.
+ *   2. This module fetches GET /api/v1/thesis/:id/conviction-timeline.
+ *   3. Renders dual Chart.js charts + event list into #convictionTimelineSlot-{id}.
  *
- * Không chứa business logic — chỉ render dựa trên ConvictionTimelineResponse shape.
+ * Backward compat: convictionTimelineSlotHTML() and loadConvictionTimeline() signatures unchanged.
+ * Chart.js + annotation plugin loaded lazily from CDN on first call.
  */
 
 import { esc, fmtDate, fmtScore, scoreClass } from '../../utils/format.js';
 import { thesisApiBase, getJson } from '../../api/client.js';
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────────────────────
 
-const VERDICT_CLS = {
-  BULLISH:   'bullish',
-  BEARISH:   'bearish',
-  NEUTRAL:   'neutral',
-  WATCHLIST: 'watchlist',
-};
-
-const TREND_META = {
-  improving:        { icon: '↑', label: 'Cải thiện',     cls: 'score-high' },
-  declining:        { icon: '↓', label: 'Suy giảm',      cls: 'score-low' },
-  stable:           { icon: '→', label: 'Ổn định',       cls: 'score-mid' },
-  insufficient_data:{ icon: '—', label: 'Chưa đủ data',  cls: '' },
-};
-
-/**
- * Trả về HTML skeleton slot (trước khi data về).
- * @param {string|number} thesisId
- */
-export function convictionTimelineSlotHTML(thesisId) {
-  return `<div id="convictionTimelineSlot-${thesisId}" data-thesis-id="${thesisId}"></div>`;
-}
-
-// ---------------------------------------------------------------------------
-// SVG Sparkline
-// ---------------------------------------------------------------------------
-
-/**
- * Vẽ SVG sparkline từ mảng điểm số.
- * @param {number[]} scores  — mảng score 0-100, oldest first
- * @param {string}   trend
- */
-function renderSparkline(scores, trend) {
-  if (!scores.length) return '';
-
-  const W = 320, H = 72, PAD = 8;
-  const minS = Math.max(0,  Math.min(...scores) - 5);
-  const maxS = Math.min(100, Math.max(...scores) + 5);
-  const range = maxS - minS || 1;
-
-  const xStep = scores.length > 1 ? (W - PAD * 2) / (scores.length - 1) : 0;
-  const toX = i  => PAD + i * xStep;
-  const toY = s  => H - PAD - ((s - minS) / range) * (H - PAD * 2);
-
-  const pts = scores.map((s, i) => `${toX(i).toFixed(1)},${toY(s).toFixed(1)}`).join(' ');
-  const areaBottom = `${toX(scores.length-1).toFixed(1)},${H - PAD} ${toX(0).toFixed(1)},${H - PAD}`;
-
-  const strokeColor = trend === 'improving' ? 'var(--success, #6daa45)'
-                    : trend === 'declining'  ? 'var(--danger,  #a12c7b)'
-                    : 'var(--accent, #4f98a3)';
-
-  const gradId = `cg-${Math.random().toString(36).slice(2, 7)}`;
-
-  return `
-    <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}"
-         aria-hidden="true" style="display:block;overflow:visible;">
-      <defs>
-        <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%"   stop-color="${strokeColor}" stop-opacity="0.25"/>
-          <stop offset="100%" stop-color="${strokeColor}" stop-opacity="0"/>
-        </linearGradient>
-      </defs>
-      <polygon
-        points="${pts} ${areaBottom}"
-        fill="url(#${gradId})"
-        stroke="none"
-      />
-      <polyline
-        points="${pts}"
-        fill="none"
-        stroke="${strokeColor}"
-        stroke-width="2"
-        stroke-linejoin="round"
-        stroke-linecap="round"
-      />
-      ${scores.map((s, i) => i === scores.length - 1 ? `
-        <circle cx="${toX(i).toFixed(1)}" cy="${toY(s).toFixed(1)}" r="3.5"
-          fill="${strokeColor}" stroke="var(--surface, #1c1b19)" stroke-width="1.5"/>
-      ` : '').join('')}
-    </svg>`;
-}
-
-// ---------------------------------------------------------------------------
-// Breakdown mini-grid
-// ---------------------------------------------------------------------------
-
-const BREAKDOWN_ROWS = [
-  { key: 'assumption_health', label: 'Assumptions',  max: 40 },
-  { key: 'catalyst_progress', label: 'Catalysts',    max: 30 },
-  { key: 'risk_reward',       label: 'Risk/Reward',  max: 20 },
-  { key: 'review_confidence', label: 'AI Confidence',max: 10 },
+const TIER = [
+  { min: 0,  max: 30,  label: 'Critical', color: '#d163a7' },
+  { min: 30, max: 50,  label: 'Weak',     color: '#fdab43' },
+  { min: 50, max: 65,  label: 'Moderate', color: '#e8af34' },
+  { min: 65, max: 80,  label: 'Healthy',  color: '#6daa45' },
+  { min: 80, max: 100, label: 'Strong',   color: '#4f98a3' },
 ];
 
-function renderBreakdownGrid(breakdown) {
-  if (!breakdown) return '<p class="empty-state" style="font-size:.8rem;">Chưa có breakdown data.</p>';
-  return BREAKDOWN_ROWS.map(r => {
-    const val  = Number(breakdown[r.key] ?? 0);
-    const pct  = Math.round((val / r.max) * 100);
-    const cls  = scoreClass(pct);
+function tierColor(score) {
+  const s = Number(score);
+  if (s >= 80) return '#4f98a3';
+  if (s >= 65) return '#6daa45';
+  if (s >= 50) return '#e8af34';
+  if (s >= 30) return '#fdab43';
+  return '#d163a7';
+}
+
+const TREND_META = {
+  improving:         { icon: '↑', label: 'Improving',       cls: 'cv-trend--up' },
+  declining:         { icon: '↓', label: 'Declining',       cls: 'cv-trend--down' },
+  stable:            { icon: '→', label: 'Stable',          cls: 'cv-trend--stable' },
+  insufficient_data: { icon: '—', label: 'Insufficient data', cls: '' },
+};
+
+const BD_META = [
+  { key: 'assumption_health', label: 'Assumption Health', color: '#6daa45' },
+  { key: 'catalyst_progress', label: 'Catalyst Progress', color: '#4f98a3' },
+  { key: 'risk_reward',       label: 'Risk / Reward',     color: '#e8af34' },
+  { key: 'review_confidence', label: 'AI Confidence',     color: '#d163a7' },
+];
+
+const VERDICT_CLS = {
+  BUY:      'cv-vtag--buy',
+  HOLD:     'cv-vtag--hold',
+  REDUCE:   'cv-vtag--reduce',
+  SELL:     'cv-vtag--sell',
+  BULLISH:  'cv-vtag--buy',
+  BEARISH:  'cv-vtag--sell',
+  NEUTRAL:  'cv-vtag--hold',
+  WATCHLIST:'cv-vtag--hold',
+};
+
+const EVENT_KIND_ICON = {
+  reviewed: '🤖',
+  catalyst: '⚡',
+  snapshot: '📸',
+  created:  '🔬',
+  updated:  '✏️',
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Lazy CDN loader
+// ─────────────────────────────────────────────────────────────────────────────
+
+let _chartJsReady = null;
+
+function ensureChartJs() {
+  if (_chartJsReady) return _chartJsReady;
+  if (window.Chart && window.Chart.registry?.plugins?.get('annotation')) {
+    _chartJsReady = Promise.resolve();
+    return _chartJsReady;
+  }
+  _chartJsReady = new Promise((resolve, reject) => {
+    function loadScript(src, onload) {
+      const s = document.createElement('script');
+      s.src = src; s.defer = true;
+      s.onload = onload;
+      s.onerror = () => reject(new Error('Failed to load ' + src));
+      document.head.appendChild(s);
+    }
+    if (!window.Chart) {
+      loadScript(
+        'https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js',
+        () => loadScript(
+          'https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js',
+          () => { Chart.register(window['chartjs-plugin-annotation']); resolve(); }
+        )
+      );
+    } else {
+      loadScript(
+        'https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js',
+        () => { Chart.register(window['chartjs-plugin-annotation']); resolve(); }
+      );
+    }
+  });
+  return _chartJsReady;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Data helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+function cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+/**
+ * Map ConvictionTimelineResponse.points[] → parallel arrays for charts + events.
+ */
+function parsePoints(points) {
+  const labels  = points.map(p => fmtDate(p.snapshotted_at));
+  const scores  = points.map(p => Number(p.score ?? 0));
+  const prices  = points.map(p => p.price_at_snapshot != null ? Number(p.price_at_snapshot) : null);
+
+  // Build events list: keep only points that have a meaningful event kind
+  const eventKinds = new Set(['reviewed', 'catalyst', 'created', 'snapshot']);
+  const events = points
+    .map((p, idx) => ({ p, idx }))
+    .filter(({ p }) => eventKinds.has(p.kind) || p.verdict != null)
+    .map(({ p, idx }) => ({
+      idx,
+      kind:      p.kind ?? 'snapshot',
+      verdict:   p.verdict ? String(p.verdict).toUpperCase() : null,
+      confidence:p.confidence != null ? Math.round(Number(p.confidence) * (Number(p.confidence) <= 1 ? 100 : 1)) : null,
+      score:     Number(p.score ?? 0),
+      price:     p.price_at_snapshot != null ? Number(p.price_at_snapshot) : null,
+      date:      p.snapshotted_at,
+      reasoning: p.reasoning_summary ?? null,
+      risks:     Array.isArray(p.risk_signals) ? p.risk_signals : [],
+      breakdown: p.breakdown ?? null,
+    }));
+
+  return { labels, scores, prices, events };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chart annotations
+// ─────────────────────────────────────────────────────────────────────────────
+
+function buildConvictionAnnotations(events) {
+  const anns = {};
+  // Tier background zones
+  TIER.forEach((t, i) => {
+    anns[`zone${i}`] = {
+      type: 'box', yMin: t.min, yMax: t.max,
+      backgroundColor: t.color.replace(')', ', 0.055)').replace('rgb', 'rgba').replace('#', 'rgba(').replace(/rgba\(#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})/, (_,r,g,b)=>`rgba(${parseInt(r,16)},${parseInt(g,16)},${parseInt(b,16)}`),
+      borderWidth: 0,
+    };
+  });
+  // Event lines
+  events.forEach((e, i) => {
+    const isReview   = e.kind === 'reviewed';
+    const isCatalyst = e.kind === 'catalyst';
+    if (!isReview && !isCatalyst) return;
+    anns[`evLine${i}`] = {
+      type: 'line', xMin: e.idx, xMax: e.idx,
+      borderColor: isReview ? 'rgba(109,170,69,.45)' : 'rgba(253,171,67,.45)',
+      borderWidth: 1.5,
+      borderDash: isReview ? [5, 3] : [2, 2],
+    };
+  });
+  return anns;
+}
+
+function buildPriceAnnotations(events, entryPrice) {
+  const anns = {};
+  if (entryPrice) {
+    anns.entry = {
+      type: 'line', yMin: entryPrice, yMax: entryPrice,
+      borderColor: 'rgba(128,128,128,.35)', borderWidth: 1.2, borderDash: [5, 4],
+      label: { content: 'Entry', display: true, position: 'start', color: 'rgba(128,128,128,.7)', font: { size: 9 } },
+    };
+  }
+  events.forEach((e, i) => {
+    const isReview   = e.kind === 'reviewed';
+    const isCatalyst = e.kind === 'catalyst';
+    if (!isReview && !isCatalyst) return;
+    anns[`evLine${i}`] = {
+      type: 'line', xMin: e.idx, xMax: e.idx,
+      borderColor: isReview ? 'rgba(109,170,69,.35)' : 'rgba(253,171,67,.35)',
+      borderWidth: 1.2,
+      borderDash: isReview ? [5, 3] : [2, 2],
+    };
+  });
+  return anns;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chart renderers
+// ─────────────────────────────────────────────────────────────────────────────
+
+const _chartInstances = new Map();
+
+function destroyCharts(slotId) {
+  ['cv', 'pr'].forEach(k => {
+    const key = `${slotId}:${k}`;
+    if (_chartInstances.has(key)) { _chartInstances.get(key).destroy(); _chartInstances.delete(key); }
+  });
+}
+
+function buildConvictionChart(canvasEl, { labels, scores, events }) {
+  const ctx = canvasEl.getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 0, 240);
+  grad.addColorStop(0, 'rgba(79,152,163,.28)');
+  grad.addColorStop(1, 'rgba(79,152,163,0)');
+
+  const muted = cssVar('--muted') || '#797876';
+  const surface = cssVar('--surface-dyn') || '#2d2c2a';
+  const border = cssVar('--border') || '#393836';
+  const gridColor = 'rgba(128,128,128,.07)';
+  const tickFont = { size: 10, family: "'Satoshi', system-ui, sans-serif" };
+
+  return new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Conviction',
+        data: scores,
+        borderColor: cssVar('--primary') || '#4f98a3',
+        backgroundColor: grad,
+        borderWidth: 2.5,
+        tension: 0.4,
+        fill: true,
+        pointRadius: 4.5,
+        pointHoverRadius: 7,
+        pointBackgroundColor: scores.map(tierColor),
+        pointBorderColor: cssVar('--primary') || '#4f98a3',
+        pointBorderWidth: 1.5,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: surface, titleColor: cssVar('--text') || '#cdccca',
+          bodyColor: muted, borderColor: border, borderWidth: 1, padding: 10,
+          callbacks: {
+            title: c => '📅 ' + c[0].label,
+            label: c => `Conviction: ${Number(c.parsed.y).toFixed(1)} / 100`,
+          },
+        },
+        annotation: { annotations: buildConvictionAnnotations(events) },
+      },
+      scales: {
+        x: { grid: { color: gridColor, drawTicks: false }, border: { display: false }, ticks: { color: muted, font: tickFont, maxRotation: 0, maxTicksLimit: 8 } },
+        y: { min: 0, max: 100, grid: { color: gridColor, drawTicks: false }, border: { display: false }, ticks: { color: muted, font: tickFont, stepSize: 20 }, title: { display: true, text: 'Score (0–100)', color: muted, font: { size: 10 } } },
+      },
+    },
+  });
+}
+
+function buildPriceChart(canvasEl, { labels, prices, events, entryPrice }) {
+  if (!prices.some(p => p != null)) return null;
+  const ctx = canvasEl.getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 0, 110);
+  grad.addColorStop(0, 'rgba(232,175,52,.22)');
+  grad.addColorStop(1, 'rgba(232,175,52,0)');
+
+  const muted = cssVar('--muted') || '#797876';
+  const surface = cssVar('--surface-dyn') || '#2d2c2a';
+  const border = cssVar('--border') || '#393836';
+  const gridColor = 'rgba(128,128,128,.07)';
+  const tickFont = { size: 10, family: "'Satoshi', system-ui, sans-serif" };
+
+  return new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Giá',
+        data: prices,
+        borderColor: cssVar('--gold') || '#e8af34',
+        backgroundColor: grad,
+        borderWidth: 2, tension: 0.4, fill: true,
+        pointRadius: 2.5, pointHoverRadius: 6,
+        pointBackgroundColor: cssVar('--gold') || '#e8af34',
+        spanGaps: true,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: surface, titleColor: cssVar('--text') || '#cdccca',
+          bodyColor: muted, borderColor: border, borderWidth: 1, padding: 10,
+          callbacks: {
+            title: c => '📅 ' + c[0].label,
+            label: c => c.parsed.y != null ? `Giá: ${Number(c.parsed.y).toLocaleString('vi-VN')}₫` : 'N/A',
+          },
+        },
+        annotation: { annotations: buildPriceAnnotations(events, entryPrice) },
+      },
+      scales: {
+        x: { grid: { color: gridColor, drawTicks: false }, border: { display: false }, ticks: { color: muted, font: tickFont, maxRotation: 0, maxTicksLimit: 8 } },
+        y: { grid: { color: gridColor, drawTicks: false }, border: { display: false }, ticks: { color: muted, font: { size: 10 }, callback: v => (v / 1000).toFixed(0) + 'k' } },
+      },
+    },
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Event list HTML
+// ─────────────────────────────────────────────────────────────────────────────
+
+function renderEventList(events) {
+  if (!events.length) return '<p class="cv-empty">Chưa có sự kiện nào.</p>';
+  return events.map(e => {
+    const icon = EVENT_KIND_ICON[e.kind] || '📌';
+    const vtag = e.verdict
+      ? `<span class="cv-vtag ${VERDICT_CLS[e.verdict] || 'cv-vtag--hold'}">${esc(e.verdict)}</span>`
+      : '';
+    const conf = e.confidence != null ? `<span class="cv-chip">Conf ${e.confidence}%</span>` : '';
+    const price = e.price ? `<span class="cv-chip">${Number(e.price).toLocaleString('vi-VN')}₫</span>` : '';
     return `
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-        <span style="width:100px;font-size:.78rem;color:var(--muted);flex-shrink:0;">${r.label}</span>
-        <div style="flex:1;height:6px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden;">
-          <div class="${cls}" style="height:100%;width:${pct}%;border-radius:999px;background:currentColor;transition:width .4s ease;"></div>
+      <div class="cv-ev" data-ev-idx="${e.idx}" role="button" tabindex="0" aria-expanded="false">
+        <span class="cv-ev-icon">${icon}</span>
+        <div class="cv-ev-body">
+          <div class="cv-ev-date">${fmtDate(e.date)} · ${esc(e.kind)}</div>
+          <div class="cv-ev-score">Score <strong>${e.score.toFixed(1)}</strong></div>
+          <div class="cv-ev-meta">${vtag}${conf}${price}</div>
         </div>
-        <span class="${cls}" style="width:40px;text-align:right;font-size:.78rem;font-weight:700;">${val}/${r.max}</span>
       </div>`;
   }).join('');
 }
 
-// ---------------------------------------------------------------------------
-// Main render
-// ---------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
+// Detail drawer HTML
+// ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Render toàn bộ conviction timeline section.
- * @param {object} data  ConvictionTimelineResponse
- */
+function renderDrawer(e) {
+  const bdBars = e.breakdown
+    ? BD_META.map(m => {
+        const val = Number(e.breakdown[m.key] ?? 0);
+        return `
+          <div class="cv-bd-item">
+            <div class="cv-bd-label">${esc(m.label)}</div>
+            <div class="cv-bd-track"><div class="cv-bd-fill" style="width:${val}%;background:${m.color}"></div></div>
+            <div class="cv-bd-val">${val.toFixed(0)}/100</div>
+          </div>`;
+      }).join('')
+    : '<p class="cv-empty" style="font-size:.78rem;">Chưa có breakdown.</p>';
+
+  const risks = e.risks?.length
+    ? `<div class="cv-risk-block">
+        <div class="cv-risk-title">⚠ Risk signals</div>
+        ${e.risks.map(r => `<div class="cv-risk-item">${esc(r)}</div>`).join('')}
+       </div>`
+    : '';
+
+  const reasoning = e.reasoning
+    ? `<div class="cv-reasoning">${esc(e.reasoning)}</div>`
+    : '';
+
+  return `
+    <div class="cv-drawer">
+      <div class="cv-drawer-hd">
+        <span class="cv-drawer-kind">${EVENT_KIND_ICON[e.kind] || '📌'} ${esc(e.kind)}</span>
+        <span class="cv-drawer-date">${fmtDate(e.date)}</span>
+      </div>
+      <div class="cv-bd-grid">${bdBars}</div>
+      ${risks}
+      ${reasoning}
+    </div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Wire event list interactions
+// ─────────────────────────────────────────────────────────────────────────────
+
+function wireEventList(containerEl, events) {
+  const evEls = containerEl.querySelectorAll('.cv-ev');
+  let activeIdx = null;
+
+  evEls.forEach(el => {
+    const handler = () => {
+      const idx = Number(el.dataset.evIdx);
+      const ev = events.find(e => e.idx === idx);
+      if (!ev) return;
+
+      if (activeIdx === idx) {
+        // toggle close
+        activeIdx = null;
+        el.setAttribute('aria-expanded', 'false');
+        el.classList.remove('cv-ev--active');
+        const existing = containerEl.querySelector('.cv-drawer');
+        if (existing) existing.remove();
+        return;
+      }
+
+      // close previous
+      containerEl.querySelectorAll('.cv-ev').forEach(e => {
+        e.classList.remove('cv-ev--active');
+        e.setAttribute('aria-expanded', 'false');
+      });
+      containerEl.querySelector('.cv-drawer')?.remove();
+
+      activeIdx = idx;
+      el.classList.add('cv-ev--active');
+      el.setAttribute('aria-expanded', 'true');
+
+      const drawer = document.createElement('div');
+      drawer.innerHTML = renderDrawer(ev);
+      el.after(drawer.firstElementChild);
+
+      drawer.firstElementChild?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+    };
+
+    el.addEventListener('click', handler);
+    el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler(); } });
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main HTML scaffold
+// ─────────────────────────────────────────────────────────────────────────────
+
+function buildScaffold({ data, labels, scores, prices, events }) {
+  const trend = data.trend ?? 'insufficient_data';
+  const tm = TREND_META[trend] ?? TREND_META.insufficient_data;
+  const hasPrices = prices.some(p => p != null);
+  const latest = data.points[data.points.length - 1];
+  const delta = data.earliest_score != null && data.latest_score != null
+    ? (Number(data.latest_score) - Number(data.earliest_score)).toFixed(1)
+    : null;
+  const deltaSign = delta > 0 ? '+' : '';
+  const deltaClass = delta > 0 ? 'cv-delta--up' : delta < 0 ? 'cv-delta--down' : '';
+
+  const tierLegend = TIER.map(t =>
+    `<div class="cv-tier-pill"><div class="cv-tier-sq" style="background:${t.color}"></div>${t.label}</div>`
+  ).join('');
+
+  return `
+    <div class="cv-section detail-section">
+      <!-- Header -->
+      <div class="cv-header detail-section-header">
+        <div>
+          <h3>Conviction Timeline</h3>
+          <p class="muted" style="font-size:.78rem;margin-top:2px;">${data.total ?? scores.length} data-points · ${esc(data.ticker ?? '')}</p>
+        </div>
+        <div class="cv-header-right">
+          <span class="cv-trend-badge ${tm.cls}">${tm.icon} ${tm.label}</span>
+          ${delta !== null ? `<span class="cv-delta ${deltaClass}">${deltaSign}${delta} pts</span>` : ''}
+        </div>
+      </div>
+
+      <!-- Conviction chart -->
+      <div class="cv-chart-card">
+        <div class="cv-chart-legend">
+          <div class="cv-leg"><div class="cv-leg-dot" style="background:var(--primary,#4f98a3)"></div>Conviction</div>
+          ${hasPrices ? '<div class="cv-leg"><div class="cv-leg-dot" style="background:var(--gold,#e8af34)"></div>Giá</div>' : ''}
+          <div class="cv-leg cv-leg--line" style="--lc:rgba(109,170,69,.7)">AI Review</div>
+          <div class="cv-leg cv-leg--dot-line" style="--lc:rgba(253,171,67,.7)">Catalyst</div>
+        </div>
+        <div class="cv-canvas-wrap cv-canvas--conviction">
+          <canvas id="cvChart-${data.ticker}"></canvas>
+        </div>
+        ${hasPrices ? `
+          <div class="cv-canvas-wrap cv-canvas--price">
+            <p class="cv-price-label">Giá cổ phiếu · ${data.entry_price ? `Entry: ${Number(data.entry_price).toLocaleString('vi-VN')}₫` : ''}</p>
+            <canvas id="priceChart-${data.ticker}"></canvas>
+          </div>` : ''}
+        <div class="cv-tier-strip">${tierLegend}</div>
+      </div>
+
+      <!-- Event list -->
+      ${events.length ? `
+        <div class="cv-event-panel">
+          <div class="cv-event-hd">
+            <span class="cv-event-title">Sự kiện</span>
+            <span class="cv-chip">${events.length}</span>
+          </div>
+          <div class="cv-event-list" id="cvEventList-${data.ticker}">
+            ${renderEventList(events)}
+          </div>
+        </div>` : ''}
+    </div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Public API — backward-compatible
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function convictionTimelineSlotHTML(thesisId) {
+  return `<div id="convictionTimelineSlot-${thesisId}" data-thesis-id="${thesisId}"></div>`;
+}
+
 export function renderConvictionTimeline(data) {
-  if (!data || !Array.isArray(data.points)) return '';
-
-  const points = data.points;               // oldest → newest
-  const latest = points[points.length - 1]; // newest point
-  const trend  = data.trend ?? 'insufficient_data';
-  const tm     = TREND_META[trend] ?? TREND_META.insufficient_data;
-
-  if (!points.length) {
+  if (!data || !Array.isArray(data.points) || !data.points.length) {
     return `
       <div class="detail-section">
         <div class="detail-section-header"><h3>Conviction Timeline</h3></div>
         <p class="empty-state">Chưa có snapshot nào. Trigger AI review để tạo điểm dữ liệu đầu tiên.</p>
       </div>`;
   }
-
-  const scores   = points.map(p => Number(p.score ?? 0));
-  const sparkSVG = renderSparkline(scores, trend);
-
-  // Latest breakdown — dùng breakdown của latest point
-  const latestBreakdown = latest?.breakdown ?? null;
-
-  // Verdict badges — 5 latest points, newest first
-  const badgePoints = [...points].reverse().slice(0, 5);
-
-  return `
-    <div class="detail-section" id="convictionTimelineSection">
-      <div class="detail-section-header" style="align-items:flex-end;gap:12px;">
-        <div>
-          <h3>Conviction Timeline</h3>
-          <p class="muted" style="font-size:.78rem;margin-top:2px;">
-            ${data.total} data-point · ${esc(data.ticker)}
-          </p>
-        </div>
-        <span class="badge ${tm.cls}" style="margin-left:auto;font-size:.8rem;padding:4px 10px;">
-          ${tm.icon} ${tm.label}
-        </span>
-      </div>
-
-      <!-- Sparkline -->
-      <div style="margin:10px 0 14px;">
-        ${sparkSVG}
-        <div style="display:flex;justify-content:space-between;margin-top:4px;">
-          <span style="font-size:.72rem;color:var(--muted);">${fmtDate(points[0]?.snapshotted_at)}</span>
-          <span style="font-size:.72rem;color:var(--muted);">${fmtDate(latest?.snapshotted_at)}</span>
-        </div>
-      </div>
-
-      <!-- Verdict badges (5 gần nhất) -->
-      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;">
-        ${badgePoints.map(p => {
-          const vCls  = VERDICT_CLS[String(p.verdict ?? '').toUpperCase()] ?? 'neutral';
-          const confPct = p.confidence != null ? Math.round(p.confidence * 100) : null;
-          return `
-            <div style="display:flex;flex-direction:column;align-items:center;gap:3px;">
-              <span class="badge ${vCls}" style="font-size:.72rem;padding:3px 8px;">
-                ${esc(String(p.verdict ?? 'N/A').toUpperCase())}
-              </span>
-              <span style="font-size:.68rem;color:var(--muted);">
-                ${fmtDate(p.snapshotted_at)}
-                ${confPct != null ? `· ${confPct}%` : ''}
-              </span>
-            </div>`;
-        }).join('')}
-      </div>
-
-      <!-- Latest breakdown bars -->
-      <div>
-        <p class="suggest-section-title" style="margin-bottom:8px;">Score breakdown — lần review gần nhất</p>
-        ${renderBreakdownGrid(latestBreakdown)}
-      </div>
-
-      <!-- Score delta -->
-      ${data.earliest_score != null && data.latest_score != null ? (() => {
-        const delta = Number(data.latest_score) - Number(data.earliest_score);
-        const sign  = delta > 0 ? '+' : '';
-        const cls   = delta > 0 ? 'score-high' : delta < 0 ? 'score-low' : '';
-        return `
-          <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border, rgba(255,255,255,.08));
-                      display:flex;align-items:center;gap:10px;">
-            <span style="font-size:.82rem;color:var(--muted);">Thay đổi từ đầu:</span>
-            <span class="${cls}" style="font-weight:700;font-size:.9rem;">
-              ${sign}${delta.toFixed(1)} điểm
-            </span>
-            <span style="font-size:.82rem;color:var(--muted);margin-left:auto;">
-              ${fmtScore(data.earliest_score)} → ${fmtScore(data.latest_score)}
-            </span>
-          </div>`;
-      })() : ''}
-    </div>`;
+  const { labels, scores, prices, events } = parsePoints(data.points);
+  return buildScaffold({ data, labels, scores, prices, events });
 }
 
-// ---------------------------------------------------------------------------
-// Loader — gọi từ thesis-service.js
-// ---------------------------------------------------------------------------
-
-/**
- * Fetch conviction timeline và inject vào slot.
- * Thiết kế: fire-and-forget, không block render chính.
- * @param {string|number} thesisId
- */
 export async function loadConvictionTimeline(thesisId) {
   const slot = document.getElementById(`convictionTimelineSlot-${thesisId}`);
   if (!slot) return;
 
-  // Skeleton
   slot.innerHTML = `
     <div class="detail-section" aria-busy="true">
       <div class="detail-section-header"><h3>Conviction Timeline</h3></div>
-      <div style="margin:12px 0;">
-        <div class="skel" style="height:72px;border-radius:6px;"></div>
-      </div>
+      <div style="margin:12px 0;"><div class="skel" style="height:72px;border-radius:6px;"></div></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         ${[1,2,3].map(() => '<div class="skel skel-badge" style="width:64px;"></div>').join('')}
       </div>
     </div>`;
 
   try {
+    await ensureChartJs();
     const data = await getJson(`${thesisApiBase()}/${thesisId}/conviction-timeline?limit=20`);
-    if (!data) {
-      slot.innerHTML = '';
-      return;
-    }
+    if (!data) { slot.innerHTML = ''; return; }
+
+    const ticker = data.ticker ?? String(thesisId);
+    destroyCharts(ticker);
+
     slot.innerHTML = renderConvictionTimeline(data);
+
+    const { labels, scores, prices, events } = parsePoints(data.points);
+
+    // Mount conviction chart
+    const cvCanvas = document.getElementById(`cvChart-${ticker}`);
+    if (cvCanvas) {
+      const inst = buildConvictionChart(cvCanvas, { labels, scores, events });
+      _chartInstances.set(`${ticker}:cv`, inst);
+    }
+
+    // Mount price chart
+    const prCanvas = document.getElementById(`priceChart-${ticker}`);
+    if (prCanvas) {
+      const inst = buildPriceChart(prCanvas, { labels, prices, events, entryPrice: data.entry_price });
+      if (inst) _chartInstances.set(`${ticker}:pr`, inst);
+    }
+
+    // Wire event list
+    const listEl = document.getElementById(`cvEventList-${ticker}`);
+    if (listEl && events.length) wireEventList(listEl, events);
+
   } catch (err) {
-    // Silent degradation — conviction timeline không phải critical path
     slot.innerHTML = `
       <div class="detail-section">
         <div class="detail-section-header"><h3>Conviction Timeline</h3></div>
