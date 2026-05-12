@@ -28,7 +28,7 @@ export function renderCatalystList(list) {
       </div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap;">
         ${item.expected_date
-          ? `<span style="font-size:.8rem;color:var(--muted);">📅 ${fmtDate(item.expected_date)}</span>`
+          ? `<span style="font-size:.8rem;color:var(--muted);">&#128197; ${fmtDate(item.expected_date)}</span>`
           : '<span style="font-size:.8rem;color:var(--muted);">· —</span>'}
         ${item.thesis_title
           ? `<span style="font-size:.78rem;color:var(--muted);font-style:italic;">${esc(item.thesis_title)}</span>`
@@ -105,6 +105,7 @@ export function renderFeedbackKpi(data) {
 
 // ---------------------------------------------------------------------------
 // fmtReviewAge — returns { timeStr, ageBadge } for brief header timestamp
+// ageBadge computed from brief generated_at (freshness of analysis)
 // ---------------------------------------------------------------------------
 function fmtReviewAge(isoStr) {
   if (!isoStr) return { timeStr: null, ageBadge: null };
@@ -127,9 +128,26 @@ function fmtReviewAge(isoStr) {
 }
 
 // ---------------------------------------------------------------------------
-// Brief card (morning / eod)
+// fmtScanTime — format scan timestamp for clock display
 // ---------------------------------------------------------------------------
-export function renderBriefCard(phase, brief, dateStr, existingOutcome = null) {
+function fmtScanTime(isoStr) {
+  if (!isoStr) return null;
+  const d = new Date(isoStr);
+  return d.toLocaleString('vi-VN', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Brief card (morning / eod)
+// @param {string}      phase            'morning' | 'eod'
+// @param {object|null} brief            brief data object
+// @param {string|null} dateStr          fallback date label
+// @param {string|null} existingOutcome  feedback outcome key
+// @param {string|null} scanAt           ISO timestamp of latest scan (shown on clock icon)
+// ---------------------------------------------------------------------------
+export function renderBriefCard(phase, brief, dateStr, existingOutcome = null, scanAt = null) {
   const isEod = phase === 'eod';
   const label = isEod ? 'End-of-Day Brief' : 'Morning Brief';
   const icon  = isEod ? '🌙' : '🌅';
@@ -149,7 +167,13 @@ export function renderBriefCard(phase, brief, dateStr, existingOutcome = null) {
 
   const ometa = existingOutcome ? (OUTCOME_META[existingOutcome] ?? null) : null;
 
-  const { timeStr: reviewTime, ageBadge: reviewBadge } = fmtReviewAge(brief.created_at ?? brief.generated_at);
+  // clock icon: shows WHEN the underlying scan data was collected
+  // age badge: freshness of the brief analysis (generated_at)
+  const scanTimeStr = fmtScanTime(scanAt);
+  const { ageBadge } = fmtReviewAge(brief.created_at ?? brief.generated_at);
+
+  // fallback: if no scanAt, degrade to brief generated_at or dateStr
+  const clockLabel = scanTimeStr ?? dateStr ?? '—';
 
   return `
     <div class="brief-card phase-${isEod ? 'eod' : 'morning'}">
@@ -158,9 +182,9 @@ export function renderBriefCard(phase, brief, dateStr, existingOutcome = null) {
         <div>
           <div class="brief-phase-label">${label}</div>
           <div class="brief-date-row">
-            <span class="brief-date">🕐 ${reviewTime ?? dateStr ?? '—'}</span>
-            ${reviewBadge
-              ? `<span class="brief-age-badge ${reviewBadge.cls}">${reviewBadge.label}</span>`
+            <span class="brief-date" title="Thời điểm chạy scan">🕐 ${clockLabel}</span>
+            ${ageBadge
+              ? `<span class="brief-age-badge ${ageBadge.cls}">${ageBadge.label}</span>`
               : ''}
           </div>
         </div>
@@ -294,11 +318,14 @@ function wireBriefTabs() {
 // Snapshots panel (scan + morning brief + eod brief + feedback KPI)
 // ---------------------------------------------------------------------------
 export function renderSnapshots(data) {
-  // Scan
+  // Scan summary block (separate element, kept for backward compat)
   const scanAt  = el('latestScanAt');
   const scanSum = el('latestScanSummary');
   if (scanAt)  scanAt.textContent = data.latest_scan_at ? fmtDate(data.latest_scan_at) : '—';
   if (scanSum) scanSum.innerHTML  = formatScanHtml(data.latest_scan_summary ?? null) || 'Chưa có scan snapshot.';
+
+  // latest_scan_at passed into both brief cards so clock icon shows scan time
+  const latestScanAt = data.latest_scan_at ?? null;
 
   // Morning brief
   const morningWrap = el('morningBriefWrap');
@@ -308,6 +335,7 @@ export function renderSnapshots(data) {
       data.latest_morning_brief_data,
       data.latest_morning_brief_at ? fmtDate(data.latest_morning_brief_at) : null,
       data.latest_morning_brief_data?.feedback_outcome ?? null,
+      latestScanAt,
     );
   }
 
@@ -319,6 +347,7 @@ export function renderSnapshots(data) {
       data.latest_eod_brief_data,
       data.latest_eod_brief_at ? fmtDate(data.latest_eod_brief_at) : null,
       data.latest_eod_brief_data?.feedback_outcome ?? null,
+      latestScanAt,
     );
   }
 
