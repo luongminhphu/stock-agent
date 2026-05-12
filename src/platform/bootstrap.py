@@ -362,7 +362,7 @@ def get_replay_agent() -> object:
 
 
 def get_snapshot_scheduler() -> object:
-    return _require(_snapshot_scheduler, "snapshot_scheduler")
+    return _snapshot_scheduler
 
 
 def get_sector_rotation_agent() -> object:
@@ -383,3 +383,22 @@ def get_memory_consolidator() -> object:
 
 def get_signal_engine_agent() -> object:
     return _require(_signal_engine_agent, "signal_engine_agent")
+
+
+# ── Optional singleton accessors (return None if not initialised) ─────────────
+# These singletons are conditional on scheduler_user_id or optional features.
+# Callers must handle None gracefully.
+
+def get_briefing_listener() -> object | None:
+    """Return BriefingListener singleton, or None if scheduler_user_id is not set."""
+    return _briefing_listener
+
+
+def get_opportunity_screen_scheduler() -> object | None:
+    """Return OpportunityScreenScheduler singleton, or None if not initialised."""
+    return _opportunity_screen_scheduler
+
+
+def get_opportunity_screen_subscriber() -> object | None:
+    """Return OpportunityScreenSubscriber singleton, or None if not initialised."""
+    return _opportunity_screen_subscriber
