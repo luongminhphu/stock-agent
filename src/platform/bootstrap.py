@@ -278,7 +278,7 @@ async def bootstrap() -> None:
     # ── Wave 2b: SignalEngineListener (register AFTER bus is started) ─────────
     if _signal_engine_listener is None:
         try:
-            from src.ai.agents.signal_engine_listener import SignalEngineListener
+            from src.ai.signal_engine_listener import SignalEngineListener
             from src.platform.db import AsyncSessionLocal
 
             _signal_engine_listener = SignalEngineListener(
