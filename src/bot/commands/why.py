@@ -44,8 +44,7 @@ class WhyCog(BaseCog):
             await self.send_error(
                 interaction,
                 title="Phân tích thất bại",
-                description=f"Không thể phân tích `{ticker.upper()}`.
-`{exc}`",
+                description=f"Không thể phân tích `{ticker.upper()}`.\n`{exc}`",
             )
             return
 
