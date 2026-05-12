@@ -53,7 +53,7 @@
 
         <!-- ══════════════════════════════════════════════════════════════════
              CLUSTER A — "Hôm nay cần làm gì?"
-             Morning context: KPI → Action Surface → Briefing → Watchlist → Portfolio
+             Morning context: KPI → Action Surface → Briefing → Watchlist → Portfolio → Catalyst
         ══════════════════════════════════════════════════════════════════ -->
         <div class="cluster" aria-label="Cluster A: Hôm nay cần làm gì?">
           <div class="cluster-label">
@@ -96,12 +96,6 @@
           </section>
 
           <!-- ── ACTION SURFACE ─────────────────────────────────────────── -->
-          <!--
-            Segment owner : dashboard (readmodel derive)
-            JS owner      : modules/dashboard/dashboard-loader.js → renderActionSurface()
-            Populated from: stats + catalysts already fetched in loadDashboard()
-            Hidden when   : all signals = 0 (class "hidden" retained)
-          -->
           <div
             id="actionSurface"
             class="action-surface hidden"
@@ -169,11 +163,22 @@
             </div>
             <div id="portfolioSection">Đang tải…</div>
           </section>
+
+          <!-- ── CATALYST CALENDAR ──────────────────────────────────────── -->
+          <section class="panel glass watchlist-layer" aria-labelledby="catalystPanelTitle">
+            <div class="panel-header split-header">
+              <div>
+                <p class="eyebrow">③ Catalyst Calendar</p>
+                <h2 id="catalystPanelTitle">Upcoming catalysts</h2>
+              </div>
+            </div>
+            <div id="catalystList" class="list empty-state">Chưa tải dữ liệu…</div>
+          </section>
         </div><!-- /cluster-a -->
 
         <!-- ══════════════════════════════════════════════════════════════════
              CLUSTER B — "Thesis của tôi đang ở đâu?"
-             Research hub: Thesis workspace → Leaderboard → Backtesting
+             Research hub: Thesis board (full-width) → Leaderboard → Backtesting
         ══════════════════════════════════════════════════════════════════ -->
         <div class="cluster" aria-label="Cluster B: Thesis của tôi đang ở đâu?">
           <div class="cluster-label">
@@ -181,62 +186,23 @@
             <span>Thesis của tôi đang ở đâu?</span>
           </div>
 
-          <!-- ── THESIS WORKSPACE ───────────────────────────────────────── -->
-          <div class="workspace-grid" aria-label="Thesis board và action rail">
-            <section class="panel panel-main glass" aria-labelledby="thesisBoardTitle">
-              <div class="panel-header">
-                <div>
-                  <p class="eyebrow">③ Portfolio theses</p>
-                  <h2 id="thesisBoardTitle">Thesis board</h2>
-                </div>
-                <p class="panel-hint">Nhấn vào một thesis để xem chi tiết</p>
+          <!-- ── THESIS BOARD (full-width) ──────────────────────────────── -->
+          <section class="panel glass watchlist-layer" aria-labelledby="thesisBoardTitle">
+            <div class="panel-header split-header">
+              <div>
+                <p class="eyebrow">④ Portfolio theses</p>
+                <h2 id="thesisBoardTitle">Thesis board</h2>
               </div>
-              <div id="thesesTableWrap" class="empty-state">Chưa tải dữ liệu…</div>
-              <div id="thesisDetail" class="detail-shell empty-detail">
-                <div class="empty-detail-copy">
-                  <h3>Chọn một thesis</h3>
-                  <p>Xem assumptions, catalysts, reasoning và các điểm cần theo dõi tiếp theo.</p>
-                </div>
+              <p class="panel-hint">Nhấn vào một thesis để xem chi tiết</p>
+            </div>
+            <div id="thesesTableWrap" class="empty-state">Chưa tải dữ liệu…</div>
+            <div id="thesisDetail" class="detail-shell empty-detail">
+              <div class="empty-detail-copy">
+                <h3>Chọn một thesis</h3>
+                <p>Xem assumptions, catalysts, reasoning và các điểm cần theo dõi tiếp theo.</p>
               </div>
-            </section>
-
-            <aside class="action-rail" aria-label="Tín hiệu hành động">
-              <section class="panel glass action-panel" aria-labelledby="catalystPanelTitle">
-                <div class="panel-header">
-                  <div>
-                    <p class="eyebrow">Catalyst calendar</p>
-                    <h2 id="catalystPanelTitle">Upcoming catalysts</h2>
-                  </div>
-                </div>
-                <div id="catalystList" class="list empty-state">Chưa tải dữ liệu…</div>
-              </section>
-
-              <section class="panel glass action-panel" aria-labelledby="verdictPanelTitle">
-                <div class="panel-header">
-                  <div>
-                    <p class="eyebrow">Sentiment</p>
-                    <h2 id="verdictPanelTitle">Verdict distribution</h2>
-                  </div>
-                </div>
-                <div id="verdictList" class="list empty-state">Chưa tải dữ liệu…</div>
-              </section>
-
-              <section class="panel glass action-panel" aria-labelledby="briefPanelTitle">
-                <div class="panel-header">
-                  <div>
-                    <p class="eyebrow">Automation</p>
-                    <h2 id="briefPanelTitle">Scan &amp; Signals</h2>
-                  </div>
-                </div>
-                <div class="snapshot-grid">
-                  <div class="snapshot-card">
-                    <span class="snapshot-label">Signal summary</span>
-                    <p id="scanSignalDetail" class="muted">Chưa có scan snapshot.</p>
-                  </div>
-                </div>
-              </section>
-            </aside>
-          </div>
+            </div>
+          </section>
 
           <!-- ── LEADERBOARD ────────────────────────────────────────────── -->
           <section
@@ -247,7 +213,7 @@
           >
             <div class="lb-strip-header">
               <div>
-                <p class="eyebrow">④ 🏆 Thesis Leaderboard</p>
+                <p class="eyebrow">⑤ 🏆 Thesis Leaderboard</p>
                 <h2 id="lbStripTitle">Top theses theo score</h2>
               </div>
               <div class="lb-sort-bar" role="group" aria-label="Sắp xếp leaderboard">
@@ -268,7 +234,7 @@
           <section class="panel glass validation-layer backtesting-panel" aria-labelledby="backtestTitle">
             <div class="panel-header split-header">
               <div>
-                <p class="eyebrow">⑤ Backtesting</p>
+                <p class="eyebrow">⑥ Backtesting</p>
                 <h2 id="backtestTitle">Review accuracy &amp; thesis performance</h2>
               </div>
               <p class="muted panel-hint">Verdict quality · Worst &amp; Best calls theo avg PnL snapshot.</p>
@@ -317,7 +283,7 @@
           <section class="panel glass decision-layer" aria-labelledby="decisionTitle">
             <div class="dec-panel-header">
               <div>
-                <p class="eyebrow">⑥ Decision Log &amp; AI Lessons</p>
+                <p class="eyebrow">⑦ Decision Log &amp; AI Lessons</p>
                 <h2 id="decisionTitle">Ghi lại quyết định &amp; Bài học từ AI Replay</h2>
               </div>
               <button id="newDecisionBtn" class="primary-btn" type="button">+ Log Decision</button>
