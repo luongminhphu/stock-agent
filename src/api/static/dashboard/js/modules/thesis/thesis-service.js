@@ -18,6 +18,7 @@ import { wireDetailActions } from './wire-detail-actions.js';
 import { renderReviewRecommendResult } from './render-ai-review.js';
 import { fetchQuote, renderQuoteStrip } from './market-quote.js';
 import { loadConvictionTimeline } from './render-conviction-timeline.js';
+import { loadPriceMiniChart, destroyPriceChart } from './render-price-chart.js';
 
 // ---------------------------------------------------------------------------
 // Skeleton HTML
@@ -190,6 +191,10 @@ export async function loadThesisDetail(thesisId) {
   const wrap = el('thesisDetail');
   wrap.classList.remove('empty-detail');
   wrap.innerHTML = detailSkeletonHTML();
+
+  // Huỷ price chart instance cũ trước khi re-render
+  destroyPriceChart(thesisId);
+
   try {
     const [thesis, assumptions, catalysts, reviews] = await Promise.all([
       getJson(`${thesisApiBase()}/${thesisId}`),
@@ -209,6 +214,7 @@ export async function loadThesisDetail(thesisId) {
       ? (fn) => requestIdleCallback(fn, { timeout: 3000 })
       : (fn) => setTimeout(fn, 0);
 
+    // WAVE 3b: quote strip
     scheduleIdle(async () => {
       const slot = wrap.querySelector('#quoteStripSlot');
       if (!slot) return;
@@ -217,12 +223,21 @@ export async function loadThesisDetail(thesisId) {
       slot.innerHTML = renderQuoteStrip(quote, thesis);
     });
 
+    // Wave C+: price mini chart (30d OHLCV + entry/target/stop annotation)
+    scheduleIdle(async () => {
+      const slot = wrap.querySelector(`#priceMiniChartSlot-${thesisId}`);
+      if (!slot) return;
+      await loadPriceMiniChart(thesis, slot);
+    });
+
+    // Wave C: conviction timeline
     scheduleIdle(async () => {
       const slot = wrap.querySelector(`#convictionTimelineSlot-${thesisId}`);
       if (!slot) return;
       await loadConvictionTimeline(thesisId);
     });
 
+    // Wave C: thesis event timeline
     scheduleIdle(async () => {
       await loadThesisTimeline(thesisId, wrap);
     });

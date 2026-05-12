@@ -3,6 +3,7 @@ import { renderScoreBreakdown } from './render-score.js';
 import { renderReviewRecommendSection } from './render-ai-review.js';
 import { convictionTimelineSlotHTML, loadSparkChart, destroySpark } from './render-conviction-timeline.js';
 import { quoteStripSkeletonHTML } from './market-quote.js';
+import { priceMiniChartSlotHTML } from './render-price-chart.js';
 import { state } from '../../state/dashboard-state.js';
 
 /**
@@ -61,6 +62,8 @@ function thesisTimelineSlotHTML(thesisId) {
  * Render toàn bộ detail panel cho một thesis.
  * WAVE 3b: quote-strip-placeholder async.
  * Wave C:  thesisTimelineSlot async (sau conviction timeline).
+ * Wave C+: priceMiniChartSlot async — Chart.js line chart 30d OHLCV
+ *          với annotation lines entry / target / stop_loss.
  */
 export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
   const assumList = Array.isArray(assumptions) ? assumptions : (assumptions?.items ?? []);
@@ -87,6 +90,9 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
     <div id="quoteStripSlot" data-ticker="${esc(t.ticker)}">
       ${quoteStripSkeletonHTML()}
     </div>
+
+    <!-- Wave C+: price mini chart slot — Chart.js 30d OHLCV với entry/target/stop lines -->
+    ${priceMiniChartSlotHTML(t.id)}
 
     ${t.summary ? `<p class="detail-summary">${esc(t.summary)}</p>` : ''}
 
