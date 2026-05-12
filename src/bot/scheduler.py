@@ -556,7 +556,15 @@ class ThesisDriftScheduler:
                         error=str(exc),
                     )
 
+            # BUG FIX: record_success even when all per-thesis reviews failed.
+            # Previously: if reviews=[], the function returned without any monitor call,
+            # causing the panel to falsely report 'chưa chạy' after a quiet tick with signals.
             if not reviews:
+                logger.info(
+                    "scheduler.drift.all_reviews_failed",
+                    signal_count=len(signals),
+                )
+                await self._monitor.record_success(task_name)
                 return
 
             # -- Step 3: Discord notify — presentation delegated to thesis_embeds --
@@ -648,7 +656,7 @@ class ReminderScheduler:
             "weekly": [ReminderFrequency.WEEKLY],
         }
         frequencies = frequency_map.get(label, [ReminderFrequency.DAILY])
-        freq_label = "h\u00e0ng ng\u00e0y" if label == "daily" else "h\u00e0ng tu\u1ea7n"
+        freq_label = "hàng ngày" if label == "daily" else "hàng tuần"
 
         # -- Step 1: Fetch due reminders (read-only session) --
         try:
@@ -800,11 +808,16 @@ class DecisionReplayScheduler:
         results: list[dict] = []
         for decision in pending:
             # 2a: evaluate realized outcome (no AI)
+            # BUG FIX: pass replay_agent=get_replay_agent() for constructor consistency.
+            # Original omitted replay_agent here while step 1 and 2b both passed it,
+            # risking AttributeError if DecisionService accesses self._replay_agent
+            # in any shared internal path (e.g. _load_decision helper).
             try:
                 async with AsyncSessionLocal() as session:
                     svc = DecisionService(
                         session=session,
                         quote_service=get_quote_service(),
+                        replay_agent=get_replay_agent(),
                     )
                     evaluated = await svc.evaluate_outcome(decision.id)
                     await session.commit()
@@ -850,6 +863,7 @@ class DecisionReplayScheduler:
                         svc = DecisionService(
                             session=session,
                             quote_service=get_quote_service(),
+                            replay_agent=get_replay_agent(),
                         )
                         await svc.persist_lesson(
                             decision_id=decision.id,
