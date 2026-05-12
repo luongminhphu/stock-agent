@@ -585,7 +585,10 @@ class ThesisDriftScheduler:
                         error=str(exc),
                     )
 
+            # All reviews failed — tick still completed successfully from
+            # the scheduler's perspective (detection ran, AI was unavailable).
             if not reviews:
+                await self._monitor.record_success(task_name)
                 return
 
             # -- Step 3: Discord notify — presentation delegated to thesis_embeds --
@@ -685,11 +688,13 @@ class ReminderScheduler:
         frequencies = frequency_map.get(label, [ReminderFrequency.DAILY])
         freq_label = "hàng ngày" if label == "daily" else "hàng tuần"
 
-        # -- Step 1: Fetch due reminders (read-only session) --
+        # -- Step 1: Fetch due reminders (read-only session, closed after) --
         try:
             async with AsyncSessionLocal() as session:
                 svc = ReminderService(session)
                 due = await svc.list_due(frequencies=frequencies)
+            # Session is now closed — reminder objects are detached.
+            # We carry only reminder.id and reminder.watchlist_item_id forward.
 
             if not due:
                 logger.debug("scheduler.reminder.none_due", label=label)
@@ -704,7 +709,9 @@ class ReminderScheduler:
 
         # -- Step 2: Send + mark_sent per reminder with isolated commit --
         # Each reminder gets its own session so a crash mid-loop never rolls back
-        # mark_sent() calls that already succeeded.
+        # mark_sent_by_id() calls that already succeeded.
+        # mark_sent_by_id() queries by PK inside the new session — safe for
+        # detached objects that originated from the now-closed list session.
         now_utc = datetime.datetime.now(tz=datetime.UTC)
         ict_time = (now_utc + datetime.timedelta(hours=7)).strftime("%H:%M ICT")
         sent_count = 0
@@ -727,11 +734,11 @@ class ReminderScheduler:
                 )
                 continue
 
-            # Commit mark_sent immediately — isolated from other reminders.
+            # mark_sent_by_id queries by PK in a fresh session — no detached object risk.
             try:
                 async with AsyncSessionLocal() as mark_session:
                     mark_svc = ReminderService(mark_session)
-                    await mark_svc.mark_sent(reminder)
+                    await mark_svc.mark_sent_by_id(reminder.id)
                     await mark_session.commit()
                 logger.info(
                     "scheduler.reminder.sent",
@@ -812,7 +819,6 @@ class DecisionReplayScheduler:
                 svc = DecisionService(
                     session=session,
                     quote_service=get_quote_service(),
-                    replay_agent=get_replay_agent(),
                 )
                 pending = await svc.list_pending_outcome_evaluations()
         except Exception as exc:

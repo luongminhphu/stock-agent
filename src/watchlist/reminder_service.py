@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.logging import get_logger
@@ -148,14 +149,55 @@ class ReminderService:
 
         Updates last_sent_at to now(UTC). Caller must commit the session.
 
+        Use this when the caller already holds a live Reminder object
+        from the *same* session (e.g. ScanService._fire_on_signal_reminders).
+        When the Reminder object originated from a *different* (now-closed)
+        session use mark_sent_by_id() instead to avoid DetachedInstanceError.
+
         Args:
-            reminder: The Reminder that was sent.
+            reminder: The Reminder that was sent (must be attached to this session).
 
         Returns:
             Updated Reminder with last_sent_at set.
         """
         reminder.last_sent_at = datetime.now(tz=UTC)
         await self._repo.save_reminder(reminder)
+        logger.info(
+            "reminder_service.mark_sent",
+            reminder_id=reminder.id,
+            user_id=reminder.user_id,
+            frequency=reminder.frequency,
+        )
+        return reminder
+
+    async def mark_sent_by_id(self, reminder_id: int) -> Reminder:
+        """Record that a reminder was just dispatched, looked up by PK.
+
+        Safe to call from a *different* session than the one that fetched
+        the Reminder — queries by PK within the current session so there
+        is no risk of DetachedInstanceError.
+
+        Use this in ReminderScheduler._fire_reminders where list_due() is
+        called in a read session that is closed before mark_sent runs.
+
+        Args:
+            reminder_id: Primary key of the Reminder to update.
+
+        Returns:
+            Updated Reminder with last_sent_at set.
+
+        Raises:
+            ReminderNotFoundError: If no Reminder with this PK exists.
+        """
+        stmt = select(Reminder).where(Reminder.id == reminder_id)
+        result = await self._session.execute(stmt)
+        reminder = result.scalar_one_or_none()
+        if reminder is None:
+            raise ReminderNotFoundError(f"Reminder {reminder_id} not found")
+
+        reminder.last_sent_at = datetime.now(tz=UTC)
+        self._session.add(reminder)
+        await self._session.flush()
         logger.info(
             "reminder_service.mark_sent",
             reminder_id=reminder.id,
