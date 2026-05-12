@@ -2,7 +2,6 @@
 
 Owner: bot segment.
 Adapter only: Discord interaction → StressTestService → format embed.
-
 NO business logic here.
 """
 
@@ -11,7 +10,7 @@ from __future__ import annotations
 import discord
 from discord import app_commands
 
-from src.ai.schemas import StressTestOutput, ThreatLevel, Verdict
+from src.ai.schemas import StressTestOutput, ThreatLevel
 from src.bot.commands.base import BaseCog
 from src.platform.bootstrap import get_quote_service, get_stress_test_agent
 from src.platform.logging import get_logger
@@ -19,17 +18,18 @@ from src.thesis.stress_test_service import StressTestService
 
 logger = get_logger(__name__)
 
-_VERDICT_COLOUR = {
-    Verdict.BULLISH: discord.Color.green(),
-    Verdict.NEUTRAL: discord.Color.gold(),
-    Verdict.BEARISH: discord.Color.red(),
+_THREAT_COLOUR = {
+    ThreatLevel.LOW:      discord.Color.green(),
+    ThreatLevel.MEDIUM:   discord.Color.gold(),
+    ThreatLevel.HIGH:     discord.Color.orange(),
+    ThreatLevel.CRITICAL: discord.Color.red(),
 }
 
 _THREAT_EMOJI = {
-    ThreatLevel.LOW:      "🟢",
-    ThreatLevel.MEDIUM:   "🟡",
-    ThreatLevel.HIGH:     "🔴",
-    ThreatLevel.CRITICAL: "💀",
+    ThreatLevel.LOW:      "὾2",
+    ThreatLevel.MEDIUM:   "὾1",
+    ThreatLevel.HIGH:     "ὓ4",
+    ThreatLevel.CRITICAL: "💣",
 }
 
 
@@ -81,32 +81,21 @@ def build_stress_test_embed(result: StressTestOutput) -> discord.Embed:
     """Convert StressTestOutput → Discord Embed.
 
     Public — importable by other bot adapters if needed.
+    Maps directly to StressTestOutput fields in ai.schemas.
     """
-    colour = _VERDICT_COLOUR.get(result.verdict, discord.Color.greyple())
-    prob_pct = result.invalidation_probability * 100
-    prob_bar = _prob_bar(result.invalidation_probability)
+    colour = _THREAT_COLOUR.get(result.overall_threat, discord.Color.greyple())
+    threat_emoji = _THREAT_EMOJI.get(result.overall_threat, "⚪")
 
     embed = discord.Embed(
         title=f"🔬 Stress-Test: {result.ticker}",
-        description=(
-            f"**{result.thesis_title}**\n"
-            f"Scenario: _{result.stress_scenario}_"
-        ),
+        description=f"**Scenario:** _{result.scenario}_",
         color=colour,
     )
 
-    # Verdict + probability
-    verdict_emoji = {Verdict.BULLISH: "🟢", Verdict.NEUTRAL: "🟡", Verdict.BEARISH: "🔴"}.get(
-        result.verdict, "⚪"
-    )
+    # Overall threat + confidence
     embed.add_field(
-        name="Verdict",
-        value=f"{verdict_emoji} **{result.verdict}** (conf: {result.confidence:.0%})",
-        inline=True,
-    )
-    embed.add_field(
-        name="Xác suất invalidation",
-        value=f"{prob_bar} **{prob_pct:.0f}%**",
+        name="Overall Threat",
+        value=f"{threat_emoji} **{result.overall_threat}** (conf: {result.confidence:.0%})",
         inline=True,
     )
 
@@ -115,44 +104,40 @@ def build_stress_test_embed(result: StressTestOutput) -> discord.Embed:
         lines = []
         for a in result.threatened_assumptions:
             emoji = _THREAT_EMOJI.get(a.threat_level, "⚪")
-            lines.append(f"{emoji} **{a.threat_level}** — {a.description[:80]}")
-            lines.append(f"  ↳ _{a.counter_argument[:120]}_")
+            lines.append(f"{emoji} **{a.threat_level}** — {a.assumption_text[:80]}")
+            lines.append(f"  ↳ _{a.evidence[:120]}_")
+            if a.probability_of_invalidation > 0:
+                lines.append(
+                    f"  📊 Xác suất invalidation: **{a.probability_of_invalidation:.0%}**"
+                )
         embed.add_field(
             name=f"⚠️ Assumptions bị đe dọa ({len(result.threatened_assumptions)})",
             value="\n".join(lines)[:1024],
             inline=False,
         )
 
-    # Surviving assumptions
-    if result.surviving_assumptions:
-        surviving_text = "\n".join(f"✅ {s[:100]}" for s in result.surviving_assumptions[:4])
+    # Hedge suggestions
+    if result.hedge_suggestions:
+        hedges_text = "\n".join(f"🛡️ {h[:100]}" for h in result.hedge_suggestions[:4])
         embed.add_field(
-            name=f"💪 Assumptions còn vững ({len(result.surviving_assumptions)})",
-            value=surviving_text[:1024],
+            name="Gợi ý hedge",
+            value=hedges_text[:1024],
             inline=False,
         )
 
-    # Triggers to watch
-    if result.suggested_triggers_to_watch:
-        triggers_text = "\n".join(
-            f"👁️ {t[:100]}" for t in result.suggested_triggers_to_watch[:4]
-        )
+    # Portfolio impact
+    if result.portfolio_impact_note:
         embed.add_field(
-            name="Triggers cần theo dõi",
-            value=triggers_text[:1024],
+            name="Portfolio Impact",
+            value=result.portfolio_impact_note[:512],
             inline=False,
         )
 
-    # Macro risks
-    if result.macro_risks:
-        risks_text = "\n".join(f"• {r[:100]}" for r in result.macro_risks[:3])
-        embed.add_field(name="Rủi ro vĩ mô", value=risks_text[:512], inline=False)
-
-    # Reasoning
-    if result.reasoning:
+    # Summary
+    if result.summary:
         embed.add_field(
-            name="Lý giải",
-            value=result.reasoning[:512],
+            name="Tóm tắt",
+            value=result.summary[:512],
             inline=False,
         )
 
