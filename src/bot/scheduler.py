@@ -249,6 +249,8 @@ class WatchlistScanScheduler:
     """Scan watchlist every 5 minutes during market hours and notify Discord.
 
     - Runs weekdays 09:00–15:00 ICT only (silent outside market hours).
+    - Step 0: reactivate_cooled_down() — re-arm auto_reactivate alerts past
+      their cooldown window (isolated session, non-blocking).
     - Sends embed only when signals exist (alert_triggered or strong_move).
     - ON_SIGNAL reminders piggyback on the same embed — no extra message.
     - Does NOT call AI — zero token cost.
@@ -284,6 +286,30 @@ class WatchlistScanScheduler:
             )
             return
 
+        # ── Step 0: Reactivate cooled-down alerts (isolated commit) ──────────
+        # Non-blocking: scan always continues regardless of reactivation outcome.
+        # Only affects alerts with auto_reactivate=True that have passed
+        # their cooldown window (settings.alert_reactivate_cooldown_hours).
+        try:
+            from src.watchlist.alert_service import AlertService
+
+            async with AsyncSessionLocal() as reactivate_session:
+                alert_svc = AlertService(reactivate_session)
+                reactivated = await alert_svc.reactivate_cooled_down(
+                    str(user_id),
+                    cooldown_hours=settings.alert_reactivate_cooldown_hours,
+                )
+                await reactivate_session.commit()
+            if reactivated:
+                logger.info(
+                    "scheduler.scan.alerts_reactivated",
+                    count=len(reactivated),
+                    tickers=[a.ticker for a in reactivated],
+                )
+        except Exception as exc:
+            logger.warning("scheduler.scan.reactivate_failed", error=str(exc))
+
+        # ── Step 1: Scan ─────────────────────────────────────────────────────
         try:
             from src.watchlist.scan_service import ScanService
 
@@ -302,6 +328,9 @@ class WatchlistScanScheduler:
             channel = self._client.get_channel(int(channel_id))
             if channel is None:
                 logger.warning("scheduler.scan.channel_not_found", channel_id=channel_id)
+                await self._monitor.record_failure(
+                    task_name, RuntimeError(f"channel {channel_id} not found")
+                )
                 return
 
             embed = build_scan_embed(result, now_utc)
@@ -556,15 +585,7 @@ class ThesisDriftScheduler:
                         error=str(exc),
                     )
 
-            # BUG FIX: record_success even when all per-thesis reviews failed.
-            # Previously: if reviews=[], the function returned without any monitor call,
-            # causing the panel to falsely report 'chưa chạy' after a quiet tick with signals.
             if not reviews:
-                logger.info(
-                    "scheduler.drift.all_reviews_failed",
-                    signal_count=len(signals),
-                )
-                await self._monitor.record_success(task_name)
                 return
 
             # -- Step 3: Discord notify — presentation delegated to thesis_embeds --
@@ -656,7 +677,7 @@ class ReminderScheduler:
             "weekly": [ReminderFrequency.WEEKLY],
         }
         frequencies = frequency_map.get(label, [ReminderFrequency.DAILY])
-        freq_label = "hàng ngày" if label == "daily" else "hàng tuần"
+        freq_label = "h\u00e0ng ng\u00e0y" if label == "daily" else "h\u00e0ng tu\u1ea7n"
 
         # -- Step 1: Fetch due reminders (read-only session) --
         try:
@@ -808,16 +829,11 @@ class DecisionReplayScheduler:
         results: list[dict] = []
         for decision in pending:
             # 2a: evaluate realized outcome (no AI)
-            # BUG FIX: pass replay_agent=get_replay_agent() for constructor consistency.
-            # Original omitted replay_agent here while step 1 and 2b both passed it,
-            # risking AttributeError if DecisionService accesses self._replay_agent
-            # in any shared internal path (e.g. _load_decision helper).
             try:
                 async with AsyncSessionLocal() as session:
                     svc = DecisionService(
                         session=session,
                         quote_service=get_quote_service(),
-                        replay_agent=get_replay_agent(),
                     )
                     evaluated = await svc.evaluate_outcome(decision.id)
                     await session.commit()
@@ -863,7 +879,6 @@ class DecisionReplayScheduler:
                         svc = DecisionService(
                             session=session,
                             quote_service=get_quote_service(),
-                            replay_agent=get_replay_agent(),
                         )
                         await svc.persist_lesson(
                             decision_id=decision.id,

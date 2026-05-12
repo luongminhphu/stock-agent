@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     thesis_drift_threshold_pct: float = 5.0   # Trigger review khi |drift| >= threshold
     thesis_drift_cooldown_hours: float = 4.0  # Không re-trigger trong N giờ sau lần review gần nhất
 
+    # Alert auto-reactivation cooldown
+    # Alerts with auto_reactivate=True will be reset to ACTIVE after this many hours
+    # following their triggered_at timestamp. Set to 0 to disable.
+    alert_reactivate_cooldown_hours: int = 4
+
     # ------------------------------------------------------------------
     # Investor Static Profile — Wave 1 Blueprint V2
     # Edit these in .env when your investment style changes.

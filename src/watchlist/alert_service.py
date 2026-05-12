@@ -9,6 +9,7 @@ Responsibilities:
   - Process a batch of triggered alerts (called by ScanService)
   - Dismiss an alert by ID
   - Reactivate a TRIGGERED alert back to ACTIVE
+  - Bulk-reactivate cooled-down alerts (called by WatchlistScanScheduler)
 
 ScanService detects WHICH alerts are triggered; AlertService decides
 what happens WHEN they are triggered (state mutation, persistence).
@@ -19,7 +20,9 @@ Callers receive the list of fired Alert objects and dispatch as needed.
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from datetime import UTC, datetime, timedelta
+
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.logging import get_logger
@@ -39,7 +42,7 @@ class AlertService:
     Owner: watchlist segment.
     Caller: ScanService (process_triggered), WatchlistService (create/dismiss),
             StressTestSubscriber (create_thesis_trigger_rule),
-            bot/api adapters (list, reactivate).
+            bot/api adapters (list, reactivate, reactivate_cooled_down).
     """
 
     def __init__(self, session: AsyncSession) -> None:
@@ -255,7 +258,7 @@ class AlertService:
         return alert
 
     # ------------------------------------------------------------------
-    # Reactivate
+    # Reactivate (single alert — manual, called from bot/api adapters)
     # ------------------------------------------------------------------
 
     async def reactivate(self, alert_id: int, user_id: str) -> Alert:
@@ -296,6 +299,63 @@ class AlertService:
             ticker=alert.ticker,
         )
         return alert
+
+    # ------------------------------------------------------------------
+    # Reactivate cooled-down (bulk — called by WatchlistScanScheduler)
+    # ------------------------------------------------------------------
+
+    async def reactivate_cooled_down(
+        self,
+        user_id: str,
+        cooldown_hours: int = 4,
+    ) -> list[Alert]:
+        """Reactivate TRIGGERED alerts that have passed their cooldown window.
+
+        Only affects alerts where auto_reactivate=True. One-shot alerts
+        (auto_reactivate=False, the default) are never touched.
+
+        Called by WatchlistScanScheduler at the start of each scan tick,
+        in an isolated session before ScanService.scan_user() runs.
+
+        Args:
+            user_id:        Owner of the alerts.
+            cooldown_hours: Hours to wait after triggered_at before re-arming.
+                            Default 4h — matches thesis_drift_cooldown_hours.
+                            Pass 0 to reactivate all eligible alerts immediately.
+
+        Returns:
+            List of Alert instances that were reset to ACTIVE this tick.
+            Empty list if none were eligible.
+        """
+        cutoff = datetime.now(UTC) - timedelta(hours=cooldown_hours)
+        stmt = select(Alert).where(
+            and_(
+                Alert.user_id == user_id,
+                Alert.status == AlertStatus.TRIGGERED,
+                Alert.auto_reactivate.is_(True),
+                Alert.triggered_at < cutoff,
+            )
+        )
+        result = await self._session.execute(stmt)
+        alerts = result.scalars().all()
+
+        for alert in alerts:
+            alert.status = AlertStatus.ACTIVE
+            alert.triggered_at = None
+            alert.triggered_price = None
+            self._session.add(alert)
+
+        if alerts:
+            await self._session.flush()
+            logger.info(
+                "alert_service.bulk_reactivated",
+                user_id=user_id,
+                count=len(alerts),
+                tickers=sorted({a.ticker for a in alerts}),
+                cooldown_hours=cooldown_hours,
+            )
+
+        return list(alerts)
 
     # ------------------------------------------------------------------
     # Internal helpers
