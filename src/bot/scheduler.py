@@ -52,7 +52,6 @@ from src.bot.commands.watchlist_embeds import build_scan_embed
 from src.platform.bootstrap import (
     get_investor_profile_service,
     get_memory_consolidator,
-    get_pnl_service,
     get_quote_service,
     get_replay_agent,
     get_thesis_review_agent,
@@ -299,10 +298,7 @@ class WatchlistScanScheduler:
             )
             return
 
-        # ── Step 0: Reactivate cooled-down alerts (isolated commit) ───────────────────
-        # Non-blocking: scan always continues regardless of reactivation outcome.
-        # Only affects alerts with auto_reactivate=True that have passed
-        # their cooldown window (settings.alert_reactivate_cooldown_hours).
+        # ── Step 0: Reactivate cooled-down alerts (isolated commit) ──────────
         try:
             from src.watchlist.alert_service import AlertService
 
@@ -322,7 +318,7 @@ class WatchlistScanScheduler:
         except Exception as exc:
             logger.warning("scheduler.scan.reactivate_failed", error=str(exc))
 
-        # ── Step 1: Scan ──────────────────────────────────────────────────────────────────────
+        # ── Step 1: Scan ─────────────────────────────────────────────────────
         try:
             from src.watchlist.scan_service import ScanService
 
@@ -600,8 +596,6 @@ class ThesisDriftScheduler:
                         error=str(exc),
                     )
 
-            # All reviews failed — tick still completed successfully from
-            # the scheduler's perspective (detection ran, AI was unavailable).
             if not reviews:
                 await self._monitor.record_success(task_name)
                 return
@@ -711,8 +705,6 @@ class ReminderScheduler:
             async with AsyncSessionLocal() as session:
                 svc = ReminderService(session)
                 due = await svc.list_due(frequencies=frequencies)
-            # Session is now closed — reminder objects are detached.
-            # We carry only reminder.id and reminder.watchlist_item_id forward.
 
             if not due:
                 logger.debug("scheduler.reminder.none_due", label=label)
@@ -726,10 +718,6 @@ class ReminderScheduler:
             return
 
         # -- Step 2: Send + mark_sent per reminder with isolated commit --
-        # Each reminder gets its own session so a crash mid-loop never rolls back
-        # mark_sent_by_id() calls that already succeeded.
-        # mark_sent_by_id() queries by PK inside the new session — safe for
-        # detached objects that originated from the now-closed list session.
         now_utc = datetime.datetime.now(tz=datetime.UTC)
         ict_time = (now_utc + datetime.timedelta(hours=7)).strftime("%H:%M ICT")
         sent_count = 0
@@ -752,7 +740,6 @@ class ReminderScheduler:
                 )
                 continue
 
-            # mark_sent_by_id queries by PK in a fresh session — no detached object risk.
             try:
                 async with AsyncSessionLocal() as mark_session:
                     mark_svc = ReminderService(mark_session)
@@ -974,16 +961,6 @@ class MemoryConsolidatorScheduler:
     All domain logic lives in ai.memory.MemoryConsolidator.
 
     Schedule: Every Sunday at 09:00 ICT (02:00 UTC).
-    - Runs weekday check: only fires on Sunday (weekday() == 6).
-    - Graceful skip: if memory_consolidator is None (scheduler_user_id not set),
-      logs a warning and returns — never raises.
-    - No Discord notification: memory consolidation is a background process.
-      Add a notify here in the future if you want a weekly memory digest embed.
-
-    Flow:
-        1. get_memory_consolidator() — retrieve singleton from bootstrap.
-        2. MemoryConsolidator.run(session) — load episodes, call AI, persist snapshot.
-        3. Log result (snapshot_id or skip reason).
     """
 
     def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
@@ -1002,7 +979,6 @@ class MemoryConsolidatorScheduler:
     @tasks.loop(time=_MEMORY_CONSOLIDATE_TIME)
     async def _consolidate_task(self) -> None:
         now_utc = datetime.datetime.now(tz=datetime.UTC)
-        # Only run on Sundays (weekday 6)
         if now_utc.weekday() != 6:
             return
 
@@ -1060,17 +1036,6 @@ class SignalEngineScheduler:
 
     Owner: bot segment (adapter only).
     No business logic — emits SignalEngineRequestedEvent only.
-    ai.SignalEngineListener handles: watchlist × thesis × portfolio cross-check,
-    ranked signal output, and SignalEngineCompletedEvent emission.
-    BriefingListener subscribes to SignalEngineCompletedEvent to enrich brief context.
-
-    Schedule:
-        08:40 ICT — morning run  (5 min before BriefingScheduler morning brief)
-        15:10 ICT — eod run      (5 min before DecisionReplayScheduler)
-
-    Graceful skip:
-        - Weekends.
-        - scheduler_user_id not set → warning, no emit.
     """
 
     def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:

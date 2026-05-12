@@ -181,16 +181,13 @@ async def bootstrap() -> None:
             )
 
     # ── Wave 2b: SignalEngineAgent ────────────────────────────────────────────
-    # Cross-check engine: watchlist × thesis × portfolio → ranked signals.
-    # Instantiated before the event bus so the listener can reference it during
-    # register(). Agent itself has no bus dependency.
     if _signal_engine_agent is None:
         from src.ai.agents.signal_engine import SignalEngineAgent
 
         _signal_engine_agent = SignalEngineAgent(ai_client=_ai_client)  # type: ignore[arg-type]
         logger.info("platform.bootstrap.signal_engine_agent_ready")
 
-    # ── Event Bus + subscribers (start bus FIRST) ────────────────────────────────────────────
+    # ── Event Bus + subscribers (start bus FIRST) ────────────────────────────
     from src.platform.event_bus import get_event_bus
     bus = get_event_bus()
     await bus.start()
@@ -243,15 +240,16 @@ async def bootstrap() -> None:
                 reason="scheduler_user_id not configured",
             )
 
-    # ── G4: StressTest → Watchlist trigger bridge ───────────────────────────────
+    # ── G4: StressTest → Watchlist trigger bridge ─────────────────────────────
     if _stress_test_subscriber is None:
-        from src.watchlist.stress_test_subscriber import StressTestWatchlistSubscriber
+        from src.watchlist.stress_test_subscriber import StressTestSubscriber
+        from src.platform.db import AsyncSessionLocal
 
-        _stress_test_subscriber = StressTestWatchlistSubscriber()
+        _stress_test_subscriber = StressTestSubscriber(session_factory=AsyncSessionLocal)
         _stress_test_subscriber.register()
         logger.info("platform.bootstrap.stress_test_subscriber_ready")
 
-    # ── Wave 3: OpportunityScreenScheduler + subscriber ─────────────────────────
+    # ── Wave 3: OpportunityScreenScheduler + subscriber ───────────────────────
     if _opportunity_screen_scheduler is None:
         from src.market.opportunity_screen_scheduler import OpportunityScreenScheduler
 
@@ -267,7 +265,7 @@ async def bootstrap() -> None:
         _opportunity_screen_subscriber.register()
         logger.info("platform.bootstrap.opportunity_screen_subscriber_ready")
 
-    # ── Wave 2b: SignalEngineListener (register AFTER bus is started) ───────────────
+    # ── Wave 2b: SignalEngineListener (register AFTER bus is started) ─────────
     if _signal_engine_listener is None:
         try:
             from src.ai.agents.signal_engine_listener import SignalEngineListener
@@ -310,9 +308,9 @@ async def shutdown() -> None:
     logger.info("platform.shutdown.complete")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Singleton accessors ─ raise RuntimeError if called before bootstrap()
-# ──────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# Singleton accessors — raise RuntimeError if called before bootstrap()
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 def _require(value: object, name: str) -> object:
