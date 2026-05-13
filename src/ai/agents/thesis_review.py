@@ -161,7 +161,7 @@ class ThesisReviewAgent:
         logger.info(
             "thesis_review_agent.complete",
             ticker=ticker,
-            verdict=result.verdict,
+            verdict=result.overall_verdict,
             confidence=result.confidence,
         )
 
@@ -274,7 +274,7 @@ async def _log_thesis_review_interaction(
             agent_type="thesis_review",
             trigger=trigger,
             tickers=[ticker],
-            ai_verdict=str(getattr(result, "verdict", "") or ""),
+            ai_verdict=str(result.overall_verdict or ""),
             ai_confidence=getattr(result, "confidence", None),
             ai_key_points="\n".join(key_lines) if key_lines else None,
             ai_risk_signals="\n".join(risk_lines) if risk_lines else None,
