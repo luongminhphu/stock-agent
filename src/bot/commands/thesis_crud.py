@@ -2,20 +2,24 @@
 
 Owner: bot segment.
 Commands:
-    /thesis add    — create a new investment thesis
-    /thesis list   — list your theses
-    /thesis close  — close or invalidate a thesis
+    /thesis add        — create a new investment thesis
+    /thesis list       — list your theses
+    /thesis close      — close or invalidate a thesis
+    /thesis aggregate  — portfolio aggregate: counts + P&L + breakdowns
 
-Adapter only: parse input → call ThesisService → format embed.
+Adapter only: parse input → call ThesisService / DashboardService → format embed.
 No business logic.
 """
 
 from __future__ import annotations
 
+import asyncio
+
 import discord
 from discord import app_commands
 
 from src.bot.commands.base import BaseCog
+from src.bot.commands.thesis_aggregate_embeds import build_aggregate_embed
 from src.bot.commands.thesis_embeds import STATUS_ICON
 from src.platform.logging import get_logger
 from src.thesis.models import ThesisStatus
@@ -37,7 +41,7 @@ def _upside_pct(thesis) -> float | None:
 
 
 class ThesisCrudCog(BaseCog):
-    """Slash commands: /thesis add, /thesis list, /thesis close."""
+    """Slash commands: /thesis add, /thesis list, /thesis close, /thesis aggregate."""
 
     group = app_commands.Group(
         name="thesis",
@@ -222,3 +226,103 @@ class ThesisCrudCog(BaseCog):
             title=f"{icon} Thesis #{thesis_id} {reason}",
             description=f"Status updated to **{reason}**.",
         )
+
+    # ------------------------------------------------------------------
+    # /thesis aggregate
+    # ------------------------------------------------------------------
+
+    @group.command(
+        name="aggregate",
+        description="Portfolio aggregate: tổng P&L, verdict/tier/pnl breakdown cho tất cả thesis active",
+    )
+    async def thesis_aggregate(
+        self,
+        interaction: discord.Interaction,
+    ) -> None:
+        """Return aggregate view: counts, P&L totals, verdict/tier/pnl breakdowns.
+
+        Fetches live prices via QuoteService when available.
+        price_map / position_map injected from market + portfolio segments.
+        """
+        await interaction.response.defer(ephemeral=True)
+        user_id = self.user_id(interaction)
+
+        try:
+            price_map: dict[str, float] = {}
+            position_map: dict[str, tuple[float, float]] = {}
+
+            async with self.db_session() as session:
+                from src.readmodel.dashboard_service import DashboardService
+                from src.thesis.models import Thesis, ThesisStatus
+                from sqlalchemy import select
+
+                # ── Pre-fetch tickers of active theses ─────────────────
+                tickers_rows = (
+                    await session.execute(
+                        select(Thesis.ticker)
+                        .where(
+                            Thesis.user_id == user_id,
+                            Thesis.status == ThesisStatus.ACTIVE,
+                        )
+                    )
+                ).scalars().all()
+                tickers = list(set(tickers_rows))
+
+                # ── Gather prices + positions in parallel ───────────────
+                if tickers:
+                    async def _fetch_prices() -> dict[str, float]:
+                        try:
+                            from src.market.quote_service import QuoteService
+                            qs = QuoteService()
+                            quotes = await qs.get_quotes(tickers)
+                            return {
+                                q.ticker: q.close
+                                for q in quotes
+                                if q.close is not None
+                            }
+                        except Exception as exc:
+                            logger.warning(
+                                "thesis_aggregate.price_fetch_failed", error=str(exc)
+                            )
+                            return {}
+
+                    async def _fetch_positions() -> dict[str, tuple[float, float]]:
+                        try:
+                            from src.portfolio.service import PortfolioService
+                            ps = PortfolioService(session)
+                            positions = await ps.get_positions(user_id=user_id)
+                            return {
+                                p.ticker: (p.quantity, p.avg_cost)
+                                for p in positions
+                                if p.quantity and p.quantity > 0
+                            }
+                        except Exception as exc:
+                            logger.warning(
+                                "thesis_aggregate.position_fetch_failed", error=str(exc)
+                            )
+                            return {}
+
+                    price_map, position_map = await asyncio.gather(
+                        _fetch_prices(),
+                        _fetch_positions(),
+                    )
+
+                # ── Aggregate query ────────────────────────────────────
+                svc = DashboardService(session)
+                data = await svc.get_thesis_portfolio_aggregate(
+                    user_id=user_id,
+                    price_map=price_map,
+                    position_map=position_map,
+                )
+
+        except Exception as exc:
+            logger.error("thesis_aggregate.error", user_id=user_id, error=str(exc))
+            await self.send_error(
+                interaction,
+                title="Không thể tải aggregate",
+                description=str(exc),
+            )
+            return
+
+        embed = build_aggregate_embed(data)
+        await interaction.followup.send(embed=embed, ephemeral=True)
