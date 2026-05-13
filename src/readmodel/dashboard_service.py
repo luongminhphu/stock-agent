@@ -3,17 +3,18 @@
 Owner: readmodel segment.
 
 Endpoints served (via src/api/routes/readmodel.py):
-    get_stats()                     — delegates to StatsService
-    get_theses_list()               — delegates to ThesisQueryService
-    get_thesis_detail()             — delegates to ThesisQueryService
-    get_upcoming_catalysts()        — delegates to ThesisQueryService
-    get_scan_latest()               — snapshot scan gan nhat (WatchlistScan)
-    get_brief_latest()              — snapshot brief gan nhat (BriefSnapshot)
-    get_brief_feedback_summary()    — feedback summary cho brief (BriefFeedback)
-    get_verdict_accuracy()          — delegates to BacktestingService
-    get_thesis_performances()       — delegates to BacktestingService
-    get_price_snapshots()           — delegates to BacktestingService
-    get_portfolio()                 — delegates to PortfolioQueryService
+    get_stats()                         — delegates to StatsService
+    get_theses_list()                   — delegates to ThesisQueryService
+    get_thesis_detail()                 — delegates to ThesisQueryService
+    get_upcoming_catalysts()            — delegates to ThesisQueryService
+    get_thesis_portfolio_aggregate()    — delegates to ThesisQueryService
+    get_scan_latest()                   — snapshot scan gan nhat (WatchlistScan)
+    get_brief_latest()                  — snapshot brief gan nhat (BriefSnapshot)
+    get_brief_feedback_summary()        — feedback summary cho brief (BriefFeedback)
+    get_verdict_accuracy()              — delegates to BacktestingService
+    get_thesis_performances()           — delegates to BacktestingService
+    get_price_snapshots()               — delegates to BacktestingService
+    get_portfolio()                     — delegates to PortfolioQueryService
 
 Design rules:
 - This class is a thin facade — no query logic lives here.
@@ -65,7 +66,7 @@ class DashboardService:
         return await self._stats.get_stats(user_id)
 
     # ------------------------------------------------------------------
-    # 2-4. Thesis queries — delegates to ThesisQueryService
+    # 2-5. Thesis queries — delegates to ThesisQueryService
     # ------------------------------------------------------------------
 
     async def get_theses_list(
@@ -92,8 +93,25 @@ class DashboardService:
     async def get_upcoming_catalysts(self, user_id: str, days: int = 30) -> list[dict[str, Any]]:
         return await self._thesis_query.get_upcoming_catalysts(user_id, days=days)
 
+    async def get_thesis_portfolio_aggregate(
+        self,
+        user_id: str,
+        price_map: dict[str, float] | None = None,
+        position_map: dict[str, tuple[float, float]] | None = None,
+    ) -> dict[str, Any]:
+        """Thesis portfolio aggregate: counts + P&L totals + breakdowns.
+
+        Delegates to ThesisQueryService.get_thesis_portfolio_aggregate().
+        price_map / position_map optionally injected by the route layer.
+        """
+        return await self._thesis_query.get_thesis_portfolio_aggregate(
+            user_id=user_id,
+            price_map=price_map,
+            position_map=position_map,
+        )
+
     # ------------------------------------------------------------------
-    # 5. Latest scan snapshot — cross-segment (watchlist)
+    # 6. Latest scan snapshot — cross-segment (watchlist)
     # ------------------------------------------------------------------
 
     async def get_scan_latest(self, user_id: str) -> dict[str, Any] | None:
@@ -129,7 +147,7 @@ class DashboardService:
             return None
 
     # ------------------------------------------------------------------
-    # 6. Latest brief snapshot — cross-segment (briefing)
+    # 7. Latest brief snapshot — cross-segment (briefing)
     # ------------------------------------------------------------------
 
     async def get_brief_latest(self, user_id: str, phase: str = "morning") -> dict[str, Any] | None:
@@ -256,7 +274,7 @@ class DashboardService:
             }
 
     # ------------------------------------------------------------------
-    # 7-9. Backtesting — delegates to BacktestingService
+    # 8-10. Backtesting — delegates to BacktestingService
     # ------------------------------------------------------------------
 
     async def get_verdict_accuracy(self, user_id: str) -> list[dict[str, Any]]:
@@ -274,7 +292,7 @@ class DashboardService:
         return await self._backtesting.get_price_snapshots(user_id, thesis_id)
 
     # ------------------------------------------------------------------
-    # 10. Portfolio — delegates to PortfolioQueryService
+    # 11. Portfolio — delegates to PortfolioQueryService
     # ------------------------------------------------------------------
 
     async def get_portfolio(

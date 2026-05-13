@@ -270,7 +270,70 @@ async def get_upcoming_catalysts_single_user(
 
 
 # ---------------------------------------------------------------------------
-# 5. Latest scan snapshot
+# 5. Thesis portfolio aggregate
+# ---------------------------------------------------------------------------
+
+
+@router.get("/dashboard/{user_id}/theses/aggregate")
+async def get_thesis_aggregate(
+    user_id: str,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    enrich_prices: Annotated[
+        bool,
+        Query(description="Fetch live price + position map để tính P&L aggregate"),
+    ] = True,
+) -> dict[str, Any]:
+    """Thesis portfolio aggregate — counts + P&L totals + breakdowns.
+
+    Response shape:
+        total_theses        — số thesis active
+        with_position_count — thesis có open position
+        reviewed_count      — thesis đã có ít nhất 1 review
+        total_cost_basis    — tổng vốn, null nếu thiếu position data
+        total_market_value  — tổng market value, null nếu thiếu live price
+        total_pnl_abs       — P&L tuyệt đối (VND), null nếu thiếu data
+        total_pnl_pct       — P&L % tổng danh mục, null nếu thiếu data
+        verdict_breakdown   — {buy, hold, sell, watch, none}
+        tier_breakdown      — {A, B, C, D, none}
+        pnl_breakdown       — {profit, neutral, loss, none}
+        generated_at        — ISO timestamp
+    """
+    svc = DashboardService(session)
+
+    price_map: dict[str, float] = {}
+    position_map: dict[str, tuple[float, float]] = {}
+
+    if enrich_prices:
+        raw_items = await svc.get_theses_list(user_id, status="active", limit=500)
+        tickers = list({t["ticker"] for t in raw_items if t.get("ticker")})
+        price_map, position_map = await _fetch_price_and_position(
+            session=session, user_id=user_id, tickers=tickers
+        )
+
+    return await svc.get_thesis_portfolio_aggregate(
+        user_id,
+        price_map=price_map,
+        position_map=position_map,
+    )
+
+
+@router.get("/dashboard/theses/aggregate")
+async def get_thesis_aggregate_single_user(
+    session: Annotated[AsyncSession, Depends(get_db)],
+    enrich_prices: Annotated[
+        bool,
+        Query(description="Fetch live price + position map để tính P&L aggregate"),
+    ] = True,
+) -> dict[str, Any]:
+    return await get_thesis_aggregate(
+        user_id=_default_user_id(),
+        session=session,
+        enrich_prices=enrich_prices,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 6. Latest scan snapshot
 # ---------------------------------------------------------------------------
 
 
@@ -290,7 +353,7 @@ async def get_scan_latest_single_user(
 
 
 # ---------------------------------------------------------------------------
-# 6. Brief snapshots + feedback
+# 7. Brief snapshots + feedback
 # ---------------------------------------------------------------------------
 
 
@@ -341,7 +404,7 @@ async def get_brief_feedback_summary_single_user(
 
 
 # ---------------------------------------------------------------------------
-# 7. Backtesting — verdict accuracy
+# 8. Backtesting — verdict accuracy
 # ---------------------------------------------------------------------------
 
 
@@ -363,7 +426,7 @@ async def get_verdict_accuracy_single_user(
 
 
 # ---------------------------------------------------------------------------
-# 8. Backtesting — thesis performances
+# 9. Backtesting — thesis performances
 # ---------------------------------------------------------------------------
 
 
@@ -393,7 +456,7 @@ async def get_thesis_performances_single_user(
 
 
 # ---------------------------------------------------------------------------
-# 9. Backtesting — price snapshots
+# 10. Backtesting — price snapshots
 # ---------------------------------------------------------------------------
 
 
@@ -423,7 +486,7 @@ async def get_price_snapshots_single_user(
 
 
 # ---------------------------------------------------------------------------
-# 10. Portfolio — Trades view (PnlService — positions thực tế từ DB)
+# 11. Portfolio — Trades view (PnlService — positions thực tế từ DB)
 # ---------------------------------------------------------------------------
 
 
@@ -470,7 +533,7 @@ async def get_portfolio_trades_single_user(
 
 
 # ---------------------------------------------------------------------------
-# 11. Portfolio — Thesis view (DashboardService — thesis-based positions)
+# 12. Portfolio — Thesis view (DashboardService — thesis-based positions)
 # ---------------------------------------------------------------------------
 
 

@@ -2,9 +2,10 @@
 
 Owner: readmodel segment.
 Responsibility:
-    get_theses_list()       — list thesis + last review + health score + live price
-    get_thesis_detail()     — full detail + assumption history + score series
-    get_upcoming_catalysts() — catalysts sap toi
+    get_theses_list()                   — list thesis + last review + health score + live price
+    get_thesis_detail()                 — full detail + assumption history + score series
+    get_upcoming_catalysts()            — catalysts sap toi
+    get_thesis_portfolio_aggregate()    — portfolio aggregate: counts + P&L + breakdowns
 """
 
 from __future__ import annotations
@@ -352,3 +353,149 @@ class ThesisQueryService:
             }
             for r in rows
         ]
+
+    async def get_thesis_portfolio_aggregate(
+        self,
+        user_id: str,
+        price_map: dict[str, float] | None = None,
+        position_map: dict[str, tuple[float, float]] | None = None,
+    ) -> dict[str, Any]:
+        """Aggregate view toàn bộ thesis active của user.
+
+        Trả về:
+            total_theses        — tổng thesis active
+            with_position_count — thesis có open position
+            reviewed_count      — thesis đã review ít nhất 1 lần
+            total_cost_basis    — tổng vốn (avg_cost * qty), None nếu thiếu data
+            total_market_value  — tổng market value hiện tại, None nếu thiếu data
+            total_pnl_abs       — P&L tuyệt đối, None nếu thiếu data
+            total_pnl_pct       — P&L % tổng danh mục, None nếu thiếu data
+            verdict_breakdown   — {buy, hold, sell, watch, none} — theo last_verdict
+            tier_breakdown      — {A, B, C, D, none} — theo score_tier
+            pnl_breakdown       — {profit, neutral, loss, none} — theo pnl_status
+            generated_at        — ISO timestamp
+        """
+        from src.thesis.models import Thesis, ThesisReview, ThesisStatus
+
+        price_map = price_map or {}
+        position_map = position_map or {}
+
+        # ── Load all active theses + latest review verdict ─────────────────
+        latest_review_subq = (
+            select(
+                ThesisReview.thesis_id,
+                ThesisReview.verdict,
+                func.row_number()
+                .over(
+                    partition_by=ThesisReview.thesis_id,
+                    order_by=ThesisReview.reviewed_at.desc(),
+                )
+                .label("rn"),
+            )
+            .join(Thesis, Thesis.id == ThesisReview.thesis_id)
+            .where(Thesis.user_id == user_id)
+            .subquery()
+        )
+
+        rows = (
+            await self._session.execute(
+                select(
+                    Thesis.id,
+                    Thesis.ticker,
+                    Thesis.entry_price,
+                    Thesis.score,
+                    latest_review_subq.c.verdict.label("last_verdict"),
+                )
+                .outerjoin(
+                    latest_review_subq,
+                    and_(
+                        latest_review_subq.c.thesis_id == Thesis.id,
+                        latest_review_subq.c.rn == 1,
+                    ),
+                )
+                .where(
+                    Thesis.user_id == user_id,
+                    Thesis.status == ThesisStatus.ACTIVE,
+                )
+            )
+        ).all()
+
+        # ── Aggregate counters ─────────────────────────────────────────────
+        total_cost_basis = 0.0
+        total_market_value = 0.0
+        has_cost = False
+        has_market = False
+
+        with_position_count = 0
+        reviewed_count = 0
+
+        verdict_breakdown: dict[str, int] = {"buy": 0, "hold": 0, "sell": 0, "watch": 0, "none": 0}
+        tier_breakdown: dict[str, int] = {"A": 0, "B": 0, "C": 0, "D": 0, "none": 0}
+        pnl_breakdown: dict[str, int] = {"profit": 0, "neutral": 0, "loss": 0, "none": 0}
+
+        for r in rows:
+            current_price: float | None = price_map.get(r.ticker)
+            pos_data = position_map.get(r.ticker)
+            quantity: float | None = pos_data[0] if pos_data else None
+            avg_cost: float | None = pos_data[1] if pos_data else None
+            effective_entry: float | None = avg_cost if avg_cost else r.entry_price
+
+            # position count
+            if quantity and quantity > 0:
+                with_position_count += 1
+
+            # reviewed count
+            if r.last_verdict is not None:
+                reviewed_count += 1
+
+            # P&L calcs
+            pnl_pct: float | None = None
+            if current_price and effective_entry and effective_entry > 0:
+                pnl_pct = (current_price - effective_entry) / effective_entry * 100
+
+            if avg_cost and quantity:
+                cb = avg_cost * quantity
+                total_cost_basis += cb
+                has_cost = True
+
+            if current_price and quantity:
+                mv = current_price * quantity
+                total_market_value += mv
+                has_market = True
+
+            # verdict breakdown
+            v_raw = str(r.last_verdict.value) if hasattr(r.last_verdict, "value") else str(r.last_verdict) if r.last_verdict else None
+            v_key = v_raw.lower() if v_raw and v_raw.lower() in verdict_breakdown else "none"
+            verdict_breakdown[v_key] += 1
+
+            # tier breakdown
+            tier_label, _ = score_tier(r.score) if r.score is not None else (None, None)
+            t_key = tier_label if tier_label and tier_label in tier_breakdown else "none"
+            tier_breakdown[t_key] += 1
+
+            # pnl breakdown
+            ps = _pnl_status(pnl_pct)
+            p_key = ps if ps and ps in pnl_breakdown else "none"
+            pnl_breakdown[p_key] += 1
+
+        total_pnl_abs: float | None = None
+        total_pnl_pct: float | None = None
+        if has_cost and has_market:
+            total_pnl_abs = total_market_value - total_cost_basis
+            if total_cost_basis > 0:
+                total_pnl_pct = round(total_pnl_abs / total_cost_basis * 100, 2)
+            total_pnl_abs = round(total_pnl_abs, 0)
+
+        return {
+            "total_theses": len(rows),
+            "with_position_count": with_position_count,
+            "reviewed_count": reviewed_count,
+            "total_cost_basis": round(total_cost_basis, 0) if has_cost else None,
+            "total_market_value": round(total_market_value, 0) if has_market else None,
+            "total_pnl_abs": total_pnl_abs,
+            "total_pnl_pct": total_pnl_pct,
+            "verdict_breakdown": verdict_breakdown,
+            "tier_breakdown": tier_breakdown,
+            "pnl_breakdown": pnl_breakdown,
+            "generated_at": datetime.now(UTC).isoformat(),
+        }
