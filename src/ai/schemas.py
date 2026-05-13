@@ -74,7 +74,6 @@ class AssumptionRecommendation(BaseModel):
         # recommended_status → status (normalise to upper)
         if "status" not in d and "recommended_status" in d:
             raw = str(d["recommended_status"]).upper()
-            # map legacy values
             _status_map = {
                 "VALID": "VALID",
                 "INVALID": "INVALIDATED",
@@ -106,7 +105,7 @@ class CatalystRecommendation(BaseModel):
     """Recommendation for a single thesis catalyst."""
 
     catalyst_id: int
-    status: Literal["ACTIVE", "TRIGGERED", "DELAYED", "CANCELLED"]
+    status: Literal["ACTIVE", "TRIGGERED", "DELAYED", "CANCELLED", "NEEDS_MONITORING"]
     updated_timeline: str = Field(
         default="",
         description="Updated timeline if changed from original",
@@ -123,6 +122,11 @@ class CatalystRecommendation(BaseModel):
           target_id           → catalyst_id
           recommended_status  → status  (also normalise case + legacy values)
           reason / rationale  → notes
+
+        Status normalisation:
+          EXPIRED / COMPLETED         → CANCELLED
+          PENDING / UNCERTAIN / WATCH → NEEDS_MONITORING
+          anything else unknown       → ACTIVE  (safe fallback for catalysts)
         """
         if not isinstance(data, dict):
             return data
@@ -139,10 +143,28 @@ class CatalystRecommendation(BaseModel):
                 "DELAYED": "DELAYED",
                 "CANCELLED": "CANCELLED",
                 "EXPIRED": "CANCELLED",
+                "COMPLETED": "CANCELLED",
+                "NEEDS_MONITORING": "NEEDS_MONITORING",
+                "PENDING": "NEEDS_MONITORING",
+                "UNCERTAIN": "NEEDS_MONITORING",
+                "WATCH": "NEEDS_MONITORING",
             }
             d["status"] = _status_map.get(raw, "ACTIVE")
         elif "status" in d:
-            d["status"] = str(d["status"]).upper()
+            raw = str(d["status"]).upper()
+            _status_map = {
+                "ACTIVE": "ACTIVE",
+                "TRIGGERED": "TRIGGERED",
+                "DELAYED": "DELAYED",
+                "CANCELLED": "CANCELLED",
+                "EXPIRED": "CANCELLED",
+                "COMPLETED": "CANCELLED",
+                "NEEDS_MONITORING": "NEEDS_MONITORING",
+                "PENDING": "NEEDS_MONITORING",
+                "UNCERTAIN": "NEEDS_MONITORING",
+                "WATCH": "NEEDS_MONITORING",
+            }
+            d["status"] = _status_map.get(raw, raw)  # keep unknown as-is → Literal will catch
         # reason / rationale → notes
         if not d.get("notes"):
             for alias in ("reason", "rationale", "description"):
