@@ -5,10 +5,10 @@
 ──────────────────────────────────────────────────────────────────────────── */
 
 .primary-btn {
-  min-height: 40px;
+  min-height: 36px;
   padding: 0 16px;
   border: 0;
-  border-radius: 12px;
+  border-radius: 9px;
   background: linear-gradient(135deg, var(--brand), var(--brand-strong));
   color: #082235;
   font-weight: 800;
@@ -64,7 +64,7 @@
 
 /* icon + text button (Reload, v.v.) */
 .icon-text-btn {
-  min-height: 32px;
+  min-height: 36px;
   padding: 0 12px;
   gap: 6px;
   border-radius: 9px;

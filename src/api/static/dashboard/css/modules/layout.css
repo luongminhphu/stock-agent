@@ -100,6 +100,10 @@
        → eliminates double-inset when nested inside .cluster
      - .cluster .watchlist-layer / .cluster .portfolio-layer: now only need
        padding-inline: 0 override (margin + width already 0/100% in base)
+
+   FIX LOG (2026-05-13):
+     - .field-compact select: height 34px → 36px, border-radius 7px → 9px
+       → đồng nhất với .icon-text-btn và .primary-btn trong toolbar
 */
 
 /* ── SKIP LINK ──────────────────────────────────────────────────────────────── */
@@ -224,7 +228,7 @@
   -webkit-appearance: none;
   -moz-appearance: none;
 
-  height: 34px;
+  height: 36px;
   padding: 0 32px 0 12px;
   background-color: rgba(148, 163, 184, 0.07);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2396a7c6' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
@@ -232,7 +236,7 @@
   background-position: right 10px center;
 
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: 9px;
 
   font-size: .82rem;
   font-weight: 500;
