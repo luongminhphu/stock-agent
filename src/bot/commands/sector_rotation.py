@@ -13,7 +13,7 @@ from __future__ import annotations
 import discord
 from discord import app_commands
 
-from src.ai.agents.sector_rotation import SectorRotationOutput
+from src.ai.schemas import SectorRotationOutput
 from src.bot.commands.base import BaseCog
 from src.platform.bootstrap import get_sector_rotation_agent, get_quote_service
 from src.platform.logging import get_logger
@@ -44,22 +44,23 @@ class SectorRotationCog(BaseCog):
                 quote_service=get_quote_service(),
                 registry=SymbolRegistry(),
             )
+            # flows là list[SectorFlowData] — market data, bukan AI schema
             flows = await svc.get_sector_flows(watchlist_tickers=watchlist)
             snapshot_date = await svc.get_snapshot_date()
 
-            # Convert SectorFlow → list[dict] cho agent
+            # Convert SectorFlowData → list[dict] cho agent
             sector_performance = [
                 {
                     "sector": f.sector,
                     "avg_change_pct_1d": f.avg_change_pct_1d,
-                    "flow_direction": str(f.flow_direction),
+                    "flow_direction": f.flow_direction,
                     "top_movers": f.top_movers,
                     "ticker_count": f.ticker_count,
                 }
                 for f in flows
             ]
 
-            # Tổng hợp macro_context đơn giản từ data có sẵn
+            # Tổng hợp macro_context từ SectorFlowData (market segment data)
             inflow = [f.sector for f in flows if f.avg_change_pct_1d > 0]
             outflow = [f.sector for f in flows if f.avg_change_pct_1d < 0]
             macro_context = (
