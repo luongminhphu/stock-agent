@@ -296,14 +296,18 @@ class ReviewService:
         assumption flip cannot cause an unnaturally large score spike on the
         conviction chart. The raw computed score is still stored in score_breakdown
         for auditability — only thesis.score (persisted) is clamped.
+
+        Schema note: ThesisReviewOutput uses `overall_verdict` (not `verdict`)
+        and `key_risks` (not `risk_signals`) and `summary` (not `reasoning`).
+        `next_watch_items` is not a schema field — default to empty list.
         """
         review = ThesisReview(
             thesis_id=thesis.id,
-            verdict=ReviewVerdict(output.verdict.value),
+            verdict=ReviewVerdict(output.overall_verdict.value),
             confidence=output.confidence,
-            reasoning=output.reasoning,
-            risk_signals=json.dumps(output.risk_signals, ensure_ascii=False),
-            next_watch_items=json.dumps(output.next_watch_items, ensure_ascii=False),
+            reasoning=output.summary,
+            risk_signals=json.dumps(output.key_risks, ensure_ascii=False),
+            next_watch_items=json.dumps([], ensure_ascii=False),
             reviewed_at=datetime.now(UTC),
             reviewed_price=reviewed_price,
         )
@@ -369,71 +373,78 @@ class ReviewService:
         review_id: int,
         output: ThesisReviewOutput,
     ) -> None:
-        """Auto-apply toàn bộ AI recommendations ngay tại thời điểm Verify."""
+        """Auto-apply toàn bộ AI recommendations ngay tại thời điểm Verify.
+
+        Schema alignment (ThesisReviewOutput current contract):
+          AssumptionRecommendation: assumption_id, status, evidence, updated_text
+          CatalystRecommendation:   catalyst_id,  status, notes, updated_timeline
+        """
         now = datetime.now(UTC)
         assumptions_by_id = {a.id: a for a in thesis.assumptions}
         catalysts_by_id = {c.id: c for c in thesis.catalysts}
         recs: list[ReviewRecommendation] = []
 
         for rec in output.assumption_recommendations:
-            target = assumptions_by_id.get(rec.target_id)
+            target_id = rec.assumption_id
+            target = assumptions_by_id.get(target_id)
             if target:
                 try:
-                    target.status = AssumptionStatus(rec.recommended_status.lower())
+                    target.status = AssumptionStatus(rec.status.lower())
                     await self._repo.save_assumption(target)
                 except ValueError:
                     logger.warning(
                         "review_service.auto_apply.invalid_assumption_status",
-                        recommended_status=rec.recommended_status,
-                        target_id=rec.target_id,
+                        recommended_status=rec.status,
+                        target_id=target_id,
                         review_id=review_id,
                     )
             else:
                 logger.warning(
                     "review_service.auto_apply.missing_assumption",
-                    target_id=rec.target_id,
+                    target_id=target_id,
                     review_id=review_id,
                 )
             recs.append(
                 ReviewRecommendation(
                     review_id=review_id,
                     target_type="assumption",
-                    target_id=rec.target_id,
-                    target_description=rec.description,
-                    recommended_status=rec.recommended_status,
-                    reason=rec.reason,
+                    target_id=target_id,
+                    target_description=rec.updated_text or rec.evidence,
+                    recommended_status=rec.status,
+                    reason=rec.evidence,
                     status=RecommendationStatus.ACCEPTED,
                     acted_at=now,
                 )
             )
 
         for rec in output.catalyst_recommendations:
-            target = catalysts_by_id.get(rec.target_id)
+            target_id = rec.catalyst_id
+            target = catalysts_by_id.get(target_id)
             if target:
                 try:
-                    target.status = CatalystStatus(rec.recommended_status.lower())
+                    target.status = CatalystStatus(rec.status.lower())
                     await self._repo.save_catalyst(target)
                 except ValueError:
                     logger.warning(
                         "review_service.auto_apply.invalid_catalyst_status",
-                        recommended_status=rec.recommended_status,
-                        target_id=rec.target_id,
+                        recommended_status=rec.status,
+                        target_id=target_id,
                         review_id=review_id,
                     )
             else:
                 logger.warning(
                     "review_service.auto_apply.missing_catalyst",
-                    target_id=rec.target_id,
+                    target_id=target_id,
                     review_id=review_id,
                 )
             recs.append(
                 ReviewRecommendation(
                     review_id=review_id,
                     target_type="catalyst",
-                    target_id=rec.target_id,
-                    target_description=rec.description,
-                    recommended_status=rec.recommended_status,
-                    reason=rec.reason,
+                    target_id=target_id,
+                    target_description=rec.updated_timeline or rec.notes,
+                    recommended_status=rec.status,
+                    reason=rec.notes,
                     status=RecommendationStatus.ACCEPTED,
                     acted_at=now,
                 )

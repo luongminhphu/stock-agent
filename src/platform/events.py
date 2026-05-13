@@ -105,13 +105,28 @@ class StressTestCompletedEvent(DomainEvent):
 
 @dataclass(frozen=True)
 class RecommendationReadyEvent(DomainEvent):
-    """Emitted when an AI agent produces a ProactiveRecommendation."""
+    """Emitted when an AI agent produces a ProactiveRecommendation.
+
+    Wave 7 fields (reasoning, action_detail, risk_signals, next_watch_items,
+    thesis_id) carry rich content from ProactiveAlertOutput so that
+    build_recommendation_embed() can render a detailed Discord embed without
+    a secondary DB lookup.
+
+    All Wave 7 fields default to empty so existing callers that only set the
+    five core fields remain backward compatible.
+    """
     symbol: str = ""
     action: str = ""               # BUY | SELL | REDUCE | HOLD | WATCH
     urgency: str = "MONITORING"    # NOW | TODAY | THIS_WEEK | MONITORING
     confidence: float = 0.0
     source_agent: str = ""         # proactive_alert | risk_assessment | opportunity_scout
     recommendation_id: str = field(default_factory=lambda: str(uuid4()))
+    # Wave 7 rich-content fields
+    reasoning: str = ""
+    action_detail: str = ""
+    risk_signals: tuple[str, ...] = field(default_factory=tuple)
+    next_watch_items: tuple[str, ...] = field(default_factory=tuple)
+    thesis_id: str = ""
 
 
 @dataclass(frozen=True)

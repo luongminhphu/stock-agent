@@ -48,7 +48,7 @@ class ProactiveAlertAgent:
     Wave 5 flow per event:
       1. build_user_prompt() from event fields
       2. AIClient.chat() → ProactiveAlertOutput (structured JSON)
-      3. Publish RecommendationReadyEvent onto EventBus
+      3. Publish RecommendationReadyEvent onto EventBus (with rich Wave 7 fields)
       4. mark_processed() in signal_events table (best-effort)
     """
 
@@ -152,7 +152,12 @@ class ProactiveAlertAgent:
         event: SignalDetectedEvent,
         output: ProactiveAlertOutput,
     ) -> RecommendationReadyEvent | None:
-        """Build and publish RecommendationReadyEvent. Returns the event or None on failure."""
+        """Build and publish RecommendationReadyEvent with Wave 7 rich fields.
+
+        Populates reasoning, action_detail, risk_signals, next_watch_items from
+        ProactiveAlertOutput so build_recommendation_embed() can render a rich
+        Discord embed without a secondary DB lookup.
+        """
         try:
             bus = get_event_bus()
             rec_event = RecommendationReadyEvent(
@@ -161,6 +166,12 @@ class ProactiveAlertAgent:
                 urgency=output.urgency,
                 confidence=output.confidence,
                 source_agent="proactive_alert",
+                # Wave 7 rich fields — fall back to empty string/tuple when absent
+                reasoning=getattr(output, "reasoning", "") or "",
+                action_detail=getattr(output, "action_detail", "") or "",
+                risk_signals=tuple(getattr(output, "risk_signals", []) or []),
+                next_watch_items=tuple(getattr(output, "next_watch_items", []) or []),
+                thesis_id=str(getattr(output, "thesis_id", "") or ""),
             )
             await bus.publish(rec_event)
             logger.info(
