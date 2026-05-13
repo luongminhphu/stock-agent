@@ -268,3 +268,77 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
 }
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Wave C+ — PRICE MINI CHART
+   Owner: modules/thesis (market segment data)
+   Slot rendered by priceMiniChartSlotHTML(), populated by loadPriceMiniChart()
+   Classes: .price-mini-chart-slot, .price-mini-chart-skeleton,
+            .price-mini-chart-wrap, .price-mini-chart-header,
+            .price-mini-chart-title, .price-mini-chart-canvas-wrap,
+            .price-mini-chart-unavailable
+──────────────────────────────────────────────────────────────────────────── */
+
+/* Outer slot — tách biệt khỏi quote strip phía trên */
+.price-mini-chart-slot {
+  margin-bottom: 14px;
+}
+
+/* Skeleton placeholder — khớp height với canvas thực (120px) */
+.price-mini-chart-skeleton {
+  padding: 0;
+}
+
+/* Card container khi chart đã load */
+.price-mini-chart-wrap {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(148, 163, 184, 0.10);
+}
+
+/* Header row: title bên trái, có thể mở rộng thêm action bên phải sau */
+.price-mini-chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.price-mini-chart-title {
+  font-size: 0.72rem;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+/* Canvas wrapper — height cố định để Chart.js maintainAspectRatio: false hoạt động */
+.price-mini-chart-canvas-wrap {
+  position: relative;
+  height: 120px;
+  width: 100%;
+}
+
+.price-mini-chart-canvas-wrap canvas {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Fallback state khi không có OHLCV data */
+.price-mini-chart-unavailable {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: rgba(148, 163, 184, 0.04);
+  border: 1px dashed rgba(148, 163, 184, 0.15);
+  margin-bottom: 14px;
+}
+
+.price-mini-chart-unavailable span {
+  font-size: 0.76rem;
+  color: var(--faint);
+}
