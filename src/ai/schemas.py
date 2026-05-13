@@ -815,14 +815,72 @@ class SectorFlow(BaseModel):
     """Flow signal for a single sector."""
 
     sector: str
-    flow: FlowDirection
-    strength: float = Field(ge=0.0, le=1.0, description="Signal strength 0–1")
+    flow: FlowDirection = FlowDirection.NEUTRAL
+    strength: float = Field(default=0.0, ge=0.0, le=1.0, description="Signal strength 0–1")
     rationale: str = Field(default="", description="Brief rationale for this sector's flow")
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_aliases(cls, data: Any) -> Any:
+        """Coerce AI alias field names → canonical flow/strength.
+
+        AI models sometimes return different field names for the same concept:
+
+        flow aliases   : direction, flow_direction, signal, trend, momentum_direction
+        strength aliases: signal_strength, score, weight, momentum_score, avg_return,
+                          performance, change_pct, return_pct
+
+        Flow value normalisation (string → FlowDirection):
+          positive / up / bullish / buy / inflow / strong → INFLOW
+          negative / down / bearish / sell / outflow / weak → OUTFLOW
+          anything else → NEUTRAL
+
+        Strength normalisation:
+          value outside [0, 1] is clamped; negative values → abs() then clamp.
+          avg_return-style numbers (e.g. 0.03 for +3%) are accepted as-is after clamping.
+        """
+        if not isinstance(data, dict):
+            return data
+        d = dict(data)
+
+        # --- flow ---
+        if "flow" not in d:
+            for alias in ("direction", "flow_direction", "signal", "trend", "momentum_direction"):
+                if alias in d:
+                    d["flow"] = d[alias]
+                    break
+
+        if "flow" in d and not isinstance(d["flow"], FlowDirection):
+            raw = str(d["flow"]).upper().strip()
+            _flow_map: dict[str, str] = {
+                "INFLOW": "INFLOW", "OUTFLOW": "OUTFLOW", "NEUTRAL": "NEUTRAL",
+                "POSITIVE": "INFLOW", "UP": "INFLOW", "BULLISH": "INFLOW",
+                "BUY": "INFLOW", "STRONG": "INFLOW", "RISING": "INFLOW",
+                "NEGATIVE": "OUTFLOW", "DOWN": "OUTFLOW", "BEARISH": "OUTFLOW",
+                "SELL": "OUTFLOW", "WEAK": "OUTFLOW", "FALLING": "OUTFLOW",
+            }
+            d["flow"] = _flow_map.get(raw, "NEUTRAL")
+
+        # --- strength ---
+        if "strength" not in d:
+            for alias in (
+                "signal_strength", "score", "weight", "momentum_score",
+                "avg_return", "performance", "change_pct", "return_pct",
+            ):
+                if alias in d:
+                    d["strength"] = d[alias]
+                    break
+
+        return d
 
     @field_validator("strength", mode="before")
     @classmethod
     def coerce_strength(cls, v: object) -> float:
-        return _coerce_confidence(v)
+        try:
+            f = abs(float(v))  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return 0.0
+        return max(0.0, min(1.0, f))
 
 
 class WatchlistCrosscheck(BaseModel):
