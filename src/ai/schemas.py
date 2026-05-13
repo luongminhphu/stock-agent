@@ -55,6 +55,47 @@ class AssumptionRecommendation(BaseModel):
     )
     confidence: float = Field(ge=0.0, le=1.0)
 
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_aliases(cls, data: Any) -> Any:
+        """Coerce legacy/alias field names from model output.
+
+        Maps:
+          target_id           → assumption_id
+          recommended_status  → status  (also normalise case)
+          reason / rationale  → evidence
+        """
+        if not isinstance(data, dict):
+            return data
+        d = dict(data)
+        # target_id → assumption_id
+        if "assumption_id" not in d and "target_id" in d:
+            d["assumption_id"] = d["target_id"]
+        # recommended_status → status (normalise to upper)
+        if "status" not in d and "recommended_status" in d:
+            raw = str(d["recommended_status"]).upper()
+            # map legacy values
+            _status_map = {
+                "VALID": "VALID",
+                "INVALID": "INVALIDATED",
+                "UNCERTAIN": "NEEDS_MONITORING",
+                "WEAKENED": "WEAKENED",
+                "INVALIDATED": "INVALIDATED",
+                "NEEDS_MONITORING": "NEEDS_MONITORING",
+            }
+            d["status"] = _status_map.get(raw, "NEEDS_MONITORING")
+        elif "status" in d:
+            d["status"] = str(d["status"]).upper()
+        # reason / rationale → evidence
+        if not d.get("evidence"):
+            for alias in ("reason", "rationale", "description"):
+                if d.get(alias):
+                    d["evidence"] = d[alias]
+                    break
+        if not d.get("evidence"):
+            d["evidence"] = ""
+        return d
+
     @field_validator("confidence", mode="before")
     @classmethod
     def coerce_conf(cls, v: object) -> float:
@@ -72,6 +113,43 @@ class CatalystRecommendation(BaseModel):
     )
     notes: str = Field(default="", description="Additional context on catalyst status")
     confidence: float = Field(ge=0.0, le=1.0)
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_aliases(cls, data: Any) -> Any:
+        """Coerce legacy/alias field names from model output.
+
+        Maps:
+          target_id           → catalyst_id
+          recommended_status  → status  (also normalise case + legacy values)
+          reason / rationale  → notes
+        """
+        if not isinstance(data, dict):
+            return data
+        d = dict(data)
+        # target_id → catalyst_id
+        if "catalyst_id" not in d and "target_id" in d:
+            d["catalyst_id"] = d["target_id"]
+        # recommended_status → status
+        if "status" not in d and "recommended_status" in d:
+            raw = str(d["recommended_status"]).upper()
+            _status_map = {
+                "ACTIVE": "ACTIVE",
+                "TRIGGERED": "TRIGGERED",
+                "DELAYED": "DELAYED",
+                "CANCELLED": "CANCELLED",
+                "EXPIRED": "CANCELLED",
+            }
+            d["status"] = _status_map.get(raw, "ACTIVE")
+        elif "status" in d:
+            d["status"] = str(d["status"]).upper()
+        # reason / rationale → notes
+        if not d.get("notes"):
+            for alias in ("reason", "rationale", "description"):
+                if d.get(alias):
+                    d["notes"] = d[alias]
+                    break
+        return d
 
     @field_validator("confidence", mode="before")
     @classmethod
@@ -113,10 +191,60 @@ class ThesisReviewOutput(BaseModel):
         description="AI confidence in this review (0.0–1.0)",
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_aliases(cls, data: Any) -> Any:
+        """Coerce legacy/alias field names from model output.
+
+        Maps (backward-safe — only applied when canonical field is absent):
+          verdict             → overall_verdict
+          confidence          → conviction_score  (when conviction_score missing)
+          reasoning           → summary  (when summary missing)
+          risk_signals        → key_risks  (when key_risks missing)
+          action_recommendation default  → HOLD  (when field missing)
+        """
+        if not isinstance(data, dict):
+            return data
+        d = dict(data)
+        # verdict → overall_verdict
+        if "overall_verdict" not in d and "verdict" in d:
+            d["overall_verdict"] = d["verdict"]
+        # confidence → conviction_score (only when conviction_score absent)
+        if "conviction_score" not in d and "confidence" in d:
+            d["conviction_score"] = d["confidence"]
+        # reasoning / reason → summary
+        if not d.get("summary"):
+            for alias in ("reasoning", "reason"):
+                if d.get(alias):
+                    d["summary"] = d[alias]
+                    break
+        # risk_signals → key_risks
+        if not d.get("key_risks") and d.get("risk_signals"):
+            d["key_risks"] = d["risk_signals"]
+        # action_recommendation default
+        if "action_recommendation" not in d:
+            d["action_recommendation"] = "HOLD"
+        return d
+
     @field_validator("conviction_score", "confidence", mode="before")
     @classmethod
     def coerce_conf(cls, v: object) -> float:
         return _coerce_confidence(v)
+
+    @field_validator("overall_verdict", mode="before")
+    @classmethod
+    def normalise_verdict(cls, v: object) -> object:
+        """Normalise verdict to uppercase — model sometimes returns lowercase."""
+        if isinstance(v, str):
+            return v.upper()
+        return v
+
+    @field_validator("assumption_recommendations", "catalyst_recommendations", mode="before")
+    @classmethod
+    def ensure_lists(cls, v: object) -> list[object]:
+        if not isinstance(v, list):
+            return []
+        return v  # type: ignore[return-value]
 
 
 # ---------------------------------------------------------------------------

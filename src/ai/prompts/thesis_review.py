@@ -38,10 +38,10 @@ Nguyên tắc review:
 2. Chỉ chuyển sang BEARISH/WATCHLIST khi có bằng chứng rõ ràng, không phải chỉ vì giá giảm ngắn hạn.
 3. Phân biệt "thesis sai" vs "thesis đúng nhưng timing sai".
 4. Xét cả yếu tố định tính (quản trị, ngành) lẫn định lượng (giá, volume, tài chính).
-5. Mỗi risk_signal phải là một câu mô tả rủi ro cụ thể (plain string).
-6. next_watch_items là các điều kiện cụ thể cần theo dõi trong 2–4 tuần tới (plain string).
+5. Mỗi key_risk phải là một câu mô tả rủi ro cụ thể (plain string).
+6. summary là 2-3 câu tóm tắt tình trạng thesis.
 
-Verdicts (chỉ dùng đúng 4 giá trị này):
+Verdicts (chỉ dùng đúng 4 giá trị này, viết HOA):
 - BULLISH   : Thesis còn nguyên vẹn, momentum tốt.
 - NEUTRAL   : Thesis chưa invalidate nhưng cần theo dõi thêm.
 - BEARISH   : Thesis đang bị đe dọa nghiêm trọng, cân nhắc reduce/exit.
@@ -53,44 +53,52 @@ Output phải là JSON hợp lệ theo cấu trúc đã mô tả. Không thêm n
 # ---------------------------------------------------------------------------
 # Explicit JSON schema shown to the model — keeps prompt in sync with
 # ThesisReviewOutput in src/ai/schemas.py.
+#
+# IMPORTANT: key names here MUST match ThesisReviewOutput field names exactly.
+# If you change ThesisReviewOutput, update this schema in the same diff.
 # ---------------------------------------------------------------------------
 _OUTPUT_SCHEMA = """\
 ### Output Schema (JSON chính xác — không thêm/bớt field)
 ```json
 {
-  "verdict": "BULLISH",
+  "overall_verdict": "BULLISH",
+  "conviction_score": 0.75,
   "confidence": 0.75,
-  "risk_signals": [
+  "key_risks": [
     "Giá đang test support 120,000 — nếu mất sẽ trigger stop-loss"
   ],
-  "next_watch_items": [
-    "Q2 earnings FPT dự kiến 15/5 — xem NIM có giữ được 28% không"
-  ],
-  "reasoning": "Thesis còn nguyên vẹn vì... (tối đa 300 từ)",
+  "action_recommendation": "HOLD",
+  "summary": "Thesis còn nguyên vẹn vì... (2-3 câu ngắn gọn)",
   "assumption_recommendations": [
     {
-      "target_id": 42,
-      "description": "Mô tả ngắn assumption để user nhận diện",
-      "recommended_status": "valid",
-      "reason": "Lý do AI đề xuất status này"
+      "assumption_id": 42,
+      "status": "VALID",
+      "evidence": "Bằng chứng hỗ trợ đánh giá này",
+      "confidence": 0.8
     }
   ],
   "catalyst_recommendations": [
     {
-      "target_id": 46,
-      "description": "Mô tả ngắn catalyst để user nhận diện",
-      "recommended_status": "triggered",
-      "reason": "Lý do AI đề xuất status này"
+      "catalyst_id": 46,
+      "status": "ACTIVE",
+      "notes": "Ghi chú thêm về trạng thái catalyst",
+      "confidence": 0.7
     }
   ]
 }
 ```
-Lưu ý:
-- `confidence`: float từ 0.0 đến 1.0 (VD: 0.75 = 75% tin cậy).
-- `assumption_recommendations`: chỉ list các assumption cần thay đổi status; bỏ qua nếu không có thay đổi.
-- `catalyst_recommendations`: chỉ list các catalyst cần thay đổi status; bỏ qua nếu không có thay đổi.
-- `recommended_status` cho assumption: "valid" | "invalid" | "uncertain".
-- `recommended_status` cho catalyst: "triggered" | "expired" | "cancelled".
+Lưu ý quan trọng:
+- `overall_verdict`: BULLISH | NEUTRAL | BEARISH | WATCHLIST (viết HOA).
+- `conviction_score`: float 0.0–1.0 — mức độ tin tưởng vào thesis.
+- `confidence`: float 0.0–1.0 — độ chắc chắn của AI với review này.
+- `action_recommendation`: HOLD | ADD | REDUCE | EXIT | WAIT_FOR_CATALYST.
+- `key_risks`: list plain string, mỗi string mô tả 1 rủi ro cụ thể.
+- `assumption_recommendations[].assumption_id`: ID số nguyên của assumption (dùng ID từ danh sách trên).
+- `assumption_recommendations[].status`: VALID | WEAKENED | INVALIDATED | NEEDS_MONITORING.
+- `assumption_recommendations[].evidence`: string mô tả bằng chứng hỗ trợ.
+- `catalyst_recommendations[].catalyst_id`: ID số nguyên của catalyst (dùng ID từ danh sách trên).
+- `catalyst_recommendations[].status`: ACTIVE | TRIGGERED | DELAYED | CANCELLED.
+- Chỉ list assumption/catalyst cần thay đổi trạng thái; bỏ qua nếu không có thay đổi.
 """
 
 
@@ -179,12 +187,12 @@ def build_user_prompt(
         _OUTPUT_SCHEMA,
         "### Yêu cầu",
         "Dựa trên thông tin trên, hãy:",
-        "1. Đánh giá từng assumption còn giá trị hay không — điền vào assumption_recommendations.",
-        "2. Cập nhật trạng thái catalyst nếu cần — điền vào catalyst_recommendations.",
-        "3. Đưa ra verdict tổng thể (BULLISH / NEUTRAL / BEARISH / WATCHLIST).",
-        "4. Liệt kê risk_signals dưới dạng plain string (không phải dict).",
-        "5. Đưa ra next_watch_items cụ thể cho 2–4 tuần tới (plain string).",
-        "6. Reasoning ngắn gọn (tối đa 300 từ) giải thích verdict.",
+        "1. Đánh giá từng assumption còn giá trị hay không — điền assumption_id (số nguyên từ danh sách) và status vào assumption_recommendations.",
+        "2. Cập nhật trạng thái catalyst nếu cần — điền catalyst_id (số nguyên từ danh sách) và status vào catalyst_recommendations.",
+        "3. Đưa ra overall_verdict tổng thể (BULLISH / NEUTRAL / BEARISH / WATCHLIST).",
+        "4. Liệt kê key_risks dưới dạng plain string (không phải dict).",
+        "5. Chọn action_recommendation phù hợp (HOLD / ADD / REDUCE / EXIT / WAIT_FOR_CATALYST).",
+        "6. Viết summary 2-3 câu giải thích tình trạng thesis.",
         "",
         "Trả về JSON theo đúng Output Schema ở trên. Không giải thích ngoài JSON.",
     ]
