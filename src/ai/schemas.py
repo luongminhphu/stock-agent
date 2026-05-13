@@ -7,7 +7,7 @@ parse into one of these schemas.
 """
 
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -162,6 +162,26 @@ class PrioritizedAction(BaseModel):
     @property
     def reason(self) -> str:
         return self.rationale
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_reason_to_rationale(cls, data: Any) -> Any:
+        """AI sometimes returns 'reason' instead of 'rationale'.
+
+        Coerce before field validation so Pydantic does not raise
+        a missing-field error for 'rationale'.
+        Maps: reason → rationale (only when rationale is absent).
+        Also handles legacy aliases: explanation, why.
+        """
+        if not isinstance(data, dict):
+            return data
+        if "rationale" not in data or not data.get("rationale"):
+            for alias in ("reason", "explanation", "why"):
+                if data.get(alias):
+                    data = dict(data)
+                    data["rationale"] = data[alias]
+                    break
+        return data
 
     @field_validator("confidence", mode="before")
     @classmethod
