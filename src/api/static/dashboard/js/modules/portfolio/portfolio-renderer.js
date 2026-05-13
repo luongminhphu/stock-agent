@@ -3,6 +3,12 @@
  * Owner: modules/portfolio
  * Responsibility: build HTML cho portfolio section (2 tabs: Trades / Thesis).
  * Rule: KHÔNG fetch, KHÔNG gọi API. Chỉ nhận data → trả HTML string.
+ *
+ * Wave 1 — Portfolio Errors Indicator:
+ *   - collectErrors(trades, thesis)  → [{ severity, scope, message }]
+ *   - renderErrorBanner(errors)      → HTML collapsible banner
+ *   - tab badge (N) khi tab có errors
+ *   - cell-error marker cho missing critical data trong row
  */
 
 import { el } from '../../utils/dom.js';
@@ -18,7 +24,6 @@ function fmtVnd(val) {
 /**
  * Format tỷ lệ phần trăm.
  * Nhận vào dạng % thực (vd: 65.94, -2.83).
- * Backend luôn trả dạng % — KHÔNG chia 100 trước khi truyền vào.
  */
 function fmtPct(val) {
   if (val == null) return '—';
@@ -37,9 +42,155 @@ function pnlIcon(val) {
 }
 
 // ---------------------------------------------------------------------------
+// Error Collector
+// ---------------------------------------------------------------------------
+/**
+ * severity: 'critical' | 'warning' | 'info'
+ * scope:    'trades' | 'thesis' | 'both'
+ */
+function collectErrors(trades, thesis) {
+  const errors = [];
+
+  // --- Trades ---
+  if (trades === null) {
+    errors.push({
+      severity: 'critical',
+      scope: 'trades',
+      message: 'API trades không phản hồi — dữ liệu vị thế không khả dụng.',
+    });
+  } else if (trades) {
+    const positions = trades.positions ?? [];
+    const missingPrice = positions.filter(p => p.current_price == null).length;
+    const missingCost  = positions.filter(p => p.avg_cost == null && p.cost_basis == null).length;
+    if (missingPrice > 0) {
+      errors.push({
+        severity: 'warning',
+        scope: 'trades',
+        message: `${missingPrice} position${missingPrice > 1 ? 's' : ''} thiếu giá thị trường hiện tại.`,
+      });
+    }
+    if (missingCost > 0) {
+      errors.push({
+        severity: 'warning',
+        scope: 'trades',
+        message: `${missingCost} position${missingCost > 1 ? 's' : ''} thiếu giá vốn — P&L có thể không chính xác.`,
+      });
+    }
+  }
+
+  // --- Thesis ---
+  if (thesis === null) {
+    errors.push({
+      severity: 'critical',
+      scope: 'thesis',
+      message: 'API thesis portfolio không phản hồi — dữ liệu thesis không khả dụng.',
+    });
+  } else if (thesis) {
+    const positions = thesis.positions ?? [];
+    const missingEntry = positions.filter(
+      p => p.entry_price == null && p.avg_cost == null,
+    ).length;
+    const missingPrice = positions.filter(p => p.current_price == null).length;
+    const missingScore = positions.filter(p => p.score == null).length;
+
+    if (missingEntry > 0) {
+      errors.push({
+        severity: 'warning',
+        scope: 'thesis',
+        message: `${missingEntry} thesis thiếu cả entry_price lẫn avg_cost — P&L % không tính được.`,
+      });
+    }
+    if (missingPrice > 0) {
+      errors.push({
+        severity: 'warning',
+        scope: 'thesis',
+        message: `${missingPrice} thesis thiếu giá thị trường hiện tại.`,
+      });
+    }
+    if (!thesis.has_quantity_data) {
+      errors.push({
+        severity: 'info',
+        scope: 'thesis',
+        message: 'Một số thesis chưa có quantity — thị giá & vốn có thể không đầy đủ.',
+      });
+    }
+    if (missingScore > 0) {
+      errors.push({
+        severity: 'info',
+        scope: 'thesis',
+        message: `${missingScore} thesis chưa có điểm AI score.`,
+      });
+    }
+  }
+
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
+// Error Banner HTML
+// ---------------------------------------------------------------------------
+const SEVERITY_META = {
+  critical: { icon: '🔴', label: 'Critical', cls: 'perr-critical' },
+  warning:  { icon: '🟡', label: 'Warning',  cls: 'perr-warning'  },
+  info:     { icon: '🔵', label: 'Info',      cls: 'perr-info'     },
+};
+
+function renderErrorBanner(errors) {
+  if (!errors.length) return '';
+
+  const criticalCount = errors.filter(e => e.severity === 'critical').length;
+  const warningCount  = errors.filter(e => e.severity === 'warning').length;
+  const totalCount    = errors.length;
+
+  const summaryParts = [];
+  if (criticalCount) summaryParts.push(`🔴 ${criticalCount} nghiêm trọng`);
+  if (warningCount)  summaryParts.push(`🟡 ${warningCount} cảnh báo`);
+  const infoCount = totalCount - criticalCount - warningCount;
+  if (infoCount)     summaryParts.push(`🔵 ${infoCount} thông tin`);
+
+  const items = errors.map(e => {
+    const meta = SEVERITY_META[e.severity] ?? SEVERITY_META.info;
+    return `<li class="perr-item ${meta.cls}">${meta.icon} ${e.message}</li>`;
+  }).join('');
+
+  return `
+    <div class="perr-banner" role="alert" aria-live="polite">
+      <button class="perr-toggle" aria-expanded="false" aria-controls="perrList"
+              type="button">
+        <span class="perr-summary">⚠️ ${totalCount} vấn đề dữ liệu — ${summaryParts.join(', ')}</span>
+        <span class="perr-chevron" aria-hidden="true">▾</span>
+      </button>
+      <ul class="perr-list" id="perrList" hidden>
+        ${items}
+      </ul>
+    </div>`;
+}
+
+// Wire banner toggle — gọi sau khi banner được inject vào DOM
+function wireBannerToggle(wrap) {
+  const btn  = wrap.querySelector('.perr-toggle');
+  const list = wrap.querySelector('.perr-list');
+  if (!btn || !list) return;
+  btn.addEventListener('click', () => {
+    const expanded = btn.getAttribute('aria-expanded') === 'true';
+    btn.setAttribute('aria-expanded', String(!expanded));
+    list.hidden = expanded;
+    btn.querySelector('.perr-chevron').textContent = expanded ? '▾' : '▴';
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Tab badge helper
+// ---------------------------------------------------------------------------
+function badgeHTML(count) {
+  if (!count) return '';
+  return `<span class="perr-tab-badge" aria-label="${count} vấn đề">${count}</span>`;
+}
+
+// ---------------------------------------------------------------------------
 // Trades tab renderer
 // ---------------------------------------------------------------------------
-function renderTradesTab(data) {
+function renderTradesTab(data, errors) {
   if (!data) return '<p class="empty-state">Không thể tải dữ liệu giao dịch.</p>';
 
   const positions = data.positions ?? [];
@@ -48,19 +199,24 @@ function renderTradesTab(data) {
   }
 
   const totalPnl  = data.total_unrealized_pnl ?? 0;
-  const totalPct  = data.total_unrealized_pct ?? 0;  // dạng % (vd: 18.63)
+  const totalPct  = data.total_unrealized_pct ?? 0;
   const totalCost = data.total_cost_basis ?? 0;
   const totalMkt  = data.total_market_value ?? 0;
 
+  // Tập hợp tickers có lỗi để đánh dấu row
+  const missingPriceTickers = new Set(
+    positions.filter(p => p.current_price == null).map(p => p.ticker),
+  );
+
   const rows = positions.map(p => {
-    // unrealized_pct từ PnlService là dạng % thực (vd: -2.825, 65.94)
-    const pct = p.unrealized_pct ?? null;
+    const pct      = p.unrealized_pct ?? null;
+    const hasError = missingPriceTickers.has(p.ticker);
     return `
-      <tr>
-        <td><strong>${p.ticker}</strong></td>
+      <tr${hasError ? ' class="row-data-error"' : ''}>
+        <td><strong>${p.ticker}</strong>${hasError ? ' <span class="cell-error-dot" title="Thiếu dữ liệu giá">●</span>' : ''}</td>
         <td class="num">${p.qty != null ? p.qty.toLocaleString('vi-VN') : '—'}</td>
         <td class="num">${fmtVnd(p.avg_cost)}</td>
-        <td class="num">${fmtVnd(p.current_price)}</td>
+        <td class="num${p.current_price == null ? ' cell-missing' : ''}">${fmtVnd(p.current_price)}</td>
         <td class="num">${fmtVnd(p.cost_basis)}</td>
         <td class="num">${fmtVnd(p.market_value)}</td>
         <td class="num ${pnlClass(p.unrealized_pnl)}">
@@ -70,7 +226,10 @@ function renderTradesTab(data) {
       </tr>`;
   }).join('');
 
+  const banner = renderErrorBanner(errors.filter(e => e.scope === 'trades'));
+
   return `
+    ${banner}
     <div class="portfolio-summary">
       <span class="summary-chip">${pnlIcon(totalPnl)} P&amp;L: <strong class="${pnlClass(totalPnl)}">${fmtVnd(totalPnl)}</strong> (${fmtPct(totalPct)})</span>
       <span class="summary-chip">Vốn: <strong>${fmtVnd(totalCost)}</strong></span>
@@ -101,7 +260,7 @@ const VERDICT_BADGE = {
   WATCHLIST: { icon: '👁', cls: 'badge-watchlist' },
 };
 
-function renderThesisTab(data) {
+function renderThesisTab(data, errors) {
   if (!data) return '<p class="empty-state">Không thể tải dữ liệu thesis portfolio.</p>';
 
   const positions = data.positions ?? [];
@@ -109,28 +268,34 @@ function renderThesisTab(data) {
     return '<p class="empty-state">Chưa có thesis active nào. Dùng <code>/thesis add</code> hoặc tạo trực tiếp tại đây.</p>';
   }
 
-  const totalPnlPct = data.total_pnl_pct;  // dạng % thực từ backend
+  const totalPnlPct = data.total_pnl_pct;
   const winning     = data.winning_count ?? 0;
   const losing      = data.losing_count ?? 0;
   const n           = data.position_count ?? positions.length;
 
+  // Tickers thiếu entry để đánh dấu row
+  const missingEntryTickers = new Set(
+    positions
+      .filter(p => p.entry_price == null && p.avg_cost == null)
+      .map(p => p.ticker),
+  );
+
   const rows = positions.map(p => {
-    const verdict = (p.last_verdict ?? '').toUpperCase();
-    const badge   = VERDICT_BADGE[verdict] ?? { icon: '❓', cls: 'badge-unknown' };
-    // pnl_pct từ backend là dạng % thực (vd: 12.34, -5.67) — truyền thẳng vào fmtPct
-    const pnlPct  = p.pnl_pct ?? null;
-    const score   = p.score ?? null;
-    const tier    = p.score_tier_icon ?? '';
-    // FIX #4: ưu tiên avg_cost (giá vốn thực từ Position) > entry_price (thesis gốc)
+    const verdict    = (p.last_verdict ?? '').toUpperCase();
+    const badge      = VERDICT_BADGE[verdict] ?? { icon: '❓', cls: 'badge-unknown' };
+    const pnlPct     = p.pnl_pct ?? null;
+    const score      = p.score ?? null;
+    const tier       = p.score_tier_icon ?? '';
     const entryDisplay = p.avg_cost ?? p.entry_price;
     const entryLabel   = p.avg_cost != null ? 'avg_cost' : 'entry';
+    const hasError     = missingEntryTickers.has(p.ticker);
 
     return `
-      <tr>
-        <td><strong>${p.ticker}</strong></td>
+      <tr${hasError ? ' class="row-data-error"' : ''}>
+        <td><strong>${p.ticker}</strong>${hasError ? ' <span class="cell-error-dot" title="Thiếu entry & avg_cost">●</span>' : ''}</td>
         <td><span class="verdict-badge ${badge.cls}">${badge.icon} ${verdict || '—'}</span></td>
-        <td class="num" title="${entryLabel}">${fmtVnd(entryDisplay)}</td>
-        <td class="num">${fmtVnd(p.current_price)}</td>
+        <td class="num${entryDisplay == null ? ' cell-missing' : ''}" title="${entryLabel}">${fmtVnd(entryDisplay)}</td>
+        <td class="num${p.current_price == null ? ' cell-missing' : ''}">${fmtVnd(p.current_price)}</td>
         <td class="num ${pnlClass(pnlPct)}">${pnlPct != null ? `${pnlIcon(pnlPct)} ${fmtPct(pnlPct)}` : '⚪ —'}</td>
         <td class="num">${score != null ? `${tier} ${score}` : '—'}</td>
       </tr>`;
@@ -140,11 +305,10 @@ function renderThesisTab(data) {
     ? `${pnlIcon(totalPnlPct)} P&amp;L avg: <strong class="${pnlClass(totalPnlPct)}">${fmtPct(totalPnlPct)}</strong>`
     : '';
 
-  const warningHTML = !data.has_quantity_data
-    ? '<p class="muted" style="font-size:.8rem;margin-top:8px">⚠️ Một số thesis chưa có quantity — thị giá/vốn có thể không đầy đủ.</p>'
-    : '';
+  const banner = renderErrorBanner(errors.filter(e => e.scope === 'thesis'));
 
   return `
+    ${banner}
     <div class="portfolio-summary">
       ${summaryPnl ? `<span class="summary-chip">${summaryPnl}</span>` : ''}
       <span class="summary-chip">Theses: <strong>${n}</strong></span>
@@ -161,28 +325,41 @@ function renderThesisTab(data) {
         </thead>
         <tbody>${rows}</tbody>
       </table>
-    </div>
-    ${warningHTML}`;
+    </div>`;
 }
 
 // ---------------------------------------------------------------------------
 // Main render — 2-tab layout
 // ---------------------------------------------------------------------------
 export function renderPortfolio(wrap, { trades, thesis }) {
+  const errors       = collectErrors(trades, thesis);
+  const tradesErrors = errors.filter(e => e.scope === 'trades');
+  const thesisErrors = errors.filter(e => e.scope === 'thesis');
+
+  const tradesBadge = badgeHTML(
+    tradesErrors.filter(e => e.severity !== 'info').length,
+  );
+  const thesisBadge = badgeHTML(
+    thesisErrors.filter(e => e.severity !== 'info').length,
+  );
+
   wrap.innerHTML = `
     <div class="portfolio-tab-bar" role="tablist" aria-label="Portfolio view">
       <button class="portfolio-tab active" role="tab" aria-selected="true"
               aria-controls="portfolioTradesPane" id="tabTrades">
-        📊 Trades
+        📊 Trades${tradesBadge}
       </button>
       <button class="portfolio-tab" role="tab" aria-selected="false"
               aria-controls="portfolioThesisPane" id="tabThesis">
-        📝 Thesis
+        📝 Thesis${thesisBadge}
       </button>
     </div>
-    <div id="portfolioTradesPane" class="portfolio-pane">${renderTradesTab(trades)}</div>
-    <div id="portfolioThesisPane" class="portfolio-pane hidden">${renderThesisTab(thesis)}</div>
+    <div id="portfolioTradesPane" class="portfolio-pane">${renderTradesTab(trades, errors)}</div>
+    <div id="portfolioThesisPane" class="portfolio-pane hidden">${renderThesisTab(thesis, errors)}</div>
   `;
+
+  // Wire error banner toggles
+  wrap.querySelectorAll('.perr-banner').forEach(banner => wireBannerToggle(banner));
 
   // Wire tab switching
   wrap.querySelectorAll('.portfolio-tab').forEach(btn => {

@@ -1,0 +1,152 @@
+/* ─── Portfolio Errors Indicator ─────────────────────────────────────────────
+   Owner: modules/portfolio
+   Wave 1: error banner, tab badge, cell-missing, cell-error-dot, row-data-error
+   Classes:
+     .perr-banner       — collapsible error banner container
+     .perr-toggle       — toggle button (summary + chevron)
+     .perr-summary      — summary text inside toggle
+     .perr-chevron      — ▾/▴ indicator
+     .perr-list         — collapsible <ul> of error items
+     .perr-item         — single error line
+     .perr-critical     — 🔴 severity
+     .perr-warning      — 🟡 severity
+     .perr-info         — 🔵 severity
+     .perr-tab-badge    — badge số lỗi trên tab button
+     .cell-missing      — <td> chứa '—' do data thiếu
+     .cell-error-dot    — dot đỏ nhỏ inline với ticker
+     .row-data-error    — <tr> có ít nhất 1 cell critical missing
+──────────────────────────────────────────────────────────────────────────── */
+
+/* ── Banner container ───────────────────────────────────────────────────── */
+.perr-banner {
+  margin-bottom: 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(251, 191, 36, 0.22);   /* --warning tint */
+  background: rgba(251, 191, 36, 0.04);
+  overflow: hidden;
+}
+
+/* Banner khi có critical error — border đỏ */
+.perr-banner:has(.perr-critical) {
+  border-color: rgba(248, 113, 113, 0.28);       /* --danger tint */
+  background: rgba(248, 113, 113, 0.04);
+}
+
+/* ── Toggle button ──────────────────────────────────────────────────────── */
+.perr-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 9px 13px;
+  gap: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--warning);
+  font-size: 0.78rem;
+  font-family: var(--font-body);
+  transition: background 0.15s ease;
+}
+
+.perr-banner:has(.perr-critical) .perr-toggle {
+  color: var(--danger);
+}
+
+.perr-toggle:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.perr-summary {
+  flex: 1;
+  line-height: 1.4;
+}
+
+.perr-chevron {
+  font-size: 0.7rem;
+  flex-shrink: 0;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.perr-toggle[aria-expanded="true"] .perr-chevron {
+  transform: rotate(180deg);
+}
+
+/* ── Error list ─────────────────────────────────────────────────────────── */
+.perr-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 13px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  border-top: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.perr-list[hidden] {
+  display: none;
+}
+
+.perr-item {
+  font-size: 0.76rem;
+  line-height: 1.5;
+  padding: 4px 0;
+  color: var(--muted);
+}
+
+.perr-item.perr-critical { color: var(--danger);  }
+.perr-item.perr-warning  { color: var(--warning); }
+.perr-item.perr-info     { color: var(--brand);   }
+
+/* ── Tab badge ──────────────────────────────────────────────────────────── */
+.perr-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  margin-left: 5px;
+  border-radius: 9999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: middle;
+  letter-spacing: 0;
+}
+
+/* ── Row & cell error states ────────────────────────────────────────────── */
+
+/* Row với ít nhất 1 data field nghiêm trọng bị thiếu */
+.row-data-error {
+  background: rgba(248, 113, 113, 0.04);
+}
+
+/* Cell chứa '—' do data bị thiếu — màu nhạt hơn bình thường */
+td.cell-missing {
+  color: var(--faint);
+  font-style: italic;
+}
+
+/* Dot đỏ nhỏ inline kế ticker — size nhỏ, không lấn át */
+.cell-error-dot {
+  display: inline-block;
+  margin-left: 4px;
+  font-size: 0.5rem;
+  color: var(--danger);
+  opacity: 0.75;
+  vertical-align: middle;
+  cursor: help;
+  line-height: 1;
+}
+
+/* Respect prefers-reduced-motion — không cần animation ở đây */
+@media (prefers-reduced-motion: reduce) {
+  .perr-chevron {
+    transition: none;
+  }
+}
