@@ -82,7 +82,6 @@ function fmtVnd(val) {
 
 // ---------------------------------------------------------------------------
 // [wave-fe2] Tier Breakdown pill bar
-// Reads from /theses/aggregate → tier_breakdown: { A, B, C, D }
 // ---------------------------------------------------------------------------
 export function renderTierBreakdown(aggregate) {
   const wrap = el('tierBreakdown');
@@ -126,10 +125,10 @@ export function renderAlertsStrip(alerts) {
   const items = Array.isArray(alerts) ? alerts : (alerts?.items ?? []);
   if (!items.length) { wrap.classList.add('hidden'); return; }
 
-  const priorityCls = { HIGH: 'alert-item--high', MEDIUM: 'alert-item--medium', LOW: 'alert-item--low' };
+  const priorityCls  = { HIGH: 'alert-item--high', MEDIUM: 'alert-item--medium', LOW: 'alert-item--low' };
   const priorityIcon = { HIGH: '🔴', MEDIUM: '🟡', LOW: '🔵' };
 
-  const shown = items.slice(0, 5);
+  const shown    = items.slice(0, 5);
   const overflow = items.length - shown.length;
 
   wrap.classList.remove('hidden');
@@ -138,18 +137,83 @@ export function renderAlertsStrip(alerts) {
     <div class="alerts-strip-items">
       ${shown.map(a => {
         const p = (a.priority ?? 'MEDIUM').toUpperCase();
-        const triggeredAt = a.triggered_at ? new Date(a.triggered_at).toLocaleString('vi-VN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
-        const price = a.triggered_price != null ? new Intl.NumberFormat('vi-VN').format(a.triggered_price) : null;
+        const at = a.triggered_at
+          ? new Date(a.triggered_at).toLocaleString('vi-VN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+          : '—';
+        const price = a.triggered_price != null
+          ? new Intl.NumberFormat('vi-VN').format(a.triggered_price)
+          : null;
         return `
           <div class="alert-item ${priorityCls[p] ?? 'alert-item--medium'}">
             <span class="alert-priority">${priorityIcon[p] ?? '🟡'}</span>
             <span class="alert-ticker">${a.ticker ?? '—'}</span>
             <span class="alert-label">${a.label ?? a.condition_type ?? ''}</span>
             ${price ? `<span class="alert-price">@ ${price}</span>` : ''}
-            <span class="alert-time muted">${triggeredAt}</span>
+            <span class="alert-time muted">${at}</span>
           </div>`;
       }).join('')}
       ${overflow > 0 ? `<div class="alerts-strip-more muted">+${overflow} alerts khác</div>` : ''}
+    </div>
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// [wave-fe3] Signals feed
+// Renders GET /dashboard/signals/recent response.
+// Item shape: { ticker, signal_type, strength, confidence, source, occurred_at }
+// Hidden when empty (no SignalEvent rows yet).
+// ---------------------------------------------------------------------------
+export function renderSignalsFeed(res) {
+  const wrap = el('signalsFeed');
+  if (!wrap) return;
+
+  const items = Array.isArray(res) ? res : (res?.items ?? []);
+  if (!items.length) { wrap.classList.add('hidden'); return; }
+
+  // signal_type -> icon
+  const typeIcon = {
+    ma_crossover:   '📈',
+    volume_spike:   '📊',
+    rsi_oversold:   '⬇️',
+    rsi_overbought: '⬆️',
+    breakout:       '💥',
+    breakdown:      '💧',
+    macd_signal:    '⚡',
+    default:        '📶',
+  };
+
+  // source -> css class suffix
+  const sourceCls = { technical: 'sig--tech', ai: 'sig--ai', default: 'sig--other' };
+
+  const shown    = items.slice(0, 8);
+  const overflow = items.length - shown.length;
+
+  wrap.classList.remove('hidden');
+  wrap.innerHTML = `
+    <div class="signals-feed-label">📶 Tín hiệu kỹ thuật gần đây</div>
+    <div class="signals-feed-items">
+      ${shown.map(s => {
+        const icon    = typeIcon[s.signal_type] ?? typeIcon.default;
+        const cls     = sourceCls[s.source]    ?? sourceCls.default;
+        const strength = s.strength != null ? Math.round(s.strength * 100) : null;
+        const conf     = s.confidence != null ? Math.round(s.confidence * 100) : null;
+        const at = s.occurred_at
+          ? new Date(s.occurred_at).toLocaleString('vi-VN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+          : '—';
+        return `
+          <div class="signal-item ${cls}">
+            <span class="sig-icon">${icon}</span>
+            <span class="sig-ticker">${s.ticker ?? '—'}</span>
+            <span class="sig-type">${(s.signal_type ?? '').replace(/_/g, ' ')}</span>
+            ${strength != null ? `
+              <span class="sig-bar-wrap" title="Strength: ${strength}%">
+                <span class="sig-bar" style="width:${strength}%"></span>
+              </span>` : ''}
+            ${conf != null ? `<span class="sig-conf muted">${conf}%</span>` : ''}
+            <span class="sig-time muted">${at}</span>
+          </div>`;
+      }).join('')}
+      ${overflow > 0 ? `<div class="signals-feed-more muted">+${overflow} signals khác</div>` : ''}
     </div>
   `;
 }
@@ -161,51 +225,43 @@ export function renderActionSurface(stats, catalysts) {
   const wrap = el('actionSurface');
   if (!wrap) return;
 
-  const reviewsToday  = parseInt(stats?.reviews_today         ?? stats?.review_count_today  ?? 0, 10);
-  const riskyCount    = parseInt(stats?.risky_theses          ?? stats?.risky_thesis_count  ?? 0, 10);
-  const upcoming7d    = parseInt(stats?.upcoming_catalysts_7d ?? stats?.upcoming_7d          ?? 0, 10);
-  const staleCount    = parseInt(stats?.stale_review_count    ?? 0, 10);
-  const staleDays     = stats?.stale_review_days ?? 14;
+  const reviewsToday = parseInt(stats?.reviews_today         ?? stats?.review_count_today  ?? 0, 10);
+  const riskyCount   = parseInt(stats?.risky_theses          ?? stats?.risky_thesis_count  ?? 0, 10);
+  const upcoming7d   = parseInt(stats?.upcoming_catalysts_7d ?? stats?.upcoming_7d          ?? 0, 10);
+  const staleCount   = parseInt(stats?.stale_review_count    ?? 0, 10);
+  const staleDays    = stats?.stale_review_days ?? 14;
 
   const items = [];
 
   if (reviewsToday > 0) {
     items.push({
-      icon: '⚠️',
-      cls: 'as-item--warn',
+      icon: '⚠️', cls: 'as-item--warn',
       text: `${reviewsToday} thesis cần review hôm nay`,
-      target: 'thesesTableWrap',
-      label: 'Review ngay',
+      target: 'thesesTableWrap', label: 'Review ngay',
     });
   }
 
   if (staleCount > 0) {
     items.push({
-      icon: '🕐',
-      cls: 'as-item--warn',
+      icon: '🕐', cls: 'as-item--warn',
       text: `${staleCount} thesis chưa review trong ${staleDays} ngày`,
-      target: 'thesesTableWrap',
-      label: 'Review ngay',
+      target: 'thesesTableWrap', label: 'Review ngay',
     });
   }
 
   if (riskyCount > 0) {
     items.push({
-      icon: '🔴',
-      cls: 'as-item--danger',
+      icon: '🔴', cls: 'as-item--danger',
       text: `${riskyCount} thesis có score thấp (< 40)`,
-      target: 'thesesTableWrap',
-      label: 'Xem thesis',
+      target: 'thesesTableWrap', label: 'Xem thesis',
     });
   }
 
   if (upcoming7d > 0) {
     items.push({
-      icon: '📅',
-      cls: 'as-item--info',
+      icon: '📅', cls: 'as-item--info',
       text: `${upcoming7d} catalyst trong 7 ngày tới`,
-      target: 'catalystList',
-      label: 'Xem lịch',
+      target: 'catalystList', label: 'Xem lịch',
     });
   }
 
@@ -224,8 +280,7 @@ export function renderActionSurface(stats, catalysts) {
           <span class="as-icon">${item.icon}</span>
           <span class="as-text">${item.text}</span>
           <button class="as-cta" data-scroll-to="${item.target}" type="button">${item.label} →</button>
-        </div>
-      `).join('')}
+        </div>`).join('')}
     </div>`;
 
   wrap.querySelectorAll('[data-scroll-to]').forEach(btn => {
@@ -237,8 +292,8 @@ export function renderActionSurface(stats, catalysts) {
 }
 
 export async function loadDashboard() {
-  const status  = el('statusFilter')?.value ?? 'active';
-  const base    = apiBase();
+  const status    = el('statusFilter')?.value ?? 'active';
+  const base      = apiBase();
   const briefBase = briefingApiBase();
   el('errorBanner')?.classList.add('hidden');
   showLoadingSkeletons();
@@ -249,9 +304,9 @@ export async function loadDashboard() {
       latestScan, latestMorningBrief, latestEodBrief,
       portfolioTrades,
       briefFeedback,
-      // [wave-fe2] new fetches
       alertsTriggered,
       thesisAggregate,
+      recentSignals,          // [wave-fe3]
     ] = await Promise.all([
       getJson(`${base}/stats`).catch(() => null),
       getJson(`${base}/theses?status=${status}`).catch(() => []),
@@ -264,6 +319,7 @@ export async function loadDashboard() {
       getJson(`${briefBase}/feedback-summary`).catch(() => null),
       getJson(`${base}/alerts/triggered`).catch(() => null),
       getJson(`${base}/theses/aggregate`).catch(() => null),
+      getJson(`${base}/signals/recent?days=7&limit=30`).catch(() => null),   // [wave-fe3]
     ]);
 
     renderSummary(stats, portfolioTrades);
@@ -271,6 +327,9 @@ export async function loadDashboard() {
     // [wave-fe2] tier breakdown + alerts strip
     renderTierBreakdown(thesisAggregate);
     renderAlertsStrip(alertsTriggered);
+
+    // [wave-fe3] signals feed
+    renderSignalsFeed(recentSignals);
 
     // Wave Dashboard-1: action surface
     renderActionSurface(stats, catalysts?.items ?? catalysts ?? []);
@@ -289,10 +348,6 @@ export async function loadDashboard() {
 
     renderCatalystList(catalysts?.items ?? catalysts ?? []);
 
-    // Pass the full latestScan object as `latest_scan` so renderSnapshots()
-    // can call renderScanDigest() with structured data.
-    // Backward-compat fields (latest_scan_at, latest_scan_summary) kept as
-    // fallback for any external callers that still use the old shape.
     renderSnapshots({
       latest_scan:               latestScan ?? null,
       latest_scan_at:            latestScan?.scanned_at ?? latestScan?.created_at ?? null,
@@ -371,9 +426,9 @@ function parseCurrentValue(node) {
 export function renderSummary(s, portfolio) {
   if (!s) return;
   const kpis = [
-    { id: 'openTheses',       raw: s.open_theses           ?? s.open_thesis_count   },
-    { id: 'riskyTheses',      raw: s.risky_theses          ?? s.risky_thesis_count  },
-    { id: 'upcoming7d',       raw: s.upcoming_catalysts_7d ?? s.upcoming_7d         },
+    { id: 'openTheses',  raw: s.open_theses           ?? s.open_thesis_count  },
+    { id: 'riskyTheses', raw: s.risky_theses          ?? s.risky_thesis_count },
+    { id: 'upcoming7d',  raw: s.upcoming_catalysts_7d ?? s.upcoming_7d        },
   ];
 
   kpis.forEach(({ id, raw }) => {
@@ -388,7 +443,7 @@ export function renderSummary(s, portfolio) {
   });
 
   const reviewsTodayRaw = parseInt(s.reviews_today ?? s.review_count_today ?? 0, 10);
-  const reviewsTodayEl = el('reviewsToday');
+  const reviewsTodayEl  = el('reviewsToday');
   if (reviewsTodayEl) {
     reviewsTodayEl.textContent = reviewsTodayRaw > 0 ? `${reviewsTodayRaw} cần review hôm nay` : '';
   }
@@ -406,17 +461,14 @@ export function renderSummary(s, portfolio) {
       flashValue(staleEl);
     }
   }
-  if (staleSubEl) {
-    staleSubEl.textContent = `chưa review ${staleDays}d`;
-  }
+  if (staleSubEl) staleSubEl.textContent = `chưa review ${staleDays}d`;
   if (staleCard) {
-    staleCard.classList.toggle('signal-card--ok', staleCount === 0);
+    staleCard.classList.toggle('signal-card--ok',   staleCount === 0);
     staleCard.classList.toggle('signal-card--risk', staleCount > 0);
   }
 
   // Portfolio KPIs from trades
-  const positions = portfolio?.positions ?? (Array.isArray(portfolio) ? portfolio : []);
-
+  const positions     = portfolio?.positions ?? (Array.isArray(portfolio) ? portfolio : []);
   const totalValue    = portfolio?.total_market_value   ?? positions.reduce((acc, t) => acc + (t.market_value ?? 0), 0);
   const unrealizedPnl = portfolio?.total_unrealized_pnl ?? positions.reduce((acc, t) => acc + (t.unrealized_pnl ?? 0), 0);
   const pnlPct        = portfolio?.total_unrealized_pct ?? (
@@ -431,13 +483,8 @@ export function renderSummary(s, portfolio) {
   const pnlPctEl = el('unrealizedPnlPct');
   const pvSubEl  = el('portfolioValueSub');
 
-  if (pvEl && totalValue != null) {
-    pvEl.textContent = fmtVnd(totalValue);
-    flashValue(pvEl);
-  }
-  if (pvSubEl && posCount > 0) {
-    pvSubEl.textContent = `${posCount} vị thế`;
-  }
+  if (pvEl && totalValue != null) { pvEl.textContent = fmtVnd(totalValue); flashValue(pvEl); }
+  if (pvSubEl && posCount > 0)    { pvSubEl.textContent = `${posCount} vị thế`; }
   if (pnlEl && unrealizedPnl != null) {
     pnlEl.textContent = (unrealizedPnl >= 0 ? '+' : '') + fmtVnd(unrealizedPnl);
     pnlEl.className = 'signal-value ' + (unrealizedPnl >= 0 ? 'text-success' : 'text-danger');
