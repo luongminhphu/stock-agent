@@ -12,6 +12,7 @@ Endpoints served (via src/api/routes/readmodel.py):
     get_brief_latest()                  — snapshot brief gan nhat (BriefSnapshot)
     get_brief_feedback_summary()        — feedback summary cho brief (BriefFeedback)
     get_triggered_alerts()              — alerts da fire, chua xu ly (Alert)
+    get_recent_signals()                — signal history per ticker (SignalEvent)
     get_verdict_accuracy()              — delegates to BacktestingService
     get_thesis_performances()           — delegates to BacktestingService
     get_price_snapshots()               — delegates to BacktestingService
@@ -352,7 +353,92 @@ class DashboardService:
             return []
 
     # ------------------------------------------------------------------
-    # 9-11. Backtesting — delegates to BacktestingService
+    # 9. Recent signal events — cross-segment (watchlist)
+    # ------------------------------------------------------------------
+
+    async def get_recent_signals(
+        self,
+        user_id: str,
+        ticker: str | None = None,
+        days: int = 7,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Trả SignalEvent gần đây cho user, optional filter theo ticker.
+
+        Dùng cho context kỹ thuật trên watchlist card và dashboard signal feed.
+
+        Query parameters:
+            ticker  — filter theo mã cụ thể (VD: "VCB"). Nếu None, trả toàn bộ watchlist.
+            days    — window thời gian tính từ hiện tại (mặc định 7 ngày).
+            limit   — số item tối đa (mặc định 50).
+
+        Response item shape:
+            id           — int
+            event_id     — str  (unique dedup key)
+            ticker       — str
+            signal_type  — str  (VD: "ma_crossover", "volume_spike", "rsi_oversold")
+            strength     — float 0.0-1.0
+            confidence   — float 0.0-1.0
+            source       — str  ("technical" | "ai" | ...)
+            metadata     — dict | null  (parsed từ metadata_json)
+            occurred_at  — ISO str
+            processed_at — ISO str | null
+        """
+        try:
+            from src.watchlist.models import SignalEvent
+        except ImportError:
+            logger.warning(
+                "get_recent_signals.import_error", detail="SignalEvent model not available"
+            )
+            return []
+
+        try:
+            since = datetime.now(UTC) - timedelta(days=days)
+
+            stmt = (
+                select(SignalEvent)
+                .where(
+                    SignalEvent.user_id == user_id,
+                    SignalEvent.occurred_at >= since,
+                )
+                .order_by(SignalEvent.occurred_at.desc())
+                .limit(limit)
+            )
+
+            if ticker is not None:
+                stmt = stmt.where(SignalEvent.ticker == ticker.upper())
+
+            rows = (await self._session.execute(stmt)).scalars().all()
+
+            result = []
+            for r in rows:
+                # Parse metadata_json — fallback None nếu invalid JSON
+                try:
+                    metadata = json.loads(r.metadata_json) if r.metadata_json else None
+                except (json.JSONDecodeError, TypeError):
+                    metadata = None
+
+                result.append(
+                    {
+                        "id": r.id,
+                        "event_id": r.event_id,
+                        "ticker": r.ticker,
+                        "signal_type": r.signal_type,
+                        "strength": r.strength,
+                        "confidence": r.confidence,
+                        "source": r.source,
+                        "metadata": metadata,
+                        "occurred_at": r.occurred_at.isoformat() if r.occurred_at else None,
+                        "processed_at": r.processed_at.isoformat() if r.processed_at else None,
+                    }
+                )
+            return result
+        except Exception as exc:
+            logger.warning("get_recent_signals.db_error", error=str(exc))
+            return []
+
+    # ------------------------------------------------------------------
+    # 10-12. Backtesting — delegates to BacktestingService
     # ------------------------------------------------------------------
 
     async def get_verdict_accuracy(self, user_id: str) -> list[dict[str, Any]]:
@@ -370,7 +456,7 @@ class DashboardService:
         return await self._backtesting.get_price_snapshots(user_id, thesis_id)
 
     # ------------------------------------------------------------------
-    # 12. Portfolio — delegates to PortfolioQueryService
+    # 13. Portfolio — delegates to PortfolioQueryService
     # ------------------------------------------------------------------
 
     async def get_portfolio(

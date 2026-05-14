@@ -283,21 +283,7 @@ async def get_thesis_aggregate(
         Query(description="Fetch live price + position map để tính P&L aggregate"),
     ] = True,
 ) -> dict[str, Any]:
-    """Thesis portfolio aggregate — counts + P&L totals + breakdowns.
-
-    Response shape:
-        total_theses        — số thesis active
-        with_position_count — thesis có open position
-        reviewed_count      — thesis đã có ít nhất 1 review
-        total_cost_basis    — tổng vốn, null nếu thiếu position data
-        total_market_value  — tổng market value, null nếu thiếu live price
-        total_pnl_abs       — P&L tuyệt đối (VND), null nếu thiếu data
-        total_pnl_pct       — P&L % tổng danh mục, null nếu thiếu data
-        verdict_breakdown   — {buy, hold, sell, watch, none}
-        tier_breakdown      — {A, B, C, D, none}
-        pnl_breakdown       — {profit, neutral, loss, none}
-        generated_at        — ISO timestamp
-    """
+    """Thesis portfolio aggregate — counts + P&L totals + breakdowns."""
     svc = DashboardService(session)
 
     price_map: dict[str, float] = {}
@@ -382,14 +368,6 @@ async def get_brief_feedback_summary(
     session: Annotated[AsyncSession, Depends(get_db)],
     days: Annotated[int, Query(ge=1, le=90, description="Window tính acted_rate (ngày)")] = 30,
 ) -> dict[str, Any]:
-    """Brief feedback summary: last outcome + acted rate trong N ngày gần nhất.
-
-    Response shape:
-        last_feedback_outcome  — "acted" | "watching" | "skipped" | null
-        last_feedback_at       — ISO timestamp | null
-        acted_rate_30d         — float 0.0-1.0 | null (null nếu chưa có feedback)
-        total_feedbacks_30d    — int
-    """
     svc = DashboardService(session)
     return await svc.get_brief_feedback_summary(user_id, days=days)
 
@@ -417,19 +395,6 @@ async def get_triggered_alerts(
     """Alerts đã fire (status=TRIGGERED), chưa được dismiss/reactivate.
 
     Response shape: {items: [...], total: N}
-
-    Mỗi item:
-        id                — int
-        ticker            — str
-        condition_type    — str  (price_above | price_below | change_pct_up | change_pct_down | volume_spike | thesis_trigger)
-        threshold         — float
-        triggered_price   — float | null
-        triggered_at      — ISO str
-        priority          — "HIGH" | "MEDIUM" | "LOW" | null
-        label             — str | null
-        auto_reactivate   — bool
-        note              — str | null
-        watchlist_item_id — int | null
     """
     svc = DashboardService(session)
     return _paginated(await svc.get_triggered_alerts(user_id, limit=limit))
@@ -445,7 +410,61 @@ async def get_triggered_alerts_single_user(
 
 
 # ---------------------------------------------------------------------------
-# 9. Backtesting — verdict accuracy
+# 9. Recent signal events — context kỹ thuật per ticker
+# ---------------------------------------------------------------------------
+
+
+@router.get("/dashboard/{user_id}/signals/recent")
+async def get_recent_signals(
+    user_id: str,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    ticker: Annotated[
+        str | None,
+        Query(description="Filter theo mã cụ thể (VD: VCB). Bỏ qua để lấy toàn bộ watchlist."),
+    ] = None,
+    days: Annotated[int, Query(ge=1, le=90, description="Window thời gian (ngày)")] = 7,
+    limit: Annotated[int, Query(ge=1, le=200, description="Số signal tối đa trả về")] = 50,
+) -> dict[str, Any]:
+    """Signal events gần đây (MA crossover, volume spike, RSI oversold, v.v.).
+
+    Response shape: {items: [...], total: N}
+
+    Mỗi item:
+        id           — int
+        event_id     — str  (unique dedup key)
+        ticker       — str
+        signal_type  — str  (VD: "ma_crossover", "volume_spike", "rsi_oversold")
+        strength     — float 0.0-1.0
+        confidence   — float 0.0-1.0
+        source       — str  ("technical" | "ai" | ...)
+        metadata     — dict | null
+        occurred_at  — ISO str
+        processed_at — ISO str | null
+    """
+    svc = DashboardService(session)
+    return _paginated(
+        await svc.get_recent_signals(user_id, ticker=ticker, days=days, limit=limit)
+    )
+
+
+@router.get("/dashboard/signals/recent")
+async def get_recent_signals_single_user(
+    session: Annotated[AsyncSession, Depends(get_db)],
+    ticker: Annotated[
+        str | None,
+        Query(description="Filter theo mã cụ thể (VD: VCB). Bỏ qua để lấy toàn bộ watchlist."),
+    ] = None,
+    days: Annotated[int, Query(ge=1, le=90, description="Window thời gian (ngày)")] = 7,
+    limit: Annotated[int, Query(ge=1, le=200, description="Số signal tối đa trả về")] = 50,
+) -> dict[str, Any]:
+    svc = DashboardService(session)
+    return _paginated(
+        await svc.get_recent_signals(_default_user_id(), ticker=ticker, days=days, limit=limit)
+    )
+
+
+# ---------------------------------------------------------------------------
+# 10. Backtesting — verdict accuracy
 # ---------------------------------------------------------------------------
 
 
@@ -467,7 +486,7 @@ async def get_verdict_accuracy_single_user(
 
 
 # ---------------------------------------------------------------------------
-# 10. Backtesting — thesis performances
+# 11. Backtesting — thesis performances
 # ---------------------------------------------------------------------------
 
 
@@ -497,7 +516,7 @@ async def get_thesis_performances_single_user(
 
 
 # ---------------------------------------------------------------------------
-# 11. Backtesting — price snapshots
+# 12. Backtesting — price snapshots
 # ---------------------------------------------------------------------------
 
 
@@ -527,7 +546,7 @@ async def get_price_snapshots_single_user(
 
 
 # ---------------------------------------------------------------------------
-# 12. Portfolio — Trades view (PnlService — positions thực tế từ DB)
+# 13. Portfolio — Trades view (PnlService — positions thực tế từ DB)
 # ---------------------------------------------------------------------------
 
 
@@ -536,9 +555,7 @@ async def get_portfolio_trades(
     user_id: str,
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict[str, Any]:
-    """Tab Trades: lay positions thuc te tu bang positions + live price tu QuoteService.
-    Khac voi /portfolio (thesis-based), endpoint nay dung PnlService.
-    """
+    """Tab Trades: lay positions thuc te tu bang positions + live price tu QuoteService."""
     svc = PnlService(session=session, quote_service=get_quote_service())
     pnl = await svc.get_portfolio_pnl(user_id)
     return {
@@ -574,7 +591,7 @@ async def get_portfolio_trades_single_user(
 
 
 # ---------------------------------------------------------------------------
-# 13. Portfolio — Thesis view (DashboardService — thesis-based positions)
+# 14. Portfolio — Thesis view (DashboardService — thesis-based positions)
 # ---------------------------------------------------------------------------
 
 
@@ -587,11 +604,7 @@ async def get_portfolio(
         Query(description="Fetch gia hien tai tu QuoteService de tinh P&L realtime"),
     ] = True,
 ) -> dict[str, Any]:
-    """Thesis portfolio view — thesis active + aggregate P&L.
-
-    - enrich_prices=true (default): lay gia hien tai tu QuoteService -> pnl_abs/pnl_pct co gia tri.
-    - enrich_prices=false: tra ve position metadata nhanh hon, pnl_abs/pnl_pct = null.
-    """
+    """Thesis portfolio view — thesis active + aggregate P&L."""
     svc = DashboardService(session)
 
     price_map: dict[str, float] = {}
