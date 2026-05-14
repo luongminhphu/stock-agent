@@ -131,7 +131,7 @@ class StatsService:
             or 0
         )
 
-        # Thesis active chưa có review nào trong _STALE_REVIEW_DAYS ngày gần nhất.
+        # Thesis active/paused chưa có review nào trong _STALE_REVIEW_DAYS ngày gần nhất.
         # Dùng để highlight "cần review gấp" trên dashboard.
         stale_cutoff = now_utc - timedelta(days=_STALE_REVIEW_DAYS)
 
@@ -147,7 +147,7 @@ class StatsService:
             await self._session.scalar(
                 select(func.count(Thesis.id)).where(
                     Thesis.user_id == user_id,
-                    Thesis.status == ThesisStatus.ACTIVE,
+                    Thesis.status.in_([ThesisStatus.ACTIVE, ThesisStatus.PAUSED]),
                     Thesis.id.not_in(select(reviewed_recently_subq.c.thesis_id)),
                 )
             )
