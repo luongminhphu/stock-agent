@@ -31,6 +31,7 @@ is responsible for committing the session after scan_user() returns.
 
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -115,7 +116,7 @@ class ScanResult:
         return alerts
 
     def build_summary(self) -> str:
-        """Build a human-readable summary string for persisting to WatchlistScan."""
+        """Build a human-readable summary string (legacy — used as fallback text)."""
         if not self.signals:
             return "Không có tín hiệu đáng chú ý."
         parts = []
@@ -124,6 +125,68 @@ class ScanResult:
         if self.errors:
             parts.append(f"Lỗi fetch: {', '.join(self.errors.keys())}")
         return "; ".join(parts)
+
+    def build_summary_json(self) -> str:
+        """Serialize scan result as structured JSON for dashboard consumption.
+
+        Schema:
+            signal_count         — total tickers with signals this tick
+            triggered_count      — tickers with at least one alert triggered
+            tickers_with_signals — list of triggered tickers
+            items[]              — per-ticker signal detail:
+                ticker           — stock symbol
+                change_pct       — price change % (rounded 2dp)
+                signal_type      — legacy type: "alert_triggered"|"strong_move"|"watch"
+                has_alerts       — bool
+                alert_count      — int
+                description      — human-readable description
+                signal_reports[] — typed SignalEngine output, sorted by
+                                   (actionable, strength, confidence) desc:
+                    signal_type  — "BREAKOUT"|"RISK_SPIKE"|"STRONG_MOVE"|...
+                    strength     — float 0.0-1.0
+                    confidence   — float 0.0-1.0
+                    source       — "technical"|"alert"|"combined"
+                    description  — human-readable
+                    actionable   — bool (strength>=0.5 AND confidence>=0.6)
+                    metadata     — raw engine metadata dict
+            error_tickers        — tickers that failed quote fetch
+            text                 — backward-compat plain-text summary
+        """
+        data = {
+            "signal_count": len(self.signals),
+            "triggered_count": self.triggered_count,
+            "tickers_with_signals": self.tickers_with_signals,
+            "items": [
+                {
+                    "ticker": s.ticker,
+                    "change_pct": round(s.change_pct, 2),
+                    "signal_type": s.signal_type,
+                    "has_alerts": s.has_alerts,
+                    "alert_count": len(s.triggered_alerts),
+                    "description": s.description,
+                    "signal_reports": sorted(
+                        [
+                            {
+                                "signal_type": r.signal_type,
+                                "strength": r.strength,
+                                "confidence": r.confidence,
+                                "source": r.source,
+                                "description": r.description,
+                                "actionable": r.is_actionable(),
+                                "metadata": r.metadata,
+                            }
+                            for r in s.signal_reports
+                        ],
+                        key=lambda x: (x["actionable"], x["strength"], x["confidence"]),
+                        reverse=True,
+                    ),
+                }
+                for s in self.signals
+            ],
+            "error_tickers": list(self.errors.keys()),
+            "text": self.build_summary(),
+        }
+        return json.dumps(data, ensure_ascii=False)
 
 
 class ScanService:
@@ -453,7 +516,7 @@ class ScanService:
         try:
             snapshot = WatchlistScan(
                 user_id=user_id,
-                summary=result.build_summary(),
+                summary=result.build_summary_json(),
                 scanned_at=result.scanned_at,
             )
             self._session.add(snapshot)
