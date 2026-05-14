@@ -5,10 +5,10 @@ Subscribes: BriefingRequestedEvent
 Emits:      BriefingReadyEvent (for future analytics / readmodel consumers)
 
 Boundary:
-- Listener nhận event, resolve deps, gọi BriefingService, gửi Discord channel.
+- Listener nhận event, resolve deps, gọi BriefingService, gửI Discord channel.
 - Không chứa logic generate brief — đó là BriefingService / BriefingAgent.
 - Discord delivery nằm ở đây thay vì bot/scheduler vì briefing là domain
-  concern (ai gửi gì, ở đâu) chứ không phải bot timing concern.
+  concern (ai gửI gì, ở đâu) chứ không phải bot timing concern.
 - discord.Client được inject sau khi bot login (set_client) để tránh coupling
   bootstrap với discord runtime.
 """
@@ -105,12 +105,14 @@ class BriefingListener:
                     sector_rotation_agent=get_sector_rotation_agent(),
                 )
                 if phase == "morning":
-                    brief = await svc.generate_morning_brief(user_id=self._user_id)
+                    brief_result = await svc.generate_morning_brief(user_id=self._user_id)
                 else:
-                    brief = await svc.generate_eod_brief(user_id=self._user_id)
+                    brief_result = await svc.generate_eod_brief(user_id=self._user_id)
                 await session.commit()
 
-            embed = build_brief_embed(brief, phase=phase)
+            # brief_result is BriefResult; .output is BriefOutput (has .sentiment)
+            # BriefingCog does the same: build_brief_embed(brief_result.output, ...)
+            embed = build_brief_embed(brief_result.output, phase=phase)
             await channel.send(embed=embed)  # type: ignore[union-attr]
             logger.info(
                 "briefing_listener.sent",
@@ -126,7 +128,7 @@ class BriefingListener:
                 BriefingReadyEvent(
                     brief_type=phase,
                     channel="discord",
-                    content_summary=getattr(brief, "summary", "")[:200],
+                    content_summary=getattr(brief_result.output, "summary", "")[:200],
                 )
             )
 
