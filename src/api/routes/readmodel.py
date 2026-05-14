@@ -404,7 +404,48 @@ async def get_brief_feedback_summary_single_user(
 
 
 # ---------------------------------------------------------------------------
-# 8. Backtesting — verdict accuracy
+# 8. Triggered alerts — panel "Alerts cần xử lý"
+# ---------------------------------------------------------------------------
+
+
+@router.get("/dashboard/{user_id}/alerts/triggered")
+async def get_triggered_alerts(
+    user_id: str,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=200, description="Số alert tối đa trả về")] = 50,
+) -> dict[str, Any]:
+    """Alerts đã fire (status=TRIGGERED), chưa được dismiss/reactivate.
+
+    Response shape: {items: [...], total: N}
+
+    Mỗi item:
+        id                — int
+        ticker            — str
+        condition_type    — str  (price_above | price_below | change_pct_up | change_pct_down | volume_spike | thesis_trigger)
+        threshold         — float
+        triggered_price   — float | null
+        triggered_at      — ISO str
+        priority          — "HIGH" | "MEDIUM" | "LOW" | null
+        label             — str | null
+        auto_reactivate   — bool
+        note              — str | null
+        watchlist_item_id — int | null
+    """
+    svc = DashboardService(session)
+    return _paginated(await svc.get_triggered_alerts(user_id, limit=limit))
+
+
+@router.get("/dashboard/alerts/triggered")
+async def get_triggered_alerts_single_user(
+    session: Annotated[AsyncSession, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=200, description="Số alert tối đa trả về")] = 50,
+) -> dict[str, Any]:
+    svc = DashboardService(session)
+    return _paginated(await svc.get_triggered_alerts(_default_user_id(), limit=limit))
+
+
+# ---------------------------------------------------------------------------
+# 9. Backtesting — verdict accuracy
 # ---------------------------------------------------------------------------
 
 
@@ -426,7 +467,7 @@ async def get_verdict_accuracy_single_user(
 
 
 # ---------------------------------------------------------------------------
-# 9. Backtesting — thesis performances
+# 10. Backtesting — thesis performances
 # ---------------------------------------------------------------------------
 
 
@@ -456,7 +497,7 @@ async def get_thesis_performances_single_user(
 
 
 # ---------------------------------------------------------------------------
-# 10. Backtesting — price snapshots
+# 11. Backtesting — price snapshots
 # ---------------------------------------------------------------------------
 
 
@@ -486,7 +527,7 @@ async def get_price_snapshots_single_user(
 
 
 # ---------------------------------------------------------------------------
-# 11. Portfolio — Trades view (PnlService — positions thực tế từ DB)
+# 12. Portfolio — Trades view (PnlService — positions thực tế từ DB)
 # ---------------------------------------------------------------------------
 
 
@@ -533,7 +574,7 @@ async def get_portfolio_trades_single_user(
 
 
 # ---------------------------------------------------------------------------
-# 12. Portfolio — Thesis view (DashboardService — thesis-based positions)
+# 13. Portfolio — Thesis view (DashboardService — thesis-based positions)
 # ---------------------------------------------------------------------------
 
 
