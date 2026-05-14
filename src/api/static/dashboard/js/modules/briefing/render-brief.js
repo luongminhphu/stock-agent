@@ -65,6 +65,91 @@ function formatScanHtml(text) {
 }
 
 // ---------------------------------------------------------------------------
+// renderScanDigest — render structured scan card.
+//
+// Accepts the full scan object returned by GET /dashboard/scan/latest.
+// The backend get_scan_latest() already parses the JSON summary and merges
+// structured fields (top_picks, items, signal_count, alert_count, ticker_count)
+// into the root object — so we read directly from `scan`.
+//
+// Fallback chain:
+//   1. Structured (scan.top_picks | scan.items array) → digest card
+//   2. scan.raw / scan.summary string              → formatScanHtml()
+//   3. null / empty                                → "Chưa có scan snapshot."
+// ---------------------------------------------------------------------------
+function renderScanDigest(scan) {
+  if (!scan) return 'Chưa có scan snapshot.';
+
+  // ── Structured path ──────────────────────────────────────────────────────
+  const topPicks = Array.isArray(scan.top_picks)
+    ? scan.top_picks
+    : Array.isArray(scan.items)
+      ? scan.items
+      : null;
+
+  const signalCount  = scan.signal_count  ?? scan.signals_count  ?? null;
+  const alertCount   = scan.alert_count   ?? scan.alerts_count   ?? null;
+  const tickerCount  = scan.ticker_count  ?? scan.tickers_scanned ?? null;
+  const headline     = scan.headline      ?? scan.summary_text   ?? null;
+
+  const hasStructured = topPicks !== null || signalCount !== null || alertCount !== null;
+
+  if (hasStructured) {
+    const scannedAt = scan.scanned_at ?? scan.created_at ?? null;
+    const timeLabel = scannedAt
+      ? new Date(scannedAt).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+      : null;
+
+    // Meta row: time · tickers · signals · alerts
+    const metaParts = [];
+    if (timeLabel)    metaParts.push(`🕐 ${timeLabel}`);
+    if (tickerCount)  metaParts.push(`${tickerCount} tickers`);
+    if (signalCount)  metaParts.push(`<span class="scan-badge scan-badge--signal">📶 ${signalCount} signals</span>`);
+    if (alertCount)   metaParts.push(`<span class="scan-badge scan-badge--alert">⚠️ ${alertCount} alerts</span>`);
+
+    // Top picks pills
+    let picksHtml = '';
+    if (topPicks && topPicks.length) {
+      const pills = topPicks.slice(0, 8).map(p => {
+        // item shape: { ticker, change_pct } or plain string
+        const isStr  = typeof p === 'string';
+        const ticker = isStr ? p : (p.ticker ?? p.symbol ?? String(p));
+        const chg    = isStr ? null : (p.change_pct ?? p.pct ?? null);
+        const cls    = chg == null ? '' : chg >= 0 ? 'up' : 'down';
+        const chgTxt = chg != null ? ` <span class="${cls}">${chg >= 0 ? '+' : ''}${Number(chg).toFixed(1)}%</span>` : '';
+        return `<span class="scan-pick-pill">${esc(String(ticker))}${chgTxt}</span>`;
+      });
+      const overflow = topPicks.length - Math.min(topPicks.length, 8);
+      picksHtml = `
+        <div class="scan-picks-row">
+          <span class="scan-picks-label">Top picks</span>
+          <div class="scan-picks">${pills.join('')}${
+            overflow > 0 ? `<span class="scan-pick-more muted">+${overflow}</span>` : ''
+          }</div>
+        </div>`;
+    }
+
+    // Headline / fallback raw text
+    const headlineHtml = headline
+      ? `<div class="scan-headline">${esc(headline)}</div>`
+      : '';
+
+    return `
+      <div class="scan-digest">
+        ${metaParts.length ? `<div class="scan-meta">${metaParts.join('<span class="scan-sep">·</span>')}</div>` : ''}
+        ${headlineHtml}
+        ${picksHtml}
+      </div>`;
+  }
+
+  // ── Fallback: raw string ─────────────────────────────────────────────────
+  const rawText = scan.raw ?? scan.summary ?? null;
+  if (rawText) return formatScanHtml(rawText);
+
+  return 'Chưa có scan snapshot.';
+}
+
+// ---------------------------------------------------------------------------
 // Wave A: Brief Feedback KPI strip
 // ---------------------------------------------------------------------------
 const OUTCOME_META = {
@@ -105,9 +190,6 @@ export function renderFeedbackKpi(data) {
 
 // ---------------------------------------------------------------------------
 // fmtReviewAge — returns { timeStr, ageBadge } computed from brief.created_at
-// • timeStr  → shown next to clock icon (when THIS brief was generated)
-// • ageBadge → freshness label (Vừa cập nhật / Xh trước / Xd trước)
-// Morning and EoD differ because each brief has its own created_at.
 // ---------------------------------------------------------------------------
 function fmtReviewAge(isoStr) {
   if (!isoStr) return { timeStr: null, ageBadge: null };
@@ -131,10 +213,6 @@ function fmtReviewAge(isoStr) {
 
 // ---------------------------------------------------------------------------
 // Brief card (morning / eod)
-// @param {string}      phase            'morning' | 'eod'
-// @param {object|null} brief            brief data object
-// @param {string|null} dateStr          fallback date label (used only if brief.created_at missing)
-// @param {string|null} existingOutcome  feedback outcome key
 // ---------------------------------------------------------------------------
 export function renderBriefCard(phase, brief, dateStr, existingOutcome = null) {
   const isEod = phase === 'eod';
@@ -156,8 +234,6 @@ export function renderBriefCard(phase, brief, dateStr, existingOutcome = null) {
 
   const ometa = existingOutcome ? (OUTCOME_META[existingOutcome] ?? null) : null;
 
-  // timeStr: when this brief was generated (differs between morning vs eod)
-  // ageBadge: freshness relative to now
   const { timeStr, ageBadge } = fmtReviewAge(brief.created_at ?? brief.generated_at);
   const clockLabel = timeStr ?? dateStr ?? '—';
 
@@ -302,15 +378,31 @@ function wireBriefTabs() {
 
 // ---------------------------------------------------------------------------
 // Snapshots panel (scan + morning brief + eod brief + feedback KPI)
+//
+// data shape:
+//   latest_scan       — full scan object from GET /dashboard/scan/latest (structured)
+//   latest_scan_at    — ISO string (backward compat fallback)
+//   latest_scan_summary — raw string (backward compat fallback)
+//   latest_morning_brief_at, latest_morning_brief_data
+//   latest_eod_brief_at, latest_eod_brief_data
+//   brief_feedback
 // ---------------------------------------------------------------------------
 export function renderSnapshots(data) {
-  // Scan summary block (separate element, kept for backward compat)
+  // Scan summary block
+  // Priority: structured object (latest_scan) > raw string (latest_scan_summary)
   const scanAt  = el('latestScanAt');
   const scanSum = el('latestScanSummary');
-  if (scanAt)  scanAt.textContent = data.latest_scan_at ? fmtDate(data.latest_scan_at) : '—';
-  if (scanSum) scanSum.innerHTML  = formatScanHtml(data.latest_scan_summary ?? null) || 'Chưa có scan snapshot.';
 
-  // Morning brief — clock shows morning brief's own created_at
+  const scanObj = data.latest_scan ?? null;
+  const scanAt_resolved = scanObj?.scanned_at ?? scanObj?.created_at ?? data.latest_scan_at ?? null;
+
+  if (scanAt)  scanAt.textContent = scanAt_resolved ? fmtDate(scanAt_resolved) : '—';
+  if (scanSum) scanSum.innerHTML  = renderScanDigest(scanObj)
+    // If no structured object, fallback to raw summary string
+    || formatScanHtml(data.latest_scan_summary ?? null)
+    || 'Chưa có scan snapshot.';
+
+  // Morning brief
   const morningWrap = el('morningBriefWrap');
   if (morningWrap) {
     morningWrap.innerHTML = renderBriefCard(
@@ -321,7 +413,7 @@ export function renderSnapshots(data) {
     );
   }
 
-  // EOD brief — clock shows eod brief's own created_at
+  // EOD brief
   const eodWrap = el('eodBriefWrap');
   if (eodWrap) {
     eodWrap.innerHTML = renderBriefCard(

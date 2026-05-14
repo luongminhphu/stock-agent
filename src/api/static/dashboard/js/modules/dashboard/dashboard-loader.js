@@ -83,8 +83,6 @@ function fmtVnd(val) {
 // ---------------------------------------------------------------------------
 // [wave-fe2] Tier Breakdown pill bar
 // Reads from /theses/aggregate → tier_breakdown: { A, B, C, D }
-// Renders inline pills: A: 3 · B: 5 · C: 2 · D: 1
-// Hidden when no data or all zero.
 // ---------------------------------------------------------------------------
 export function renderTierBreakdown(aggregate) {
   const wrap = el('tierBreakdown');
@@ -120,9 +118,6 @@ export function renderTierBreakdown(aggregate) {
 
 // ---------------------------------------------------------------------------
 // [wave-fe2] Alerts Triggered Strip
-// Reads from /alerts/triggered → items[]
-// Each item: { ticker, label, triggered_at, triggered_price, priority }
-// Hidden when empty. Max 5 items shown.
 // ---------------------------------------------------------------------------
 export function renderAlertsStrip(alerts) {
   const wrap = el('alertsTriggeredStrip');
@@ -161,9 +156,6 @@ export function renderAlertsStrip(alerts) {
 
 // ---------------------------------------------------------------------------
 // Wave Dashboard-1: Action Surface
-// Derives from stats + catalysts already fetched in loadDashboard().
-// Renders actionable nudges above the brief strip.
-// Hidden when all signals = 0 (no noise on clean days).
 // ---------------------------------------------------------------------------
 export function renderActionSurface(stats, catalysts) {
   const wrap = el('actionSurface');
@@ -172,7 +164,6 @@ export function renderActionSurface(stats, catalysts) {
   const reviewsToday  = parseInt(stats?.reviews_today         ?? stats?.review_count_today  ?? 0, 10);
   const riskyCount    = parseInt(stats?.risky_theses          ?? stats?.risky_thesis_count  ?? 0, 10);
   const upcoming7d    = parseInt(stats?.upcoming_catalysts_7d ?? stats?.upcoming_7d          ?? 0, 10);
-  // [wave-fe1] stale review nudge
   const staleCount    = parseInt(stats?.stale_review_count    ?? 0, 10);
   const staleDays     = stats?.stale_review_days ?? 14;
 
@@ -237,7 +228,6 @@ export function renderActionSurface(stats, catalysts) {
       `).join('')}
     </div>`;
 
-  // Wire scroll-to buttons
   wrap.querySelectorAll('[data-scroll-to]').forEach(btn => {
     btn.addEventListener('click', () => {
       const target = document.getElementById(btn.dataset.scrollTo);
@@ -282,7 +272,7 @@ export async function loadDashboard() {
     renderTierBreakdown(thesisAggregate);
     renderAlertsStrip(alertsTriggered);
 
-    // Wave Dashboard-1: action surface — derive from already-fetched data
+    // Wave Dashboard-1: action surface
     renderActionSurface(stats, catalysts?.items ?? catalysts ?? []);
 
     state.theses = theses?.items ?? theses ?? [];
@@ -298,8 +288,14 @@ export async function loadDashboard() {
     renderAccuracy(accuracyRows);
 
     renderCatalystList(catalysts?.items ?? catalysts ?? []);
+
+    // Pass the full latestScan object as `latest_scan` so renderSnapshots()
+    // can call renderScanDigest() with structured data.
+    // Backward-compat fields (latest_scan_at, latest_scan_summary) kept as
+    // fallback for any external callers that still use the old shape.
     renderSnapshots({
-      latest_scan_at:            latestScan?.scanned_at ?? latestScan?.created_at ?? latestScan?.generated_at ?? null,
+      latest_scan:               latestScan ?? null,
+      latest_scan_at:            latestScan?.scanned_at ?? latestScan?.created_at ?? null,
       latest_scan_summary:       latestScan?.summary ?? latestScan?.headline ?? null,
       latest_morning_brief_at:   latestMorningBrief?.created_at ?? latestMorningBrief?.generated_at ?? null,
       latest_morning_brief_data: latestMorningBrief ?? null,
@@ -366,8 +362,6 @@ export async function loadBacktesting() {
 }
 
 function parseCurrentValue(node) {
-  // Fix: nếu node đang hiển thị "—" hoặc text không phải số, trả về null
-  // để countUp luôn render thay vì skip khi next=0
   const raw = (node.textContent ?? '').replace(/[^\d.-]/g, '');
   if (!raw) return null;
   const parsed = parseFloat(raw);
@@ -386,8 +380,6 @@ export function renderSummary(s, portfolio) {
     const node = el(id);
     if (!node || raw == null) return;
     const next = parseInt(raw, 10);
-    // Fix: parseCurrentValue returns null when node shows "—"
-    // → always render the real value, even if next=0
     const prev = parseCurrentValue(node) ?? -1;
     if (prev !== next) {
       countUp(node, Math.max(prev, 0), next, 600);
@@ -395,7 +387,6 @@ export function renderSummary(s, portfolio) {
     }
   });
 
-  // reviews today sub-label
   const reviewsTodayRaw = parseInt(s.reviews_today ?? s.review_count_today ?? 0, 10);
   const reviewsTodayEl = el('reviewsToday');
   if (reviewsTodayEl) {
@@ -419,14 +410,11 @@ export function renderSummary(s, portfolio) {
     staleSubEl.textContent = `chưa review ${staleDays}d`;
   }
   if (staleCard) {
-    // Dim card when count = 0 (no stale theses — green signal)
     staleCard.classList.toggle('signal-card--ok', staleCount === 0);
     staleCard.classList.toggle('signal-card--risk', staleCount > 0);
   }
 
   // Portfolio KPIs from trades
-  // Fix: backend returns { positions: [...], total_market_value, total_unrealized_pnl, ... }
-  // NOT { items: [...] } — read top-level aggregates directly when available
   const positions = portfolio?.positions ?? (Array.isArray(portfolio) ? portfolio : []);
 
   const totalValue    = portfolio?.total_market_value   ?? positions.reduce((acc, t) => acc + (t.market_value ?? 0), 0);
