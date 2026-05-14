@@ -11,6 +11,7 @@ Endpoints served (via src/api/routes/readmodel.py):
     get_scan_latest()                   — snapshot scan gan nhat (WatchlistScan)
     get_brief_latest()                  — snapshot brief gan nhat (BriefSnapshot)
     get_brief_feedback_summary()        — feedback summary cho brief (BriefFeedback)
+    get_triggered_alerts()              — alerts da fire, chua xu ly (Alert)
     get_verdict_accuracy()              — delegates to BacktestingService
     get_thesis_performances()           — delegates to BacktestingService
     get_price_snapshots()               — delegates to BacktestingService
@@ -284,7 +285,74 @@ class DashboardService:
             }
 
     # ------------------------------------------------------------------
-    # 8-10. Backtesting — delegates to BacktestingService
+    # 8. Triggered alerts — cross-segment (watchlist)
+    # ------------------------------------------------------------------
+
+    async def get_triggered_alerts(
+        self,
+        user_id: str,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Trả list alerts đã fire (status=TRIGGERED), sắp xếp theo triggered_at desc.
+
+        Dùng cho dashboard panel “Alerts cần xử lý”.
+
+        Response item shape:
+            id                — int
+            ticker            — str
+            condition_type    — str  (price_above / price_below / change_pct_up / ...)
+            threshold         — float
+            triggered_price   — float | null
+            triggered_at      — ISO str
+            priority          — "HIGH" | "MEDIUM" | "LOW" | null
+            label             — str | null  (thesis trigger label)
+            auto_reactivate   — bool
+            note              — str | null
+            watchlist_item_id — int | null
+        """
+        try:
+            from src.watchlist.models import Alert, AlertStatus
+        except ImportError:
+            logger.warning(
+                "get_triggered_alerts.import_error", detail="Alert model not available"
+            )
+            return []
+
+        try:
+            rows = (
+                await self._session.execute(
+                    select(Alert)
+                    .where(
+                        Alert.user_id == user_id,
+                        Alert.status == AlertStatus.TRIGGERED,
+                    )
+                    .order_by(Alert.triggered_at.desc())
+                    .limit(limit)
+                )
+            ).scalars().all()
+
+            return [
+                {
+                    "id": r.id,
+                    "ticker": r.ticker,
+                    "condition_type": str(r.condition_type),
+                    "threshold": r.threshold,
+                    "triggered_price": r.triggered_price,
+                    "triggered_at": r.triggered_at.isoformat() if r.triggered_at else None,
+                    "priority": r.priority,
+                    "label": r.label,
+                    "auto_reactivate": r.auto_reactivate,
+                    "note": r.note,
+                    "watchlist_item_id": r.watchlist_item_id,
+                }
+                for r in rows
+            ]
+        except Exception as exc:
+            logger.warning("get_triggered_alerts.db_error", error=str(exc))
+            return []
+
+    # ------------------------------------------------------------------
+    # 9-11. Backtesting — delegates to BacktestingService
     # ------------------------------------------------------------------
 
     async def get_verdict_accuracy(self, user_id: str) -> list[dict[str, Any]]:
@@ -302,7 +370,7 @@ class DashboardService:
         return await self._backtesting.get_price_snapshots(user_id, thesis_id)
 
     # ------------------------------------------------------------------
-    # 11. Portfolio — delegates to PortfolioQueryService
+    # 12. Portfolio — delegates to PortfolioQueryService
     # ------------------------------------------------------------------
 
     async def get_portfolio(
