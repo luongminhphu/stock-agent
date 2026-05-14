@@ -19,6 +19,9 @@ logger = get_logger(__name__)
 
 _VN_OFFSET = timedelta(hours=7)
 
+# Thesis chưa được review trong N ngày → coi là "stale"
+_STALE_REVIEW_DAYS = 14
+
 
 def _today_utc() -> date:
     return datetime.now(UTC).date()
@@ -128,6 +131,29 @@ class StatsService:
             or 0
         )
 
+        # Thesis active chưa có review nào trong _STALE_REVIEW_DAYS ngày gần nhất.
+        # Dùng để highlight "cần review gấp" trên dashboard.
+        stale_cutoff = now_utc - timedelta(days=_STALE_REVIEW_DAYS)
+
+        # Subquery: thesis_id đã có ít nhất 1 review trong window gần đây
+        reviewed_recently_subq = (
+            select(ThesisReview.thesis_id)
+            .where(ThesisReview.reviewed_at >= stale_cutoff)
+            .distinct()
+            .subquery()
+        )
+
+        stale_count = (
+            await self._session.scalar(
+                select(func.count(Thesis.id)).where(
+                    Thesis.user_id == user_id,
+                    Thesis.status == ThesisStatus.ACTIVE,
+                    Thesis.id.not_in(select(reviewed_recently_subq.c.thesis_id)),
+                )
+            )
+            or 0
+        )
+
         return {
             "open_theses": open_count,
             "verdict": {
@@ -140,4 +166,6 @@ class StatsService:
             "upcoming_catalysts_7d": upcoming_7d,
             "total_reviews": total_reviews,
             "reviews_today": reviews_today,
+            "stale_review_count": stale_count,
+            "stale_review_days": _STALE_REVIEW_DAYS,
         }
