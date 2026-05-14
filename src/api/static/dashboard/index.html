@@ -88,12 +88,33 @@
               <strong class="signal-value" id="openTheses">—</strong>
               <span class="signal-sub" id="reviewsToday"></span>
             </article>
+            <!-- [wave-fe1] Stale review KPI -->
+            <article class="signal-card signal-card--risk" id="staleReviewCard">
+              <span class="signal-label">Cần review gấp</span>
+              <strong class="signal-value" id="staleReview">—</strong>
+              <span class="signal-sub" id="staleReviewSub">thesis chưa review</span>
+            </article>
             <article class="signal-card signal-card--wide">
               <span class="signal-label">Latest scan</span>
               <strong class="signal-value" id="latestScanAt">—</strong>
               <span class="signal-sub" id="latestScanSummary">Chưa có scan snapshot.</span>
             </article>
           </section>
+
+          <!-- [wave-fe2] Tier breakdown pill bar -->
+          <div
+            id="tierBreakdown"
+            class="tier-bar hidden"
+            aria-label="Phân bổ tier thesis"
+          ></div>
+
+          <!-- [wave-fe2] Alerts triggered strip -->
+          <div
+            id="alertsTriggeredStrip"
+            class="alerts-strip hidden"
+            aria-live="polite"
+            aria-label="Alerts đã kích hoạt"
+          ></div>
 
           <!-- ── ACTION SURFACE ─────────────────────────────────────────── -->
           <div
@@ -604,6 +625,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="/static/dashboard/js/app.js?v=14"></script>
+    <script type="module" src="/static/dashboard/js/app.js?v=15"></script>
   </body>
 </html>
