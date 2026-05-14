@@ -8,6 +8,11 @@ Single-user mode:
 - If owner_user_id is configured, the alias endpoints without /{user_id}
   will automatically use that user id.
 - Multi-user endpoints remain intact for backward compatibility.
+
+Route ordering rule (FastAPI matches in declaration order):
+  Static/literal path segments MUST be declared before parameterised ones.
+  e.g. /dashboard/theses/aggregate must come before /dashboard/theses/{thesis_id}
+  otherwise FastAPI casts "aggregate" -> int and returns 422.
 """
 
 from __future__ import annotations
@@ -116,6 +121,21 @@ async def _build_position_map(
         return {}
 
 
+async def _fetch_price_and_position(
+    session: AsyncSession,
+    user_id: str,
+    tickers: list[str],
+) -> tuple[dict[str, float], dict[str, tuple[float, float]]]:
+    """Parallel-ish fetch: price_map + position_map."""
+    import asyncio
+
+    price_map, position_map = await asyncio.gather(
+        _build_price_map(tickers),
+        _build_position_map(session, user_id),
+    )
+    return price_map, position_map
+
+
 # ---------------------------------------------------------------------------
 # 1. Stats — KPI tong quan
 # ---------------------------------------------------------------------------
@@ -200,77 +220,11 @@ async def get_theses_list_single_user(
     )
 
 
-async def _fetch_price_and_position(
-    session: AsyncSession,
-    user_id: str,
-    tickers: list[str],
-) -> tuple[dict[str, float], dict[str, tuple[float, float]]]:
-    """Parallel-ish fetch: price_map + position_map."""
-    import asyncio
-
-    price_map, position_map = await asyncio.gather(
-        _build_price_map(tickers),
-        _build_position_map(session, user_id),
-    )
-    return price_map, position_map
-
-
 # ---------------------------------------------------------------------------
-# 3. Thesis detail
-# ---------------------------------------------------------------------------
-
-
-@router.get("/dashboard/{user_id}/theses/{thesis_id}")
-async def get_thesis_detail(
-    user_id: str,
-    thesis_id: int,
-    session: Annotated[AsyncSession, Depends(get_db)],
-) -> dict[str, Any]:
-    svc = DashboardService(session)
-    result = await svc.get_thesis_detail(user_id, thesis_id)
-    if result is None:
-        raise HTTPException(status_code=404, detail=f"Thesis {thesis_id} not found")
-    return result
-
-
-@router.get("/dashboard/theses/{thesis_id}")
-async def get_thesis_detail_single_user(
-    thesis_id: int,
-    session: Annotated[AsyncSession, Depends(get_db)],
-) -> dict[str, Any]:
-    svc = DashboardService(session)
-    result = await svc.get_thesis_detail(_default_user_id(), thesis_id)
-    if result is None:
-        raise HTTPException(status_code=404, detail=f"Thesis {thesis_id} not found")
-    return result
-
-
-# ---------------------------------------------------------------------------
-# 4. Upcoming catalysts
-# ---------------------------------------------------------------------------
-
-
-@router.get("/dashboard/{user_id}/catalysts/upcoming")
-async def get_upcoming_catalysts(
-    user_id: str,
-    session: Annotated[AsyncSession, Depends(get_db)],
-    days: Annotated[int, Query(ge=1, le=90)] = 30,
-) -> dict[str, Any]:
-    svc = DashboardService(session)
-    return _paginated(await svc.get_upcoming_catalysts(user_id, days=days))
-
-
-@router.get("/dashboard/catalysts/upcoming")
-async def get_upcoming_catalysts_single_user(
-    session: Annotated[AsyncSession, Depends(get_db)],
-    days: Annotated[int, Query(ge=1, le=90)] = 30,
-) -> dict[str, Any]:
-    svc = DashboardService(session)
-    return _paginated(await svc.get_upcoming_catalysts(_default_user_id(), days=days))
-
-
-# ---------------------------------------------------------------------------
-# 5. Thesis portfolio aggregate
+# 3. Thesis portfolio aggregate
+# IMPORTANT: must be declared BEFORE /theses/{thesis_id} — FastAPI matches
+# routes in declaration order. "aggregate" would otherwise be cast to int
+# and return 422.
 # ---------------------------------------------------------------------------
 
 
@@ -316,6 +270,61 @@ async def get_thesis_aggregate_single_user(
         session=session,
         enrich_prices=enrich_prices,
     )
+
+
+# ---------------------------------------------------------------------------
+# 4. Thesis detail
+# Declared AFTER /theses/aggregate — see ordering note above.
+# ---------------------------------------------------------------------------
+
+
+@router.get("/dashboard/{user_id}/theses/{thesis_id}")
+async def get_thesis_detail(
+    user_id: str,
+    thesis_id: int,
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> dict[str, Any]:
+    svc = DashboardService(session)
+    result = await svc.get_thesis_detail(user_id, thesis_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Thesis {thesis_id} not found")
+    return result
+
+
+@router.get("/dashboard/theses/{thesis_id}")
+async def get_thesis_detail_single_user(
+    thesis_id: int,
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> dict[str, Any]:
+    svc = DashboardService(session)
+    result = await svc.get_thesis_detail(_default_user_id(), thesis_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Thesis {thesis_id} not found")
+    return result
+
+
+# ---------------------------------------------------------------------------
+# 5. Upcoming catalysts
+# ---------------------------------------------------------------------------
+
+
+@router.get("/dashboard/{user_id}/catalysts/upcoming")
+async def get_upcoming_catalysts(
+    user_id: str,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    days: Annotated[int, Query(ge=1, le=90)] = 30,
+) -> dict[str, Any]:
+    svc = DashboardService(session)
+    return _paginated(await svc.get_upcoming_catalysts(user_id, days=days))
+
+
+@router.get("/dashboard/catalysts/upcoming")
+async def get_upcoming_catalysts_single_user(
+    session: Annotated[AsyncSession, Depends(get_db)],
+    days: Annotated[int, Query(ge=1, le=90)] = 30,
+) -> dict[str, Any]:
+    svc = DashboardService(session)
+    return _paginated(await svc.get_upcoming_catalysts(_default_user_id(), days=days))
 
 
 # ---------------------------------------------------------------------------
