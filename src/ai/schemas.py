@@ -316,15 +316,21 @@ class PrioritizedAction(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def coerce_reason_to_rationale(cls, data: Any) -> Any:
-        """AI sometimes returns 'reason' instead of 'rationale'.
+        """AI sometimes returns 'reason' instead of 'rationale', or null ticker.
 
-        Coerce before field validation so Pydantic does not raise
-        a missing-field error for 'rationale'.
-        Maps: reason → rationale (only when rationale is absent).
-        Also handles legacy aliases: explanation, why.
+        Coerce before field validation so Pydantic does not raise errors.
+        Maps:
+          ticker: null → ""  (market-level actions with no specific ticker)
+          reason → rationale (only when rationale is absent)
+          explanation / why → rationale (legacy aliases)
         """
         if not isinstance(data, dict):
             return data
+        # Coerce null ticker → empty string
+        if data.get("ticker") is None:
+            data = dict(data)
+            data["ticker"] = ""
+        # reason / explanation / why → rationale
         if "rationale" not in data or not data.get("rationale"):
             for alias in ("reason", "explanation", "why"):
                 if data.get(alias):
