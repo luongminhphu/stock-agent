@@ -136,7 +136,17 @@ class DashboardService:
             if not row:
                 return None
 
+            # Parse summary nếu là valid JSON — tương tự get_brief_latest().
+            # Nếu không parse được, fallback về {"raw": summary} để giữ backward compat.
+            try:
+                parsed_summary = json.loads(row.summary)
+                if not isinstance(parsed_summary, dict):
+                    parsed_summary = {"raw": row.summary}
+            except (json.JSONDecodeError, TypeError):
+                parsed_summary = {"raw": row.summary}
+
             return {
+                **parsed_summary,
                 "id": row.id,
                 "user_id": row.user_id,
                 "summary": row.summary,
