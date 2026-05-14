@@ -366,7 +366,12 @@ export async function loadBacktesting() {
 }
 
 function parseCurrentValue(node) {
-  return parseFloat((node.textContent ?? '').replace(/[^\d.-]/g, '')) || 0;
+  // Fix: nếu node đang hiển thị "—" hoặc text không phải số, trả về null
+  // để countUp luôn render thay vì skip khi next=0
+  const raw = (node.textContent ?? '').replace(/[^\d.-]/g, '');
+  if (!raw) return null;
+  const parsed = parseFloat(raw);
+  return isNaN(parsed) ? null : parsed;
 }
 
 export function renderSummary(s, portfolio) {
@@ -381,9 +386,11 @@ export function renderSummary(s, portfolio) {
     const node = el(id);
     if (!node || raw == null) return;
     const next = parseInt(raw, 10);
-    const prev = parseCurrentValue(node);
+    // Fix: parseCurrentValue returns null when node shows "—"
+    // → always render the real value, even if next=0
+    const prev = parseCurrentValue(node) ?? -1;
     if (prev !== next) {
-      countUp(node, prev, next, 600);
+      countUp(node, Math.max(prev, 0), next, 600);
       flashValue(node);
     }
   });
@@ -402,9 +409,9 @@ export function renderSummary(s, portfolio) {
   const staleSubEl = el('staleReviewSub');
   const staleCard  = el('staleReviewCard');
   if (staleEl) {
-    const prevStale = parseCurrentValue(staleEl);
+    const prevStale = parseCurrentValue(staleEl) ?? -1;
     if (prevStale !== staleCount) {
-      countUp(staleEl, prevStale, staleCount, 600);
+      countUp(staleEl, Math.max(prevStale, 0), staleCount, 600);
       flashValue(staleEl);
     }
   }
@@ -418,36 +425,38 @@ export function renderSummary(s, portfolio) {
   }
 
   // Portfolio KPIs from trades
-  const trades = Array.isArray(portfolio) ? portfolio : (portfolio?.items ?? []);
-  if (trades.length) {
-    const totalValue   = trades.reduce((s, t) => s + (t.market_value ?? 0), 0);
-    const totalCost    = trades.reduce((s, t) => s + (t.cost_basis   ?? 0), 0);
-    const unrealizedPnl = totalValue - totalCost;
-    const pnlPct        = totalCost > 0 ? (unrealizedPnl / totalCost) * 100 : null;
+  // Fix: backend returns { positions: [...], total_market_value, total_unrealized_pnl, ... }
+  // NOT { items: [...] } — read top-level aggregates directly when available
+  const positions = portfolio?.positions ?? (Array.isArray(portfolio) ? portfolio : []);
 
-    const pvEl  = el('portfolioValue');
-    const pnlEl = el('unrealizedPnl');
-    const pnlPctEl = el('unrealizedPnlPct');
-    const pvSubEl  = el('portfolioValueSub');
+  const totalValue    = portfolio?.total_market_value   ?? positions.reduce((acc, t) => acc + (t.market_value ?? 0), 0);
+  const unrealizedPnl = portfolio?.total_unrealized_pnl ?? positions.reduce((acc, t) => acc + (t.unrealized_pnl ?? 0), 0);
+  const pnlPct        = portfolio?.total_unrealized_pct ?? (
+    portfolio?.total_cost_basis > 0
+      ? (unrealizedPnl / portfolio.total_cost_basis) * 100
+      : null
+  );
+  const posCount = positions.length;
 
-    if (pvEl) {
-      const prev = parseCurrentValue(pvEl);
-      if (Math.abs(prev - totalValue) > 1) {
-        countUp(pvEl, prev, totalValue / 1_000_000, 800);
-        pvEl.textContent = fmtVnd(totalValue);
-        flashValue(pvEl);
-      }
-    }
-    if (pvSubEl) pvSubEl.textContent = `${trades.length} vị thế`;
+  const pvEl     = el('portfolioValue');
+  const pnlEl    = el('unrealizedPnl');
+  const pnlPctEl = el('unrealizedPnlPct');
+  const pvSubEl  = el('portfolioValueSub');
 
-    if (pnlEl) {
-      pnlEl.textContent = (unrealizedPnl >= 0 ? '+' : '') + fmtVnd(unrealizedPnl);
-      pnlEl.className = 'signal-value ' + (unrealizedPnl >= 0 ? 'text-success' : 'text-danger');
-      flashValue(pnlEl);
-    }
-    if (pnlPctEl && pnlPct != null) {
-      pnlPctEl.textContent = (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%';
-      pnlPctEl.className = pnlPct >= 0 ? 'signal-sub text-success' : 'signal-sub text-danger';
-    }
+  if (pvEl && totalValue != null) {
+    pvEl.textContent = fmtVnd(totalValue);
+    flashValue(pvEl);
+  }
+  if (pvSubEl && posCount > 0) {
+    pvSubEl.textContent = `${posCount} vị thế`;
+  }
+  if (pnlEl && unrealizedPnl != null) {
+    pnlEl.textContent = (unrealizedPnl >= 0 ? '+' : '') + fmtVnd(unrealizedPnl);
+    pnlEl.className = 'signal-value ' + (unrealizedPnl >= 0 ? 'text-success' : 'text-danger');
+    flashValue(pnlEl);
+  }
+  if (pnlPctEl && pnlPct != null) {
+    pnlPctEl.textContent = (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%';
+    pnlPctEl.className = pnlPct >= 0 ? 'signal-sub text-success' : 'signal-sub text-danger';
   }
 }
