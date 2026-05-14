@@ -8,6 +8,82 @@
     <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/static/dashboard/dashboard.css" />
     <link rel="stylesheet" href="/static/dashboard/css/signals.css" />
+    <style>
+      /* ── Wave-1 layout additions ─────────────────────────────────────── */
+
+      /* KPI strip: 2 rows of 4 */
+      .kpi-strip {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: var(--gap, 12px);
+      }
+      .kpi-strip .kpi-row-divider {
+        grid-column: 1 / -1;
+        height: 1px;
+        background: var(--color-border, #e2e8f0);
+        margin: 2px 0;
+        opacity: .5;
+      }
+      @media (max-width: 900px) {
+        .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+      }
+      @media (max-width: 540px) {
+        .kpi-strip { grid-template-columns: 1fr 1fr; }
+      }
+
+      /* Side-by-side grid: Watchlist + Catalyst / Leaderboard + Backtesting */
+      .panel-duo {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: var(--gap, 12px);
+        align-items: start;
+      }
+      @media (max-width: 860px) {
+        .panel-duo { grid-template-columns: 1fr; }
+      }
+
+      /* Backtesting in duo: allow full height */
+      .panel-duo .backtesting-panel { height: 100%; }
+
+      /* Collapsible brief */
+      .brief-collapsible {
+        border: 1px solid var(--color-border, #e2e8f0);
+        border-radius: var(--radius, 10px);
+        overflow: hidden;
+        background: var(--color-surface, #fff);
+      }
+      .brief-collapsible summary {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 16px;
+        cursor: pointer;
+        font-size: .85rem;
+        font-weight: 600;
+        color: var(--color-text-secondary, #64748b);
+        list-style: none;
+        user-select: none;
+        border-bottom: 1px solid transparent;
+        transition: background .15s;
+      }
+      .brief-collapsible summary::-webkit-details-marker { display: none; }
+      .brief-collapsible summary::after {
+        content: '›';
+        margin-left: auto;
+        font-size: 1.1rem;
+        transition: transform .2s;
+      }
+      .brief-collapsible[open] summary {
+        border-bottom-color: var(--color-border, #e2e8f0);
+      }
+      .brief-collapsible[open] summary::after { transform: rotate(90deg); }
+      .brief-collapsible summary:hover {
+        background: var(--color-surface-hover, #f8fafc);
+      }
+      .brief-collapsible .brief-inner {
+        padding: 12px 16px 16px;
+      }
+    </style>
   </head>
   <body>
     <a class="skip-link" href="#main-content">Bỏ qua điều hướng</a>
@@ -54,7 +130,7 @@
 
         <!-- ══════════════════════════════════════════════════════════════════
              CLUSTER A — "Hôm nay cần làm gì?"
-             Morning context: KPI → Action Surface → Briefing → Watchlist → Portfolio → Catalyst
+             Decision hierarchy: Alerts → KPIs → Signals → Actions → Brief → Watchlist/Catalyst
         ══════════════════════════════════════════════════════════════════ -->
         <div class="cluster" aria-label="Cluster A: Hôm nay cần làm gì?">
           <div class="cluster-label">
@@ -62,8 +138,18 @@
             <span>Hôm nay cần làm gì?</span>
           </div>
 
-          <!-- ── KPI STRIP ──────────────────────────────────────────────── -->
+          <!-- ── 1. ALERTS TRIGGERED — most time-sensitive, always on top ── -->
+          <div
+            id="alertsTriggeredStrip"
+            class="alerts-strip hidden"
+            aria-live="polite"
+            aria-label="Alerts đã kích hoạt"
+          ></div>
+
+          <!-- ── 2. KPI STRIP — 2 rows: actionable / context ────────────── -->
           <section class="command-strip kpi-strip" aria-label="Tổng quan danh mục">
+
+            <!-- Row 1: actionable KPIs (trực tiếp ảnh hưởng đến hành động hôm nay) -->
             <article class="signal-card signal-card--portfolio">
               <span class="signal-label">Portfolio value</span>
               <strong class="signal-value" id="portfolioValue">—</strong>
@@ -79,11 +165,16 @@
               <strong class="signal-value" id="riskyTheses">—</strong>
               <span class="signal-sub">score &lt; 40</span>
             </article>
-            <article class="signal-card">
-              <span class="signal-label">Upcoming 7d</span>
-              <strong class="signal-value" id="upcoming7d">—</strong>
-              <span class="signal-sub">catalysts</span>
+            <article class="signal-card signal-card--risk" id="staleReviewCard">
+              <span class="signal-label">Cần review gấp</span>
+              <strong class="signal-value" id="staleReview">—</strong>
+              <span class="signal-sub" id="staleReviewSub">thesis chưa review</span>
             </article>
+
+            <!-- Divider -->
+            <div class="kpi-row-divider" aria-hidden="true"></div>
+
+            <!-- Row 2: context KPIs (portfolio overview) -->
             <article class="signal-card">
               <span class="signal-label">Open theses</span>
               <strong class="signal-value" id="openTheses">—</strong>
@@ -94,11 +185,10 @@
               <strong class="signal-value" id="pausedTheses">—</strong>
               <span class="signal-sub">tạm dừng theo dõi</span>
             </article>
-            <!-- [wave-fe1] Stale review KPI -->
-            <article class="signal-card signal-card--risk" id="staleReviewCard">
-              <span class="signal-label">Cần review gấp</span>
-              <strong class="signal-value" id="staleReview">—</strong>
-              <span class="signal-sub" id="staleReviewSub">thesis chưa review</span>
+            <article class="signal-card">
+              <span class="signal-label">Upcoming 7d</span>
+              <strong class="signal-value" id="upcoming7d">—</strong>
+              <span class="signal-sub">catalysts</span>
             </article>
             <article class="signal-card signal-card--wide">
               <span class="signal-label">Latest scan</span>
@@ -107,76 +197,14 @@
             </article>
           </section>
 
-          <!-- [wave-fe2] Tier breakdown pill bar -->
+          <!-- ── 3. TIER BREAKDOWN ──────────────────────────────────────── -->
           <div
             id="tierBreakdown"
             class="tier-bar hidden"
             aria-label="Phân bổ tier thesis"
           ></div>
 
-          <!-- [wave-fe2] Alerts triggered strip -->
-          <div
-            id="alertsTriggeredStrip"
-            class="alerts-strip hidden"
-            aria-live="polite"
-            aria-label="Alerts đã kích hoạt"
-          ></div>
-
-          <!-- ── ACTION SURFACE ─────────────────────────────────────────── -->
-          <div
-            id="actionSurface"
-            class="action-surface hidden"
-            aria-live="polite"
-            aria-label="Việc cần làm hôm nay"
-          ></div>
-
-          <!-- ── BRIEFING ───────────────────────────────────────────────── -->
-          <div class="brief-context-strip" id="briefContextStrip">
-            <div class="brief-strip-header">
-              <button
-                id="generateMorningBtn"
-                class="icon-text-btn"
-                type="button"
-                data-generate-brief="morning"
-                aria-label="Tạo Morning Brief"
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M12 2l2.09 6.26L20 10l-5.91 1.74L12 18l-2.09-6.26L4 10l5.91-1.74L12 2z"/>
-                </svg>
-                Morning Brief
-              </button>
-              <button
-                id="generateEodBtn"
-                class="icon-text-btn"
-                type="button"
-                data-generate-brief="eod"
-                aria-label="Tạo EOD Brief"
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-                </svg>
-                EOD Brief
-              </button>
-            </div>
-            <div id="morningBriefWrap" class="brief-tab-pane" role="tabpanel"></div>
-            <div id="eodBriefWrap" class="brief-tab-pane hidden" role="tabpanel"></div>
-          </div>
-
-          <!-- ── WATCHLIST ──────────────────────────────────────────────── -->
-          <section class="panel glass watchlist-layer" aria-labelledby="watchlistTitle">
-            <div class="panel-header split-header">
-              <div>
-                <p class="eyebrow">① Watchlist &amp; Tín hiệu</p>
-                <h2 id="watchlistTitle">👁 Mã đang theo dõi</h2>
-              </div>
-              <div class="panel-actions"></div>
-            </div>
-            <div id="watchlistSection">Đang tải…</div>
-          </section>
-
-          <!-- [wave-fe3] Signals feed — recent technical signals per ticker -->
+          <!-- ── 4. SIGNALS FEED — time-sensitive, before watchlist ──────── -->
           <div
             id="signalsFeed"
             class="signals-feed hidden"
@@ -184,11 +212,85 @@
             aria-label="Tín hiệu kỹ thuật gần đây"
           ></div>
 
-          <!-- ── PORTFOLIO ──────────────────────────────────────────────── -->
+          <!-- ── 5. ACTION SURFACE — việc cần làm hôm nay ──────────────── -->
+          <div
+            id="actionSurface"
+            class="action-surface hidden"
+            aria-live="polite"
+            aria-label="Việc cần làm hôm nay"
+          ></div>
+
+          <!-- ── 6. BRIEFING — collapsible, không chiếm toàn màn ──────── -->
+          <details class="brief-collapsible" id="briefCollapsible">
+            <summary>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              Morning / EOD Brief
+            </summary>
+            <div class="brief-inner">
+              <div class="brief-context-strip" id="briefContextStrip">
+                <div class="brief-strip-header">
+                  <button
+                    id="generateMorningBtn"
+                    class="icon-text-btn"
+                    type="button"
+                    data-generate-brief="morning"
+                    aria-label="Tạo Morning Brief"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M12 2l2.09 6.26L20 10l-5.91 1.74L12 18l-2.09-6.26L4 10l5.91-1.74L12 2z"/>
+                    </svg>
+                    Morning Brief
+                  </button>
+                  <button
+                    id="generateEodBtn"
+                    class="icon-text-btn"
+                    type="button"
+                    data-generate-brief="eod"
+                    aria-label="Tạo EOD Brief"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    </svg>
+                    EOD Brief
+                  </button>
+                </div>
+                <div id="morningBriefWrap" class="brief-tab-pane" role="tabpanel"></div>
+                <div id="eodBriefWrap" class="brief-tab-pane hidden" role="tabpanel"></div>
+              </div>
+            </div>
+          </details>
+
+          <!-- ── 7. WATCHLIST + CATALYST — side-by-side ────────────────── -->
+          <div class="panel-duo">
+            <section class="panel glass watchlist-layer" aria-labelledby="watchlistTitle">
+              <div class="panel-header split-header">
+                <div>
+                  <p class="eyebrow">① Watchlist &amp; Tín hiệu</p>
+                  <h2 id="watchlistTitle">👁 Mã đang theo dõi</h2>
+                </div>
+                <div class="panel-actions"></div>
+              </div>
+              <div id="watchlistSection">Đang tải…</div>
+            </section>
+
+            <section class="panel glass watchlist-layer" aria-labelledby="catalystPanelTitle">
+              <div class="panel-header split-header">
+                <div>
+                  <p class="eyebrow">② Catalyst Calendar</p>
+                  <h2 id="catalystPanelTitle">Upcoming catalysts</h2>
+                </div>
+              </div>
+              <div id="catalystList" class="list empty-state">Chưa tải dữ liệu…</div>
+            </section>
+          </div>
+
+          <!-- ── 8. PORTFOLIO — full-width below duo ────────────────────── -->
           <section class="panel glass portfolio-layer" aria-labelledby="portfolioTitle">
             <div class="panel-header split-header">
               <div>
-                <p class="eyebrow">② Danh mục đầu tư</p>
+                <p class="eyebrow">③ Danh mục đầu tư</p>
                 <h2 id="portfolioTitle">Holdings &amp; P&amp;L realtime</h2>
               </div>
               <p class="muted panel-hint">
@@ -199,21 +301,11 @@
             <div id="portfolioSection">Đang tải…</div>
           </section>
 
-          <!-- ── CATALYST CALENDAR ──────────────────────────────────────── -->
-          <section class="panel glass watchlist-layer" aria-labelledby="catalystPanelTitle">
-            <div class="panel-header split-header">
-              <div>
-                <p class="eyebrow">③ Catalyst Calendar</p>
-                <h2 id="catalystPanelTitle">Upcoming catalysts</h2>
-              </div>
-            </div>
-            <div id="catalystList" class="list empty-state">Chưa tải dữ liệu…</div>
-          </section>
         </div><!-- /cluster-a -->
 
         <!-- ══════════════════════════════════════════════════════════════════
              CLUSTER B — "Thesis của tôi đang ở đâu?"
-             Research hub: Thesis board (full-width) → Leaderboard → Backtesting
+             Research hub: Thesis board (full-width) → Leaderboard | Backtesting (duo)
         ══════════════════════════════════════════════════════════════════ -->
         <div class="cluster" aria-label="Cluster B: Thesis của tôi đang ở đâu?">
           <div class="cluster-label">
@@ -239,74 +331,73 @@
             </div>
           </section>
 
-          <!-- ── LEADERBOARD ────────────────────────────────────────────── -->
-          <section
-            id="leaderboardStrip"
-            class="panel glass lb-strip"
-            aria-labelledby="lbStripTitle"
-            aria-live="polite"
-          >
-            <div class="lb-strip-header">
-              <div>
-                <p class="eyebrow">⑤ 🏆 Thesis Leaderboard</p>
-                <h2 id="lbStripTitle">Top theses theo score</h2>
-              </div>
-              <div class="lb-sort-bar" role="group" aria-label="Sắp xếp leaderboard">
-                <button class="lb-sort-btn active" data-lb-sort="score" type="button">Score</button>
-                <button class="lb-sort-btn" data-lb-sort="pnl" type="button">P&amp;L</button>
-              </div>
-            </div>
-            <ol id="leaderboardList" class="lb-list" aria-label="Danh sách leaderboard">
-              <li class="lb-item lb-item--skel" aria-hidden="true"><div class="skel skel-text" style="width:100%;height:2.4rem;"></div></li>
-              <li class="lb-item lb-item--skel" aria-hidden="true"><div class="skel skel-text" style="width:100%;height:2.4rem;"></div></li>
-              <li class="lb-item lb-item--skel" aria-hidden="true"><div class="skel skel-text" style="width:100%;height:2.4rem;"></div></li>
-              <li class="lb-item lb-item--skel" aria-hidden="true"><div class="skel skel-text" style="width:100%;height:2.4rem;"></div></li>
-              <li class="lb-item lb-item--skel" aria-hidden="true"><div class="skel skel-text" style="width:100%;height:2.4rem;"></div></li>
-            </ol>
-          </section>
-
-          <!-- ── BACKTESTING ────────────────────────────────────────────── -->
-          <section class="panel glass validation-layer backtesting-panel" aria-labelledby="backtestTitle">
-            <div class="panel-header split-header">
-              <div>
-                <p class="eyebrow">⑥ Backtesting</p>
-                <h2 id="backtestTitle">Review accuracy &amp; thesis performance</h2>
-              </div>
-              <p class="muted panel-hint">Verdict quality · Worst &amp; Best calls theo avg PnL snapshot.</p>
-            </div>
-            <div class="backtesting-grid">
-
-              <div class="subpanel">
-                <h3>📊 Verdict accuracy</h3>
-                <div id="accuracyWrap" class="empty-state">Chưa tải dữ liệu…</div>
-              </div>
-
-              <div class="subpanel" id="callsPanel">
-                <div class="calls-tab-bar" role="tablist" aria-label="Calls view">
-                  <button class="calls-tab active" role="tab" aria-selected="true"
-                    aria-controls="worstCallsPane" data-calls-tab="worst">
-                    🔴 Worst calls
-                  </button>
-                  <button class="calls-tab" role="tab" aria-selected="false"
-                    aria-controls="bestCallsPane" data-calls-tab="best">
-                    🟢 Best calls
-                  </button>
+          <!-- ── LEADERBOARD | BACKTESTING — side-by-side ──────────────── -->
+          <div class="panel-duo">
+            <section
+              id="leaderboardStrip"
+              class="panel glass lb-strip"
+              aria-labelledby="lbStripTitle"
+              aria-live="polite"
+            >
+              <div class="lb-strip-header">
+                <div>
+                  <p class="eyebrow">⑤ 🏆 Thesis Leaderboard</p>
+                  <h2 id="lbStripTitle">Top theses theo score</h2>
                 </div>
-                <div id="worstCallsPane" class="calls-pane" role="tabpanel">
-                  <div id="worstCallsWrap" class="empty-state">Chưa tải dữ liệu…</div>
-                </div>
-                <div id="bestCallsPane" class="calls-pane hidden" role="tabpanel">
-                  <div id="bestCallsWrap" class="empty-state">Chưa tải dữ liệu…</div>
+                <div class="lb-sort-bar" role="group" aria-label="Sắp xếp leaderboard">
+                  <button class="lb-sort-btn active" data-lb-sort="score" type="button">Score</button>
+                  <button class="lb-sort-btn" data-lb-sort="pnl" type="button">P&amp;L</button>
                 </div>
               </div>
+              <ol id="leaderboardList" class="lb-list" aria-label="Danh sách leaderboard">
+                <li class="lb-item lb-item--skel" aria-hidden="true"><div class="skel skel-text" style="width:100%;height:2.4rem;"></div></li>
+                <li class="lb-item lb-item--skel" aria-hidden="true"><div class="skel skel-text" style="width:100%;height:2.4rem;"></div></li>
+                <li class="lb-item lb-item--skel" aria-hidden="true"><div class="skel skel-text" style="width:100%;height:2.4rem;"></div></li>
+                <li class="lb-item lb-item--skel" aria-hidden="true"><div class="skel skel-text" style="width:100%;height:2.4rem;"></div></li>
+                <li class="lb-item lb-item--skel" aria-hidden="true"><div class="skel skel-text" style="width:100%;height:2.4rem;"></div></li>
+              </ol>
+            </section>
 
-            </div>
-          </section>
+            <section class="panel glass validation-layer backtesting-panel" aria-labelledby="backtestTitle">
+              <div class="panel-header split-header">
+                <div>
+                  <p class="eyebrow">⑥ Backtesting</p>
+                  <h2 id="backtestTitle">Review accuracy &amp; thesis performance</h2>
+                </div>
+                <p class="muted panel-hint">Verdict quality · Worst &amp; Best calls theo avg PnL snapshot.</p>
+              </div>
+              <div class="backtesting-grid">
+                <div class="subpanel">
+                  <h3>📊 Verdict accuracy</h3>
+                  <div id="accuracyWrap" class="empty-state">Chưa tải dữ liệu…</div>
+                </div>
+                <div class="subpanel" id="callsPanel">
+                  <div class="calls-tab-bar" role="tablist" aria-label="Calls view">
+                    <button class="calls-tab active" role="tab" aria-selected="true"
+                      aria-controls="worstCallsPane" data-calls-tab="worst">
+                      🔴 Worst calls
+                    </button>
+                    <button class="calls-tab" role="tab" aria-selected="false"
+                      aria-controls="bestCallsPane" data-calls-tab="best">
+                      🟢 Best calls
+                    </button>
+                  </div>
+                  <div id="worstCallsPane" class="calls-pane" role="tabpanel">
+                    <div id="worstCallsWrap" class="empty-state">Chưa tải dữ liệu…</div>
+                  </div>
+                  <div id="bestCallsPane" class="calls-pane hidden" role="tabpanel">
+                    <div id="bestCallsWrap" class="empty-state">Chưa tải dữ liệu…</div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div><!-- /panel-duo leaderboard+backtesting -->
+
         </div><!-- /cluster-b -->
 
         <!-- ══════════════════════════════════════════════════════════════════
              CLUSTER C — "Tôi đã quyết định gì & học được gì?"
-             Feedback loop: Decision Log → AI Lessons
+             Feedback loop: Decision KPIs → Decision Log → AI Lessons
         ══════════════════════════════════════════════════════════════════ -->
         <div class="cluster" aria-label="Cluster C: Tôi đã quyết định gì và học được gì?">
           <div class="cluster-label">
@@ -639,6 +730,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="/static/dashboard/js/app.js?v=16"></script>
+    <script type="module" src="/static/dashboard/js/app.js?v=17"></script>
   </body>
 </html>
