@@ -27,6 +27,7 @@ Design rules:
 from __future__ import annotations
 
 import json
+from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
@@ -138,8 +139,8 @@ class DashboardService:
             if not row:
                 return None
 
-            # Parse summary nếu là valid JSON — tương tự get_brief_latest().
-            # Nếu không parse được, fallback về {"raw": summary} để giữ backward compat.
+            # Parse summary neu la valid JSON — tuong tu get_brief_latest().
+            # Neu khong parse duoc, fallback ve {"raw": summary} de giu backward compat.
             try:
                 parsed_summary = json.loads(row.summary)
                 if not isinstance(parsed_summary, dict):
@@ -192,7 +193,7 @@ class DashboardService:
             except (json.JSONDecodeError, TypeError):
                 parsed_content = {"summary": row.content, "content": row.content}
 
-            # Lấy feedback outcome mới nhất cho brief snapshot này
+            # Latest feedback outcome for this brief snapshot
             feedback_outcome = (
                 await self._session.execute(
                     select(BriefFeedback.outcome)
@@ -202,9 +203,6 @@ class DashboardService:
                 )
             ).scalar_one_or_none()
 
-            # IMPORTANT: unpack parsed_content FIRST, then override with authoritative
-            # row fields so that any "created_at" / "id" / "phase" keys inside the
-            # stored JSON blob cannot shadow the real BriefSnapshot column values.
             return {
                 **parsed_content,
                 "id": row.id,
@@ -221,14 +219,7 @@ class DashboardService:
     async def get_brief_feedback_summary(
         self, user_id: str, days: int = 30
     ) -> dict[str, Any]:
-        """Return brief feedback summary for user.
-
-        Schema:
-            last_feedback_outcome  — "acted" | "watching" | "skipped" | None
-            last_feedback_at       — ISO timestamp | None
-            acted_rate_30d         — float 0.0-1.0 | None (None khi chua co feedback nao)
-            total_feedbacks_30d    — int
-        """
+        """Return brief feedback summary for user."""
         try:
             from src.briefing.models import BriefFeedback
         except ImportError:
@@ -244,7 +235,6 @@ class DashboardService:
             }
 
         try:
-            # Latest feedback row for this user
             latest = (
                 await self._session.execute(
                     select(BriefFeedback)
@@ -254,7 +244,6 @@ class DashboardService:
                 )
             ).scalar_one_or_none()
 
-            # 30-day window stats
             since = datetime.now(UTC) - timedelta(days=days)
             rows_30d = (
                 await self._session.execute(
@@ -294,23 +283,7 @@ class DashboardService:
         user_id: str,
         limit: int = 50,
     ) -> list[dict[str, Any]]:
-        """Trả list alerts đã fire (status=TRIGGERED), sắp xếp theo triggered_at desc.
-
-        Dùng cho dashboard panel “Alerts cần xử lý”.
-
-        Response item shape:
-            id                — int
-            ticker            — str
-            condition_type    — str  (price_above / price_below / change_pct_up / ...)
-            threshold         — float
-            triggered_price   — float | null
-            triggered_at      — ISO str
-            priority          — "HIGH" | "MEDIUM" | "LOW" | null
-            label             — str | null  (thesis trigger label)
-            auto_reactivate   — bool
-            note              — str | null
-            watchlist_item_id — int | null
-        """
+        """Tra list alerts da fire (status=TRIGGERED), sap xep theo triggered_at desc."""
         try:
             from src.watchlist.models import Alert, AlertStatus
         except ImportError:
@@ -353,7 +326,7 @@ class DashboardService:
             return []
 
     # ------------------------------------------------------------------
-    # 9. Recent signal events — cross-segment (watchlist)
+    # 9. Recent signal events — grouped by ticker+signal_type
     # ------------------------------------------------------------------
 
     async def get_recent_signals(
@@ -362,27 +335,19 @@ class DashboardService:
         ticker: str | None = None,
         days: int = 7,
         limit: int = 50,
+        group_by_ticker: bool = True,
     ) -> list[dict[str, Any]]:
-        """Trả SignalEvent gần đây cho user, optional filter theo ticker.
+        """Tra SignalEvent gan day cho user, grouped theo ticker.
 
-        Dùng cho context kỹ thuật trên watchlist card và dashboard signal feed.
+        Khi group_by_ticker=True (default):
+          - Group cac signal cung ticker+signal_type trong cung ngay thanh 1 row.
+          - Moi ticker tra ve 1 entry voi fields:
+              ticker, signal_types[], max_strength, max_confidence,
+              count, first_seen, last_seen, source.
+          - Loai bo noise: cac signal lap lai moi 5 phut se collapse thanh count.
 
-        Query parameters:
-            ticker  — filter theo mã cụ thể (VD: "VCB"). Nếu None, trả toàn bộ watchlist.
-            days    — window thời gian tính từ hiện tại (mặc định 7 ngày).
-            limit   — số item tối đa (mặc định 50).
-
-        Response item shape:
-            id           — int
-            event_id     — str  (unique dedup key)
-            ticker       — str
-            signal_type  — str  (VD: "ma_crossover", "volume_spike", "rsi_oversold")
-            strength     — float 0.0-1.0
-            confidence   — float 0.0-1.0
-            source       — str  ("technical" | "ai" | ...)
-            metadata     — dict | null  (parsed từ metadata_json)
-            occurred_at  — ISO str
-            processed_at — ISO str | null
+        Khi group_by_ticker=False:
+          - Tra raw list nhu cu (dung cho detail view / per-ticker drill-down).
         """
         try:
             from src.watchlist.models import SignalEvent
@@ -402,7 +367,7 @@ class DashboardService:
                     SignalEvent.occurred_at >= since,
                 )
                 .order_by(SignalEvent.occurred_at.desc())
-                .limit(limit)
+                .limit(500)  # fetch nhieu hon de group phia Python
             )
 
             if ticker is not None:
@@ -410,16 +375,15 @@ class DashboardService:
 
             rows = (await self._session.execute(stmt)).scalars().all()
 
-            result = []
-            for r in rows:
-                # Parse metadata_json — fallback None nếu invalid JSON
-                try:
-                    metadata = json.loads(r.metadata_json) if r.metadata_json else None
-                except (json.JSONDecodeError, TypeError):
-                    metadata = None
-
-                result.append(
-                    {
+            if not group_by_ticker:
+                # Raw mode — backward compat
+                result = []
+                for r in rows[:limit]:
+                    try:
+                        metadata = json.loads(r.metadata_json) if r.metadata_json else None
+                    except (json.JSONDecodeError, TypeError):
+                        metadata = None
+                    result.append({
                         "id": r.id,
                         "event_id": r.event_id,
                         "ticker": r.ticker,
@@ -430,9 +394,56 @@ class DashboardService:
                         "metadata": metadata,
                         "occurred_at": r.occurred_at.isoformat() if r.occurred_at else None,
                         "processed_at": r.processed_at.isoformat() if r.processed_at else None,
+                    })
+                return result
+
+            # --- Grouped mode (default) ---
+            # Group by ticker, collapse signal_types, keep max strength/confidence
+            groups: dict[str, dict[str, Any]] = {}
+
+            for r in rows:
+                key = r.ticker
+                if key not in groups:
+                    groups[key] = {
+                        "ticker": r.ticker,
+                        "signal_types": set(),
+                        "max_strength": 0.0,
+                        "max_confidence": 0.0,
+                        "count": 0,
+                        "first_seen": r.occurred_at,
+                        "last_seen": r.occurred_at,
+                        "source": r.source,
                     }
-                )
-            return result
+                g = groups[key]
+                g["signal_types"].add(r.signal_type)
+                g["max_strength"] = max(g["max_strength"], r.strength or 0.0)
+                g["max_confidence"] = max(g["max_confidence"], r.confidence or 0.0)
+                g["count"] += 1
+                if r.occurred_at and r.occurred_at < g["first_seen"]:
+                    g["first_seen"] = r.occurred_at
+                if r.occurred_at and r.occurred_at > g["last_seen"]:
+                    g["last_seen"] = r.occurred_at
+
+            # Sort by max_strength desc, then count desc
+            sorted_groups = sorted(
+                groups.values(),
+                key=lambda g: (g["max_strength"], g["count"]),
+                reverse=True,
+            )
+
+            return [
+                {
+                    "ticker": g["ticker"],
+                    "signal_types": sorted(g["signal_types"]),
+                    "max_strength": round(g["max_strength"], 3),
+                    "max_confidence": round(g["max_confidence"], 3),
+                    "count": g["count"],
+                    "first_seen": g["first_seen"].isoformat() if g["first_seen"] else None,
+                    "last_seen": g["last_seen"].isoformat() if g["last_seen"] else None,
+                    "source": g["source"],
+                }
+                for g in sorted_groups[:limit]
+            ]
         except Exception as exc:
             logger.warning("get_recent_signals.db_error", error=str(exc))
             return []
@@ -465,13 +476,7 @@ class DashboardService:
         price_map: dict[str, float] | None = None,
         quote_service: QuoteBatchReader | None = None,
     ) -> dict[str, Any]:
-        """Return portfolio data for user, optionally enriched with live prices.
-
-        Price resolution order:
-          1. price_map if provided (explicit caller override)
-          2. quote_service.get_quotes() if provided (auto-fetch)
-          3. No prices (portfolio returned without current price data)
-        """
+        """Return portfolio data for user, optionally enriched with live prices."""
         if price_map is None and quote_service is not None:
             theses = await self._thesis_query.get_theses_list(
                 user_id=user_id, status="active", limit=500

@@ -81,7 +81,7 @@ function fmtVnd(val) {
 }
 
 // ---------------------------------------------------------------------------
-// [wave-fe2] Tier Breakdown pill bar
+// Tier Breakdown pill bar
 // ---------------------------------------------------------------------------
 export function renderTierBreakdown(aggregate) {
   const wrap = el('tierBreakdown');
@@ -116,7 +116,7 @@ export function renderTierBreakdown(aggregate) {
 }
 
 // ---------------------------------------------------------------------------
-// [wave-fe2] Alerts Triggered Strip
+// Alerts Triggered Strip
 // ---------------------------------------------------------------------------
 export function renderAlertsStrip(alerts) {
   const wrap = el('alertsTriggeredStrip');
@@ -158,63 +158,137 @@ export function renderAlertsStrip(alerts) {
 }
 
 // ---------------------------------------------------------------------------
-// [wave-fe3] Signals feed
+// Signals feed — grouped ticker cards
 // ---------------------------------------------------------------------------
+
+/**
+ * renderSignalsFeed — redesigned as grouped ticker cards.
+ *
+ * Backend trả grouped shape:
+ *   { ticker, signal_types[], max_strength, max_confidence, count, last_seen, source }
+ *
+ * UI: mỗi ticker = 1 card compact. Không render raw list.
+ */
 export function renderSignalsFeed(res) {
   const wrap = el('signalsFeed');
   if (!wrap) return;
 
   const items = Array.isArray(res) ? res : (res?.items ?? []);
-  if (!items.length) { wrap.classList.add('hidden'); return; }
 
-  const typeIcon = {
-    ma_crossover:   '📈',
-    volume_spike:   '📊',
-    rsi_oversold:   '⬇️',
-    rsi_overbought: '⬆️',
-    breakout:       '💥',
-    breakdown:      '💧',
-    macd_signal:    '⚡',
-    default:        '📶',
-  };
+  if (!items.length) {
+    wrap.classList.add('hidden');
+    wrap.innerHTML = '';
+    return;
+  }
 
-  const sourceCls = { technical: 'sig--tech', ai: 'sig--ai', default: 'sig--other' };
+  // Phân biệt grouped vs raw (grouped có field "count" + "signal_types" là array)
+  const isGrouped = items[0] && Array.isArray(items[0].signal_types);
 
-  const shown    = items.slice(0, 8);
-  const overflow = items.length - shown.length;
+  const cards = isGrouped
+    ? items.map(g => _buildSignalCard(g))
+    : _groupClientSide(items).map(g => _buildSignalCard(g));
 
   wrap.classList.remove('hidden');
   wrap.innerHTML = `
-    <div class="signals-feed-label">📶 Tín hiệu kỹ thuật gần đây</div>
-    <div class="signals-feed-items">
-      ${shown.map(s => {
-        const icon    = typeIcon[s.signal_type] ?? typeIcon.default;
-        const cls     = sourceCls[s.source]    ?? sourceCls.default;
-        const strength = s.strength != null ? Math.round(s.strength * 100) : null;
-        const conf     = s.confidence != null ? Math.round(s.confidence * 100) : null;
-        const at = s.occurred_at
-          ? new Date(s.occurred_at).toLocaleString('vi-VN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-          : '—';
-        return `
-          <div class="signal-item ${cls}">
-            <span class="sig-icon">${icon}</span>
-            <span class="sig-ticker">${s.ticker ?? '—'}</span>
-            <span class="sig-type">${(s.signal_type ?? '').replace(/_/g, ' ')}</span>
-            ${strength != null ? `
-              <span class="sig-bar-wrap" title="Strength: ${strength}%">
-                <span class="sig-bar" style="width:${strength}%"></span>
-              </span>` : ''}
-            ${conf != null ? `<span class="sig-conf muted">${conf}%</span>` : ''}
-            <span class="sig-time muted">${at}</span>
-          </div>`;
-      }).join('')}
-      ${overflow > 0 ? `<div class="signals-feed-more muted">+${overflow} signals khác</div>` : ''}
+    <div class="signals-section-header">
+      <span class="signals-section-title">Tín hiệu kỹ thuật</span>
+      <span class="signals-section-meta muted">${items.length} mã · ${_totalSignals(items, isGrouped)} lần</span>
     </div>
+    <div class="signals-cards">${cards.join('')}</div>
   `;
 }
 
+/** Group client-side nếu backend trả raw list (fallback) */
+function _groupClientSide(rawItems) {
+  const groups = {};
+  for (const s of rawItems) {
+    const key = s.ticker;
+    if (!groups[key]) {
+      groups[key] = {
+        ticker: s.ticker,
+        signal_types: new Set(),
+        max_strength: 0,
+        max_confidence: 0,
+        count: 0,
+        last_seen: s.occurred_at,
+        source: s.source,
+      };
+    }
+    const g = groups[key];
+    if (s.signal_type) g.signal_types.add(s.signal_type);
+    g.max_strength   = Math.max(g.max_strength, s.strength ?? 0);
+    g.max_confidence = Math.max(g.max_confidence, s.confidence ?? 0);
+    g.count++;
+    if (s.occurred_at > (g.last_seen ?? '')) g.last_seen = s.occurred_at;
+  }
+  return Object.values(groups)
+    .map(g => ({ ...g, signal_types: [...g.signal_types] }))
+    .sort((a, b) => b.max_strength - a.max_strength);
+}
+
+function _totalSignals(items, isGrouped) {
+  if (isGrouped) return items.reduce((s, g) => s + (g.count ?? 1), 0);
+  return items.length;
+}
+
+/** Render một ticker card */
+function _buildSignalCard(g) {
+  const strength  = Math.round((g.max_strength ?? 0) * 100);
+  const conf      = Math.round((g.max_confidence ?? 0) * 100);
+  const count     = g.count ?? 1;
+  const lastSeen  = g.last_seen
+    ? new Date(g.last_seen).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'numeric' })
+    : '—';
+
+  const types = (g.signal_types ?? []).map(t =>
+    `<span class="sig-type-tag">${_fmtSignalType(t)}</span>`
+  ).join('');
+
+  // Strength bar color
+  const barCls = strength >= 70 ? 'sig-bar--strong'
+    : strength >= 40 ? 'sig-bar--medium'
+    : 'sig-bar--weak';
+
+  const countBadge = count > 1
+    ? `<span class="sig-count-badge" title="${count} lần trong 7 ngày">×${count}</span>`
+    : '';
+
+  return `
+    <div class="signal-card">
+      <div class="signal-card-top">
+        <span class="signal-card-ticker">${g.ticker}</span>
+        ${countBadge}
+        <span class="signal-card-time muted">${lastSeen}</span>
+      </div>
+      <div class="signal-card-types">${types || '<span class="muted">—</span>'}</div>
+      <div class="signal-card-bar-row">
+        <div class="sig-bar-track" title="Strength ${strength}%">
+          <div class="sig-bar-fill ${barCls}" style="width:${strength}%"></div>
+        </div>
+        ${conf > 0 ? `<span class="sig-conf muted">${conf}%</span>` : ''}
+      </div>
+    </div>`;
+}
+
+/** Format signal_type thành label ngắn gọn */
+function _fmtSignalType(type) {
+  const MAP = {
+    strong_move:    'STRONG MOVE',
+    ma_crossover:   'MA Cross',
+    volume_spike:   'Vol Spike',
+    rsi_oversold:   'RSI↓',
+    rsi_overbought: 'RSI↑',
+    breakout:       'Breakout',
+    breakdown:      'Breakdown',
+    macd_signal:    'MACD',
+    price_above:    'Price↑',
+    price_below:    'Price↓',
+  };
+  return MAP[type] ?? type.replace(/_/g, ' ').toUpperCase();
+}
+
 // ---------------------------------------------------------------------------
-// Wave Dashboard-1: Action Surface
+// Action Surface
 // ---------------------------------------------------------------------------
 export function renderActionSurface(stats, catalysts) {
   const wrap = el('actionSurface');
@@ -229,42 +303,19 @@ export function renderActionSurface(stats, catalysts) {
   const items = [];
 
   if (reviewsToday > 0) {
-    items.push({
-      icon: '⚠️', cls: 'as-item--warn',
-      text: `${reviewsToday} thesis cần review hôm nay`,
-      target: 'thesesTableWrap', label: 'Review ngay',
-    });
+    items.push({ icon: '⚠️', cls: 'as-item--warn', text: `${reviewsToday} thesis cần review hôm nay`, target: 'thesesTableWrap', label: 'Review ngay' });
   }
-
   if (staleCount > 0) {
-    items.push({
-      icon: '🕐', cls: 'as-item--warn',
-      text: `${staleCount} thesis chưa review trong ${staleDays} ngày`,
-      target: 'thesesTableWrap', label: 'Review ngay',
-    });
+    items.push({ icon: '🕐', cls: 'as-item--warn', text: `${staleCount} thesis chưa review trong ${staleDays} ngày`, target: 'thesesTableWrap', label: 'Review ngay' });
   }
-
   if (riskyCount > 0) {
-    items.push({
-      icon: '🔴', cls: 'as-item--danger',
-      text: `${riskyCount} thesis có score thấp (< 40)`,
-      target: 'thesesTableWrap', label: 'Xem thesis',
-    });
+    items.push({ icon: '🔴', cls: 'as-item--danger', text: `${riskyCount} thesis có score thấp (< 40)`, target: 'thesesTableWrap', label: 'Xem thesis' });
   }
-
   if (upcoming7d > 0) {
-    items.push({
-      icon: '📅', cls: 'as-item--info',
-      text: `${upcoming7d} catalyst trong 7 ngày tới`,
-      target: 'catalystList', label: 'Xem lịch',
-    });
+    items.push({ icon: '📅', cls: 'as-item--info', text: `${upcoming7d} catalyst trong 7 ngày tới`, target: 'catalystList', label: 'Xem lịch' });
   }
 
-  if (!items.length) {
-    wrap.classList.add('hidden');
-    wrap.innerHTML = '';
-    return;
-  }
+  if (!items.length) { wrap.classList.add('hidden'); wrap.innerHTML = ''; return; }
 
   wrap.classList.remove('hidden');
   wrap.innerHTML = `
@@ -314,11 +365,11 @@ export async function loadDashboard() {
       getJson(`${briefBase}/feedback-summary`).catch(() => null),
       getJson(`${base}/alerts/triggered`).catch(() => null),
       getJson(`${base}/theses/aggregate`).catch(() => null),
+      // grouped=true (default) — backend trả ticker cards
       getJson(`${base}/signals/recent?days=7&limit=30`).catch(() => null),
     ]);
 
     renderSummary(stats, portfolioTrades);
-
     renderTierBreakdown(thesisAggregate);
     renderAlertsStrip(alertsTriggered);
     renderSignalsFeed(recentSignals);
@@ -405,24 +456,13 @@ export async function loadBacktesting() {
   }
 }
 
-function parseCurrentValue(node) {
-  const raw = (node.textContent ?? '').replace(/[^\d.-]/g, '');
-  if (!raw) return null;
-  const parsed = parseFloat(raw);
-  return isNaN(parsed) ? null : parsed;
-}
-
 /**
  * renderSummary — populate KPI strip từ stats API response.
- *
- * FIX: dùng đúng signature mới của countUp(el, target, opts?).
- * Phên bản cũ gọi countUp(node, prev, next, 600) — tham số thứ 3 bị interpret
- * là opts (một số), khiến target luôn nhận giá trị sai.
+ * Dùng đúng signature mới countUp(el, target, opts?).
  */
 export function renderSummary(s, portfolio) {
   if (!s) return;
 
-  // KPI integer fields — countUp(el, target) với animate.js tự parse start từ textContent
   const kpis = [
     { id: 'openTheses',   raw: s.open_theses           ?? s.open_thesis_count  },
     { id: 'pausedTheses', raw: s.paused_theses          ?? 0                   },
@@ -434,8 +474,6 @@ export function renderSummary(s, portfolio) {
     const node = el(id);
     if (!node || raw == null) return;
     const next = parseInt(raw, 10);
-    // FIX: gọi đúng signature mới countUp(el, target, opts)
-    // animate.js tự đọc start từ textContent hiện tại của node.
     countUp(node, next, { duration: 600 });
     flashValue(node);
   });
@@ -446,14 +484,12 @@ export function renderSummary(s, portfolio) {
     reviewsTodayEl.textContent = reviewsTodayRaw > 0 ? `${reviewsTodayRaw} cần review hôm nay` : '';
   }
 
-  // [wave-fe1] stale review KPI
   const staleCount = parseInt(s.stale_review_count ?? 0, 10);
   const staleDays  = s.stale_review_days ?? 14;
   const staleEl    = el('staleReview');
   const staleSubEl = el('staleReviewSub');
   const staleCard  = el('staleReviewCard');
   if (staleEl) {
-    // FIX: gọi đúng signature mới
     countUp(staleEl, staleCount, { duration: 600 });
     flashValue(staleEl);
   }
@@ -463,7 +499,6 @@ export function renderSummary(s, portfolio) {
     staleCard.classList.toggle('signal-card--risk', staleCount > 0);
   }
 
-  // Portfolio KPIs from trades
   const positions     = portfolio?.positions ?? (Array.isArray(portfolio) ? portfolio : []);
   const totalValue    = portfolio?.total_market_value   ?? positions.reduce((acc, t) => acc + (t.market_value ?? 0), 0);
   const unrealizedPnl = portfolio?.total_unrealized_pnl ?? positions.reduce((acc, t) => acc + (t.unrealized_pnl ?? 0), 0);
