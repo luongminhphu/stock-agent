@@ -159,9 +159,6 @@ export function renderAlertsStrip(alerts) {
 
 // ---------------------------------------------------------------------------
 // [wave-fe3] Signals feed
-// Renders GET /dashboard/signals/recent response.
-// Item shape: { ticker, signal_type, strength, confidence, source, occurred_at }
-// Hidden when empty (no SignalEvent rows yet).
 // ---------------------------------------------------------------------------
 export function renderSignalsFeed(res) {
   const wrap = el('signalsFeed');
@@ -170,7 +167,6 @@ export function renderSignalsFeed(res) {
   const items = Array.isArray(res) ? res : (res?.items ?? []);
   if (!items.length) { wrap.classList.add('hidden'); return; }
 
-  // signal_type -> icon
   const typeIcon = {
     ma_crossover:   '📈',
     volume_spike:   '📊',
@@ -182,7 +178,6 @@ export function renderSignalsFeed(res) {
     default:        '📶',
   };
 
-  // source -> css class suffix
   const sourceCls = { technical: 'sig--tech', ai: 'sig--ai', default: 'sig--other' };
 
   const shown    = items.slice(0, 8);
@@ -306,7 +301,7 @@ export async function loadDashboard() {
       briefFeedback,
       alertsTriggered,
       thesisAggregate,
-      recentSignals,          // [wave-fe3]
+      recentSignals,
     ] = await Promise.all([
       getJson(`${base}/stats`).catch(() => null),
       getJson(`${base}/theses?status=${status}`).catch(() => []),
@@ -319,19 +314,14 @@ export async function loadDashboard() {
       getJson(`${briefBase}/feedback-summary`).catch(() => null),
       getJson(`${base}/alerts/triggered`).catch(() => null),
       getJson(`${base}/theses/aggregate`).catch(() => null),
-      getJson(`${base}/signals/recent?days=7&limit=30`).catch(() => null),   // [wave-fe3]
+      getJson(`${base}/signals/recent?days=7&limit=30`).catch(() => null),
     ]);
 
     renderSummary(stats, portfolioTrades);
 
-    // [wave-fe2] tier breakdown + alerts strip
     renderTierBreakdown(thesisAggregate);
     renderAlertsStrip(alertsTriggered);
-
-    // [wave-fe3] signals feed
     renderSignalsFeed(recentSignals);
-
-    // Wave Dashboard-1: action surface
     renderActionSurface(stats, catalysts?.items ?? catalysts ?? []);
 
     state.theses = theses?.items ?? theses ?? [];
@@ -359,7 +349,6 @@ export async function loadDashboard() {
       brief_feedback:            briefFeedback ?? null,
     });
 
-    // Leaderboard — fire-and-forget
     loadLeaderboard().catch(() => null);
 
     if (state.selectedThesisId) {
@@ -423,8 +412,17 @@ function parseCurrentValue(node) {
   return isNaN(parsed) ? null : parsed;
 }
 
+/**
+ * renderSummary — populate KPI strip từ stats API response.
+ *
+ * FIX: dùng đúng signature mới của countUp(el, target, opts?).
+ * Phên bản cũ gọi countUp(node, prev, next, 600) — tham số thứ 3 bị interpret
+ * là opts (một số), khiến target luôn nhận giá trị sai.
+ */
 export function renderSummary(s, portfolio) {
   if (!s) return;
+
+  // KPI integer fields — countUp(el, target) với animate.js tự parse start từ textContent
   const kpis = [
     { id: 'openTheses',   raw: s.open_theses           ?? s.open_thesis_count  },
     { id: 'pausedTheses', raw: s.paused_theses          ?? 0                   },
@@ -436,11 +434,10 @@ export function renderSummary(s, portfolio) {
     const node = el(id);
     if (!node || raw == null) return;
     const next = parseInt(raw, 10);
-    const prev = parseCurrentValue(node) ?? -1;
-    if (prev !== next) {
-      countUp(node, Math.max(prev, 0), next, 600);
-      flashValue(node);
-    }
+    // FIX: gọi đúng signature mới countUp(el, target, opts)
+    // animate.js tự đọc start từ textContent hiện tại của node.
+    countUp(node, next, { duration: 600 });
+    flashValue(node);
   });
 
   const reviewsTodayRaw = parseInt(s.reviews_today ?? s.review_count_today ?? 0, 10);
@@ -456,11 +453,9 @@ export function renderSummary(s, portfolio) {
   const staleSubEl = el('staleReviewSub');
   const staleCard  = el('staleReviewCard');
   if (staleEl) {
-    const prevStale = parseCurrentValue(staleEl) ?? -1;
-    if (prevStale !== staleCount) {
-      countUp(staleEl, Math.max(prevStale, 0), staleCount, 600);
-      flashValue(staleEl);
-    }
+    // FIX: gọi đúng signature mới
+    countUp(staleEl, staleCount, { duration: 600 });
+    flashValue(staleEl);
   }
   if (staleSubEl) staleSubEl.textContent = `chưa review ${staleDays}d`;
   if (staleCard) {
