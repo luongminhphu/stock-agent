@@ -1,0 +1,111 @@
+/* ─── layout-duo.css ────────────────────────────────────────────────────────
+   Owner: css/modules
+   Wave 1 layout additions extracted from index.html inline <style>.
+
+   Covers:
+     1. .kpi-strip       — 4-col grid (2 rows of 4, divided by .kpi-row-divider)
+     2. .panel-duo       — side-by-side 2-col panel grid
+     3. .brief-collapsible — <details> collapsible wrapper for briefing
+
+   Token system: project design tokens (variables.css)
+─────────────────────────────────────────────────────────────────────────── */
+
+/* ── 1. KPI strip: 2 rows of 4 ────────────────────────────────────── */
+.kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.kpi-strip .kpi-row-divider {
+  grid-column: 1 / -1;
+  height: 1px;
+  background: var(--line);
+  margin: 2px 0;
+  opacity: 0.5;
+}
+
+@media (max-width: 900px) {
+  .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 540px) {
+  .kpi-strip { grid-template-columns: 1fr 1fr; }
+}
+
+/* ── 2. Panel duo: side-by-side ────────────────────────────────────── */
+.panel-duo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .panel-duo { grid-template-columns: 1fr; }
+}
+
+/* Backtesting in duo: stretch to fill height */
+.panel-duo .backtesting-panel {
+  height: 100%;
+}
+
+/* ── 3. Brief collapsible ──────────────────────────────────────────── */
+.brief-collapsible {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.brief-collapsible summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  list-style: none;
+  user-select: none;
+  border-bottom: 1px solid transparent;
+  transition: background 0.15s;
+}
+
+.brief-collapsible summary::-webkit-details-marker {
+  display: none;
+}
+
+.brief-collapsible summary::after {
+  content: '›';
+  margin-left: auto;
+  font-size: 1.1rem;
+  line-height: 1;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  color: var(--faint);
+}
+
+.brief-collapsible[open] summary {
+  border-bottom-color: var(--line);
+  color: var(--text);
+}
+
+.brief-collapsible[open] summary::after {
+  transform: rotate(90deg);
+}
+
+.brief-collapsible summary:hover {
+  background: var(--surface-2);
+}
+
+.brief-collapsible summary svg {
+  color: var(--faint);
+  flex-shrink: 0;
+}
+
+.brief-collapsible .brief-inner {
+  padding: 12px 16px 16px;
+}

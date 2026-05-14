@@ -7,83 +7,6 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>%F0%9F%93%88</text></svg>" />
     <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/static/dashboard/dashboard.css" />
-    <link rel="stylesheet" href="/static/dashboard/css/signals.css" />
-    <style>
-      /* ── Wave-1 layout additions ─────────────────────────────────────── */
-
-      /* KPI strip: 2 rows of 4 */
-      .kpi-strip {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: var(--gap, 12px);
-      }
-      .kpi-strip .kpi-row-divider {
-        grid-column: 1 / -1;
-        height: 1px;
-        background: var(--color-border, #e2e8f0);
-        margin: 2px 0;
-        opacity: .5;
-      }
-      @media (max-width: 900px) {
-        .kpi-strip { grid-template-columns: repeat(2, 1fr); }
-      }
-      @media (max-width: 540px) {
-        .kpi-strip { grid-template-columns: 1fr 1fr; }
-      }
-
-      /* Side-by-side grid: Watchlist + Catalyst / Leaderboard + Backtesting */
-      .panel-duo {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: var(--gap, 12px);
-        align-items: start;
-      }
-      @media (max-width: 860px) {
-        .panel-duo { grid-template-columns: 1fr; }
-      }
-
-      /* Backtesting in duo: allow full height */
-      .panel-duo .backtesting-panel { height: 100%; }
-
-      /* Collapsible brief */
-      .brief-collapsible {
-        border: 1px solid var(--color-border, #e2e8f0);
-        border-radius: var(--radius, 10px);
-        overflow: hidden;
-        background: var(--color-surface, #fff);
-      }
-      .brief-collapsible summary {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 10px 16px;
-        cursor: pointer;
-        font-size: .85rem;
-        font-weight: 600;
-        color: var(--color-text-secondary, #64748b);
-        list-style: none;
-        user-select: none;
-        border-bottom: 1px solid transparent;
-        transition: background .15s;
-      }
-      .brief-collapsible summary::-webkit-details-marker { display: none; }
-      .brief-collapsible summary::after {
-        content: '›';
-        margin-left: auto;
-        font-size: 1.1rem;
-        transition: transform .2s;
-      }
-      .brief-collapsible[open] summary {
-        border-bottom-color: var(--color-border, #e2e8f0);
-      }
-      .brief-collapsible[open] summary::after { transform: rotate(90deg); }
-      .brief-collapsible summary:hover {
-        background: var(--color-surface-hover, #f8fafc);
-      }
-      .brief-collapsible .brief-inner {
-        padding: 12px 16px 16px;
-      }
-    </style>
   </head>
   <body>
     <a class="skip-link" href="#main-content">Bỏ qua điều hướng</a>
@@ -149,7 +72,7 @@
           <!-- ── 2. KPI STRIP — 2 rows: actionable / context ────────────── -->
           <section class="command-strip kpi-strip" aria-label="Tổng quan danh mục">
 
-            <!-- Row 1: actionable KPIs (trực tiếp ảnh hưởng đến hành động hôm nay) -->
+            <!-- Row 1: actionable KPIs -->
             <article class="signal-card signal-card--portfolio">
               <span class="signal-label">Portfolio value</span>
               <strong class="signal-value" id="portfolioValue">—</strong>
@@ -171,10 +94,10 @@
               <span class="signal-sub" id="staleReviewSub">thesis chưa review</span>
             </article>
 
-            <!-- Divider -->
+            <!-- Divider between actionable / context rows -->
             <div class="kpi-row-divider" aria-hidden="true"></div>
 
-            <!-- Row 2: context KPIs (portfolio overview) -->
+            <!-- Row 2: context KPIs -->
             <article class="signal-card">
               <span class="signal-label">Open theses</span>
               <strong class="signal-value" id="openTheses">—</strong>
@@ -212,7 +135,7 @@
             aria-label="Tín hiệu kỹ thuật gần đây"
           ></div>
 
-          <!-- ── 5. ACTION SURFACE — việc cần làm hôm nay ──────────────── -->
+          <!-- ── 5. ACTION SURFACE ─────────────────────────────────────── -->
           <div
             id="actionSurface"
             class="action-surface hidden"
@@ -220,37 +143,25 @@
             aria-label="Việc cần làm hôm nay"
           ></div>
 
-          <!-- ── 6. BRIEFING — collapsible, không chiếm toàn màn ──────── -->
+          <!-- ── 6. BRIEFING — collapsible ─────────────────────────────── -->
           <details class="brief-collapsible" id="briefCollapsible">
             <summary>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
               Morning / EOD Brief
             </summary>
             <div class="brief-inner">
               <div class="brief-context-strip" id="briefContextStrip">
                 <div class="brief-strip-header">
-                  <button
-                    id="generateMorningBtn"
-                    class="icon-text-btn"
-                    type="button"
-                    data-generate-brief="morning"
-                    aria-label="Tạo Morning Brief"
-                  >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-                      stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <button id="generateMorningBtn" class="icon-text-btn" type="button"
+                    data-generate-brief="morning" aria-label="Tạo Morning Brief">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <path d="M12 2l2.09 6.26L20 10l-5.91 1.74L12 18l-2.09-6.26L4 10l5.91-1.74L12 2z"/>
                     </svg>
                     Morning Brief
                   </button>
-                  <button
-                    id="generateEodBtn"
-                    class="icon-text-btn"
-                    type="button"
-                    data-generate-brief="eod"
-                    aria-label="Tạo EOD Brief"
-                  >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-                      stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <button id="generateEodBtn" class="icon-text-btn" type="button"
+                    data-generate-brief="eod" aria-label="Tạo EOD Brief">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
                     </svg>
                     EOD Brief
@@ -262,7 +173,7 @@
             </div>
           </details>
 
-          <!-- ── 7. WATCHLIST + CATALYST — side-by-side ────────────────── -->
+          <!-- ── 7. WATCHLIST + CATALYST — side-by-side ─────────────────── -->
           <div class="panel-duo">
             <section class="panel glass watchlist-layer" aria-labelledby="watchlistTitle">
               <div class="panel-header split-header">
@@ -286,7 +197,7 @@
             </section>
           </div>
 
-          <!-- ── 8. PORTFOLIO — full-width below duo ────────────────────── -->
+          <!-- ── 8. PORTFOLIO — full-width ──────────────────────────────── -->
           <section class="panel glass portfolio-layer" aria-labelledby="portfolioTitle">
             <div class="panel-header split-header">
               <div>
@@ -305,7 +216,7 @@
 
         <!-- ══════════════════════════════════════════════════════════════════
              CLUSTER B — "Thesis của tôi đang ở đâu?"
-             Research hub: Thesis board (full-width) → Leaderboard | Backtesting (duo)
+             Thesis board (full-width) → Leaderboard | Backtesting (duo)
         ══════════════════════════════════════════════════════════════════ -->
         <div class="cluster" aria-label="Cluster B: Thesis của tôi đang ở đâu?">
           <div class="cluster-label">
@@ -331,14 +242,10 @@
             </div>
           </section>
 
-          <!-- ── LEADERBOARD | BACKTESTING — side-by-side ──────────────── -->
+          <!-- ── LEADERBOARD | BACKTESTING — side-by-side ───────────────── -->
           <div class="panel-duo">
-            <section
-              id="leaderboardStrip"
-              class="panel glass lb-strip"
-              aria-labelledby="lbStripTitle"
-              aria-live="polite"
-            >
+            <section id="leaderboardStrip" class="panel glass lb-strip"
+              aria-labelledby="lbStripTitle" aria-live="polite">
               <div class="lb-strip-header">
                 <div>
                   <p class="eyebrow">⑤ 🏆 Thesis Leaderboard</p>
@@ -374,13 +281,9 @@
                 <div class="subpanel" id="callsPanel">
                   <div class="calls-tab-bar" role="tablist" aria-label="Calls view">
                     <button class="calls-tab active" role="tab" aria-selected="true"
-                      aria-controls="worstCallsPane" data-calls-tab="worst">
-                      🔴 Worst calls
-                    </button>
+                      aria-controls="worstCallsPane" data-calls-tab="worst">🔴 Worst calls</button>
                     <button class="calls-tab" role="tab" aria-selected="false"
-                      aria-controls="bestCallsPane" data-calls-tab="best">
-                      🟢 Best calls
-                    </button>
+                      aria-controls="bestCallsPane" data-calls-tab="best">🟢 Best calls</button>
                   </div>
                   <div id="worstCallsPane" class="calls-pane" role="tabpanel">
                     <div id="worstCallsWrap" class="empty-state">Chưa tải dữ liệu…</div>
@@ -397,7 +300,7 @@
 
         <!-- ══════════════════════════════════════════════════════════════════
              CLUSTER C — "Tôi đã quyết định gì & học được gì?"
-             Feedback loop: Decision KPIs → Decision Log → AI Lessons
+             Feedback loop: Decision KPIs → Log → AI Lessons
         ══════════════════════════════════════════════════════════════════ -->
         <div class="cluster" aria-label="Cluster C: Tôi đã quyết định gì và học được gì?">
           <div class="cluster-label">
@@ -405,7 +308,6 @@
             <span>Tôi đã quyết định gì &amp; học được gì?</span>
           </div>
 
-          <!-- ── DECISION LOG & AI LESSONS ─────────────────────────────── -->
           <section class="panel glass decision-layer" aria-labelledby="decisionTitle">
             <div class="dec-panel-header">
               <div>
@@ -415,12 +317,8 @@
               <button id="newDecisionBtn" class="primary-btn" type="button">+ Log Decision</button>
             </div>
 
-            <div
-              id="decisionKpiStrip"
-              class="dec-kpi-strip"
-              aria-label="Decision KPI tổng quan"
-              aria-live="polite"
-            >
+            <div id="decisionKpiStrip" class="dec-kpi-strip"
+              aria-label="Decision KPI tổng quan" aria-live="polite">
               <article class="dec-kpi-card" id="dkpiTotal">
                 <span class="dec-kpi-label">Tổng decisions</span>
                 <strong class="dec-kpi-value"><div class="skel skel-text" style="width:2rem;"></div></strong>
@@ -730,6 +628,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="/static/dashboard/js/app.js?v=17"></script>
+    <script type="module" src="/static/dashboard/js/app.js?v=18"></script>
   </body>
 </html>

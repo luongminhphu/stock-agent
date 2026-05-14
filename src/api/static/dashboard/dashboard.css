@@ -27,6 +27,7 @@
 
 /* 5. Modules */
 @import url('./css/modules/layout.css');
+@import url('./css/modules/layout-duo.css');
 @import url('./css/modules/thesis.css');
 @import url('./css/modules/quote-strip.css');
 @import url('./css/modules/briefing.css');
@@ -39,3 +40,4 @@
 @import url('./css/modules/conviction-timeline.css');
 @import url('./css/modules/portfolio.css');
 @import url('./css/modules/signals-alerts.css');
+@import url('./css/signals.css');

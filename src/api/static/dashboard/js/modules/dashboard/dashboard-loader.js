@@ -117,6 +117,9 @@ export function renderTierBreakdown(aggregate) {
 
 // ---------------------------------------------------------------------------
 // Alerts Triggered Strip
+// Uses classes from signals-alerts.css: .alerts-strip__label, .alert-chip,
+// .alert-chip--high/medium/low, .alert-chip__ticker, .alert-chip__label,
+// .alert-chip__price, .alerts-strip__more
 // ---------------------------------------------------------------------------
 export function renderAlertsStrip(alerts) {
   const wrap = el('alertsTriggeredStrip');
@@ -125,7 +128,7 @@ export function renderAlertsStrip(alerts) {
   const items = Array.isArray(alerts) ? alerts : (alerts?.items ?? []);
   if (!items.length) { wrap.classList.add('hidden'); return; }
 
-  const priorityCls  = { HIGH: 'alert-item--high', MEDIUM: 'alert-item--medium', LOW: 'alert-item--low' };
+  const priorityCls  = { HIGH: 'alert-chip--high', MEDIUM: 'alert-chip--medium', LOW: 'alert-chip--low' };
   const priorityIcon = { HIGH: '🔴', MEDIUM: '🟡', LOW: '🔵' };
 
   const shown    = items.slice(0, 5);
@@ -133,27 +136,23 @@ export function renderAlertsStrip(alerts) {
 
   wrap.classList.remove('hidden');
   wrap.innerHTML = `
-    <div class="alerts-strip-label">🔔 Alerts đã kích hoạt</div>
-    <div class="alerts-strip-items">
-      ${shown.map(a => {
-        const p = (a.priority ?? 'MEDIUM').toUpperCase();
-        const at = a.triggered_at
-          ? new Date(a.triggered_at).toLocaleString('vi-VN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-          : '—';
-        const price = a.triggered_price != null
-          ? new Intl.NumberFormat('vi-VN').format(a.triggered_price)
-          : null;
-        return `
-          <div class="alert-item ${priorityCls[p] ?? 'alert-item--medium'}">
-            <span class="alert-priority">${priorityIcon[p] ?? '🟡'}</span>
-            <span class="alert-ticker">${a.ticker ?? '—'}</span>
-            <span class="alert-label">${a.label ?? a.condition_type ?? ''}</span>
-            ${price ? `<span class="alert-price">@ ${price}</span>` : ''}
-            <span class="alert-time muted">${at}</span>
-          </div>`;
-      }).join('')}
-      ${overflow > 0 ? `<div class="alerts-strip-more muted">+${overflow} alerts khác</div>` : ''}
-    </div>
+    <span class="alerts-strip__label">Alerts</span>
+    ${shown.map(a => {
+      const p = (a.priority ?? 'MEDIUM').toUpperCase();
+      const price = a.triggered_price != null
+        ? new Intl.NumberFormat('vi-VN').format(a.triggered_price)
+        : null;
+      const at = a.triggered_at
+        ? new Date(a.triggered_at).toLocaleString('vi-VN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+        : null;
+      return `
+        <div class="alert-chip ${priorityCls[p] ?? 'alert-chip--medium'}" title="${a.ticker} · ${a.label ?? a.condition_type ?? ''} · ${at ?? ''}">
+          <span class="alert-chip__ticker">${priorityIcon[p] ?? '🟡'} ${a.ticker ?? '—'}</span>
+          <span class="alert-chip__label">${a.label ?? a.condition_type ?? ''}</span>
+          ${price ? `<span class="alert-chip__price">@ ${price}</span>` : ''}
+        </div>`;
+    }).join('')}
+    ${overflow > 0 ? `<span class="alerts-strip__more">+${overflow} khác</span>` : ''}
   `;
 }
 
@@ -365,7 +364,6 @@ export async function loadDashboard() {
       getJson(`${briefBase}/feedback-summary`).catch(() => null),
       getJson(`${base}/alerts/triggered`).catch(() => null),
       getJson(`${base}/theses/aggregate`).catch(() => null),
-      // grouped=true (default) — backend trả ticker cards
       getJson(`${base}/signals/recent?days=7&limit=30`).catch(() => null),
     ]);
 
