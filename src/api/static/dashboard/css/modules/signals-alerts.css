@@ -1,0 +1,214 @@
+/* ─── signals-alerts.css ───────────────────────────────────────────────────────
+   Styles cho:
+     - .signals-feed    : recent technical signals per ticker (wave-fe3)
+     - .alerts-strip    : triggered alerts strip (wave-fe2)
+─────────────────────────────────────────────────────────────────────────────── */
+
+/* ══ SIGNALS FEED ══════════════════════════════════════════════════════════════ */
+
+.signals-feed {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-surface);
+  border: 1px solid oklch(from var(--color-text) l c h / 0.08);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-4);
+}
+
+.signals-feed.hidden {
+  display: none;
+}
+
+.signals-feed__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-1);
+}
+
+.signals-feed__title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text);
+  letter-spacing: 0.01em;
+}
+
+.signals-feed__meta {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+/* Signal rows list */
+.signals-feed__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.signal-row {
+  display: grid;
+  grid-template-columns: 3.5rem 1fr auto auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-2);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  transition: background 120ms ease;
+}
+
+.signal-row:hover {
+  background: var(--color-surface-offset);
+}
+
+.signal-row__ticker {
+  font-weight: 700;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.signal-row__type {
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Strength badge — filled pill */
+.signal-row__strength {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.signal-row__strength--strong {
+  background: color-mix(in oklch, var(--color-success) 15%, transparent);
+  color: var(--color-success);
+}
+
+.signal-row__strength--medium {
+  background: color-mix(in oklch, var(--color-gold) 15%, transparent);
+  color: var(--color-gold);
+}
+
+.signal-row__strength--weak {
+  background: color-mix(in oklch, var(--color-text-muted) 12%, transparent);
+  color: var(--color-text-muted);
+}
+
+.signal-row__time {
+  color: var(--color-text-faint);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Empty state inside feed */
+.signals-feed__empty {
+  text-align: center;
+  padding: var(--space-4);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+
+/* ══ ALERTS TRIGGERED STRIP ════════════════════════════════════════════════════ */
+
+.alerts-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: color-mix(in oklch, var(--color-warning) 6%, var(--color-surface));
+  border: 1px solid color-mix(in oklch, var(--color-warning) 20%, transparent);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-3);
+}
+
+.alerts-strip.hidden {
+  display: none;
+}
+
+.alerts-strip__label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-warning);
+  white-space: nowrap;
+  margin-right: var(--space-1);
+}
+
+/* Individual alert chip */
+.alert-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 3px var(--space-3);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: default;
+  border: 1px solid transparent;
+  transition: opacity 120ms ease;
+}
+
+.alert-chip:hover {
+  opacity: 0.85;
+}
+
+.alert-chip__ticker {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.alert-chip__label {
+  color: inherit;
+  opacity: 0.85;
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.alert-chip__price {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
+/* Priority variants */
+.alert-chip--high {
+  background: color-mix(in oklch, var(--color-notification) 14%, var(--color-surface));
+  color: var(--color-notification);
+  border-color: color-mix(in oklch, var(--color-notification) 25%, transparent);
+}
+
+.alert-chip--medium {
+  background: color-mix(in oklch, var(--color-warning) 14%, var(--color-surface));
+  color: var(--color-warning);
+  border-color: color-mix(in oklch, var(--color-warning) 25%, transparent);
+}
+
+.alert-chip--low {
+  background: color-mix(in oklch, var(--color-text-muted) 10%, var(--color-surface));
+  color: var(--color-text-muted);
+  border-color: color-mix(in oklch, var(--color-text-muted) 20%, transparent);
+}
+
+/* Overflow count badge */
+.alerts-strip__more {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  padding: 2px var(--space-2);
+  background: var(--color-surface-offset);
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
