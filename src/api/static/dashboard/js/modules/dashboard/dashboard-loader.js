@@ -204,7 +204,7 @@ export function renderSignalsFeed(res) {
           <div class="signal-item ${cls}">
             <span class="sig-icon">${icon}</span>
             <span class="sig-ticker">${s.ticker ?? '—'}</span>
-            <span class="sig-type">${(s.signal_type ?? '').replace(/_/g, ' ')}</span>
+            <span class="sig-type">${(s.signal_type ?? '').replace(/_/g, ' ')}</span>
             ${strength != null ? `
               <span class="sig-bar-wrap" title="Strength: ${strength}%">
                 <span class="sig-bar" style="width:${strength}%"></span>
@@ -426,9 +426,10 @@ function parseCurrentValue(node) {
 export function renderSummary(s, portfolio) {
   if (!s) return;
   const kpis = [
-    { id: 'openTheses',  raw: s.open_theses           ?? s.open_thesis_count  },
-    { id: 'riskyTheses', raw: s.risky_theses          ?? s.risky_thesis_count },
-    { id: 'upcoming7d',  raw: s.upcoming_catalysts_7d ?? s.upcoming_7d        },
+    { id: 'openTheses',   raw: s.open_theses           ?? s.open_thesis_count  },
+    { id: 'pausedTheses', raw: s.paused_theses          ?? 0                   },
+    { id: 'riskyTheses',  raw: s.risky_theses          ?? s.risky_thesis_count },
+    { id: 'upcoming7d',   raw: s.upcoming_catalysts_7d ?? s.upcoming_7d        },
   ];
 
   kpis.forEach(({ id, raw }) => {

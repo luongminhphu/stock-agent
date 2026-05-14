@@ -10,7 +10,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import Date as SADate
-from sqlalchemy import and_, cast, func, select
+from sqlalchemy import and_, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.logging import get_logger
@@ -45,6 +45,16 @@ class StatsService:
                 select(func.count(Thesis.id)).where(
                     Thesis.user_id == user_id,
                     Thesis.status == ThesisStatus.ACTIVE,
+                )
+            )
+            or 0
+        )
+
+        paused_count = (
+            await self._session.scalar(
+                select(func.count(Thesis.id)).where(
+                    Thesis.user_id == user_id,
+                    Thesis.status == ThesisStatus.PAUSED,
                 )
             )
             or 0
@@ -125,7 +135,7 @@ class StatsService:
                 select(func.count(Thesis.id)).where(
                     Thesis.user_id == user_id,
                     Thesis.status == ThesisStatus.ACTIVE,
-                    Thesis.score < 40,
+                    or_(Thesis.score < 40, Thesis.score.is_(None)),
                 )
             )
             or 0
@@ -156,6 +166,7 @@ class StatsService:
 
         return {
             "open_theses": open_count,
+            "paused_theses": paused_count,
             "verdict": {
                 "BULLISH": verdict_map.get("BULLISH", 0),
                 "BEARISH": verdict_map.get("BEARISH", 0),
