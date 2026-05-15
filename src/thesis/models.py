@@ -190,7 +190,6 @@ class Catalyst(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     thesis_id: Mapped[int] = mapped_column(ForeignKey("theses.id", ondelete="CASCADE"), index=True)
     description: Mapped[str] = mapped_column(Text)
-    # DB column is expected_date (DateTime), NOT expected_by
     expected_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -222,6 +221,8 @@ class ThesisSnapshot(Base):
     recorded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Conviction timeline breakdown (added in 0012)
     score_breakdown: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # AI conviction score from ThesisReviewOutput.conviction_score (added in 0022)
+    conviction_score: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     thesis: Mapped[Thesis] = relationship(back_populates="snapshots")
 
@@ -242,7 +243,6 @@ class ThesisReview(Base):
         DateTime(timezone=True), server_default=func.now(), index=True
     )
     reviewed_price: Mapped[float | None] = mapped_column(Float, nullable=True)
-    # summary kept for backward compat with old code that sets it
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     thesis: Mapped[Thesis] = relationship(back_populates="reviews")
@@ -258,7 +258,6 @@ class ReviewRecommendation(Base):
     review_id: Mapped[int] = mapped_column(
         ForeignKey("thesis_reviews.id", ondelete="CASCADE"), index=True
     )
-    # Legacy field — kept for backward compat; new code uses structured fields below.
     content: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[RecommendationStatus] = mapped_column(
         SAEnum(RecommendationStatus, values_callable=_enum_values),
@@ -268,11 +267,7 @@ class ReviewRecommendation(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
-
-    # Structured fields added in 0013 — populated by _auto_apply_recommendations.
-    target_type: Mapped[str | None] = mapped_column(
-        String(32), nullable=True
-    )  # "assumption" | "catalyst"
+    target_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     target_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     target_description: Mapped[str | None] = mapped_column(Text, nullable=True)
     recommended_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -297,7 +292,6 @@ class DecisionLog(Base):
     decision_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
-
     price_at_decision: Mapped[float | None] = mapped_column(Float, nullable=True)
     thesis_score_at_decision: Mapped[float | None] = mapped_column(Float, nullable=True)
     thesis_health_score_at_decision: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -305,7 +299,6 @@ class DecisionLog(Base):
     brief_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     rationale: Mapped[str] = mapped_column(Text)
     review_horizon_days: Mapped[int] = mapped_column(Integer, default=30)
-
     outcome_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     outcome_pnl_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     outcome_evaluated_at: Mapped[datetime | None] = mapped_column(
@@ -314,8 +307,6 @@ class DecisionLog(Base):
     outcome_verdict: Mapped[OutcomeVerdict | None] = mapped_column(
         SAEnum(OutcomeVerdict, values_callable=_enum_values), nullable=True, index=True
     )
-
-    # AI lesson fields — written by DecisionService.persist_lesson() after ReplayAgent analysis
     key_lesson: Mapped[str | None] = mapped_column(Text, nullable=True)
     pattern_detected: Mapped[str | None] = mapped_column(String(100), nullable=True)
 

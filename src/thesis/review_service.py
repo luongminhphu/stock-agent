@@ -1,4 +1,5 @@
-"""Thesis review service — orchestrates AI review flow.
+"""
+Thesis review service — orchestrates AI review flow.
 
 Owner: thesis segment.
 This is the ONLY place that calls ThesisReviewAgent.
@@ -353,6 +354,7 @@ class ReviewService:
                 score=new_score,
                 verdict=review.verdict,
                 confidence=review.confidence,
+                conviction_score=output.conviction_score,
                 score_breakdown=json.dumps(breakdown, ensure_ascii=False),
                 recorded_at=review.reviewed_at,
             )
@@ -361,6 +363,7 @@ class ReviewService:
                 "review_service.snapshot_saved",
                 thesis_id=thesis.id,
                 score=new_score,
+                conviction_score=output.conviction_score,
                 breakdown=breakdown,
                 delta_capped=delta_capped,
             )

@@ -5,11 +5,11 @@ Owner: thesis segment.
 
 Distinct from DriftService (price-based):
     DriftService                → price vs entry_price
-    ConvictionDriftDetector     → conviction trend across ThesisReview.confidence
+    ConvictionDriftDetector     → conviction trend across ThesisSnapshot.conviction_score
 
 Detection patterns (evaluated in priority order):
-    1. SCORE_FLOOR       — current confidence < floor_threshold (absolute floor)
-    2. SUSTAINED_DECLINE — last N reviews strictly declining (monotone)
+    1. SCORE_FLOOR       — current conviction_score < floor_threshold (absolute floor)
+    2. SUSTAINED_DECLINE — last N snapshots strictly declining (monotone)
     3. CUMULATIVE_DROP   — drop from peak within window >= cumulative_drop_pct
 
 Cooldown:
@@ -18,7 +18,7 @@ Cooldown:
 
 Flow (called by scheduler every cycle during market hours):
     1. Load ACTIVE theses for user.
-    2. For each thesis: check cooldown → load confidence sequence → evaluate patterns.
+    2. For each thesis: check cooldown → load conviction_score sequence → evaluate patterns.
     3. Return list[ConvictionDriftSignal] — scheduler/bot drives action (AI review, notify).
 
 No AI calls. No state mutation. Pure detection.
@@ -34,7 +34,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.logging import get_logger
-from src.thesis.models import Thesis, ThesisReview, ThesisStatus
+from src.thesis.models import Thesis, ThesisReview, ThesisSnapshot, ThesisStatus
 
 logger = get_logger(__name__)
 
@@ -45,9 +45,9 @@ logger = get_logger(__name__)
 
 
 class DriftPattern(StrEnum):
-    SUSTAINED_DECLINE = "SUSTAINED_DECLINE"  # N consecutive reviews declining
+    SUSTAINED_DECLINE = "SUSTAINED_DECLINE"  # N consecutive snapshots declining
     CUMULATIVE_DROP = "CUMULATIVE_DROP"       # total drop from peak >= threshold
-    SCORE_FLOOR = "SCORE_FLOOR"              # current confidence < absolute floor
+    SCORE_FLOOR = "SCORE_FLOOR"              # current conviction_score < absolute floor
 
 
 @dataclass
@@ -61,7 +61,7 @@ class ConvictionDriftSignal:
     current_score: float
     reference_score: float    # peak score (CUMULATIVE_DROP) or first-of-sequence
     drop_pct: float           # (reference - current) / reference * 100
-    review_count: int         # number of reviews used in detection window
+    review_count: int         # number of snapshots used in detection window
     detected_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     @property
@@ -87,14 +87,14 @@ class ConvictionDriftSignal:
 
 
 class ConvictionDriftDetector:
-    """Detect conviction score decay patterns across thesis reviews.
+    """Detect conviction score decay patterns across thesis snapshots.
 
     Pure detection — no AI calls, no state mutation.
 
     Args:
         session:             AsyncSession for DB queries.
-        window_days:         Look-back window for reviews (default 30 days).
-        sustained_n:         Min consecutive declining reviews to trigger
+        window_days:         Look-back window for snapshots (default 30 days).
+        sustained_n:         Min consecutive declining snapshots to trigger
                              SUSTAINED_DECLINE (default 3).
         cumulative_drop_pct: Drop from peak (%) to trigger CUMULATIVE_DROP
                              (default 25.0).
@@ -226,13 +226,19 @@ class ConvictionDriftDetector:
         return list(result.scalars().all())
 
     async def _load_recent_scores(self, thesis_id: int) -> list[float]:
-        """Load ThesisReview.confidence sequence (oldest→newest) within window."""
+        """Load ThesisSnapshot.conviction_score sequence (oldest→newest) within window.
+
+        Uses conviction_score (AI thesis conviction, 0–1) instead of
+        ThesisReview.confidence (AI review certainty) — semantically correct source.
+        Snapshots without conviction_score (pre-0022) are excluded via IS NOT NULL.
+        """
         cutoff = datetime.now(UTC) - timedelta(days=self._window_days)
         stmt = (
-            select(ThesisReview.confidence)
-            .where(ThesisReview.thesis_id == thesis_id)
-            .where(ThesisReview.reviewed_at >= cutoff)
-            .order_by(ThesisReview.reviewed_at.asc())
+            select(ThesisSnapshot.conviction_score)
+            .where(ThesisSnapshot.thesis_id == thesis_id)
+            .where(ThesisSnapshot.recorded_at >= cutoff)
+            .where(ThesisSnapshot.conviction_score.is_not(None))
+            .order_by(ThesisSnapshot.recorded_at.asc())
         )
         result = await self._session.execute(stmt)
         return [float(row) for row in result.scalars().all()]
