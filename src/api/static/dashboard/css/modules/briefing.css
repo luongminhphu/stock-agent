@@ -1,0 +1,402 @@
+/* ─── Briefing: Tabs, Card & Body ────────────────────────────────────────────
+   Owner: modules/briefing
+   Imports: layout.css (variables), base/tokens.css
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* ── Tabs ────────────────────────────────────────────────────────────────── */
+.brief-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--line);
+  padding: 0 var(--panel-pad);
+  gap: 0;
+}
+
+.brief-tab {
+  padding: 9px 14px;
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  transition: color .15s, border-color .15s;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.brief-tab:hover { color: var(--text); }
+
+.brief-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* ── Tab Panels ──────────────────────────────────────────────────────────── */
+.brief-panel {
+  display: none;
+  padding: var(--panel-pad);
+}
+.brief-panel.active { display: block; }
+
+/* ── Snapshot cards (morning / eod) ─────────────────────────────────────── */
+.brief-card {
+  background: var(--surface);
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.brief-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.brief-card-title {
+  font-size: .8rem;
+  font-weight: 700;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.2;
+}
+
+.brief-card-body {
+  padding: 10px 14px 12px;
+  font-size: .82rem;
+  color: var(--text);
+  line-height: 1.55;
+}
+
+/* ── Sentiment badge ─────────────────────────────────────────────────────── */
+.sent-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: .7rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  line-height: 1.5;
+}
+
+.sent-risk-on   { background: rgba(109,170,69,.15);  color: #6daa45; }
+.sent-risk-off  { background: rgba(161,44,123,.15);  color: #d163a7; }
+.sent-mixed     { background: rgba(232,175,52,.15);  color: #e8af34; }
+.sent-uncertain { background: rgba(120,120,120,.15); color: var(--muted); }
+
+/* ── Headline & Summary ──────────────────────────────────────────────────── */
+.brief-headline {
+  font-size: .88rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.3;
+  margin-bottom: 6px;
+}
+
+.brief-summary {
+  font-size: .82rem;
+  color: var(--muted);
+  line-height: 1.55;
+  margin-bottom: 8px;
+}
+
+/* ── Key movers pills ────────────────────────────────────────────────────── */
+.brief-movers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+.mover-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border-radius: 9999px;
+  font-size: .75rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+.mover-pill.up   { background: rgba(109,170,69,.15);  color: #6daa45; }
+.mover-pill.down { background: rgba(161,44,123,.15);  color: #d163a7; }
+.mover-pill .chg { font-size: 0.7rem; opacity: .85; }
+
+/* ── Ticker summary table ────────────────────────────────────────────────── */
+.brief-ticker-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 6px;
+  font-size: .78rem;
+}
+
+.brief-ticker-table th {
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 4px 6px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+
+.brief-ticker-table td {
+  padding: 5px 6px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+  line-height: 1.35;
+}
+
+.brief-ticker-table tr:last-child td { border-bottom: none; }
+
+.brief-ticker-table .ticker-col {
+  font-weight: 700;
+  min-width: 48px;
+}
+
+.brief-ticker-table .pct-col {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  min-width: 52px;
+}
+
+.brief-ticker-table .reason-col {
+  color: var(--muted);
+  font-size: .74rem;
+  line-height: 1.4;
+}
+
+/* ── Action items ────────────────────────────────────────────────────────── */
+.brief-actions {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.brief-actions li {
+  font-size: .8rem;
+  color: var(--text);
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+  line-height: 1.45;
+}
+
+.brief-actions li:last-child { border-bottom: none; }
+
+/* ── Watchlist alerts ────────────────────────────────────────────────────── */
+.brief-alerts {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.brief-alerts li {
+  font-size: .78rem;
+  color: var(--muted);
+  padding: 3px 0;
+  border-bottom: 1px solid var(--line);
+}
+.brief-alerts li:last-child { border-bottom: none; }
+
+/* ── Section labels within brief body ───────────────────────────────────── */
+.brief-section-label {
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 10px 0 4px;
+}
+
+/* ── Empty brief state ───────────────────────────────────────────────────── */
+.brief-empty {
+  padding: 18px 14px;
+  font-size: .82rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* ── Scan text — inline raw string fallback ──────────────────────────────── */
+.scan-text { font-size: .82rem; line-height: 1.5; }
+.scan-text .up   { color: #6daa45; }
+.scan-text .down { color: #d163a7; }
+
+/* ── Generate Brief Controls ─────────────────────────────────────────────── */
+.brief-strip-header {
+  display: flex;
+  gap: 6px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* ── Brief review date row & staleness badge ─────────────────────────────── */
+.brief-date-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 1px;
+}
+
+.brief-age-badge {
+  font-size: 0.65rem;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.6;
+}
+.age-fresh  { background: rgba(109, 170, 69, 0.15);  color: var(--color-success, #6daa45); }
+.age-recent { background: rgba(79, 152, 163, 0.15);  color: var(--color-primary, #4f98a3); }
+.age-today  { background: rgba(232, 175, 52, 0.15);  color: var(--color-gold, #e8af34);    }
+.age-stale  { background: rgba(187, 101, 59, 0.15);  color: var(--color-warning, #bb653b); }
+
+/* ── Latest Scan Digest ──────────────────────────────────────────────────── */
+
+.scan-digest {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Meta row: timestamp · badges */
+.scan-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.scan-sep {
+  color: var(--line);
+  user-select: none;
+}
+
+.scan-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.scan-badge--signal {
+  background: rgba(79, 152, 163, 0.15);
+  color: var(--accent, #4f98a3);
+}
+
+.scan-badge--alert {
+  background: rgba(218, 113, 1, 0.15);
+  color: #da7101;
+}
+
+/* Top picks row */
+.scan-picks-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.scan-picks-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.scan-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Pill: mỗi mã là 1 chip */
+.scan-pick-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 11px;
+  border-radius: 9999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  line-height: 1.3;
+  /* default: neutral */
+  background: var(--surface-2);
+  border-color: var(--line);
+  color: var(--text);
+}
+
+/* Pill tăng — nền xanh */
+.scan-pick-pill:has(.up) {
+  background: rgba(109, 170, 69, 0.14);
+  border-color: rgba(109, 170, 69, 0.4);
+  color: #437a22;
+}
+
+/* Pill giảm — nền hồng/đỏ */
+.scan-pick-pill:has(.down) {
+  background: rgba(161, 44, 123, 0.12);
+  border-color: rgba(161, 44, 123, 0.35);
+  color: #a12c7b;
+}
+
+/* Dark mode */
+[data-theme="dark"] .scan-pick-pill:has(.up) {
+  background: rgba(109, 170, 69, 0.18);
+  border-color: rgba(109, 170, 69, 0.45);
+  color: #6daa45;
+}
+
+[data-theme="dark"] .scan-pick-pill:has(.down) {
+  background: rgba(209, 99, 167, 0.18);
+  border-color: rgba(209, 99, 167, 0.45);
+  color: #d163a7;
+}
+
+/* % bên trong pill kế thừa màu từ pill cha */
+.scan-pick-pill .up,
+.scan-pick-pill .down {
+  color: inherit;
+  font-weight: 700;
+}
+
+/* "+N more" overflow */
+.scan-pick-more {
+  font-size: 0.78rem;
+  padding: 4px 6px;
+  color: var(--muted);
+}
+
+/* Headline fallback */
+.scan-headline {
+  font-size: 0.82rem;
+  color: var(--text);
+  line-height: 1.45;
+}
