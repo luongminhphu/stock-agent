@@ -14,7 +14,7 @@ from discord import app_commands
 
 from src.ai.schemas import BriefOutput, MarketSentiment
 from src.bot.commands.base import BaseCog
-from src.briefing.formatter import format_eod_brief, format_morning_brief
+from src.briefing.formatter import build_brief_pages, format_eod_brief, format_morning_brief
 from src.briefing.service import BriefingService
 from src.platform.bootstrap import get_briefing_agent, get_pnl_service, get_quote_service
 from src.platform.db import get_session
@@ -39,6 +39,9 @@ _OUTCOME_LABEL = {
     "watching": "👀 Đang theo dõi",
     "skipped": "⏭ Skip hôm nay",
 }
+
+# Discord hard limit: 10 embeds per message
+_MAX_EMBEDS = 10
 
 
 class BriefFeedbackView(discord.ui.View):
@@ -144,31 +147,69 @@ class BriefingCog(BaseCog):
             )
             return
 
-        embed = build_brief_embed(brief_result.output, phase=phase)
+        embeds = build_brief_embeds(brief_result.output, phase=phase)
 
+        # Attach feedback view to the last embed (closest to user's eyes)
         if brief_result.snapshot_id is not None:
             view = BriefFeedbackView(
                 snapshot_id=brief_result.snapshot_id,
                 user_id=user_id,
             )
-            await interaction.followup.send(embed=embed, view=view, ephemeral=False)
+            await interaction.followup.send(
+                embeds=embeds[:_MAX_EMBEDS],
+                view=view,
+                ephemeral=False,
+            )
         else:
-            await interaction.followup.send(embed=embed, ephemeral=False)
+            await interaction.followup.send(
+                embeds=embeds[:_MAX_EMBEDS],
+                ephemeral=False,
+            )
 
 
-def build_brief_embed(brief: BriefOutput, phase: str) -> discord.Embed:
-    """Convert BriefOutput → Discord Embed.
+def build_brief_embeds(brief: BriefOutput, phase: str) -> list[discord.Embed]:
+    """Convert BriefOutput → list[discord.Embed], one embed per page.
 
-    Uses briefing.formatter for the text body, then wraps in Embed chrome.
+    Page 1 gets the title and accent colour.
+    Continuation pages get a minimal footer-only embed so Discord renders
+    them as a clean continuation rather than identical headers.
+
     Public — importable by scheduler and other bot adapters.
     """
     title = "\U0001f305 Morning Brief" if phase == "morning" else "\U0001f307 End-of-Day Brief"
     colour = _SENTIMENT_COLOUR.get(brief.sentiment, discord.Color.blurple())
-    formatted_text = format_morning_brief(brief) if phase == "morning" else format_eod_brief(brief)
-    embed = discord.Embed(
-        title=title,
-        description=formatted_text[:4096],
-        color=colour,
+
+    pages = build_brief_pages(
+        brief,
+        brief_type="Morning Brief" if phase == "morning" else "EOD Brief",
     )
-    embed.set_footer(text="stock-agent · AI-native")
-    return embed
+
+    embeds: list[discord.Embed] = []
+    for i, page in enumerate(pages):
+        if i == 0:
+            embed = discord.Embed(
+                title=title,
+                description=page,
+                color=colour,
+            )
+        else:
+            embed = discord.Embed(
+                description=page,
+                color=discord.Color.blurple(),
+            )
+        embed.set_footer(text=f"stock-agent \u00b7 AI-native" + (f" ({i + 1}/{len(pages)})" if len(pages) > 1 else ""))
+        embeds.append(embed)
+
+    return embeds
+
+
+# ---------------------------------------------------------------------------
+# Legacy single-embed builder — kept for scheduler backward compat
+# ---------------------------------------------------------------------------
+
+def build_brief_embed(brief: BriefOutput, phase: str) -> discord.Embed:
+    """Single-embed builder — kept for backward compatibility with scheduler.
+
+    Prefer build_brief_embeds() for new callers.
+    """
+    return build_brief_embeds(brief, phase=phase)[0]

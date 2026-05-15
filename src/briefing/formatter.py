@@ -43,8 +43,9 @@ _PRIORITY_CONFIG: dict[ActionPriority, tuple[str, str, bool, bool]] = {
     ActionPriority.SKIP_TODAY: ("⚪",  "Bỏ qua hôm nay",     False, False),
 }
 
-_DISCORD_CHAR_LIMIT = 4096
-_DEFAULT_CHAR_LIMIT = _DISCORD_CHAR_LIMIT - 96
+# Safe limit per Discord embed description (Discord max is 4096)
+_DISCORD_PAGE_LIMIT = 4000
+_DEFAULT_CHAR_LIMIT = _DISCORD_PAGE_LIMIT - 96
 
 
 def _inline(text: str) -> str:
@@ -98,7 +99,7 @@ def _build_sections(brief: BriefOutput, brief_type: str) -> list[list[str]]:
     label = _SENTIMENT_LABEL.get(brief.sentiment, str(brief.sentiment))
 
     header: list[str] = [
-        f"**📈 {brief_type.title()}** \u2014 {emoji} `{label}`",
+        f"**\ud83d\udcc8 {brief_type.title()}** \u2014 {emoji} `{label}`",
         "",
         f"**{brief.headline}**",
         "",
@@ -107,12 +108,12 @@ def _build_sections(brief: BriefOutput, brief_type: str) -> list[list[str]]:
 
     if brief.key_movers:
         movers_inline = "  \u2022  ".join(f"**{m}**" for m in brief.key_movers)
-        header += ["", f"🔥 {movers_inline}"]
+        header += ["", f"\ud83d\udd25 {movers_inline}"]
 
     sections: list[list[str]] = [header]
 
     if brief.watchlist_alerts:
-        block: list[str] = ["", "**👁️ Watchlist**"]
+        block: list[str] = ["", "**\ud83d\udc41\ufe0f Watchlist**"]
         for alert in brief.watchlist_alerts:
             block.append(f"\u2022 {_inline(alert)}")
         sections.append(block)
@@ -122,15 +123,15 @@ def _build_sections(brief: BriefOutput, brief_type: str) -> list[list[str]]:
         if action_lines:
             sections.append(action_lines)
     elif brief.action_items:
-        block = ["", "**✅ Actions**"]
+        block = ["", "**\u2705 Actions**"]
         for item in brief.action_items:
             block.append(f"\u2022 {_inline(item)}")
         sections.append(block)
 
     if brief.ticker_summaries:
-        block = ["", "**📊 Ticker**"]
+        block = ["", "**\ud83d\udcca Ticker**"]
         for ts in brief.ticker_summaries:
-            signal_emoji = {"bullish": "🟢", "bearish": "🔴", "neutral": "🟡"}.get(
+            signal_emoji = {"bullish": "\ud83d\udfe2", "bearish": "\ud83d�", "neutral": "\ud83d�"}.get(
                 getattr(ts, "signal", "neutral"), "⚪"
             )
             price = getattr(ts, "price", 0.0)
@@ -146,7 +147,7 @@ def _build_sections(brief: BriefOutput, brief_type: str) -> list[list[str]]:
         sections.append(block)
 
     if brief.portfolio_summary:
-        block = ["", "**💼 Portfolio**"]
+        block = ["", "**\ud83d� Portfolio**"]
         for item in brief.portfolio_summary:
             block.append(f"\u2022 {_inline(item)}")
         sections.append(block)
@@ -154,7 +155,62 @@ def _build_sections(brief: BriefOutput, brief_type: str) -> list[list[str]]:
     return sections
 
 
-def format_brief(brief: BriefOutput, brief_type: str = "brief", char_limit: int = _DEFAULT_CHAR_LIMIT) -> str:
+def build_brief_pages(
+    brief: BriefOutput,
+    brief_type: str = "brief",
+    page_limit: int = _DISCORD_PAGE_LIMIT,
+) -> list[str]:
+    """Pack brief sections into Discord-safe pages (each ≤ page_limit chars).
+
+    Sections are never dropped — if a section overflows the current page it
+    starts a new one.  Each section that is itself longer than page_limit is
+    hard-split at page_limit as a last resort.
+
+    Returns a list of at least one non-empty string.
+    """
+    sections = _build_sections(brief, brief_type)
+    pages: list[str] = []
+    current_lines: list[str] = []
+
+    for section in sections:
+        section_text = "\n".join(section)
+
+        # Section alone exceeds limit — hard-split as last resort
+        if len(section_text) > page_limit:
+            # Flush current page first
+            if current_lines:
+                pages.append("\n".join(current_lines))
+                current_lines = []
+            # Chunk the oversized section
+            while section_text:
+                pages.append(section_text[:page_limit])
+                section_text = section_text[page_limit:]
+            continue
+
+        candidate = "\n".join(current_lines + section)
+        if current_lines and len(candidate) > page_limit:
+            # Flush and start fresh page with this section
+            pages.append("\n".join(current_lines))
+            current_lines = list(section)
+        else:
+            current_lines += section
+
+    if current_lines:
+        pages.append("\n".join(current_lines))
+
+    return pages or [""]
+
+
+def format_brief(
+    brief: BriefOutput,
+    brief_type: str = "brief",
+    char_limit: int = _DEFAULT_CHAR_LIMIT,
+) -> str:
+    """Single-string formatter — kept for backward compat (API/dashboard callers).
+
+    Sections that fit within char_limit are included; excess sections are noted.
+    For multi-embed Discord output use build_brief_pages() instead.
+    """
     sections = _build_sections(brief, brief_type)
 
     assembled: list[str] = []
