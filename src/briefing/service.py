@@ -44,6 +44,14 @@ Thesis Judge integration (Wave 2):
   are appended to market_context so the brief narrative can reference structured
   verdict data rather than inferring thesis health from raw text.
   Non-blocking: any failure returns "" and brief is unaffected.
+
+Last-review continuity (P4):
+  _build_thesis_judge_block() now calls _fetch_last_review_summary() for each
+  thesis before building the trigger dict. When a ThesisReview row exists,
+  a compact summary (verdict, confidence, action, key risks, date) is injected
+  into signal_context["last_review_summary"] so ThesisJudgeAgent always knows
+  what was said last time — preventing contradictory verdicts without reasoning.
+  _fetch_last_review_summary() is non-blocking: DB errors return None silently.
 """
 
 from __future__ import annotations
@@ -472,12 +480,87 @@ class BriefingService:
             return base + judge_block
         return base
 
+    async def _fetch_last_review_summary(self, thesis_id: int | str) -> str | None:
+        """Fetch and format the latest ThesisReview for a thesis as a compact string.
+
+        Used by _build_thesis_judge_block to inject review continuity into
+        signal_context["last_review_summary"] before each Judge run, so the
+        Judge knows what verdict was given last time and can anchor its delta.
+
+        Returns None when:
+        - session is None
+        - no ThesisReview row exists for this thesis
+        - thesis_id cannot be cast to int
+        - any DB error occurs (non-blocking)
+
+        Owner: briefing (adapter). Reads thesis segment DB via ThesisRepository.
+        """
+        if self._session is None:
+            return None
+        try:
+            # Lazy import keeps briefing decoupled from thesis at module level.
+            from src.thesis.repository import ThesisRepository
+
+            repo = ThesisRepository(self._session)
+            thesis_id_int = int(thesis_id)
+            review = await repo.get_latest_review(thesis_id_int)
+            if review is None:
+                return None
+
+            # Format as a compact anchor for the Judge prompt.
+            reviewed_at = (
+                review.reviewed_at.strftime("%d/%m/%Y")
+                if review.reviewed_at
+                else "?"
+            )
+            verdict = getattr(review, "verdict", "?")
+            confidence = getattr(review, "confidence", None)
+            confidence_str = f"{confidence:.2f}" if confidence is not None else "?"
+            reasoning_raw = getattr(review, "reasoning", "") or ""
+            reasoning_snippet = reasoning_raw[:120].rstrip()
+
+            # risk_signals is stored as JSON string in the model
+            risk_signals_raw = getattr(review, "risk_signals", None)
+            risk_signals: list[str] = []
+            if risk_signals_raw:
+                try:
+                    parsed = json.loads(risk_signals_raw)
+                    if isinstance(parsed, list):
+                        risk_signals = [str(r) for r in parsed[:3]]
+                except Exception:
+                    pass
+
+            lines = [
+                f"Review gần nhất ({reviewed_at}): verdict={verdict}, confidence={confidence_str}",
+            ]
+            if reasoning_snippet:
+                lines.append(f"  reasoning: {reasoning_snippet}")
+            if risk_signals:
+                lines.append(f"  risk_signals: {'; '.join(risk_signals)}")
+            lines.append(
+                "⚠️ Nếu verdict thay đổi so với review này, phải giải thích rõ trigger trong reasoning."
+            )
+            return "\n".join(lines)
+        except Exception as exc:
+            logger.debug(
+                "briefing.fetch_last_review_summary_failed",
+                thesis_id=thesis_id,
+                error=str(exc),
+            )
+            return None
+
     async def _build_thesis_judge_block(self, user_id: str, quotes: dict) -> str:
         """Run ThesisJudgeAgent against active theses and format non-ON_TRACK verdicts.
 
         Non-blocking: returns "" if agent not injected, thesis_service not injected,
         no active theses, or any error occurs.
         Only emits verdicts with verdict != ON_TRACK to avoid noise in brief context.
+
+        P4 — last-review continuity:
+          For each thesis, _fetch_last_review_summary() is called and the result
+          is injected into signal_context["last_review_summary"]. This anchors the
+          Judge verdict to the previous review so it can detect real deltas rather
+          than generating contradictory verdicts in isolation.
 
         Owner: briefing (adapter). Judge logic stays in ai segment.
         Cap: max 5 theses per run, max 2 challenged_assumptions and 2 new_risks per
@@ -515,8 +598,14 @@ class BriefingService:
                             f"change_pct={change_pct:+.2f}%"
                         )
 
+                # P4: inject last review summary for verdict continuity
+                thesis_id = getattr(t, "id", t.ticker)
+                last_review_summary = await self._fetch_last_review_summary(thesis_id)
+                if last_review_summary:
+                    signal_context["last_review_summary"] = last_review_summary
+
                 triggers.append({
-                    "thesis_id": str(getattr(t, "id", t.ticker)),
+                    "thesis_id": str(thesis_id),
                     "ticker": t.ticker,
                     "thesis_title": getattr(t, "title", ""),
                     "thesis_summary": getattr(t, "summary", ""),
