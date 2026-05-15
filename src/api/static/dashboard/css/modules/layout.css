@@ -1,0 +1,959 @@
+/* layout.css — Wave 1 redesign: command-strip + workspace-grid + action-rail
+   Art direction: AI-native investor workspace → focused, dense, decision-first
+   Palette: dark blue surfaces (--bg/--surface), accent --brand sky-blue
+   Density: dense — data product, not marketing page
+
+   TOKEN MAP (from variables.css — single source of truth):
+     surface bg  → var(--bg) / var(--surface) / var(--surface-2) / var(--surface-3)
+     text        → var(--text)          #ecf3ff
+     muted       → var(--muted)         #96a7c6
+     faint       → var(--faint)         #61718f
+     border      → var(--line)          rgba(148,163,184,.18)
+     border+     → var(--line-strong)   rgba(148,163,184,.28)
+     accent      → var(--brand)         #7dd3fc
+     accent+     → var(--brand-strong)  #38bdf8
+     success     → var(--success)       #4ade80
+     warning     → var(--warning)       #fbbf24
+     danger      → var(--danger)        #f87171
+     purple      → var(--violet)        #a78bfa
+
+   Breakpoints:
+     ≥1200px  — full 2-col workspace + sticky rail
+     900–1199 — narrower rail (clamp)
+     600–899  — stack workspace, static rail
+     <600     — compact strip, hide brand name
+
+   FIX LOG (2026-05-04):
+     - toolbar flex-wrap: nowrap → Reload + "+" Thesis mới never wrap to 2nd line
+     - toolbar flex-shrink: 0 → toolbar block never collapses
+     - command-strip: fixed 5-col template (repeat(4,1fr) 1.5fr) instead of auto-fill
+       → signal-card--wide always spans col 5, no mis-alignment
+     - workspace-grid: minmax(0,1fr) instead of bare 1fr
+       → panel-main can't overflow the grid track and push the rail out
+     - panel-main: min-width:0 + overflow:hidden guard
+     - action-rail: min-width:0 guard
+     - .field-compact select: full dark-theme styling → fix bể khung statusFilter
+
+   FIX LOG (2026-05-05):
+     - --rail-w: clamp max 360px → 420px — rail rộng hơn ở 1920px+
+     - --page-px: clamp max 28px → 48px — gutter thoáng hơn ở màn lớn
+     - .workspace-grid: thêm max-width 1680px + margin-inline auto
+       → content không dải vô hạn trên 24-inch (1920–2560px)
+     - .command-strip: thêm max-width 1680px + margin-inline auto
+       → strip canh giữa đồng bộ với workspace
+
+   FIX LOG (2026-05-06a):
+     - portfolio-layer / watchlist-layer / validation-layer: thêm max-width 1680px
+       + margin-inline auto → bảng data không dải vô hạn trên 1920px+
+     - brief-context-strip: thêm max-width 1680px + margin-inline auto
+       + padding-inline var(--page-px) → brief text canh giữa đồng bộ
+     - command-strip: replace repeat(4,1fr) 1.5fr →
+       repeat(4, minmax(0,260px)) minmax(0,360px) + justify-content:center
+       → KPI cell có trần kích thước, không dãn vô hạn ở 1920px+
+     - kpi-strip (6 cards): thêm variant 6-col với trần nhỏ hơn
+
+   FIX LOG (2026-05-06b):
+     - .signal-card: thêm align-self:stretch + justify-content:flex-start
+       → Portfolio Value / Unrealized P&L không bị lệch xuống thấp hơn
+       các card còn lại khi content cao hơn (số VNĐ + sub-text)
+     - .brief-context-strip: thêm box-sizing:border-box
+       → padding-inline không overflow max-width, brief text canh lề
+       đồng bộ với watchlist-layer / workspace-grid
+
+   FIX LOG (2026-05-08):
+     - .signal-card--wide .signal-sub: white-space:normal + overflow:visible
+       + text-overflow:unset + line-height:1.5
+       → scan summary (DGC; NVL; PC1...) no longer clipped to 1 line
+
+   FIX LOG (2026-05-09):
+     - Added: .cluster, .cluster-label, .cluster-badge
+       → Cluster A/B/C group wrappers for index.html reorder
+     - Added: .scan-result-inline
+       → inline scan chip next to watchlist Scan now button
+     - Added: .dec-panel-header
+       → header row for Cluster C Decision Log & AI Lessons panel
+
+   FIX LOG (2026-05-09b):
+     - Added: .cluster inner overrides
+       → prevent double padding/margin on .watchlist-layer, .portfolio-layer,
+         .workspace-grid, .validation-layer, .lb-strip when nested in .cluster
+
+   FIX LOG (2026-05-09c):
+     - .validation-layer: add padding-inline + box-sizing guard
+       → backtesting panel won't bleed to viewport edge if ever used outside .cluster
+     - .dec-panel-header: replace hardcoded 18px/22px with var(--panel-pad) token
+       → consistent visual rhythm with all other .panel-header blocks
+     - .list max-height: 300px → clamp(220px, 30vh, 300px)
+       → avoids over-tall list on short-viewport mobile
+
+   FIX LOG (2026-05-12a):
+     - .cluster inner overrides: add .decision-layer to same reset group as
+       .validation-layer + .lb-strip → decision panel aligns with all other
+       full-width panels inside cluster
+     - .cluster .validation-layer / .lb-strip: add width:100%
+
+   FIX LOG (2026-05-12b):
+     - .watchlist-layer / .portfolio-layer: replace margin-based geometry
+       (margin: 0 var(--page-px); width: calc(100% - px*2)) with
+       padding-inline: var(--page-px) + box-sizing: border-box + width: 100%
+       → same contract as validation-layer / decision-layer / lb-strip
+       → eliminates double-inset when nested inside .cluster
+     - .cluster .watchlist-layer / .cluster .portfolio-layer: now only need
+       padding-inline: 0 override (margin + width already 0/100% in base)
+
+   FIX LOG (2026-05-13):
+     - .field-compact select: height 34px → 36px, border-radius 7px → 9px
+       → đồng nhất với .icon-text-btn và .primary-btn trong toolbar
+
+   FIX LOG (2026-05-14):
+     - Added: .tier-bar + .tier-pill + responsive rules
+       → tier breakdown A/B/C/D pill bar below KPI strip
+       → responsive: wraps on <600px, hides gracefully when empty
+*/
+
+/* ── SKIP LINK ──────────────────────────────────────────────────────────────── */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 16px;
+  padding: 8px 16px;
+  background: var(--brand-strong);
+  color: var(--bg);
+  border-radius: 0 0 8px 8px;
+  font-size: .85rem;
+  font-weight: 600;
+  z-index: 9999;
+  transition: top .15s;
+  text-decoration: none;
+}
+.skip-link:focus { top: 0; }
+
+/* ── CSS CUSTOM PROPERTIES (layout-scoped) ─────────────────────────────────── */
+:root {
+  --topbar-h:      52px;
+  --strip-h:       56px;
+  --rail-w:        clamp(280px, 22vw, 420px);
+  --page-px:       clamp(16px, 3vw, 48px);
+  --workspace-gap: 16px;
+  --layer-gap:     16px;
+  --panel-pad:     clamp(14px, 2vw, 20px);
+  --content-max:   1680px;
+}
+
+/* ── SHELL ──────────────────────────────────────────────────────────────────── */
+.shell {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── TOPBAR ─────────────────────────────────────────────────────────────────── */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 var(--page-px);
+  height: var(--topbar-h);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  overflow: visible;
+}
+
+.brand-block {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.brand-logo {
+  width: 28px;
+  height: 28px;
+  color: var(--brand);
+  flex-shrink: 0;
+}
+
+.brand-name {
+  font-size: .95rem;
+  font-weight: 700;
+  letter-spacing: -.02em;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* ── TOOLBAR: "LỌC TRẠNG THÁI" SELECT ─────────────────────────────────────── */
+.field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+}
+
+.field > span:not(.sr-only) {
+  font-size: .72rem;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.field select,
+.field-compact select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+
+  height: 36px;
+  padding: 0 32px 0 12px;
+  background-color: rgba(148, 163, 184, 0.07);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2396a7c6' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+
+  border: 1px solid var(--line);
+  border-radius: 9px;
+
+  font-size: .82rem;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--text);
+
+  cursor: pointer;
+  flex-shrink: 0;
+  min-width: 120px;
+  outline: none;
+
+  transition: background-color .18s, border-color .18s, color .18s;
+}
+
+.field select:hover,
+.field-compact select:hover {
+  background-color: rgba(148, 163, 184, 0.12);
+  border-color: var(--line-strong);
+}
+
+.field select:focus,
+.field-compact select:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.18);
+}
+
+.field select option,
+.field-compact select option {
+  background: #1a2436;
+  color: var(--text);
+}
+
+/* ── ICON BUTTON ────────────────────────────────────────────────────────────── */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  height: 34px;
+  background: rgba(148, 163, 184, 0.07);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font-size: .82rem;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background .18s, color .18s, border-color .18s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.icon-btn:hover {
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+.icon-btn:active {
+  background: rgba(148, 163, 184, 0.07);
+}
+
+/* ── COMMAND STRIP (KPI strip) ─────────────────────────────────────────────── */
+.command-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 260px)) minmax(0, 360px);
+  justify-content: center;
+  gap: 1px;
+  background: var(--line);
+  border-bottom: 1px solid var(--line);
+  container-type: inline-size;
+  max-width: var(--content-max);
+  margin-inline: auto;
+  width: 100%;
+}
+
+.command-strip.kpi-strip {
+  grid-template-columns: repeat(5, minmax(0, 220px)) minmax(0, 340px);
+}
+
+.signal-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 13px 20px 14px;
+  background: var(--surface);
+  transition: background .15s;
+  min-width: 0;
+  overflow: hidden;
+  align-self: stretch;
+  justify-content: flex-start;
+}
+.signal-card:hover { background: var(--surface-2); }
+
+.signal-label {
+  font-size: .7rem;
+  font-weight: 600;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.signal-value {
+  font-size: clamp(1.25rem, 1rem + 0.8vw, 1.6rem);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  line-height: 1.1;
+}
+
+.signal-sub {
+  font-size: .72rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.signal-card--wide .signal-sub {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  line-height: 1.5;
+}
+
+.signal-card--wide { grid-column: span 1; }
+
+.signal-card--portfolio .signal-value,
+.signal-card--pnl       .signal-value { font-size: clamp(1rem, 0.85rem + 0.5vw, 1.3rem); }
+
+.signal-card--risk .signal-value { color: var(--warning); }
+
+/* ── TIER BREAKDOWN BAR ─────────────────────────────────────────────────────── */
+/*
+   Pill bar hiển thị phân bổ tier thesis A/B/C/D.
+   - max-width + margin-inline auto → đồng bộ với command-strip / watchlist-layer
+   - flex-wrap: wrap → trên mobile tự xuống dòng thay vì overflow
+   - gap nhỏ → compact, không choán không gian
+   - .tier-pill dùng data-tier attribute để color-code từng tier
+*/
+.tier-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 8px var(--page-px);
+  max-width: var(--content-max);
+  margin-inline: auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.tier-bar.hidden {
+  display: none;
+}
+
+.tier-bar__label {
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+
+.tier-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px 3px 8px;
+  border-radius: 999px;
+  font-size: .72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  transition: opacity .15s;
+  cursor: default;
+}
+
+.tier-pill:hover { opacity: .8; }
+
+.tier-pill__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  font-size: .62rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  flex-shrink: 0;
+}
+
+.tier-pill__count {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tier A — success green */
+.tier-pill[data-tier="A"] {
+  background: rgba(74, 222, 128, 0.10);
+  color: var(--success);
+  border-color: rgba(74, 222, 128, 0.22);
+}
+.tier-pill[data-tier="A"] .tier-pill__badge {
+  background: rgba(74, 222, 128, 0.20);
+  color: var(--success);
+}
+
+/* Tier B — brand sky */
+.tier-pill[data-tier="B"] {
+  background: rgba(125, 211, 252, 0.10);
+  color: var(--brand);
+  border-color: rgba(125, 211, 252, 0.22);
+}
+.tier-pill[data-tier="B"] .tier-pill__badge {
+  background: rgba(125, 211, 252, 0.20);
+  color: var(--brand);
+}
+
+/* Tier C — warning yellow */
+.tier-pill[data-tier="C"] {
+  background: rgba(251, 191, 36, 0.10);
+  color: var(--warning);
+  border-color: rgba(251, 191, 36, 0.22);
+}
+.tier-pill[data-tier="C"] .tier-pill__badge {
+  background: rgba(251, 191, 36, 0.18);
+  color: var(--warning);
+}
+
+/* Tier D — danger red */
+.tier-pill[data-tier="D"] {
+  background: rgba(248, 113, 113, 0.10);
+  color: var(--danger);
+  border-color: rgba(248, 113, 113, 0.22);
+}
+.tier-pill[data-tier="D"] .tier-pill__badge {
+  background: rgba(248, 113, 113, 0.18);
+  color: var(--danger);
+}
+
+/* Cluster override — tier-bar inherits cluster padding-inline, no double indent */
+.cluster .tier-bar {
+  padding-inline: 0;
+  max-width: 100%;
+}
+
+/* Responsive: on mobile pills are already wrap-safe; just tighten gap */
+@media (max-width: 600px) {
+  .tier-bar {
+    gap: 5px 8px;
+    padding: 6px var(--page-px);
+  }
+  .tier-pill {
+    font-size: .68rem;
+    padding: 2px 8px 2px 6px;
+  }
+}
+
+/* ── BRIEF CONTEXT STRIP ────────────────────────────────────────────────────── */
+.brief-context-strip {
+  max-width: var(--content-max);
+  margin-inline: auto;
+  width: 100%;
+  padding-inline: var(--page-px);
+  box-sizing: border-box;
+}
+
+/* ── WORKSPACE GRID ─────────────────────────────────────────────────────────── */
+.workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--rail-w);
+  gap: var(--workspace-gap);
+  padding: 0 var(--page-px);
+  max-width: var(--content-max);
+  margin-inline: auto;
+  width: 100%;
+}
+
+/* ── PANEL: generic glass card ──────────────────────────────────────────────── */
+.panel {
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.panel.glass {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+.panel-main {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px var(--panel-pad) 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.split-header {
+  align-items: center;
+}
+
+.panel-header .eyebrow {
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.panel-header h2 {
+  font-size: .95rem;
+  font-weight: 700;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.panel-hint {
+  font-size: .72rem;
+  color: var(--muted);
+  line-height: 1.5;
+  max-width: 42ch;
+  text-align: right;
+}
+
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* ── ACTION RAIL ────────────────────────────────────────────────────────────── */
+.action-rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--workspace-gap);
+  min-width: 0;
+}
+
+.action-panel {
+  flex: 0 0 auto;
+}
+
+/* ── PORTFOLIO LAYER ────────────────────────────────────────────────────────── */
+.portfolio-layer {
+  padding-inline: var(--page-px);
+  box-sizing: border-box;
+  width: 100%;
+  max-width: var(--content-max);
+  margin-inline: auto;
+}
+
+/* ── WATCHLIST LAYER ────────────────────────────────────────────────────────── */
+.watchlist-layer {
+  padding-inline: var(--page-px);
+  box-sizing: border-box;
+  width: 100%;
+  max-width: var(--content-max);
+  margin-inline: auto;
+}
+
+/* ── BACKTESTING / VALIDATION LAYER ────────────────────────────────────────── */
+.validation-layer {
+  max-width: var(--content-max);
+  margin-inline: auto;
+  padding-inline: var(--page-px);
+  box-sizing: border-box;
+  width: 100%;
+}
+
+/* ── DETAIL SHELL ───────────────────────────────────────────────────────────── */
+.detail-shell {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--panel-pad);
+}
+
+.empty-detail {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  max-height: 200px;
+  overflow: hidden;
+}
+
+.empty-detail-copy {
+  text-align: center;
+  padding: 24px;
+}
+
+.empty-detail-copy h3 {
+  font-size: .95rem;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+
+.empty-detail-copy p {
+  font-size: .8rem;
+  color: var(--muted);
+  max-width: 34ch;
+  margin: 0 auto;
+  line-height: 1.5;
+}
+
+/* ── SNAPSHOT GRID ──────────────────────────────────────────────────────────── */
+.snapshot-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.snapshot-card {
+  padding: 12px var(--panel-pad);
+  border-bottom: 1px solid var(--line);
+}
+.snapshot-card:last-child { border-bottom: none; }
+
+.snapshot-label {
+  display: block;
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+/* ── ERROR / LOADING STATES ─────────────────────────────────────────────────── */
+.loading-text {
+  padding: 16px;
+  color: var(--muted);
+  font-size: .82rem;
+  text-align: center;
+}
+
+.error-text {
+  padding: 16px;
+  color: var(--danger);
+  font-size: .82rem;
+}
+
+/* ── FOOTER ─────────────────────────────────────────────────────────────────── */
+.footer-note {
+  padding: 12px var(--page-px);
+  font-size: .7rem;
+  color: var(--faint);
+  border-top: 1px solid var(--line);
+  text-align: center;
+  margin-top: auto;
+}
+
+.footer-note code {
+  background: rgba(148,163,184,.08);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: .68rem;
+}
+
+/* ── DATA TABLE (shared across modules) ─────────────────────────────────────── */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .82rem;
+}
+
+.data-table thead th {
+  padding: 8px 12px;
+  text-align: left;
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.data-table tbody td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.data-table tbody tr:hover td {
+  background: rgba(148,163,184,.04);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── LIST (inside action panels) ────────────────────────────────────────────── */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow-y: auto;
+  max-height: clamp(220px, 30vh, 300px);
+}
+
+.list-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px var(--panel-pad);
+  border-bottom: 1px solid var(--line);
+  font-size: .82rem;
+  transition: background .12s;
+}
+.list-item:last-child { border-bottom: none; }
+.list-item:hover { background: rgba(148,163,184,.04); }
+
+.list-ticker {
+  font-weight: 700;
+  color: var(--brand);
+  font-size: .82rem;
+  min-width: 40px;
+  flex-shrink: 0;
+}
+
+.list-desc {
+  flex: 1;
+  color: var(--muted);
+  font-size: .78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list-meta {
+  font-size: .72rem;
+  color: var(--faint);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* ── RESPONSIVE ─────────────────────────────────────────────────────────────── */
+@media (max-width: 1199px) {
+  .workspace-grid {
+    grid-template-columns: minmax(0, 1fr) clamp(240px, 28vw, 320px);
+  }
+}
+
+@media (max-width: 899px) {
+  .workspace-grid {
+    grid-template-columns: 1fr;
+  }
+  .action-rail {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  :root {
+    --page-px: 14px;
+    --workspace-gap: 10px;
+  }
+  .command-strip,
+  .command-strip.kpi-strip {
+    grid-template-columns: 1fr 1fr;
+    justify-content: stretch;
+  }
+  .signal-card { padding: 11px 14px; }
+  .signal-card--wide { grid-column: span 2; }
+  .brand-name { display: none; }
+  .detail-shell.empty-detail { max-height: 120px; }
+  .data-table { font-size: .8rem; }
+  .toolbar { gap: 6px; }
+  .field select,
+  .field-compact select {
+    min-width: 90px;
+    font-size: .78rem;
+  }
+}
+
+/* ── Cluster groups ─────────────────────────────────────────────────────────── */
+.cluster {
+  display: flex;
+  flex-direction: column;
+  gap: var(--layer-gap, 18px);
+  margin-bottom: 32px;
+  padding-inline: var(--page-px);
+}
+
+.cluster .command-strip,
+.cluster .brief-context-strip {
+  padding-inline: 0;
+  margin-inline: 0;
+  max-width: 100%;
+  width: 100%;
+}
+
+.cluster-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0 6px;
+  border-bottom: 1px solid var(--line, rgba(148,163,184,.18));
+  font-size: .7rem;
+  font-weight: 600;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--muted, #96a7c6);
+  margin-bottom: 4px;
+}
+
+.cluster-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  background: var(--brand, #7dd3fc);
+  color: var(--bg, #0d1726);
+  font-size: .66rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  flex-shrink: 0;
+}
+
+/* ── Watchlist scan result inline ───────────────────────────────────────────── */
+.scan-result-inline {
+  display: inline-flex;
+  align-items: center;
+  font-size: .76rem;
+  color: var(--muted, #96a7c6);
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(148,163,184,.06);
+  border: 1px solid var(--line, rgba(148,163,184,.18));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
+  transition: opacity .2s;
+}
+.scan-result-inline.hidden { display: none; }
+
+/* ── Decision panel header ──────────────────────────────────────────────────── */
+.dec-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px var(--panel-pad) 12px;
+  border-bottom: 1px solid var(--line, rgba(148,163,184,.12));
+  flex-wrap: wrap;
+}
+.dec-panel-header .eyebrow {
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--muted, #96a7c6);
+  margin-bottom: 4px;
+}
+.dec-panel-header h2 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0;
+  line-height: 1.25;
+  color: var(--text, #ecf3ff);
+}
+
+/* ── Cluster inner overrides ────────────────────────────────────────────────── */
+.cluster .watchlist-layer,
+.cluster .portfolio-layer {
+  padding-inline: 0;
+  margin-inline: 0;
+  max-width: 100%;
+}
+
+.cluster .workspace-grid {
+  padding-inline: 0;
+}
+
+.cluster .validation-layer,
+.cluster .lb-strip,
+.cluster .decision-layer {
+  margin-inline: 0;
+  max-width: 100%;
+  width: 100%;
+  padding-inline: 0;
+}
+
+/* ── Responsive: cluster + dec-panel-header on mobile ───────────────────────── */
+@media (max-width: 600px) {
+  .cluster { padding-inline: 10px; gap: 14px; margin-bottom: 24px; }
+  .cluster-label { font-size: .65rem; }
+  .dec-panel-header { padding: 12px 14px 10px; flex-direction: column; gap: 10px; }
+  .scan-result-inline { max-width: 100%; }
+}
