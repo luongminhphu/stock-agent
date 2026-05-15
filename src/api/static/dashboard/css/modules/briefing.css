@@ -1,74 +1,91 @@
-/* ─── Briefing: Tabs, Card & Body ────────────────────────────────────────────
-   Owner: modules/briefing
-   Imports: layout.css (variables), base/tokens.css
+/* ─── Briefing module ────────────────────────────────────────────────────────────
+   Owner  : modules/briefing
+   Tokens : var(--bg) var(--surface) var(--surface-2) var(--surface-3)
+            var(--text) var(--muted) var(--faint)
+            var(--line) var(--line-strong)
+            var(--brand) var(--brand-strong)
+            var(--success) var(--warning) var(--danger) var(--violet)
+            (all defined in base/variables.css)
+   Rule   : ZERO hardcoded hex for colour — every colour goes through a token.
+            rgba() only allowed for alpha-blended surfaces using token RGB values.
    ─────────────────────────────────────────────────────────────────────────── */
 
-/* ── Tab bar (brief-tab-bar wrapper + brief-tab buttons) ─────────────────── */
-.brief-tab-bar {
-  display: flex;
-  gap: 4px;
-  padding: 10px var(--panel-pad) 0;
-  border-bottom: 1px solid var(--line);
-}
+/* ── up/down helpers (used everywhere in this file and scan text) ────────── */
+/* success token (#4ade80 sky-green) for up; danger (#f87171) for down        */
+.up   { color: var(--success); }
+.down { color: var(--danger);  }
 
+/* ── hidden utility ─────────────────────────────────────────────────────────── */
+.hidden { display: none !important; }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   TAB BAR
+─────────────────────────────────────────────────────────────────────────── */
+
+.brief-tab-bar,
 .brief-tabs {
   display: flex;
-  border-bottom: 1px solid var(--line);
+  align-items: flex-end;
+  gap: 2px;
   padding: 0 var(--panel-pad);
-  gap: 0;
+  border-bottom: 1px solid var(--line);
 }
 
 .brief-tab {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 13px;
+  padding: 9px 14px;
   font-size: .78rem;
   font-weight: 600;
   color: var(--muted);
+  background: none;
   border: none;
   border-bottom: 2px solid transparent;
   cursor: pointer;
-  background: none;
-  transition: color .15s, border-color .15s;
   line-height: 1;
   white-space: nowrap;
+  transition: color .15s, border-color .15s;
   border-radius: 4px 4px 0 0;
 }
 
 .brief-tab:hover { color: var(--text); }
 
 .brief-tab.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
+  color: var(--brand);
+  border-bottom-color: var(--brand);
 }
 
-/* ── Tab Panels ──────────────────────────────────────────────────────────── */
+/* ───────────────────────────────────────────────────────────────────────────
+   TAB PANELS
+─────────────────────────────────────────────────────────────────────────── */
+
 .brief-panel {
   display: none;
   padding: var(--panel-pad);
 }
 .brief-panel.active { display: block; }
 
-/* hidden utility used by wireBriefTabs */
-.hidden { display: none !important; }
+/* ───────────────────────────────────────────────────────────────────────────
+   BRIEF CARD
+─────────────────────────────────────────────────────────────────────────── */
 
-/* ── Brief card wrapper ──────────────────────────────────────────────────── */
 .brief-card {
   background: var(--surface);
-  border-radius: 8px;
   border: 1px solid var(--line);
+  border-radius: 10px;
   overflow: hidden;
   font-size: .82rem;
   color: var(--text);
   line-height: 1.55;
 }
 
-/* Phase accent strip */
-.brief-card.phase-morning { border-top: 2px solid rgba(232,175,52,.55); }
-.brief-card.phase-eod     { border-top: 2px solid rgba(79,152,163,.55); }
+/* Phase accent: top border uses semi-transparent token color */
+.brief-card.phase-morning { border-top: 2px solid rgba(251,191,36,.5);  } /* --warning */
+.brief-card.phase-eod     { border-top: 2px solid rgba(125,211,252,.4); } /* --brand   */
 
-/* ── Brief header (icon + label + date + sentiment) ──────────────────────── */
+/* ── Header ──────────────────────────────────────────────────────────────────── */
+
 .brief-header {
   display: flex;
   align-items: flex-start;
@@ -79,20 +96,19 @@
 }
 
 .brief-phase-icon {
-  font-size: 1.2rem;
+  font-size: 1.15rem;
   line-height: 1;
   flex-shrink: 0;
-  margin-top: 1px;
+  margin-top: 2px;
 }
 
 .brief-phase-label {
-  font-size: .8rem;
+  font-size: .78rem;
   font-weight: 700;
   color: var(--text);
   line-height: 1.2;
 }
 
-/* date row */
 .brief-date-row {
   display: flex;
   align-items: center;
@@ -102,47 +118,61 @@
 }
 
 .brief-date {
-  font-size: .75rem;
+  font-size: .72rem;
   color: var(--muted);
   line-height: 1.3;
 }
 
-/* staleness badge */
+/* ── Age badge ──────────────────────────────────────────────────────────────── */
+
 .brief-age-badge {
-  font-size: 0.65rem;
+  font-size: .62rem;
   padding: 1px 7px;
   border-radius: 999px;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: .04em;
   text-transform: uppercase;
   line-height: 1.6;
 }
-.age-fresh  { background: rgba(109,170,69,.15);  color: #6daa45; }
-.age-recent { background: rgba(79,152,163,.15);  color: var(--accent,#4f98a3); }
-.age-today  { background: rgba(232,175,52,.15);  color: #e8af34; }
-.age-stale  { background: rgba(187,101,59,.15);  color: #bb653b; }
 
-/* sentiment badge */
-.sentiment-badge {
+/* fresh  → success green */
+.age-fresh  { background: rgba(74,222,128,.12);  color: var(--success); }
+/* recent  → brand sky */
+.age-recent { background: rgba(125,211,252,.12); color: var(--brand); }
+/* today   → warning amber */
+.age-today  { background: rgba(251,191,36,.12);  color: var(--warning); }
+/* stale   → danger red */
+.age-stale  { background: rgba(248,113,113,.12); color: var(--danger); }
+
+/* ── Sentiment badge ─────────────────────────────────────────────────────────── */
+
+.sentiment-badge,
+.sent-badge {
   margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 3px 10px;
   border-radius: 9999px;
-  font-size: .7rem;
+  font-size: .68rem;
   font-weight: 700;
   letter-spacing: .04em;
   text-transform: uppercase;
   line-height: 1.5;
   flex-shrink: 0;
 }
-.sent-risk-on   { background: rgba(109,170,69,.15);  color: #6daa45; }
-.sent-risk-off  { background: rgba(161,44,123,.15);  color: #d163a7; }
-.sent-mixed     { background: rgba(232,175,52,.15);  color: #e8af34; }
-.sent-uncertain { background: rgba(120,120,120,.15); color: var(--muted); }
 
-/* ── Brief body ──────────────────────────────────────────────────────────── */
+/* RISK_ON  → success green */
+.sent-risk-on   { background: rgba(74,222,128,.13);  color: var(--success); }
+/* RISK_OFF → danger red */
+.sent-risk-off  { background: rgba(248,113,113,.13); color: var(--danger);  }
+/* MIXED    → warning amber */
+.sent-mixed     { background: rgba(251,191,36,.13);  color: var(--warning); }
+/* UNCERTAIN → faint grey */
+.sent-uncertain { background: rgba(148,163,184,.10); color: var(--muted);   }
+
+/* ── Body ──────────────────────────────────────────────────────────────────────── */
+
 .brief-body {
   padding: 12px 14px 14px;
   display: flex;
@@ -163,24 +193,25 @@
   line-height: 1.6;
 }
 
-/* ── Sections inside body ────────────────────────────────────────────────── */
+/* ── Sections ───────────────────────────────────────────────────────────────────── */
+
 .brief-section {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
 }
 
 .brief-section-title {
-  font-size: .68rem;
+  font-size: .65rem;
   font-weight: 700;
-  letter-spacing: .06em;
+  letter-spacing: .07em;
   text-transform: uppercase;
-  color: var(--muted);
-  padding-bottom: 3px;
+  color: var(--faint);
+  padding-bottom: 4px;
   border-bottom: 1px solid var(--line);
 }
 
-/* generic item row */
+/* Generic item row */
 .brief-item {
   font-size: .8rem;
   color: var(--muted);
@@ -190,19 +221,17 @@
 }
 .brief-item:last-child { border-bottom: none; }
 
-/* clickable ticker item */
-.brief-item.action {
-  color: var(--text);
-  cursor: default;
-}
+/* Action items */
+.brief-item.action { color: var(--text); }
+
 .brief-item--ticker {
   cursor: pointer;
+  transition: color .12s;
 }
-.brief-item--ticker:hover {
-  color: var(--accent);
-}
+.brief-item--ticker:hover { color: var(--brand); }
 
-/* ── Key movers pills ────────────────────────────────────────────────────── */
+/* ── Key movers ─────────────────────────────────────────────────────────────────── */
+
 .brief-movers {
   display: flex;
   flex-wrap: wrap;
@@ -219,11 +248,21 @@
   font-weight: 600;
   border: 1px solid transparent;
 }
-.mover-pill.up   { background: rgba(109,170,69,.15);  color: #6daa45; border-color: rgba(109,170,69,.35); }
-.mover-pill.down { background: rgba(161,44,123,.15);  color: #d163a7; border-color: rgba(161,44,123,.35); }
-.mover-pill .chg { font-size: 0.7rem; opacity: .85; }
 
-/* ── Ticker summary table ────────────────────────────────────────────────── */
+.mover-pill.up {
+  background: rgba(74,222,128,.12);
+  border-color: rgba(74,222,128,.28);
+  color: var(--success);
+}
+.mover-pill.down {
+  background: rgba(248,113,113,.12);
+  border-color: rgba(248,113,113,.28);
+  color: var(--danger);
+}
+.mover-pill .chg { font-size: .7rem; opacity: .85; }
+
+/* ── Ticker summary table ────────────────────────────────────────────────────── */
+
 .brief-ticker-table {
   width: 100%;
   border-collapse: collapse;
@@ -231,11 +270,11 @@
 }
 
 .brief-ticker-table th {
-  font-size: .68rem;
+  font-size: .65rem;
   font-weight: 600;
   letter-spacing: .05em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--faint);
   padding: 4px 6px;
   text-align: left;
   border-bottom: 1px solid var(--line);
@@ -247,111 +286,29 @@
   vertical-align: top;
   line-height: 1.35;
 }
-
 .brief-ticker-table tr:last-child td { border-bottom: none; }
 
-.bt-ticker { font-weight: 700; color: var(--text); }
+.bt-ticker { font-weight: 700; color: var(--brand); }
 .bt-note   { font-size: .72rem; color: var(--muted); line-height: 1.35; margin-top: 1px; }
 .bt-chg    { text-align: right; font-variant-numeric: tabular-nums; font-size: .8rem; }
-.bt-chg.pos { color: #6daa45; }
-.bt-chg.neg { color: #d163a7; }
+.bt-chg.pos { color: var(--success); }
+.bt-chg.neg { color: var(--danger);  }
 
 .bt-signal {
   display: inline-block;
   padding: 1px 7px;
   border-radius: 4px;
-  font-size: .68rem;
+  font-size: .65rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .04em;
-  background: var(--surface-2, var(--surface));
+  background: var(--surface-2);
   color: var(--muted);
   border: 1px solid var(--line);
 }
 
-/* ── Snapshot cards (legacy wrapper classes kept) ────────────────────────── */
-.brief-card-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 12px 14px 8px;
-  border-bottom: 1px solid var(--line);
-}
+/* ── Feedback bar ────────────────────────────────────────────────────────────── */
 
-.brief-card-title {
-  font-size: .8rem;
-  font-weight: 700;
-  color: var(--text);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  line-height: 1.2;
-}
-
-.brief-card-body {
-  padding: 10px 14px 12px;
-  font-size: .82rem;
-  color: var(--text);
-  line-height: 1.55;
-}
-
-/* ── Empty brief state ───────────────────────────────────────────────────── */
-.brief-empty {
-  padding: 24px 14px;
-  font-size: .82rem;
-  color: var(--muted);
-  text-align: center;
-}
-
-/* ── Section label (legacy) ──────────────────────────────────────────────── */
-.brief-section-label {
-  font-size: .68rem;
-  font-weight: 700;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin: 10px 0 4px;
-}
-
-/* ── Action items (legacy list variant) ──────────────────────────────────── */
-.brief-actions {
-  list-style: none;
-  margin: 6px 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.brief-actions li {
-  font-size: .8rem;
-  color: var(--text);
-  padding: 4px 0;
-  border-bottom: 1px solid var(--line);
-  line-height: 1.45;
-}
-.brief-actions li:last-child { border-bottom: none; }
-
-/* ── Watchlist alerts (legacy) ───────────────────────────────────────────── */
-.brief-alerts {
-  list-style: none;
-  margin: 6px 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.brief-alerts li {
-  font-size: .78rem;
-  color: var(--muted);
-  padding: 3px 0;
-  border-bottom: 1px solid var(--line);
-}
-.brief-alerts li:last-child { border-bottom: none; }
-
-/* ── Feedback bar ────────────────────────────────────────────────────────── */
 .brief-feedback-bar {
   display: flex;
   align-items: center;
@@ -359,11 +316,11 @@
   flex-wrap: wrap;
   padding: 9px 14px 10px;
   border-top: 1px solid var(--line);
-  background: var(--surface-2, var(--surface));
+  background: var(--surface-2);
 }
 
 .fb-prompt {
-  font-size: .75rem;
+  font-size: .72rem;
   color: var(--muted);
   margin-right: 4px;
 }
@@ -374,28 +331,28 @@
   gap: 4px;
   padding: 4px 12px;
   border-radius: 6px;
-  font-size: .75rem;
+  font-size: .72rem;
   font-weight: 600;
   border: 1px solid var(--line);
-  background: var(--surface);
+  background: rgba(148,163,184,.06);
   color: var(--muted);
   cursor: pointer;
   transition: background .15s, color .15s, border-color .15s;
 }
-
 .fb-btn:hover {
-  background: var(--surface-2, var(--surface));
+  background: rgba(148,163,184,.12);
   color: var(--text);
-  border-color: var(--accent);
+  border-color: var(--line-strong);
 }
 
 .fb-confirmed {
-  font-size: .78rem;
+  font-size: .75rem;
   font-weight: 600;
   color: var(--muted);
 }
 
-/* ── Generate Brief Controls ─────────────────────────────────────────────── */
+/* ── Generate brief controls ─────────────────────────────────────────────────── */
+
 .brief-strip-header {
   display: flex;
   gap: 6px;
@@ -403,12 +360,79 @@
   border-bottom: 1px solid var(--line);
 }
 
-/* ── Scan text — inline raw string fallback ──────────────────────────────── */
-.scan-text { font-size: .82rem; line-height: 1.5; }
-.scan-text .up   { color: #6daa45; }
-.scan-text .down { color: #d163a7; }
+/* ── Empty state ───────────────────────────────────────────────────────────────── */
 
-/* ── Latest Scan Digest ──────────────────────────────────────────────────── */
+.brief-empty {
+  padding: 24px 14px;
+  font-size: .82rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* legacy label (kept for compat) */
+.brief-section-label {
+  font-size: .65rem;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin: 10px 0 4px;
+}
+
+/* legacy list variants */
+.brief-actions,
+.brief-alerts {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.brief-actions li,
+.brief-alerts li {
+  font-size: .78rem;
+  color: var(--muted);
+  padding: 3px 0;
+  border-bottom: 1px solid var(--line);
+  line-height: 1.45;
+}
+.brief-actions li { color: var(--text); }
+.brief-actions li:last-child,
+.brief-alerts li:last-child { border-bottom: none; }
+
+/* legacy card head */
+.brief-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.brief-card-title {
+  font-size: .8rem;
+  font-weight: 700;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.brief-card-body {
+  padding: 10px 14px 12px;
+  font-size: .82rem;
+  color: var(--text);
+  line-height: 1.55;
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   SCAN DIGEST
+─────────────────────────────────────────────────────────────────────────── */
+
+.scan-text { font-size: .82rem; line-height: 1.5; }
+.scan-text .up   { color: var(--success); }
+.scan-text .down { color: var(--danger);  }
+
 .scan-digest {
   display: flex;
   flex-direction: column;
@@ -420,7 +444,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  font-size: .78rem;
+  font-size: .76rem;
   color: var(--muted);
 }
 
@@ -435,19 +459,21 @@
   gap: 3px;
   padding: 2px 8px;
   border-radius: 9999px;
-  font-size: .75rem;
+  font-size: .72rem;
   font-weight: 600;
   letter-spacing: .02em;
 }
 
+/* signal badge → brand sky */
 .scan-badge--signal {
-  background: rgba(79,152,163,.15);
-  color: var(--accent,#4f98a3);
+  background: rgba(125,211,252,.12);
+  color: var(--brand);
 }
 
+/* alert badge → warning amber */
 .scan-badge--alert {
-  background: rgba(218,113,1,.15);
-  color: #da7101;
+  background: rgba(251,191,36,.12);
+  color: var(--warning);
 }
 
 .scan-headline {
@@ -463,11 +489,11 @@
 }
 
 .scan-picks-label {
-  font-size: .68rem;
+  font-size: .65rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .06em;
-  color: var(--muted);
+  color: var(--faint);
 }
 
 .scan-picks {
@@ -476,66 +502,58 @@
   gap: 6px;
 }
 
+/* Scan pick pill — neutral default */
 .scan-pick-pill {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 4px 11px;
   border-radius: 9999px;
-  font-size: .82rem;
+  font-size: .8rem;
   font-weight: 700;
   letter-spacing: .02em;
   border: 1px solid var(--line);
   white-space: nowrap;
   line-height: 1.3;
-  background: var(--surface-2, var(--surface));
+  background: var(--surface-2);
   color: var(--text);
 }
 
+/* up pill → success tint */
 .scan-pick-pill:has(.up) {
-  background: rgba(109,170,69,.14);
-  border-color: rgba(109,170,69,.4);
-  color: #437a22;
+  background: rgba(74,222,128,.10);
+  border-color: rgba(74,222,128,.28);
+  color: var(--success);
 }
 
+/* down pill → danger tint */
 .scan-pick-pill:has(.down) {
-  background: rgba(161,44,123,.12);
-  border-color: rgba(161,44,123,.35);
-  color: #a12c7b;
+  background: rgba(248,113,113,.10);
+  border-color: rgba(248,113,113,.28);
+  color: var(--danger);
 }
 
-[data-theme="dark"] .scan-pick-pill:has(.up) {
-  background: rgba(109,170,69,.18);
-  border-color: rgba(109,170,69,.45);
-  color: #6daa45;
-}
-
-[data-theme="dark"] .scan-pick-pill:has(.down) {
-  background: rgba(209,99,167,.18);
-  border-color: rgba(209,99,167,.45);
-  color: #d163a7;
-}
-
+/* % inside pill inherits pill colour */
 .scan-pick-pill .up,
-.scan-pick-pill .down {
-  color: inherit;
-  font-weight: 700;
-}
+.scan-pick-pill .down { color: inherit; font-weight: 700; }
 
 .scan-pick-more {
-  font-size: .78rem;
+  font-size: .76rem;
   padding: 4px 6px;
-  color: var(--muted);
+  color: var(--faint);
 }
 
-/* ── Brief Feedback KPI strip (Wave A) ───────────────────────────────────── */
+/* ───────────────────────────────────────────────────────────────────────────
+   BRIEF FEEDBACK KPI STRIP (Wave A)
+─────────────────────────────────────────────────────────────────────────── */
+
 .fb-kpi-strip {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
   padding: 4px 0;
-  font-size: .78rem;
+  font-size: .76rem;
 }
 
 .fb-sep {
@@ -547,34 +565,20 @@
   font-weight: 700;
   padding: 2px 9px;
   border-radius: 999px;
-  font-size: .72rem;
-}
-.fb-rate-good { background: rgba(109,170,69,.15); color: #6daa45; }
-.fb-rate-low  { background: rgba(232,175,52,.15); color: #e8af34; }
-
-.fb-outcome { font-size: .75rem; }
-.fb-acted    { color: #6daa45; }
-.fb-watching { color: var(--accent,#4f98a3); }
-.fb-skipped  { color: var(--muted); }
-
-.fb-total { font-size: .72rem; color: var(--muted); }
-
-/* ── up / down global helpers (used in brief + scan) ────────────────────── */
-.up   { color: #6daa45; }
-.down { color: #d163a7; }
-[data-theme="dark"] .up   { color: #6daa45; }
-[data-theme="dark"] .down { color: #d163a7; }
-
-/* ── Sent badge (old class alias, kept for compat) ───────────────────────── */
-.sent-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: 9999px;
   font-size: .7rem;
-  font-weight: 700;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-  line-height: 1.5;
 }
+.fb-rate-good {
+  background: rgba(74,222,128,.12);
+  color: var(--success);
+}
+.fb-rate-low {
+  background: rgba(251,191,36,.12);
+  color: var(--warning);
+}
+
+.fb-outcome { font-size: .72rem; }
+.fb-acted    { color: var(--success); }
+.fb-watching { color: var(--brand);   }
+.fb-skipped  { color: var(--muted);   }
+
+.fb-total { font-size: .7rem; color: var(--faint); }
