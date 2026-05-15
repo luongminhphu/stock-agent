@@ -52,6 +52,16 @@ Last-review continuity (P4):
   into signal_context["last_review_summary"] so ThesisJudgeAgent always knows
   what was said last time — preventing contradictory verdicts without reasoning.
   _fetch_last_review_summary() is non-blocking: DB errors return None silently.
+
+Conviction history (P4 wave 2):
+  _build_thesis_judge_block() now also calls _fetch_conviction_history() for
+  each thesis. The last 4 ThesisReview rows (excluding the most recent, which
+  is already captured in last_review_summary) are mapped to a compact
+  list[dict] with date/verdict/confidence and passed as conviction_history in
+  the trigger dict. This gives ThesisJudgeAgent a longitudinal view of how
+  conviction has evolved, enabling it to detect drift, reversals, and
+  accumulating weakness rather than judging each run in isolation.
+  _fetch_conviction_history() is non-blocking: DB errors return None silently.
 """
 
 from __future__ import annotations
@@ -549,6 +559,63 @@ class BriefingService:
             )
             return None
 
+    async def _fetch_conviction_history(
+        self, thesis_id: int | str
+    ) -> list[dict] | None:
+        """Fetch historical ThesisReview rows as a compact conviction timeline.
+
+        Reads the last 4 reviews (rows 2-5, skipping the most recent which is
+        already captured by _fetch_last_review_summary) and maps them to:
+          [{"date": "dd/mm/yyyy", "verdict": str, "confidence": float | None}, ...]
+        ordered newest-first.
+
+        This gives ThesisJudgeAgent a longitudinal view of conviction drift
+        rather than a single point-in-time snapshot, enabling it to detect:
+        - accumulating WEAKENING across multiple runs
+        - a reversal that contradicts a long BULLISH streak
+        - a confidence trend (declining even if verdict unchanged)
+
+        Returns None when:
+        - session is None
+        - thesis_id cannot be cast to int
+        - fewer than 2 reviews exist (history not meaningful yet)
+        - any DB error occurs (non-blocking)
+
+        Owner: briefing (adapter). Reads thesis segment DB via ThesisRepository.
+        """
+        if self._session is None:
+            return None
+        try:
+            from src.thesis.repository import ThesisRepository
+
+            repo = ThesisRepository(self._session)
+            thesis_id_int = int(thesis_id)
+            # Fetch 5 reviews (newest first), skip index 0 (already in last_review_summary)
+            reviews = await repo.list_reviews_by_thesis(thesis_id_int, limit=5)
+            history_rows = reviews[1:]  # skip the most recent
+            if not history_rows:
+                return None
+
+            history: list[dict] = []
+            for r in history_rows:
+                reviewed_at = (
+                    r.reviewed_at.strftime("%d/%m/%Y") if r.reviewed_at else "?"
+                )
+                confidence = getattr(r, "confidence", None)
+                history.append({
+                    "date": reviewed_at,
+                    "verdict": str(getattr(r, "verdict", "?")),
+                    "confidence": round(confidence, 2) if confidence is not None else None,
+                })
+            return history
+        except Exception as exc:
+            logger.debug(
+                "briefing.fetch_conviction_history_failed",
+                thesis_id=thesis_id,
+                error=str(exc),
+            )
+            return None
+
     async def _build_thesis_judge_block(self, user_id: str, quotes: dict) -> str:
         """Run ThesisJudgeAgent against active theses and format non-ON_TRACK verdicts.
 
@@ -561,6 +628,12 @@ class BriefingService:
           is injected into signal_context["last_review_summary"]. This anchors the
           Judge verdict to the previous review so it can detect real deltas rather
           than generating contradictory verdicts in isolation.
+
+        P4 wave 2 — conviction history:
+          For each thesis, _fetch_conviction_history() is called and the result
+          is passed as conviction_history in the trigger dict. ThesisJudgeAgent
+          uses this to detect longitudinal conviction drift, not just point-in-time
+          delta from the last review.
 
         Owner: briefing (adapter). Judge logic stays in ai segment.
         Cap: max 5 theses per run, max 2 challenged_assumptions and 2 new_risks per
@@ -604,6 +677,9 @@ class BriefingService:
                 if last_review_summary:
                     signal_context["last_review_summary"] = last_review_summary
 
+                # P4 wave 2: inject conviction history for longitudinal drift detection
+                conviction_history = await self._fetch_conviction_history(thesis_id)
+
                 triggers.append({
                     "thesis_id": str(thesis_id),
                     "ticker": t.ticker,
@@ -632,6 +708,7 @@ class BriefingService:
                         for ic in invalidation[:3]
                     ],
                     "signal_context": signal_context,
+                    "conviction_history": conviction_history,
                 })
 
             if not triggers:
