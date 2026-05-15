@@ -3,7 +3,8 @@
    Layout: 2-col — Verdict accuracy | Worst+Best calls (tabbed)
 ──────────────────────────────────────────────────────────────────────────── */
 
-.backtesting-panel { margin-top: 14px; }
+/* no margin-top — panel-duo gap handles spacing */
+.backtesting-panel { }
 
 .backtesting-grid {
   display: grid;

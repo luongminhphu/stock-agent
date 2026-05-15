@@ -33,21 +33,21 @@
   .kpi-strip { grid-template-columns: 1fr 1fr; }
 }
 
-/* ── 2. Panel duo: side-by-side ────────────────────────────────────── */
+/* ── 2. Panel duo: side-by-side, equal height ──────────────────────── */
 .panel-duo {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
-  align-items: start;
+  align-items: stretch;   /* both panels grow to match the taller one */
+}
+
+/* Each direct child fills its grid cell height */
+.panel-duo > * {
+  min-height: 0;
 }
 
 @media (max-width: 860px) {
   .panel-duo { grid-template-columns: 1fr; }
-}
-
-/* Backtesting in duo: stretch to fill height */
-.panel-duo .backtesting-panel {
-  height: 100%;
 }
 
 /* ── 3. Brief collapsible ──────────────────────────────────────────── */
