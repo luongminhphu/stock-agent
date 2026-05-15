@@ -14,10 +14,12 @@
  */
 
 import { getJson } from '../../api/client.js';
+import { loadThesisDetail } from '../thesis/thesis-service.js';
 
-const LIMIT    = 5;
-let   _wired   = false;
-let   _current = 'score';
+const LIMIT        = 5;
+let   _wired       = false;
+let   _itemsWired  = false;
+let   _current     = 'score';
 
 // ---------------------------------------------------------------------------
 // Public
@@ -44,6 +46,11 @@ export async function loadLeaderboard(sortBy = 'score') {
     );
     const items = Array.isArray(data) ? data : (data.entries ?? []);
     _render(list, items, sortBy);
+
+    if (!_itemsWired) {
+      _wireItemClicks(list);
+      _itemsWired = true;
+    }
   } catch (err) {
     list.innerHTML = `<li class="lb-empty">Không tải được leaderboard: ${err.message}</li>`;
   } finally {
@@ -91,8 +98,13 @@ function _render(listEl, items, sortBy) {
     const metric  = _metricDisplay(item, sortBy);
     const tier    = TIER_LABEL(item.score);
     const verdict = item.last_verdict ? `<span class="lb-verdict">${_esc(item.last_verdict)}</span>` : '';
+    const tid     = item.thesis_id ?? '';
     return `
-      <li class="lb-item" role="listitem">
+      <li class="lb-item"
+          role="button"
+          tabindex="0"
+          data-thesis-id="${_esc(String(tid))}"
+          aria-label="Xem thesis ${_esc(item.ticker ?? '')}">
         <span class="lb-rank" data-rank="${rank}">#${rank}</span>
         <div class="lb-ticker-row">
           <span class="lb-ticker">${_esc(item.ticker ?? '—')}</span>
@@ -107,6 +119,43 @@ function _render(listEl, items, sortBy) {
       </li>
     `.trim();
   }).join('');
+}
+
+// ---------------------------------------------------------------------------
+// Private: wire item clicks → thesis detail
+// ---------------------------------------------------------------------------
+
+function _wireItemClicks(listEl) {
+  // Event delegation — handles re-renders without re-wiring
+  listEl.addEventListener('click', e => {
+    const item = e.target.closest('.lb-item[data-thesis-id]');
+    if (!item) return;
+    _openDetail(item.dataset.thesisId);
+  });
+
+  listEl.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const item = e.target.closest('.lb-item[data-thesis-id]');
+    if (!item) return;
+    e.preventDefault();
+    _openDetail(item.dataset.thesisId);
+  });
+}
+
+async function _openDetail(thesisId) {
+  if (!thesisId) return;
+
+  // Load detail (thesis-service handles render into #thesisDetail)
+  await loadThesisDetail(thesisId);
+
+  // Scroll thesis detail into view
+  const detail = document.getElementById('thesisDetail');
+  if (detail) {
+    detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Brief highlight flash to orient the user
+    detail.classList.add('lb-detail-flash');
+    setTimeout(() => detail.classList.remove('lb-detail-flash'), 900);
+  }
 }
 
 // ---------------------------------------------------------------------------

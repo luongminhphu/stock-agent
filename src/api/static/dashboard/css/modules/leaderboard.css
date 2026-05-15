@@ -99,6 +99,10 @@
   border-color: rgba(125, 211, 252, 0.2);
   transform: translateY(-1px);
 }
+.lb-item:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
 
 /* ── Rank number + medal colours ─────────────────────────────────────────── */
 .lb-rank {
@@ -172,6 +176,16 @@
   flex-shrink: 0;
 }
 
+/* ── Detail flash highlight (after scroll-into-view) ─────────────────────── */
+@keyframes lb-flash {
+  0%   { box-shadow: 0 0 0 2px var(--brand); }
+  60%  { box-shadow: 0 0 0 4px color-mix(in oklch, var(--brand) 40%, transparent); }
+  100% { box-shadow: none; }
+}
+.lb-detail-flash {
+  animation: lb-flash 0.9s ease-out forwards;
+}
+
 /* ── Skeleton item (before fetch completes) ──────────────────────────────── */
 .lb-item--skel {
   pointer-events: none;
@@ -198,10 +212,10 @@
   font-size: 0.84rem;
 }
 
-/* ── Responsive: narrow → horizontal scroll list ─────────────────────────── */
+/* ── Responsive: narrow → stays vertical on mobile ───────────────────────── */
 @media (max-width: 768px) {
   .lb-list {
-    grid-template-columns: 1fr;  /* stays vertical on mobile */
+    grid-template-columns: 1fr;
     overflow-x: auto;
     overflow-y: hidden;
     scrollbar-width: thin;
