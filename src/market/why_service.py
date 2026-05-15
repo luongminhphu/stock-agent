@@ -28,7 +28,13 @@ class WhyService:
         self._ohlcv = ohlcv_service
         self._agent = why_agent
 
-    async def explain(self, ticker: str) -> WhyOutput:
+    async def explain(self, ticker: str) -> tuple[WhyOutput, float]:
+        """Return (WhyOutput, change_pct) tuple.
+
+        change_pct comes from the live quote — it is market data, not AI
+        inference, so it must not live inside WhyOutput itself.
+        The bot embed reads it from this tuple to display the real % move.
+        """
         ticker = ticker.upper()
 
         # 1. Registry lookup — inject tên + ngành cho AI
@@ -59,9 +65,9 @@ class WhyService:
             )
 
         # 4. OHLCV 5 phiên — build context string
-        ohlcv_summary = await self._build_ohlcv_summary(ticker)
+        ohlcv_summary, ohlcv_available = await self._build_ohlcv_summary(ticker)
 
-        return await self._agent.explain(
+        result = await self._agent.explain(
             ticker=ticker,
             company_name=company_name,
             sector=sector,
@@ -71,23 +77,33 @@ class WhyService:
             ohlcv_summary=ohlcv_summary,
         )
 
-    async def _build_ohlcv_summary(self, ticker: str) -> str:
+        # 5. Gắn data_quality fallback nếu OHLCV không có và AI không tự ghi
+        if not ohlcv_available and not result.data_quality:
+            object.__setattr__(
+                result,
+                "data_quality",
+                "Không có dữ liệu OHLCV — phân tích dựa trên quote phiên hôm nay.",
+            )
+
+        return result, change_pct
+
+    async def _build_ohlcv_summary(self, ticker: str) -> tuple[str, bool]:
+        """Return (ohlcv_summary_str, ohlcv_available)."""
         try:
             # get_latest_candles() — đúng method name theo OHLCVService API
             bars = await self._ohlcv.get_latest_candles(ticker, n=_OHLCV_CANDLES)
             if not bars:
-                return ""
+                return "", False
             lines = ["Ngày       | Mở       | Cao      | Thấp     | Đóng     | Volume"]
             for b in bars:
                 lines.append(
                     f"{b.date} | {b.open:>8,.0f} | {b.high:>8,.0f} | "
                     f"{b.low:>8,.0f} | {b.close:>8,.0f} | {b.volume:>10,}"
                 )
-            return "\n".join(lines)
+            return "\n".join(lines), True
         except OHLCVServiceNotConfiguredError:
-            # Wave 1: adapter chưa có — fallback silent, AI chạy với data_quality note
             logger.info("why_service.ohlcv_not_configured", ticker=ticker)
-            return ""
+            return "", False
         except Exception as exc:
             logger.warning("why_service.ohlcv_failed", ticker=ticker, error=str(exc))
-            return ""  # fallback silent — AI vẫn chạy, ghi vào data_quality
+            return "", False

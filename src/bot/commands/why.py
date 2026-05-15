@@ -38,7 +38,7 @@ class WhyCog(BaseCog):
                 ohlcv_service=get_ohlcv_service(),
                 why_agent=get_why_agent(),
             )
-            result = await svc.explain(ticker)
+            result, change_pct = await svc.explain(ticker)
         except Exception as exc:
             logger.error("why.command.error", ticker=ticker, error=str(exc))
             await self.send_error(
@@ -48,36 +48,48 @@ class WhyCog(BaseCog):
             )
             return
 
-        embed = _build_why_embed(result)
+        embed = _build_why_embed(result, change_pct)
         await interaction.followup.send(embed=embed, ephemeral=False)
 
 
-def _build_why_embed(result) -> discord.Embed:
+def _build_why_embed(result, change_pct: float) -> discord.Embed:
     emoji = _DIR_EMOJI.get(result.direction, "❓")
     color = _DIR_COLOR.get(result.direction, discord.Color.blurple())
-    sign = "+" if result.change_pct > 0 else ""
+    sign = "+" if change_pct > 0 else ""
 
     embed = discord.Embed(
-        title=f"{emoji} Tại sao {result.ticker} {sign}{result.change_pct:.2f}%?",
-        description=f"**{result.headline}**",
+        title=f"{emoji} Tại sao {result.ticker} {sign}{change_pct:.2f}%?",
+        description=f"**{result.summary}**",
         color=color,
     )
-    if result.causes:
+
+    embed.add_field(
+        name="🔍 Nguyên nhân chính",
+        value=result.primary_cause,
+        inline=False,
+    )
+
+    if result.contributing_factors:
         embed.add_field(
-            name="🔍 Nguyên nhân",
-            value="\n".join(f"• {c}" for c in result.causes),
+            name="📌 Yếu tố hỗ trợ",
+            value="\n".join(f"• {c}" for c in result.contributing_factors),
             inline=False,
         )
-    if result.macro_context:
-        embed.add_field(name="🌐 Vĩ mô", value=result.macro_context, inline=False)
+
+    if result.market_context:
+        embed.add_field(name="🌐 Vĩ mô", value=result.market_context, inline=False)
+
     if result.risk_flags:
         embed.add_field(
             name="⚠️ Rủi ro cần theo dõi",
             value="\n".join(f"• {r}" for r in result.risk_flags),
             inline=False,
         )
+
     conf_bar = "█" * round(result.confidence * 10) + "░" * (10 - round(result.confidence * 10))
     embed.set_footer(text=f"Độ tin cậy: {conf_bar} {result.confidence:.0%}  ·  stock-agent AI")
+
     if result.data_quality:
         embed.add_field(name="📊 Ghi chú dữ liệu", value=result.data_quality, inline=False)
+
     return embed
