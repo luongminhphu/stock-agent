@@ -41,6 +41,19 @@ Nguyên tắc review:
 5. Mỗi key_risk phải là một câu mô tả rủi ro cụ thể (plain string).
 6. summary là 2-3 câu tóm tắt tình trạng thesis.
 
+Nguyên tắc nhất quán (bắt buộc tuân thủ):
+7. Nếu có dữ liệu "Review lần trước" trong prompt, phải đọc kỹ verdict và lý do
+   trước khi đưa ra kết luận — không bắt đầu phân tích như lần đầu tiên.
+8. Chỉ flip verdict (ví dụ BULLISH→BEARISH, NEUTRAL→BEARISH) khi có bằng chứng
+   MỚI và RÕ RÀNG trong lần review này: giá phá support, assumption bị invalidate,
+   catalyst thất bại, hoặc thay đổi macro nghiêm trọng. Không flip chỉ vì cảm nhận
+   chung hoặc thiếu thông tin mới.
+9. Nếu verdict THAY ĐỔI so với lần trước, BẮT BUỘC mở đầu trường "summary" bằng
+   lý do thay đổi — ví dụ: "Chuyển từ NEUTRAL sang BEARISH vì giá phá vỡ support
+   45,000 trong phiên 15/05...". Không được thay đổi verdict mà không giải thích.
+10. Nếu verdict KHÔNG THAY ĐỔI, summary nên xác nhận ngắn gọn tại sao nhận định
+    vẫn còn hiệu lực — tránh lặp lại y chang lần trước mà không có nội dung mới.
+
 Verdicts (chỉ dùng đúng 4 giá trị này, viết HOA):
 - BULLISH   : Thesis còn nguyên vẹn, momentum tốt.
 - NEUTRAL   : Thesis chưa invalidate nhưng cần theo dõi thêm.
@@ -128,7 +141,8 @@ def build_user_prompt(
         target_price:                 Giá mục tiêu (VNĐ). None nếu chưa set.
 
     Returns:
-        Formatted user prompt string.
+        Formatted user prompt string (without memory or previous_review blocks).
+        Use build_review_prompt() for the full agent-facing prompt.
     """
     lines: list[str] = [
         f"## Thesis Review Request: {ticker}",
@@ -183,8 +197,94 @@ def build_user_prompt(
             lines.append(f"- [ID {c['id']}] {c['description']}")
         lines.append("")
 
-    lines += [
-        _OUTPUT_SCHEMA,
+    return "\n".join(lines)
+
+
+def build_review_prompt(  # noqa: PLR0913
+    ticker: str,
+    thesis_title: str,
+    thesis_summary: str,
+    assumptions_with_ids: list[dict[str, Any]],
+    catalysts_with_ids: list[dict[str, Any]],
+    triggered_catalysts_with_ids: list[dict[str, Any]],
+    current_price: float | None = None,
+    entry_price: float | None = None,
+    target_price: float | None = None,
+    memory_context: str = "",
+    previous_review: dict | None = None,
+) -> str:
+    """Build the full agent-facing prompt with memory and previous verdict context.
+
+    Used by ThesisReviewAgent. Assembles sections in this order:
+      1. Core thesis block (ticker, title, summary, price, assumptions, catalysts)
+      2. Previous review anchor (P2) — verdict from last review for consistency
+      3. Investor memory block (P1) — episodic + semantic context
+      4. Output schema + instructions (always last)
+
+    Args:
+        ...                (same as build_user_prompt)
+        memory_context:    Rendered MemoryContext string from MemoryService.
+                           Empty string → section omitted.
+        previous_review:   Dict with keys: reviewed_at, verdict, confidence,
+                           summary, key_risks. None → section omitted.
+                           Extracted by ThesisReviewAgent from memory episodes.
+
+    Order rationale:
+        Memory and previous_review are placed BEFORE the output schema so the
+        LLM processes historical context before encountering formatting rules.
+        Appending memory AFTER "Trả về JSON..." caused it to be treated as
+        low-priority afterthought context.
+    """
+    # Section 1: core thesis content
+    core = build_user_prompt(
+        ticker=ticker,
+        thesis_title=thesis_title,
+        thesis_summary=thesis_summary,
+        assumptions_with_ids=assumptions_with_ids,
+        catalysts_with_ids=catalysts_with_ids,
+        triggered_catalysts_with_ids=triggered_catalysts_with_ids,
+        current_price=current_price,
+        entry_price=entry_price,
+        target_price=target_price,
+    )
+    sections: list[str] = [core]
+
+    # Section 2: previous verdict anchor (P2)
+    # Informs LLM what it said last time so it reasons about continuity.
+    if previous_review:
+        prev_date = previous_review.get("reviewed_at", "không rõ ngày")
+        prev_verdict = previous_review.get("verdict", "N/A")
+        prev_conf = previous_review.get("confidence")
+        prev_summary = previous_review.get("summary", "")
+        prev_risks: list[str] = previous_review.get("key_risks") or []
+        conf_str = f"{prev_conf:.0%}" if prev_conf is not None else "N/A"
+
+        prev_lines: list[str] = [
+            f"### Review lần trước ({prev_date})",
+            f"- Verdict: **{prev_verdict}**  |  Confidence: {conf_str}",
+        ]
+        if prev_summary:
+            prev_lines.append(f"- Nhận định: {prev_summary}")
+        if prev_risks:
+            risks_str = "; ".join(str(r) for r in prev_risks[:3])
+            prev_lines.append(f"- Key risks đã ghi nhận: {risks_str}")
+        prev_lines.append(
+            "⚠️ Nếu verdict thay đổi, phải giải thích trigger thay đổi "
+            "ở đầu trường summary."
+        )
+        sections.append("\n".join(prev_lines))
+
+    # Section 3: investor memory block (P1)
+    # Placed here — after previous_review but still before output schema —
+    # so LLM reads behavioural context before encountering JSON formatting rules.
+    if memory_context:
+        sections.append(
+            f"### Bối cảnh nhà đầu tư (memory)\n{memory_context}"
+        )
+
+    # Section 4: output schema + task instructions (always last)
+    sections.append(_OUTPUT_SCHEMA)
+    sections += [
         "### Yêu cầu",
         "Dựa trên thông tin trên, hãy:",
         "1. Đánh giá từng assumption còn giá trị hay không — điền assumption_id (số nguyên từ danh sách) và status vào assumption_recommendations.",
@@ -197,37 +297,4 @@ def build_user_prompt(
         "Trả về JSON theo đúng Output Schema ở trên. Không giải thích ngoài JSON.",
     ]
 
-    return "\n".join(lines)
-
-
-def build_review_prompt(
-    ticker: str,
-    thesis_title: str,
-    thesis_summary: str,
-    assumptions_with_ids: list[dict[str, Any]],
-    catalysts_with_ids: list[dict[str, Any]],
-    triggered_catalysts_with_ids: list[dict[str, Any]],
-    current_price: float | None = None,
-    entry_price: float | None = None,
-    target_price: float | None = None,
-    memory_context: str = "",
-) -> str:
-    """Alias of build_user_prompt with optional memory_context injection.
-
-    Used by ThesisReviewAgent which injects investor memory into the prompt.
-    memory_context is appended as a separate section when non-empty.
-    """
-    base = build_user_prompt(
-        ticker=ticker,
-        thesis_title=thesis_title,
-        thesis_summary=thesis_summary,
-        assumptions_with_ids=assumptions_with_ids,
-        catalysts_with_ids=catalysts_with_ids,
-        triggered_catalysts_with_ids=triggered_catalysts_with_ids,
-        current_price=current_price,
-        entry_price=entry_price,
-        target_price=target_price,
-    )
-    if memory_context:
-        base += f"\n\n### Bối cảnh nhà đầu tư (memory)\n{memory_context}"
-    return base
+    return "\n\n".join(sections)
