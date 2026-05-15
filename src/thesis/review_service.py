@@ -321,7 +321,9 @@ class ReviewService:
             raw_score, breakdown = self._scoring.compute_with_breakdown(fresh_thesis)
 
             # Wave 2: clamp score delta to avoid single-event spikes on the chart.
-            prev_score: float = fresh_thesis.score if fresh_thesis.score is not None else raw_score
+            # Fallback to 0.0 (not raw_score) so the cap correctly triggers on the
+            # first review when thesis.score is None — delta = raw_score - 0.
+            prev_score: float = fresh_thesis.score if fresh_thesis.score is not None else 0.0
             delta = raw_score - prev_score
             delta_capped = abs(delta) > MAX_SCORE_DELTA_PER_REVIEW
             if delta_capped:
