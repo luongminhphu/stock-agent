@@ -10,6 +10,7 @@
   </head>
   <body>
     <a class="skip-link" href="#main-content">Bỏ qua điều hướng</a>
+    <div id="errorBanner" class="error-banner hidden"></div>
     <div class="shell">
 
       <!-- ── TOPBAR ──────────────────────────────────────────────────────── -->
@@ -39,7 +40,7 @@
               <option value="paused">paused</option>
             </select>
           </label>
-          <button id="refreshBtn" class="btn btn-ghost btn-sm" type="button"
+          <button id="reloadBtn" class="btn btn-ghost btn-sm" type="button"
                   aria-label="Làm mới">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -58,14 +59,14 @@
         </div>
       </header>
 
-      <!-- ── MAIN ─────────────────────────────────────────────────────────── -->
+      <!-- ── MAIN ──────────────────────────────────────────────────────────── -->
       <main id="main-content">
 
         <!-- ── 1. QUOTE STRIP ──────────────────────────────────────────────── -->
         <div id="quoteStrip" class="quote-strip" aria-label="Giá thị trường realtime"
              aria-live="polite"></div>
 
-        <!-- ── 2. KPI STRIP — 2 rows ────────────────────────────────────── -->
+        <!-- ── 2. KPI STRIP — 2 rows ─────────────────────────────────────── -->
         <!-- Row 1: Portfolio value · Unrealized P&L · Risky theses · Open theses · Paused theses -->
         <!-- Row 2: Upcoming 7d · Cần review gấp · Latest scan (span 3) -->
         <section class="command-strip kpi-strip" aria-label="Tổng quan danh mục">
@@ -141,7 +142,7 @@
           aria-label="Việc cần làm hôm nay"
         ></div>
 
-        <!-- ── 6. BRIEFING — collapsible ─────────────────────────────────── -->
+        <!-- ── 6. BRIEFING — collapsible ────────────────────────────────── -->
         <details class="brief-collapsible" id="briefCollapsible">
           <summary>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -171,7 +172,7 @@
           </div>
         </details>
 
-        <!-- ── 7. WATCHLIST + CATALYST — side-by-side ───────────────────── -->
+        <!-- ── 7. WATCHLIST + CATALYST — side-by-side ──────────────────── -->
         <div class="panel-duo">
           <section class="panel glass watchlist-layer" aria-labelledby="watchlistTitle">
             <div class="panel-header split-header">
@@ -202,7 +203,7 @@
           </section>
         </div>
 
-        <!-- ── 8. PORTFOLIO — full-width ─────────────────────────────────── -->
+        <!-- ── 8. PORTFOLIO — full-width ────────────────────────────────── -->
         <section class="panel glass portfolio-layer" aria-labelledby="portfolioTitle">
           <div class="panel-header split-header">
             <div>
@@ -213,7 +214,7 @@
           <div id="portfolioSection">Đang tải…</div>
         </section>
 
-        <!-- ── 9. THESIS LIST ──────────────────────────────────────────────── -->
+        <!-- ── 9. THESIS LIST ──────────────────────────────────────────── -->
         <section class="panel glass thesis-layer" aria-labelledby="thesisTitle">
           <div class="panel-header split-header">
             <div>
@@ -221,7 +222,7 @@
               <h2 id="thesisTitle">Investment Theses</h2>
             </div>
             <div class="panel-actions">
-              <button id="addThesisBtn" class="icon-text-btn" type="button"
+              <button id="newThesisBtn" class="icon-text-btn" type="button"
                       aria-label="Thêm thesis mới">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -234,7 +235,7 @@
           <div id="thesisSection">Đang tải…</div>
         </section>
 
-        <!-- ── 10. LEADERBOARD + BACKTESTING ──────────────────────────────── -->
+        <!-- ── 10. LEADERBOARD + BACKTESTING ───────────────────────────── -->
         <div class="panel-duo lb-strip">
           <section class="panel glass lb-layer" aria-labelledby="lbTitle">
             <div class="panel-header">
@@ -261,10 +262,7 @@
           </section>
         </div>
 
-        <!-- ── 11. DECISION LOG ──────────────────────────────────────────── -->
-        <!--
-             Feedback loop: Decision KPIs → Log → AI Lessons
-        -->
+        <!-- ── 11. DECISION LOG ────────────────────────────────────────── -->
         <section class="panel glass decision-layer" aria-labelledby="decisionTitle">
           <div class="panel-header split-header">
             <div>
@@ -272,7 +270,7 @@
               <h2 id="decisionTitle">Decisions</h2>
             </div>
             <div class="panel-actions">
-              <button id="addDecisionBtn" class="icon-text-btn" type="button"
+              <button id="newDecisionBtn" class="icon-text-btn" type="button"
                       aria-label="Thêm decision">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -320,7 +318,7 @@
         <div class="modal-header">
           <h2 id="thesisModalTitle">Thesis</h2>
           <button class="btn btn-ghost btn-sm btn-icon modal-close" type="button"
-                  data-modal-close="thesisModal" aria-label="Đóng">
+                  data-close="thesisModal" aria-label="Đóng">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                  stroke-width="2" aria-hidden="true">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -388,7 +386,7 @@
           <div class="form-row form-row--stack">
             <label>Assumptions</label>
             <div id="thesisFormAssumptionRows" class="form-stack"></div>
-            <button type="button" class="btn btn-ghost btn-sm" id="addAssumptionRowBtn">
+            <button type="button" class="btn btn-ghost btn-sm" id="addFormAssumptionBtn">
               + Thêm assumption
             </button>
           </div>
@@ -397,7 +395,7 @@
           <div class="form-row form-row--stack">
             <label>Catalysts</label>
             <div id="thesisFormCatalystRows" class="form-stack"></div>
-            <button type="button" class="btn btn-ghost btn-sm" id="addCatalystRowBtn">
+            <button type="button" class="btn btn-ghost btn-sm" id="addFormCatalystBtn">
               + Thêm catalyst
             </button>
           </div>
@@ -406,7 +404,7 @@
 
           <div class="form-actions">
             <button type="submit" class="btn btn-primary" id="thesisSubmitBtn">Lưu</button>
-            <button type="button" class="btn btn-ghost" data-modal-close="thesisModal">Huỷ</button>
+            <button type="button" class="btn btn-ghost" data-close="thesisModal">Huỷ</button>
           </div>
         </form>
       </div>
@@ -419,7 +417,7 @@
         <div class="modal-header">
           <h2 id="assumptionModalTitle">Assumption</h2>
           <button class="btn btn-ghost btn-sm btn-icon modal-close" type="button"
-                  data-modal-close="assumptionModal" aria-label="Đóng">
+                  data-close="assumptionModal" aria-label="Đóng">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                  stroke-width="2" aria-hidden="true">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -444,7 +442,7 @@
           <input type="hidden" id="assumptionId" name="assumption_id">
           <div class="form-actions">
             <button type="submit" class="btn btn-primary">Lưu</button>
-            <button type="button" class="btn btn-ghost" data-modal-close="assumptionModal">Huỷ</button>
+            <button type="button" class="btn btn-ghost" data-close="assumptionModal">Huỷ</button>
           </div>
         </form>
       </div>
@@ -457,7 +455,7 @@
         <div class="modal-header">
           <h2 id="decisionModalTitle">Log Decision</h2>
           <button class="btn btn-ghost btn-sm btn-icon modal-close" type="button"
-                  data-modal-close="decisionModal" aria-label="Đóng">
+                  data-close="decisionModal" aria-label="Đóng">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                  stroke-width="2" aria-hidden="true">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -502,47 +500,46 @@
           <input type="hidden" id="decisionId" name="decision_id">
           <div class="form-actions">
             <button type="submit" class="btn btn-primary">Lưu decision</button>
-            <button type="button" class="btn btn-ghost" data-modal-close="decisionModal">Huỷ</button>
+            <button type="button" class="btn btn-ghost" data-close="decisionModal">Huỷ</button>
           </div>
         </form>
       </div>
     </div>
 
-    <!-- Watchlist form modal -->
-    <div id="watchlistModal" class="modal-overlay hidden" role="dialog"
-         aria-modal="true" aria-labelledby="watchlistModalTitle">
+    <!-- Watchlist add modal -->
+    <div id="watchlistAddModal" class="modal-overlay hidden" role="dialog"
+         aria-modal="true" aria-labelledby="watchlistAddModalTitle">
       <div class="modal">
         <div class="modal-header">
-          <h2 id="watchlistModalTitle">Thêm vào Watchlist</h2>
+          <h2 id="watchlistAddModalTitle">Thêm vào Watchlist</h2>
           <button class="btn btn-ghost btn-sm btn-icon modal-close" type="button"
-                  data-modal-close="watchlistModal" aria-label="Đóng">
+                  data-close="watchlistAddModal" aria-label="Đóng">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                  stroke-width="2" aria-hidden="true">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
           </button>
         </div>
-        <form id="watchlistForm" class="form-grid" novalidate>
+        <form id="watchlistAddForm" class="form-grid" novalidate>
           <div class="form-row">
-            <label for="watchlistTicker">Ticker</label>
-            <input id="watchlistTicker" name="ticker" type="text" required
+            <label for="watchlistTickerInput">Ticker</label>
+            <input id="watchlistTickerInput" name="ticker" type="text" required
                    placeholder="VD: FPT" autocomplete="off">
           </div>
           <div class="form-row">
-            <label for="watchlistNote">Ghi chú</label>
-            <textarea id="watchlistNote" name="note" rows="2"
+            <label for="watchlistNoteInput">Ghi chú</label>
+            <textarea id="watchlistNoteInput" name="note" rows="2"
                       placeholder="Lý do theo dõi, mức giá quan tâm…"></textarea>
           </div>
-          <input type="hidden" id="watchlistItemId" name="item_id">
           <div class="form-actions">
             <button type="submit" class="btn btn-primary">Lưu</button>
-            <button type="button" class="btn btn-ghost" data-modal-close="watchlistModal">Huỷ</button>
+            <button type="button" class="btn btn-ghost" data-close="watchlistAddModal">Huỷ</button>
           </div>
         </form>
       </div>
     </div>
 
-    <!-- ── SCRIPTS ──────────────────────────────────────────────────────────── -->
-    <script type="module" src="/static/dashboard/js/main.js"></script>
+    <!-- ── SCRIPTS ──────────────────────────────────────────────────────── -->
+    <script type="module" src="/static/dashboard/js/app.js"></script>
   </body>
 </html>
