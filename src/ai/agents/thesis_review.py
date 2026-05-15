@@ -59,6 +59,51 @@ def _extract_json(text: str) -> str:
     return text
 
 
+def _extract_previous_review(
+    episodes: list,
+    thesis_id: int | None,
+) -> dict | None:
+    """Extract the most recent thesis_review episode as a previous verdict anchor.
+
+    Scans the already-filtered episode list (scoped to ticker + thesis_id by
+    _fetch_memory_for_review_full) for the latest thesis_review agent entry.
+    No additional DB call — reuses data already in memory.
+
+    Returns a dict with keys:
+        reviewed_at  (str, YYYY-MM-DD)
+        verdict      (str, e.g. BULLISH)
+        confidence   (float | None)
+        summary      (str, first line of ai_key_points or empty)
+        key_risks    (list[str], from ai_risk_signals lines, up to 3)
+    Returns None if no previous thesis_review episode exists.
+    """
+    thesis_episodes = [
+        ep for ep in episodes
+        if ep.agent_type == "thesis_review"
+        and (thesis_id is None or ep.thesis_id == thesis_id)
+    ]
+    if not thesis_episodes:
+        return None
+
+    # Episodes are already sorted newest-first by MemoryService
+    latest = thesis_episodes[0]
+    return {
+        "reviewed_at": latest.created_at.strftime("%Y-%m-%d"),
+        "verdict": latest.ai_verdict or "N/A",
+        "confidence": latest.ai_confidence,
+        "summary": (
+            latest.ai_key_points.splitlines()[0].strip()
+            if latest.ai_key_points
+            else ""
+        ),
+        "key_risks": (
+            [l.strip() for l in latest.ai_risk_signals.splitlines() if l.strip()][:3]
+            if latest.ai_risk_signals
+            else []
+        ),
+    }
+
+
 class ThesisReviewAgent:
     """AI agent for reviewing a single investment thesis."""
 
@@ -97,13 +142,21 @@ class ThesisReviewAgent:
             AIError: If the API call fails after retries.
             ValueError: If the response cannot be parsed into ThesisReviewOutput.
         """
-        # --- Memory: fetch context (Layer 2 + 3) trước khi build prompt ---
-        memory_block = await _fetch_memory_for_review(
+        # --- Memory: fetch episodes + rendered context (Layer 2 + 3) ---
+        # Returns raw filtered episodes alongside the rendered string so we
+        # can extract previous_review without a second DB call.
+        filtered_episodes, memory_block = await _fetch_memory_for_review_full(
             session=session,
             user_id=user_id,
             ticker=ticker,
             thesis_id=thesis_id,
         )
+
+        # --- P2: Extract previous verdict anchor from episodes ---
+        # Gives the LLM explicit memory of what it decided last time,
+        # enabling SYSTEM_PROMPT rules 7-10 (consistency enforcement) to
+        # have concrete data to act on.
+        previous_review = _extract_previous_review(filtered_episodes, thesis_id)
 
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -119,7 +172,8 @@ class ThesisReviewAgent:
                     current_price=current_price,
                     entry_price=entry_price,
                     target_price=target_price,
-                    memory_context=memory_block,  # INJECT memory vào prompt
+                    memory_context=memory_block,
+                    previous_review=previous_review,
                 ),
             },
         ]
@@ -128,6 +182,8 @@ class ThesisReviewAgent:
             "thesis_review_agent.start",
             ticker=ticker,
             has_memory=bool(memory_block),
+            has_previous_review=previous_review is not None,
+            previous_verdict=previous_review.get("verdict") if previous_review else None,
         )
 
         try:
@@ -163,6 +219,10 @@ class ThesisReviewAgent:
             ticker=ticker,
             verdict=result.overall_verdict,
             confidence=result.confidence,
+            verdict_changed=(
+                previous_review is not None
+                and previous_review.get("verdict") != str(result.overall_verdict)
+            ),
         )
 
         # --- Memory: log interaction (Layer 2) ---
@@ -182,23 +242,30 @@ class ThesisReviewAgent:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-async def _fetch_memory_for_review(
+async def _fetch_memory_for_review_full(
     session,
     user_id: str | None,
     ticker: str,
     thesis_id: int | None = None,
-) -> str:
-    """Fetch episodic + semantic memory scoped to this thesis and ticker.
+) -> tuple[list, str]:
+    """Fetch episodic + semantic memory and return both raw episodes and rendered string.
+
+    Returns:
+        (filtered_episodes, rendered_memory_block)
+        filtered_episodes: list[AIInteractionLog] scoped to thesis + ticker.
+        rendered_memory_block: str ready for prompt injection (empty if no data).
+
+    The caller (ThesisReviewAgent.review) uses filtered_episodes to extract
+    previous_review without triggering a second DB call.
 
     Scoping layers (defense-in-depth):
       1. thesis_id filter in get_memory_context() — primary scope
       2. ticker filter applied here — secondary scope for cross-thesis safety
 
-    Returns empty string if session/user_id missing or memory unavailable.
     Never raises — memory failure must not block AI review calls.
     """
     if session is None or not user_id:
-        return ""
+        return [], ""
     try:
         from src.ai.memory.memory_service import MemoryService
 
@@ -209,7 +276,7 @@ async def _fetch_memory_for_review(
             thesis_id=thesis_id,
         )
         if mem_ctx.is_empty():
-            return ""
+            return [], ""
 
         # Secondary filter: ticker-level scope on top of thesis_id scope.
         # Catches edge cases where thesis_id was not recorded on old entries.
@@ -218,7 +285,7 @@ async def _fetch_memory_for_review(
             if not ep.tickers or ticker in ep.tickers
         ]
         if not filtered_episodes and mem_ctx.latest_snapshot is None:
-            return ""
+            return [], ""
 
         mem_ctx.recent_episodes = filtered_episodes
         rendered = mem_ctx.render()
@@ -229,14 +296,35 @@ async def _fetch_memory_for_review(
             episodes=len(filtered_episodes),
             has_snapshot=mem_ctx.latest_snapshot is not None,
         )
-        return rendered
+        return filtered_episodes, rendered
     except Exception as exc:
         logger.warning(
             "thesis_review_agent.memory_fetch_failed",
             ticker=ticker,
             error=str(exc),
         )
-        return ""
+        return [], ""
+
+
+async def _fetch_memory_for_review(
+    session,
+    user_id: str | None,
+    ticker: str,
+    thesis_id: int | None = None,
+) -> str:
+    """Thin wrapper — returns rendered memory string only.
+
+    Kept for backward compatibility. Internally delegates to
+    _fetch_memory_for_review_full and discards the episodes.
+    Use _fetch_memory_for_review_full when episodes are needed.
+    """
+    _, rendered = await _fetch_memory_for_review_full(
+        session=session,
+        user_id=user_id,
+        ticker=ticker,
+        thesis_id=thesis_id,
+    )
+    return rendered
 
 
 async def _log_thesis_review_interaction(
