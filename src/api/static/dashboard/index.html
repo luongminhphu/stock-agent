@@ -9,12 +9,16 @@
     <link rel="stylesheet" href="/static/dashboard/dashboard.css" />
     <link rel="stylesheet" href="/static/dashboard/css/signals.css" />
     <style>
-      /* ── Wave-1 layout additions ─────────────────────────────────────── */
+      /* ── Wave-1 layout additions ──────────────────────────────────── */
 
-      /* KPI strip: 2 rows of 4 */
+      /*
+        KPI strip: 5-col grid, 2 rows
+        Row 1: Portfolio | Unrealized P&L | Risky | Open | Paused
+        Row 2: Upcoming 7d | Cần review gấp | Latest Scan (span 3)
+      */
       .kpi-strip {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(5, 1fr);
         gap: var(--gap, 12px);
       }
       .kpi-strip .kpi-row-divider {
@@ -24,11 +28,25 @@
         margin: 2px 0;
         opacity: .5;
       }
+      /* Latest Scan spans the remaining 3 columns in row 2 */
+      .kpi-strip .signal-card--scan {
+        grid-column: span 3;
+      }
       @media (max-width: 900px) {
-        .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+        .kpi-strip {
+          grid-template-columns: repeat(2, 1fr);
+        }
+        .kpi-strip .signal-card--scan {
+          grid-column: span 2;
+        }
       }
       @media (max-width: 540px) {
-        .kpi-strip { grid-template-columns: 1fr 1fr; }
+        .kpi-strip {
+          grid-template-columns: 1fr 1fr;
+        }
+        .kpi-strip .signal-card--scan {
+          grid-column: 1 / -1;
+        }
       }
 
       /* Side-by-side grid: Watchlist + Catalyst / Leaderboard + Backtesting */
@@ -129,8 +147,7 @@
       <main id="main-content">
 
         <!-- ══════════════════════════════════════════════════════════════════
-             CLUSTER A — "Hôm nay cần làm gì?"
-             Decision hierarchy: Alerts → KPIs → Signals → Actions → Brief → Watchlist/Catalyst
+             CLUSTER A — “Hôm nay cần làm gì?”
         ══════════════════════════════════════════════════════════════════ -->
         <div class="cluster" aria-label="Cluster A: Hôm nay cần làm gì?">
           <div class="cluster-label">
@@ -138,7 +155,7 @@
             <span>Hôm nay cần làm gì?</span>
           </div>
 
-          <!-- ── 1. ALERTS TRIGGERED — most time-sensitive, always on top ── -->
+          <!-- ── 1. ALERTS TRIGGERED ───────────────────────────────────────── -->
           <div
             id="alertsTriggeredStrip"
             class="alerts-strip hidden"
@@ -146,73 +163,87 @@
             aria-label="Alerts đã kích hoạt"
           ></div>
 
-          <!-- ── 2. KPI STRIP — 2 rows: actionable / context ────────────── -->
+          <!-- ── 2. KPI STRIP — 5 cols, 2 rows ─────────────────────────────── -->
+          <!--
+            Row 1: Portfolio value | Unrealized P&L | Risky theses | Open theses | Paused theses
+            [─────────────────────────────────────────────────────────────────]
+            Row 2: Upcoming 7d | Cần review gấp | Latest Scan (span 3)
+            [─────────────────────────────────────────────────────────────────]
+          -->
           <section class="command-strip kpi-strip" aria-label="Tổng quan danh mục">
 
-            <!-- Row 1: actionable KPIs (trực tiếp ảnh hưởng đến hành động hôm nay) -->
+            <!-- ── Row 1: 5 cards ── -->
             <article class="signal-card signal-card--portfolio">
               <span class="signal-label">Portfolio value</span>
               <strong class="signal-value" id="portfolioValue">—</strong>
               <span class="signal-sub" id="portfolioValueSub"></span>
             </article>
+
             <article class="signal-card signal-card--pnl">
               <span class="signal-label">Unrealized P&amp;L</span>
               <strong class="signal-value" id="unrealizedPnl">—</strong>
               <span class="signal-sub" id="unrealizedPnlPct"></span>
             </article>
+
             <article class="signal-card signal-card--risk">
               <span class="signal-label">Risky theses</span>
               <strong class="signal-value" id="riskyTheses">—</strong>
               <span class="signal-sub">score &lt; 40</span>
             </article>
+
+            <article class="signal-card">
+              <span class="signal-label">Open theses</span>
+              <strong class="signal-value" id="openTheses">—</strong>
+              <span class="signal-sub" id="reviewsToday"></span>
+            </article>
+
+            <article class="signal-card">
+              <span class="signal-label">Paused theses</span>
+              <strong class="signal-value" id="pausedTheses">—</strong>
+              <span class="signal-sub">ạm dừng theo dõi</span>
+            </article>
+
+            <!-- ── Row divider ── -->
+            <div class="kpi-row-divider" aria-hidden="true"></div>
+
+            <!-- ── Row 2: 2 + 1 span-3 ── -->
+            <article class="signal-card">
+              <span class="signal-label">Upcoming 7d</span>
+              <strong class="signal-value" id="upcoming7d">—</strong>
+              <span class="signal-sub">catalysts</span>
+            </article>
+
             <article class="signal-card signal-card--risk" id="staleReviewCard">
               <span class="signal-label">Cần review gấp</span>
               <strong class="signal-value" id="staleReview">—</strong>
               <span class="signal-sub" id="staleReviewSub">thesis chưa review</span>
             </article>
 
-            <!-- Divider -->
-            <div class="kpi-row-divider" aria-hidden="true"></div>
-
-            <!-- Row 2: context KPIs (portfolio overview) -->
-            <article class="signal-card">
-              <span class="signal-label">Open theses</span>
-              <strong class="signal-value" id="openTheses">—</strong>
-              <span class="signal-sub" id="reviewsToday"></span>
-            </article>
-            <article class="signal-card">
-              <span class="signal-label">Paused theses</span>
-              <strong class="signal-value" id="pausedTheses">—</strong>
-              <span class="signal-sub">tạm dừng theo dõi</span>
-            </article>
-            <article class="signal-card">
-              <span class="signal-label">Upcoming 7d</span>
-              <strong class="signal-value" id="upcoming7d">—</strong>
-              <span class="signal-sub">catalysts</span>
-            </article>
-            <article class="signal-card signal-card--wide">
+            <!-- Latest Scan: spans 3 of 5 columns — date · meta · top picks pills -->
+            <article class="signal-card signal-card--scan" id="latestScanCard">
               <span class="signal-label">Latest scan</span>
               <strong class="signal-value" id="latestScanAt">—</strong>
               <span class="signal-sub" id="latestScanSummary">Chưa có scan snapshot.</span>
             </article>
+
           </section>
 
-          <!-- ── 3. TIER BREAKDOWN ──────────────────────────────────────── -->
+          <!-- ── 3. TIER BREAKDOWN ──────────────────────────────────────────── -->
           <div
             id="tierBreakdown"
             class="tier-bar hidden"
             aria-label="Phân bổ tier thesis"
           ></div>
 
-          <!-- ── 4. SIGNALS FEED — time-sensitive, before watchlist ──────── -->
+          <!-- ── 4. SIGNALS FEED ────────────────────────────────────────────── -->
           <div
             id="signalsFeed"
             class="signals-feed hidden"
             aria-live="polite"
-            aria-label="Tín hiệu kỹ thuật gần đây"
+            aria-label="Tín hiệu kỹ thuận gần đây"
           ></div>
 
-          <!-- ── 5. ACTION SURFACE — việc cần làm hôm nay ──────────────── -->
+          <!-- ── 5. ACTION SURFACE ─────────────────────────────────────────── -->
           <div
             id="actionSurface"
             class="action-surface hidden"
@@ -220,7 +251,7 @@
             aria-label="Việc cần làm hôm nay"
           ></div>
 
-          <!-- ── 6. BRIEFING — collapsible, không chiếm toàn màn ──────── -->
+          <!-- ── 6. BRIEFING ──────────────────────────────────────────────── -->
           <details class="brief-collapsible" id="briefCollapsible">
             <summary>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -229,26 +260,16 @@
             <div class="brief-inner">
               <div class="brief-context-strip" id="briefContextStrip">
                 <div class="brief-strip-header">
-                  <button
-                    id="generateMorningBtn"
-                    class="icon-text-btn"
-                    type="button"
-                    data-generate-brief="morning"
-                    aria-label="Tạo Morning Brief"
-                  >
+                  <button id="generateMorningBtn" class="icon-text-btn" type="button"
+                    data-generate-brief="morning" aria-label="Tạo Morning Brief">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
                       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <path d="M12 2l2.09 6.26L20 10l-5.91 1.74L12 18l-2.09-6.26L4 10l5.91-1.74L12 2z"/>
                     </svg>
                     Morning Brief
                   </button>
-                  <button
-                    id="generateEodBtn"
-                    class="icon-text-btn"
-                    type="button"
-                    data-generate-brief="eod"
-                    aria-label="Tạo EOD Brief"
-                  >
+                  <button id="generateEodBtn" class="icon-text-btn" type="button"
+                    data-generate-brief="eod" aria-label="Tạo EOD Brief">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
                       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
@@ -262,7 +283,7 @@
             </div>
           </details>
 
-          <!-- ── 7. WATCHLIST + CATALYST — side-by-side ────────────────── -->
+          <!-- ── 7. WATCHLIST + CATALYST ──────────────────────────────────────── -->
           <div class="panel-duo">
             <section class="panel glass watchlist-layer" aria-labelledby="watchlistTitle">
               <div class="panel-header split-header">
@@ -286,7 +307,7 @@
             </section>
           </div>
 
-          <!-- ── 8. PORTFOLIO — full-width below duo ────────────────────── -->
+          <!-- ── 8. PORTFOLIO ──────────────────────────────────────────────────── -->
           <section class="panel glass portfolio-layer" aria-labelledby="portfolioTitle">
             <div class="panel-header split-header">
               <div>
@@ -304,8 +325,7 @@
         </div><!-- /cluster-a -->
 
         <!-- ══════════════════════════════════════════════════════════════════
-             CLUSTER B — "Thesis của tôi đang ở đâu?"
-             Research hub: Thesis board (full-width) → Leaderboard | Backtesting (duo)
+             CLUSTER B — “Thesis của tôi đang ở đâu?”
         ══════════════════════════════════════════════════════════════════ -->
         <div class="cluster" aria-label="Cluster B: Thesis của tôi đang ở đâu?">
           <div class="cluster-label">
@@ -313,7 +333,6 @@
             <span>Thesis của tôi đang ở đâu?</span>
           </div>
 
-          <!-- ── THESIS BOARD (full-width) ──────────────────────────────── -->
           <section class="panel glass watchlist-layer" aria-labelledby="thesisBoardTitle">
             <div class="panel-header split-header">
               <div>
@@ -331,14 +350,9 @@
             </div>
           </section>
 
-          <!-- ── LEADERBOARD | BACKTESTING — side-by-side ──────────────── -->
           <div class="panel-duo">
-            <section
-              id="leaderboardStrip"
-              class="panel glass lb-strip"
-              aria-labelledby="lbStripTitle"
-              aria-live="polite"
-            >
+            <section id="leaderboardStrip" class="panel glass lb-strip"
+              aria-labelledby="lbStripTitle" aria-live="polite">
               <div class="lb-strip-header">
                 <div>
                   <p class="eyebrow">⑤ 🏆 Thesis Leaderboard</p>
@@ -391,13 +405,12 @@
                 </div>
               </div>
             </section>
-          </div><!-- /panel-duo leaderboard+backtesting -->
+          </div>
 
         </div><!-- /cluster-b -->
 
         <!-- ══════════════════════════════════════════════════════════════════
-             CLUSTER C — "Tôi đã quyết định gì & học được gì?"
-             Feedback loop: Decision KPIs → Decision Log → AI Lessons
+             CLUSTER C — “Tôi đã quyết định gì &amp; học được gì?”
         ══════════════════════════════════════════════════════════════════ -->
         <div class="cluster" aria-label="Cluster C: Tôi đã quyết định gì và học được gì?">
           <div class="cluster-label">
@@ -405,7 +418,6 @@
             <span>Tôi đã quyết định gì &amp; học được gì?</span>
           </div>
 
-          <!-- ── DECISION LOG & AI LESSONS ─────────────────────────────── -->
           <section class="panel glass decision-layer" aria-labelledby="decisionTitle">
             <div class="dec-panel-header">
               <div>
@@ -415,12 +427,8 @@
               <button id="newDecisionBtn" class="primary-btn" type="button">+ Log Decision</button>
             </div>
 
-            <div
-              id="decisionKpiStrip"
-              class="dec-kpi-strip"
-              aria-label="Decision KPI tổng quan"
-              aria-live="polite"
-            >
+            <div id="decisionKpiStrip" class="dec-kpi-strip"
+              aria-label="Decision KPI tổng quan" aria-live="polite">
               <article class="dec-kpi-card" id="dkpiTotal">
                 <span class="dec-kpi-label">Tổng decisions</span>
                 <strong class="dec-kpi-value"><div class="skel skel-text" style="width:2rem;"></div></strong>
@@ -462,7 +470,7 @@
       </footer>
     </div>
 
-    <!-- ── MODALS ─────────────────────────────────────────────────────────── -->
+    <!-- ── MODALS ──────────────────────────────────────────────────────────── -->
 
     <dialog id="thesisModal" aria-labelledby="thesisModalTitle">
       <div class="modal-inner">
@@ -692,7 +700,7 @@
                 <option value="buy">MUA</option>
                 <option value="sell">BÁN</option>
                 <option value="hold">GIỮ</option>
-                <option value="skip">BỎ QUA</option>
+                <option value="skip">BỀ QUA</option>
               </select>
             </div>
           </div>
