@@ -335,27 +335,30 @@ async def _log_thesis_review_interaction(
     thesis_id: int | None,
     trigger: str,
 ) -> None:
-    """Fire-and-forget memory log. Never raises."""
+    """Fire-and-forget memory log. Never raises.
+
+    Stores:
+      ai_key_points  — result.summary (2-3 sentence thesis assessment).
+                       Used by _extract_previous_review as the "summary" anchor
+                       for the next review cycle. Must be the actual narrative,
+                       NOT action enum values like "HOLD" / "ADD".
+      ai_risk_signals — top 3 invalidation or risk signal strings.
+    """
     if session is None or not user_id:
         return
     try:
         from src.ai.memory.memory_service import InteractionEntry, MemoryService
 
-        # key_points: top 5 recommendation summaries
-        key_lines: list[str] = []
-        for rec in (getattr(result, "recommendations", []) or [])[:5]:
-            if hasattr(rec, "action"):
-                key_lines.append(str(rec.action))
-            elif isinstance(rec, str):
-                key_lines.append(rec)
-
-        # risk_signals: invalidation risks or bearish signals
+        # risk_signals: invalidation risks or bearish signals (unchanged)
         risk_lines: list[str] = []
         for risk in (getattr(result, "invalidation_risks", []) or [])[:3]:
             risk_lines.append(str(risk))
         if not risk_lines:
             for risk in (getattr(result, "risk_signals", []) or [])[:3]:
                 risk_lines.append(str(risk.signal) if hasattr(risk, "signal") else str(risk))
+        if not risk_lines:
+            for risk in (getattr(result, "key_risks", []) or [])[:3]:
+                risk_lines.append(str(risk))
 
         entry = InteractionEntry(
             user_id=user_id,
@@ -364,7 +367,10 @@ async def _log_thesis_review_interaction(
             tickers=[ticker],
             ai_verdict=str(result.overall_verdict or ""),
             ai_confidence=getattr(result, "confidence", None),
-            ai_key_points="\n".join(key_lines) if key_lines else None,
+            # Store the summary narrative so _extract_previous_review can surface
+            # a meaningful "Nhận định" line in the next review's previous_review block.
+            # Previously stored action enum list ("HOLD\nADD") which was useless.
+            ai_key_points=getattr(result, "summary", None) or None,
             ai_risk_signals="\n".join(risk_lines) if risk_lines else None,
             thesis_id=thesis_id,
         )
