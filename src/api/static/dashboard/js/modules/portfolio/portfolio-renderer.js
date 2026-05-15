@@ -242,7 +242,7 @@ function renderTradesTab(data, errors) {
           <tr>
             <th>Ticker</th><th class="num">Khối lượng</th><th class="num">Giá vốn TB</th>
             <th class="num">Giá HT</th><th class="num">Chi phí vốn</th>
-            <th class="num">Thị giá</th><th class="num">P&amp;L</th><th class="num">%</th>
+            <th class="num">Thị giá</th><th class="num">P&amp;L</th><th class="num">%P&amp;L</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
