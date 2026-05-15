@@ -1,633 +1,562 @@
-<!doctype html>
-<html lang="vi">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>stock-agent — Investor Dashboard</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>%F0%9F%93%88</text></svg>" />
-    <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/static/dashboard/dashboard.css" />
-  </head>
-  <body>
-    <a class="skip-link" href="#main-content">Bỏ qua điều hướng</a>
-    <div class="shell">
+<!DOCTYPE html>
+<html lang="vi" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stock Agent Dashboard</title>
+  <link rel="stylesheet" href="css/base/reset.css">
+  <link rel="stylesheet" href="css/base/tokens.css">
+  <link rel="stylesheet" href="css/base/typography.css">
+  <link rel="stylesheet" href="css/modules/layout.css">
+  <link rel="stylesheet" href="css/modules/signals-alerts.css">
+  <link rel="stylesheet" href="css/modules/watchlist.css">
+  <link rel="stylesheet" href="css/modules/thesis.css">
+  <link rel="stylesheet" href="css/modules/briefing.css">
+  <link rel="stylesheet" href="css/modules/leaderboard.css">
+  <link rel="stylesheet" href="css/modules/backtesting.css">
+  <link rel="stylesheet" href="css/modules/portfolio.css">
+  <link rel="stylesheet" href="css/modules/decision.css">
+  <link rel="stylesheet" href="css/modules/decision-kpi.css">
+  <link rel="stylesheet" href="css/modules/action-surface.css">
+  <link rel="stylesheet" href="css/modules/conviction-timeline.css">
+  <link rel="stylesheet" href="css/modules/layout-duo.css">
+  <link rel="stylesheet" href="css/modules/quote-strip.css">
+  <link rel="stylesheet" href="css/signals.css">
+</head>
+<body>
+  <div class="app-shell">
 
-      <!-- ── TOPBAR ──────────────────────────────────────────────────────── -->
-      <header class="topbar">
-        <div class="brand-block">
-          <svg class="brand-logo" aria-label="stock-agent" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect width="32" height="32" rx="8" fill="currentColor" fill-opacity=".1"/>
-            <polyline points="4,22 11,14 17,18 28,8" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-            <circle cx="28" cy="8" r="2.5" fill="currentColor"/>
+    <!-- ── TOOLBAR ────────────────────────────────────────────────────────── -->
+    <header class="toolbar" role="banner">
+      <div class="toolbar-inner">
+        <div class="toolbar-brand">
+          <svg class="brand-logo" width="22" height="22" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" aria-label="Stock Agent" role="img">
+            <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/>
+            <polyline points="16 7 22 7 22 13"/>
           </svg>
-          <span class="brand-name">stock-agent</span>
+          <span class="brand-name">Stock Agent</span>
         </div>
-        <div class="toolbar">
-          <div class="brief-tab-bar topbar-brief-tabs" role="tablist" aria-label="Brief phase">
-            <button class="brief-tab active" role="tab" aria-selected="true"
-              aria-controls="morningBriefWrap" data-tab="morning">🌅 Morning</button>
-            <button class="brief-tab" role="tab" aria-selected="false"
-              aria-controls="eodBriefWrap" data-tab="eod">🌙 End-of-Day</button>
-          </div>
-          <label class="field field-compact">
-            <span class="sr-only">Lọc trạng thái</span>
-            <select id="statusFilter" aria-label="Lọc thesis theo trạng thái">
-              <option value="active">active</option>
-              <option value="all">all</option>
-              <option value="invalidated">invalidated</option>
-              <option value="closed">closed</option>
-              <option value="paused">paused</option>
-            </select>
-          </label>
-          <button id="reloadBtn" class="icon-text-btn" type="button" aria-label="Tải lại dữ liệu">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-            Reload
+
+        <div class="toolbar-controls">
+          <select id="thesisFilter" class="toolbar-select" aria-label="Lọc thesis">
+            <option value="all">Tất cả</option>
+            <option value="open">open</option>
+            <option value="paused">paused</option>
+            <option value="closed">closed</option>
+          </select>
+
+          <button id="refreshBtn" class="icon-btn" type="button" aria-label="Làm mới dữ liệu">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="23 4 23 10 17 10"/>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+            </svg>
           </button>
-          <button id="newThesisBtn" class="primary-btn" type="button">+ Thesis mới</button>
+
+          <button class="icon-btn" type="button" data-theme-toggle
+                  aria-label="Chuyển chế độ sáng/tối">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+            </svg>
+          </button>
         </div>
-      </header>
+      </div>
+    </header>
 
-      <div id="errorBanner" class="error-banner hidden" role="alert"></div>
+    <!-- ── MAIN ───────────────────────────────────────────────────────────── -->
+    <main class="main-content" id="mainContent">
 
-      <main id="main-content">
+      <!-- skip link target -->
+      <a href="#mainContent" class="sr-only">Bỏ qua điều hướng</a>
 
-        <!-- ══════════════════════════════════════════════════════════════════
-             CLUSTER A — "Hôm nay cần làm gì?"
-             Decision hierarchy: Alerts → KPIs → Signals → Actions → Brief → Watchlist/Catalyst
-        ══════════════════════════════════════════════════════════════════ -->
-        <div class="cluster" aria-label="Cluster A: Hôm nay cần làm gì?">
-          <div class="cluster-label">
-            <span class="cluster-badge">A</span>
-            <span>Hôm nay cần làm gì?</span>
+      <!-- ── 1. QUOTE STRIP ────────────────────────────────────────────── -->
+      <div id="quoteStrip" class="quote-strip" aria-label="Giá thị trường realtime"
+           aria-live="polite"></div>
+
+      <!-- ── 2. KPI STRIP — 2 rows ──────────────────────────────────────── -->
+      <!-- Row 1: Portfolio value · Unrealized P&L · Risky theses · Open theses · Paused theses (5 cols) -->
+      <!-- Row 2: Upcoming 7d · Cần review gấp · Latest scan (span 3) -->
+      <section class="command-strip kpi-strip" aria-label="Tổng quan danh mục">
+
+        <!-- Row 1 — 5 cards -->
+        <article class="signal-card signal-card--portfolio">
+          <span class="signal-label">Portfolio value</span>
+          <strong class="signal-value" id="portfolioValue">—</strong>
+          <span class="signal-sub" id="portfolioValueSub"></span>
+        </article>
+        <article class="signal-card signal-card--pnl">
+          <span class="signal-label">Unrealized P&amp;L</span>
+          <strong class="signal-value" id="unrealizedPnl">—</strong>
+          <span class="signal-sub" id="unrealizedPnlPct"></span>
+        </article>
+        <article class="signal-card signal-card--risk">
+          <span class="signal-label">Risky theses</span>
+          <strong class="signal-value" id="riskyTheses">—</strong>
+          <span class="signal-sub">score &lt; 40</span>
+        </article>
+        <article class="signal-card">
+          <span class="signal-label">Open theses</span>
+          <strong class="signal-value" id="openTheses">—</strong>
+          <span class="signal-sub" id="reviewsToday"></span>
+        </article>
+        <article class="signal-card">
+          <span class="signal-label">Paused theses</span>
+          <strong class="signal-value" id="pausedTheses">—</strong>
+          <span class="signal-sub">tạm dừng theo dõi</span>
+        </article>
+
+        <!-- Row divider -->
+        <div class="kpi-row-divider" aria-hidden="true"></div>
+
+        <!-- Row 2 — Upcoming 7d · Cần review gấp · Latest scan (span 3) -->
+        <article class="signal-card">
+          <span class="signal-label">Upcoming 7d</span>
+          <strong class="signal-value" id="upcoming7d">—</strong>
+          <span class="signal-sub">catalysts</span>
+        </article>
+        <article class="signal-card signal-card--risk" id="staleReviewCard">
+          <span class="signal-label">Cần review gấp</span>
+          <strong class="signal-value" id="staleReview">—</strong>
+          <span class="signal-sub" id="staleReviewSub">chưa review 14d</span>
+        </article>
+        <article class="signal-card signal-card--scan" id="latestScanCard">
+          <span class="signal-label">Latest scan</span>
+          <strong class="signal-value" id="latestScanAt">—</strong>
+          <div class="signal-sub" id="latestScanSummary">Chưa có scan snapshot.</div>
+        </article>
+      </section>
+
+      <!-- ── 3. TIER BREAKDOWN ──────────────────────────────────────────── -->
+      <div
+        id="tierBreakdown"
+        class="tier-bar hidden"
+        aria-label="Phân bổ tier thesis"
+      ></div>
+
+      <!-- ── 4. SIGNALS FEED — time-sensitive, before watchlist ──────── -->
+      <div
+        id="signalsFeed"
+        class="signals-feed hidden"
+        aria-live="polite"
+        aria-label="Tín hiệu kỹ thuật gần đây"
+      ></div>
+
+      <!-- ── 5. ACTION SURFACE ─────────────────────────────────────── -->
+      <div
+        id="actionSurface"
+        class="action-surface hidden"
+        aria-live="polite"
+        aria-label="Việc cần làm hôm nay"
+      ></div>
+
+      <!-- ── 6. BRIEFING — collapsible ─────────────────────────────── -->
+      <details class="brief-collapsible" id="briefCollapsible">
+        <summary>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Morning / EOD Brief
+        </summary>
+        <div class="brief-inner">
+          <div class="brief-context-strip" id="briefContextStrip">
+            <div class="brief-strip-header">
+              <button id="generateMorningBtn" class="icon-text-btn" type="button"
+                data-generate-brief="morning" aria-label="Tạo Morning Brief">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2l2.09 6.26L20 10l-5.91 1.74L12 18l-2.09-6.26L4 10l5.91-1.74L12 2z"/>
+                </svg>
+                Morning Brief
+              </button>
+              <button id="generateEodBtn" class="icon-text-btn" type="button"
+                data-generate-brief="eod" aria-label="Tạo EOD Brief">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                </svg>
+                EOD Brief
+              </button>
+            </div>
+            <div id="morningBriefWrap" class="brief-tab-pane" role="tabpanel"></div>
+            <div id="eodBriefWrap" class="brief-tab-pane hidden" role="tabpanel"></div>
           </div>
+        </div>
+      </details>
 
-          <!-- ── 1. ALERTS TRIGGERED — most time-sensitive, always on top ── -->
-          <div
-            id="alertsTriggeredStrip"
-            class="alerts-strip hidden"
-            aria-live="polite"
-            aria-label="Alerts đã kích hoạt"
-          ></div>
-
-          <!-- ── 2. KPI STRIP — 2 rows: actionable / context ────────────── -->
-          <section class="command-strip kpi-strip" aria-label="Tổng quan danh mục">
-
-            <!-- Row 1: actionable KPIs -->
-            <article class="signal-card signal-card--portfolio">
-              <span class="signal-label">Portfolio value</span>
-              <strong class="signal-value" id="portfolioValue">—</strong>
-              <span class="signal-sub" id="portfolioValueSub"></span>
-            </article>
-            <article class="signal-card signal-card--pnl">
-              <span class="signal-label">Unrealized P&amp;L</span>
-              <strong class="signal-value" id="unrealizedPnl">—</strong>
-              <span class="signal-sub" id="unrealizedPnlPct"></span>
-            </article>
-            <article class="signal-card signal-card--risk">
-              <span class="signal-label">Risky theses</span>
-              <strong class="signal-value" id="riskyTheses">—</strong>
-              <span class="signal-sub">score &lt; 40</span>
-            </article>
-            <article class="signal-card signal-card--risk" id="staleReviewCard">
-              <span class="signal-label">Cần review gấp</span>
-              <strong class="signal-value" id="staleReview">—</strong>
-              <span class="signal-sub" id="staleReviewSub">thesis chưa review</span>
-            </article>
-
-            <!-- Divider between actionable / context rows -->
-            <div class="kpi-row-divider" aria-hidden="true"></div>
-
-            <!-- Row 2: context KPIs -->
-            <article class="signal-card">
-              <span class="signal-label">Open theses</span>
-              <strong class="signal-value" id="openTheses">—</strong>
-              <span class="signal-sub" id="reviewsToday"></span>
-            </article>
-            <article class="signal-card">
-              <span class="signal-label">Paused theses</span>
-              <strong class="signal-value" id="pausedTheses">—</strong>
-              <span class="signal-sub">tạm dừng theo dõi</span>
-            </article>
-            <article class="signal-card">
-              <span class="signal-label">Upcoming 7d</span>
-              <strong class="signal-value" id="upcoming7d">—</strong>
-              <span class="signal-sub">catalysts</span>
-            </article>
-            <article class="signal-card signal-card--wide">
-              <span class="signal-label">Latest scan</span>
-              <strong class="signal-value" id="latestScanAt">—</strong>
-              <span class="signal-sub" id="latestScanSummary">Chưa có scan snapshot.</span>
-            </article>
-          </section>
-
-          <!-- ── 3. TIER BREAKDOWN ──────────────────────────────────────── -->
-          <div
-            id="tierBreakdown"
-            class="tier-bar hidden"
-            aria-label="Phân bổ tier thesis"
-          ></div>
-
-          <!-- ── 4. SIGNALS FEED — time-sensitive, before watchlist ──────── -->
-          <div
-            id="signalsFeed"
-            class="signals-feed hidden"
-            aria-live="polite"
-            aria-label="Tín hiệu kỹ thuật gần đây"
-          ></div>
-
-          <!-- ── 5. ACTION SURFACE ─────────────────────────────────────── -->
-          <div
-            id="actionSurface"
-            class="action-surface hidden"
-            aria-live="polite"
-            aria-label="Việc cần làm hôm nay"
-          ></div>
-
-          <!-- ── 6. BRIEFING — collapsible ─────────────────────────────── -->
-          <details class="brief-collapsible" id="briefCollapsible">
-            <summary>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-              Morning / EOD Brief
-            </summary>
-            <div class="brief-inner">
-              <div class="brief-context-strip" id="briefContextStrip">
-                <div class="brief-strip-header">
-                  <button id="generateMorningBtn" class="icon-text-btn" type="button"
-                    data-generate-brief="morning" aria-label="Tạo Morning Brief">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M12 2l2.09 6.26L20 10l-5.91 1.74L12 18l-2.09-6.26L4 10l5.91-1.74L12 2z"/>
-                    </svg>
-                    Morning Brief
-                  </button>
-                  <button id="generateEodBtn" class="icon-text-btn" type="button"
-                    data-generate-brief="eod" aria-label="Tạo EOD Brief">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-                    </svg>
-                    EOD Brief
-                  </button>
-                </div>
-                <div id="morningBriefWrap" class="brief-tab-pane" role="tabpanel"></div>
-                <div id="eodBriefWrap" class="brief-tab-pane hidden" role="tabpanel"></div>
-              </div>
+      <!-- ── 7. WATCHLIST + CATALYST — side-by-side ─────────────────── -->
+      <div class="panel-duo">
+        <section class="panel glass watchlist-layer" aria-labelledby="watchlistTitle">
+          <div class="panel-header split-header">
+            <div>
+              <p class="eyebrow">① Watchlist &amp; Tín hiệu</p>
+              <h2 id="watchlistTitle">Watchlist</h2>
             </div>
-          </details>
-
-          <!-- ── 7. WATCHLIST + CATALYST — side-by-side ─────────────────── -->
-          <div class="panel-duo">
-            <section class="panel glass watchlist-layer" aria-labelledby="watchlistTitle">
-              <div class="panel-header split-header">
-                <div>
-                  <p class="eyebrow">① Watchlist &amp; Tín hiệu</p>
-                  <h2 id="watchlistTitle">👁 Mã đang theo dõi</h2>
-                </div>
-                <div class="panel-actions"></div>
-              </div>
-              <div id="watchlistSection">Đang tải…</div>
-            </section>
-
-            <section class="panel glass watchlist-layer" aria-labelledby="catalystPanelTitle">
-              <div class="panel-header split-header">
-                <div>
-                  <p class="eyebrow">② Catalyst Calendar</p>
-                  <h2 id="catalystPanelTitle">Upcoming catalysts</h2>
-                </div>
-              </div>
-              <div id="catalystList" class="list empty-state">Chưa tải dữ liệu…</div>
-            </section>
+            <div class="panel-actions">
+              <button id="addWatchlistBtn" class="icon-text-btn" type="button"
+                      aria-label="Thêm mã vào watchlist">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                Thêm mã
+              </button>
+            </div>
           </div>
+          <div id="watchlistSection">Đang tải…</div>
+        </section>
 
-          <!-- ── 8. PORTFOLIO — full-width ──────────────────────────────── -->
-          <section class="panel glass portfolio-layer" aria-labelledby="portfolioTitle">
-            <div class="panel-header split-header">
-              <div>
-                <p class="eyebrow">③ Danh mục đầu tư</p>
-                <h2 id="portfolioTitle">Holdings &amp; P&amp;L realtime</h2>
-              </div>
-              <p class="muted panel-hint">
-                <strong>Trades</strong>: P&amp;L unrealized theo giao dịch thực tế.
-                <strong>Thesis</strong>: Conviction + score từ thesis active.
-              </p>
-            </div>
-            <div id="portfolioSection">Đang tải…</div>
-          </section>
-
-        </div><!-- /cluster-a -->
-
-        <!-- ══════════════════════════════════════════════════════════════════
-             CLUSTER B — "Thesis của tôi đang ở đâu?"
-             Thesis board (full-width) → Leaderboard | Backtesting (duo)
-        ══════════════════════════════════════════════════════════════════ -->
-        <div class="cluster" aria-label="Cluster B: Thesis của tôi đang ở đâu?">
-          <div class="cluster-label">
-            <span class="cluster-badge">B</span>
-            <span>Thesis của tôi đang ở đâu?</span>
+        <section class="panel glass catalyst-layer" aria-labelledby="catalystPanelTitle">
+          <div class="panel-header">
+            <p class="eyebrow">② Catalyst Calendar</p>
+            <h2 id="catalystPanelTitle">Upcoming catalysts</h2>
           </div>
+          <div id="catalystSection">Đang tải…</div>
+        </section>
+      </div>
 
-          <!-- ── THESIS BOARD (full-width) ──────────────────────────────── -->
-          <section class="panel glass watchlist-layer" aria-labelledby="thesisBoardTitle">
-            <div class="panel-header split-header">
-              <div>
-                <p class="eyebrow">④ Portfolio theses</p>
-                <h2 id="thesisBoardTitle">Thesis board</h2>
-              </div>
-              <p class="panel-hint">Nhấn vào một thesis để xem chi tiết</p>
-            </div>
-            <div id="thesesTableWrap" class="empty-state">Chưa tải dữ liệu…</div>
-            <div id="thesisDetail" class="detail-shell empty-detail">
-              <div class="empty-detail-copy">
-                <h3>Chọn một thesis</h3>
-                <p>Xem assumptions, catalysts, reasoning và các điểm cần theo dõi tiếp theo.</p>
-              </div>
-            </div>
-          </section>
-
-          <!-- ── LEADERBOARD | BACKTESTING — side-by-side ───────────────── -->
-          <div class="panel-duo">
-            <section id="leaderboardStrip" class="panel glass lb-strip"
-              aria-labelledby="lbStripTitle" aria-live="polite">
-              <div class="lb-strip-header">
-                <div>
-                  <p class="eyebrow">⑤ 🏆 Thesis Leaderboard</p>
-                  <h2 id="lbStripTitle">Top theses theo score</h2>
-                </div>
-                <div class="lb-sort-bar" role="group" aria-label="Sắp xếp leaderboard">
-                  <button class="lb-sort-btn active" data-lb-sort="score" type="button">Score</button>
-                  <button class="lb-sort-btn" data-lb-sort="pnl" type="button">P&amp;L</button>
-                </div>
-              </div>
-              <ol id="leaderboardList" class="lb-list" aria-label="Danh sách leaderboard">
-                <li class="lb-item lb-item--skel" aria-hidden="true"><div class="skel skel-text" style="width:100%;height:2.4rem;"></div></li>
-                <li class="lb-item lb-item--skel" aria-hidden="true"><div class="skel skel-text" style="width:100%;height:2.4rem;"></div></li>
-                <li class="lb-item lb-item--skel" aria-hidden="true"><div class="skel skel-text" style="width:100%;height:2.4rem;"></div></li>
-                <li class="lb-item lb-item--skel" aria-hidden="true"><div class="skel skel-text" style="width:100%;height:2.4rem;"></div></li>
-                <li class="lb-item lb-item--skel" aria-hidden="true"><div class="skel skel-text" style="width:100%;height:2.4rem;"></div></li>
-              </ol>
-            </section>
-
-            <section class="panel glass validation-layer backtesting-panel" aria-labelledby="backtestTitle">
-              <div class="panel-header split-header">
-                <div>
-                  <p class="eyebrow">⑥ Backtesting</p>
-                  <h2 id="backtestTitle">Review accuracy &amp; thesis performance</h2>
-                </div>
-                <p class="muted panel-hint">Verdict quality · Worst &amp; Best calls theo avg PnL snapshot.</p>
-              </div>
-              <div class="backtesting-grid">
-                <div class="subpanel">
-                  <h3>📊 Verdict accuracy</h3>
-                  <div id="accuracyWrap" class="empty-state">Chưa tải dữ liệu…</div>
-                </div>
-                <div class="subpanel" id="callsPanel">
-                  <div class="calls-tab-bar" role="tablist" aria-label="Calls view">
-                    <button class="calls-tab active" role="tab" aria-selected="true"
-                      aria-controls="worstCallsPane" data-calls-tab="worst">🔴 Worst calls</button>
-                    <button class="calls-tab" role="tab" aria-selected="false"
-                      aria-controls="bestCallsPane" data-calls-tab="best">🟢 Best calls</button>
-                  </div>
-                  <div id="worstCallsPane" class="calls-pane" role="tabpanel">
-                    <div id="worstCallsWrap" class="empty-state">Chưa tải dữ liệu…</div>
-                  </div>
-                  <div id="bestCallsPane" class="calls-pane hidden" role="tabpanel">
-                    <div id="bestCallsWrap" class="empty-state">Chưa tải dữ liệu…</div>
-                  </div>
-                </div>
-              </div>
-            </section>
-          </div><!-- /panel-duo leaderboard+backtesting -->
-
-        </div><!-- /cluster-b -->
-
-        <!-- ══════════════════════════════════════════════════════════════════
-             CLUSTER C — "Tôi đã quyết định gì & học được gì?"
-             Feedback loop: Decision KPIs → Log → AI Lessons
-        ══════════════════════════════════════════════════════════════════ -->
-        <div class="cluster" aria-label="Cluster C: Tôi đã quyết định gì và học được gì?">
-          <div class="cluster-label">
-            <span class="cluster-badge">C</span>
-            <span>Tôi đã quyết định gì &amp; học được gì?</span>
+      <!-- ── 8. PORTFOLIO — full-width ──────────────────────────────────── -->
+      <section class="panel glass portfolio-layer" aria-labelledby="portfolioTitle">
+        <div class="panel-header split-header">
+          <div>
+            <p class="eyebrow">③ Danh mục đầu tư</p>
+            <h2 id="portfolioTitle">Holdings &amp; P&amp;L realtime</h2>
           </div>
+        </div>
+        <div id="portfolioSection">Đang tải…</div>
+      </section>
 
-          <section class="panel glass decision-layer" aria-labelledby="decisionTitle">
-            <div class="dec-panel-header">
-              <div>
-                <p class="eyebrow">⑦ Decision Log &amp; AI Lessons</p>
-                <h2 id="decisionTitle">Ghi lại quyết định &amp; Bài học từ AI Replay</h2>
-              </div>
-              <button id="newDecisionBtn" class="primary-btn" type="button">+ Log Decision</button>
+      <!-- ── 9. THESIS LIST ──────────────────────────────────────────────── -->
+      <section class="panel glass thesis-layer" aria-labelledby="thesisTitle">
+        <div class="panel-header split-header">
+          <div>
+            <p class="eyebrow">④ Portfolio theses</p>
+            <h2 id="thesisTitle">Investment Theses</h2>
+          </div>
+          <div class="panel-actions">
+            <button id="addThesisBtn" class="icon-text-btn" type="button"
+                    aria-label="Thêm thesis mới">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              Thêm thesis
+            </button>
+          </div>
+        </div>
+        <div id="thesisSection">Đang tải…</div>
+      </section>
+
+      <!-- ── 10. LEADERBOARD + BACKTESTING ─────────────────────────────── -->
+      <div class="panel-duo lb-strip">
+        <section class="panel glass lb-layer" aria-labelledby="lbTitle">
+          <div class="panel-header">
+            <p class="eyebrow">⑤ 🏆 Thesis Leaderboard</p>
+            <h2 id="lbTitle">Leaderboard</h2>
+          </div>
+          <div id="leaderboardSection">Đang tải…</div>
+        </section>
+
+        <section class="panel glass backtesting-layer" aria-labelledby="backtestTitle">
+          <div class="panel-header">
+            <p class="eyebrow">⑥ Backtesting</p>
+            <h2 id="backtestTitle">Verdict quality</h2>
+          </div>
+          <p class="muted panel-hint">Verdict quality · Worst &amp; Best calls theo avg PnL snapshot.</p>
+          <div class="backtesting-grid">
+            <div class="backtesting-col" id="backtestWorst">
+              <h3 class="backtesting-col-title">Worst calls</h3>
             </div>
-
-            <div id="decisionKpiStrip" class="dec-kpi-strip"
-              aria-label="Decision KPI tổng quan" aria-live="polite">
-              <article class="dec-kpi-card" id="dkpiTotal">
-                <span class="dec-kpi-label">Tổng decisions</span>
-                <strong class="dec-kpi-value"><div class="skel skel-text" style="width:2rem;"></div></strong>
-              </article>
-              <article class="dec-kpi-card" id="dkpiWinRate">
-                <span class="dec-kpi-label">Win rate</span>
-                <strong class="dec-kpi-value"><div class="skel skel-text" style="width:3rem;"></div></strong>
-                <span class="dec-kpi-sub">evaluated</span>
-              </article>
-              <article class="dec-kpi-card" id="dkpiBuyCount">
-                <span class="dec-kpi-label">MUA / BÁN</span>
-                <strong class="dec-kpi-value"><div class="skel skel-text" style="width:3.5rem;"></div></strong>
-              </article>
-              <article class="dec-kpi-card dec-kpi-card--alert" id="dkpiPending">
-                <span class="dec-kpi-label">Chờ evaluate</span>
-                <strong class="dec-kpi-value"><div class="skel skel-text" style="width:2rem;"></div></strong>
-                <span class="dec-kpi-sub">quá hạn review</span>
-              </article>
+            <div class="backtesting-col" id="backtestBest">
+              <h3 class="backtesting-col-title">Best calls</h3>
             </div>
+          </div>
+        </section>
+      </div>
 
-            <div class="dec-tab-bar" role="tablist" aria-label="Decision views">
-              <button class="dec-tab active" role="tab" data-tab="decisions">📋 Decisions</button>
-              <button class="dec-tab" role="tab" data-tab="lessons">🧠 AI Lessons</button>
-            </div>
+      <!-- ── 11. DECISION LOG ────────────────────────────────────────────── -->
+      <!--
+           Feedback loop: Decision KPIs → Log → AI Lessons
+      -->
+      <section class="panel glass decision-layer" aria-labelledby="decisionTitle">
+        <div class="panel-header split-header">
+          <div>
+            <p class="eyebrow">⑦ Decision Log &amp; AI Lessons</p>
+            <h2 id="decisionTitle">Decisions</h2>
+          </div>
+          <div class="panel-actions">
+            <button id="addDecisionBtn" class="icon-text-btn" type="button"
+                    aria-label="Thêm decision">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              Log decision
+            </button>
+          </div>
+        </div>
 
-            <div id="decisionsPane">
-              <div id="decisionsTableWrap">Đang tải…</div>
-            </div>
-            <div id="lessonsPane" class="hidden">
-              <div id="lessonsListWrap">Đang tải…</div>
-            </div>
-          </section>
-        </div><!-- /cluster-c -->
+        <div id="decisionKpiStrip" class="dec-kpi-strip"
+          aria-label="Decision KPI tổng quan" aria-live="polite">
+          <article class="dec-kpi-card" id="dkpiTotal">
+            <span class="dec-kpi-label">Tổng decisions</span>
+            <strong class="dec-kpi-value"><div class="skel skel-text" style="width:2rem;"></div></strong>
+          </article>
+          <article class="dec-kpi-card" id="dkpiWinRate">
+            <span class="dec-kpi-label">Win rate</span>
+            <strong class="dec-kpi-value"><div class="skel skel-text" style="width:3rem;"></div></strong>
+            <span class="dec-kpi-sub">evaluated</span>
+          </article>
+          <article class="dec-kpi-card" id="dkpiBuyCount">
+            <span class="dec-kpi-label">MUA / BÁN</span>
+            <strong class="dec-kpi-value"><div class="skel skel-text" style="width:3.5rem;"></div></strong>
+          </article>
+          <article class="dec-kpi-card dec-kpi-card--alert" id="dkpiPending">
+            <span class="dec-kpi-label">Chờ evaluate</span>
+            <strong class="dec-kpi-value"><div class="skel skel-text" style="width:2rem;"></div></strong>
+            <span class="dec-kpi-sub">quá hạn review</span>
+          </article>
+        </div>
 
-      </main>
+        <div id="decisionSection">Đang tải…</div>
+      </section>
 
-      <footer class="footer-note">
-        Static shell · Data từ <code>/api/v1/readmodel/dashboard/</code> &amp; <code>/api/v1/thesis/</code>
-      </footer>
+    </main>
+  </div>
+
+  <!-- ── MODALS ─────────────────────────────────────────────────────────── -->
+
+  <!-- Thesis form modal -->
+  <div id="thesisModal" class="modal-overlay hidden" role="dialog"
+       aria-modal="true" aria-labelledby="thesisModalTitle">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2 id="thesisModalTitle">Thesis</h2>
+        <button class="icon-btn modal-close" type="button" data-modal-close="thesisModal"
+                aria-label="Đóng">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <form id="thesisForm" class="form-grid" novalidate>
+
+        <div class="form-row">
+          <label for="thesisTicker">Ticker</label>
+          <input id="thesisTicker" name="ticker" type="text" required
+                 placeholder="VD: VCB, HPG, MSN" autocomplete="off">
+        </div>
+
+        <div class="form-row">
+          <label for="thesisStatus">Trạng thái</label>
+          <select id="thesisStatus" name="status">
+            <option value="open">open</option>
+            <option value="paused">paused</option>
+            <option value="closed">closed</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <label for="thesisTier">Tier</label>
+          <select id="thesisTier" name="tier">
+            <option value="A">A</option>
+            <option value="B">B</option>
+            <option value="C">C</option>
+            <option value="D">D</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <label for="thesisSummary">Tóm tắt luận điểm</label>
+          <textarea id="thesisSummary" name="summary" rows="3"
+                    placeholder="Mô tả ngắn lý do đầu tư…"></textarea>
+        </div>
+
+        <div class="form-row">
+          <label for="thesisEntry">Giá vào (entry)</label>
+          <input id="thesisEntry" name="entry_price" type="number" step="any" min="0"
+                 placeholder="VD: 24500">
+        </div>
+
+        <div class="form-row">
+          <label for="thesisTarget">Giá mục tiêu (target)</label>
+          <input id="thesisTarget" name="target_price" type="number" step="any" min="0"
+                 placeholder="VD: 32000">
+        </div>
+
+        <div class="form-row">
+          <label for="thesisStop">Stop loss</label>
+          <input id="thesisStop" name="stop_loss" type="number" step="any" min="0"
+                 placeholder="VD: 22000">
+        </div>
+
+        <div class="form-row">
+          <label for="thesisHorizon">Horizon (tháng)</label>
+          <input id="thesisHorizon" name="horizon_months" type="number" min="1" max="60"
+                 placeholder="VD: 6">
+        </div>
+
+        <!-- Assumptions -->
+        <div class="form-row form-row--stack">
+          <label>Assumptions</label>
+          <div id="thesisFormAssumptionRows" class="form-stack"></div>
+          <button type="button" class="icon-text-btn" id="addAssumptionRowBtn">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" aria-hidden="true">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Thêm assumption
+          </button>
+        </div>
+
+        <!-- Catalysts -->
+        <div class="form-row form-row--stack">
+          <label>Catalysts</label>
+          <div id="thesisFormCatalystRows" class="form-stack"></div>
+          <button type="button" class="icon-text-btn" id="addCatalystRowBtn">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" aria-hidden="true">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Thêm catalyst
+          </button>
+        </div>
+
+        <input type="hidden" id="thesisId" name="thesis_id">
+
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary" id="thesisSubmitBtn">Lưu</button>
+          <button type="button" class="btn btn-ghost" data-modal-close="thesisModal">Huỷ</button>
+        </div>
+      </form>
     </div>
+  </div>
 
-    <!-- ── MODALS ─────────────────────────────────────────────────────────── -->
-
-    <dialog id="thesisModal" aria-labelledby="thesisModalTitle">
-      <div class="modal-inner">
-        <div class="modal-header">
-          <h2 id="thesisModalTitle">Tạo Thesis mới</h2>
-          <button class="modal-close" data-close="thesisModal" aria-label="Đóng">&#x2715;</button>
-        </div>
-        <div class="suggest-bar">
-          <div class="form-field">
-            <label for="suggestTicker">✨ AI Gợi ý theo mã CK</label>
-            <input id="suggestTicker" placeholder="VNM, HPG, VIC…" style="text-transform:uppercase;" />
-          </div>
-          <button type="button" id="aiSuggestBtn" class="suggest-btn">
-            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 2l2.09 6.26L20 10l-5.91 1.74L12 18l-2.09-6.26L4 10l5.91-1.74L12 2z"/></svg>
-            Phân tích
-          </button>
-        </div>
-        <div id="suggestLoading" class="suggest-loading hidden"><div class="spinner"></div>AI đang phân tích thị trường…</div>
-        <div id="suggestResult" class="suggest-result hidden"></div>
-        <form id="thesisForm" class="form-grid" novalidate>
-          <input type="hidden" id="thesisIdField" />
-          <div class="form-row">
-            <div class="form-field">
-              <label for="thesisTickerField">Mã CK *</label>
-              <input id="thesisTickerField" name="ticker" placeholder="VNM" required style="text-transform:uppercase;" />
-            </div>
-            <div class="form-field">
-              <label for="thesisStatusField">Status</label>
-              <select id="thesisStatusField" name="status">
-                <option value="active">active</option>
-                <option value="paused">paused</option>
-                <option value="invalidated">invalidated</option>
-                <option value="closed">closed</option>
-              </select>
-            </div>
-          </div>
-          <div class="form-field">
-            <label for="thesisTitleField">Tiêu đề *</label>
-            <input id="thesisTitleField" name="title" placeholder="VD: VNM hưởng lợi chu kỳ tiêu dùng phục hồi" required />
-          </div>
-          <div class="form-field">
-            <label for="thesisSummaryField">Mô tả</label>
-            <textarea id="thesisSummaryField" name="summary" placeholder="Mô tả ngắn về luận điểm đầu tư…"></textarea>
-          </div>
-          <div class="form-row">
-            <div class="form-field">
-              <label for="thesisEntryField">Giá vào (VNĐ)</label>
-              <input id="thesisEntryField" name="entry_price" type="number" placeholder="85000" />
-            </div>
-            <div class="form-field">
-              <label for="thesisTargetField">Giá mục tiêu (VNĐ)</label>
-              <input id="thesisTargetField" name="target_price" type="number" placeholder="105000" />
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-field">
-              <label for="thesisStopField">Stop loss (VNĐ)</label>
-              <input id="thesisStopField" name="stop_loss" type="number" placeholder="76000" />
-            </div>
-            <div class="form-field">
-              <label for="thesisDirectionField">Hướng</label>
-              <select id="thesisDirectionField" name="direction">
-                <option value="bullish">bullish</option>
-                <option value="bearish">bearish</option>
-                <option value="neutral">neutral</option>
-              </select>
-            </div>
-          </div>
-          <section class="detail-section" style="margin-top:4px;">
-            <div class="detail-section-header">
-              <h3>Assumptions trong form</h3>
-              <button type="button" class="ghost-btn" id="addFormAssumptionBtn" style="min-height:34px;padding:0 12px;font-size:.82rem;">+ Thêm dòng</button>
-            </div>
-            <div id="thesisFormAssumptionRows" class="form-stack"></div>
-          </section>
-          <section class="detail-section" style="margin-top:4px;">
-            <div class="detail-section-header">
-              <h3>Catalysts trong form</h3>
-              <button type="button" class="ghost-btn" id="addFormCatalystBtn" style="min-height:34px;padding:0 12px;font-size:.82rem;">+ Thêm dòng</button>
-            </div>
-            <div id="thesisFormCatalystRows" class="form-stack"></div>
-          </section>
-          <div class="modal-footer">
-            <button type="button" class="ghost-btn" data-close="thesisModal">Hủy</button>
-            <button type="submit" class="primary-btn" id="thesisSubmitBtn">Lưu Thesis</button>
-          </div>
-        </form>
+  <!-- Assumption form modal -->
+  <div id="assumptionModal" class="modal-overlay hidden" role="dialog"
+       aria-modal="true" aria-labelledby="assumptionModalTitle">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2 id="assumptionModalTitle">Assumption</h2>
+        <button class="icon-btn modal-close" type="button" data-modal-close="assumptionModal"
+                aria-label="Đóng">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
-    </dialog>
+      <form id="assumptionForm" class="form-grid" novalidate>
+        <div class="form-row">
+          <label for="assumptionText">Nội dung assumption</label>
+          <textarea id="assumptionText" name="text" rows="3" required
+                    placeholder="VD: Lãi suất duy trì thấp đến Q3…"></textarea>
+        </div>
+        <div class="form-row">
+          <label for="assumptionStatus">Trạng thái</label>
+          <select id="assumptionStatus" name="status">
+            <option value="holding">holding</option>
+            <option value="validated">validated</option>
+            <option value="invalidated">invalidated</option>
+          </select>
+        </div>
+        <input type="hidden" id="assumptionThesisId" name="thesis_id">
+        <input type="hidden" id="assumptionId" name="assumption_id">
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Lưu</button>
+          <button type="button" class="btn btn-ghost" data-modal-close="assumptionModal">Huỷ</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
-    <dialog id="assumptionModal" aria-labelledby="assumptionModalTitle">
-      <div class="modal-inner">
-        <div class="modal-header">
-          <h2 id="assumptionModalTitle">Thêm Assumption</h2>
-          <button class="modal-close" data-close="assumptionModal" aria-label="Đóng">&#x2715;</button>
-        </div>
-        <div class="suggest-bar">
-          <div class="form-field">
-            <label>✨ AI gợi ý assumption cho <strong id="assumptionTickerDisplay">—</strong></label>
-            <input id="assumptionSuggestTicker" type="hidden" />
-          </div>
-          <button type="button" id="assumptionAiSuggestBtn" class="suggest-btn">AI gợi ý</button>
-        </div>
-        <div id="assumptionSuggestLoading" class="suggest-loading hidden"><div class="spinner"></div>AI đang gợi ý assumptions…</div>
-        <div id="assumptionSuggestResult" class="suggest-result hidden"></div>
-        <form id="assumptionForm" class="form-grid" novalidate>
-          <input type="hidden" id="assumptionThesisId" />
-          <input type="hidden" id="assumptionIdField" />
-          <div class="form-field">
-            <label for="assumptionDescField">Nội dung giả định *</label>
-            <textarea id="assumptionDescField" name="description" placeholder="VD: Biên lợi nhuận gộp duy trì >30% trong 4Q tới" required></textarea>
-          </div>
-          <div class="form-field">
-            <label for="assumptionRationaleField">Lý do / Cơ sở</label>
-            <textarea id="assumptionRationaleField" name="rationale" placeholder="Tại sao giả định này quan trọng?"></textarea>
-          </div>
-          <div class="form-row">
-            <div class="form-field">
-              <label for="assumptionStatusField">Status</label>
-              <select id="assumptionStatusField" name="status">
-                <option value="valid">valid</option>
-                <option value="invalid">invalid</option>
-                <option value="pending">pending</option>
-                <option value="uncertain">uncertain</option>
-              </select>
-            </div>
-            <div class="form-field">
-              <label for="assumptionConfidenceField">Confidence (0–1)</label>
-              <input id="assumptionConfidenceField" name="confidence" type="number" min="0" max="1" step="0.05" placeholder="0.75" />
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="ghost-btn" data-close="assumptionModal">Hủy</button>
-            <button type="submit" class="primary-btn">Lưu Assumption</button>
-          </div>
-        </form>
+  <!-- Decision form modal -->
+  <div id="decisionModal" class="modal-overlay hidden" role="dialog"
+       aria-modal="true" aria-labelledby="decisionModalTitle">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2 id="decisionModalTitle">Log Decision</h2>
+        <button class="icon-btn modal-close" type="button" data-modal-close="decisionModal"
+                aria-label="Đóng">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
-    </dialog>
+      <form id="decisionForm" class="form-grid" novalidate>
+        <div class="form-row">
+          <label for="decisionTicker">Ticker</label>
+          <input id="decisionTicker" name="ticker" type="text" required
+                 placeholder="VD: VCB" autocomplete="off">
+        </div>
+        <div class="form-row">
+          <label for="decisionAction">Hành động</label>
+          <select id="decisionAction" name="action">
+            <option value="buy">Mua</option>
+            <option value="sell">Bán</option>
+            <option value="hold">Giữ</option>
+            <option value="watch">Theo dõi thêm</option>
+            <option value="skip">Bỏ qua</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="decisionReason">Lý do</label>
+          <textarea id="decisionReason" name="reason" rows="3"
+                    placeholder="Mô tả ngắn lý do ra quyết định…"></textarea>
+        </div>
+        <div class="form-row">
+          <label for="decisionContext">Context thêm</label>
+          <textarea id="decisionContext" name="context" rows="2"
+                    placeholder="Thông tin thị trường, điểm kỹ thuật…"></textarea>
+        </div>
+        <div class="form-row">
+          <label for="decisionPrice">Giá thực hiện</label>
+          <input id="decisionPrice" name="price" type="number" step="any" min="0">
+        </div>
+        <div class="form-row">
+          <label for="decisionQty">Khối lượng</label>
+          <input id="decisionQty" name="quantity" type="number" step="any" min="0">
+        </div>
+        <input type="hidden" id="decisionThesisId" name="thesis_id">
+        <input type="hidden" id="decisionId" name="decision_id">
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Lưu decision</button>
+          <button type="button" class="btn btn-ghost" data-modal-close="decisionModal">Huỷ</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
-    <dialog id="catalystModal" aria-labelledby="catalystModalTitle">
-      <div class="modal-inner">
-        <div class="modal-header">
-          <h2 id="catalystModalTitle">Thêm Catalyst</h2>
-          <button class="modal-close" data-close="catalystModal" aria-label="Đóng">&#x2715;</button>
-        </div>
-        <div class="suggest-bar">
-          <div class="form-field">
-            <label>✨ AI gợi ý catalyst cho <strong id="catalystTickerDisplay">—</strong></label>
-            <input id="catalystSuggestTicker" type="hidden" />
-          </div>
-          <button type="button" id="catalystAiSuggestBtn" class="suggest-btn">AI gợi ý</button>
-        </div>
-        <div id="catalystSuggestLoading" class="suggest-loading hidden"><div class="spinner"></div>AI đang gợi ý catalysts…</div>
-        <div id="catalystSuggestResult" class="suggest-result hidden"></div>
-        <form id="catalystForm" class="form-grid" novalidate>
-          <input type="hidden" id="catalystThesisId" />
-          <input type="hidden" id="catalystIdField" />
-          <div class="form-field">
-            <label for="catalystDescField">Mô tả catalyst *</label>
-            <textarea id="catalystDescField" name="description" placeholder="VD: KQKD Q2/2025 vượt kỳ vọng, EPS tăng 18% YoY" required></textarea>
-          </div>
-          <div class="form-field">
-            <label for="catalystRationaleField">Tác động kỳ vọng</label>
-            <textarea id="catalystRationaleField" name="rationale" placeholder="Catalyst này ảnh hưởng thế nào đến thesis?"></textarea>
-          </div>
-          <div class="form-row">
-            <div class="form-field">
-              <label for="catalystStatusField">Status</label>
-              <select id="catalystStatusField" name="status">
-                <option value="pending">pending</option>
-                <option value="triggered">triggered</option>
-                <option value="expired">expired</option>
-                <option value="cancelled">cancelled</option>
-              </select>
-            </div>
-            <div class="form-field">
-              <label for="catalystExpectedAtField">Ngày kỳ vọng</label>
-              <input id="catalystExpectedAtField" name="expected_at" type="date" />
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="ghost-btn" data-close="catalystModal">Hủy</button>
-            <button type="submit" class="primary-btn">Lưu Catalyst</button>
-          </div>
-        </form>
+  <!-- Watchlist form modal -->
+  <div id="watchlistModal" class="modal-overlay hidden" role="dialog"
+       aria-modal="true" aria-labelledby="watchlistModalTitle">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2 id="watchlistModalTitle">Thêm vào Watchlist</h2>
+        <button class="icon-btn modal-close" type="button" data-modal-close="watchlistModal"
+                aria-label="Đóng">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
-    </dialog>
-
-    <dialog id="watchlistAddModal" aria-labelledby="watchlistAddModalTitle">
-      <div class="modal-inner">
-        <div class="modal-header">
-          <h2 id="watchlistAddModalTitle">Thêm mã vào Watchlist</h2>
-          <button class="modal-close" data-close="watchlistAddModal" aria-label="Đóng">&#x2715;</button>
+      <form id="watchlistForm" class="form-grid" novalidate>
+        <div class="form-row">
+          <label for="watchlistTicker">Ticker</label>
+          <input id="watchlistTicker" name="ticker" type="text" required
+                 placeholder="VD: FPT" autocomplete="off">
         </div>
-        <form id="watchlistAddForm" class="form-grid" novalidate>
-          <div class="form-field">
-            <label for="watchlistTickerInput">Mã CK *</label>
-            <input id="watchlistTickerInput" name="ticker" placeholder="VNM, HPG, VIC…" required style="text-transform:uppercase;" />
-          </div>
-          <div class="form-field">
-            <label for="watchlistNoteInput">Ghi chú</label>
-            <input id="watchlistNoteInput" name="note" placeholder="Lý do theo dõi…" />
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="ghost-btn" data-close="watchlistAddModal">Hủy</button>
-            <button type="submit" class="primary-btn">Thêm vào Watchlist</button>
-          </div>
-        </form>
-      </div>
-    </dialog>
-
-    <dialog id="decisionModal" aria-labelledby="decisionModalTitle">
-      <div class="modal-inner">
-        <div class="modal-header">
-          <h2 id="decisionModalTitle">Log Decision</h2>
-          <button class="modal-close" data-close="decisionModal" aria-label="Đóng">&#x2715;</button>
+        <div class="form-row">
+          <label for="watchlistNote">Ghi chú</label>
+          <textarea id="watchlistNote" name="note" rows="2"
+                    placeholder="Lý do theo dõi, mức giá quan tâm…"></textarea>
         </div>
-        <form id="decisionForm" class="form-grid" novalidate>
-          <div class="form-row">
-            <div class="form-field">
-              <label for="decTickerField">Mã CK *</label>
-              <input id="decTickerField" name="ticker" placeholder="VNM" required style="text-transform:uppercase" />
-            </div>
-            <div class="form-field">
-              <label for="decActionField">Hành động *</label>
-              <select id="decActionField" name="action">
-                <option value="buy">MUA</option>
-                <option value="sell">BÁN</option>
-                <option value="hold">GIỮ</option>
-                <option value="skip">BỎ QUA</option>
-              </select>
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-field">
-              <label for="decPriceField">Giá thực hiện</label>
-              <input id="decPriceField" name="price" type="number" placeholder="85000" step="100" />
-            </div>
-            <div class="form-field">
-              <label for="decQtyField">Khối lượng</label>
-              <input id="decQtyField" name="quantity" type="number" placeholder="1000" step="100" />
-            </div>
-          </div>
-          <div class="form-field">
-            <label for="decReasonField">Lý do quyết định</label>
-            <textarea id="decReasonField" name="reasoning" placeholder="Tại sao quyết định này? Thesis nào dẫn đến hành động này?" rows="3"></textarea>
-          </div>
-          <div class="form-field">
-            <label for="decEmotionField">Cảm xúc lúc ra quyết định</label>
-            <select id="decEmotionField" name="emotion_tag">
-              <option value="">— chọn —</option>
-              <option value="confident">Tự tin</option>
-              <option value="uncertain">Không chắc</option>
-              <option value="fearful">Lo sợ</option>
-              <option value="greedy">Tham lam</option>
-              <option value="fomo">FOMO</option>
-              <option value="disciplined">Kỷ luật</option>
-            </select>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="ghost-btn" data-close="decisionModal">Hủy</button>
-            <button type="submit" class="primary-btn">Lưu Decision</button>
-          </div>
-        </form>
-      </div>
-    </dialog>
+        <input type="hidden" id="watchlistItemId" name="item_id">
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Lưu</button>
+          <button type="button" class="btn btn-ghost" data-modal-close="watchlistModal">Huỷ</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
-    <script type="module" src="/static/dashboard/js/app.js?v=18"></script>
-  </body>
+  <!-- ── SCRIPTS ────────────────────────────────────────────────────────── -->
+  <script type="module" src="js/main.js"></script>
+</body>
 </html>
