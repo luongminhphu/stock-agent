@@ -12,6 +12,13 @@ Design intent:
   Fast cross-check: given a signal context (watchdog + stress verdict) and
   thesis metadata, produce a structured ThesisJudgeOutput in one LLM call.
   Focus on delta detection (what changed) not full re-analysis.
+
+Wave B changes:
+  - last_review_summary is now extracted from signal_context and rendered as a
+    dedicated "## Review Lần Trước" section so the LLM treats it as a primary
+    anchor, not a buried JSON key.
+  - Rule 9 added to SYSTEM_PROMPT: verdict flips require an explicit trigger
+    citation in reasoning, preventing contradictory verdicts without reasoning.
 """
 
 from __future__ import annotations
@@ -56,6 +63,10 @@ Quy tắc bắt buộc:
 6. REASONING: Tóm tắt ngắn (tối đa 150 từ) giải thích delta. Tập trung vào cái gì đã thay đổi, không viết lại toàn bộ thesis.
 7. CONFIDENCE: float 0.0-1.0 phản ánh chất lượng dữ liệu đầu vào. Thiếu dữ liệu → 0.5 hoặc thấp hơn.
 8. Trả về raw JSON — không markdown, không giải thích ngoài JSON.
+9. NHẤT QUÁN VỚI REVIEW TRƯỚC: Nếu có "## Review Lần Trước" và verdict của bạn KHÁC với verdict đó,
+   bắt buộc nêu rõ trigger thay đổi cụ thể trong reasoning (ví dụ: "dòng tiền ngoại bán ròng 3 phiên liên tiếp").
+   Không được flip verdict chỉ vì cảm nhận chung — phải có bằng chứng từ signal_context.
+   Nếu signal không thay đổi đáng kể so với review trước, giữ nguyên hướng verdict.
 """ + schema_block(ThesisJudgeOutput)
 
 SPEC = PromptSpec(
@@ -93,13 +104,24 @@ def build_user_prompt(
                                  {"watchdog_verdict": str, "health_score": int|None,
                                   "stress_verdict": str|None, "risk_flags": list[str],
                                   "trigger_reason": str, "urgency": str,
-                                  "signal_summary": str|None}
+                                  "signal_summary": str|None,
+                                  "last_review_summary": str|None}
+                                 last_review_summary is extracted and rendered as a
+                                 dedicated section — not included in the JSON dump.
         conviction_history:      Optional list of past judge verdicts for trend context.
                                  [{"date": str, "verdict": str, "conviction_delta": float}]
                                  None = no history (first run).
         days_since_written:      Days elapsed since thesis was created. None if unknown.
     """
     import json
+
+    # Extract last_review_summary before dumping signal_context as JSON.
+    # Rendering it as a named section ensures the LLM treats it as a primary
+    # anchor rather than a buried key in a raw JSON blob.
+    last_review_summary: str | None = signal_context.get("last_review_summary")
+    signal_context_clean = {
+        k: v for k, v in signal_context.items() if k != "last_review_summary"
+    }
 
     assumptions_str = (
         "\n".join(
@@ -125,7 +147,7 @@ def build_user_prompt(
         else "  (không có điều kiện invalidation rõ ràng)"
     )
 
-    signal_str = json.dumps(signal_context, ensure_ascii=False, indent=2)
+    signal_str = json.dumps(signal_context_clean, ensure_ascii=False, indent=2)
 
     age_line = (
         f"Thesis viết cách đây: {days_since_written} ngày"
@@ -146,6 +168,16 @@ def build_user_prompt(
             + "\n"
         )
 
+    # Render last_review_summary as a dedicated section when present.
+    # The ⚠️ marker reinforces Rule 9 from SYSTEM_PROMPT.
+    last_review_block = ""
+    if last_review_summary:
+        last_review_block = (
+            "\n## Review Lần Trước (ThesisReviewAgent)\n"
+            f"{last_review_summary}\n"
+            "⚠️ Nếu verdict của bạn khác với review trên, phải nêu trigger cụ thể trong reasoning.\n"
+        )
+
     return f"""Thesis ID: {thesis_id} | Ticker: {ticker}
 {age_line}
 
@@ -164,10 +196,11 @@ def build_user_prompt(
 
 ## Signal Context (trigger đã xảy ra)
 {signal_str}
-{history_block}
+{history_block}{last_review_block}
 Dựa trên signal context trên, hãy:
 1. Xác định assumption nào đang bị thách thức (nếu có).
 2. Kiểm tra xem có điều kiện invalidation nào đang xảy ra không.
 3. Đưa ra verdict + conviction_delta + action.
 4. Giải thích delta ngắn gọn (tối đa 150 từ, tập trung vào cái gì đã thay đổi).
+5. Nếu verdict thay đổi so với "## Review Lần Trước", nêu rõ trigger thay đổi cụ thể.
 Trả về raw JSON theo schema."""
