@@ -298,7 +298,7 @@ class WatchlistScanScheduler:
             )
             return
 
-        # ── Step 0: Reactivate cooled-down alerts (isolated commit) ──────────
+        # ── Step 0: Reactivate cooled-down alerts (isolated commit) ───────────────────────
         try:
             from src.watchlist.alert_service import AlertService
 
@@ -318,7 +318,7 @@ class WatchlistScanScheduler:
         except Exception as exc:
             logger.warning("scheduler.scan.reactivate_failed", error=str(exc))
 
-        # ── Step 1: Scan ─────────────────────────────────────────────────────
+        # ── Step 1: Scan ─────────────────────────────────────────────────────────────────
         try:
             from src.watchlist.scan_service import ScanService
 
@@ -492,15 +492,16 @@ _DRIFT_INTERVAL_MINUTES = 15
 
 
 class ThesisDriftScheduler:
-    """Detect thesis price drift every 15 min during market hours and trigger AI review.
+    """Detect thesis price drift + conviction drift every 15 min during market hours.
 
     Flow (per tick):
-        1. DriftService.detect() — pure detection, no AI, no state mutation.
-        2. For each DriftSignal: ReviewService.review_thesis() — AI review + snapshot.
-        3. Discord notify with verdict + drift summary per thesis.
+        1a. DriftService.detect()              — price drift, pure detection, no AI.
+        1b. ConvictionDriftDetector.detect_all() — conviction decay, pure detection, no AI.
+        2.  For each price DriftSignal: ReviewService.review_thesis() — AI review.
+            Conviction-only signals: notify without AI review (wave 1 scope).
+        3.  Discord notify with combined price + conviction drift embed.
 
-    Cooldown is enforced inside DriftService (default 4h) — ReviewService is
-    never called twice for the same thesis within the cooldown window.
+    Cooldown is enforced inside DriftService and ConvictionDriftDetector (default 4h).
 
     Channel: settings.alert_channel_id (DISCORD_ALERT_CHANNEL_ID → morning_channel_id).
     """
@@ -540,10 +541,11 @@ class ThesisDriftScheduler:
             return
 
         try:
+            from src.thesis.conviction_drift_detector import ConvictionDriftDetector
             from src.thesis.drift_service import DriftService
             from src.thesis.review_service import ReviewService
 
-            # -- Step 1: Detect drifted theses (no AI) --
+            # -- Step 1a: Detect price-drifted theses (no AI) --
             async with AsyncSessionLocal() as session:
                 drift_svc = DriftService(
                     session=session,
@@ -553,50 +555,79 @@ class ThesisDriftScheduler:
                 )
                 signals = await drift_svc.detect(str(user_id))
 
-            if not signals:
+            # -- Step 1b: Detect conviction drift (no AI, non-blocking) --
+            conviction_signals = []
+            try:
+                async with AsyncSessionLocal() as session:
+                    conviction_detector = ConvictionDriftDetector(
+                        session=session,
+                        cooldown_hours=settings.thesis_drift_cooldown_hours,
+                    )
+                    conviction_signals = await conviction_detector.detect_all(str(user_id))
+
+                if conviction_signals:
+                    logger.info(
+                        "scheduler.drift.conviction_signals_found",
+                        count=len(conviction_signals),
+                        tickers=[s.ticker for s in conviction_signals],
+                    )
+            except Exception as exc:
+                logger.warning("scheduler.drift.conviction_detect_failed", error=str(exc))
+                # non-blocking — price drift flow continues normally
+
+            # -- Guard: nothing to do --
+            has_price_signals      = bool(signals)
+            has_conviction_signals = bool(conviction_signals)
+
+            if not has_price_signals and not has_conviction_signals:
                 logger.debug("scheduler.drift.no_signals", user_id=user_id)
                 await self._monitor.record_success(task_name)
                 return
 
-            logger.info(
-                "scheduler.drift.signals_found",
-                count=len(signals),
-                tickers=[s.ticker for s in signals],
-            )
+            if has_price_signals:
+                logger.info(
+                    "scheduler.drift.price_signals_found",
+                    count=len(signals),
+                    tickers=[s.ticker for s in signals],
+                )
 
-            # -- Step 2: AI review per drifted thesis (sequential, rate-limit safe) --
+            # -- Step 2: AI review per price-drifted thesis (sequential, rate-limit safe) --
+            # Conviction-only signals do NOT trigger AI review in this wave.
             reviews: list[tuple] = []
-            for signal in signals:
-                try:
-                    async with AsyncSessionLocal() as session:
-                        review_svc = ReviewService(
-                            session=session,
-                            agent=get_thesis_review_agent(),  # type: ignore[arg-type]
-                            quote_service=get_quote_service(),
-                        )
-                        review = await review_svc.review_thesis(
+            if has_price_signals:
+                for signal in signals:
+                    try:
+                        async with AsyncSessionLocal() as session:
+                            review_svc = ReviewService(
+                                session=session,
+                                agent=get_thesis_review_agent(),  # type: ignore[arg-type]
+                                quote_service=get_quote_service(),
+                            )
+                            review = await review_svc.review_thesis(
+                                thesis_id=signal.thesis_id,
+                                user_id=signal.user_id,
+                                current_price=signal.current_price,
+                            )
+                            await session.commit()
+                        reviews.append((signal, review))
+                        logger.info(
+                            "scheduler.drift.review_done",
                             thesis_id=signal.thesis_id,
-                            user_id=signal.user_id,
-                            current_price=signal.current_price,
+                            ticker=signal.ticker,
+                            verdict=review.verdict,
+                            drift_pct=signal.drift_pct,
                         )
-                        await session.commit()
-                    reviews.append((signal, review))
-                    logger.info(
-                        "scheduler.drift.review_done",
-                        thesis_id=signal.thesis_id,
-                        ticker=signal.ticker,
-                        verdict=review.verdict,
-                        drift_pct=signal.drift_pct,
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "scheduler.drift.review_failed",
-                        thesis_id=signal.thesis_id,
-                        ticker=signal.ticker,
-                        error=str(exc),
-                    )
+                    except Exception as exc:
+                        logger.warning(
+                            "scheduler.drift.review_failed",
+                            thesis_id=signal.thesis_id,
+                            ticker=signal.ticker,
+                            error=str(exc),
+                        )
 
-            if not reviews:
+            # -- Guard: skip notify if no content to show --
+            if not reviews and not has_conviction_signals:
+                # All price reviews failed AND no conviction signals — nothing to send.
                 await self._monitor.record_success(task_name)
                 return
 
@@ -609,9 +640,13 @@ class ThesisDriftScheduler:
                 )
                 return
 
-            embed = build_drift_embed(reviews, now_utc)
+            embed = build_drift_embed(reviews, now_utc, conviction_signals=conviction_signals)
             await channel.send(embed=embed)  # type: ignore[union-attr]
-            logger.info("scheduler.drift.notified", reviewed=len(reviews))
+            logger.info(
+                "scheduler.drift.notified",
+                reviewed=len(reviews),
+                conviction_signals=len(conviction_signals),
+            )
             await self._monitor.record_success(task_name)
 
         except Exception as exc:
