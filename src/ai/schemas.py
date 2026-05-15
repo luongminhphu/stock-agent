@@ -742,3 +742,31 @@ class PreTradeCheckOutput(BaseModel):
         description="Ordered steps to resolve blocking issues",
     )
     summary: str = Field(description="2-3 sentence pre-trade assessment")
+
+
+# ---------------------------------------------------------------------------
+# Decision Replay  (used by ReplayAgent prompt — schema_block only)
+# ---------------------------------------------------------------------------
+
+
+class ReplayOutput(BaseModel):
+    """Schema used ONLY for schema_block() injection into ReplayAgent system prompt.
+
+    Actual AI response is parsed into DecisionReplayResult (in replay.py agent).
+    These fields must mirror DecisionReplayResult exactly.
+
+    Owner: ai segment.
+    Consumed by: src/ai/prompts/replay.py → schema_block() → SYSTEM_PROMPT injection.
+    NOT used for direct AI response parsing.
+    """
+
+    decision_id: int
+    ticker: str
+    decision_type: str = Field(description="BUY | SELL | HOLD | ADD | REDUCE")
+    outcome_verdict: str = Field(description="CORRECT | INCORRECT | MIXED")
+    what_went_right: list[str] = Field(default_factory=list)
+    what_went_wrong: list[str] = Field(default_factory=list)
+    key_lesson: str
+    pattern_detected: str | None = None
+    suggested_adjustment: str | None = None
+    confidence: str = Field(description="HIGH | MEDIUM | LOW")
