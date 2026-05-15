@@ -1,16 +1,16 @@
 """Add conviction_score to thesis_snapshots.
 
 Revision ID: 20260516_0022
-Revises: 20260508_0021_add_ai_memory_tables
-Create Date: 2026-05-16
+Revises: 20260508_0021
+Create Date: 2026-05-16 00:22:00.000000
+
 """
-from __future__ import annotations
 
-import sqlalchemy as sa
 from alembic import op
+import sqlalchemy as sa
 
-revision: str = "20260516_0022"
-down_revision: str = "20260508_0021_add_ai_memory_tables"
+revision = "20260516_0022"
+down_revision = "20260508_0021"
 branch_labels = None
 depends_on = None
 
