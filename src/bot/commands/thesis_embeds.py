@@ -51,6 +51,13 @@ _DRIFT_VERDICT_ICON: dict[str, str] = {
     "neutral": "\U0001f7e1",   # 🟡
 }
 
+# Conviction drift severity → icon
+_CONVICTION_SEVERITY_ICON: dict[str, str] = {
+    "CRITICAL": "\U0001f53b",  # 🔻
+    "HIGH":     "\u2b07\ufe0f",  # ⬇️
+    "MEDIUM":   "\U0001f4c9",  # 📉
+}
+
 # ---------------------------------------------------------------------------
 # Color standard (shared across all embed builders)
 # ---------------------------------------------------------------------------
@@ -180,17 +187,23 @@ def build_maintenance_embed(
 def build_drift_embed(
     reviews: list[tuple],
     now_utc: datetime.datetime,
+    conviction_signals: list | None = None,
 ) -> discord.Embed:
     """Build embed for ThesisDriftScheduler drift alert notification.
 
     Args:
-        reviews:  List of (DriftSignal, ThesisReview) tuples from drift task.
-        now_utc:  Current UTC datetime for footer timestamp.
+        reviews:            List of (DriftSignal, ThesisReview) tuples from drift task.
+        now_utc:            Current UTC datetime for footer timestamp.
+        conviction_signals: Optional list of ConvictionDriftSignal — rendered as a
+                            separate section below price drift rows. Defaults to None
+                            (backward compatible).
 
     Returns:
         discord.Embed ready to send.
     """
     lines: list[str] = []
+
+    # Section 1: Price drift (existing behaviour — unchanged)
     for signal, review in reviews:
         icon = _DRIFT_VERDICT_ICON.get(str(review.verdict).lower(), "\u26aa")
         lines.append(
@@ -199,12 +212,25 @@ def build_drift_embed(
             f"(confidence {review.confidence:.0%})"
         )
 
+    # Section 2: Conviction drift (new — only when signals provided)
+    if conviction_signals:
+        if lines:
+            lines.append("")  # blank separator between sections
+        lines.append("**\U0001f4ca Conviction Drift**")
+        for sig in conviction_signals:
+            sev_icon = _CONVICTION_SEVERITY_ICON.get(sig.severity, "\U0001f4c9")
+            lines.append(
+                f"{sev_icon} **{sig.ticker}** `{sig.pattern.value}` "
+                f"{sig.reference_score:.2f}\u2192{sig.current_score:.2f} "
+                f"(-{sig.drop_pct:.1f}%) [{sig.severity}]"
+            )
+
     from src.platform.config import settings  # lazy import — avoids circular at module level
     ict_time = (now_utc + datetime.timedelta(hours=7)).strftime("%H:%M ICT")
     embed = discord.Embed(
         title="\u26a1 Thesis Drift Alert",
-        description="\n".join(lines),
-        color=_dominant_drift_color(reviews),
+        description="\n".join(lines) if lines else "Kh\u00f4ng c\u00f3 t\u00edn hi\u1ec7u.",
+        color=_dominant_drift_color(reviews) if reviews else _COLOR_ORANGE,
     )
     embed.set_footer(
         text=f"Drift \u2265{settings.thesis_drift_threshold_pct:.0f}% detected l\u00fac {ict_time}"
