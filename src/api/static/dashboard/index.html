@@ -67,8 +67,6 @@
              aria-live="polite"></div>
 
         <!-- ── 2. KPI STRIP — 2 rows ─────────────────────────────────────── -->
-        <!-- Row 1: Portfolio value · Unrealized P&L · Risky theses · Open theses · Paused theses -->
-        <!-- Row 2: Upcoming 7d · Cần review gấp · Latest scan (span 3) -->
         <section class="command-strip kpi-strip" aria-label="Tổng quan danh mục">
 
           <!-- Row 1 — 5 cards -->
@@ -120,29 +118,22 @@
         </section>
 
         <!-- ── 3. TIER BREAKDOWN ──────────────────────────────────────────── -->
-        <div
-          id="tierBreakdown"
-          class="tier-bar hidden"
-          aria-label="Phân bổ tier thesis"
-        ></div>
+        <div id="tierBreakdown" class="tier-bar hidden"
+             aria-label="Phân bổ tier thesis"></div>
 
-        <!-- ── 4. SIGNALS FEED — time-sensitive, before watchlist ──────────── -->
-        <div
-          id="signalsFeed"
-          class="signals-feed hidden"
-          aria-live="polite"
-          aria-label="Tín hiệu kỹ thuật gần đây"
-        ></div>
+        <!-- ── 4. ALERTS STRIP (triggered) ───────────────────────────────── -->
+        <div id="alertsTriggeredStrip" class="alerts-strip hidden"
+             aria-live="polite" aria-label="Alerts được trigger"></div>
 
-        <!-- ── 5. ACTION SURFACE ──────────────────────────────────────────── -->
-        <div
-          id="actionSurface"
-          class="action-surface hidden"
-          aria-live="polite"
-          aria-label="Việc cần làm hôm nay"
-        ></div>
+        <!-- ── 5. SIGNALS FEED ──────────────────────────────────────────── -->
+        <div id="signalsFeed" class="signals-feed hidden"
+             aria-live="polite" aria-label="Tín hiệu kỹ thuật gần đây"></div>
 
-        <!-- ── 6. BRIEFING — collapsible ────────────────────────────────── -->
+        <!-- ── 6. ACTION SURFACE ─────────────────────────────────────────── -->
+        <div id="actionSurface" class="action-surface hidden"
+             aria-live="polite" aria-label="Việc cần làm hôm nay"></div>
+
+        <!-- ── 7. BRIEFING — collapsible ────────────────────────────────── -->
         <details class="brief-collapsible" id="briefCollapsible">
           <summary>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -151,6 +142,8 @@
           <div class="brief-inner">
             <div class="brief-context-strip" id="briefContextStrip">
               <div class="brief-strip-header">
+                <!-- Brief feedback KPI (render-brief.js: briefFeedbackKpi) -->
+                <div id="briefFeedbackKpi" class="brief-feedback-kpi"></div>
                 <button id="generateMorningBtn" class="icon-text-btn" type="button"
                   data-generate-brief="morning" aria-label="Tạo Morning Brief">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -172,7 +165,7 @@
           </div>
         </details>
 
-        <!-- ── 7. WATCHLIST + CATALYST — side-by-side ──────────────────── -->
+        <!-- ── 8. WATCHLIST + CATALYST ──────────────────────────────────────── -->
         <div class="panel-duo">
           <section class="panel glass watchlist-layer" aria-labelledby="watchlistTitle">
             <div class="panel-header split-header">
@@ -199,11 +192,12 @@
               <p class="eyebrow">② Catalyst Calendar</p>
               <h2 id="catalystPanelTitle">Upcoming catalysts</h2>
             </div>
-            <div id="catalystSection">Đang tải…</div>
+            <!-- catalystList: render target for renderCatalystList() -->
+            <div id="catalystList">Đang tải…</div>
           </section>
         </div>
 
-        <!-- ── 8. PORTFOLIO — full-width ────────────────────────────────── -->
+        <!-- ── 9. PORTFOLIO ──────────────────────────────────────────── -->
         <section class="panel glass portfolio-layer" aria-labelledby="portfolioTitle">
           <div class="panel-header split-header">
             <div>
@@ -214,7 +208,7 @@
           <div id="portfolioSection">Đang tải…</div>
         </section>
 
-        <!-- ── 9. THESIS LIST ──────────────────────────────────────────── -->
+        <!-- ── 10. THESIS LIST ─────────────────────────────────────────── -->
         <section class="panel glass thesis-layer" aria-labelledby="thesisTitle">
           <div class="panel-header split-header">
             <div>
@@ -232,17 +226,21 @@
               </button>
             </div>
           </div>
-          <div id="thesisSection">Đang tải…</div>
+          <!-- thesesTableWrap: render target for renderThesesTable() -->
+          <div id="thesesTableWrap">Đang tải…</div>
+          <!-- thesisDetail: render target for loadThesisDetail() -->
+          <div id="thesisDetail"></div>
         </section>
 
-        <!-- ── 10. LEADERBOARD + BACKTESTING ───────────────────────────── -->
+        <!-- ── 11. LEADERBOARD + BACKTESTING ───────────────────────────── -->
         <div class="panel-duo lb-strip">
           <section class="panel glass lb-layer" aria-labelledby="lbTitle">
             <div class="panel-header">
               <p class="eyebrow">⑤ 🏆 Thesis Leaderboard</p>
               <h2 id="lbTitle">Leaderboard</h2>
             </div>
-            <div id="leaderboardSection">Đang tải…</div>
+            <!-- leaderboardWrap: render target for leaderboard-loader.js -->
+            <div id="leaderboardWrap">Đang tải…</div>
           </section>
 
           <section class="panel glass backtesting-layer" aria-labelledby="backtestTitle">
@@ -251,18 +249,26 @@
               <h2 id="backtestTitle">Verdict quality</h2>
             </div>
             <p class="muted panel-hint">Verdict quality · Worst &amp; Best calls theo avg PnL snapshot.</p>
+            <!-- verdictList: render target for renderVerdicts() -->
+            <div id="verdictList" class="verdict-list"></div>
+            <!-- accuracyWrap: render target for renderAccuracy() -->
+            <div id="accuracyWrap" class="accuracy-wrap"></div>
             <div class="backtesting-grid">
-              <div class="backtesting-col" id="backtestWorst">
+              <!-- worstCallsPane / worstCallsWrap: render target for renderWorstCalls() -->
+              <div class="backtesting-col" id="worstCallsPane">
                 <h3 class="backtesting-col-title">Worst calls</h3>
+                <div id="worstCallsWrap"></div>
               </div>
-              <div class="backtesting-col" id="backtestBest">
+              <!-- bestCallsPane / bestCallsWrap: render target for renderBestCalls() -->
+              <div class="backtesting-col" id="bestCallsPane">
                 <h3 class="backtesting-col-title">Best calls</h3>
+                <div id="bestCallsWrap"></div>
               </div>
             </div>
           </section>
         </div>
 
-        <!-- ── 11. DECISION LOG ────────────────────────────────────────── -->
+        <!-- ── 12. DECISION LOG ───────────────────────────────────────── -->
         <section class="panel glass decision-layer" aria-labelledby="decisionTitle">
           <div class="panel-header split-header">
             <div>
@@ -303,7 +309,22 @@
             </article>
           </div>
 
-          <div id="decisionSection">Đang tải…</div>
+          <!-- Tab bar: Decisions | Lessons -->
+          <div class="dec-tab-bar" role="tablist">
+            <button class="dec-tab active" data-tab="decisions" role="tab"
+                    aria-selected="true" aria-controls="decisionsPane">Decisions</button>
+            <button class="dec-tab" data-tab="lessons" role="tab"
+                    aria-selected="false" aria-controls="lessonsPane">AI Lessons</button>
+          </div>
+
+          <div id="decisionsPane">
+            <!-- decisionsTableWrap: render target for loadDecisions() -->
+            <div id="decisionsTableWrap">Đang tải…</div>
+          </div>
+          <div id="lessonsPane" class="hidden">
+            <!-- lessonsListWrap: render target for loadLessons() -->
+            <div id="lessonsListWrap">Đang tải…</div>
+          </div>
         </section>
 
       </main>
@@ -326,13 +347,11 @@
           </button>
         </div>
         <form id="thesisForm" class="form-grid" novalidate>
-
           <div class="form-row">
             <label for="thesisTicker">Ticker</label>
             <input id="thesisTicker" name="ticker" type="text" required
                    placeholder="VD: VCB, HPG, MSN" autocomplete="off">
           </div>
-
           <div class="form-row">
             <label for="thesisStatus">Trạng thái</label>
             <select id="thesisStatus" name="status">
@@ -341,7 +360,6 @@
               <option value="closed">closed</option>
             </select>
           </div>
-
           <div class="form-row">
             <label for="thesisTier">Tier</label>
             <select id="thesisTier" name="tier">
@@ -351,38 +369,31 @@
               <option value="D">D</option>
             </select>
           </div>
-
           <div class="form-row">
             <label for="thesisSummary">Tóm tắt luận điểm</label>
             <textarea id="thesisSummary" name="summary" rows="3"
                       placeholder="Mô tả ngắn lý do đầu tư…"></textarea>
           </div>
-
           <div class="form-row">
             <label for="thesisEntry">Giá vào (entry)</label>
             <input id="thesisEntry" name="entry_price" type="number" step="any" min="0"
                    placeholder="VD: 24500">
           </div>
-
           <div class="form-row">
             <label for="thesisTarget">Giá mục tiêu (target)</label>
             <input id="thesisTarget" name="target_price" type="number" step="any" min="0"
                    placeholder="VD: 32000">
           </div>
-
           <div class="form-row">
             <label for="thesisStop">Stop loss</label>
             <input id="thesisStop" name="stop_loss" type="number" step="any" min="0"
                    placeholder="VD: 22000">
           </div>
-
           <div class="form-row">
             <label for="thesisHorizon">Horizon (tháng)</label>
             <input id="thesisHorizon" name="horizon_months" type="number" min="1" max="60"
                    placeholder="VD: 6">
           </div>
-
-          <!-- Assumptions -->
           <div class="form-row form-row--stack">
             <label>Assumptions</label>
             <div id="thesisFormAssumptionRows" class="form-stack"></div>
@@ -390,8 +401,6 @@
               + Thêm assumption
             </button>
           </div>
-
-          <!-- Catalysts -->
           <div class="form-row form-row--stack">
             <label>Catalysts</label>
             <div id="thesisFormCatalystRows" class="form-stack"></div>
@@ -399,9 +408,7 @@
               + Thêm catalyst
             </button>
           </div>
-
           <input type="hidden" id="thesisId" name="thesis_id">
-
           <div class="form-actions">
             <button type="submit" class="btn btn-primary" id="thesisSubmitBtn">Lưu</button>
             <button type="button" class="btn btn-ghost" data-close="thesisModal">Huỷ</button>
@@ -448,6 +455,43 @@
       </div>
     </div>
 
+    <!-- AI Apply modal -->
+    <div id="aiApplyModal" class="modal-overlay hidden" role="dialog"
+         aria-modal="true" aria-labelledby="aiApplyModalTitle">
+      <div class="modal">
+        <div class="modal-header">
+          <h2 id="aiApplyModalTitle">Áp dụng gợi ý AI</h2>
+          <button class="btn btn-ghost btn-sm btn-icon" type="button"
+                  data-close="aiApplyModal" aria-label="Đóng">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <div id="aiApplyModalBody" class="modal-body"></div>
+        <div class="form-actions">
+          <button id="aiApplyConfirmBtn" class="btn btn-primary" type="button">Xác nhận áp dụng</button>
+          <button class="btn btn-ghost" type="button" data-close="aiApplyModal">Huỷ</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Delete confirm modal -->
+    <div id="deleteModal" class="modal-overlay hidden" role="dialog"
+         aria-modal="true" aria-labelledby="deleteModalTitle">
+      <div class="modal modal--sm">
+        <div class="modal-header">
+          <h2 id="deleteModalTitle">Xác nhận xóa</h2>
+        </div>
+        <p id="deleteModalMsg"></p>
+        <div class="form-actions">
+          <button id="deleteConfirmBtn" class="btn btn-danger" type="button">Xóa</button>
+          <button class="btn btn-ghost" type="button" data-close="deleteModal">Huỷ</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Decision form modal -->
     <div id="decisionModal" class="modal-overlay hidden" role="dialog"
          aria-modal="true" aria-labelledby="decisionModalTitle">
@@ -486,7 +530,7 @@
           <div class="form-row">
             <label for="decisionContext">Context thêm</label>
             <textarea id="decisionContext" name="context" rows="2"
-                      placeholder="Thông tin thị trường, điểm kỹ thuật…"></textarea>
+                      placeholder="Thông tin thị trường, điểm kỹ thuận…"></textarea>
           </div>
           <div class="form-row">
             <label for="decisionPrice">Giá thực hiện</label>
