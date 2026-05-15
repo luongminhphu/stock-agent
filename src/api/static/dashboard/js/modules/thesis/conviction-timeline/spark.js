@@ -6,8 +6,8 @@
  *   Designed as progressive enhancement — silent fail, never blocks table render.
  */
 
-import { tierColor, hexToRgba } from './constants.js';
-import { ensureChartJs } from './chart-utils.js';
+import { tierColor } from './constants.js';
+import { ensureChartJs, hexToRgba } from './chart-utils.js';
 import { thesisApiBase, getJson } from '../../../api/client.js';
 
 const _sparkInstances = new Map();
