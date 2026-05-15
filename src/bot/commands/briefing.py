@@ -40,9 +40,6 @@ _OUTCOME_LABEL = {
     "skipped": "⏭ Skip hôm nay",
 }
 
-# Discord hard limit: 10 embeds per message
-_MAX_EMBEDS = 10
-
 
 class BriefFeedbackView(discord.ui.View):
     """Discord View attached to a brief embed for capturing user outcome.
@@ -149,22 +146,19 @@ class BriefingCog(BaseCog):
 
         embeds = build_brief_embeds(brief_result.output, phase=phase)
 
-        # Attach feedback view to the last embed (closest to user's eyes)
-        if brief_result.snapshot_id is not None:
-            view = BriefFeedbackView(
-                snapshot_id=brief_result.snapshot_id,
-                user_id=user_id,
-            )
-            await interaction.followup.send(
-                embeds=embeds[:_MAX_EMBEDS],
-                view=view,
-                ephemeral=False,
-            )
-        else:
-            await interaction.followup.send(
-                embeds=embeds[:_MAX_EMBEDS],
-                ephemeral=False,
-            )
+        # Discord enforces a 6000-char *total* limit per message across all embeds.
+        # Send each embed as its own message to avoid the limit entirely.
+        # BriefFeedbackView is attached only to the last message.
+        for i, embed in enumerate(embeds):
+            is_last = i == len(embeds) - 1
+            if is_last and brief_result.snapshot_id is not None:
+                view = BriefFeedbackView(
+                    snapshot_id=brief_result.snapshot_id,
+                    user_id=user_id,
+                )
+                await interaction.followup.send(embed=embed, view=view, ephemeral=False)
+            else:
+                await interaction.followup.send(embed=embed, ephemeral=False)
 
 
 def build_brief_embeds(brief: BriefOutput, phase: str) -> list[discord.Embed]:
@@ -197,7 +191,7 @@ def build_brief_embeds(brief: BriefOutput, phase: str) -> list[discord.Embed]:
                 description=page,
                 color=discord.Color.blurple(),
             )
-        embed.set_footer(text=f"stock-agent \u00b7 AI-native" + (f" ({i + 1}/{len(pages)})" if len(pages) > 1 else ""))
+        embed.set_footer(text="stock-agent \u00b7 AI-native" + (f" ({i + 1}/{len(pages)})" if len(pages) > 1 else ""))
         embeds.append(embed)
 
     return embeds
