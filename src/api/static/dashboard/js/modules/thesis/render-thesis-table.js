@@ -1,7 +1,7 @@
 import { esc, fmtDate, fmtScore, badge, fmt, scoreClass } from '../../utils/format.js';
 import { renderScoreBreakdown } from './render-score.js';
 import { renderReviewRecommendSection } from './render-ai-review.js';
-import { convictionTimelineSlotHTML, loadSparkChart, destroySpark } from './render-conviction-timeline.js';
+import { convictionTimelineSlotHTML, loadSparkChart, destroySpark } from './conviction-timeline/index.js';
 import { quoteStripSkeletonHTML } from './market-quote.js';
 import { priceMiniChartSlotHTML } from './render-price-chart.js';
 import { state } from '../../state/dashboard-state.js';

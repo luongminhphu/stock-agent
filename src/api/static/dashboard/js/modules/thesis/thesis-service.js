@@ -17,7 +17,7 @@ import { renderThesisDetailHTML, emptyDetailHTML } from './render-thesis-table.j
 import { wireDetailActions } from './wire-detail-actions.js';
 import { renderReviewRecommendResult } from './render-ai-review.js';
 import { fetchQuote, renderQuoteStrip } from './market-quote.js';
-import { loadConvictionTimeline } from './render-conviction-timeline.js';
+import { loadConvictionTimeline } from './conviction-timeline/index.js';
 import { loadPriceMiniChart, destroyPriceChart } from './render-price-chart.js';
 
 // ---------------------------------------------------------------------------
@@ -93,7 +93,6 @@ function formatEventDetail(raw) {
     return trimmed.length ? trimmed : null;
   }
   if (typeof raw === 'number' || typeof raw === 'boolean') return String(raw);
-  // Object: render key → value pairs, e.g. "old status: active · new status: paused"
   try {
     const pairs = Object.entries(raw)
       .filter(([, v]) => v != null && v !== '')
@@ -106,12 +105,10 @@ function formatEventDetail(raw) {
 
 /**
  * Trả về true nếu event có đủ thông tin để hiển thị (không trống).
- * Event không có detail, description, summary đều null → ẩn.
  */
 function isEventVisible(ev) {
   if (!ev || !ev.event_type) return false;
   const detail = formatEventDetail(ev.detail ?? ev.description ?? ev.summary ?? null);
-  // Event type "created" luôn hiển thị dù không có detail
   if (ev.event_type === 'created') return true;
   return detail != null;
 }
@@ -122,7 +119,6 @@ function renderThesisTimeline(slot, rawEvents) {
     return;
   }
 
-  // 1. Filter events không có nội dung
   const visible = rawEvents.filter(isEventVisible);
 
   if (!visible.length) {
@@ -130,14 +126,12 @@ function renderThesisTimeline(slot, rawEvents) {
     return;
   }
 
-  // 2. Sort mới nhất lên đầu
   const sorted = [...visible].sort((a, b) => {
     const ta = a.occurred_at ? new Date(a.occurred_at).getTime() : 0;
     const tb = b.occurred_at ? new Date(b.occurred_at).getTime() : 0;
     return tb - ta;
   });
 
-  // 3. Cap 30 events gần nhất
   const totalVisible = sorted.length;
   const events = sorted.slice(0, TIMELINE_MAX);
   const truncated = totalVisible - events.length;
@@ -192,7 +186,6 @@ export async function loadThesisDetail(thesisId) {
   wrap.classList.remove('empty-detail');
   wrap.innerHTML = detailSkeletonHTML();
 
-  // Huỷ price chart instance cũ trước khi re-render
   destroyPriceChart(thesisId);
 
   try {
@@ -214,7 +207,6 @@ export async function loadThesisDetail(thesisId) {
       ? (fn) => requestIdleCallback(fn, { timeout: 3000 })
       : (fn) => setTimeout(fn, 0);
 
-    // WAVE 3b: quote strip
     scheduleIdle(async () => {
       const slot = wrap.querySelector('#quoteStripSlot');
       if (!slot) return;
@@ -223,21 +215,18 @@ export async function loadThesisDetail(thesisId) {
       slot.innerHTML = renderQuoteStrip(quote, thesis);
     });
 
-    // Wave C+: price mini chart (30d OHLCV + entry/target/stop annotation)
     scheduleIdle(async () => {
       const slot = wrap.querySelector(`#priceMiniChartSlot-${thesisId}`);
       if (!slot) return;
       await loadPriceMiniChart(thesis, slot);
     });
 
-    // Wave C: conviction timeline
     scheduleIdle(async () => {
       const slot = wrap.querySelector(`#convictionTimelineSlot-${thesisId}`);
       if (!slot) return;
       await loadConvictionTimeline(thesisId);
     });
 
-    // Wave C: thesis event timeline
     scheduleIdle(async () => {
       await loadThesisTimeline(thesisId, wrap);
     });
