@@ -6,6 +6,7 @@ Responsibility:
     get_thesis_detail()                 — full detail + assumption history + score series
     get_upcoming_catalysts()            — catalysts sap toi
     get_thesis_portfolio_aggregate()    — portfolio aggregate: counts + P&L + breakdowns
+    get_conviction_timeline()           — conviction score series cho 1 thesis (sparkline)
 """
 
 from __future__ import annotations
@@ -23,6 +24,8 @@ from src.platform.logging import get_logger
 from src.thesis.scoring_service import score_tier
 
 logger = get_logger(__name__)
+
+_STALE_DAYS = 14  # thesis chưa review sau N ngày được coi là stale
 
 
 def _today_utc() -> date:
@@ -47,6 +50,34 @@ def _pnl_status(pnl_pct: float | None) -> str | None:
     if pnl_pct < -3:
         return "loss"
     return "neutral"
+
+
+def _health_rank(
+    confidence: float | None,
+    days_since_review: int | None,
+) -> str:
+    """Derive a health label combining conviction confidence and review staleness.
+
+    Ranks (worst → best):
+        no_review   — chưa có review nào
+        stale       — đã review nhưng > _STALE_DAYS ngày và confidence thấp
+        critical    — confidence < 0.4
+        weak        — confidence < 0.6
+        neutral     — confidence < 0.75
+        strong      — confidence >= 0.75
+    """
+    if confidence is None:
+        return "no_review"
+    stale = days_since_review is None or days_since_review > _STALE_DAYS
+    if stale and confidence < 0.7:
+        return "stale"
+    if confidence < 0.4:
+        return "critical"
+    if confidence < 0.6:
+        return "weak"
+    if confidence < 0.75:
+        return "neutral"
+    return "strong"
 
 
 class ThesisQueryService:
@@ -135,6 +166,7 @@ class ThesisQueryService:
         )
 
         rows = (await self._session.execute(stmt)).all()
+        now = datetime.now(UTC)
         result = []
         for r in rows:
             t = r.Thesis
@@ -152,6 +184,16 @@ class ThesisQueryService:
                 pnl_pct = round((current_price - effective_entry) / effective_entry * 100, 2)
                 if quantity and quantity > 0:
                     pnl_abs = round(quantity * (current_price - effective_entry), 0)
+
+            # --- derived: days_since_review + health_rank ---
+            days_since_review: int | None = None
+            if r.last_reviewed_at:
+                reviewed_dt = (
+                    r.last_reviewed_at
+                    if r.last_reviewed_at.tzinfo
+                    else r.last_reviewed_at.replace(tzinfo=UTC)
+                )
+                days_since_review = (now - reviewed_dt).days
 
             result.append(
                 {
@@ -179,6 +221,8 @@ class ThesisQueryService:
                     "last_reviewed_at": r.last_reviewed_at.isoformat()
                     if r.last_reviewed_at
                     else None,
+                    "days_since_review": days_since_review,
+                    "health_rank": _health_rank(r.last_confidence, days_since_review),
                     "n_assumptions": r.n_assumptions,
                     "n_catalysts": r.n_catalysts,
                 }
@@ -366,6 +410,7 @@ class ThesisQueryService:
             total_theses        — tổng thesis active
             with_position_count — thesis có open position
             reviewed_count      — thesis đã review ít nhất 1 lần
+            stale_count         — thesis active chưa review > _STALE_DAYS ngày
             total_cost_basis    — tổng vốn (avg_cost * qty), None nếu thiếu data
             total_market_value  — tổng market value hiện tại, None nếu thiếu data
             total_pnl_abs       — P&L tuyệt đối, None nếu thiếu data
@@ -380,11 +425,12 @@ class ThesisQueryService:
         price_map = price_map or {}
         position_map = position_map or {}
 
-        # ── Load all active theses + latest review verdict ─────────────────
+        # ── Load all active theses + latest review verdict + reviewed_at ───
         latest_review_subq = (
             select(
                 ThesisReview.thesis_id,
                 ThesisReview.verdict,
+                ThesisReview.reviewed_at,
                 func.row_number()
                 .over(
                     partition_by=ThesisReview.thesis_id,
@@ -405,6 +451,7 @@ class ThesisQueryService:
                     Thesis.entry_price,
                     Thesis.score,
                     latest_review_subq.c.verdict.label("last_verdict"),
+                    latest_review_subq.c.reviewed_at.label("last_reviewed_at"),
                 )
                 .outerjoin(
                     latest_review_subq,
@@ -426,8 +473,12 @@ class ThesisQueryService:
         has_cost = False
         has_market = False
 
+        now = datetime.now(UTC)
+        stale_cutoff = now - timedelta(days=_STALE_DAYS)
+
         with_position_count = 0
         reviewed_count = 0
+        stale_count = 0
 
         verdict_breakdown: dict[str, int] = {"buy": 0, "hold": 0, "sell": 0, "watch": 0, "none": 0}
         tier_breakdown: dict[str, int] = {"A": 0, "B": 0, "C": 0, "D": 0, "none": 0}
@@ -444,9 +495,22 @@ class ThesisQueryService:
             if quantity and quantity > 0:
                 with_position_count += 1
 
-            # reviewed count
+            # reviewed count + stale count
             if r.last_verdict is not None:
                 reviewed_count += 1
+                if r.last_reviewed_at:
+                    reviewed_dt = (
+                        r.last_reviewed_at
+                        if r.last_reviewed_at.tzinfo
+                        else r.last_reviewed_at.replace(tzinfo=UTC)
+                    )
+                    if reviewed_dt < stale_cutoff:
+                        stale_count += 1
+                else:
+                    stale_count += 1
+            else:
+                # never reviewed → also stale
+                stale_count += 1
 
             # P&L calcs
             pnl_pct: float | None = None
@@ -490,6 +554,7 @@ class ThesisQueryService:
             "total_theses": len(rows),
             "with_position_count": with_position_count,
             "reviewed_count": reviewed_count,
+            "stale_count": stale_count,
             "total_cost_basis": round(total_cost_basis, 0) if has_cost else None,
             "total_market_value": round(total_market_value, 0) if has_market else None,
             "total_pnl_abs": total_pnl_abs,
@@ -499,3 +564,58 @@ class ThesisQueryService:
             "pnl_breakdown": pnl_breakdown,
             "generated_at": datetime.now(UTC).isoformat(),
         }
+
+    async def get_conviction_timeline(
+        self,
+        user_id: str,
+        thesis_id: int,
+        limit: int = 30,
+    ) -> list[dict[str, Any]]:
+        """Trả về chuỗi conviction score theo thời gian cho 1 thesis.
+
+        Dùng để render sparkline / trend chart trên dashboard.
+        Trả về list rỗng nếu thesis không tồn tại hoặc không thuộc user.
+
+        Output mỗi phần tử:
+            reviewed_at     — ISO datetime
+            confidence      — float 0..1
+            verdict         — str (buy/hold/sell/watch/neutral/...)
+            reviewed_price  — float | None
+        """
+        from src.thesis.models import Thesis, ThesisReview
+
+        # Lightweight ownership check — không load full Thesis object
+        exists = (
+            await self._session.execute(
+                select(Thesis.id).where(
+                    Thesis.id == thesis_id,
+                    Thesis.user_id == user_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if not exists:
+            return []
+
+        rows = (
+            await self._session.execute(
+                select(
+                    ThesisReview.reviewed_at,
+                    ThesisReview.confidence,
+                    ThesisReview.verdict,
+                    ThesisReview.reviewed_price,
+                )
+                .where(ThesisReview.thesis_id == thesis_id)
+                .order_by(ThesisReview.reviewed_at.asc())
+                .limit(limit)
+            )
+        ).all()
+
+        return [
+            {
+                "reviewed_at": r.reviewed_at.isoformat() if r.reviewed_at else None,
+                "confidence": r.confidence,
+                "verdict": str(r.verdict.value) if hasattr(r.verdict, "value") else str(r.verdict),
+                "reviewed_price": r.reviewed_price,
+            }
+            for r in rows
+        ]
