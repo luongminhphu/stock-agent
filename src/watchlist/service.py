@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.logging import get_logger
@@ -26,7 +27,7 @@ from src.watchlist.models import (
     AlertStatus,
     WatchlistItem,
 )
-from src.watchlist.repository import WatchlistRepository
+from src.watchlist.repository import SignalEventRepository, WatchlistRepository
 
 AddAlertInput = CreateAlertInput
 
@@ -61,10 +62,12 @@ class WatchlistItemWithPrice:
 
 
 class WatchlistService:
-    """Manage watchlist items and alerts for a user."""
+    """Manage watchlist items, alerts, and signal event lifecycle."""
 
     def __init__(self, session: AsyncSession) -> None:
         self._repo = WatchlistRepository(session)
+        self._signal_repo = SignalEventRepository(session)
+        self._session = session
 
     async def add(self, inp: AddToWatchlistInput) -> WatchlistItem:
         existing = await self._repo.get_item(inp.user_id, inp.ticker)
@@ -224,3 +227,30 @@ class WatchlistService:
 
     async def list_active_alerts(self, user_id: str) -> list[Alert]:
         return await self._repo.list_active_alerts(user_id)
+
+    # ------------------------------------------------------------------
+    # Signal event lifecycle (called by ai segment via public API only)
+    # ------------------------------------------------------------------
+
+    async def mark_signal_processed(self, event_id: str) -> bool:
+        """Stamp processed_at = now(UTC) on the SignalEvent row for event_id.
+
+        Lookup is by SignalEvent.event_id (UUID string) which is unique per row.
+        Caller is responsible for commit after this call.
+
+        Returns:
+            True  — row found and stamped.
+            False — row not found (already processed or never existed).
+
+        Consumed exclusively by ai.ProactiveAlertAgent._mark_processed()
+        to avoid ai segment importing watchlist repo/model layer directly.
+        """
+        from src.watchlist.models import SignalEvent
+
+        stmt = select(SignalEvent).where(SignalEvent.event_id == event_id)
+        result = await self._session.execute(stmt)
+        row = result.scalar_one_or_none()
+        if row is None:
+            return False
+        await self._signal_repo.mark_processed(row)
+        return True

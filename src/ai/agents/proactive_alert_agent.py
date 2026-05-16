@@ -4,9 +4,10 @@ Owner: ai segment.
 Boundary:
   - Subscribes to SignalDetectedEvent on the EventBus.
   - Calls AIClient → ProactiveAlertOutput → publishes RecommendationReadyEvent.
-  - Marks signal_events.processed_at via SignalEventRepository (best-effort).
+  - Marks signal_events.processed_at via WatchlistService (watchlist public API).
   - NEVER imports Discord, bot, or scheduler internals.
-  - NEVER writes to signal_events directly (read + mark_processed only).
+  - NEVER imports watchlist.models or watchlist.repository directly.
+  - NEVER imports thesis.repository directly.
 
 Bootstrap contract (enforced by bootstrap.py)::
 
@@ -31,6 +32,11 @@ Thesis ID resolution (Wave 3):
     RecommendationReadyEvent.thesis_id so downstream consumers (bot embed,
     readmodel) can link the recommendation to the correct thesis without a
     secondary DB lookup. Falls back to "" when no active thesis found.
+
+mark_processed boundary fix (Wave 4):
+    _mark_processed() now calls WatchlistService.mark_signal_processed(event_id)
+    instead of importing watchlist.models / watchlist.repository directly.
+    ai segment only knows watchlist.service (public API).
 """
 from __future__ import annotations
 
@@ -63,7 +69,7 @@ class ProactiveAlertAgent:
       2. build_user_prompt() from event fields + investor context
       3. AIClient.chat() → ProactiveAlertOutput (structured JSON)
       4. Publish RecommendationReadyEvent (with thesis_id + rich Wave 7 fields)
-      5. mark_processed() in signal_events table (best-effort)
+      5. mark_processed() via WatchlistService (best-effort)
     """
 
     def __init__(
@@ -110,7 +116,7 @@ class ProactiveAlertAgent:
         # ── Step 4: Publish RecommendationReadyEvent ────────────────────────
         rec_event = await self._publish_recommendation(event, output, resolved_thesis_id)
 
-        # ── Step 5: Mark signal_event processed (best-effort) ───────────────
+        # ── Step 5: Mark signal_event processed via WatchlistService (best-effort)
         await self._mark_processed(event.event_id)
 
         if rec_event:
@@ -209,10 +215,9 @@ class ProactiveAlertAgent:
         output: ProactiveAlertOutput,
         resolved_thesis_id: str = "",
     ) -> RecommendationReadyEvent | None:
-        """Build and publish RecommendationReadyEvent with Wave 7 rich fields.
+        """Build and publish RecommendationReadyEvent with rich fields.
 
-        thesis_id is now resolved upstream (Wave 3) and passed in directly,
-        replacing the always-empty getattr(output, 'thesis_id', '') fallback.
+        thesis_id is resolved upstream (Wave 3) and passed in directly.
         """
         try:
             bus = get_event_bus()
@@ -250,8 +255,9 @@ class ProactiveAlertAgent:
     async def _mark_processed(self, event_id: str) -> None:
         """Best-effort: mark signal_events row processed_at = now(UTC).
 
+        Uses WatchlistService.mark_signal_processed() — ai segment never
+        imports watchlist.models or watchlist.repository directly (Wave 4).
         Silently skips when session_factory is None (tests / no-DB mode).
-        Lookup is by event_id (UUID) which is unique per row.
         """
         if self._session_factory is None:
             logger.debug(
@@ -262,27 +268,22 @@ class ProactiveAlertAgent:
             return
 
         try:
-            from sqlalchemy import select
-            from src.watchlist.models import SignalEvent
-            from src.watchlist.repository import SignalEventRepository
+            from src.watchlist.service import WatchlistService
 
             async with self._session_factory() as session:
-                stmt = select(SignalEvent).where(SignalEvent.event_id == event_id)
-                result = await session.execute(stmt)
-                row = result.scalar_one_or_none()
-                if row is None:
+                svc = WatchlistService(session)
+                found = await svc.mark_signal_processed(event_id)
+                await session.commit()
+                if found:
+                    logger.debug(
+                        "proactive_alert_agent.signal_event_marked_processed",
+                        event_id=event_id,
+                    )
+                else:
                     logger.debug(
                         "proactive_alert_agent.signal_event_not_found",
                         event_id=event_id,
                     )
-                    return
-                repo = SignalEventRepository(session)
-                await repo.mark_processed(row)
-                await session.commit()
-                logger.debug(
-                    "proactive_alert_agent.signal_event_marked_processed",
-                    event_id=event_id,
-                )
         except Exception as exc:
             logger.warning(
                 "proactive_alert_agent.mark_processed_failed",
