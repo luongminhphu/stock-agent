@@ -7,6 +7,7 @@ readmodel segment uses its own optimized read queries.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
@@ -243,6 +244,47 @@ class ThesisRepository:
         )
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def list_reviews_batch(
+        self,
+        thesis_ids: list[int],
+        limit_per_thesis: int = 5,
+    ) -> dict[int, list[ThesisReview]]:
+        """Fetch recent reviews for multiple theses in a single IN-query.
+
+        Replaces N×get_latest_review + N×list_reviews_by_thesis sequential calls
+        used by BriefingService._build_thesis_judge_block (B3 fix).
+
+        Returns a dict keyed by thesis_id. Each value is a list of
+        ThesisReview ordered newest-first, capped at limit_per_thesis rows
+        per thesis (sliced in Python after the single DB round-trip).
+
+        Empty list is returned for any thesis_id that has no reviews.
+        Returns {} immediately when thesis_ids is empty.
+
+        Owner: thesis segment. Called by briefing segment (adapter use only).
+        """
+        if not thesis_ids:
+            return {}
+
+        stmt = (
+            select(ThesisReview)
+            .where(ThesisReview.thesis_id.in_(thesis_ids))
+            .order_by(ThesisReview.thesis_id, ThesisReview.reviewed_at.desc())
+        )
+        result = await self._session.execute(stmt)
+        rows = list(result.scalars().all())
+
+        # Group by thesis_id, preserving newest-first order, capped per thesis.
+        grouped: dict[int, list[ThesisReview]] = defaultdict(list)
+        counts: dict[int, int] = defaultdict(int)
+        for row in rows:
+            tid = row.thesis_id
+            if counts[tid] < limit_per_thesis:
+                grouped[tid].append(row)
+                counts[tid] += 1
+
+        return dict(grouped)
 
     # ------------------------------------------------------------------
     # Recommendation queries  (Wave 2)

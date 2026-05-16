@@ -61,7 +61,15 @@ Conviction history (P4 wave 2):
   the trigger dict. This gives ThesisJudgeAgent a longitudinal view of how
   conviction has evolved, enabling it to detect drift, reversals, and
   accumulating weakness rather than judging each run in isolation.
-  _fetch_conviction_history() is non-blocking: DB errors return None silently.
+
+Perf fixes (B1/B3/B4):
+  B1: _build_market_context accepts optional pre-fetched quotes dict — avoids
+      second get_bulk_quotes() call when invoked from _build_market_context_with_judge.
+  B3: _build_thesis_judge_block uses ThesisRepository.list_reviews_batch() —
+      single IN-query replaces N×2 sequential per-thesis DB calls.
+  B4: _collect_contexts caches active theses list and passes it into both
+      _build_thesis_context and _build_thesis_judge_block to avoid calling
+      list_for_user(active) twice.
 """
 
 from __future__ import annotations
@@ -291,6 +299,11 @@ class BriefingService:
           verdicts (non-ON_TRACK only) after the sector rotation block.
           Quotes are fetched once and reused for both market_context and judge block.
 
+        B4 fix:
+          Active theses are fetched once here and passed into both
+          _build_thesis_context (fallback path) and _build_thesis_judge_block
+          to avoid calling list_for_user(active) twice per brief.
+
         Returns a dict with keys:
           tickers, market_context, portfolio_context, thesis_context,
           past_lessons, investor_profile, feedback_summary,
@@ -302,6 +315,17 @@ class BriefingService:
         tickers = await self._get_watchlist_tickers(user_id)
         watchlist_ms = round((time.monotonic() - t0) * 1000)
 
+        # B4: fetch active theses once, reuse in both builder paths below.
+        cached_theses: list | None = None
+        if self._thesis_service is not None:
+            try:
+                cached_theses = await self._thesis_service.list_for_user(  # type: ignore[attr-defined]
+                    user_id=user_id, status="active"
+                )
+            except Exception as exc:
+                logger.warning("briefing.theses_prefetch_failed", user_id=user_id, error=str(exc))
+                cached_theses = []
+
         t0 = time.monotonic()
         if self._thesis_judge_agent is not None:
             # Fetch quotes once — reused by both market_context and thesis_judge_block
@@ -311,7 +335,11 @@ class BriefingService:
             except Exception:
                 _quotes_by_ticker = {}
             market_context = await self._build_market_context_with_judge(
-                user_id=user_id, tickers=tickers, phase=phase, quotes=_quotes_by_ticker
+                user_id=user_id,
+                tickers=tickers,
+                phase=phase,
+                quotes=_quotes_by_ticker,
+                cached_theses=cached_theses,
             )
         else:
             market_context = await self._build_market_context(tickers, phase=phase)
@@ -336,7 +364,8 @@ class BriefingService:
             context_source = "individual_builders"
             t0 = time.monotonic()
             portfolio_context = await self._build_portfolio_context(user_id)
-            thesis_context = await self._build_thesis_context(user_id)
+            # B4: pass cached_theses to avoid a second list_for_user call.
+            thesis_context = await self._build_thesis_context(user_id, theses=cached_theses)
             past_lessons = await self._build_lesson_context(user_id)
             individual_builders_ms = round((time.monotonic() - t0) * 1000)
 
@@ -427,7 +456,24 @@ class BriefingService:
         items = await self._watchlist_service.list_items(user_id=user_id)
         return [item.ticker for item in items]
 
-    async def _build_market_context(self, tickers: list[str], phase: str) -> str:
+    async def _build_market_context(
+        self,
+        tickers: list[str],
+        phase: str,
+        quotes: dict | None = None,
+    ) -> str:
+        """Build market context string from watchlist quotes.
+
+        B1 fix: accepts optional pre-fetched quotes dict to skip a second
+        get_bulk_quotes() call when invoked from _build_market_context_with_judge.
+        When quotes is None (standalone callers, scheduler, tests), fetches as before.
+
+        Args:
+            tickers: watchlist tickers.
+            phase:   "morning" | "eod".
+            quotes:  optional pre-fetched {ticker: quote} dict. When provided,
+                     get_bulk_quotes() is not called again.
+        """
         now = datetime.now().strftime("%H:%M %d/%m/%Y")
         if not tickers:
             return (
@@ -435,17 +481,21 @@ class BriefingService:
                 f"Hãy viết {phase} brief ở mức thị trường chung, nhấn mạnh quản trị rủi ro."
             )
 
-        try:
-            quotes = await self._quote_service.get_bulk_quotes(tickers)  # type: ignore[attr-defined]
-        except Exception as exc:
-            logger.warning("briefing.quote_fetch_failed", tickers=tickers, error=str(exc))
-            return (
-                f"Thời điểm: {now}. Không lấy được quote cho watchlist {', '.join(tickers)}. "
-                f"Hãy viết {phase} brief thận trọng, nêu rõ thiếu dữ liệu giá realtime."
-            )
+        # Use pre-fetched quotes when available (B1); otherwise fetch.
+        if quotes is not None:
+            fetched_quotes = [quotes[t] for t in tickers if t in quotes]
+        else:
+            try:
+                fetched_quotes = await self._quote_service.get_bulk_quotes(tickers)  # type: ignore[attr-defined]
+            except Exception as exc:
+                logger.warning("briefing.quote_fetch_failed", tickers=tickers, error=str(exc))
+                return (
+                    f"Thời điểm: {now}. Không lấy được quote cho watchlist {', '.join(tickers)}. "
+                    f"Hãy viết {phase} brief thận trọng, nêu rõ thiếu dữ liệu giá realtime."
+                )
 
         lines = [f"Thời điểm: {now}. Watchlist: {', '.join(tickers)}."]
-        for q in quotes:
+        for q in fetched_quotes:
             parts = [f"{q.ticker}: {q.close:,.0f}"]
             if hasattr(q, "change_pct") and q.change_pct is not None:
                 parts.append(f"({q.change_pct:+.2f}%)")
@@ -461,92 +511,146 @@ class BriefingService:
         return "\n".join(lines)
 
     async def _build_market_context_with_judge(
-        self, user_id: str, tickers: list[str], phase: str, quotes: dict
+        self,
+        user_id: str,
+        tickers: list[str],
+        phase: str,
+        quotes: dict,
+        cached_theses: list | None = None,
     ) -> str:
         """Build market context with thesis judge verdicts appended.
 
-        Thin wrapper over _build_market_context + _build_thesis_judge_block.
-        Called by _collect_contexts when thesis_judge_agent is injected.
-        Falls back to plain _build_market_context on any error.
+        B1 fix: passes pre-fetched quotes into _build_market_context so quotes
+        are never fetched twice in the same brief generation cycle.
 
-        Quotes are pre-fetched by _collect_contexts and passed in to avoid
-        a second network call. _build_market_context internally calls
-        get_bulk_quotes again — this is acceptable duplication since
-        _build_market_context is also used standalone (scheduler, tests).
+        B4 fix: accepts cached_theses from _collect_contexts to avoid a second
+        list_for_user(active) call inside _build_thesis_judge_block.
+
+        Non-blocking: falls back to plain _build_market_context on any error.
 
         Args:
-            user_id:  For loading active theses via thesis_service.
-            tickers:  Watchlist tickers (already fetched).
-            phase:    "morning" | "eod".
-            quotes:   Pre-fetched quote objects keyed by ticker (may be empty dict).
+            user_id:        For loading active theses via thesis_service.
+            tickers:        Watchlist tickers (already fetched).
+            phase:          "morning" | "eod".
+            quotes:         Pre-fetched quote objects keyed by ticker (may be {}).
+            cached_theses:  Pre-fetched active theses list (may be None).
         """
-        base = await self._build_market_context(tickers, phase=phase)
-        judge_block = await self._build_thesis_judge_block(user_id=user_id, quotes=quotes)
+        # B1: pass quotes so _build_market_context skips a second fetch.
+        base = await self._build_market_context(tickers, phase=phase, quotes=quotes)
+        judge_block = await self._build_thesis_judge_block(
+            user_id=user_id, quotes=quotes, cached_theses=cached_theses
+        )
         if judge_block:
             return base + judge_block
         return base
 
+    async def _fetch_reviews_batch_for_judge(
+        self, thesis_ids: list[int]
+    ) -> dict[int, list]:
+        """Fetch up to 5 reviews per thesis in a single DB query (B3 fix).
+
+        Returns {thesis_id: [ThesisReview, ...]} newest-first, capped at 5.
+        Returns {} on empty input, session=None, or any DB error (non-blocking).
+
+        Owner: briefing (adapter). Reads thesis segment DB via ThesisRepository.
+        """
+        if self._session is None or not thesis_ids:
+            return {}
+        try:
+            from src.thesis.repository import ThesisRepository
+
+            repo = ThesisRepository(self._session)
+            return await repo.list_reviews_batch(thesis_ids, limit_per_thesis=5)
+        except Exception as exc:
+            logger.debug(
+                "briefing.fetch_reviews_batch_failed",
+                thesis_ids=thesis_ids,
+                error=str(exc),
+            )
+            return {}
+
+    def _format_last_review_summary(self, review: object) -> str | None:
+        """Format a single ThesisReview into the compact anchor string for the Judge.
+
+        Extracted from _fetch_last_review_summary to be reusable with batch-loaded rows.
+        Returns None when review is None.
+        """
+        if review is None:
+            return None
+        reviewed_at = (
+            review.reviewed_at.strftime("%d/%m/%Y")
+            if review.reviewed_at
+            else "?"
+        )
+        verdict = getattr(review, "verdict", "?")
+        confidence = getattr(review, "confidence", None)
+        confidence_str = f"{confidence:.2f}" if confidence is not None else "?"
+        reasoning_raw = getattr(review, "reasoning", "") or ""
+        reasoning_snippet = reasoning_raw[:120].rstrip()
+
+        risk_signals_raw = getattr(review, "risk_signals", None)
+        risk_signals: list[str] = []
+        if risk_signals_raw:
+            try:
+                parsed = json.loads(risk_signals_raw)
+                if isinstance(parsed, list):
+                    risk_signals = [str(r) for r in parsed[:3]]
+            except Exception:
+                pass
+
+        lines = [
+            f"Review gần nhất ({reviewed_at}): verdict={verdict}, confidence={confidence_str}",
+        ]
+        if reasoning_snippet:
+            lines.append(f"  reasoning: {reasoning_snippet}")
+        if risk_signals:
+            lines.append(f"  risk_signals: {'; '.join(risk_signals)}")
+        lines.append(
+            "⚠️ Nếu verdict thay đổi so với review này, phải giải thích rõ trigger trong reasoning."
+        )
+        return "\n".join(lines)
+
+    def _format_conviction_history(self, reviews: list) -> list[dict] | None:
+        """Convert a list of ThesisReview rows (rows 1-4, skipping index 0) into
+        the compact conviction_history list[dict] expected by ThesisJudgeAgent.
+
+        Extracted from _fetch_conviction_history to be reusable with batch-loaded rows.
+        Returns None when history_rows is empty.
+        """
+        history_rows = reviews[1:]  # skip index 0 (already in last_review_summary)
+        if not history_rows:
+            return None
+        history: list[dict] = []
+        for r in history_rows:
+            reviewed_at = (
+                r.reviewed_at.strftime("%d/%m/%Y") if r.reviewed_at else "?"
+            )
+            confidence = getattr(r, "confidence", None)
+            history.append({
+                "date": reviewed_at,
+                "verdict": str(getattr(r, "verdict", "?")),
+                "confidence": round(confidence, 2) if confidence is not None else None,
+            })
+        return history
+
     async def _fetch_last_review_summary(self, thesis_id: int | str) -> str | None:
         """Fetch and format the latest ThesisReview for a thesis as a compact string.
 
-        Used by _build_thesis_judge_block to inject review continuity into
-        signal_context["last_review_summary"] before each Judge run, so the
-        Judge knows what verdict was given last time and can anchor its delta.
+        Used by _build_thesis_judge_block (single-thesis fallback path only —
+        batch path uses _fetch_reviews_batch_for_judge + _format_last_review_summary).
 
-        Returns None when:
-        - session is None
-        - no ThesisReview row exists for this thesis
-        - thesis_id cannot be cast to int
-        - any DB error occurs (non-blocking)
-
-        Owner: briefing (adapter). Reads thesis segment DB via ThesisRepository.
+        Returns None when session is None, no review exists, or any DB error.
+        Non-blocking.
         """
         if self._session is None:
             return None
         try:
-            # Lazy import keeps briefing decoupled from thesis at module level.
             from src.thesis.repository import ThesisRepository
 
             repo = ThesisRepository(self._session)
             thesis_id_int = int(thesis_id)
             review = await repo.get_latest_review(thesis_id_int)
-            if review is None:
-                return None
-
-            # Format as a compact anchor for the Judge prompt.
-            reviewed_at = (
-                review.reviewed_at.strftime("%d/%m/%Y")
-                if review.reviewed_at
-                else "?"
-            )
-            verdict = getattr(review, "verdict", "?")
-            confidence = getattr(review, "confidence", None)
-            confidence_str = f"{confidence:.2f}" if confidence is not None else "?"
-            reasoning_raw = getattr(review, "reasoning", "") or ""
-            reasoning_snippet = reasoning_raw[:120].rstrip()
-
-            # risk_signals is stored as JSON string in the model
-            risk_signals_raw = getattr(review, "risk_signals", None)
-            risk_signals: list[str] = []
-            if risk_signals_raw:
-                try:
-                    parsed = json.loads(risk_signals_raw)
-                    if isinstance(parsed, list):
-                        risk_signals = [str(r) for r in parsed[:3]]
-                except Exception:
-                    pass
-
-            lines = [
-                f"Review gần nhất ({reviewed_at}): verdict={verdict}, confidence={confidence_str}",
-            ]
-            if reasoning_snippet:
-                lines.append(f"  reasoning: {reasoning_snippet}")
-            if risk_signals:
-                lines.append(f"  risk_signals: {'; '.join(risk_signals)}")
-            lines.append(
-                "⚠️ Nếu verdict thay đổi so với review này, phải giải thích rõ trigger trong reasoning."
-            )
-            return "\n".join(lines)
+            return self._format_last_review_summary(review)
         except Exception as exc:
             logger.debug(
                 "briefing.fetch_last_review_summary_failed",
@@ -560,24 +664,11 @@ class BriefingService:
     ) -> list[dict] | None:
         """Fetch historical ThesisReview rows as a compact conviction timeline.
 
-        Reads the last 4 reviews (rows 2-5, skipping the most recent which is
-        already captured by _fetch_last_review_summary) and maps them to:
-          [{"date": "dd/mm/yyyy", "verdict": str, "confidence": float | None}, ...]
-        ordered newest-first.
+        Single-thesis fallback path only — batch path uses
+        _fetch_reviews_batch_for_judge + _format_conviction_history.
 
-        This gives ThesisJudgeAgent a longitudinal view of conviction drift
-        rather than a single point-in-time snapshot, enabling it to detect:
-        - accumulating WEAKENING across multiple runs
-        - a reversal that contradicts a long BULLISH streak
-        - a confidence trend (declining even if verdict unchanged)
-
-        Returns None when:
-        - session is None
-        - thesis_id cannot be cast to int
-        - fewer than 2 reviews exist (history not meaningful yet)
-        - any DB error occurs (non-blocking)
-
-        Owner: briefing (adapter). Reads thesis segment DB via ThesisRepository.
+        Returns None when session is None, fewer than 2 reviews, or any DB error.
+        Non-blocking.
         """
         if self._session is None:
             return None
@@ -586,24 +677,8 @@ class BriefingService:
 
             repo = ThesisRepository(self._session)
             thesis_id_int = int(thesis_id)
-            # Fetch 5 reviews (newest first), skip index 0 (already in last_review_summary)
             reviews = await repo.list_reviews_by_thesis(thesis_id_int, limit=5)
-            history_rows = reviews[1:]  # skip the most recent
-            if not history_rows:
-                return None
-
-            history: list[dict] = []
-            for r in history_rows:
-                reviewed_at = (
-                    r.reviewed_at.strftime("%d/%m/%Y") if r.reviewed_at else "?"
-                )
-                confidence = getattr(r, "confidence", None)
-                history.append({
-                    "date": reviewed_at,
-                    "verdict": str(getattr(r, "verdict", "?")),
-                    "confidence": round(confidence, 2) if confidence is not None else None,
-                })
-            return history
+            return self._format_conviction_history(reviews)
         except Exception as exc:
             logger.debug(
                 "briefing.fetch_conviction_history_failed",
@@ -612,24 +687,30 @@ class BriefingService:
             )
             return None
 
-    async def _build_thesis_judge_block(self, user_id: str, quotes: dict) -> str:
+    async def _build_thesis_judge_block(
+        self,
+        user_id: str,
+        quotes: dict,
+        cached_theses: list | None = None,
+    ) -> str:
         """Run ThesisJudgeAgent against active theses and format non-ON_TRACK verdicts.
 
         Non-blocking: returns "" if agent not injected, thesis_service not injected,
         no active theses, or any error occurs.
         Only emits verdicts with verdict != ON_TRACK to avoid noise in brief context.
 
+        B3 fix: replaces N×2 sequential per-thesis DB calls with a single
+        list_reviews_batch() query. All review data is loaded upfront and
+        sliced in Python for last_review_summary and conviction_history.
+
+        B4 fix: uses cached_theses when provided to skip list_for_user(active).
+
         P4 — last-review continuity:
-          For each thesis, _fetch_last_review_summary() is called and the result
-          is injected into signal_context["last_review_summary"]. This anchors the
-          Judge verdict to the previous review so it can detect real deltas rather
-          than generating contradictory verdicts in isolation.
+          For each thesis, last_review_summary is derived from the batch-loaded
+          reviews[0] and injected into signal_context["last_review_summary"].
 
         P4 wave 2 — conviction history:
-          For each thesis, _fetch_conviction_history() is called and the result
-          is passed as conviction_history in the trigger dict. ThesisJudgeAgent
-          uses this to detect longitudinal conviction drift, not just point-in-time
-          delta from the last review.
+          conviction_history is derived from batch-loaded reviews[1:4] per thesis.
 
         Owner: briefing (adapter). Judge logic stays in ai segment.
         Cap: max 5 theses per run, max 2 challenged_assumptions and 2 new_risks per
@@ -638,11 +719,26 @@ class BriefingService:
         if self._thesis_judge_agent is None or self._thesis_service is None:
             return ""
         try:
-            theses = await self._thesis_service.list_for_user(  # type: ignore[attr-defined]
-                user_id=user_id, status="active"
-            )
+            # B4: use cached_theses when available.
+            if cached_theses is not None:
+                theses = cached_theses
+            else:
+                theses = await self._thesis_service.list_for_user(  # type: ignore[attr-defined]
+                    user_id=user_id, status="active"
+                )
             if not theses:
                 return ""
+
+            # B3: collect thesis_ids and batch-fetch all reviews in one query.
+            thesis_ids: list[int] = []
+            for t in theses:
+                raw_id = getattr(t, "id", None)
+                try:
+                    thesis_ids.append(int(raw_id))
+                except (TypeError, ValueError):
+                    pass  # non-int id (ticker-only thesis) — review lookup skipped
+
+            reviews_by_thesis = await self._fetch_reviews_batch_for_judge(thesis_ids)
 
             triggers = []
             for t in theses:
@@ -666,22 +762,28 @@ class BriefingService:
                         signal_context["trigger_reason"] = (
                             f"change_pct={change_pct:+.2f}%"
                         )
-                        # Derive watchdog_verdict from price action so the
-                        # Judge fallback rule (_derive_fallback_verdict) has a
-                        # meaningful verdict when AI is unavailable.
-                        # BEARISH when price drops ≥3%; BULLISH when rises ≥3%.
                         signal_context["watchdog_verdict"] = (
                             "BEARISH" if change_pct <= -3.0 else "BULLISH"
                         )
 
-                # P4: inject last review summary for verdict continuity
+                # B3: derive last_review_summary and conviction_history from
+                # batch-loaded reviews instead of issuing per-thesis DB calls.
                 thesis_id = getattr(t, "id", t.ticker)
-                last_review_summary = await self._fetch_last_review_summary(thesis_id)
+                try:
+                    tid_int = int(thesis_id)
+                    thesis_reviews = reviews_by_thesis.get(tid_int, [])
+                except (TypeError, ValueError):
+                    thesis_reviews = []
+
+                last_review_summary = (
+                    self._format_last_review_summary(thesis_reviews[0])
+                    if thesis_reviews
+                    else None
+                )
+                conviction_history = self._format_conviction_history(thesis_reviews)
+
                 if last_review_summary:
                     signal_context["last_review_summary"] = last_review_summary
-
-                # P4 wave 2: inject conviction history for longitudinal drift detection
-                conviction_history = await self._fetch_conviction_history(thesis_id)
 
                 triggers.append({
                     "thesis_id": str(thesis_id),
@@ -831,18 +933,26 @@ class BriefingService:
             logger.warning("briefing.portfolio_context_failed", user_id=user_id, error=str(exc))
             return ""
 
-    async def _build_thesis_context(self, user_id: str) -> str:
+    async def _build_thesis_context(
+        self,
+        user_id: str,
+        theses: list | None = None,
+    ) -> str:
         """Build active thesis summary string for AI context injection.
 
         Fallback path — only called when ContextBuilder did not produce an
         investor_profile block (session=None or no data found).
+
+        B4 fix: accepts optional pre-fetched theses list to skip list_for_user(active).
+        When theses is None, falls back to fetching from thesis_service.
         """
         if self._thesis_service is None:
             return ""
         try:
-            theses = await self._thesis_service.list_for_user(  # type: ignore[attr-defined]
-                user_id=user_id, status="active"
-            )
+            if theses is None:
+                theses = await self._thesis_service.list_for_user(  # type: ignore[attr-defined]
+                    user_id=user_id, status="active"
+                )
             if not theses:
                 return ""
             lines = ["Thesis đang theo dõi:"]
