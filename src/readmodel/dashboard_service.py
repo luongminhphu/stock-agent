@@ -8,6 +8,7 @@ Endpoints served (via src/api/routes/readmodel.py):
     get_thesis_detail()                 — delegates to ThesisQueryService
     get_upcoming_catalysts()            — delegates to ThesisQueryService
     get_thesis_portfolio_aggregate()    — delegates to ThesisQueryService
+    get_conviction_timeline()           — delegates to ThesisQueryService
     get_scan_latest()                   — snapshot scan gan nhat (WatchlistScan)
     get_brief_latest()                  — snapshot brief gan nhat (BriefSnapshot)
     get_brief_feedback_summary()        — feedback summary cho brief (BriefFeedback)
@@ -69,7 +70,7 @@ class DashboardService:
         return await self._stats.get_stats(user_id)
 
     # ------------------------------------------------------------------
-    # 2-5. Thesis queries — delegates to ThesisQueryService
+    # 2-6. Thesis queries — delegates to ThesisQueryService
     # ------------------------------------------------------------------
 
     async def get_theses_list(
@@ -113,8 +114,25 @@ class DashboardService:
             position_map=position_map,
         )
 
+    async def get_conviction_timeline(
+        self,
+        user_id: str,
+        thesis_id: int,
+        limit: int = 30,
+    ) -> list[dict[str, Any]]:
+        """Conviction score series cho 1 thesis — dùng cho sparkline / trend chart.
+
+        Delegates to ThesisQueryService.get_conviction_timeline().
+        Trả về list rỗng nếu thesis không tồn tại hoặc không thuộc user.
+        """
+        return await self._thesis_query.get_conviction_timeline(
+            user_id=user_id,
+            thesis_id=thesis_id,
+            limit=limit,
+        )
+
     # ------------------------------------------------------------------
-    # 6. Latest scan snapshot — cross-segment (watchlist)
+    # 7. Latest scan snapshot — cross-segment (watchlist)
     # ------------------------------------------------------------------
 
     async def get_scan_latest(self, user_id: str) -> dict[str, Any] | None:
@@ -160,7 +178,7 @@ class DashboardService:
             return None
 
     # ------------------------------------------------------------------
-    # 7. Latest brief snapshot — cross-segment (briefing)
+    # 8. Latest brief snapshot — cross-segment (briefing)
     # ------------------------------------------------------------------
 
     async def get_brief_latest(self, user_id: str, phase: str = "morning") -> dict[str, Any] | None:
@@ -275,7 +293,7 @@ class DashboardService:
             }
 
     # ------------------------------------------------------------------
-    # 8. Triggered alerts — cross-segment (watchlist)
+    # 9. Triggered alerts — cross-segment (watchlist)
     # ------------------------------------------------------------------
 
     async def get_triggered_alerts(
@@ -326,7 +344,7 @@ class DashboardService:
             return []
 
     # ------------------------------------------------------------------
-    # 9. Recent signal events — grouped by ticker+signal_type
+    # 10. Recent signal events — grouped by ticker+signal_type
     # ------------------------------------------------------------------
 
     async def get_recent_signals(
@@ -449,7 +467,7 @@ class DashboardService:
             return []
 
     # ------------------------------------------------------------------
-    # 10-12. Backtesting — delegates to BacktestingService
+    # 11-13. Backtesting — delegates to BacktestingService
     # ------------------------------------------------------------------
 
     async def get_verdict_accuracy(self, user_id: str) -> list[dict[str, Any]]:
@@ -467,7 +485,7 @@ class DashboardService:
         return await self._backtesting.get_price_snapshots(user_id, thesis_id)
 
     # ------------------------------------------------------------------
-    # 13. Portfolio — delegates to PortfolioQueryService
+    # 14. Portfolio — delegates to PortfolioQueryService
     # ------------------------------------------------------------------
 
     async def get_portfolio(
