@@ -43,7 +43,7 @@ Thesis Judge integration (Wave 2):
   is called. Only non-ON_TRACK verdicts (weakening / invalidated / review_now)
   are appended to market_context so the brief narrative can reference structured
   verdict data rather than inferring thesis health from raw text.
-  Non-blocking: any failure returns "" and brief is unaffected.
+  Non-blocking: any failure returns ("", False) and brief is unaffected.
 
 Last-review continuity (P4):
   _build_thesis_judge_block() now calls _fetch_last_review_summary() for each
@@ -70,6 +70,14 @@ Perf fixes (B1/B3/B4):
   B4: _collect_contexts caches active theses list and passes it into both
       _build_thesis_context and _build_thesis_judge_block to avoid calling
       list_for_user(active) twice.
+
+B2 fix:
+  thesis_judge_ran now reflects whether ThesisJudgeAgent.run_batch() was
+  actually called, not merely whether thesis_judge_agent was injected.
+  _build_thesis_judge_block returns tuple[str, bool] (block, did_run).
+  did_run=True only when run_batch() was reached (active theses existed and
+  no early-exit occurred). _build_market_context_with_judge propagates the
+  tuple; _collect_contexts unpacks it into thesis_judge_ran.
 """
 
 from __future__ import annotations
@@ -299,6 +307,12 @@ class BriefingService:
           verdicts (non-ON_TRACK only) after the sector rotation block.
           Quotes are fetched once and reused for both market_context and judge block.
 
+        B2 fix:
+          thesis_judge_ran is set from the did_run bool returned by
+          _build_market_context_with_judge (which in turn comes from
+          _build_thesis_judge_block). It is True only when run_batch() was
+          actually called — not merely when the agent was injected.
+
         B4 fix:
           Active theses are fetched once here and passed into both
           _build_thesis_context (fallback path) and _build_thesis_judge_block
@@ -327,6 +341,7 @@ class BriefingService:
                 cached_theses = []
 
         t0 = time.monotonic()
+        thesis_judge_ran = False
         if self._thesis_judge_agent is not None:
             # Fetch quotes once — reused by both market_context and thesis_judge_block
             try:
@@ -334,7 +349,8 @@ class BriefingService:
                 _quotes_by_ticker = {q.ticker: q for q in _raw_quotes}
             except Exception:
                 _quotes_by_ticker = {}
-            market_context = await self._build_market_context_with_judge(
+            # B2: unpack (market_context_str, did_run) tuple
+            market_context, thesis_judge_ran = await self._build_market_context_with_judge(
                 user_id=user_id,
                 tickers=tickers,
                 phase=phase,
@@ -409,7 +425,7 @@ class BriefingService:
             "feedback_summary": feedback_summary,
             "context_source": context_source,
             "sector_rotation_injected": sector_rotation_injected,
-            "thesis_judge_ran": self._thesis_judge_agent is not None,
+            "thesis_judge_ran": thesis_judge_ran,
         }
 
     async def _persist(
@@ -517,16 +533,22 @@ class BriefingService:
         phase: str,
         quotes: dict,
         cached_theses: list | None = None,
-    ) -> str:
+    ) -> tuple[str, bool]:
         """Build market context with thesis judge verdicts appended.
 
         B1 fix: passes pre-fetched quotes into _build_market_context so quotes
         are never fetched twice in the same brief generation cycle.
 
+        B2 fix: returns tuple[str, bool] (market_context, did_run).
+        did_run reflects whether ThesisJudgeAgent.run_batch() was actually
+        called (propagated from _build_thesis_judge_block). Callers must
+        unpack the tuple — thesis_judge_ran must come from here, not from
+        `self._thesis_judge_agent is not None`.
+
         B4 fix: accepts cached_theses from _collect_contexts to avoid a second
         list_for_user(active) call inside _build_thesis_judge_block.
 
-        Non-blocking: falls back to plain _build_market_context on any error.
+        Non-blocking: falls back to (plain_market_context, False) on any error.
 
         Args:
             user_id:        For loading active theses via thesis_service.
@@ -534,15 +556,18 @@ class BriefingService:
             phase:          "morning" | "eod".
             quotes:         Pre-fetched quote objects keyed by ticker (may be {}).
             cached_theses:  Pre-fetched active theses list (may be None).
+
+        Returns:
+            (market_context_str, did_run)
         """
         # B1: pass quotes so _build_market_context skips a second fetch.
         base = await self._build_market_context(tickers, phase=phase, quotes=quotes)
-        judge_block = await self._build_thesis_judge_block(
+        judge_block, did_run = await self._build_thesis_judge_block(
             user_id=user_id, quotes=quotes, cached_theses=cached_theses
         )
         if judge_block:
-            return base + judge_block
-        return base
+            return base + judge_block, did_run
+        return base, did_run
 
     async def _fetch_reviews_batch_for_judge(
         self, thesis_ids: list[int]
@@ -692,11 +717,16 @@ class BriefingService:
         user_id: str,
         quotes: dict,
         cached_theses: list | None = None,
-    ) -> str:
+    ) -> tuple[str, bool]:
         """Run ThesisJudgeAgent against active theses and format non-ON_TRACK verdicts.
 
-        Non-blocking: returns "" if agent not injected, thesis_service not injected,
-        no active theses, or any error occurs.
+        B2 fix: returns tuple[str, bool] (block, did_run).
+        did_run=True only when ThesisJudgeAgent.run_batch() was actually called
+        (i.e. active theses existed and execution reached the run_batch() line).
+        Early exits (no agent, no thesis_service, no theses, exception before
+        run_batch) all return ("", False).
+
+        Non-blocking: returns ("", False) on any error.
         Only emits verdicts with verdict != ON_TRACK to avoid noise in brief context.
 
         B3 fix: replaces N×2 sequential per-thesis DB calls with a single
@@ -715,9 +745,12 @@ class BriefingService:
         Owner: briefing (adapter). Judge logic stays in ai segment.
         Cap: max 5 theses per run, max 2 challenged_assumptions and 2 new_risks per
              verdict, reasoning truncated at 120 chars — prevents context bloat.
+
+        Returns:
+            (judge_block_str, did_run)
         """
         if self._thesis_judge_agent is None or self._thesis_service is None:
-            return ""
+            return "", False
         try:
             # B4: use cached_theses when available.
             if cached_theses is not None:
@@ -727,7 +760,7 @@ class BriefingService:
                     user_id=user_id, status="active"
                 )
             if not theses:
-                return ""
+                return "", False
 
             # B3: collect thesis_ids and batch-fetch all reviews in one query.
             thesis_ids: list[int] = []
@@ -817,7 +850,7 @@ class BriefingService:
                 })
 
             if not triggers:
-                return ""
+                return "", False
 
             if len(triggers) > 5:
                 logger.warning(
@@ -826,6 +859,8 @@ class BriefingService:
                     cap=5,
                     dropped=[t["ticker"] for t in triggers[5:]],
                 )
+
+            # B2: did_run=True from this point — run_batch() is about to be called.
             verdicts = await self._thesis_judge_agent.run_batch(triggers[:5])
 
             # Filter to non-ON_TRACK only — emit actionable verdicts only
@@ -836,7 +871,7 @@ class BriefingService:
                 if v.verdict != ThesisJudgeVerdict.ON_TRACK
             ]
             if not actionable:
-                return ""
+                return "", True  # ran but nothing actionable — did_run still True
 
             lines = ["", "--- Thesis Judge Verdicts ---"]
             for v in actionable:
@@ -860,10 +895,10 @@ class BriefingService:
                 total_theses=len(triggers),
                 actionable_count=len(actionable),
             )
-            return "\n".join(lines)
+            return "\n".join(lines), True
         except Exception as exc:
             logger.warning("briefing.thesis_judge_block_failed", error=str(exc))
-            return ""
+            return "", False
 
     async def _build_sector_rotation_block(self, tickers: list[str]) -> str:
         """Build sector rotation divergence block for market context injection.
