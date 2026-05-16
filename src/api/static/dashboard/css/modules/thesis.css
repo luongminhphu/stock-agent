@@ -106,6 +106,22 @@
   line-height: 1.5;
 }
 
+/* ── Score tier row highlights ─────────────────────────────────────────────
+   Applied to <tr> in renderThesesTable when score_tier is AT_RISK/CRITICAL.
+   Uses border-left accent + subtle bg tint — no solid side border on cards
+   (which would be an anti-pattern), but table rows can use it as a signal.
+──────────────────────────────────────────────────────────────────────────── */
+tr.row--at-risk {
+  border-left: 2px solid var(--warning);
+  background: rgba(251, 191, 36, 0.04);
+}
+tr.row--critical {
+  border-left: 2px solid var(--danger);
+  background: rgba(248, 113, 113, 0.05);
+}
+tr.row--at-risk:hover  { background: rgba(251, 191, 36, 0.08); }
+tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
+
 /* ── Review timeline ────────────────────────────────────────────── */
 .review-timeline {
   display: grid;

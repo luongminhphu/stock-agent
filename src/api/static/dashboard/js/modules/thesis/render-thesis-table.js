@@ -160,6 +160,11 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
  *
  * Spark chart: lazy-loaded per row via IntersectionObserver.
  * destroySpark() called before re-render to prevent Chart.js instance leaks.
+ *
+ * Score tier badge rules:
+ *   CRITICAL  → .badge.score-low  (red, var(--danger))
+ *   AT_RISK   → .badge.score-mid  (amber, var(--warning))
+ *   other     → muted faint span (no change)
  */
 export function renderThesesTable(list, callbacks = {}) {
   const { onSelect = null, onEdit = null, onDelete = null } = callbacks ?? {};
@@ -182,8 +187,25 @@ export function renderThesesTable(list, callbacks = {}) {
         </tr>
       </thead>
       <tbody>
-        ${list.map(t => `
-          <tr data-id="${t.id}" data-ticker="${esc(t.ticker)}" data-thesis-id="${t.id}" class="${t.id === state.selectedThesisId ? 'is-selected' : ''}">
+        ${list.map(t => {
+          const tier = t.score_tier ?? '';
+          const rowClass = [
+            t.id === state.selectedThesisId ? 'is-selected' : '',
+            tier === 'AT_RISK'  ? 'row--at-risk'  : '',
+            tier === 'CRITICAL' ? 'row--critical' : '',
+          ].filter(Boolean).join(' ');
+
+          let tierBadge = '';
+          if (tier === 'CRITICAL') {
+            tierBadge = `<span class="badge score-low" style="font-size:.72rem;">🔴 CRITICAL</span>`;
+          } else if (tier === 'AT_RISK') {
+            tierBadge = `<span class="badge score-mid" style="font-size:.72rem;">⚠ AT_RISK</span>`;
+          } else if (tier || t.score_tier_icon) {
+            tierBadge = `<span style="font-size:.78rem;color:var(--muted);">${esc(t.score_tier_icon ?? '')} ${esc(tier)}</span>`;
+          }
+
+          return `
+          <tr data-id="${t.id}" data-ticker="${esc(t.ticker)}" data-thesis-id="${t.id}" class="${rowClass}">
             <td class="ticker-cell">
               <div style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap;">
                 <strong>${esc(t.ticker)}</strong>
@@ -194,7 +216,7 @@ export function renderThesesTable(list, callbacks = {}) {
             <td class="${scoreClass(t.score)}">
               <div style="display:flex;flex-direction:column;gap:2px;">
                 <strong>${fmtScore(t.score)}</strong>
-                ${(t.score_tier || t.score_tier_icon) ? `<span style="font-size:.78rem;color:var(--muted);">${esc(t.score_tier_icon ?? '')} ${esc(t.score_tier ?? '')}</span>` : ''}
+                ${tierBadge}
               </div>
             </td>
             <td style="padding:4px 8px;vertical-align:middle;">
@@ -215,7 +237,8 @@ export function renderThesesTable(list, callbacks = {}) {
                 <button class="icon-btn danger delete-thesis-btn" data-id="${t.id}" title="Xóa thesis">🗑</button>
               </div>
             </td>
-          </tr>`).join('')}
+          </tr>`;
+        }).join('')}
       </tbody>
     </table>`;
 
