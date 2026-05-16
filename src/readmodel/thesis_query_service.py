@@ -19,6 +19,7 @@ from typing import Any
 from sqlalchemy import Date as SADate
 from sqlalchemy import and_, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from src.platform.logging import get_logger
 from src.thesis.scoring_service import ScoringService, score_tier
@@ -163,6 +164,13 @@ class ThesisQueryService:
             )
             .outerjoin(n_assumptions_subq, n_assumptions_subq.c.thesis_id == Thesis.id)
             .outerjoin(n_catalysts_subq, n_catalysts_subq.c.thesis_id == Thesis.id)
+            # Eager-load relationships accessed by ScoringService.compute_with_breakdown().
+            # Without this, lazy-load inside async context raises MissingGreenlet → 500.
+            .options(
+                selectinload(Thesis.assumptions),
+                selectinload(Thesis.catalysts),
+                selectinload(Thesis.reviews),
+            )
             .where(*filters)
             .order_by(Thesis.updated_at.desc())
             .limit(limit)
@@ -198,8 +206,37 @@ class ThesisQueryService:
                 )
                 days_since_review = (now - reviewed_dt).days
 
-            # --- score breakdown (4-dimension) ---
-            _, score_breakdown = _scoring_service.compute_with_breakdown(t)
+            # --- upside_pct + risk_reward ---
+            upside_pct: float | None = None
+            risk_reward: float | None = None
+            if t.target_price and effective_entry and effective_entry > 0:
+                upside_pct = round(
+                    (t.target_price - effective_entry) / effective_entry * 100, 1
+                )
+                if t.stop_loss and effective_entry > t.stop_loss:
+                    downside = effective_entry - t.stop_loss
+                    upside = t.target_price - effective_entry
+                    if downside > 0:
+                        risk_reward = round(upside / downside, 2)
+
+            # --- invalid assumption + triggered catalyst counts (from eager-loaded) ---
+            assumptions = t.assumptions or []
+            catalysts = t.catalysts or []
+            invalid_assumption_count = sum(
+                1 for a in assumptions if str(a.status.value) == "invalid"
+            )
+            triggered_catalyst_count = sum(
+                1 for c in catalysts if str(c.status.value) == "triggered"
+            )
+
+            # --- score breakdown (4-dimension) — safe: relationships now eager-loaded ---
+            try:
+                _, score_breakdown = _scoring_service.compute_with_breakdown(t)
+            except Exception:
+                logger.warning(
+                    "thesis_query_service.score_breakdown_failed", thesis_id=t.id
+                )
+                score_breakdown = None
 
             result.append(
                 {
@@ -215,6 +252,8 @@ class ThesisQueryService:
                     "entry_price_source": "avg_cost" if avg_cost else "thesis",
                     "target_price": t.target_price,
                     "stop_loss": t.stop_loss,
+                    "upside_pct": upside_pct,
+                    "risk_reward": risk_reward,
                     "current_price": current_price,
                     "pnl_pct": pnl_pct,
                     "pnl_abs": pnl_abs,
@@ -230,8 +269,20 @@ class ThesisQueryService:
                     else None,
                     "days_since_review": days_since_review,
                     "health_rank": _health_rank(r.last_confidence, days_since_review),
+                    # counts — use subquery totals for display; breakdown from eager-loaded
                     "n_assumptions": r.n_assumptions,
                     "n_catalysts": r.n_catalysts,
+                    # ThesisSummaryRow-compatible fields
+                    "assumption_count": r.n_assumptions,
+                    "invalid_assumption_count": invalid_assumption_count,
+                    "catalyst_count": r.n_catalysts,
+                    "triggered_catalyst_count": triggered_catalyst_count,
+                    # market data — enriched externally via price_map; None until available
+                    "change": None,
+                    "change_pct": None,
+                    "volume": None,
+                    "is_ceiling": None,
+                    "is_floor": None,
                 }
             )
         return result
