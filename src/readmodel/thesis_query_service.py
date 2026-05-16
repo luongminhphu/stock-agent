@@ -21,7 +21,7 @@ from sqlalchemy import and_, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.logging import get_logger
-from src.thesis.scoring_service import score_tier
+from src.thesis.scoring_service import ScoringService, score_tier
 
 logger = get_logger(__name__)
 
@@ -78,6 +78,9 @@ def _health_rank(
     if confidence < 0.75:
         return "neutral"
     return "strong"
+
+
+_scoring_service = ScoringService()
 
 
 class ThesisQueryService:
@@ -195,6 +198,9 @@ class ThesisQueryService:
                 )
                 days_since_review = (now - reviewed_dt).days
 
+            # --- score breakdown (4-dimension) ---
+            _, score_breakdown = _scoring_service.compute_with_breakdown(t)
+
             result.append(
                 {
                     "id": t.id,
@@ -204,6 +210,7 @@ class ThesisQueryService:
                     "score": t.score,
                     "score_tier": tier_label,
                     "score_tier_icon": tier_icon,
+                    "score_breakdown": score_breakdown,
                     "entry_price": round(effective_entry, 0) if effective_entry else None,
                     "entry_price_source": "avg_cost" if avg_cost else "thesis",
                     "target_price": t.target_price,
