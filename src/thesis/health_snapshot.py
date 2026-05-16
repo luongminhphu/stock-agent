@@ -17,7 +17,7 @@ Non-responsibilities:
 Design:
   build_thesis_health_snapshots(session, user_id)
     └─ ThesisService.list_active()          → list of ORM thesis objects
-    └─ ScoringService.compute_score(thesis) → float 0.0–1.0 (best-effort)
+    └─ ScoringService.compute(thesis)       → float 0.0–100.0, normalized to 0.0–1.0
     └─ _compute_snapshot(thesis, score)     → ThesisHealthSnapshot
     └─ sort by urgency DESC, cap at MAX_THESES
 
@@ -46,7 +46,7 @@ logger = get_logger(__name__)
 MAX_THESES = 8               # cap to avoid prompt bloat
 REVIEW_DUE_DAYS = 7         # days without review → REVIEW_DUE flag
 AT_RISK_STOP_PCT_THRESHOLD = 5.0   # ≤5% from stop_loss → AT_RISK
-AT_RISK_SCORE_THRESHOLD = 0.35     # health_score ≤ 0.35 → AT_RISK
+AT_RISK_SCORE_THRESHOLD = 0.35     # health_score ≤ 0.35 → AT_RISK (0.0–1.0 scale)
 
 # urgency ordering (higher = more urgent, used for sort)
 _URGENCY_ORDER = {
@@ -154,7 +154,7 @@ async def build_thesis_health_snapshots(
     Build ThesisHealthSnapshot list for a user's active theses.
 
     Args:
-        session:  AsyncSession — for ThesisService and ScoringService queries.
+        session:  AsyncSession — for ThesisService queries.
         user_id:  target user. Returns [] if None.
 
     Returns:
@@ -178,7 +178,7 @@ async def build_thesis_health_snapshots(
     snapshots: list[ThesisHealthSnapshot] = []
     for thesis in theses:
         try:
-            score = await _fetch_score(session, thesis)
+            score = await _fetch_score(thesis)
             snap = _compute_snapshot(thesis, score)
             snapshots.append(snap)
         except Exception as exc:
@@ -196,18 +196,19 @@ async def build_thesis_health_snapshots(
     return snapshots[:MAX_THESES]
 
 
-async def _fetch_score(session: "AsyncSession", thesis: object) -> float:
-    """Fetch scoring service score for a thesis. Returns 0.5 on failure."""
+async def _fetch_score(thesis: object) -> float:
+    """Fetch health score for a thesis. Returns 0.5 (neutral) on failure.
+
+    ScoringService.compute() is sync and returns 0.0–100.0.
+    Normalized to 0.0–1.0 to match AT_RISK_SCORE_THRESHOLD and
+    format_for_prompt() expectations.
+    """
     try:
         from src.thesis.scoring_service import ScoringService
 
-        svc = ScoringService(session)
-        result = await svc.compute_score(thesis)
-        # ScoringService may return a float or an object with .score
-        if isinstance(result, (int, float)):
-            return float(result)
-        score = getattr(result, "score", None)
-        return float(score) if score is not None else 0.5
+        svc = ScoringService()
+        raw = svc.compute(thesis)      # sync, returns 0.0–100.0
+        return round(raw / 100.0, 4)   # normalize → 0.0–1.0
     except Exception:
         return 0.5  # neutral fallback — don't penalise for missing score
 
