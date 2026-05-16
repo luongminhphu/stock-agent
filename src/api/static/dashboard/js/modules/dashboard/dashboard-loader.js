@@ -18,6 +18,7 @@ import {
 } from '../backtesting/render-backtesting.js';
 import { renderCatalystList, renderSnapshots } from '../briefing/render-brief.js';
 import { loadLeaderboard } from './leaderboard-loader.js';
+import { renderHealthHeatmap } from './render-heatmap.js';
 import { countUp, flashValue } from '../../utils/animate.js';
 
 function wireDeleteThesis(id) {
@@ -117,9 +118,6 @@ export function renderTierBreakdown(aggregate) {
 
 // ---------------------------------------------------------------------------
 // Alerts Triggered Strip
-// Uses classes from signals-alerts.css: .alerts-strip__label, .alert-chip,
-// .alert-chip--high/medium/low, .alert-chip__ticker, .alert-chip__label,
-// .alert-chip__price, .alerts-strip__more
 // ---------------------------------------------------------------------------
 export function renderAlertsStrip(alerts) {
   const wrap = el('alertsTriggeredStrip');
@@ -159,15 +157,6 @@ export function renderAlertsStrip(alerts) {
 // ---------------------------------------------------------------------------
 // Signals feed — grouped ticker cards
 // ---------------------------------------------------------------------------
-
-/**
- * renderSignalsFeed — redesigned as grouped ticker cards.
- *
- * Backend trả grouped shape:
- *   { ticker, signal_types[], max_strength, max_confidence, count, last_seen, source }
- *
- * UI: mỗi ticker = 1 card compact. Không render raw list.
- */
 export function renderSignalsFeed(res) {
   const wrap = el('signalsFeed');
   if (!wrap) return;
@@ -180,7 +169,6 @@ export function renderSignalsFeed(res) {
     return;
   }
 
-  // Phân biệt grouped vs raw (grouped có field "count" + "signal_types" là array)
   const isGrouped = items[0] && Array.isArray(items[0].signal_types);
 
   const cards = isGrouped
@@ -197,7 +185,6 @@ export function renderSignalsFeed(res) {
   `;
 }
 
-/** Group client-side nếu backend trả raw list (fallback) */
 function _groupClientSide(rawItems) {
   const groups = {};
   for (const s of rawItems) {
@@ -230,7 +217,6 @@ function _totalSignals(items, isGrouped) {
   return items.length;
 }
 
-/** Render một ticker card */
 function _buildSignalCard(g) {
   const strength  = Math.round((g.max_strength ?? 0) * 100);
   const conf      = Math.round((g.max_confidence ?? 0) * 100);
@@ -243,7 +229,6 @@ function _buildSignalCard(g) {
     `<span class="sig-type-tag">${_fmtSignalType(t)}</span>`
   ).join('');
 
-  // Strength bar color
   const barCls = strength >= 70 ? 'sig-bar--strong'
     : strength >= 40 ? 'sig-bar--medium'
     : 'sig-bar--weak';
@@ -269,7 +254,6 @@ function _buildSignalCard(g) {
     </div>`;
 }
 
-/** Format signal_type thành label ngắn gọn */
 function _fmtSignalType(type) {
   const MAP = {
     strong_move:    'STRONG MOVE',
@@ -379,6 +363,9 @@ export async function loadDashboard() {
       onEdit:   (id) => openEditThesisModal(id, state.theses.find(t => t.id === id)),
       onDelete: (id) => wireDeleteThesis(id),
     });
+
+    // Wave B: inject health heatmap cells after table rows exist in DOM
+    renderHealthHeatmap(state.theses);
 
     const accuracyRows = normalizeAccuracyRes(verdictAccuracy);
     state.cachedVerdictAccuracy = accuracyRows;

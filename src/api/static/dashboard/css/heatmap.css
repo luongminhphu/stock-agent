@@ -1,0 +1,94 @@
+/**
+ * heatmap.css
+ * Scoped styles for thesis health heatmap cells.
+ * Owner: modules/dashboard
+ *
+ * .health-heatmap  — container, 4 cells inline per thesis row
+ * .hm-cell         — individual dimension cell
+ * .hm-legend       — legend strip above the table
+ */
+
+/* ── Container ─────────────────────────────────────────────────── */
+.health-heatmap {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  vertical-align: middle;
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+/* ── Cell base ──────────────────────────────────────────────────── */
+.hm-cell {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  cursor: default;
+  transition: transform 120ms ease, opacity 120ms ease;
+}
+
+.hm-cell:hover {
+  transform: scale(1.35);
+  opacity: 0.9;
+  z-index: 1;
+}
+
+/* ── Color states ───────────────────────────────────────────────── */
+.hm-cell--green {
+  background-color: #3aaf6a;  /* healthy >= 70% */
+}
+
+.hm-cell--yellow {
+  background-color: #e0a916;  /* weak 40-69% */
+}
+
+.hm-cell--red {
+  background-color: #d44040;  /* critical < 40% */
+}
+
+.hm-cell--none {
+  background-color: #555;     /* no data */
+  opacity: 0.45;
+}
+
+/* ── Small variant for legend ───────────────────────────────────── */
+.hm-cell--sm {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 2px;
+}
+
+/* ── Legend strip ───────────────────────────────────────────────── */
+.hm-legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 4px 2px 6px;
+  font-size: 11px;
+  color: var(--color-text-muted, #999);
+}
+
+.hm-legend-label {
+  font-weight: 600;
+  color: var(--color-text, #ddd);
+  margin-right: 4px;
+}
+
+.hm-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.hm-legend-dims {
+  margin-left: auto;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+}
