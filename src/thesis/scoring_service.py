@@ -60,6 +60,12 @@ class ScoringService:
     """Compute a composite thesis health score (0–100).
 
     Higher score = thesis is healthier / more likely to play out.
+
+    Fallback policy (Issue C):
+      - assumption_health: 0 when no assumptions exist (unconfirmed ≠ neutral)
+      - catalyst_progress: 0 when no catalysts exist (same rationale)
+      - risk_reward:       50 when target price not set (neutral is correct here)
+      - review_confidence: 50 when no review yet (not yet evaluated)
     """
 
     def compute(self, thesis: Thesis) -> float:
@@ -71,19 +77,27 @@ class ScoringService:
         breakdown: dict[str, float] = {}
 
         # 1. Assumption health (40%)
+        # NEEDS_MONITORING counts as 0.5 weight (Issue D) — under watch but not confirmed.
+        # Fallback 0 when no assumptions: no confirmed data should not award free points.
         if thesis.assumptions:
             evaluated = [a for a in thesis.assumptions if a.status != AssumptionStatus.PENDING]
             if evaluated:
                 valid = sum(1 for a in evaluated if a.status == AssumptionStatus.VALID)
+                monitoring = sum(
+                    1 for a in evaluated if a.status == AssumptionStatus.NEEDS_MONITORING
+                )
                 invalid = sum(1 for a in evaluated if a.status == AssumptionStatus.INVALID)
-                raw = max(0.0, (valid - invalid) / len(evaluated))
+                effective_valid = valid + monitoring * 0.5
+                raw = max(0.0, (effective_valid - invalid) / len(evaluated))
             else:
                 raw = 0.5
             breakdown["assumption_health"] = round(raw * _WEIGHTS["assumption_health"] * 100, 2)
         else:
-            breakdown["assumption_health"] = round(50 * _WEIGHTS["assumption_health"], 2)
+            # No assumptions defined → 0, not 50. Unconfirmed ≠ neutral.
+            breakdown["assumption_health"] = 0.0
 
         # 2. Catalyst progress (30%)
+        # Fallback 0 when no catalysts: same rationale as assumption_health.
         if thesis.catalysts:
             n = len(thesis.catalysts)
             triggered = sum(1 for c in thesis.catalysts if c.status == CatalystStatus.TRIGGERED)
@@ -94,9 +108,11 @@ class ScoringService:
             raw = min(1.0, max(0.0, (triggered * 1.0 + pending * 0.5 - negative * 0.5) / n))
             breakdown["catalyst_progress"] = round(raw * _WEIGHTS["catalyst_progress"] * 100, 2)
         else:
-            breakdown["catalyst_progress"] = round(50 * _WEIGHTS["catalyst_progress"], 2)
+            # No catalysts defined → 0, not 50.
+            breakdown["catalyst_progress"] = 0.0
 
         # 3. Risk/reward (20%)
+        # Fallback 50 is intentional: no target price set → neutral, not bad.
         rr = thesis.risk_reward
         if rr is not None:
             raw = min(rr / 3.0, 1.0)

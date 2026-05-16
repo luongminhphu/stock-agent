@@ -1,5 +1,4 @@
-"""
-Thesis review service — orchestrates AI review flow.
+"""Thesis review service — orchestrates AI review flow.
 
 Owner: thesis segment.
 This is the ONLY place that calls ThesisReviewAgent.
@@ -11,6 +10,7 @@ Flow:
     3. Call ThesisReviewAgent.review() → ThesisReviewOutput
     4. Persist ThesisReview ORM record
     5. Auto-apply AI recommendations (ACCEPTED) → update assumption/catalyst status
+       Guard: assumptions already INVALID are skipped — only manual override can restore.
     6. Reload thesis (fresh) → recompute full score with breakdown → persist
     7. Clamp score delta to MAX_SCORE_DELTA_PER_REVIEW to avoid single-event score spikes
     8. Persist ThesisSnapshot with score_breakdown (JSON) for conviction timeline
@@ -380,6 +380,10 @@ class ReviewService:
     ) -> None:
         """Auto-apply toàn bộ AI recommendations ngay tại thời điểm Verify.
 
+        Guard (Issue A): Assumptions đang ở trạng thái INVALID bị skip —
+        chỉ manual override mới được phép restore về VALID/NEEDS_MONITORING.
+        Điều này ngăn AI inconsistency tạo ra vòng flip INVALID ↔ VALID.
+
         Schema alignment (ThesisReviewOutput current contract):
           AssumptionRecommendation: assumption_id, status, evidence, updated_text
           CatalystRecommendation:   catalyst_id,  status, notes, updated_timeline
@@ -393,16 +397,26 @@ class ReviewService:
             target_id = rec.assumption_id
             target = assumptions_by_id.get(target_id)
             if target:
-                try:
-                    target.status = AssumptionStatus(rec.status.lower())
-                    await self._repo.save_assumption(target)
-                except ValueError:
-                    logger.warning(
-                        "review_service.auto_apply.invalid_assumption_status",
-                        recommended_status=rec.status,
+                # Guard: skip auto-apply if assumption is already INVALID.
+                # Restoring an INVALID assumption requires explicit manual action.
+                if target.status == AssumptionStatus.INVALID:
+                    logger.info(
+                        "review_service.auto_apply.assumption_invalid_skipped",
                         target_id=target_id,
                         review_id=review_id,
+                        recommended_status=rec.status,
                     )
+                else:
+                    try:
+                        target.status = AssumptionStatus(rec.status.lower())
+                        await self._repo.save_assumption(target)
+                    except ValueError:
+                        logger.warning(
+                            "review_service.auto_apply.invalid_assumption_status",
+                            recommended_status=rec.status,
+                            target_id=target_id,
+                            review_id=review_id,
+                        )
             else:
                 logger.warning(
                     "review_service.auto_apply.missing_assumption",
