@@ -127,7 +127,13 @@ def build_user_prompt(
     target_price: float | None = None,
 ) -> str:
     """
-    Build the user-turn prompt for a thesis review.
+    Build the core thesis block (no memory, no previous_review, no output schema).
+
+    ⚠️ Internal building block — does NOT include memory context, previous verdict
+    anchor, or output schema instructions. External callers and tests must use
+    build_review_prompt() to get the full agent-facing prompt with all sections.
+    Calling this function directly will produce a prompt that causes the LLM to
+    ignore consistency rules (7-10) and previous verdict context.
 
     Args:
         ticker:                       Mã cổ phiếu (VD: "VCB", "VNM").
@@ -141,7 +147,7 @@ def build_user_prompt(
         target_price:                 Giá mục tiêu (VNĐ). None nếu chưa set.
 
     Returns:
-        Formatted user prompt string (without memory or previous_review blocks).
+        Formatted core thesis block string (without memory or previous_review blocks).
         Use build_review_prompt() for the full agent-facing prompt.
     """
     lines: list[str] = [

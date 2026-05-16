@@ -33,6 +33,10 @@ _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.IGNORECASE)
 # recommendations and regularly exceed 1200 tokens. 4096 gives headroom.
 _MAX_TOKENS = 4096
 
+# Max chars to include from previous review summary in the previous_review anchor.
+# Avoids truncation mid-sentence while keeping token count bounded.
+_PREV_SUMMARY_MAX_CHARS = 300
+
 
 def _extract_json(text: str) -> str:
     """Extract JSON object from text, handling markdown fences and extra prose.
@@ -73,9 +77,12 @@ def _extract_previous_review(
         reviewed_at  (str, YYYY-MM-DD)
         verdict      (str, e.g. BULLISH)
         confidence   (float | None)
-        summary      (str, first line of ai_key_points or empty)
+        summary      (str, up to _PREV_SUMMARY_MAX_CHARS chars of ai_key_points)
         key_risks    (list[str], from ai_risk_signals lines, up to 3)
     Returns None if no previous thesis_review episode exists.
+
+    Issue E fix: summary uses [:_PREV_SUMMARY_MAX_CHARS] instead of splitlines()[0]
+    to avoid truncating mid-sentence when ai_key_points is a multi-sentence paragraph.
     """
     thesis_episodes = [
         ep for ep in episodes
@@ -91,8 +98,11 @@ def _extract_previous_review(
         "reviewed_at": latest.created_at.strftime("%Y-%m-%d"),
         "verdict": latest.ai_verdict or "N/A",
         "confidence": latest.ai_confidence,
+        # Issue E: take up to _PREV_SUMMARY_MAX_CHARS chars, not just first line.
+        # ai_key_points stores a 2-3 sentence narrative; splitlines()[0] was
+        # cutting mid-sentence when the first sentence ran long.
         "summary": (
-            latest.ai_key_points.splitlines()[0].strip()
+            latest.ai_key_points[:_PREV_SUMMARY_MAX_CHARS].strip()
             if latest.ai_key_points
             else ""
         ),
@@ -315,8 +325,7 @@ async def _fetch_memory_for_review(
     """Thin wrapper — returns rendered memory string only.
 
     Kept for backward compatibility. Internally delegates to
-    _fetch_memory_for_review_full and discards the episodes.
-    Use _fetch_memory_for_review_full when episodes are needed.
+    _fetch_memory_for_review_full and discards the episode list.
     """
     _, rendered = await _fetch_memory_for_review_full(
         session=session,
@@ -335,46 +344,25 @@ async def _log_thesis_review_interaction(
     thesis_id: int | None,
     trigger: str,
 ) -> None:
-    """Fire-and-forget memory log. Never raises.
-
-    Stores:
-      ai_key_points  — result.summary (2-3 sentence thesis assessment).
-                       Used by _extract_previous_review as the "summary" anchor
-                       for the next review cycle. Must be the actual narrative,
-                       NOT action enum values like "HOLD" / "ADD".
-      ai_risk_signals — top 3 invalidation or risk signal strings.
-    """
+    """Log thesis review result to episodic memory. Never raises."""
     if session is None or not user_id:
         return
     try:
-        from src.ai.memory.memory_service import InteractionEntry, MemoryService
+        from src.ai.memory.memory_service import MemoryService
 
-        # risk_signals: invalidation risks or bearish signals (unchanged)
-        risk_lines: list[str] = []
-        for risk in (getattr(result, "invalidation_risks", []) or [])[:3]:
-            risk_lines.append(str(risk))
-        if not risk_lines:
-            for risk in (getattr(result, "risk_signals", []) or [])[:3]:
-                risk_lines.append(str(risk.signal) if hasattr(risk, "signal") else str(risk))
-        if not risk_lines:
-            for risk in (getattr(result, "key_risks", []) or [])[:3]:
-                risk_lines.append(str(risk))
-
-        entry = InteractionEntry(
+        await MemoryService.log_interaction(
+            session,
             user_id=user_id,
             agent_type="thesis_review",
-            trigger=trigger,
             tickers=[ticker],
-            ai_verdict=str(result.overall_verdict or ""),
-            ai_confidence=getattr(result, "confidence", None),
-            # Store the summary narrative so _extract_previous_review can surface
-            # a meaningful "Nhận định" line in the next review's previous_review block.
-            # Previously stored action enum list ("HOLD\nADD") which was useless.
-            ai_key_points=getattr(result, "summary", None) or None,
-            ai_risk_signals="\n".join(risk_lines) if risk_lines else None,
             thesis_id=thesis_id,
+            trigger=trigger,
+            ai_verdict=str(result.overall_verdict),
+            ai_confidence=result.confidence,
+            ai_key_points=result.summary,
+            ai_risk_signals="\n".join(result.key_risks or []),
+            ai_action=result.action_recommendation,
         )
-        await MemoryService.log_interaction(session, entry)
     except Exception as exc:
         logger.warning(
             "thesis_review_agent.memory_log_failed",

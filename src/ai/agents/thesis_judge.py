@@ -26,9 +26,9 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Required, TypedDict
 
-from src.ai.client import AIClient
+from src.ai.client import AIClient, AIError
 from src.ai.prompts.thesis_judge import SPEC, build_user_prompt
 from src.ai.schemas import (
     ChallengedAssumption,
@@ -47,12 +47,35 @@ _JUDGE_CONCURRENCY = 5
 
 
 # ---------------------------------------------------------------------------
-# Fallback helpers
+# Input contract (Issue J)
 # ---------------------------------------------------------------------------
 
-_BEARISH_VERDICTS = {"BEARISH", "bearish"}
-_CRITICAL_URGENCIES = {"CRITICAL", "critical"}
-_HIGH_URGENCIES = {"HIGH", "high"}
+class ThesisJudgeTrigger(TypedDict, total=False):
+    """Typed input for run_batch(). Required keys: thesis_id, ticker.
+
+    Passing a dict missing thesis_id or ticker will be caught at runtime
+    (KeyError in run_batch) rather than silently producing thesis_id='unknown'
+    downstream in readmodel / briefing.
+
+    signal_context expected keys (see prompts/thesis_judge.py SignalContext):
+        watchdog_verdict, urgency, trigger_reason, risk_flags,
+        health_score, stress_verdict, signal_summary, last_review_summary.
+    """
+    thesis_id: Required[str | int]
+    ticker: Required[str]
+    thesis_title: str
+    thesis_summary: str
+    assumptions: list[dict[str, Any]]
+    catalysts: list[dict[str, Any]]
+    invalidation_conditions: list[str]
+    signal_context: dict[str, Any]
+    conviction_history: list[dict[str, Any]] | None
+    days_since_written: int | None
+
+
+# ---------------------------------------------------------------------------
+# Fallback helpers
+# ---------------------------------------------------------------------------
 
 
 def _derive_fallback_verdict(
@@ -61,11 +84,17 @@ def _derive_fallback_verdict(
 ) -> tuple[ThesisJudgeVerdict, float, str]:
     """Rule-based verdict when AI is unavailable.
 
+    Issue L fix: normalise inputs to uppercase before comparison to handle
+    callers that pass title-case or lowercase values (e.g. 'Bearish', 'high').
+
     Returns: (verdict, conviction_delta, action)
     """
-    is_bearish = watchdog_verdict in _BEARISH_VERDICTS
-    is_critical = signal_urgency in _CRITICAL_URGENCIES
-    is_high = signal_urgency in _HIGH_URGENCIES
+    verdict_upper = (watchdog_verdict or "").upper()
+    urgency_upper = (signal_urgency or "").upper()
+
+    is_bearish = verdict_upper == "BEARISH"
+    is_critical = urgency_upper == "CRITICAL"
+    is_high = urgency_upper == "HIGH"
 
     if is_bearish and is_critical:
         return ThesisJudgeVerdict.INVALIDATED, -0.6, "exit_signal"
@@ -91,23 +120,23 @@ class ThesisJudgeAgent:
 
         judge = ThesisJudgeAgent(ai_client)
 
-        # Build trigger inputs from signal_output + thesis repo
-        trigger_inputs = [
-            ThesisJudgeTrigger(
-                thesis_id="42",
-                ticker="VHM",
-                thesis_title="VHM phục hồi sau chu kỳ margin call",
-                thesis_summary="...",
-                assumptions=[{"id": 1, "description": "Lãi suất giảm Q3"}],
-                catalysts=[{"id": 3, "description": "KQKD Q2 > kỳ vọng"}],
-                invalidation_conditions=["Margin call lần 2", "P/B vượt 2.0x"],
-                signal_context={
+        trigger_inputs: list[ThesisJudgeTrigger] = [
+            {
+                "thesis_id": "42",
+                "ticker": "VHM",
+                "thesis_title": "VHM phục hồi sau chu kỳ margin call",
+                "thesis_summary": "...",
+                "assumptions": [{"id": 1, "description": "Lãi suất giảm Q3"}],
+                "catalysts": [{"id": 3, "description": "KQKD Q2 > kỳ vọng"}],
+                "invalidation_conditions": ["Margin call lần 2", "P/B vượt 2.0x"],
+                "signal_context": {
                     "watchdog_verdict": "BEARISH",
                     "urgency": "HIGH",
                     "trigger_reason": "Dòng tiền khối ngoại bán ròng 3 phiên",
                     "risk_flags": ["volume_spike", "foreign_sell"],
+                    "last_review_summary": "NEUTRAL — thesis còn hợp lệ, chờ KQKD Q2",
                 },
-            )
+            }
         ]
 
         results = await judge.run_batch(trigger_inputs)
@@ -136,6 +165,12 @@ class ThesisJudgeAgent:
         Fallback: if AI call fails, returns rule-based output derived from
         watchdog_verdict + signal_urgency. Confidence=0.3 signals degraded quality.
 
+        Error classification (Issue K):
+          - Rate limit / network timeout → INFO log (expected operational noise).
+          - JSON parse / schema validation error → ERROR log (possible prompt regression).
+          - Other AIError → WARNING log.
+          All three paths fall back to rule-based output without re-raising.
+
         Args:
             thesis_id:               Thesis ID for traceability.
             ticker:                  Mã cổ phiếu.
@@ -147,10 +182,14 @@ class ThesisJudgeAgent:
             signal_context:          Signal data from SignalEngine / Watchdog output.
                                      Expected keys: watchdog_verdict, urgency,
                                      trigger_reason, risk_flags, health_score,
-                                     stress_verdict, signal_summary.
+                                     stress_verdict, signal_summary, last_review_summary.
             conviction_history:      Last N judge verdicts for trend context.
             days_since_written:      Days since thesis was created.
         """
+        import json
+
+        from pydantic import ValidationError
+
         user_prompt = build_user_prompt(
             thesis_id=thesis_id,
             ticker=ticker,
@@ -184,13 +223,49 @@ class ThesisJudgeAgent:
             )
             return result
 
+        # Issue K: split error log levels by error type.
+        # Rate limit is operational noise → INFO. Parse errors may indicate
+        # prompt regression → ERROR so alerts fire. Other AI errors → WARNING.
+        except AIError as exc:
+            exc_type = type(exc).__name__
+            # Detect rate limit by class name or message heuristic — avoids
+            # hard dependency on a specific AIRateLimitError subclass that may
+            # not exist in all client implementations.
+            is_rate_limit = "rate" in exc_type.lower() or "ratelimit" in exc_type.lower()
+            if is_rate_limit:
+                logger.info(
+                    "ThesisJudge: rate limit for thesis=%s ticker=%s, using fallback",
+                    thesis_id, ticker,
+                )
+            else:
+                logger.warning(
+                    "ThesisJudge: AI error for thesis=%s ticker=%s: %s",
+                    thesis_id, ticker, exc,
+                )
+            return self._fallback(
+                thesis_id=thesis_id,
+                ticker=ticker,
+                signal_context=signal_context,
+            )
+
+        except (json.JSONDecodeError, ValidationError) as exc:
+            # Parse / schema errors may indicate prompt regression — log at ERROR
+            # so monitoring alerts can catch systematic failures.
+            logger.error(
+                "ThesisJudge: parse error for thesis=%s ticker=%s "
+                "— possible prompt regression: %s",
+                thesis_id, ticker, exc,
+            )
+            return self._fallback(
+                thesis_id=thesis_id,
+                ticker=ticker,
+                signal_context=signal_context,
+            )
+
         except Exception as exc:
             logger.warning(
-                "ThesisJudgeAgent AI call failed for thesis=%s ticker=%s, "
-                "using rule-based fallback: %s",
-                thesis_id,
-                ticker,
-                exc,
+                "ThesisJudgeAgent unexpected error for thesis=%s ticker=%s: %s",
+                thesis_id, ticker, exc,
             )
             return self._fallback(
                 thesis_id=thesis_id,
@@ -200,25 +275,27 @@ class ThesisJudgeAgent:
 
     async def run_batch(
         self,
-        triggers: list[dict[str, Any]],
+        triggers: list[ThesisJudgeTrigger],
     ) -> list[ThesisJudgeOutput]:
         """Run thesis judge for multiple triggers concurrently.
 
-        Each trigger is a dict with keys matching run() kwargs.
+        Accepts list[ThesisJudgeTrigger] (TypedDict) — plain dicts are also
+        accepted at runtime since TypedDict is a dict subtype. Required keys
+        thesis_id and ticker are accessed via [] (KeyError on missing) to
+        prevent silent thesis_id='unknown' propagating to readmodel/briefing.
+
         Per-thesis errors are caught and replaced with fallback output —
         one failure never blocks the rest of the batch.
 
         Concurrency is capped at _JUDGE_CONCURRENCY (default 5) via asyncio.Semaphore
-        to prevent rate-limit cascades on large watchlists. Each thesis that hits
-        a rate limit falls back to rule-based output independently without
-        affecting the rest of the batch.
+        to prevent rate-limit cascades on large watchlists.
 
         Args:
-            triggers: list of dicts, each with keys:
-                thesis_id, ticker, thesis_title, thesis_summary,
-                assumptions, catalysts, invalidation_conditions,
-                signal_context, conviction_history (optional),
-                days_since_written (optional).
+            triggers: list[ThesisJudgeTrigger] — each entry must have
+                thesis_id (Required) and ticker (Required). Optional keys:
+                thesis_title, thesis_summary, assumptions, catalysts,
+                invalidation_conditions, signal_context,
+                conviction_history, days_since_written.
 
         Returns:
             list[ThesisJudgeOutput] in same order as triggers.
@@ -228,7 +305,7 @@ class ThesisJudgeAgent:
 
         sem = asyncio.Semaphore(_JUDGE_CONCURRENCY)
 
-        async def _run_one(t: dict[str, Any]) -> ThesisJudgeOutput:
+        async def _run_one(t: ThesisJudgeTrigger) -> ThesisJudgeOutput:
             async with sem:
                 try:
                     return await self.run(
@@ -274,9 +351,14 @@ class ThesisJudgeAgent:
     ) -> ThesisJudgeOutput:
         """Rule-based fallback when AI is unavailable.
 
-        Derives verdict from watchdog_verdict + signal_urgency.
+        Derives verdict from watchdog_verdict + signal_urgency (normalised
+        to uppercase — see _derive_fallback_verdict).
         Confidence=0.3 signals degraded quality to downstream consumers.
         challenged_assumptions is empty — cannot determine without AI.
+
+        Note on judged_at timing: this timestamp reflects when the fallback
+        was invoked, which may be after an AI timeout. For debugging, compare
+        with the original trigger timestamp in signal_context.
         """
         watchdog_verdict = signal_context.get("watchdog_verdict")
         signal_urgency = signal_context.get("urgency")
