@@ -18,6 +18,8 @@
  *   null / missing ->  gray   (no data)
  */
 
+import { openBreakdownPanel } from './breakdown-panel.js';
+
 const DIMENSIONS = [
   { key: 'assumption_health',  max: 40, label: 'Assumptions' },
   { key: 'catalyst_progress',  max: 30, label: 'Catalysts'   },
@@ -39,9 +41,9 @@ function buildHeatmapRow(thesis) {
     const ratio = (val != null && d.max > 0) ? val / d.max : null;
     const pct   = ratio != null ? Math.round(ratio * 100) : null;
     const tip   = pct != null
-      ? `${d.label}: ${val} / ${d.max} pts (${pct}%)`
-      : `${d.label}: no data`;
-    return `<div class="hm-cell ${cellClass(ratio)}" title="${tip}" aria-label="${tip}"></div>`;
+      ? `${d.label}: ${val} / ${d.max} pts (${pct}%) — click to see detail`
+      : `${d.label}: no data — click to see detail`;
+    return `<div class="hm-cell hm-cell--clickable ${cellClass(ratio)}" title="${tip}" aria-label="${tip}" data-dim="${d.key}"></div>`;
   }).join('');
 
   return `<div class="health-heatmap" data-thesis-id="${thesis.id}" aria-label="Health breakdown for ${thesis.ticker}">${cells}</div>`;
@@ -72,6 +74,11 @@ export function renderHealthHeatmap(theses) {
     if (existing) existing.remove();
 
     row.insertAdjacentHTML('beforeend', buildHeatmapRow(thesis));
+
+    // Click any cell → open breakdown panel for this thesis
+    row.querySelector('.health-heatmap').addEventListener('click', () => {
+      openBreakdownPanel(thesis);
+    });
   });
 }
 
@@ -91,6 +98,7 @@ function _renderLegend() {
     <span class="hm-legend-item"><span class="hm-cell hm-cell--yellow hm-cell--sm"></span> 40&ndash;69%</span>
     <span class="hm-legend-item"><span class="hm-cell hm-cell--red hm-cell--sm"></span> &lt;40%</span>
     <span class="hm-legend-item"><span class="hm-cell hm-cell--none hm-cell--sm"></span> no data</span>
+    <span class="hm-legend-hint muted">Click cells for detail</span>
   `;
   wrap.insertAdjacentElement('beforebegin', legend);
 }
