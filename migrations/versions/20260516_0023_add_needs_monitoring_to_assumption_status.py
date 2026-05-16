@@ -15,8 +15,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # ADD VALUE is additive and safe on PostgreSQL — no table lock required.
-    op.execute("ALTER TYPE assumptionsstatus ADD VALUE IF NOT EXISTS 'needs_monitoring'")
+    # The PG enum type is named 'assumptionstatus' (singular), created in 0001.
+    # ADD VALUE is additive and safe — no table lock required.
+    op.execute("ALTER TYPE assumptionstatus ADD VALUE IF NOT EXISTS 'needs_monitoring'")
 
 
 def downgrade() -> None:
