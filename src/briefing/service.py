@@ -243,7 +243,11 @@ class BriefingService:
             )
             self._session.add(feedback)
             await self._session.flush()
-            await self._session.commit()
+            # Do NOT call self._session.commit() here — session is injected
+            # by the caller (FastAPI dependency / bot handler) which owns the
+            # transaction lifecycle. Calling commit() on an injected session
+            # would prematurely commit unrelated pending work from the outer
+            # request scope. Callers must commit after this method returns.
             logger.info(
                 "briefing.feedback_saved",
                 feedback_id=feedback.id,
@@ -360,10 +364,11 @@ class BriefingService:
         logger.info("briefing.collect_contexts_complete", **log_kwargs)
 
         # Sector rotation block is already embedded inside market_context.
-        # We track whether it was injected for observability in logs only.
-        sector_rotation_injected = (
-            self._sector_rotation_agent is not None and bool(tickers)
-        )
+        # Use content-based detection instead of agent-presence proxy so the
+        # flag accurately reflects whether a non-empty block was actually
+        # appended — agent injected + tickers present does NOT guarantee a
+        # non-empty block (agent may return empty or raise, both → "").
+        sector_rotation_injected = "Sector Rotation Signal" in market_context
 
         return {
             "tickers": tickers,
@@ -439,23 +444,14 @@ class BriefingService:
                 f"Hãy viết {phase} brief thận trọng, nêu rõ thiếu dữ liệu giá realtime."
             )
 
-        lines = [f"Thời điểm: {now}. Pha: {phase}.", "Watchlist snapshot:"]
+        lines = [f"Thời điểm: {now}. Watchlist: {', '.join(tickers)}."]
         for q in quotes:
-            try:
-                info = symbol_registry.resolve(q.ticker)
-                meta = f" | {info.name} | Ngành: {info.sector}"
-            except Exception:
-                meta = ""
-
-            volume = getattr(q, "volume", None)
-            volume_text = f", volume={volume:,}" if volume is not None else ""
-            lines.append(
-                f"- {q.ticker}{meta}: giá={q.price:,.0f}, change={q.change:,.0f}, "
-                f"change_pct={q.change_pct:.2f}%{volume_text}"
-            )
-        lines.append(
-            "Tập trung vào mã biến động mạnh, tín hiệu risk-on/risk-off, và watchlist-specific alerts."
-        )
+            parts = [f"{q.ticker}: {q.close:,.0f}"]
+            if hasattr(q, "change_pct") and q.change_pct is not None:
+                parts.append(f"({q.change_pct:+.2f}%)")
+            if hasattr(q, "volume") and q.volume is not None:
+                parts.append(f"vol={q.volume:,}")
+            lines.append(" ".join(parts))
 
         # Sector rotation block — optional, non-blocking.
         rotation_block = await self._build_sector_rotation_block(tickers)
@@ -670,6 +666,13 @@ class BriefingService:
                         signal_context["trigger_reason"] = (
                             f"change_pct={change_pct:+.2f}%"
                         )
+                        # Derive watchdog_verdict from price action so the
+                        # Judge fallback rule (_derive_fallback_verdict) has a
+                        # meaningful verdict when AI is unavailable.
+                        # BEARISH when price drops ≥3%; BULLISH when rises ≥3%.
+                        signal_context["watchdog_verdict"] = (
+                            "BEARISH" if change_pct <= -3.0 else "BULLISH"
+                        )
 
                 # P4: inject last review summary for verdict continuity
                 thesis_id = getattr(t, "id", t.ticker)
@@ -714,6 +717,13 @@ class BriefingService:
             if not triggers:
                 return ""
 
+            if len(triggers) > 5:
+                logger.warning(
+                    "briefing.thesis_judge_block.cap_exceeded",
+                    total_theses=len(triggers),
+                    cap=5,
+                    dropped=[t["ticker"] for t in triggers[5:]],
+                )
             verdicts = await self._thesis_judge_agent.run_batch(triggers[:5])
 
             # Filter to non-ON_TRACK only — emit actionable verdicts only
@@ -835,37 +845,23 @@ class BriefingService:
             )
             if not theses:
                 return ""
-
-            lines = [f"Có {len(theses)} thesis đang active:"]
+            lines = ["Thesis đang theo dõi:"]
             for t in theses:
-                stop_loss_str = (
-                    f", stop_loss={t.stop_loss:,.0f}"
-                    if getattr(t, "stop_loss", None) is not None
-                    else " (chưa đặt stop_loss)"
-                )
-                target_str = (
-                    f", target={t.target_price:,.0f}"
-                    if getattr(t, "target_price", None) is not None
-                    else ""
-                )
-                lines.append(
-                    f"- [{t.ticker}] {t.title}{stop_loss_str}{target_str}"
-                )
-                assumptions = getattr(t, "assumptions", []) or []
-                for a in assumptions[:3]:
-                    desc = getattr(a, "description", str(a))
-                    lines.append(f"  • Giả định: {desc}")
-            lines.append(
-                "Nếu giá hiện tại (từ Watchlist snapshot) đang tiếp cận stop_loss của bất kỳ thesis —"
-                " xuất ACT_TODAY cho ticker đó."
-            )
+                stop_loss = getattr(t, "stop_loss", None)
+                conviction = getattr(t, "conviction_score", None)
+                parts = [f"- {t.ticker}: {getattr(t, 'title', '')}"]
+                if stop_loss is not None:
+                    parts.append(f"stop_loss={stop_loss:,.0f}")
+                if conviction is not None:
+                    parts.append(f"conviction={conviction:.2f}")
+                lines.append(" | ".join(parts))
             return "\n".join(lines)
         except Exception as exc:
             logger.warning("briefing.thesis_context_failed", user_id=user_id, error=str(exc))
             return ""
 
     async def _build_lesson_context(self, user_id: str) -> str:
-        """Build past decision lessons string for AI context injection.
+        """Build past decision lesson string for AI context injection.
 
         Fallback path — only called when ContextBuilder did not produce an
         investor_profile block (session=None or no data found).
@@ -873,96 +869,73 @@ class BriefingService:
         if self._session is None:
             return ""
         try:
-            lesson_service = LessonService(self._session)
-            lessons = await lesson_service.get_recent_lessons(user_id=user_id, limit=5)
+            lessons = await LessonService.get_recent_lessons(
+                self._session, user_id=user_id, limit=3
+            )
             if not lessons:
                 return ""
-
-            lines = ["Bài học từ quyết định gần đây:"]
+            lines = ["Bài học gần đây:"]
             for lesson in lessons:
-                lines.append(f"- {lesson}")
+                lines.append(f"- {lesson.ticker}: {lesson.lesson_text}")
             return "\n".join(lines)
         except Exception as exc:
             logger.warning("briefing.lesson_context_failed", user_id=user_id, error=str(exc))
             return ""
 
     async def _build_investor_profile_context(self, user_id: str) -> str:
-        """Build comprehensive investor profile block via ContextBuilder.
+        """Build investor profile + aggregated context via ContextBuilder.
 
-        Returns "" when session is None (scheduler, tests without DB).
-        ContextBuilder aggregates thesis health, portfolio bias, and recent
-        lessons — callers must zero out the three individual context strings
-        when this returns a non-empty value (dedup rule).
+        Returns empty string when session is None or ContextBuilder finds no data.
+        When non-empty, its output supersedes individual thesis/portfolio/lesson
+        builders (see _collect_contexts dedup rule).
         """
         if self._session is None:
             return ""
         try:
-            t0 = time.monotonic()
-            ctx = await ContextBuilder(self._session).build(user_id=user_id)
-            context_builder_build_ms = round((time.monotonic() - t0) * 1000)
-            logger.debug(
-                "briefing.context_builder_build_complete",
-                user_id=user_id,
-                has_profile=bool(ctx.risk_appetite),
-                has_thesis=bool(ctx.active_thesis_summary),
-                has_lessons=bool(ctx.recent_lessons),
-                has_portfolio=bool(ctx.portfolio_bias),
-                build_ms=context_builder_build_ms,
-            )
-            rendered = render_for_agent(ctx)
-            return rendered
+            ctx = await ContextBuilder.build(self._session, user_id=user_id)
+            return render_for_agent(ctx)
         except Exception as exc:
             logger.warning(
-                "briefing.investor_profile_context_failed",
-                user_id=user_id,
-                error=str(exc),
+                "briefing.investor_profile_context_failed", user_id=user_id, error=str(exc)
             )
             return ""
 
     async def _build_feedback_context(self, user_id: str) -> str:
-        """Build feedback calibration block from readmodel DashboardService.
+        """Build feedback calibration string from readmodel acted_rate.
 
-        Wave 3 feature: reads acted_rate from readmodel to calibrate AI
-        action count/specificity. Returns "" when:
-        - session is None
-        - fewer than 10 feedback samples exist
-        - any error occurs (DB, import, timeout)
+        Requires minimum 10 feedback samples. Returns "" below threshold or
+        on any error. Does not override risk_appetite from investor_profile.
 
-        This is intentionally imported lazily to keep the briefing segment
-        decoupled from readmodel at import time.
+        Wave 3 — lazy import of DashboardService to avoid circular import.
         """
         if self._session is None:
             return ""
         try:
-            from src.readmodel.dashboard_service import DashboardService  # lazy import
+            from src.readmodel.dashboard_service import DashboardService  # noqa: PLC0415
 
-            dashboard = DashboardService(self._session)
-            summary = await dashboard.get_brief_feedback_summary(user_id=user_id)
-            if summary is None or summary.get("total_count", 0) < 10:
+            acted_rate = await DashboardService.get_acted_rate(
+                self._session, user_id=user_id, min_samples=10
+            )
+            if acted_rate is None:
                 return ""
-
-            acted_rate = summary.get("acted_rate", 0.0)
-            total = summary.get("total_count", 0)
 
             if acted_rate >= 0.7:
                 calibration = (
-                    "Nhà đầu tư này có tỷ lệ hành động cao (acted_rate="
-                    f"{acted_rate:.0%}, n={total}). Ưu tiên recommendations cụ thể, "
-                    "actionable. Giữ danh sách ACT_TODAY ngắn và có độ tin cậy cao."
-                )
+                    "Nhà đầu tư có tỷ lệ hành động cao (acted_rate={:.0%}). "
+                    "Ưu tiên gợi ý cụ thể, actionable — giảm bớt các nhận định chung chung."
+                ).format(acted_rate)
             elif acted_rate <= 0.3:
                 calibration = (
-                    "Nhà đầu tư này ít hành động theo brief (acted_rate="
-                    f"{acted_rate:.0%}, n={total}). Tăng tính thuyết phục: "
-                    "giải thích rõ lý do, nêu rủi ro nếu không hành động."
-                )
+                    "Nhà đầu tư ít hành động theo brief (acted_rate={:.0%}). "
+                    "Tập trung vào 1-2 hành động ưu tiên cao nhất thay vì liệt kê dài."
+                ).format(acted_rate)
             else:
                 calibration = (
-                    f"Tỷ lệ hành động trung bình (acted_rate={acted_rate:.0%}, n={total}). "
-                    "Cân bằng giữa recommendations và context."
-                )
+                    "acted_rate={:.0%} — cân bằng giữa quan sát và hành động."
+                ).format(acted_rate)
 
-            return calibration
+            return f"Feedback calibration: {calibration}"
         except Exception as exc:
-            logger.warning("briefing.feedback_context_failed", user_id=user_id, error=str(exc))
+            logger.warning(
+                "briefing.feedback_context_failed", user_id=user_id, error=str(exc))
             return ""
