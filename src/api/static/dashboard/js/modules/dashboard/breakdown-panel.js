@@ -13,13 +13,17 @@
  *   GET /api/v1/thesis/{id}/reviews/latest → verdict, confidence, risk_signals, next_watch_items
  *
  * Both calls are parallel (Promise.all). Latest review 404 is handled gracefully.
+ *
+ * W3: 'Trigger AI Review' button in panel header.
+ *   POST /api/v1/thesis/{id}/review → re-renders review section inline.
+ *   Dispatches custom event 'breakdown:review-done' { detail: { thesisId } }
+ *   so dashboard-loader can refresh heatmap cell if needed.
  */
 
 import { thesisApiBase } from '../../api/client.js';
 
 const PANEL_ID = 'bd-panel';
 
-// Status chip config
 const ASSUMPTION_STATUS = {
   valid:     { label: 'Valid',     cls: 'chip--green'  },
   invalid:   { label: 'Invalid',  cls: 'chip--red'    },
@@ -83,15 +87,13 @@ function _scoreBar(breakdown) {
     { key: 'review_confidence',  max: 10, label: 'Review'      },
   ];
   return dims.map(d => {
-    const val   = breakdown[d.key] ?? 0;
-    const pct   = Math.round((val / d.max) * 100);
-    const cls   = pct >= 70 ? 'bar--green' : pct >= 40 ? 'bar--yellow' : 'bar--red';
+    const val = breakdown[d.key] ?? 0;
+    const pct = Math.round((val / d.max) * 100);
+    const cls = pct >= 70 ? 'bar--green' : pct >= 40 ? 'bar--yellow' : 'bar--red';
     return `
       <div class="bd-score-row">
         <span class="bd-score-label">${d.label}</span>
-        <div class="bd-score-track">
-          <div class="bd-score-fill ${cls}" style="width:${pct}%"></div>
-        </div>
+        <div class="bd-score-track"><div class="bd-score-fill ${cls}" style="width:${pct}%"></div></div>
         <span class="bd-score-pct">${pct}%</span>
       </div>`;
   }).join('');
@@ -128,17 +130,16 @@ function _catalystList(catalysts) {
     </div>`).join('');
 }
 
-function _reviewSection(review) {
+function _reviewSectionHTML(review) {
   if (!review) return '<p class="bd-empty">No AI review yet.</p>';
   const verdictCls = VERDICT_CLS[review.verdict] || 'verdict--neutral';
   const riskItems  = (review.risk_signals || []).map(r => `<li>${_esc(r)}</li>`).join('');
   const watchItems = (review.next_watch_items || []).map(w => `<li>${_esc(w)}</li>`).join('');
   const conf       = review.confidence != null ? Math.round(review.confidence * 100) + '%' : '—';
-
   return `
     <div class="bd-review">
       <div class="bd-review-header">
-        <span class="bd-verdict ${verdictCls}">${review.verdict}</span>
+        <span class="bd-verdict ${verdictCls}">${_esc(review.verdict)}</span>
         <span class="bd-review-conf">Confidence: ${conf}</span>
         <span class="bd-review-date">${_date(review.reviewed_at)}</span>
       </div>
@@ -159,8 +160,64 @@ function _date(iso) {
   try { return new Date(iso).toLocaleDateString('vi-VN'); } catch { return iso; }
 }
 
+// ---------------------------------------------------------------------------
+// W3: Trigger AI review from within the panel
+// ---------------------------------------------------------------------------
+async function _triggerReviewInPanel(thesis, panel) {
+  const btn         = panel.querySelector('#bd-review-btn');
+  const reviewTitle = panel.querySelector('#bd-review-section-title');
+  const reviewBody  = panel.querySelector('#bd-review-body');
+  if (!btn || !reviewBody) return;
+
+  // --- Loading state ---
+  btn.disabled  = true;
+  btn.innerHTML = '<span class="bd-spinner"></span> Running…';
+  if (reviewTitle) reviewTitle.textContent = 'Latest AI review — running…';
+  reviewBody.innerHTML = '<p class="bd-empty">AI đang phân tích thesis…</p>';
+
+  try {
+    const base = thesisApiBase();
+    const res  = await fetch(`${base}/${thesis.id}/review`, { method: 'POST' });
+
+    if (!res.ok) {
+      const msg = await res.text().catch(() => res.statusText);
+      throw new Error(`${res.status} ${msg}`);
+    }
+
+    // Review endpoint returns the full review object directly
+    const data = await res.json();
+
+    // The POST /review response is a ThesisReviewResponse
+    // Map it to the same shape as GET /reviews/latest
+    reviewBody.innerHTML = _reviewSectionHTML(data);
+    if (reviewTitle) reviewTitle.textContent = 'Latest AI review';
+
+    btn.innerHTML = '✓ Done';
+    btn.classList.add('bd-review-btn--done');
+    setTimeout(() => {
+      btn.innerHTML = '🧠 AI Review';
+      btn.classList.remove('bd-review-btn--done');
+      btn.disabled = false;
+    }, 2500);
+
+    // Notify dashboard so it can refresh heatmap cell score
+    document.dispatchEvent(new CustomEvent('breakdown:review-done', {
+      detail: { thesisId: thesis.id },
+    }));
+
+  } catch (err) {
+    reviewBody.innerHTML = `<div class="bd-error">Review lỗi: ${_esc(err.message)}</div>`;
+    if (reviewTitle) reviewTitle.textContent = 'Latest AI review';
+    btn.disabled  = false;
+    btn.innerHTML = '🧠 AI Review';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Render
+// ---------------------------------------------------------------------------
 function _renderPanel(panel, thesis, detail, review) {
-  const bd   = detail?.score_breakdown;
+  const bd    = detail?.score_breakdown;
   const total = detail?.score != null ? Math.round(detail.score) : '—';
   const tier  = detail?.score_tier || '';
 
@@ -171,7 +228,12 @@ function _renderPanel(panel, thesis, detail, review) {
         <span class="bd-tier">${_esc(tier)}</span>
         <span class="bd-total-score">Score: ${total}</span>
       </div>
-      <button class="bd-close" aria-label="Close" id="bd-close-btn">✕</button>
+      <div class="bd-header-actions">
+        <button class="bd-review-btn" id="bd-review-btn" title="Trigger AI review for this thesis">
+          🧠 AI Review
+        </button>
+        <button class="bd-close" id="bd-close-btn" aria-label="Close">✕</button>
+      </div>
     </div>
 
     <div class="bd-section">
@@ -190,19 +252,21 @@ function _renderPanel(panel, thesis, detail, review) {
     </div>
 
     <div class="bd-section">
-      <div class="bd-section-title">Latest AI review</div>
-      ${_reviewSection(review)}
+      <div class="bd-section-title" id="bd-review-section-title">Latest AI review</div>
+      <div id="bd-review-body">${_reviewSectionHTML(review)}</div>
     </div>`;
 
-  // Wire close button after innerHTML set
   panel.querySelector('#bd-close-btn')?.addEventListener('click', closeBreakdownPanel);
+  panel.querySelector('#bd-review-btn')?.addEventListener('click', () => _triggerReviewInPanel(thesis, panel));
 }
 
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
 export async function openBreakdownPanel(thesis) {
   const panel = _getOrCreatePanel();
-  const base  = thesisApiBase(); // e.g. /api/v1/thesis
+  const base  = thesisApiBase();
 
-  // Show loading state immediately
   panel.innerHTML = `<div class="bd-loading">Loading breakdown…</div>`;
   panel.classList.add('bd-panel--open');
   const bd = _backdrop();
