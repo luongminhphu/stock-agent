@@ -166,6 +166,28 @@ class ThesisService:
         user_id = _resolve_user_id(user_id)
         return await self._repo.list_by_user(user_id, status)
 
+    async def get_active_thesis_id_for_ticker(
+        self,
+        ticker: str,
+        user_id: str | None = None,
+    ) -> str | None:
+        """Return str(thesis.id) of the first ACTIVE thesis for ticker.
+
+        Single-user convenience: user_id defaults to settings.owner_user_id
+        when None. Returns None when no active thesis exists for the ticker.
+
+        Read-only — does not modify any state.
+        Consumed by ai segment (ProactiveAlertAgent) to populate
+        RecommendationReadyEvent.thesis_id without importing repo layer.
+        """
+        resolved = _resolve_user_id(user_id)
+        theses = await self._repo.list_active_by_ticker(ticker)
+        # Filter to this user's theses (list_active_by_ticker is not user-scoped)
+        user_theses = [t for t in theses if t.user_id == resolved]
+        if not user_theses:
+            return None
+        return str(user_theses[0].id)
+
     # ------------------------------------------------------------------
     # Assumption proxy (ownership check ở đây, CRUD ở ComponentService)
     # ------------------------------------------------------------------

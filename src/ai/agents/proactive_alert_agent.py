@@ -24,6 +24,13 @@ Context injection (Wave 2):
     building the user prompt. Uses settings.owner_user_id (single-user mode).
     Context fetch failures are swallowed — AI call always proceeds, degrading
     gracefully to a context-free prompt.
+
+Thesis ID resolution (Wave 3):
+    Within the same session block as context fetch, ThesisService is called to
+    resolve the active thesis_id for the signal's symbol. Result is set on
+    RecommendationReadyEvent.thesis_id so downstream consumers (bot embed,
+    readmodel) can link the recommendation to the correct thesis without a
+    secondary DB lookup. Falls back to "" when no active thesis found.
 """
 from __future__ import annotations
 
@@ -51,11 +58,11 @@ class ProactiveAlertAgent:
     Listens for SignalDetectedEvent, calls AIClient for analysis,
     publishes RecommendationReadyEvent, and drains signal_events inbox.
 
-    Wave 5 flow per event:
-      1. Fetch InvestorContext via ContextBuilder (settings.owner_user_id)
+    Flow per event:
+      1. Fetch InvestorContext + resolve thesis_id via ThesisService
       2. build_user_prompt() from event fields + investor context
       3. AIClient.chat() → ProactiveAlertOutput (structured JSON)
-      4. Publish RecommendationReadyEvent onto EventBus (with rich Wave 7 fields)
+      4. Publish RecommendationReadyEvent (with thesis_id + rich Wave 7 fields)
       5. mark_processed() in signal_events table (best-effort)
     """
 
@@ -95,15 +102,15 @@ class ProactiveAlertAgent:
             event_id=event.event_id,
         )
 
-        # ── Step 1+2+3: AI analysis with investor context ──────────────────
-        output = await self._run_ai_analysis(event)
+        # ── Step 1+2+3: AI analysis with investor context ───────────────────
+        output, resolved_thesis_id = await self._run_ai_analysis(event)
         if output is None:
             return  # error already logged inside _run_ai_analysis
 
-        # ── Step 4: Publish RecommendationReadyEvent ───────────────────────
-        rec_event = await self._publish_recommendation(event, output)
+        # ── Step 4: Publish RecommendationReadyEvent ────────────────────────
+        rec_event = await self._publish_recommendation(event, output, resolved_thesis_id)
 
-        # ── Step 5: Mark signal_event processed (best-effort) ─────────────
+        # ── Step 5: Mark signal_event processed (best-effort) ───────────────
         await self._mark_processed(event.event_id)
 
         if rec_event:
@@ -114,37 +121,52 @@ class ProactiveAlertAgent:
                 urgency=output.urgency,
                 confidence=output.confidence,
                 recommendation_id=rec_event.recommendation_id,
+                thesis_id=resolved_thesis_id,
             )
 
     async def _run_ai_analysis(
         self, event: SignalDetectedEvent
-    ) -> ProactiveAlertOutput | None:
-        """Fetch investor context, build prompt, call AIClient.
+    ) -> tuple[ProactiveAlertOutput | None, str]:
+        """Fetch investor context + resolve thesis_id, then call AIClient.
 
-        Returns None on any failure. Context fetch failures are swallowed so
-        that a DB hiccup never blocks the AI call entirely.
+        Returns (output, thesis_id_str). output is None on AI failure.
+        thesis_id_str is "" when no active thesis found or on any lookup error.
+        Both context fetch and thesis_id lookup failures are swallowed so a
+        DB hiccup never blocks the AI call.
         """
-        try:
-            # ── Fetch InvestorContext (single-user: owner_user_id from settings) ──
-            investor_context_str = ""
-            if self._session_factory:
-                try:
-                    from src.platform.config import settings
-                    from src.ai.context_builder import ContextBuilder, render_for_agent
+        investor_context_str = ""
+        resolved_thesis_id = ""
 
-                    async with self._session_factory() as session:
-                        ctx = await ContextBuilder(session).build(
-                            user_id=settings.owner_user_id or None
-                        )
-                        investor_context_str = render_for_agent(ctx)
-                except Exception as ctx_exc:
-                    logger.warning(
-                        "proactive_alert_agent.context_fetch_failed",
-                        symbol=event.symbol,
-                        error=str(ctx_exc),
+        if self._session_factory:
+            try:
+                from src.platform.config import settings
+                from src.ai.context_builder import ContextBuilder, render_for_agent
+                from src.thesis.service import ThesisService
+
+                async with self._session_factory() as session:
+                    # Fetch investor context
+                    ctx = await ContextBuilder(session).build(
+                        user_id=settings.owner_user_id or None
                     )
-                    # degrade gracefully — AI proceeds with empty context
+                    investor_context_str = render_for_agent(ctx)
 
+                    # Resolve active thesis_id for this symbol
+                    thesis_svc = ThesisService(session)
+                    thesis_id = await thesis_svc.get_active_thesis_id_for_ticker(
+                        ticker=event.symbol,
+                        user_id=settings.owner_user_id or None,
+                    )
+                    resolved_thesis_id = thesis_id or ""
+
+            except Exception as ctx_exc:
+                logger.warning(
+                    "proactive_alert_agent.context_fetch_failed",
+                    symbol=event.symbol,
+                    error=str(ctx_exc),
+                )
+                # degrade gracefully — AI proceeds with empty context
+
+        try:
             user_prompt = build_user_prompt(
                 symbol=event.symbol,
                 signal_type=event.signal_type,
@@ -169,8 +191,9 @@ class ProactiveAlertAgent:
                 confidence=output.confidence,
                 risk_signals=len(output.risk_signals),
                 has_investor_context=bool(investor_context_str),
+                resolved_thesis_id=resolved_thesis_id,
             )
-            return output
+            return output, resolved_thesis_id
         except Exception as exc:
             logger.error(
                 "proactive_alert_agent.ai_call_failed",
@@ -178,18 +201,18 @@ class ProactiveAlertAgent:
                 event_id=event.event_id,
                 error=str(exc),
             )
-            return None
+            return None, ""
 
     async def _publish_recommendation(
         self,
         event: SignalDetectedEvent,
         output: ProactiveAlertOutput,
+        resolved_thesis_id: str = "",
     ) -> RecommendationReadyEvent | None:
         """Build and publish RecommendationReadyEvent with Wave 7 rich fields.
 
-        Populates reasoning, action_detail, risk_signals, next_watch_items from
-        ProactiveAlertOutput so build_recommendation_embed() can render a rich
-        Discord embed without a secondary DB lookup.
+        thesis_id is now resolved upstream (Wave 3) and passed in directly,
+        replacing the always-empty getattr(output, 'thesis_id', '') fallback.
         """
         try:
             bus = get_event_bus()
@@ -199,12 +222,11 @@ class ProactiveAlertAgent:
                 urgency=output.urgency,
                 confidence=output.confidence,
                 source_agent="proactive_alert",
-                # Wave 7 rich fields — fall back to empty string/tuple when absent
                 reasoning=getattr(output, "reasoning", "") or "",
                 action_detail=getattr(output, "action_detail", "") or "",
                 risk_signals=tuple(getattr(output, "risk_signals", []) or []),
                 next_watch_items=tuple(getattr(output, "next_watch_items", []) or []),
-                thesis_id=str(getattr(output, "thesis_id", "") or ""),
+                thesis_id=resolved_thesis_id,
             )
             await bus.publish(rec_event)
             logger.info(
@@ -213,6 +235,7 @@ class ProactiveAlertAgent:
                 action=output.action,
                 urgency=output.urgency,
                 recommendation_id=rec_event.recommendation_id,
+                thesis_id=resolved_thesis_id,
             )
             return rec_event
         except Exception as exc:
