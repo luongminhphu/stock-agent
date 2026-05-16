@@ -45,16 +45,19 @@ def build_user_prompt(
     confidence: float,
     source: str,
     metadata: dict,
+    investor_context: str = "",
 ) -> str:
     """Build user prompt từ SignalDetectedEvent fields.
 
     Args:
-        symbol:      Mã cổ phiếu (e.g. "VCB").
-        signal_type: Loại tín hiệu từ SignalEngine (e.g. "BREAKOUT").
-        strength:    Độ mạnh 0.0–1.0 từ SignalEngine.
-        confidence:  Độ tin cậy 0.0–1.0 từ SignalEngine.
-        source:      Nguồn tín hiệu (e.g. "technical", "news", "combined").
-        metadata:    Dict bổ sung từ SignalReport.metadata.
+        symbol:           Mã cổ phiếu (e.g. "VCB").
+        signal_type:      Loại tín hiệu từ SignalEngine (e.g. "BREAKOUT").
+        strength:         Độ mạnh 0.0–1.0 từ SignalEngine.
+        confidence:       Độ tin cậy 0.0–1.0 từ SignalEngine.
+        source:           Nguồn tín hiệu (e.g. "technical", "news", "combined").
+        metadata:         Dict bổ sung từ SignalReport.metadata.
+        investor_context: Chuỗi context nhà đầu tư từ ContextBuilder.render_for_agent().
+                          Mặc định "" — backward compat, không bắt buộc.
 
     Returns:
         User prompt string để pass vào AIClient.chat().
@@ -63,9 +66,15 @@ def build_user_prompt(
         f"  - {k}: {v}" for k, v in metadata.items() if v is not None
     ) or "  (không có)"
 
+    context_block = (
+        f"\nBối cảnh nhà đầu tư:\n{investor_context}\n"
+        if investor_context
+        else ""
+    )
+
     return f"""\
 Tín hiệu mới phát hiện cần phân tích:
-
+{context_block}
 - Mã: **{symbol}**
 - Loại tín hiệu: {signal_type}
 - Độ mạnh (strength):     {strength:.2f} / 1.00
@@ -75,5 +84,8 @@ Tín hiệu mới phát hiện cần phân tích:
 {meta_lines}
 
 Hãy phân tích và đưa ra khả năng hành động theo JSON schema ở trên.
+Nếu có bối cảnh nhà đầu tư ở trên, hãy tích hợp vào phân tích:
+thesis AT_RISK hoặc INVALIDATED → ưu tiên SELL/REDUCE hơn BUY;
+thesis HEALTHY → có thể cân nhắc ADD nếu signal đủ mạnh.
 Nhớ: thị trường Việt Nam, phiên giao dịch 9:00–15:00 ICT, biến động sàn/trần ±7%.
 """

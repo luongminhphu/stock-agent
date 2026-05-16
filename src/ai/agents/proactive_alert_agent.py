@@ -18,6 +18,12 @@ Session strategy:
     than a fixed session — each handler invocation opens its own short-lived
     session to avoid long-lived transactions across async gaps.
     session_factory is optional — mark_processed is silently skipped when None.
+
+Context injection (Wave 2):
+    _run_ai_analysis() fetches InvestorContext via ContextBuilder before
+    building the user prompt. Uses settings.owner_user_id (single-user mode).
+    Context fetch failures are swallowed — AI call always proceeds, degrading
+    gracefully to a context-free prompt.
 """
 from __future__ import annotations
 
@@ -46,10 +52,11 @@ class ProactiveAlertAgent:
     publishes RecommendationReadyEvent, and drains signal_events inbox.
 
     Wave 5 flow per event:
-      1. build_user_prompt() from event fields
-      2. AIClient.chat() → ProactiveAlertOutput (structured JSON)
-      3. Publish RecommendationReadyEvent onto EventBus (with rich Wave 7 fields)
-      4. mark_processed() in signal_events table (best-effort)
+      1. Fetch InvestorContext via ContextBuilder (settings.owner_user_id)
+      2. build_user_prompt() from event fields + investor context
+      3. AIClient.chat() → ProactiveAlertOutput (structured JSON)
+      4. Publish RecommendationReadyEvent onto EventBus (with rich Wave 7 fields)
+      5. mark_processed() in signal_events table (best-effort)
     """
 
     def __init__(
@@ -88,15 +95,15 @@ class ProactiveAlertAgent:
             event_id=event.event_id,
         )
 
-        # ── Step 1+2: AI analysis ───────────────────────────────────────────
+        # ── Step 1+2+3: AI analysis with investor context ──────────────────
         output = await self._run_ai_analysis(event)
         if output is None:
             return  # error already logged inside _run_ai_analysis
 
-        # ── Step 3: Publish RecommendationReadyEvent ───────────────────────
+        # ── Step 4: Publish RecommendationReadyEvent ───────────────────────
         rec_event = await self._publish_recommendation(event, output)
 
-        # ── Step 4: Mark signal_event processed (best-effort) ────────────
+        # ── Step 5: Mark signal_event processed (best-effort) ─────────────
         await self._mark_processed(event.event_id)
 
         if rec_event:
@@ -112,8 +119,32 @@ class ProactiveAlertAgent:
     async def _run_ai_analysis(
         self, event: SignalDetectedEvent
     ) -> ProactiveAlertOutput | None:
-        """Call AIClient and return parsed output. Returns None on any failure."""
+        """Fetch investor context, build prompt, call AIClient.
+
+        Returns None on any failure. Context fetch failures are swallowed so
+        that a DB hiccup never blocks the AI call entirely.
+        """
         try:
+            # ── Fetch InvestorContext (single-user: owner_user_id from settings) ──
+            investor_context_str = ""
+            if self._session_factory:
+                try:
+                    from src.platform.config import settings
+                    from src.ai.context_builder import ContextBuilder, render_for_agent
+
+                    async with self._session_factory() as session:
+                        ctx = await ContextBuilder(session).build(
+                            user_id=settings.owner_user_id or None
+                        )
+                        investor_context_str = render_for_agent(ctx)
+                except Exception as ctx_exc:
+                    logger.warning(
+                        "proactive_alert_agent.context_fetch_failed",
+                        symbol=event.symbol,
+                        error=str(ctx_exc),
+                    )
+                    # degrade gracefully — AI proceeds with empty context
+
             user_prompt = build_user_prompt(
                 symbol=event.symbol,
                 signal_type=event.signal_type,
@@ -121,6 +152,7 @@ class ProactiveAlertAgent:
                 confidence=event.confidence,
                 source=event.source,
                 metadata=event.metadata,
+                investor_context=investor_context_str,
             )
             output: ProactiveAlertOutput = await self._ai_client.chat(
                 system_prompt=SYSTEM_PROMPT,
@@ -136,6 +168,7 @@ class ProactiveAlertAgent:
                 urgency=output.urgency,
                 confidence=output.confidence,
                 risk_signals=len(output.risk_signals),
+                has_investor_context=bool(investor_context_str),
             )
             return output
         except Exception as exc:
