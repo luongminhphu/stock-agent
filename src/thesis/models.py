@@ -60,6 +60,7 @@ class AssumptionStatus(enum.StrEnum):
     INVALID = "invalid"
     UNCERTAIN = "uncertain"
     PENDING = "pending"
+    NEEDS_MONITORING = "needs_monitoring"
 
 
 class CatalystStatus(enum.StrEnum):
