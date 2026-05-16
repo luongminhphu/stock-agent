@@ -12,17 +12,24 @@
  *   GET /api/v1/thesis/{id}               → assumptions[], catalysts[], score_breakdown
  *   GET /api/v1/thesis/{id}/reviews/latest → verdict, confidence, risk_signals, next_watch_items
  *
- * Both calls are parallel (Promise.all). Latest review 404 is handled gracefully.
- *
  * W3: 'Trigger AI Review' button in panel header.
  *   POST /api/v1/thesis/{id}/review → re-renders review section inline.
- *   Dispatches custom event 'breakdown:review-done' { detail: { thesisId } }
- *   so dashboard-loader can refresh heatmap cell if needed.
+ *   Dispatches 'breakdown:review-done' { thesisId } for heatmap refresh.
+ *
+ * W4: Persist scroll position per thesis.
+ *   _scrollCache Map stores scrollTop keyed by thesis.id.
+ *   Saved before re-render, restored after. Reset to 0 on different thesis.
+ *   Cache cleared on panel close.
  */
 
 import { thesisApiBase } from '../../api/client.js';
 
 const PANEL_ID = 'bd-panel';
+
+// W4: scroll position cache, keyed by thesis.id
+const _scrollCache = new Map();
+// Track which thesis is currently open
+let _openThesisId = null;
 
 const ASSUMPTION_STATUS = {
   valid:     { label: 'Valid',     cls: 'chip--green'  },
@@ -63,6 +70,13 @@ function _getOrCreatePanel() {
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape') closeBreakdownPanel();
     });
+
+    // W4: save scroll position continuously while user scrolls
+    panel.addEventListener('scroll', () => {
+      if (_openThesisId != null) {
+        _scrollCache.set(_openThesisId, panel.scrollTop);
+      }
+    }, { passive: true });
   }
   return panel;
 }
@@ -73,9 +87,18 @@ function _backdrop() {
 
 export function closeBreakdownPanel() {
   const panel = document.getElementById(PANEL_ID);
-  if (panel) panel.classList.remove('bd-panel--open');
+  if (panel) {
+    // W4: save final scroll before closing, then clear cache
+    if (_openThesisId != null) {
+      _scrollCache.set(_openThesisId, panel.scrollTop);
+    }
+    panel.classList.remove('bd-panel--open');
+  }
   const bd = _backdrop();
   if (bd) bd.classList.remove('bd-backdrop--visible');
+  // Clear cache on close — stale scroll positions shouldn't survive a close
+  _scrollCache.clear();
+  _openThesisId = null;
 }
 
 function _scoreBar(breakdown) {
@@ -169,11 +192,13 @@ async function _triggerReviewInPanel(thesis, panel) {
   const reviewBody  = panel.querySelector('#bd-review-body');
   if (!btn || !reviewBody) return;
 
-  // --- Loading state ---
   btn.disabled  = true;
   btn.innerHTML = '<span class="bd-spinner"></span> Running…';
   if (reviewTitle) reviewTitle.textContent = 'Latest AI review — running…';
   reviewBody.innerHTML = '<p class="bd-empty">AI đang phân tích thesis…</p>';
+
+  // W4: save scroll before async op so position isn't lost
+  if (_openThesisId != null) _scrollCache.set(_openThesisId, panel.scrollTop);
 
   try {
     const base = thesisApiBase();
@@ -184,11 +209,7 @@ async function _triggerReviewInPanel(thesis, panel) {
       throw new Error(`${res.status} ${msg}`);
     }
 
-    // Review endpoint returns the full review object directly
     const data = await res.json();
-
-    // The POST /review response is a ThesisReviewResponse
-    // Map it to the same shape as GET /reviews/latest
     reviewBody.innerHTML = _reviewSectionHTML(data);
     if (reviewTitle) reviewTitle.textContent = 'Latest AI review';
 
@@ -200,7 +221,6 @@ async function _triggerReviewInPanel(thesis, panel) {
       btn.disabled = false;
     }, 2500);
 
-    // Notify dashboard so it can refresh heatmap cell score
     document.dispatchEvent(new CustomEvent('breakdown:review-done', {
       detail: { thesisId: thesis.id },
     }));
@@ -220,6 +240,10 @@ function _renderPanel(panel, thesis, detail, review) {
   const bd    = detail?.score_breakdown;
   const total = detail?.score != null ? Math.round(detail.score) : '—';
   const tier  = detail?.score_tier || '';
+
+  // W4: capture scroll before wiping innerHTML
+  const isSameThesis = _openThesisId === thesis.id;
+  const savedScroll  = isSameThesis ? (_scrollCache.get(thesis.id) ?? 0) : 0;
 
   panel.innerHTML = `
     <div class="bd-header">
@@ -256,6 +280,10 @@ function _renderPanel(panel, thesis, detail, review) {
       <div id="bd-review-body">${_reviewSectionHTML(review)}</div>
     </div>`;
 
+  // W4: restore scroll after DOM is ready
+  // requestAnimationFrame ensures layout is complete before scrolling
+  requestAnimationFrame(() => { panel.scrollTop = savedScroll; });
+
   panel.querySelector('#bd-close-btn')?.addEventListener('click', closeBreakdownPanel);
   panel.querySelector('#bd-review-btn')?.addEventListener('click', () => _triggerReviewInPanel(thesis, panel));
 }
@@ -266,6 +294,14 @@ function _renderPanel(panel, thesis, detail, review) {
 export async function openBreakdownPanel(thesis) {
   const panel = _getOrCreatePanel();
   const base  = thesisApiBase();
+
+  // W4: save scroll of currently open thesis before switching
+  if (_openThesisId != null && _openThesisId !== thesis.id) {
+    _scrollCache.set(_openThesisId, panel.scrollTop);
+  }
+
+  // Update open thesis tracking
+  _openThesisId = thesis.id;
 
   panel.innerHTML = `<div class="bd-loading">Loading breakdown…</div>`;
   panel.classList.add('bd-panel--open');
