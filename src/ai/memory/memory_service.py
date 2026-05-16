@@ -29,6 +29,11 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# Max episodes rendered into the prompt context block.
+# Also used as the default fetch limit in get_memory_context().
+# Change here propagates to both fetch and render — no silent drift.
+_PROMPT_EPISODE_CAP = 10
+
 
 @dataclass
 class InteractionEntry:
@@ -84,7 +89,7 @@ class MemoryContext:
         # Layer 2: Recent episodes (compact format)
         if self.recent_episodes:
             episode_lines = ["[Recent AI interactions — newest first]"]
-            for ep in self.recent_episodes[:10]:  # cap at 10 for prompt budget
+            for ep in self.recent_episodes[:_PROMPT_EPISODE_CAP]:
                 line_parts = [
                     ep.created_at.strftime("%Y-%m-%d %H:%M"),
                     ep.agent_type,
@@ -180,7 +185,7 @@ class MemoryService:
     async def get_memory_context(
         session: AsyncSession,
         user_id: str,
-        episode_limit: int = 15,
+        episode_limit: int = _PROMPT_EPISODE_CAP,
         thesis_id: int | None = None,
     ) -> MemoryContext:
         """Assemble full memory context for a user.
@@ -189,6 +194,8 @@ class MemoryService:
             session:       Active AsyncSession.
             user_id:       Owner of the memory.
             episode_limit: Max raw episodes fetched before filtering.
+                           Defaults to _PROMPT_EPISODE_CAP so fetch and
+                           render caps stay in sync automatically.
             thesis_id:     Optional — when provided, filters episodes to
                            those logged for this thesis (ep.thesis_id matches)
                            or legacy rows with no thesis_id (ep.thesis_id is

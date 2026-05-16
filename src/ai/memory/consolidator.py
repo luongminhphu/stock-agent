@@ -109,7 +109,10 @@ class MemoryConsolidator:
                 blind_spots=output.blind_spots,
                 confidence_calibration=output.confidence_calibration,
                 episode_count=len(episodes),
-                verdict_accuracy=_compute_accuracy(episodes),
+                # NOTE: stores average confidence, not true prediction accuracy.
+                # TODO: replace with real accuracy once portfolio segment tracks
+                # trade outcomes (verdict vs actual price direction).
+                verdict_accuracy=_compute_avg_confidence(episodes),
             )
 
             snapshot_repo = MemorySnapshotRepository(session)
@@ -133,11 +136,14 @@ class MemoryConsolidator:
             return None
 
 
-def _compute_accuracy(episodes: list[AIInteractionLog]) -> float | None:
-    """Rough accuracy proxy: ratio of episodes that have a confidence score.
+def _compute_avg_confidence(episodes: list[AIInteractionLog]) -> float | None:
+    """Return average AI confidence across episodes that have a score.
 
-    In the future, this can be replaced with actual outcome comparison
-    once the portfolio segment tracks trade results.
+    This is stored in MemorySnapshot.verdict_accuracy as a proxy metric.
+    It reflects how certain the AI was — NOT whether verdicts were correct.
+
+    TODO: replace with real accuracy (correct verdicts / total verdicts) once
+    the portfolio segment records trade outcomes for closed positions.
     """
     with_confidence = [e for e in episodes if e.ai_confidence is not None]
     if not with_confidence:
