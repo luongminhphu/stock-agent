@@ -9,11 +9,13 @@
  *   closeBreakdownPanel()       — closes the panel
  *
  * Data fetched:
- *   GET /api/thesis/{id}               → assumptions[], catalysts[], score_breakdown
- *   GET /api/thesis/{id}/reviews/latest → verdict, confidence, risk_signals, next_watch_items
+ *   GET /api/v1/thesis/{id}               → assumptions[], catalysts[], score_breakdown
+ *   GET /api/v1/thesis/{id}/reviews/latest → verdict, confidence, risk_signals, next_watch_items
  *
  * Both calls are parallel (Promise.all). Latest review 404 is handled gracefully.
  */
+
+import { thesisApiBase } from '../../api/client.js';
 
 const PANEL_ID = 'bd-panel';
 
@@ -169,7 +171,7 @@ function _renderPanel(panel, thesis, detail, review) {
         <span class="bd-tier">${_esc(tier)}</span>
         <span class="bd-total-score">Score: ${total}</span>
       </div>
-      <button class="bd-close" aria-label="Close" onclick="import('./breakdown-panel.js').then(m=>m.closeBreakdownPanel())">✕</button>
+      <button class="bd-close" aria-label="Close" id="bd-close-btn">✕</button>
     </div>
 
     <div class="bd-section">
@@ -191,10 +193,14 @@ function _renderPanel(panel, thesis, detail, review) {
       <div class="bd-section-title">Latest AI review</div>
       ${_reviewSection(review)}
     </div>`;
+
+  // Wire close button after innerHTML set
+  panel.querySelector('#bd-close-btn')?.addEventListener('click', closeBreakdownPanel);
 }
 
 export async function openBreakdownPanel(thesis) {
   const panel = _getOrCreatePanel();
+  const base  = thesisApiBase(); // e.g. /api/v1/thesis
 
   // Show loading state immediately
   panel.innerHTML = `<div class="bd-loading">Loading breakdown…</div>`;
@@ -204,8 +210,8 @@ export async function openBreakdownPanel(thesis) {
 
   try {
     const [detailRes, reviewRes] = await Promise.all([
-      fetch(`/api/thesis/${thesis.id}`),
-      fetch(`/api/thesis/${thesis.id}/reviews/latest`),
+      fetch(`${base}/${thesis.id}`),
+      fetch(`${base}/${thesis.id}/reviews/latest`),
     ]);
 
     const detail = detailRes.ok ? await detailRes.json() : null;
