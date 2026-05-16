@@ -91,7 +91,6 @@ function _renderLegend() {
     <span class="hm-legend-item"><span class="hm-cell hm-cell--yellow hm-cell--sm"></span> 40&ndash;69%</span>
     <span class="hm-legend-item"><span class="hm-cell hm-cell--red hm-cell--sm"></span> &lt;40%</span>
     <span class="hm-legend-item"><span class="hm-cell hm-cell--none hm-cell--sm"></span> no data</span>
-    <span class="hm-legend-dims muted">A &middot; C &middot; R/R &middot; Rev</span>
   `;
   wrap.insertAdjacentElement('beforebegin', legend);
 }
