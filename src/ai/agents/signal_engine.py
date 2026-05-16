@@ -20,6 +20,8 @@ Changelog:
   - Deepened thesis cross-check: agent now passes full thesis dicts to
     build_user_prompt. Callers should include assumptions/catalysts/
     invalidation_conditions in active_theses for deep cross-check.
+  - _fallback() now derives thesis_review_triggers from HIGH/CRITICAL ranked
+    signals so ThesisJudgeAgent still runs when AI call fails (Gap 1 fix).
 """
 
 from __future__ import annotations
@@ -47,6 +49,11 @@ _URGENCY_ORDER = {
     SignalUrgency.MEDIUM: 2,
     SignalUrgency.LOW: 3,
 }
+
+# Urgency levels that warrant auto-triggering ThesisJudgeAgent in fallback mode.
+# MEDIUM and LOW are intentionally excluded — rule-based fallback lacks the
+# cross-thesis reasoning needed to generate useful Judge inputs at those levels.
+_TRIGGER_URGENCIES = {SignalUrgency.CRITICAL, SignalUrgency.HIGH}
 
 
 def _build_portfolio_context(portfolio_data: dict[str, Any]) -> PortfolioRiskNote:
@@ -192,6 +199,11 @@ class SignalEngineAgent:
 
         Converts watchdog verdicts directly to RankedSignals without AI synthesis.
         Confidence is set low (0.4) to signal degraded quality to downstream consumers.
+
+        thesis_review_triggers is derived from HIGH/CRITICAL signals so
+        ThesisJudgeAgent still runs even when SignalEngine AI is unavailable.
+        BriefingService._build_thesis_judge_block() will enrich each trigger
+        with thesis metadata + last_review_summary before calling the Judge.
         """
         signals: list[RankedSignal] = []
 
@@ -230,10 +242,35 @@ class SignalEngineAgent:
             )
 
         signals.sort(key=lambda s: _URGENCY_ORDER.get(s.urgency, 9))
+        capped_signals = signals[:10]
+
+        # Derive thesis_review_triggers from HIGH/CRITICAL signals.
+        # Shape matches what BriefingService._build_thesis_judge_block() expects:
+        # ticker + trigger_reason + urgency + watchdog_verdict.
+        # thesis_id, assumptions, catalysts will be enriched by BriefingService
+        # when it loads active theses from the DB.
+        fallback_triggers = [
+            {
+                "ticker": s.ticker,
+                "trigger_reason": s.trigger_reason,
+                "urgency": s.urgency.value,
+                "watchdog_verdict": s.verdict.value,
+            }
+            for s in capped_signals
+            if s.urgency in _TRIGGER_URGENCIES
+        ]
+
+        if fallback_triggers:
+            logger.warning(
+                "SignalEngine fallback: deriving %d thesis_review_triggers "
+                "from rule-based signals (AI unavailable)",
+                len(fallback_triggers),
+            )
 
         return SignalEngineOutput(
             generated_at=generated_at,
-            ranked_signals=signals[:10],
+            ranked_signals=capped_signals,
+            thesis_review_triggers=fallback_triggers,
             portfolio_context=portfolio_context,
             confidence=0.4,
         )

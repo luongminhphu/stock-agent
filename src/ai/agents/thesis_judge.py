@@ -39,6 +39,12 @@ from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Maximum number of concurrent LLM calls in run_batch().
+# Prevents rate-limit cascade on large watchlists where all theses would
+# otherwise fire simultaneously via asyncio.gather. Each thesis that hits
+# a rate limit falls back gracefully to rule-based output independently.
+_JUDGE_CONCURRENCY = 5
+
 
 # ---------------------------------------------------------------------------
 # Fallback helpers
@@ -98,7 +104,7 @@ class ThesisJudgeAgent:
                 signal_context={
                     "watchdog_verdict": "BEARISH",
                     "urgency": "HIGH",
-                    "trigger_reason": "Dòng tiền khối ngoại bán ròng 3 phiẫn",
+                    "trigger_reason": "Dòng tiền khối ngoại bán ròng 3 phiên",
                     "risk_flags": ["volume_spike", "foreign_sell"],
                 },
             )
@@ -202,6 +208,11 @@ class ThesisJudgeAgent:
         Per-thesis errors are caught and replaced with fallback output —
         one failure never blocks the rest of the batch.
 
+        Concurrency is capped at _JUDGE_CONCURRENCY (default 5) via asyncio.Semaphore
+        to prevent rate-limit cascades on large watchlists. Each thesis that hits
+        a rate limit falls back to rule-based output independently without
+        affecting the rest of the batch.
+
         Args:
             triggers: list of dicts, each with keys:
                 thesis_id, ticker, thesis_title, thesis_summary,
@@ -215,34 +226,37 @@ class ThesisJudgeAgent:
         if not triggers:
             return []
 
+        sem = asyncio.Semaphore(_JUDGE_CONCURRENCY)
+
         async def _run_one(t: dict[str, Any]) -> ThesisJudgeOutput:
-            try:
-                return await self.run(
-                    thesis_id=t["thesis_id"],
-                    ticker=t["ticker"],
-                    thesis_title=t.get("thesis_title", ""),
-                    thesis_summary=t.get("thesis_summary", ""),
-                    assumptions=t.get("assumptions", []),
-                    catalysts=t.get("catalysts", []),
-                    invalidation_conditions=t.get("invalidation_conditions", []),
-                    signal_context=t.get("signal_context", {}),
-                    conviction_history=t.get("conviction_history"),
-                    days_since_written=t.get("days_since_written"),
-                )
-            except Exception as exc:
-                # Should not reach here (run() has its own try/except),
-                # but guard at batch level for absolute safety.
-                logger.error(
-                    "ThesisJudge batch: unexpected error for thesis=%s ticker=%s: %s",
-                    t.get("thesis_id", "?"),
-                    t.get("ticker", "?"),
-                    exc,
-                )
-                return self._fallback(
-                    thesis_id=t.get("thesis_id", "unknown"),
-                    ticker=t.get("ticker", ""),
-                    signal_context=t.get("signal_context", {}),
-                )
+            async with sem:
+                try:
+                    return await self.run(
+                        thesis_id=t["thesis_id"],
+                        ticker=t["ticker"],
+                        thesis_title=t.get("thesis_title", ""),
+                        thesis_summary=t.get("thesis_summary", ""),
+                        assumptions=t.get("assumptions", []),
+                        catalysts=t.get("catalysts", []),
+                        invalidation_conditions=t.get("invalidation_conditions", []),
+                        signal_context=t.get("signal_context", {}),
+                        conviction_history=t.get("conviction_history"),
+                        days_since_written=t.get("days_since_written"),
+                    )
+                except Exception as exc:
+                    # Should not reach here (run() has its own try/except),
+                    # but guard at batch level for absolute safety.
+                    logger.error(
+                        "ThesisJudge batch: unexpected error for thesis=%s ticker=%s: %s",
+                        t.get("thesis_id", "?"),
+                        t.get("ticker", "?"),
+                        exc,
+                    )
+                    return self._fallback(
+                        thesis_id=t.get("thesis_id", "unknown"),
+                        ticker=t.get("ticker", ""),
+                        signal_context=t.get("signal_context", {}),
+                    )
 
         results = await asyncio.gather(*[_run_one(t) for t in triggers])
         logger.info(
