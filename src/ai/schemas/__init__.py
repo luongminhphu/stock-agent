@@ -109,6 +109,13 @@ from src.ai.schemas.thesis_judge import (
     ThesisJudgeVerdict,
 )
 
+# --- Portfolio Risk Narrator ---
+from src.ai.schemas.portfolio_risk import (
+    PortfolioRiskNarrativeOutput,
+    RiskChapter,
+    RiskTheme,
+)
+
 __all__ = [
     # Base
     "Verdict",
@@ -179,4 +186,8 @@ __all__ = [
     "ThesisJudgeVerdict",
     "ChallengedAssumption",
     "ThesisJudgeOutput",
+    # Portfolio Risk Narrator
+    "RiskTheme",
+    "RiskChapter",
+    "PortfolioRiskNarrativeOutput",
 ]
