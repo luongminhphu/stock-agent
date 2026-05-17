@@ -33,7 +33,14 @@ class SignalDetectedEvent(DomainEvent):
 
 @dataclass(frozen=True)
 class WatchlistScanCompletedEvent(DomainEvent):
-    """Emitted after a full watchlist scan cycle finishes."""
+    """Emitted after a full watchlist scan cycle finishes.
+
+    user_id (added Wave 3): when provided, readmodel.CacheSubscriber
+    invalidates only that user's scan_latest cache entry. When empty,
+    the subscriber falls back to invalidating all scan_latest entries.
+    Backward-compat: callers that omit user_id continue to work.
+    """
+    user_id: str = ""
     symbols_scanned: int = 0
     signals_found: int = 0
     duration_seconds: float = 0.0
@@ -176,10 +183,17 @@ class BriefingRequestedEvent(DomainEvent):
 
 @dataclass(frozen=True)
 class BriefingReadyEvent(DomainEvent):
-    """Emitted when a briefing document is ready to be delivered."""
+    """Emitted when a briefing document is ready to be delivered.
+
+    user_id (added Wave 3): when provided, readmodel.CacheSubscriber
+    invalidates only that user's brief_latest cache entry. When empty,
+    the subscriber falls back to invalidating all brief_latest entries.
+    Backward-compat: callers that omit user_id continue to work.
+    """
     brief_type: str = ""
     channel: str = "discord"
     content_summary: str = ""
+    user_id: str = ""
 
 
 # ─── market ─────────────────────────────────────────────────────────────────────
