@@ -1,4 +1,4 @@
-/* ─── Design Tokens ──────────────────────────────────────────────────────────
+/* ─── Design Tokens ───────────────────────────────────────────────────────────────────────────
    Owner: base
    Single source of truth cho toàn bộ CSS custom properties của dashboard.
    Không chứa bất kỳ selector nào ngoài :root và @keyframes global.
@@ -29,6 +29,10 @@
   --danger: #f87171;
   --violet: #a78bfa;
 
+  /* ── Semantic bg tints (alpha) ── */
+  --warning-bg: rgba(251, 191, 36, 0.08);
+  --danger-bg:  rgba(248, 113, 113, 0.08);
+
   /* ── Typography ── */
   --font-body: 'Satoshi', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
@@ -42,11 +46,11 @@
   --shadow: 0 24px 70px rgba(2, 6, 23, 0.36);
 }
 
-/* ─── Flash animations (dùng bởi animate.js → flashValue) ───────────────────
+/* ─── Flash animations (dùng bởi animate.js → flashValue) ───────────────────────────
    .flash-up   → xanh lá khi giá trị tăng
    .flash-down → đỏ khi giá trị giảm
    Duration 0.8s — đủ để mắt nhận ra, không gây rối
-──────────────────────────────────────────────────────────────────────────── */
+───────────────────────────────────────────────────────────────────────────── */
 
 @keyframes flash-up {
   0%   { color: inherit; }
@@ -69,11 +73,11 @@
   .flash-down { animation: none; }
 }
 
-/* ─── KPI number state colours ───────────────────────────────────────────────
+/* ─── KPI number state colours ──────────────────────────────────────────────────────────
    .kpi-risky → đỏ khi riskyTheses > 0
    .kpi-safe  → trở về màu text mặc định khi = 0
    Transition nhẹ để không nhảy màu đột ngột khi countUp chạy xong.
-──────────────────────────────────────────────────────────────────────────── */
+───────────────────────────────────────────────────────────────────────────── */
 
 .kpi-risky {
   color: var(--danger);
@@ -85,11 +89,53 @@
   transition: color 0.3s ease;
 }
 
-/* ─── signal-card alert state (khi riskyTheses > 0) ─────────────────────────
+/* ─── signal-card alert state (khi riskyTheses > 0) ───────────────────────────
    Dùng border + subtle glow thay vì background loud.
-──────────────────────────────────────────────────────────────────────────── */
+───────────────────────────────────────────────────────────────────────────── */
 
 .signal-card--alert {
   border-color: rgba(248, 113, 113, 0.35) !important;
   box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.15), var(--shadow);
+}
+
+/* signal-card--alert variant cho warning (stale review) */
+.signal-card--alert-warn {
+  border-color: rgba(251, 191, 36, 0.35) !important;
+  box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.15), var(--shadow);
+  background: var(--warning-bg) !important;
+}
+
+/* ─── Wave 1 UX: KPI clickable ───────────────────────────────────────────────────
+   .kpi--clickable: cursor pointer + hover lift nhẹ + focus ring
+   Không override làm mất các state hiện có (--alert, --risk...)
+───────────────────────────────────────────────────────────────────────────── */
+
+.kpi--clickable {
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  user-select: none;
+}
+
+.kpi--clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(2, 6, 23, 0.5), 0 0 0 1px rgba(125, 211, 252, 0.18);
+}
+
+.kpi--clickable:active {
+  transform: translateY(0);
+  box-shadow: var(--shadow);
+}
+
+.kpi--clickable:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kpi--clickable,
+  .kpi--clickable:hover,
+  .kpi--clickable:active {
+    transform: none;
+    transition: none;
+  }
 }
