@@ -371,3 +371,26 @@
 .bd-error {
   color: #d44040;
 }
+
+/* ── Heatmap refresh states ─────────────────────────────────────── */
+
+/* Pulse opacity while re-fetching score_breakdown */
+@keyframes hm-pulse {
+  0%, 100% { opacity: 1;    }
+  50%       { opacity: 0.4; }
+}
+
+.hm-refreshing .hm-cell {
+  animation: hm-pulse 700ms ease-in-out infinite;
+  pointer-events: none; /* block clicks during fetch */
+}
+
+/* One-shot white flash on cells once new scores are painted */
+@keyframes hm-flash {
+  0%   { filter: brightness(1.8); }
+  100% { filter: brightness(1);   }
+}
+
+.hm-refreshed .hm-cell {
+  animation: hm-flash 800ms ease-out forwards;
+}
