@@ -267,6 +267,10 @@ class WatchlistScanScheduler:
     - ON_SIGNAL reminders piggyback on the same embed — no extra message.
     - Does NOT call AI — zero token cost.
     - Channel: settings.alert_channel_id (DISCORD_ALERT_CHANNEL_ID → morning_channel_id).
+
+    Wave 2 enrichment:
+    - TickerDirectionQuery injected into ScanService to enable THESIS_DIVERGENCE signals.
+      Created per-tick with the same session as ScanService (session-scoped, not singleton).
     """
 
     def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
@@ -320,12 +324,14 @@ class WatchlistScanScheduler:
 
         # ── Step 1: Scan ─────────────────────────────────────────────────────────────────
         try:
+            from src.thesis.ticker_direction_query import TickerDirectionQuery
             from src.watchlist.scan_service import ScanService
 
             async with AsyncSessionLocal() as session:
                 svc = ScanService(
                     session=session,
                     quote_service=get_quote_service(),
+                    ticker_direction_query=TickerDirectionQuery(session),
                 )
                 result = await svc.scan_user(str(user_id))
                 await session.commit()
