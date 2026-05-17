@@ -163,3 +163,24 @@ td.cell-missing {
   width: 100%;
   table-layout: auto;
 }
+
+/* ── Table cell alignment ───────────────────────────────────────────────── */
+
+/* Base: padding đều, vertical-align giữa, text trái (Ticker, label) */
+.portfolio-pane .data-table th,
+.portfolio-pane .data-table td {
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+/* Cột số (giá, P&L, %, score) — right-align theo convention tài chính */
+.portfolio-pane .data-table th.num,
+.portfolio-pane .data-table td.num {
+  text-align: right;
+}
+
+/* Cột Verdict (badge ngắn) — center */
+.portfolio-pane .data-table td:nth-child(2):has(.verdict-badge) {
+  text-align: center;
+}
