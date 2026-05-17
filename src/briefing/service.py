@@ -93,6 +93,14 @@ PortfolioRiskNarrator (Wave 3):
   from pnl_service + SignalEngine output (via ctx quotes) and attaches the
   result to BriefOutput.portfolio_narrative. Fully non-blocking: any failure
   leaves portfolio_narrative=None and the brief is unaffected.
+
+PortfolioRiskNarrator bug fixes:
+  B1: PortfolioRiskNote was constructed with 5 non-existent fields. Fixed to
+      use correct contract from _base.py: position_count, total_pnl_pct,
+      top_concentration, losing_positions, misaligned_positions.
+  B2: _portfolio_risk_narrator.run() does not exist. Fixed to .narrate().
+  Also: PortfolioRiskNarratorContext kwargs corrected to match dataclass fields
+      (portfolio_note=, ranked_signals=[], risk_alerts=[], stress_impact_note="").
 """
 
 from __future__ import annotations
@@ -497,7 +505,12 @@ class BriefingService:
 
         Builds PortfolioRiskNarratorContext from:
           - pnl_service.get_portfolio_pnl(user_id) → PortfolioRiskNote
-          - ctx["quotes"] → per-ticker price data for SignalEngine context
+          - ctx["quotes"] → per-ticker price data for concentration/loss derivation
+
+        PortfolioRiskNote field contract (from _base.py):
+          position_count, total_pnl_pct, top_concentration, losing_positions,
+          misaligned_positions. Fields total_positions / total_market_value /
+          total_unrealized_pnl / tickers do NOT exist on this model.
 
         Owner: briefing (adapter). Narrator logic stays in ai segment.
         """
@@ -511,21 +524,39 @@ class BriefingService:
             if not pnl or not getattr(pnl, "positions", None):
                 return result
 
-            # Build a minimal PortfolioRiskNote from pnl snapshot
+            positions = pnl.positions
+
+            # Derive concentration / loss lists from position-level data.
+            # weight_pct and unrealized_pct use getattr with safe defaults so
+            # this path degrades gracefully when pnl model evolves.
+            top_concentration = [
+                p.ticker for p in positions
+                if getattr(p, "weight_pct", 0.0) > 25.0
+            ]
+            losing_positions = [
+                p.ticker for p in positions
+                if getattr(p, "unrealized_pct", 0.0) < -5.0
+            ]
+
+            # Build PortfolioRiskNote with correct field contract from _base.py.
             risk_note = PortfolioRiskNote(
-                total_positions=len(pnl.positions),
-                total_market_value=getattr(pnl, "total_market_value", 0.0),
-                total_unrealized_pnl=getattr(pnl, "total_unrealized_pnl", 0.0),
-                total_unrealized_pct=getattr(pnl, "total_unrealized_pct", 0.0),
-                tickers=[p.ticker for p in pnl.positions],
+                position_count=len(positions),
+                total_pnl_pct=getattr(pnl, "total_unrealized_pct", None),
+                top_concentration=top_concentration,
+                losing_positions=losing_positions,
+                misaligned_positions=[],  # verdict data not available in briefing path
             )
 
+            # PortfolioRiskNarratorContext dataclass fields:
+            #   portfolio_note, ranked_signals, risk_alerts, stress_impact_note, portfolio_date
             narrator_ctx = PortfolioRiskNarratorContext(
-                portfolio_risk=risk_note,
-                signal_output=None,   # no SignalEngineOutput in this path
-                stress_test=None,
+                portfolio_note=risk_note,
+                ranked_signals=[],       # SignalEngineOutput not available in briefing path
+                risk_alerts=[],
+                stress_impact_note="",
             )
-            narrative = await self._portfolio_risk_narrator.run(narrator_ctx)  # type: ignore[attr-defined]
+            # Correct method name: .narrate() — not .run()
+            narrative = await self._portfolio_risk_narrator.narrate(narrator_ctx)  # type: ignore[attr-defined]
             if narrative is not None:
                 result.portfolio_narrative = narrative
         except Exception as exc:
