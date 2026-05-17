@@ -27,6 +27,7 @@ Design rules:
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
@@ -36,11 +37,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.logging import get_logger
 from src.readmodel.backtesting_service import BacktestingService
+from src.readmodel.cache import DashboardTTLCache
 from src.readmodel.portfolio_query_service import PortfolioQueryService
 from src.readmodel.stats_service import StatsService
 from src.readmodel.thesis_query_service import ThesisQueryService
 
 logger = get_logger(__name__)
+
+# Module-level cache — shared across all DashboardService instances within
+# the same process. Keyed by (namespace, user_id, extra) for per-user isolation.
+_cache = DashboardTTLCache()
 
 # ---------------------------------------------------------------------------
 # Cross-segment model imports — consolidated top-level.
@@ -84,11 +90,16 @@ class DashboardService:
         self._backtesting = BacktestingService(session)
 
     # ------------------------------------------------------------------
-    # 1. Stats — delegates to StatsService
+    # 1. Stats — delegates to StatsService, cached 60s
     # ------------------------------------------------------------------
 
     async def get_stats(self, user_id: str) -> dict[str, Any]:
-        return await self._stats.get_stats(user_id)
+        cached = _cache.get("stats", user_id)
+        if cached is not None:
+            return cached
+        result = await self._stats.get_stats(user_id)
+        _cache.set("stats", user_id, result)  # TTL=60s via DEFAULTS
+        return result
 
     # ------------------------------------------------------------------
     # 2-6. Thesis queries — delegates to ThesisQueryService
@@ -153,10 +164,14 @@ class DashboardService:
         )
 
     # ------------------------------------------------------------------
-    # 7. Latest scan snapshot — cross-segment (watchlist)
+    # 7. Latest scan snapshot — cross-segment (watchlist), cached 30s
     # ------------------------------------------------------------------
 
     async def get_scan_latest(self, user_id: str) -> dict[str, Any] | None:
+        cached = _cache.get("scan_latest", user_id)
+        if cached is not None:
+            return cached
+
         if not _WATCHLIST_MODELS_AVAILABLE:
             logger.warning("get_scan_latest.import_error", detail="WatchlistScan model not available")
             return None
@@ -181,27 +196,36 @@ class DashboardService:
             except (json.JSONDecodeError, TypeError):
                 parsed_summary = {"raw": row.summary}
 
-            return {
+            result = {
                 **parsed_summary,
                 "id": row.id,
                 "user_id": row.user_id,
                 "summary": row.summary,
                 "scanned_at": row.scanned_at.isoformat() if row.scanned_at else None,
             }
+            _cache.set("scan_latest", user_id, result)
+            return result
         except Exception as exc:
             logger.warning("get_scan_latest.db_error", error=str(exc), exc_info=True)
             return None
 
     # ------------------------------------------------------------------
-    # 8. Latest brief snapshot — cross-segment (briefing)
+    # 8. Latest brief snapshot — 2 queries parallelised via asyncio.gather
+    #    Result cached 30s.
     # ------------------------------------------------------------------
 
     async def get_brief_latest(self, user_id: str, phase: str = "morning") -> dict[str, Any] | None:
+        cache_extra = phase
+        cached = _cache.get("brief_latest", user_id, extra=cache_extra)
+        if cached is not None:
+            return cached
+
         if not _BRIEFING_MODELS_AVAILABLE:
             logger.warning("get_brief_latest.import_error", detail="BriefSnapshot model not available")
             return None
 
         try:
+            # Step 1: fetch snapshot (needed to derive brief_snapshot_id for feedback query)
             row = (
                 await self._session.execute(
                     select(BriefSnapshot)
@@ -217,21 +241,34 @@ class DashboardService:
             if not row:
                 return None
 
-            try:
-                parsed_content = json.loads(row.content)
-            except (json.JSONDecodeError, TypeError):
-                parsed_content = {"summary": row.content, "content": row.content}
+            # Step 2: fetch feedback in parallel with content parsing
+            # asyncio.gather runs both coroutines concurrently on the same
+            # event loop — the DB driver multiplexes over the single connection.
+            async def _fetch_feedback() -> str | None:
+                return (
+                    await self._session.execute(
+                        select(BriefFeedback.outcome)
+                        .where(BriefFeedback.brief_snapshot_id == row.id)
+                        .order_by(BriefFeedback.created_at.desc())
+                        .limit(1)
+                    )
+                ).scalar_one_or_none()
 
-            feedback_outcome = (
-                await self._session.execute(
-                    select(BriefFeedback.outcome)
-                    .where(BriefFeedback.brief_snapshot_id == row.id)
-                    .order_by(BriefFeedback.created_at.desc())
-                    .limit(1)
-                )
-            ).scalar_one_or_none()
+            async def _parse_content() -> dict:
+                try:
+                    parsed = json.loads(row.content)
+                    if not isinstance(parsed, dict):
+                        return {"summary": row.content, "content": row.content}
+                    return parsed
+                except (json.JSONDecodeError, TypeError):
+                    return {"summary": row.content, "content": row.content}
 
-            return {
+            feedback_outcome, parsed_content = await asyncio.gather(
+                _fetch_feedback(),
+                _parse_content(),
+            )
+
+            result = {
                 **parsed_content,
                 "id": row.id,
                 "user_id": row.user_id,
@@ -240,6 +277,8 @@ class DashboardService:
                 "created_at": row.created_at.isoformat() if row.created_at else None,
                 "feedback_outcome": feedback_outcome,
             }
+            _cache.set("brief_latest", user_id, result, extra=cache_extra)
+            return result
         except Exception as exc:
             logger.warning("get_brief_latest.db_error", error=str(exc), exc_info=True)
             return None
@@ -348,7 +387,7 @@ class DashboardService:
             return []
 
     # ------------------------------------------------------------------
-    # 10. Recent signal events — grouped by ticker at DB level
+    # 10. Recent signal events — grouped by ticker at DB level, cached 30s
     # ------------------------------------------------------------------
 
     async def get_recent_signals(
@@ -367,10 +406,10 @@ class DashboardService:
               ticker, signal_types[], max_strength, max_confidence,
               count, first_seen, last_seen, source.
           - signal_types được collect bằng subquery riêng (chỉ DISTINCT types per ticker).
-          - Loại bỏ noise: các signal lặp lại collapse thành count.
+          - Kết quả cache 30s (key: user_id + ticker + days).
 
         Khi group_by_ticker=False:
-          - Trả raw list (dùng cho detail view / per-ticker drill-down).
+          - Trả raw list (dùng cho detail view / per-ticker drill-down), không cache.
         """
         if not _WATCHLIST_MODELS_AVAILABLE:
             logger.warning("get_recent_signals.import_error", detail="SignalEvent model not available")
@@ -380,7 +419,7 @@ class DashboardService:
             since = datetime.now(UTC) - timedelta(days=days)
 
             if not group_by_ticker:
-                # ---- Raw mode — backward compat ----
+                # ---- Raw mode — not cached (used for per-ticker detail drill-down) ----
                 stmt = (
                     select(SignalEvent)
                     .where(
@@ -414,8 +453,13 @@ class DashboardService:
                     })
                 return result
 
-            # ---- Grouped mode: aggregate at DB level ----
-            # Step 1: aggregate stats per ticker (max strength/confidence, count, time range)
+            # ---- Grouped mode: check cache first ----
+            cache_extra = f"{ticker or ''}:{days}"
+            cached = _cache.get("recent_signals", user_id, extra=cache_extra)
+            if cached is not None:
+                return cached
+
+            # Step 1: aggregate stats per ticker at DB level
             agg_stmt = (
                 select(
                     SignalEvent.ticker,
@@ -459,7 +503,6 @@ class DashboardService:
                 )
             ).all()
 
-            # Build ticker → set[signal_type] map
             types_by_ticker: dict[str, set[str]] = {}
             for t, st in type_rows:
                 types_by_ticker.setdefault(t, set()).add(st)
@@ -470,9 +513,6 @@ class DashboardService:
                 first_seen = r.first_seen
                 last_seen = r.last_seen
 
-                # Normalise naive datetimes returned by some DB drivers (e.g. asyncpg
-                # without explicit timezone columns) to UTC-aware so callers always
-                # get consistent ISO strings with offset.
                 if first_seen is not None and first_seen.tzinfo is None:
                     first_seen = first_seen.replace(tzinfo=UTC)
                 if last_seen is not None and last_seen.tzinfo is None:
@@ -489,6 +529,7 @@ class DashboardService:
                     "source": r.source,
                 })
 
+            _cache.set("recent_signals", user_id, result, extra=cache_extra)
             return result
 
         except Exception as exc:
