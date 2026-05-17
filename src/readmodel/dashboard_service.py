@@ -28,7 +28,6 @@ Design rules:
 from __future__ import annotations
 
 import json
-from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
@@ -42,6 +41,28 @@ from src.readmodel.stats_service import StatsService
 from src.readmodel.thesis_query_service import ThesisQueryService
 
 logger = get_logger(__name__)
+
+# ---------------------------------------------------------------------------
+# Cross-segment model imports — consolidated top-level.
+# Guarded so the readmodel segment stays importable even when a peer segment
+# hasn't been migrated yet (e.g. in unit-test environments).
+# ---------------------------------------------------------------------------
+
+try:
+    from src.watchlist.models import Alert, AlertStatus, SignalEvent, WatchlistScan
+
+    _WATCHLIST_MODELS_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    _WATCHLIST_MODELS_AVAILABLE = False
+    Alert = AlertStatus = SignalEvent = WatchlistScan = None  # type: ignore[assignment,misc]
+
+try:
+    from src.briefing.models import BriefFeedback, BriefSnapshot
+
+    _BRIEFING_MODELS_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    _BRIEFING_MODELS_AVAILABLE = False
+    BriefFeedback = BriefSnapshot = None  # type: ignore[assignment,misc]
 
 
 class QuoteBatchReader(Protocol):
@@ -136,12 +157,8 @@ class DashboardService:
     # ------------------------------------------------------------------
 
     async def get_scan_latest(self, user_id: str) -> dict[str, Any] | None:
-        try:
-            from src.watchlist.models import WatchlistScan
-        except ImportError:
-            logger.warning(
-                "get_scan_latest.import_error", detail="WatchlistScan model not available"
-            )
+        if not _WATCHLIST_MODELS_AVAILABLE:
+            logger.warning("get_scan_latest.import_error", detail="WatchlistScan model not available")
             return None
 
         try:
@@ -157,8 +174,6 @@ class DashboardService:
             if not row:
                 return None
 
-            # Parse summary neu la valid JSON — tuong tu get_brief_latest().
-            # Neu khong parse duoc, fallback ve {"raw": summary} de giu backward compat.
             try:
                 parsed_summary = json.loads(row.summary)
                 if not isinstance(parsed_summary, dict):
@@ -174,7 +189,7 @@ class DashboardService:
                 "scanned_at": row.scanned_at.isoformat() if row.scanned_at else None,
             }
         except Exception as exc:
-            logger.warning("get_scan_latest.db_error", error=str(exc))
+            logger.warning("get_scan_latest.db_error", error=str(exc), exc_info=True)
             return None
 
     # ------------------------------------------------------------------
@@ -182,12 +197,8 @@ class DashboardService:
     # ------------------------------------------------------------------
 
     async def get_brief_latest(self, user_id: str, phase: str = "morning") -> dict[str, Any] | None:
-        try:
-            from src.briefing.models import BriefSnapshot, BriefFeedback
-        except ImportError:
-            logger.warning(
-                "get_brief_latest.import_error", detail="BriefSnapshot model not available"
-            )
+        if not _BRIEFING_MODELS_AVAILABLE:
+            logger.warning("get_brief_latest.import_error", detail="BriefSnapshot model not available")
             return None
 
         try:
@@ -211,7 +222,6 @@ class DashboardService:
             except (json.JSONDecodeError, TypeError):
                 parsed_content = {"summary": row.content, "content": row.content}
 
-            # Latest feedback outcome for this brief snapshot
             feedback_outcome = (
                 await self._session.execute(
                     select(BriefFeedback.outcome)
@@ -231,16 +241,14 @@ class DashboardService:
                 "feedback_outcome": feedback_outcome,
             }
         except Exception as exc:
-            logger.warning("get_brief_latest.db_error", error=str(exc))
+            logger.warning("get_brief_latest.db_error", error=str(exc), exc_info=True)
             return None
 
     async def get_brief_feedback_summary(
         self, user_id: str, days: int = 30
     ) -> dict[str, Any]:
         """Return brief feedback summary for user."""
-        try:
-            from src.briefing.models import BriefFeedback
-        except ImportError:
+        if not _BRIEFING_MODELS_AVAILABLE:
             logger.warning(
                 "get_brief_feedback_summary.import_error",
                 detail="BriefFeedback model not available",
@@ -284,7 +292,7 @@ class DashboardService:
                 "total_feedbacks_30d": total,
             }
         except Exception as exc:
-            logger.warning("get_brief_feedback_summary.db_error", error=str(exc))
+            logger.warning("get_brief_feedback_summary.db_error", error=str(exc), exc_info=True)
             return {
                 "last_feedback_outcome": None,
                 "last_feedback_at": None,
@@ -302,12 +310,8 @@ class DashboardService:
         limit: int = 50,
     ) -> list[dict[str, Any]]:
         """Tra list alerts da fire (status=TRIGGERED), sap xep theo triggered_at desc."""
-        try:
-            from src.watchlist.models import Alert, AlertStatus
-        except ImportError:
-            logger.warning(
-                "get_triggered_alerts.import_error", detail="Alert model not available"
-            )
+        if not _WATCHLIST_MODELS_AVAILABLE:
+            logger.warning("get_triggered_alerts.import_error", detail="Alert model not available")
             return []
 
         try:
@@ -340,11 +344,11 @@ class DashboardService:
                 for r in rows
             ]
         except Exception as exc:
-            logger.warning("get_triggered_alerts.db_error", error=str(exc))
+            logger.warning("get_triggered_alerts.db_error", error=str(exc), exc_info=True)
             return []
 
     # ------------------------------------------------------------------
-    # 10. Recent signal events — grouped by ticker+signal_type
+    # 10. Recent signal events — grouped by ticker at DB level
     # ------------------------------------------------------------------
 
     async def get_recent_signals(
@@ -358,45 +362,40 @@ class DashboardService:
         """Tra SignalEvent gan day cho user, grouped theo ticker.
 
         Khi group_by_ticker=True (default):
-          - Group cac signal cung ticker+signal_type trong cung ngay thanh 1 row.
-          - Moi ticker tra ve 1 entry voi fields:
+          - GROUP BY ticker thực hiện tại DB layer (không fetch 500 rows về Python).
+          - Mỗi ticker trả về 1 entry với fields:
               ticker, signal_types[], max_strength, max_confidence,
               count, first_seen, last_seen, source.
-          - Loai bo noise: cac signal lap lai moi 5 phut se collapse thanh count.
+          - signal_types được collect bằng subquery riêng (chỉ DISTINCT types per ticker).
+          - Loại bỏ noise: các signal lặp lại collapse thành count.
 
         Khi group_by_ticker=False:
-          - Tra raw list nhu cu (dung cho detail view / per-ticker drill-down).
+          - Trả raw list (dùng cho detail view / per-ticker drill-down).
         """
-        try:
-            from src.watchlist.models import SignalEvent
-        except ImportError:
-            logger.warning(
-                "get_recent_signals.import_error", detail="SignalEvent model not available"
-            )
+        if not _WATCHLIST_MODELS_AVAILABLE:
+            logger.warning("get_recent_signals.import_error", detail="SignalEvent model not available")
             return []
 
         try:
             since = datetime.now(UTC) - timedelta(days=days)
 
-            stmt = (
-                select(SignalEvent)
-                .where(
-                    SignalEvent.user_id == user_id,
-                    SignalEvent.occurred_at >= since,
-                )
-                .order_by(SignalEvent.occurred_at.desc())
-                .limit(500)  # fetch nhieu hon de group phia Python
-            )
-
-            if ticker is not None:
-                stmt = stmt.where(SignalEvent.ticker == ticker.upper())
-
-            rows = (await self._session.execute(stmt)).scalars().all()
-
             if not group_by_ticker:
-                # Raw mode — backward compat
+                # ---- Raw mode — backward compat ----
+                stmt = (
+                    select(SignalEvent)
+                    .where(
+                        SignalEvent.user_id == user_id,
+                        SignalEvent.occurred_at >= since,
+                    )
+                    .order_by(SignalEvent.occurred_at.desc())
+                    .limit(limit)
+                )
+                if ticker is not None:
+                    stmt = stmt.where(SignalEvent.ticker == ticker.upper())
+
+                rows = (await self._session.execute(stmt)).scalars().all()
                 result = []
-                for r in rows[:limit]:
+                for r in rows:
                     try:
                         metadata = json.loads(r.metadata_json) if r.metadata_json else None
                     except (json.JSONDecodeError, TypeError):
@@ -415,55 +414,85 @@ class DashboardService:
                     })
                 return result
 
-            # --- Grouped mode (default) ---
-            # Group by ticker, collapse signal_types, keep max strength/confidence
-            groups: dict[str, dict[str, Any]] = {}
-
-            for r in rows:
-                key = r.ticker
-                if key not in groups:
-                    groups[key] = {
-                        "ticker": r.ticker,
-                        "signal_types": set(),
-                        "max_strength": 0.0,
-                        "max_confidence": 0.0,
-                        "count": 0,
-                        "first_seen": r.occurred_at,
-                        "last_seen": r.occurred_at,
-                        "source": r.source,
-                    }
-                g = groups[key]
-                g["signal_types"].add(r.signal_type)
-                g["max_strength"] = max(g["max_strength"], r.strength or 0.0)
-                g["max_confidence"] = max(g["max_confidence"], r.confidence or 0.0)
-                g["count"] += 1
-                if r.occurred_at and r.occurred_at < g["first_seen"]:
-                    g["first_seen"] = r.occurred_at
-                if r.occurred_at and r.occurred_at > g["last_seen"]:
-                    g["last_seen"] = r.occurred_at
-
-            # Sort by max_strength desc, then count desc
-            sorted_groups = sorted(
-                groups.values(),
-                key=lambda g: (g["max_strength"], g["count"]),
-                reverse=True,
+            # ---- Grouped mode: aggregate at DB level ----
+            # Step 1: aggregate stats per ticker (max strength/confidence, count, time range)
+            agg_stmt = (
+                select(
+                    SignalEvent.ticker,
+                    func.max(SignalEvent.strength).label("max_strength"),
+                    func.max(SignalEvent.confidence).label("max_confidence"),
+                    func.count(SignalEvent.id).label("count"),
+                    func.min(SignalEvent.occurred_at).label("first_seen"),
+                    func.max(SignalEvent.occurred_at).label("last_seen"),
+                    func.max(SignalEvent.source).label("source"),
+                )
+                .where(
+                    SignalEvent.user_id == user_id,
+                    SignalEvent.occurred_at >= since,
+                )
+                .group_by(SignalEvent.ticker)
+                .order_by(
+                    func.max(SignalEvent.strength).desc(),
+                    func.count(SignalEvent.id).desc(),
+                )
+                .limit(limit)
             )
+            if ticker is not None:
+                agg_stmt = agg_stmt.where(SignalEvent.ticker == ticker.upper())
 
-            return [
-                {
-                    "ticker": g["ticker"],
-                    "signal_types": sorted(g["signal_types"]),
-                    "max_strength": round(g["max_strength"], 3),
-                    "max_confidence": round(g["max_confidence"], 3),
-                    "count": g["count"],
-                    "first_seen": g["first_seen"].isoformat() if g["first_seen"] else None,
-                    "last_seen": g["last_seen"].isoformat() if g["last_seen"] else None,
-                    "source": g["source"],
-                }
-                for g in sorted_groups[:limit]
-            ]
+            agg_rows = (await self._session.execute(agg_stmt)).all()
+
+            if not agg_rows:
+                return []
+
+            # Step 2: fetch distinct signal_types for the tickers we got
+            tickers_in_result = [r.ticker for r in agg_rows]
+            type_rows = (
+                await self._session.execute(
+                    select(SignalEvent.ticker, SignalEvent.signal_type)
+                    .where(
+                        SignalEvent.user_id == user_id,
+                        SignalEvent.occurred_at >= since,
+                        SignalEvent.ticker.in_(tickers_in_result),
+                    )
+                    .distinct()
+                )
+            ).all()
+
+            # Build ticker → set[signal_type] map
+            types_by_ticker: dict[str, set[str]] = {}
+            for t, st in type_rows:
+                types_by_ticker.setdefault(t, set()).add(st)
+
+            # Step 3: assemble response — tz-safe datetime handling
+            result = []
+            for r in agg_rows:
+                first_seen = r.first_seen
+                last_seen = r.last_seen
+
+                # Normalise naive datetimes returned by some DB drivers (e.g. asyncpg
+                # without explicit timezone columns) to UTC-aware so callers always
+                # get consistent ISO strings with offset.
+                if first_seen is not None and first_seen.tzinfo is None:
+                    first_seen = first_seen.replace(tzinfo=UTC)
+                if last_seen is not None and last_seen.tzinfo is None:
+                    last_seen = last_seen.replace(tzinfo=UTC)
+
+                result.append({
+                    "ticker": r.ticker,
+                    "signal_types": sorted(types_by_ticker.get(r.ticker, set())),
+                    "max_strength": round(r.max_strength or 0.0, 3),
+                    "max_confidence": round(r.max_confidence or 0.0, 3),
+                    "count": r.count,
+                    "first_seen": first_seen.isoformat() if first_seen else None,
+                    "last_seen": last_seen.isoformat() if last_seen else None,
+                    "source": r.source,
+                })
+
+            return result
+
         except Exception as exc:
-            logger.warning("get_recent_signals.db_error", error=str(exc))
+            logger.warning("get_recent_signals.db_error", error=str(exc), exc_info=True)
             return []
 
     # ------------------------------------------------------------------
@@ -508,6 +537,7 @@ class DashboardService:
                     logger.warning(
                         "dashboard_service.get_portfolio.price_fetch_failed",
                         error=str(exc),
+                        exc_info=True,
                     )
                     price_map = {}
 
