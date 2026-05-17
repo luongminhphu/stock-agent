@@ -43,6 +43,13 @@ _PRIORITY_CONFIG: dict[ActionPriority, tuple[str, str, bool, bool]] = {
     ActionPriority.SKIP_TODAY: ("⚪",  "Bỏ qua hôm nay",     False, False),
 }
 
+# Ticker signal emoji — corrected (was broken surrogate pairs)
+_TICKER_SIGNAL_EMOJI: dict[str, str] = {
+    "bullish": "🟢",
+    "bearish": "🔴",
+    "neutral": "⚪",
+}
+
 # Safe limit per Discord embed description (Discord max is 4096)
 _DISCORD_PAGE_LIMIT = 4000
 _DEFAULT_CHAR_LIMIT = _DISCORD_PAGE_LIMIT - 96
@@ -131,7 +138,7 @@ def _build_sections(brief: BriefOutput, brief_type: str) -> list[list[str]]:
     if brief.ticker_summaries:
         block = ["", "**\ud83d\udcca Ticker**"]
         for ts in brief.ticker_summaries:
-            signal_emoji = {"bullish": "\ud83d\udfe2", "bearish": "\ud83d�", "neutral": "\ud83d�"}.get(
+            signal_emoji = _TICKER_SIGNAL_EMOJI.get(
                 getattr(ts, "signal", "neutral"), "⚪"
             )
             price = getattr(ts, "price", 0.0)
@@ -147,7 +154,7 @@ def _build_sections(brief: BriefOutput, brief_type: str) -> list[list[str]]:
         sections.append(block)
 
     if brief.portfolio_summary:
-        block = ["", "**\ud83d� Portfolio**"]
+        block = ["", "**\ud83d\udcbc Portfolio**"]
         for item in brief.portfolio_summary:
             block.append(f"\u2022 {_inline(item)}")
         sections.append(block)

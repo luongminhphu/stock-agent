@@ -25,6 +25,19 @@ from sqlalchemy.orm import Mapped, mapped_column
 from src.platform.db import Base
 
 
+class BriefFeedbackOutcome:
+    """Valid outcome values for BriefFeedback.outcome.
+
+    Use VALID_OUTCOMES for O(1) membership check.
+    """
+
+    ACTED = "acted"
+    WATCHING = "watching"
+    SKIPPED = "skipped"
+
+    VALID_OUTCOMES: frozenset[str] = frozenset({ACTED, WATCHING, SKIPPED})
+
+
 class BriefSnapshot(Base):
     """Persisted output of a single brief generation run.
 
@@ -74,7 +87,8 @@ class BriefFeedback(Base):
         id                 — surrogate PK
         brief_snapshot_id  — FK → brief_snapshots.id (the brief being responded to)
         user_id            — responder (Discord user id)
-        outcome            — "acted" | "watching" | "skipped"
+        outcome            — one of BriefFeedbackOutcome.VALID_OUTCOMES:
+                             "acted" | "watching" | "skipped"
         created_at         — UTC timestamp of feedback
     """
 
@@ -87,7 +101,9 @@ class BriefFeedback(Base):
         index=True,
     )
     user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    outcome: Mapped[str] = mapped_column(String(16), nullable=False)  # acted|watching|skipped
+    outcome: Mapped[str] = mapped_column(
+        String(16), nullable=False
+    )  # BriefFeedbackOutcome: acted|watching|skipped
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
