@@ -75,7 +75,7 @@
         display: flex;
         align-items: center;
         gap: 8px;
-        padding: 10px 16px;
+        padding: 8px 16px;
         cursor: pointer;
         font-size: .85rem;
         font-weight: 600;
@@ -102,6 +102,55 @@
       .brief-collapsible .brief-inner {
         padding: 12px 16px 16px;
       }
+
+      /* ── Brief inline tabs (inside <summary>) ───────────────────── */
+      .brief-tab-bar--inline {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        padding: 0;
+        border-bottom: none;
+        /* prevent summary click stealing */
+        pointer-events: auto;
+      }
+      /* Stop the tab clicks from toggling <details> */
+      .brief-tab-bar--inline .brief-tab {
+        padding: 4px 11px;
+        font-size: .72rem;
+        font-weight: 600;
+        color: var(--muted);
+        background: none;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: color .15s, background .15s, border-color .15s;
+        line-height: 1.4;
+      }
+      .brief-tab-bar--inline .brief-tab:hover {
+        color: var(--text);
+        background: rgba(125,211,252,.06);
+      }
+      .brief-tab-bar--inline .brief-tab.active {
+        color: var(--brand);
+        background: rgba(125,211,252,.12);
+        border-color: rgba(125,211,252,.22);
+      }
+
+      /* ── Status filter inside Thesis Board panel-actions ────────── */
+      .thesis-status-filter {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .thesis-status-filter .filter-label {
+        font-size: .72rem;
+        font-weight: 600;
+        color: var(--faint);
+        text-transform: uppercase;
+        letter-spacing: .05em;
+        white-space: nowrap;
+      }
     </style>
   </head>
   <body>
@@ -119,22 +168,6 @@
           <span class="brand-name">stock-agent</span>
         </div>
         <div class="toolbar">
-          <div class="brief-tab-bar topbar-brief-tabs" role="tablist" aria-label="Brief phase">
-            <button class="brief-tab active" role="tab" aria-selected="true"
-              aria-controls="morningBriefWrap" data-tab="morning">🌅 Morning</button>
-            <button class="brief-tab" role="tab" aria-selected="false"
-              aria-controls="eodBriefWrap" data-tab="eod">🌙 End-of-Day</button>
-          </div>
-          <label class="field field-compact">
-            <span class="sr-only">Lọc trạng thái</span>
-            <select id="statusFilter" aria-label="Lọc thesis theo trạng thái">
-              <option value="active">active</option>
-              <option value="all">all</option>
-              <option value="invalidated">invalidated</option>
-              <option value="closed">closed</option>
-              <option value="paused">paused</option>
-            </select>
-          </label>
           <button id="reloadBtn" class="icon-text-btn" type="button" aria-label="Tải lại dữ liệu">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
             Reload
@@ -251,6 +284,14 @@
             <summary>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
               Morning / EOD Brief
+              <!-- Brief phase tabs — live here, not in topbar -->
+              <div class="brief-tab-bar brief-tab-bar--inline" role="tablist" aria-label="Brief phase"
+                   onclick="event.stopPropagation()">
+                <button class="brief-tab active" role="tab" aria-selected="true"
+                  aria-controls="morningBriefWrap" data-tab="morning">🌅 Morning</button>
+                <button class="brief-tab" role="tab" aria-selected="false"
+                  aria-controls="eodBriefWrap" data-tab="eod">🌙 EOD</button>
+              </div>
             </summary>
             <div class="brief-inner">
               <div class="brief-context-strip" id="briefContextStrip">
@@ -334,7 +375,20 @@
                 <p class="eyebrow">④ Portfolio theses</p>
                 <h2 id="thesisBoardTitle">Thesis board</h2>
               </div>
-              <p class="panel-hint">Nhấn vào một thesis để xem chi tiết</p>
+              <!-- Status filter lives here — next to its data, not in topbar -->
+              <div class="panel-actions thesis-status-filter">
+                <span class="filter-label">Status</span>
+                <label class="field field-compact">
+                  <span class="sr-only">Lọc thesis theo trạng thái</span>
+                  <select id="statusFilter" aria-label="Lọc thesis theo trạng thái">
+                    <option value="active">active</option>
+                    <option value="all">all</option>
+                    <option value="invalidated">invalidated</option>
+                    <option value="closed">closed</option>
+                    <option value="paused">paused</option>
+                  </select>
+                </label>
+              </div>
             </div>
             <div id="thesesTableWrap" class="empty-state">Chưa tải dữ liệu…</div>
             <div id="thesisDetail" class="detail-shell empty-detail">
