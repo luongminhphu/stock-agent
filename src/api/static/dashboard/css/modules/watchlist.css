@@ -1,7 +1,8 @@
 /* ─── Watchlist Panel ─────────────────────────────────────────────────────────────
    Owner: modules/watchlist
    Classes: watchlist-layer, wl-toolbar, wl-grid, wl-card, wl-ticker,
-            wl-price, wl-change, wl-note, wl-actions, wl-scan-btn
+            wl-price, wl-change, wl-note, wl-actions, wl-scan-btn,
+            wl-card-badges, wl-signal-tag
 
    POSITIONING NOTE: .watchlist-layer outer geometry (max-width, margin-inline,
    padding-inline) is owned exclusively by layout.css. Do NOT set margin or
@@ -76,14 +77,74 @@
   font-weight: 700;
   color: var(--brand, #7dd3fc);
   letter-spacing: 0.04em;
+  flex-shrink: 0;
 }
+
+/* ── Badge container (thesis + signal tags) ────────────────────────────────── */
+.wl-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+  align-items: center;
+}
+
 .wl-thesis-badge {
-  font-size: 0.68rem;
+  font-size: 0.63rem;
   color: var(--brand, #7dd3fc);
   background: rgba(125, 211, 252, 0.12);
   border-radius: 99px;
   padding: 2px 7px;
   white-space: nowrap;
+}
+
+/* ── Signal tags — base ────────────────────────────────────────────────────── */
+.wl-signal-tag {
+  font-size: 0.63rem;
+  font-weight: 600;
+  border-radius: 99px;
+  padding: 2px 7px;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+  cursor: default;
+}
+
+/* ── Per-type color variants ───────────────────────────────────────────────── */
+
+/* BREAKOUT — purple: momentum tích cực */
+.wl-signal-breakout {
+  background: rgba(167, 139, 250, 0.15);
+  color: #a78bfa;
+}
+
+/* RISK_SPIKE — orange: cảnh báo rủi ro */
+.wl-signal-risk-spike {
+  background: rgba(251, 146, 60, 0.15);
+  color: #fb923c;
+}
+
+/* STRONG_MOVE — sky/brand: di chuyển giá mạnh */
+.wl-signal-strong-move {
+  background: rgba(125, 211, 252, 0.12);
+  color: #7dd3fc;
+}
+
+/* THESIS_DIVERGENCE — red: xung đột thesis */
+.wl-signal-thesis-divergence {
+  background: rgba(248, 113, 113, 0.15);
+  color: #f87171;
+}
+
+/* TREND_REVERSAL — amber: đảo chiều */
+.wl-signal-trend-reversal {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+}
+
+/* STOP_LOSS — red (same as thesis-divergence: urgency) */
+.wl-signal-stop-loss {
+  background: rgba(248, 113, 113, 0.15);
+  color: #f87171;
 }
 
 /* ── Price block ──────────────────────────────────────────────────────────────────── */
