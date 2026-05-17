@@ -8,19 +8,38 @@ Pure domain logic — takes ScanSignal (duck-typed), returns list[SignalReport].
 
 Signal taxonomy (aligned with platform.events SignalDetectedEvent):
   BREAKOUT           — price vượt kháng cự + volume spike
-  TREND_REVERSAL     — giá đảo chiều sau chuỗi ngược xu hướng  (placeholder — Wave 3)
+  TREND_REVERSAL     — giá đảo chiều sau chuỗi ngược xu hướng
   STRONG_MOVE        — biến động mạnh đơn thuần (>=3%) không đủ criteria khác
   ALERT_TRIGGERED    — alert do user tự cài đã bị kích hoạt
-  THESIS_DIVERGENCE  — giá đi ngược thesis đang active (Wave 3 — needs thesis context)
+  THESIS_DIVERGENCE  — giá đi ngược thesis đang active
   RISK_SPIKE         — tín hiệu rủi ro (sharp downside, stop-loss zone)
 
 Thresholds are tunable via constructor — defaults are conservative
 for HOSE/HNX daily price action.
+
+── Wave 1 enrichment (current) ──────────────────────────────────────────────
+TREND_REVERSAL:
+    Triggered khi change_pct >= reversal_bounce_pct VÀ scan_signal có
+    prior_risk_spike=True (boolean, default False).
+    ScanService inject field này bằng cách query SignalEventRepository:
+        had_risk = await repo.has_recent(symbol, "RISK_SPIKE", hours=24)
+        scan_signal.prior_risk_spike = had_risk
+    Khi prior_risk_spike chưa được inject, engine skip silently.
+
+THESIS_DIVERGENCE:
+    Triggered khi scan_signal có thesis_direction="bull"|"bear" VÀ
+    actual change_pct đi ngược chiều quá thesis_divergence_min_pct.
+    ScanService inject field này bằng cách:
+        item = watchlist_item_for(symbol)
+        if item.thesis_id:
+            thesis = await thesis_repo.get(item.thesis_id)
+            scan_signal.thesis_direction = thesis.direction  # "bull" | "bear"
+    Khi thesis_direction chưa được inject, engine skip silently.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 
 
 # ── Signal Types ─────────────────────────────────────────────────────────────────
@@ -47,7 +66,7 @@ class SignalReport:
     confidence: float                   # 0.0 – 1.0 (reliability of classification)
     source: str                         # "technical" | "alert" | "combined"
     description: str                    # human-readable — used in Discord / briefing
-    detected_at: datetime = field(default_factory=datetime.utcnow)
+    detected_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     metadata: dict = field(default_factory=dict)
 
     @property
@@ -81,10 +100,12 @@ class SignalEngine:
     - Tunable thresholds for different market regimes
 
     Thresholds (HOSE/HNX defaults):
-        breakout_change_pct   >= 4.0%  + volume spike  → BREAKOUT
-        breakout_volume_ratio >= 1.5x  (vs average)    → required for BREAKOUT
-        risk_spike_change_pct <= -4.0%                 → RISK_SPIKE
-        strong_move_pct       >= 3.0%  (either dir)    → STRONG_MOVE fallback
+        breakout_change_pct        >= 4.0%  + volume spike  → BREAKOUT
+        breakout_volume_ratio      >= 1.5x  (vs average)    → required for BREAKOUT
+        risk_spike_change_pct      <= -4.0%                 → RISK_SPIKE
+        strong_move_pct            >= 3.0%  (either dir)    → STRONG_MOVE fallback
+        reversal_bounce_pct        >= 2.5%  + prior_risk_spike → TREND_REVERSAL
+        thesis_divergence_min_pct  >= 2.0%  divergence      → THESIS_DIVERGENCE
     """
 
     def __init__(
@@ -93,11 +114,15 @@ class SignalEngine:
         breakout_volume_ratio: float = 1.5,
         strong_move_pct: float = 3.0,
         risk_spike_change_pct: float = -4.0,
+        reversal_bounce_pct: float = 2.5,
+        thesis_divergence_min_pct: float = 2.0,
     ) -> None:
         self._breakout_change_pct = breakout_change_pct
         self._breakout_volume_ratio = breakout_volume_ratio
         self._strong_move_pct = strong_move_pct
         self._risk_spike_change_pct = risk_spike_change_pct
+        self._reversal_bounce_pct = reversal_bounce_pct
+        self._thesis_divergence_min_pct = thesis_divergence_min_pct
 
     def evaluate(self, scan_signal: object) -> list[SignalReport]:
         """
@@ -111,6 +136,10 @@ class SignalEngine:
             credibility: optional   (with .score float attribute)
             _volume_ratio: float    (optional, defaults to 1.0)
 
+        Wave 1 optional enrichment fields (injected by ScanService):
+            prior_risk_spike: bool      — True nếu symbol có RISK_SPIKE trong 24h qua
+            thesis_direction: str|None  — "bull" | "bear" từ active thesis
+
         Returns:
             List of SignalReport. Empty list = no signal this tick.
         """
@@ -122,6 +151,10 @@ class SignalEngine:
         volume_ratio: float = getattr(scan_signal, "_volume_ratio", 1.0)
         triggered_alerts: list = getattr(scan_signal, "triggered_alerts", [])
         credibility = getattr(scan_signal, "credibility", None)
+
+        # Wave 1 enrichment fields — safe defaults when not injected
+        prior_risk_spike: bool = getattr(scan_signal, "prior_risk_spike", False)
+        thesis_direction: str | None = getattr(scan_signal, "thesis_direction", None)
 
         # ─ Rule 1: Alert Triggered (highest confidence — user-defined) ──────
         if triggered_alerts:
@@ -207,6 +240,71 @@ class SignalEngine:
                 ),
                 metadata={"change_pct": change_pct, "price": current_price},
             ))
+
+        # ─ Rule 5: Trend Reversal (bounce after risk spike) ──────────────
+        # Requires prior_risk_spike=True injected by ScanService (Wave 1).
+        # When not injected, prior_risk_spike=False — rule skips silently.
+        # Mutually exclusive with BREAKOUT (breakout is the stronger signal).
+        if (
+            prior_risk_spike
+            and change_pct >= self._reversal_bounce_pct
+            and not any(r.signal_type == SignalType.BREAKOUT for r in reports)
+        ):
+            strength = min(1.0, change_pct / 8.0)
+            # Higher confidence when volume also elevated
+            confidence = 0.65 + (0.10 if volume_ratio >= 1.3 else 0.0)
+            reports.append(SignalReport(
+                symbol=symbol,
+                signal_type=SignalType.TREND_REVERSAL,
+                strength=round(strength, 3),
+                confidence=round(confidence, 3),
+                source="technical",
+                description=(
+                    f"{symbol} reversal bounce: +{change_pct:.1f}% "
+                    f"sau risk spike — theo dõi confirmation"
+                ),
+                metadata={
+                    "change_pct": change_pct,
+                    "volume_ratio": volume_ratio,
+                    "price": current_price,
+                    "trigger": "prior_risk_spike",
+                },
+            ))
+
+        # ─ Rule 6: Thesis Divergence (price vs. thesis direction) ────────
+        # Requires thesis_direction injected by ScanService (Wave 1).
+        # When not injected, thesis_direction=None — rule skips silently.
+        # Can co-exist with RISK_SPIKE (divergence + risk = double warning).
+        if thesis_direction is not None:
+            is_bull_thesis = thesis_direction == "bull"
+            is_bear_thesis = thesis_direction == "bear"
+            diverged = (
+                (is_bull_thesis and change_pct <= -self._thesis_divergence_min_pct)
+                or (is_bear_thesis and change_pct >= self._thesis_divergence_min_pct)
+            )
+            if diverged:
+                divergence_magnitude = abs(change_pct)
+                strength = min(1.0, divergence_magnitude / 8.0)
+                # Higher confidence when divergence is large
+                confidence = min(0.85, 0.60 + divergence_magnitude * 0.02)
+                direction_label = "tăng" if change_pct > 0 else "giảm"
+                reports.append(SignalReport(
+                    symbol=symbol,
+                    signal_type=SignalType.THESIS_DIVERGENCE,
+                    strength=round(strength, 3),
+                    confidence=round(confidence, 3),
+                    source="combined",
+                    description=(
+                        f"{symbol} đi ngược thesis ({thesis_direction}): "
+                        f"{direction_label} {abs(change_pct):.1f}% — xem xét lại luận điểm"
+                    ),
+                    metadata={
+                        "change_pct": change_pct,
+                        "price": current_price,
+                        "thesis_direction": thesis_direction,
+                        "divergence_pct": round(change_pct, 2),
+                    },
+                ))
 
         # ─ Optional: blend AI credibility score into confidence ─────────
         if credibility is not None:
