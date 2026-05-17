@@ -12,6 +12,7 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from src.ai.schemas._base import Verdict, _coerce_confidence
+from src.ai.schemas.portfolio_risk import PortfolioRiskNarrativeOutput
 
 
 class MarketSentiment(StrEnum):
@@ -157,9 +158,17 @@ class BriefOutput(BaseModel):
     portfolio_summary: list[str] = Field(
         default_factory=list,
         description=(
-            "Nhận xét portfolio alignment với market hôm nay. "
-            "Mỗi item là 1 câu liên tục: rủi ro tập trung, position nổi bật, "
-            "hoặc gợi ý cần chú ý. Rỗng nếu không có portfolio data."
+            "[LEGACY] Nhận xét portfolio alignment flat list. "
+            "Superseded by portfolio_narrative. Retained for backward compat."
+        ),
+    )
+    portfolio_narrative: PortfolioRiskNarrativeOutput | None = Field(
+        default=None,
+        description=(
+            "Structured portfolio risk narrative from PortfolioRiskNarratorAgent. "
+            "None khi không có portfolio data hoặc agent chưa chạy. "
+            "Downstream: bot /brief render opening_line + chapters; "
+            "readmodel cache risk_score cho portfolio risk timeline."
         ),
     )
     action_queue: ActionQueue = Field(
