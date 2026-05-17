@@ -3,6 +3,7 @@
 Owner: watchlist segment.
 Consumes QuoteService (market segment) via injection.
 Consumes SignalCredibilityAgent (ai segment) via optional injection.
+Consumes TickerDirectionQuery (thesis segment) via optional injection.
 
 Responsibility boundary:
   ScanService            → detect triggered alerts + build ScanSignal/ScanResult
@@ -10,6 +11,7 @@ Responsibility boundary:
   AlertService           → mutate alert state (mark_triggered), persist fired alerts
   ReminderService        → owns cooldown logic for ON_SIGNAL reminders
   SignalCredibilityAgent → score signal credibility (optional enrichment)
+  TickerDirectionQuery   → read active thesis direction per ticker (optional enrichment)
   EventBus               → emit SignalDetectedEvent / WatchlistScanCompletedEvent
                            (ScanService emits; handlers live in other segments)
   SignalEventRepository  → persist SignalEvent rows to signal_events table
@@ -27,6 +29,14 @@ ScanService itself NEVER sends Discord messages.
 
 Note: _persist_snapshot does NOT commit — caller (WatchlistScanScheduler)
 is responsible for committing the session after scan_user() returns.
+
+Enrichment fields injected into ScanSignal before SignalEngine.evaluate():
+  prior_risk_spike   — bool: True if RISK_SPIKE was detected for this ticker
+                       in the last 24h. Source: SignalEventRepository.
+                       Enables TREND_REVERSAL signal in SignalEngine.
+  thesis_direction   — str|None: "bull" | "bear" from active thesis.
+                       Source: TickerDirectionQuery (thesis segment, optional).
+                       Enables THESIS_DIVERGENCE signal in SignalEngine.
 """
 
 from __future__ import annotations
@@ -65,6 +75,9 @@ class ScanSignal:
     _volume_ratio: float = field(default=1.0, repr=False)
     # Typed signal reports from SignalEngine — populated by scan_user()
     signal_reports: list[SignalReport] = field(default_factory=list, repr=False)
+    # Wave 2 enrichment fields — injected by ScanService before engine eval
+    prior_risk_spike: bool = field(default=False, repr=False)
+    thesis_direction: str | None = field(default=None, repr=False)
 
     @property
     def has_alerts(self) -> bool:
@@ -195,6 +208,7 @@ class ScanService:
     Detects signals only — delegates alert state mutation to AlertService
     and reminder cooldown logic to ReminderService.
     Optionally enriches signals with credibility scores via SignalCredibilityAgent.
+    Optionally enriches signals with thesis direction via TickerDirectionQuery.
 
     V2: After each scan, runs SignalEngine on each ScanSignal and emits
     SignalDetectedEvent / WatchlistScanCompletedEvent via EventBus.
@@ -209,6 +223,7 @@ class ScanService:
         quote_service: object | None = None,
         credibility_agent: object | None = None,
         signal_engine: SignalEngine | None = None,
+        ticker_direction_query: object | None = None,
     ) -> None:
         self._session = session
         self._repo = WatchlistRepository(session)
@@ -217,6 +232,7 @@ class ScanService:
         self._reminder_service = ReminderService(session)
         self._quote_service = quote_service
         self._credibility_agent = credibility_agent
+        self._ticker_direction_query = ticker_direction_query
         # Default engine with HOSE/HNX-appropriate thresholds
         self._signal_engine = signal_engine or SignalEngine()
 
@@ -241,6 +257,29 @@ class ScanService:
         except Exception as exc:
             logger.warning("scan.bulk_quote_failed", tickers=tickers, error=str(exc))
 
+        # ─ Wave 2: bulk-prefetch enrichment data before scan loop ────────────
+
+        # prior_risk_spike: check signal_events table for RISK_SPIKE in last 24h
+        prior_risk_map: dict[str, bool] = {}
+        for ticker in tickers:
+            try:
+                prior_risk_map[ticker] = await self._signal_event_repo.has_recent_signal(
+                    ticker, "RISK_SPIKE", hours=24, user_id=user_id
+                )
+            except Exception as exc:
+                logger.warning("scan.prior_risk_prefetch_failed", ticker=ticker, error=str(exc))
+                prior_risk_map[ticker] = False
+
+        # thesis_direction: bulk query active thesis per ticker (optional)
+        thesis_direction_map: dict[str, str] = {}
+        if self._ticker_direction_query is not None:
+            try:
+                thesis_direction_map = await self._ticker_direction_query.get_direction_map(  # type: ignore[union-attr]
+                    user_id, tickers
+                )
+            except Exception as exc:
+                logger.warning("scan.thesis_direction_prefetch_failed", error=str(exc))
+
         price_map: dict[str, float] = {}
 
         for ticker in tickers:
@@ -250,7 +289,10 @@ class ScanService:
                 if signal.has_alerts or abs(signal.change_pct) >= 3:
                     if self._credibility_agent is not None:
                         signal = await self._enrich_credibility(signal)
-                    # ── V2: classify via SignalEngine ─────────────────────
+                    # ── Wave 2: inject enrichment fields before engine eval ───────
+                    signal.prior_risk_spike = prior_risk_map.get(ticker, False)
+                    signal.thesis_direction = thesis_direction_map.get(ticker)
+                    # ── V2: classify via SignalEngine ──────────────────────────
                     signal.signal_reports = self._signal_engine.evaluate(signal)
                     result.signals.append(signal)
             except Exception as exc:
@@ -267,7 +309,7 @@ class ScanService:
             signal_tickers = [s.ticker for s in result.signals]
             result.on_signal_reminders = await self._fire_on_signal_reminders(signal_tickers)
 
-        # ── V2: persist + emit events via EventBus ─────────────────
+        # ── V2: persist + emit events via EventBus ──────────────────────
         duration = time.monotonic() - start_time
         await self._emit_events(result, len(tickers), duration, user_id=user_id)
 
@@ -277,6 +319,8 @@ class ScanService:
             scanned=len(tickers),
             triggered=result.triggered_count,
             credibility_enriched=sum(1 for s in result.signals if s.credibility is not None),
+            thesis_enriched=sum(1 for s in result.signals if s.thesis_direction is not None),
+            reversal_candidates=sum(1 for s in result.signals if s.prior_risk_spike),
             on_signal_reminders=len(result.on_signal_reminders),
             signal_reports=sum(len(s.signal_reports) for s in result.signals),
         )
@@ -454,7 +498,7 @@ class ScanService:
                         error=str(exc),
                     )
 
-                # ── Step 2: Publish to EventBus ─────────────────────────
+                # ── Step 2: Publish to EventBus ───────────────────────────
                 try:
                     emitted = await bus.publish(
                         event,

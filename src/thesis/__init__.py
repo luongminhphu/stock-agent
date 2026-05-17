@@ -9,6 +9,7 @@ Public API:
     DTOs:         CreateThesisInput, UpdateThesisInput
     Errors:       ThesisNotFoundError, ThesisAlreadyClosedError
     Results:      InvalidationCheckResult
+    Queries:      TickerDirectionQuery  (cross-segment read contract for watchlist)
 """
 
 from src.thesis.invalidation_service import InvalidationCheckResult, InvalidationService
@@ -33,6 +34,7 @@ from src.thesis.service import (
     UpdateThesisInput,
 )
 from src.thesis.thesis_review_listener import ThesisReviewListener
+from src.thesis.ticker_direction_query import TickerDirectionQuery
 
 __all__ = [
     # Models
@@ -62,4 +64,6 @@ __all__ = [
     "ThesisAlreadyClosedError",
     # Results
     "InvalidationCheckResult",
+    # Queries
+    "TickerDirectionQuery",
 ]

@@ -134,7 +134,7 @@ class WatchlistRepository:
         return result.scalar_one_or_none()
 
 
-# ── Signal Events ──────────────────────────────────────────────────────────────
+# ── Signal Events ──────────────────────────────────────────────────────────────────
 
 
 class SignalEventRepository:
@@ -201,3 +201,38 @@ class SignalEventRepository:
             stmt = stmt.where(SignalEvent.user_id == user_id)
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
+
+    async def has_recent_signal(
+        self,
+        ticker: str,
+        signal_type: str,
+        hours: int = 24,
+        user_id: str | None = None,
+    ) -> bool:
+        """True nếu có signal_type cho ticker trong `hours` giờ gần nhất.
+
+        Dùng bởi ScanService để enrich prior_risk_spike trước khi gọi SignalEngine.
+        SELECT 1 + LIMIT 1 — không fetch full row, minimal I/O.
+
+        Args:
+            ticker:      Stock ticker (normalized to upper).
+            signal_type: SignalType constant, e.g. "RISK_SPIKE".
+            hours:       Look-back window. Default 24h.
+            user_id:     Optional — scope to specific user when provided.
+        """
+        from datetime import timedelta
+
+        from src.watchlist.models import SignalEvent
+
+        cutoff = datetime.now(UTC) - timedelta(hours=hours)
+        stmt = (
+            select(SignalEvent.id)
+            .where(SignalEvent.ticker == ticker.upper())
+            .where(SignalEvent.signal_type == signal_type)
+            .where(SignalEvent.occurred_at >= cutoff)
+            .limit(1)
+        )
+        if user_id:
+            stmt = stmt.where(SignalEvent.user_id == user_id)
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none() is not None
