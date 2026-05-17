@@ -150,3 +150,16 @@ td.cell-missing {
     transition: none;
   }
 }
+
+/* ── Table full-width layout ────────────────────────────────────────────── */
+
+/* Scroll container chiếm toàn bộ width của card/pane */
+.portfolio-pane .table-scroll {
+  width: 100%;
+}
+
+/* Bảng trải đều chiều ngang — cột co giãn theo nội dung nhưng tổng = 100% */
+.portfolio-pane .data-table {
+  width: 100%;
+  table-layout: auto;
+}
