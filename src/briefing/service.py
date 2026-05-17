@@ -78,6 +78,13 @@ B2 fix:
   did_run=True only when run_batch() was reached (active theses existed and
   no early-exit occurred). _build_market_context_with_judge propagates the
   tuple; _collect_contexts unpacks it into thesis_judge_ran.
+
+Wave 1 fixes:
+  - record_feedback(): outcome validated against BriefFeedbackOutcome.VALID_OUTCOMES
+    before DB insert; invalid values are rejected with a warning log (non-raising).
+  - _build_market_context(): q.close accessed via getattr with .price fallback
+    to guard against quote struct mismatch between B1 pre-fetched path and
+    get_bulk_quotes() path. change_pct and volume also use getattr consistently.
 """
 
 from __future__ import annotations
@@ -93,7 +100,7 @@ from src.ai.agents.briefing import BriefingAgent
 from src.ai.agents.thesis_judge import ThesisJudgeAgent
 from src.ai.context_builder import ContextBuilder, render_for_agent
 from src.ai.schemas import BriefOutput
-from src.briefing.models import BriefFeedback, BriefSnapshot
+from src.briefing.models import BriefFeedback, BriefFeedbackOutcome, BriefSnapshot
 from src.briefing.repository import BriefSnapshotRepository
 from src.market.registry import registry as symbol_registry
 from src.platform.logging import get_logger
@@ -238,10 +245,12 @@ class BriefingService:
     ) -> None:
         """Persist a user feedback row for a brief snapshot.
 
-        outcome must be one of: "acted" | "watching" | "skipped".
+        outcome must be one of BriefFeedbackOutcome.VALID_OUTCOMES:
+        "acted" | "watching" | "skipped".
+        Invalid values are rejected with a warning log and early return —
+        non-raising so Discord interaction handlers are never blocked.
         Append-only — does not overwrite previous feedback rows.
-        Failures are logged and swallowed so a DB error never surfaces
-        to the Discord interaction handler.
+        DB errors are logged and swallowed.
         """
         if self._session is None:
             logger.warning(
@@ -251,6 +260,18 @@ class BriefingService:
                 outcome=outcome,
             )
             return
+
+        # Wave 1: validate outcome before touching the DB.
+        if outcome not in BriefFeedbackOutcome.VALID_OUTCOMES:
+            logger.warning(
+                "briefing.record_feedback.invalid_outcome",
+                brief_snapshot_id=brief_snapshot_id,
+                user_id=user_id,
+                outcome=outcome,
+                valid_outcomes=sorted(BriefFeedbackOutcome.VALID_OUTCOMES),
+            )
+            return
+
         try:
             feedback = BriefFeedback(
                 brief_snapshot_id=brief_snapshot_id,
@@ -484,6 +505,10 @@ class BriefingService:
         get_bulk_quotes() call when invoked from _build_market_context_with_judge.
         When quotes is None (standalone callers, scheduler, tests), fetches as before.
 
+        Wave 1 fix: q.close accessed via getattr with .price fallback to guard
+        against struct mismatch between pre-fetched quotes (B1 path) and
+        get_bulk_quotes() quote objects. Same guard applied to change_pct and volume.
+
         Args:
             tickers: watchlist tickers.
             phase:   "morning" | "eod".
@@ -512,11 +537,16 @@ class BriefingService:
 
         lines = [f"Thời điểm: {now}. Watchlist: {', '.join(tickers)}."]
         for q in fetched_quotes:
-            parts = [f"{q.ticker}: {q.close:,.0f}"]
-            if hasattr(q, "change_pct") and q.change_pct is not None:
-                parts.append(f"({q.change_pct:+.2f}%)")
-            if hasattr(q, "volume") and q.volume is not None:
-                parts.append(f"vol={q.volume:,}")
+            # Wave 1: guard .close with .price fallback — pre-fetched and
+            # get_bulk_quotes() objects may use different attribute names.
+            close_price = getattr(q, "close", None) or getattr(q, "price", 0.0) or 0.0
+            parts = [f"{q.ticker}: {close_price:,.0f}"]
+            change_pct = getattr(q, "change_pct", None)
+            if change_pct is not None:
+                parts.append(f"({change_pct:+.2f}%)")
+            volume = getattr(q, "volume", None)
+            if volume is not None:
+                parts.append(f"vol={volume:,}")
             lines.append(" ".join(parts))
 
         # Sector rotation block — optional, non-blocking.
