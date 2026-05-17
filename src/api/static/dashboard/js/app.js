@@ -1,5 +1,5 @@
 /**
- * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard + Wave D lesson loop + Wave E brief ticker + Wave F brief feedback + Wave G brief generate)
+ * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard + Wave D lesson loop + Wave E brief ticker + Wave F brief feedback + Wave G brief generate + Wave 1 UX)
  * Responsibility: import tất cả modules, wire events, khởi động dashboard.
  * Rule: KHÔNG chứa business logic. Chỉ bootstrap + wiring.
  */
@@ -52,6 +52,121 @@ function bindBriefTabs() {
     btn.classList.add('active');
     btn.setAttribute('aria-selected', 'true');
     document.getElementById(targetId)?.classList.remove('hidden');
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Wave 1 UX: Brief auto-open theo giờ trong ngày (GMT+7)
+//   06:00–10:59 → open + active tab morning
+//   14:30–18:30 → open + active tab eod
+//   ngoài giờ   → collapsed (mặc định)
+// ---------------------------------------------------------------------------
+function initBriefAutoOpen() {
+  const collapsible = document.getElementById('briefCollapsible');
+  if (!collapsible) return;
+
+  const now = new Date();
+  // Chuyển sang giờ VN (UTC+7)
+  const vnHour = (now.getUTCHours() + 7) % 24;
+  const vnMin  = now.getUTCMinutes();
+  const vnTime = vnHour + vnMin / 60;
+
+  const isMorningWindow = vnTime >= 6 && vnTime < 11;
+  const isEodWindow     = vnTime >= 14.5 && vnTime <= 18.5;
+
+  if (!isMorningWindow && !isEodWindow) return;
+
+  collapsible.open = true;
+
+  // Activate đúng tab theo window
+  const targetTab = isMorningWindow ? 'morning' : 'eod';
+  const tabBar = collapsible.querySelector('.brief-tab-bar');
+  if (!tabBar) return;
+
+  tabBar.querySelectorAll('.brief-tab').forEach(t => {
+    const isTarget = t.dataset.tab === targetTab;
+    t.classList.toggle('active', isTarget);
+    t.setAttribute('aria-selected', String(isTarget));
+  });
+
+  const morningPane = document.getElementById('morningBriefWrap');
+  const eodPane     = document.getElementById('eodBriefWrap');
+  if (isMorningWindow) {
+    morningPane?.classList.remove('hidden');
+    eodPane?.classList.add('hidden');
+  } else {
+    eodPane?.classList.remove('hidden');
+    morningPane?.classList.add('hidden');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Wave 1 UX: KPI cards clickable — scroll + visual feedback
+// Gọi sau khi loadDashboard() render xong để KPI values đã có.
+// ---------------------------------------------------------------------------
+export function initKpiClickable() {
+  const scrollTo = (targetId, offset = 0) => {
+    const el = document.getElementById(targetId);
+    if (!el) return;
+    const y = el.getBoundingClientRect().top + window.scrollY - offset;
+    window.scrollTo({ top: y, behavior: 'smooth' });
+  };
+
+  // Map: [cardId, targetScrollId, optional filter callback]
+  const kpiMap = [
+    {
+      cardId:   'riskyTheses',
+      targetId: 'thesisBoardTitle',
+      label:    'Xem thesis rủi ro',
+      onEnter:  () => {
+        // Set status filter về 'active' để thấy các thesis đang active
+        const filter = document.getElementById('statusFilter');
+        if (filter && filter.value !== 'active') {
+          filter.value = 'active';
+          filter.dispatchEvent(new Event('change'));
+        }
+      },
+    },
+    {
+      cardId:   'staleReviewCard',
+      targetId: 'thesesTableWrap',
+      label:    'Xem thesis cần review',
+    },
+    {
+      cardId:   'upcoming7d',
+      targetId: 'catalystList',
+      label:    'Xem catalyst calendar',
+    },
+    {
+      cardId:   'openTheses',
+      targetId: 'thesisBoardTitle',
+      label:    'Xem thesis board',
+    },
+  ];
+
+  kpiMap.forEach(({ cardId, targetId, label, onEnter }) => {
+    // Card có thể là article chứa signal-value, hoặc chính signal-card
+    const card = document.getElementById(cardId)
+      ?? document.querySelector(`[id="${cardId}"]`);
+    if (!card) return;
+
+    // Nếu cardId trỏ đến <strong> (signal-value), leo lên <article>
+    const article = card.tagName === 'ARTICLE' ? card : card.closest('article') ?? card;
+
+    article.classList.add('kpi--clickable');
+    article.setAttribute('role', 'button');
+    article.setAttribute('tabindex', '0');
+    article.setAttribute('aria-label', label);
+
+    const handle = () => {
+      onEnter?.();
+      scrollTo(targetId, 72); // 72px offset cho topbar
+    };
+
+    article.addEventListener('click', handle);
+    article.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handle(); }
+    });
   });
 }
 
@@ -156,8 +271,6 @@ function bindLeaderboardSort() {
 document.addEventListener('DOMContentLoaded', async () => {
 
   // ── Error boundary: surface module-load failures visibly ──────────────────
-  // ES module import errors are silent by default — button clicks do nothing.
-  // This catches top-level bootstrap errors and shows a toast.
   window.addEventListener('error', (e) => {
     if (e.filename?.includes('/static/dashboard/')) {
       const banner = document.getElementById('errorBanner');
@@ -174,6 +287,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 1. Bind brief tab switcher
   bindBriefTabs();
+
+  // 1a. Wave 1: auto-open brief theo giờ VN
+  initBriefAutoOpen();
 
   // 1b. Wave E: brief ticker chips → thesis detail
   bindBriefTickerClick();
@@ -276,7 +392,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 10. Leaderboard wiring
   bindLeaderboardSort();
 
-  // 11. Initial parallel load
+  // 11. Initial parallel load — initKpiClickable() gọi sau khi data render xong
   await Promise.all([
     loadDashboard(),
     loadBacktesting(),
@@ -285,4 +401,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadDecisions(),
     loadLeaderboard('score'),
   ]);
+
+  // 12. Wave 1: KPI clickable — wire sau khi DOM đã render đủ values
+  initKpiClickable();
 });
