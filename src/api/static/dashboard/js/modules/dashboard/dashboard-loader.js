@@ -18,7 +18,7 @@ import {
 } from '../backtesting/render-backtesting.js';
 import { renderCatalystList, renderSnapshots } from '../briefing/render-brief.js';
 import { loadLeaderboard } from './leaderboard-loader.js';
-import { renderHealthHeatmap } from './render-heatmap.js';
+import { renderHealthHeatmap, refreshHeatmapCell } from './render-heatmap.js';
 import { countUp, flashValue } from '../../utils/animate.js';
 
 function wireDeleteThesis(id) {
@@ -511,3 +511,28 @@ export function renderSummary(s, portfolio) {
     pnlPctEl.className = pnlPct >= 0 ? 'signal-sub text-success' : 'signal-sub text-danger';
   }
 }
+
+// ---------------------------------------------------------------------------
+// W3/W4 consumer: refresh heatmap cell after AI review completes in panel
+// ---------------------------------------------------------------------------
+
+/**
+ * bindReviewDoneListener()
+ *
+ * Registers the 'breakdown:review-done' listener once on document.
+ * Called at module init (bottom of this file) — intentionally outside
+ * loadDashboard() so the listener is NOT re-registered on each reload.
+ *
+ * On event: calls refreshHeatmapCell(thesisId) to update the 4 color
+ * cells in-place without triggering a full dashboard reload.
+ */
+function bindReviewDoneListener() {
+  document.addEventListener('breakdown:review-done', (e) => {
+    const { thesisId } = e.detail ?? {};
+    if (thesisId == null) return;
+    refreshHeatmapCell(thesisId);
+  });
+}
+
+// Register once at module load time
+bindReviewDoneListener();
