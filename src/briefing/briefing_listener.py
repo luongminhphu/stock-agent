@@ -2,13 +2,13 @@
 
 Owner: briefing segment.
 Subscribes: BriefingRequestedEvent
-Emits:      BriefingReadyEvent (for future analytics / readmodel consumers)
+Emits:      BriefingReadyEvent (consumed by readmodel.CacheSubscriber for cache invalidation)
 
 Boundary:
-- Listener nhận event, resolve deps, gọi BriefingService, gửI Discord channel.
+- Listener nhận event, resolve deps, gọi BriefingService, gửi Discord channel.
 - Không chứa logic generate brief — đó là BriefingService / BriefingAgent.
 - Discord delivery nằm ở đây thay vì bot/scheduler vì briefing là domain
-  concern (ai gửI gì, ở đâu) chứ không phải bot timing concern.
+  concern (ai gửi gì, ở đâu) chứ không phải bot timing concern.
 - discord.Client được inject sau khi bot login (set_client) để tránh coupling
   bootstrap với discord runtime.
 """
@@ -110,8 +110,6 @@ class BriefingListener:
                     brief_result = await svc.generate_eod_brief(user_id=self._user_id)
                 await session.commit()
 
-            # brief_result is BriefResult; .output is BriefOutput (has .sentiment)
-            # BriefingCog does the same: build_brief_embed(brief_result.output, ...)
             embed = build_brief_embed(brief_result.output, phase=phase)
             await channel.send(embed=embed)  # type: ignore[union-attr]
             logger.info(
@@ -122,13 +120,16 @@ class BriefingListener:
                 triggered_by=event.triggered_by,
             )
 
-            # Emit BriefingReadyEvent for future consumers (analytics, readmodel)
+            # Emit BriefingReadyEvent — consumed by readmodel.CacheSubscriber
+            # to invalidate brief_latest cache for this user.
+            # Wave 3: pass user_id so cache invalidation is per-user.
             bus = get_event_bus()
             await bus.publish(
                 BriefingReadyEvent(
                     brief_type=phase,
                     channel="discord",
                     content_summary=getattr(brief_result.output, "summary", "")[:200],
+                    user_id=self._user_id,
                 )
             )
 

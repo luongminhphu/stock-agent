@@ -250,7 +250,7 @@ class ScanService:
                 if signal.has_alerts or abs(signal.change_pct) >= 3:
                     if self._credibility_agent is not None:
                         signal = await self._enrich_credibility(signal)
-                    # ── V2: classify via SignalEngine ───────────────────────
+                    # ── V2: classify via SignalEngine ─────────────────────
                     signal.signal_reports = self._signal_engine.evaluate(signal)
                     result.signals.append(signal)
             except Exception as exc:
@@ -267,7 +267,7 @@ class ScanService:
             signal_tickers = [s.ticker for s in result.signals]
             result.on_signal_reminders = await self._fire_on_signal_reminders(signal_tickers)
 
-        # ── V2: persist + emit events via EventBus ───────────────────
+        # ── V2: persist + emit events via EventBus ─────────────────
         duration = time.monotonic() - start_time
         await self._emit_events(result, len(tickers), duration, user_id=user_id)
 
@@ -399,6 +399,7 @@ class ScanService:
         block bus publish, and vice versa. Scan flow is never interrupted.
 
         Finally, always emit WatchlistScanCompletedEvent regardless of signals found.
+        user_id is forwarded so readmodel.CacheSubscriber can do per-user invalidation.
         """
         bus = get_event_bus()
         total_signals_emitted = 0
@@ -453,7 +454,7 @@ class ScanService:
                         error=str(exc),
                     )
 
-                # ── Step 2: Publish to EventBus ─────────────────────────────
+                # ── Step 2: Publish to EventBus ─────────────────────────
                 try:
                     emitted = await bus.publish(
                         event,
@@ -475,10 +476,12 @@ class ScanService:
                         error=str(exc),
                     )
 
-        # Always emit scan-completed summary event
+        # Always emit scan-completed summary event.
+        # Wave 3: pass user_id so CacheSubscriber can do per-user invalidation.
         try:
             await bus.publish(
                 WatchlistScanCompletedEvent(
+                    user_id=user_id,
                     symbols_scanned=total_scanned,
                     signals_found=total_signals_emitted,
                     duration_seconds=round(duration, 3),

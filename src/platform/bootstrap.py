@@ -187,11 +187,19 @@ async def bootstrap() -> None:
         _signal_engine_agent = SignalEngineAgent(ai_client=_ai_client)  # type: ignore[arg-type]
         logger.info("platform.bootstrap.signal_engine_agent_ready")
 
-    # ── Event Bus + subscribers (start bus FIRST) ────────────────────────────
+    # ── Event Bus + subscribers (start bus FIRST) ─────────────────────────────
     from src.platform.event_bus import get_event_bus
     bus = get_event_bus()
     await bus.start()
     logger.info("platform.bootstrap.event_bus_ready")
+
+    # ── Wave 3 (readmodel): cache invalidation hooks ──────────────────────────
+    # Register immediately after bus.start() so CacheSubscriber handlers
+    # are wired before any other subscriber that might emit scan/briefing events.
+    # Idempotent — safe to call from both API lifespan and bot on_ready.
+    from src.readmodel import CacheSubscriber
+    CacheSubscriber.register()
+    logger.info("platform.bootstrap.cache_subscriber_ready")
 
     if _proactive_alert_agent is None:
         from src.ai.agents.proactive_alert_agent import get_proactive_alert_agent
@@ -275,7 +283,7 @@ async def bootstrap() -> None:
         _opportunity_screen_subscriber.register()
         logger.info("platform.bootstrap.opportunity_screen_subscriber_ready")
 
-    # ── Wave B2: SignalEngineListener ──────────────────────────────────────────
+    # ── Wave B2: SignalEngineListener ───────────────────────────────────────────
     # All 3 required deps are now available as session_factory-backed singletons.
     # portfolio_query and feedback_service remain optional (None = degraded gracefully).
     if _signal_engine_listener is None:
