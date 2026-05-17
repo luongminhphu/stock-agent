@@ -13,6 +13,7 @@ Responsibilities:
 - collect thesis judge verdicts from ai segment (optional, via ThesisJudgeAgent)
 - collect brief feedback summary from readmodel segment (optional, via DashboardService)
 - call BriefingAgent for morning/EOD narrative
+- attach PortfolioRiskNarrativeOutput via PortfolioRiskNarratorAgent (optional)
 - persist BriefSnapshot via BriefSnapshotRepository
 - return BriefResult(output, snapshot_id) to adapters
 - record user feedback (acted/watching/skipped) via record_feedback()
@@ -85,6 +86,13 @@ Wave 1 fixes:
   - _build_market_context(): q.close accessed via getattr with .price fallback
     to guard against quote struct mismatch between B1 pre-fetched path and
     get_bulk_quotes() path. change_pct and volume also use getattr consistently.
+
+PortfolioRiskNarrator (Wave 3):
+  When portfolio_risk_narrator is injected, _run_portfolio_risk_narrator() is
+  called after BriefingAgent returns. It builds PortfolioRiskNarratorContext
+  from pnl_service + SignalEngine output (via ctx quotes) and attaches the
+  result to BriefOutput.portfolio_narrative. Fully non-blocking: any failure
+  leaves portfolio_narrative=None and the brief is unaffected.
 """
 
 from __future__ import annotations
@@ -129,33 +137,39 @@ class BriefingService:
     """Orchestrates morning and end-of-day brief generation.
 
     Args:
-        watchlist_service:      reads user watchlist tickers.
-        quote_service:          fetches bulk market quotes.
-        briefing_agent:         AI agent that writes the brief narrative.
-        pnl_service:            optional — reads open position P&L for portfolio context.
-                                Pass None to skip portfolio section gracefully.
-        thesis_service:         optional — reads active theses for thesis context injection.
-                                When provided, stop_loss levels and key assumptions are
-                                formatted and sent to the AI so it can force ACT_TODAY
-                                for any ticker approaching invalidation.
-                                Pass None to skip thesis section gracefully.
-        session:                AsyncSession for persisting BriefSnapshot, reading past
-                                decision lessons via LessonService, building investor
-                                profile context via ContextBuilder, and reading feedback
-                                summary via DashboardService (Wave 3).
-                                Pass None to skip persistence, lesson injection,
-                                investor profile injection, and feedback injection.
-        sector_rotation_agent:  optional — AI agent that detects sector divergence signals.
-                                When provided, its actionable_insight and top watchlist
-                                crosscheck items are appended to market_context so the
-                                BriefingAgent can factor in rotation dynamics.
-                                Pass None (default) to skip — preserves existing behavior.
-        thesis_judge_agent:     optional — AI agent that cross-checks active theses against
-                                current market signals. When provided, verdicts (weakening /
-                                invalidated) are formatted and appended to market_context
-                                AFTER sector rotation block, BEFORE BriefingAgent LLM call.
-                                Only non-ON_TRACK verdicts are emitted to avoid noise.
-                                Pass None (default) to skip — preserves existing behavior.
+        watchlist_service:       reads user watchlist tickers.
+        quote_service:           fetches bulk market quotes.
+        briefing_agent:          AI agent that writes the brief narrative.
+        pnl_service:             optional — reads open position P&L for portfolio context.
+                                 Pass None to skip portfolio section gracefully.
+        thesis_service:          optional — reads active theses for thesis context injection.
+                                 When provided, stop_loss levels and key assumptions are
+                                 formatted and sent to the AI so it can force ACT_TODAY
+                                 for any ticker approaching invalidation.
+                                 Pass None to skip thesis section gracefully.
+        session:                 AsyncSession for persisting BriefSnapshot, reading past
+                                 decision lessons via LessonService, building investor
+                                 profile context via ContextBuilder, and reading feedback
+                                 summary via DashboardService (Wave 3).
+                                 Pass None to skip persistence, lesson injection,
+                                 investor profile injection, and feedback injection.
+        sector_rotation_agent:   optional — AI agent that detects sector divergence signals.
+                                 When provided, its actionable_insight and top watchlist
+                                 crosscheck items are appended to market_context so the
+                                 BriefingAgent can factor in rotation dynamics.
+                                 Pass None (default) to skip — preserves existing behavior.
+        thesis_judge_agent:      optional — AI agent that cross-checks active theses against
+                                 current market signals. When provided, verdicts (weakening /
+                                 invalidated) are formatted and appended to market_context
+                                 AFTER sector rotation block, BEFORE BriefingAgent LLM call.
+                                 Only non-ON_TRACK verdicts are emitted to avoid noise.
+                                 Pass None (default) to skip — preserves existing behavior.
+        portfolio_risk_narrator: optional — AI agent that produces a structured portfolio
+                                 risk narrative (PortfolioRiskNarrativeOutput). When provided,
+                                 called after BriefingAgent returns; result attached to
+                                 BriefOutput.portfolio_narrative. Requires pnl_service to be
+                                 set — skipped silently when pnl_service is None.
+                                 Pass None (default) to skip — preserves existing behavior.
     """
 
     def __init__(
@@ -168,6 +182,7 @@ class BriefingService:
         session: AsyncSession | None = None,
         sector_rotation_agent: object | None = None,
         thesis_judge_agent: ThesisJudgeAgent | None = None,
+        portfolio_risk_narrator: object | None = None,
     ) -> None:
         self._watchlist_service = watchlist_service
         self._quote_service = quote_service
@@ -178,6 +193,7 @@ class BriefingService:
         self._repo = BriefSnapshotRepository(session) if session is not None else None
         self._sector_rotation_agent = sector_rotation_agent
         self._thesis_judge_agent = thesis_judge_agent
+        self._portfolio_risk_narrator = portfolio_risk_narrator
 
     async def generate_morning_brief(self, user_id: str) -> BriefResult:
         ctx = await self._collect_contexts(user_id, phase="morning")
@@ -202,6 +218,13 @@ class BriefingService:
             past_lessons=ctx["past_lessons"],
             investor_profile=ctx["investor_profile"],
             feedback_summary=ctx["feedback_summary"],
+        )
+        # Wire PortfolioRiskNarratorAgent — attaches to result.portfolio_narrative
+        result = await self._run_portfolio_risk_narrator(user_id=user_id, result=result, ctx=ctx)
+        logger.info(
+            "briefing.morning_narrator",
+            user_id=user_id,
+            has_portfolio_narrative=result.portfolio_narrative is not None,
         )
         snapshot_id = await self._persist(
             user_id=user_id, phase="morning", output=result, tickers=ctx["tickers"]
@@ -231,6 +254,13 @@ class BriefingService:
             past_lessons=ctx["past_lessons"],
             investor_profile=ctx["investor_profile"],
             feedback_summary=ctx["feedback_summary"],
+        )
+        # Wire PortfolioRiskNarratorAgent — attaches to result.portfolio_narrative
+        result = await self._run_portfolio_risk_narrator(user_id=user_id, result=result, ctx=ctx)
+        logger.info(
+            "briefing.eod_narrator",
+            user_id=user_id,
+            has_portfolio_narrative=result.portfolio_narrative is not None,
         )
         snapshot_id = await self._persist(
             user_id=user_id, phase="eod", output=result, tickers=ctx["tickers"]
@@ -342,7 +372,8 @@ class BriefingService:
         Returns a dict with keys:
           tickers, market_context, portfolio_context, thesis_context,
           past_lessons, investor_profile, feedback_summary,
-          context_source, sector_rotation_injected, thesis_judge_ran.
+          context_source, sector_rotation_injected, thesis_judge_ran,
+          quotes (pre-fetched dict, may be {} when judge not injected).
         """
         t_total = time.monotonic()
 
@@ -363,6 +394,9 @@ class BriefingService:
 
         t0 = time.monotonic()
         thesis_judge_ran = False
+        # Pre-fetched quotes — populated when thesis_judge_agent is injected (B1);
+        # kept in ctx so _run_portfolio_risk_narrator can reuse without a second fetch.
+        _quotes_by_ticker: dict = {}
         if self._thesis_judge_agent is not None:
             # Fetch quotes once — reused by both market_context and thesis_judge_block
             try:
@@ -447,7 +481,60 @@ class BriefingService:
             "context_source": context_source,
             "sector_rotation_injected": sector_rotation_injected,
             "thesis_judge_ran": thesis_judge_ran,
+            "quotes": _quotes_by_ticker,
         }
+
+    async def _run_portfolio_risk_narrator(
+        self,
+        user_id: str,
+        result: BriefOutput,
+        ctx: dict,
+    ) -> BriefOutput:
+        """Run PortfolioRiskNarratorAgent and attach output to result.portfolio_narrative.
+
+        Fully non-blocking: any failure returns result unchanged (portfolio_narrative=None).
+        Skipped silently when portfolio_risk_narrator or pnl_service is not injected.
+
+        Builds PortfolioRiskNarratorContext from:
+          - pnl_service.get_portfolio_pnl(user_id) → PortfolioRiskNote
+          - ctx["quotes"] → per-ticker price data for SignalEngine context
+
+        Owner: briefing (adapter). Narrator logic stays in ai segment.
+        """
+        if self._portfolio_risk_narrator is None or self._pnl_service is None:
+            return result
+        try:
+            from src.ai.agents.portfolio_risk_narrator import PortfolioRiskNarratorContext  # noqa: PLC0415
+            from src.ai.schemas import PortfolioRiskNote  # noqa: PLC0415
+
+            pnl = await self._pnl_service.get_portfolio_pnl(user_id)  # type: ignore[attr-defined]
+            if not pnl or not getattr(pnl, "positions", None):
+                return result
+
+            # Build a minimal PortfolioRiskNote from pnl snapshot
+            risk_note = PortfolioRiskNote(
+                total_positions=len(pnl.positions),
+                total_market_value=getattr(pnl, "total_market_value", 0.0),
+                total_unrealized_pnl=getattr(pnl, "total_unrealized_pnl", 0.0),
+                total_unrealized_pct=getattr(pnl, "total_unrealized_pct", 0.0),
+                tickers=[p.ticker for p in pnl.positions],
+            )
+
+            narrator_ctx = PortfolioRiskNarratorContext(
+                portfolio_risk=risk_note,
+                signal_output=None,   # no SignalEngineOutput in this path
+                stress_test=None,
+            )
+            narrative = await self._portfolio_risk_narrator.run(narrator_ctx)  # type: ignore[attr-defined]
+            if narrative is not None:
+                result.portfolio_narrative = narrative
+        except Exception as exc:
+            logger.warning(
+                "briefing.portfolio_risk_narrator_failed",
+                user_id=user_id,
+                error=str(exc),
+            )
+        return result
 
     async def _persist(
         self,
