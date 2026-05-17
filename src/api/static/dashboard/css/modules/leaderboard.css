@@ -1,229 +1,200 @@
-/* ─── Leaderboard Strip ─────────────────────────────────────────────────────
-   Owner   : modules/leaderboard
-   Wave A  : HTML #leaderboardStrip + ol#leaderboardList
-   API     : GET /api/v1/readmodel/leaderboard?sort_by=score&limit=5
-   JS owner: js/modules/leaderboard/leaderboard-service.js
+/* leaderboard.css — Thesis Leaderboard strip
+   Owner: dashboard / readmodel adapter
+   Depends on: variables.css, layout.css
+   ─────────────────────────────────────────────────────────────────── */
 
-   TOKEN MAP (from variables.css):
-     --bg / --surface / --surface-2 / --surface-3
-     --text / --muted / --faint / --line / --line-strong
-     --brand / --brand-strong / --success / --warning / --danger / --violet
-     --radius-lg / --radius-md / --radius-sm
-     --page-px / --content-max / --layer-gap  (from layout.css)
-─────────────────────────────────────────────────────────────────────────── */
-
-/* ── Outer strip geometry ────────────────────────────────────────────────── */
+/* ── Strip container ─────────────────────────────────────────────── */
 .lb-strip {
-  padding-inline: var(--page-px);
-  padding-block: 14px 16px;
-  /* no margin-bottom — panel-duo gap handles spacing */
-  max-width: var(--content-max);
-  margin-inline: auto;
-  width: 100%;
-  /* fill panel height in duo context */
   display: flex;
   flex-direction: column;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
 }
 
-/* lb-list grows to fill remaining height inside the panel */
-.lb-strip .lb-list {
-  flex: 1;
-}
-
-/* ── Header: eyebrow + sort buttons ─────────────────────────────────────── */
 .lb-strip-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: 12px;
+  padding: var(--space-md, 16px) var(--space-md, 16px) 0;
 }
 
+.lb-strip-header > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* ── Sort bar ────────────────────────────────────────────────────── */
 .lb-sort-bar {
   display: flex;
+  align-items: center;
   gap: 4px;
+  flex-shrink: 0;
 }
 
 .lb-sort-btn {
-  padding: 5px 14px;
-  border-radius: 99px;
-  font-size: 0.76rem;
+  padding: 4px 10px;
+  font-size: .72rem;
   font-weight: 600;
-  letter-spacing: 0.03em;
   color: var(--muted);
-  background: transparent;
-  border: 1px solid rgba(148, 163, 184, 0.15);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition: color .15s, background .15s, border-color .15s;
+  line-height: 1.4;
   white-space: nowrap;
 }
+
 .lb-sort-btn:hover {
   color: var(--text);
-  background: rgba(125, 211, 252, 0.06);
-}
-.lb-sort-btn.active {
-  color: var(--brand);
-  background: rgba(125, 211, 252, 0.1);
-  border-color: rgba(125, 211, 252, 0.3);
+  background: var(--surface-3, rgba(255,255,255,.04));
 }
 
-/* ── List container — vertical stack to match backtesting layout ─────────── */
+.lb-sort-btn.active {
+  color: var(--brand);
+  background: rgba(125, 211, 252, .12);
+  border-color: rgba(125, 211, 252, .22);
+}
+
+/* ── List ────────────────────────────────────────────────────────── */
 .lb-list {
   list-style: none;
   margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: 1fr;   /* single column, vertical list */
-  gap: 6px;
+  padding: 8px 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 
-/* ── Individual item ─────────────────────────────────────────────────────── */
+/* ── Item ────────────────────────────────────────────────────────── */
 .lb-item {
-  display: flex;
-  flex-direction: row;
+  display: grid;
+  grid-template-columns: 1.4rem 1fr auto;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  background: rgba(255, 255, 255, 0.025);
-  border: 1px solid rgba(148, 163, 184, 0.1);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, transform 0.12s;
-  min-width: 0;
-  overflow: hidden;
-  position: relative;
-}
-.lb-item:hover {
-  background: rgba(125, 211, 252, 0.05);
-  border-color: rgba(125, 211, 252, 0.2);
-  transform: translateY(-1px);
-}
-.lb-item:focus-visible {
-  outline: 2px solid var(--brand);
-  outline-offset: 2px;
+  gap: 8px;
+  padding: 7px var(--space-md, 16px);
+  border-bottom: 1px solid var(--line, rgba(255,255,255,.06));
+  transition: background .15s;
+  cursor: default;
 }
 
-/* ── Rank number + medal colours ─────────────────────────────────────────── */
+.lb-item:last-child { border-bottom: none; }
+
+.lb-item:hover { background: var(--surface-3, rgba(255,255,255,.03)); }
+
+/* Rank number */
 .lb-rank {
-  font-size: 0.68rem;
+  font-size: .72rem;
   font-weight: 700;
-  letter-spacing: 0.06em;
   color: var(--faint);
-  text-transform: uppercase;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
   line-height: 1;
-  flex-shrink: 0;
-  width: 1.4rem;
-  text-align: center;
 }
-.lb-rank[data-rank="1"] { color: #fbbf24; }  /* gold */
-.lb-rank[data-rank="2"] { color: #94a3b8; }  /* silver */
-.lb-rank[data-rank="3"] { color: #b45309; }  /* bronze */
 
-/* ── Ticker + direction row ───────────────────────────────────────────────── */
-.lb-ticker-row {
+.lb-item:nth-child(1) .lb-rank { color: #f59e0b; }
+.lb-item:nth-child(2) .lb-rank { color: #94a3b8; }
+.lb-item:nth-child(3) .lb-rank { color: #b45309; }
+
+/* Main content */
+.lb-main {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  gap: 1px;
   min-width: 0;
-  flex: 1;  /* takes remaining width */
 }
+
 .lb-ticker {
-  font-size: 1rem;
+  font-size: .82rem;
   font-weight: 700;
-  color: var(--brand);
-  letter-spacing: 0.04em;
+  color: var(--text);
+  line-height: 1.2;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+
 .lb-title {
-  font-size: 0.76rem;
+  font-size: .72rem;
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  min-width: 0;
 }
 
-/* ── Score / metric value ────────────────────────────────────────────────── */
-.lb-metric {
-  font-size: 0.82rem;
-  font-weight: 600;
+/* Score / PnL value */
+.lb-value {
+  font-size: .85rem;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
-  color: var(--text);
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-  flex-shrink: 0;
-  min-width: 5.5rem;
-  justify-content: flex-end;
-  text-align: right;
-}
-.lb-metric-label {
-  font-size: 0.68rem;
-  font-weight: 500;
-  color: var(--faint);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-.lb-metric.up   { color: var(--success); }
-.lb-metric.down { color: var(--danger);  }
-
-/* Score tier icon aligned right ─────────────────────────────────────────── */
-.lb-tier {
-  font-size: 0.7rem;
-  color: var(--muted);
   white-space: nowrap;
-  flex-shrink: 0;
+  color: var(--text);
 }
 
-/* ── Detail flash highlight (after scroll-into-view) ─────────────────────── */
-@keyframes lb-flash {
-  0%   { box-shadow: 0 0 0 2px var(--brand); }
-  60%  { box-shadow: 0 0 0 4px color-mix(in oklch, var(--brand) 40%, transparent); }
-  100% { box-shadow: none; }
-}
-.lb-detail-flash {
-  animation: lb-flash 0.9s ease-out forwards;
+.lb-value.positive { color: var(--green, #4ade80); }
+.lb-value.negative { color: var(--red,   #f87171); }
+
+/* Score badge */
+.lb-score-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: .75rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
 }
 
-/* ── Skeleton item (before fetch completes) ──────────────────────────────── */
+.lb-score-badge.tier-a  { background: rgba(74,222,128,.15); color: #4ade80; }
+.lb-score-badge.tier-b  { background: rgba(125,211,252,.15); color: #7dd3fc; }
+.lb-score-badge.tier-c  { background: rgba(251,191,36,.15);  color: #fbbf24; }
+.lb-score-badge.tier-d  { background: rgba(248,113,113,.15); color: #f87171; }
+
+/* Direction indicator */
+.lb-direction {
+  font-size: .68rem;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.lb-direction.bullish  { background: rgba(74,222,128,.12);  color: #4ade80; }
+.lb-direction.bearish  { background: rgba(248,113,113,.12); color: #f87171; }
+.lb-direction.neutral  { background: rgba(148,163,184,.12); color: #94a3b8; }
+
+/* ── Skeleton items ──────────────────────────────────────────────── */
 .lb-item--skel {
-  pointer-events: none;
   cursor: default;
-  transform: none !important;
-}
-.lb-item--skel:hover {
-  background: rgba(255, 255, 255, 0.025);
-  border-color: rgba(148, 163, 184, 0.1);
-}
-
-/* ── Loading state on the strip itself ───────────────────────────────────── */
-.lb-strip[aria-busy="true"] .lb-sort-btn {
   pointer-events: none;
-  opacity: 0.5;
 }
 
-/* ── Empty state ─────────────────────────────────────────────────────────── */
+/* Extracted from inline style: width:100%;height:2.4rem */
+.lb-item--skel .skel-text {
+  width: 100%;
+  height: 2.4rem;
+}
+
+/* ── Empty / error states ────────────────────────────────────────── */
 .lb-empty {
-  grid-column: 1 / -1;
-  padding: 24px 12px;
+  padding: 24px 16px;
   text-align: center;
-  color: var(--muted);
-  font-size: 0.84rem;
+  font-size: .82rem;
+  color: var(--faint);
 }
 
-/* ── Responsive: narrow → stays vertical on mobile ───────────────────────── */
-@media (max-width: 768px) {
-  .lb-list {
-    grid-template-columns: 1fr;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: thin;
-    scrollbar-color: var(--line) transparent;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 4px;
+/* ── Responsive ──────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .lb-item {
+    grid-template-columns: 1.2rem 1fr auto;
+    gap: 6px;
+    padding: 6px 12px;
   }
-}
-@media (max-width: 480px) {
-  .lb-strip-header { flex-direction: column; align-items: flex-start; }
 }
