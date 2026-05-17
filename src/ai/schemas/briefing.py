@@ -88,7 +88,7 @@ class ActionQueue(BaseModel):
     )
     top_action: PrioritizedAction | None = Field(
         default=None,
-        description="ACT_TODAY item with highest confidence; None if no ACT_TODAY.",Jenkins
+        description="ACT_TODAY item with highest confidence; None if no ACT_TODAY.",
     )
     signal_summary: str = Field(
         default="",
