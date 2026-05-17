@@ -2,14 +2,17 @@
 
 Owner: thesis segment.
 Consumes WatchdogAgent (ai segment) via injection.
+Consumes InvalidationService for auto-invalidation on URGENT_ALERT.
 Consumes ThesisRepository for loading active theses.
 
 Responsibility boundary:
-  WatchdogService  → load active theses, build context, call agent, decide alert level,
-                     persist ThesisHealthSnapshot, return WatchdogRunResult
-  WatchdogAgent    → score health only, no DB writes
-  InvalidationService → still owns auto-invalidation rules (called separately)
-  Bot/scheduler    → calls WatchdogService.run_for_user(), dispatches Discord from result
+  WatchdogService     → load active theses, build context, call agent, decide alert level,
+                        persist ThesisHealthSnapshot, return WatchdogRunResult.
+                        When alert_level=URGENT_ALERT and invalidation_svc is injected,
+                        calls check_with_ai() and auto-invalidates if verdict=CONFIRMED.
+  WatchdogAgent       → score health only, no DB writes
+  InvalidationService → owns auto-invalidation rules + AI confirmation layer
+  Bot/scheduler       → calls WatchdogService.run_for_user(), dispatches Discord from result
 
 3-tier alert levels:
   OK             → no notification, health visible in morning brief only
@@ -25,12 +28,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.logging import get_logger
-from src.thesis.models import AssumptionStatus, Thesis
+from src.thesis.models import AssumptionStatus, Thesis, ThesisStatus
 from src.thesis.repository import ThesisRepository
+
+if TYPE_CHECKING:
+    from src.ai.schemas.invalidation import InvalidationSignal
+    from src.thesis.invalidation_service import InvalidationService
 
 logger = get_logger(__name__)
 
@@ -53,6 +61,8 @@ class WatchdogTickerResult:
     discord_summary: str | None
     stop_loss_distance_pct: float | None = None
     agent_failed: bool = False
+    invalidation_signal: InvalidationSignal | None = None
+    auto_invalidated: bool = False
 
 
 @dataclass
@@ -81,18 +91,30 @@ class WatchdogRunResult:
 
 
 class WatchdogService:
-    """Daily orchestration: load active theses → assess health → return alert results."""
+    """Daily orchestration: load active theses → assess health → return alert results.
+
+    Args:
+        session:           AsyncSession per-request.
+        watchdog_agent:    WatchdogAgent instance (ai segment). None → rule-based only.
+        quote_service:     QuoteService for fetching current prices. None → skip price check.
+        invalidation_svc:  InvalidationService with detector injected (optional).
+                           When provided, URGENT_ALERT theses go through check_with_ai();
+                           if verdict=CONFIRMED the thesis is auto-invalidated.
+                           Pass None to skip AI invalidation layer (default, backward compat).
+    """
 
     def __init__(
         self,
         session: AsyncSession,
         watchdog_agent: object | None = None,
         quote_service: object | None = None,
+        invalidation_svc: InvalidationService | None = None,
     ) -> None:
         self._session = session
         self._repo = ThesisRepository(session)
         self._agent = watchdog_agent
         self._quote_service = quote_service
+        self._invalidation_svc = invalidation_svc
 
     async def run_for_user(self, user_id: str) -> WatchdogRunResult:
         """Run watchdog for all active theses of a user."""
@@ -157,7 +179,7 @@ class WatchdogService:
             stop_loss_distance_pct=stop_loss_distance_pct,
         )
         if rule_alert == "URGENT_ALERT" and self._agent is None:
-            return WatchdogTickerResult(
+            result = WatchdogTickerResult(
                 thesis_id=thesis.id,
                 ticker=thesis.ticker,
                 alert_level="URGENT_ALERT",
@@ -168,6 +190,14 @@ class WatchdogService:
                 stop_loss_distance_pct=stop_loss_distance_pct,
                 agent_failed=False,
             )
+            await self._maybe_invalidate(
+                result=result,
+                thesis=thesis,
+                current_price=current_price,
+                watchdog_verdict="CRITICAL",
+                watchdog_urgency="URGENT_ALERT",
+            )
+            return result
 
         # AI-based assessment
         if self._agent is not None:
@@ -209,7 +239,7 @@ class WatchdogService:
                         stop_loss_distance_pct=stop_loss_distance_pct,
                     )
 
-                return WatchdogTickerResult(
+                result = WatchdogTickerResult(
                     thesis_id=thesis.id,
                     ticker=thesis.ticker,
                     alert_level=alert_level,
@@ -220,9 +250,18 @@ class WatchdogService:
                     stop_loss_distance_pct=stop_loss_distance_pct,
                     agent_failed=False,
                 )
+                if alert_level == "URGENT_ALERT":
+                    await self._maybe_invalidate(
+                        result=result,
+                        thesis=thesis,
+                        current_price=current_price,
+                        watchdog_verdict=health.overall_health,
+                        watchdog_urgency=alert_level,
+                    )
+                return result
 
         # Fallback: agent unavailable or failed — use rule-based only
-        return WatchdogTickerResult(
+        result = WatchdogTickerResult(
             thesis_id=thesis.id,
             ticker=thesis.ticker,
             alert_level=rule_alert,
@@ -233,6 +272,62 @@ class WatchdogService:
             stop_loss_distance_pct=stop_loss_distance_pct,
             agent_failed=self._agent is not None,
         )
+        if rule_alert == "URGENT_ALERT":
+            await self._maybe_invalidate(
+                result=result,
+                thesis=thesis,
+                current_price=current_price,
+                watchdog_verdict=None,
+                watchdog_urgency="URGENT_ALERT",
+            )
+        return result
+
+    async def _maybe_invalidate(
+        self,
+        result: WatchdogTickerResult,
+        thesis: Thesis,
+        current_price: float | None,
+        watchdog_verdict: str | None,
+        watchdog_urgency: str | None,
+    ) -> None:
+        """Run check_with_ai() on URGENT_ALERT theses; auto-invalidate if CONFIRMED.
+
+        Non-blocking: any failure is logged and swallowed — result is not affected.
+        Mutates result.invalidation_signal and result.auto_invalidated in-place.
+        """
+        if self._invalidation_svc is None:
+            return
+
+        try:
+            _rule_result, signal = await self._invalidation_svc.check_with_ai(
+                thesis=thesis,
+                current_score=float(result.health_score or 0),
+                current_price=current_price,
+                watchdog_verdict=watchdog_verdict,
+                watchdog_urgency=watchdog_urgency,
+            )
+            result.invalidation_signal = signal
+
+            if signal is not None and signal.verdict == "CONFIRMED":
+                thesis.status = ThesisStatus.INVALIDATED
+                thesis.closed_at = datetime.now(UTC)
+                await self._repo.save(thesis)
+                result.auto_invalidated = True
+                logger.info(
+                    "watchdog.auto_invalidated",
+                    thesis_id=thesis.id,
+                    ticker=thesis.ticker,
+                    action=signal.action,
+                    confidence=signal.confidence,
+                )
+
+        except Exception as exc:
+            logger.warning(
+                "watchdog.invalidation_check_failed thesis_id=%s ticker=%s: %s",
+                thesis.id,
+                thesis.ticker,
+                exc,
+            )
 
     def _rule_based_check(
         self,
