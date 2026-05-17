@@ -6,7 +6,7 @@ Owner: platform segment.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -15,7 +15,7 @@ from uuid import uuid4
 class DomainEvent:
     """Base class for all domain events."""
     event_id: str = field(default_factory=lambda: str(uuid4()))
-    occurred_at: datetime = field(default_factory=datetime.utcnow)
+    occurred_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 # ─── watchlist / signal ─────────────────────────────────────────────────────
