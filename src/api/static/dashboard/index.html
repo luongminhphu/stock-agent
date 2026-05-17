@@ -745,11 +745,11 @@
             </div>
             <div class="form-field">
               <label for="decActionField">Hành động *</label>
-              <select id="decActionField" name="action">
-                <option value="buy">MUA</option>
-                <option value="sell">BÁN</option>
-                <option value="hold">GIỮ</option>
-                <option value="skip">BỀ QUA</option>
+              <select id="decActionField" name="decision_type">
+                <option value="BUY">MUA</option>
+                <option value="SELL">BÁN</option>
+                <option value="HOLD">GIỮ</option>
+                <option value="SKIP">BỎ QUA</option>
               </select>
             </div>
           </div>
@@ -763,8 +763,15 @@
               <input id="decQtyField" name="quantity" type="number" placeholder="1000" step="100" />
             </div>
           </div>
+          <!-- Thesis linkage — populated by openDecisionModal() via populateThesisSelect() -->
           <div class="form-field">
-            <label for="decReasonField">Lý do quyết định</label>
+            <label for="decisionThesisSelect">Thesis liên quan</label>
+            <select id="decisionThesisSelect" name="thesis_id">
+              <option value="">— Chọn thesis (không bắt buộc) —</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="decReasonField">Lý do quyết định *</label>
             <textarea id="decReasonField" name="reasoning" placeholder="Tại sao quyết định này? Thesis nào dẫn đến hành động này?" rows="3"></textarea>
           </div>
           <div class="form-field">
@@ -787,6 +794,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="/static/dashboard/js/app.js?v=17" data-cfasync="false"></script>
+    <script type="module" src="/static/dashboard/js/app.js?v=18" data-cfasync="false"></script>
   </body>
 </html>

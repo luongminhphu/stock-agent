@@ -167,22 +167,37 @@ export function bindLogDecisionModal() {
     submitBtn.textContent = 'Đang lưu…';
 
     try {
+      // Read thesis_id from the populated select — nullable, not required
+      const thesisRaw = document.getElementById('decisionThesisSelect')?.value;
+      const thesisId  = thesisRaw ? parseInt(thesisRaw, 10) : null;
+
       const payload = {
-        thesis_id:           parseInt(form.thesis_id.value, 10),
-        decision_type:       form.decision_type.value,
-        rationale:           form.rationale.value.trim(),
-        brief_summary:       form.brief_summary?.value?.trim() || null,
-        review_horizon_days: parseInt(form.review_horizon_days.value, 10) || 30,
+        ticker:              form.decTickerField?.value?.trim().toUpperCase() || null,
+        thesis_id:           thesisId,
+        decision_type:       form.decActionField.value,
+        rationale:           form.decReasonField.value.trim(),
+        review_horizon_days: 30,
       };
 
-      if (!payload.thesis_id || !payload.decision_type || !payload.rationale) {
-        alert('Vui lòng điền đầy đủ Thesis, Loại quyết định và Rationale.');
+      // Optional enrichment fields
+      const price = parseFloat(form.decPriceField?.value);
+      const qty   = parseInt(form.decQtyField?.value, 10);
+      const emotion = form.decEmotionField?.value;
+      if (!isNaN(price) && price > 0)   payload.price    = price;
+      if (!isNaN(qty)   && qty   > 0)   payload.quantity = qty;
+      if (emotion)                       payload.emotion_tag = emotion;
+
+      if (!payload.decision_type || !payload.rationale) {
+        alert('Vui lòng điền đầy đủ Hành động và Lý do quyết định.');
         return;
       }
 
       await sendJson('/api/v1/decisions', 'POST', payload);
       modal.close();
       form.reset();
+      // Reset thesis select to placeholder after form.reset()
+      const sel = document.getElementById('decisionThesisSelect');
+      if (sel) sel.value = '';
       await loadDecisions();
     } catch (err) {
       alert(`Lỗi lưu decision: ${err.message}`);
@@ -255,7 +270,7 @@ async function populateThesisSelect() {
       sel.innerHTML = '<option value="">Không có thesis active</option>';
       return;
     }
-    sel.innerHTML = '<option value="">-- Chọn Thesis --</option>' +
+    sel.innerHTML = '<option value="">— Chọn thesis (không bắt buộc) —</option>' +
       list.map(t =>
         `<option value="${t.id}">[${t.ticker}] ${t.title ?? t.ticker}</option>`
       ).join('');
