@@ -2,6 +2,10 @@
 Schemas for SignalEngineAgent.
 
 Owner: ai segment.
+
+Note: PortfolioRiskNote has been moved to _base.py (shared input context
+used by multiple agents). It is re-imported here for backward compat
+with any internal references, and exported from __init__.py as before.
 """
 
 from enum import StrEnum
@@ -9,7 +13,18 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from src.ai.schemas._base import Verdict, _coerce_confidence
+from src.ai.schemas._base import PortfolioRiskNote, Verdict, _coerce_confidence
+
+# Re-export so `from src.ai.schemas.signal_engine import PortfolioRiskNote` still works.
+__all__ = [
+    "SignalUrgency",
+    "Signal",
+    "RankedSignal",
+    "PortfolioRiskNote",
+    "RiskAlert",
+    "OpportunityHint",
+    "SignalEngineOutput",
+]
 
 
 class SignalUrgency(StrEnum):
@@ -84,28 +99,6 @@ class RankedSignal(Signal):
             "E.g. 'User ignored 3/3 Banking signals in past 30 days - lower priority'."
         ),
     )
-
-
-class PortfolioRiskNote(BaseModel):
-    """Rule-based portfolio risk context. Not AI-generated."""
-
-    top_concentration: list[str] = Field(
-        default_factory=list,
-        description="Tickers with weight_pct > 25% - concentration risk.",
-    )
-    losing_positions: list[str] = Field(
-        default_factory=list,
-        description="Tickers with pnl_pct < -5%.",
-    )
-    misaligned_positions: list[str] = Field(
-        default_factory=list,
-        description="Tickers held but last_verdict is BEARISH.",
-    )
-    total_pnl_pct: float | None = Field(
-        default=None,
-        description="Total portfolio PnL %.",
-    )
-    position_count: int = Field(default=0)
 
 
 class RiskAlert(BaseModel):
