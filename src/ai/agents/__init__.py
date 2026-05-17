@@ -5,6 +5,8 @@ All agent facades exposed here. Callers outside this segment
 import from `src.ai.agents`, not from individual modules.
 """
 from .briefing import BriefingAgent
+from .invalidation_detector import ThesisInvalidationDetector
+from .next_action_suggester import NextActionSuggester
 from .portfolio_risk_narrator import PortfolioRiskNarratorAgent, PortfolioRiskNarratorContext
 from .pretrade import PreTradeAgent
 from .proactive_alert_agent import ProactiveAlertAgent, get_proactive_alert_agent
@@ -20,6 +22,7 @@ from .watchdog import WatchdogAgent
 
 __all__ = [
     "BriefingAgent",
+    "NextActionSuggester",
     "PortfolioRiskNarratorAgent",
     "PortfolioRiskNarratorContext",
     "PreTradeAgent",
@@ -31,6 +34,7 @@ __all__ = [
     "SignalEngineAgent",
     "StressTestAgent",
     "ThesisSuggestAgent",
+    "ThesisInvalidationDetector",
     "ThesisJudgeAgent",
     "ThesisReviewAgent",
     "WatchdogAgent",

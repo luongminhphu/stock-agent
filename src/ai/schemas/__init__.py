@@ -123,6 +123,13 @@ from src.ai.schemas.invalidation import (
     InvalidationVerdict,
 )
 
+# --- Next Action ---
+from src.ai.schemas.next_action import (
+    ActionScope,
+    NextActionPlan,
+    SuggestedAction,
+)
+
 __all__ = [
     # Base
     "Verdict",
@@ -201,4 +208,8 @@ __all__ = [
     "BreachType",
     "InvalidationVerdict",
     "InvalidationSignal",
+    # Next Action
+    "ActionScope",
+    "SuggestedAction",
+    "NextActionPlan",
 ]
