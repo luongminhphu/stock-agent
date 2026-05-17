@@ -14,6 +14,7 @@ Responsibilities:
 - collect brief feedback summary from readmodel segment (optional, via DashboardService)
 - call BriefingAgent for morning/EOD narrative
 - attach PortfolioRiskNarrativeOutput via PortfolioRiskNarratorAgent (optional)
+- attach NextActionPlan via NextActionSuggester (optional)
 - persist BriefSnapshot via BriefSnapshotRepository
 - return BriefResult(output, snapshot_id) to adapters
 - record user feedback (acted/watching/skipped) via record_feedback()
@@ -101,6 +102,17 @@ PortfolioRiskNarrator bug fixes:
   B2: _portfolio_risk_narrator.run() does not exist. Fixed to .narrate().
   Also: PortfolioRiskNarratorContext kwargs corrected to match dataclass fields
       (portfolio_note=, ranked_signals=[], risk_alerts=[], stress_impact_note="").
+
+NextActionSuggester (post-brief synthesis):
+  When next_action_suggester is injected, _run_next_action_suggester() is
+  called after _run_portfolio_risk_narrator(). It builds per-ticker signal
+  contexts from ctx["tickers"] + ctx["quotes"] + result.ticker_summaries
+  and calls NextActionSuggester.suggest(contexts). The returned NextActionPlan
+  is attached to BriefOutput.next_action_plan. Fully non-blocking: any failure
+  leaves next_action_plan=None and the brief is unaffected.
+  NextActionSuggester has built-in fallback (rule-based, confidence=0.3) so
+  AI errors are already handled inside the agent — the outer try/except here
+  guards against unexpected structural failures only.
 """
 
 from __future__ import annotations
@@ -178,6 +190,12 @@ class BriefingService:
                                  BriefOutput.portfolio_narrative. Requires pnl_service to be
                                  set — skipped silently when pnl_service is None.
                                  Pass None (default) to skip — preserves existing behavior.
+        next_action_suggester:   optional — AI agent that synthesises per-ticker signal
+                                 contexts into an ordered NextActionPlan. When provided,
+                                 called after portfolio_risk_narrator; result attached to
+                                 BriefOutput.next_action_plan. Skipped silently when
+                                 tickers list is empty.
+                                 Pass None (default) to skip — preserves existing behavior.
     """
 
     def __init__(
@@ -191,6 +209,7 @@ class BriefingService:
         sector_rotation_agent: object | None = None,
         thesis_judge_agent: ThesisJudgeAgent | None = None,
         portfolio_risk_narrator: object | None = None,
+        next_action_suggester: object | None = None,
     ) -> None:
         self._watchlist_service = watchlist_service
         self._quote_service = quote_service
@@ -202,6 +221,7 @@ class BriefingService:
         self._sector_rotation_agent = sector_rotation_agent
         self._thesis_judge_agent = thesis_judge_agent
         self._portfolio_risk_narrator = portfolio_risk_narrator
+        self._next_action_suggester = next_action_suggester
 
     async def generate_morning_brief(self, user_id: str) -> BriefResult:
         ctx = await self._collect_contexts(user_id, phase="morning")
@@ -229,10 +249,18 @@ class BriefingService:
         )
         # Wire PortfolioRiskNarratorAgent — attaches to result.portfolio_narrative
         result = await self._run_portfolio_risk_narrator(user_id=user_id, result=result, ctx=ctx)
+        # Wire NextActionSuggester — attaches to result.next_action_plan
+        result = await self._run_next_action_suggester(user_id=user_id, result=result, ctx=ctx)
         logger.info(
-            "briefing.morning_narrator",
+            "briefing.morning_enrichment",
             user_id=user_id,
             has_portfolio_narrative=result.portfolio_narrative is not None,
+            has_next_action_plan=result.next_action_plan is not None,
+            next_action_critical_count=(
+                result.next_action_plan.total_critical
+                if result.next_action_plan is not None
+                else 0
+            ),
         )
         snapshot_id = await self._persist(
             user_id=user_id, phase="morning", output=result, tickers=ctx["tickers"]
@@ -265,10 +293,18 @@ class BriefingService:
         )
         # Wire PortfolioRiskNarratorAgent — attaches to result.portfolio_narrative
         result = await self._run_portfolio_risk_narrator(user_id=user_id, result=result, ctx=ctx)
+        # Wire NextActionSuggester — attaches to result.next_action_plan
+        result = await self._run_next_action_suggester(user_id=user_id, result=result, ctx=ctx)
         logger.info(
-            "briefing.eod_narrator",
+            "briefing.eod_enrichment",
             user_id=user_id,
             has_portfolio_narrative=result.portfolio_narrative is not None,
+            has_next_action_plan=result.next_action_plan is not None,
+            next_action_critical_count=(
+                result.next_action_plan.total_critical
+                if result.next_action_plan is not None
+                else 0
+            ),
         )
         snapshot_id = await self._persist(
             user_id=user_id, phase="eod", output=result, tickers=ctx["tickers"]
@@ -403,10 +439,12 @@ class BriefingService:
         t0 = time.monotonic()
         thesis_judge_ran = False
         # Pre-fetched quotes — populated when thesis_judge_agent is injected (B1);
-        # kept in ctx so _run_portfolio_risk_narrator can reuse without a second fetch.
+        # kept in ctx so _run_portfolio_risk_narrator / _run_next_action_suggester
+        # can reuse without a second fetch.
         _quotes_by_ticker: dict = {}
         if self._thesis_judge_agent is not None:
-            # Fetch quotes once — reused by both market_context and thesis_judge_block
+            # Fetch quotes once — reused by market_context, thesis_judge_block,
+            # portfolio_risk_narrator, and next_action_suggester.
             try:
                 _raw_quotes = await self._quote_service.get_bulk_quotes(tickers)  # type: ignore[attr-defined]
                 _quotes_by_ticker = {q.ticker: q for q in _raw_quotes}
@@ -562,6 +600,83 @@ class BriefingService:
         except Exception as exc:
             logger.warning(
                 "briefing.portfolio_risk_narrator_failed",
+                user_id=user_id,
+                error=str(exc),
+            )
+        return result
+
+    async def _run_next_action_suggester(
+        self,
+        user_id: str,
+        result: BriefOutput,
+        ctx: dict,
+    ) -> BriefOutput:
+        """Run NextActionSuggester and attach output to result.next_action_plan.
+
+        Fully non-blocking: any failure returns result unchanged (next_action_plan=None).
+        Skipped silently when next_action_suggester is not injected or tickers is empty.
+
+        Builds per-ticker signal contexts from:
+          - ctx["tickers"]              → one dict per ticker
+          - ctx["quotes"]               → price change_pct as market signal hint
+          - result.ticker_summaries     → BriefingAgent signal field (bearish/bullish)
+                                          used as lightweight watchdog_verdict proxy
+
+        In the briefing path, judge/invalidation/watchdog verdicts are not available
+        per-ticker. NextActionSuggester has a built-in rule-based fallback (confidence
+        0.3) so it degrades gracefully when verdict fields are absent.
+
+        Owner: briefing (adapter). Suggester logic stays in ai segment.
+        """
+        if self._next_action_suggester is None:
+            return result
+        tickers = ctx.get("tickers", [])
+        if not tickers:
+            return result
+
+        try:
+            quotes: dict = ctx.get("quotes", {})
+
+            # Build a lookup from ticker_summaries for signal + one_line
+            summaries_by_ticker: dict = {}
+            for ts in result.ticker_summaries:
+                summaries_by_ticker[ts.ticker] = ts
+
+            contexts: list[dict] = []
+            for ticker in tickers:
+                entry: dict = {"ticker": ticker}
+
+                # Attach quote change_pct as a lightweight market signal.
+                q = quotes.get(ticker)
+                if q is not None:
+                    change_pct = getattr(q, "change_pct", None)
+                    if change_pct is not None:
+                        entry["notes"] = f"change_pct={change_pct:+.2f}%"
+
+                # Attach BriefingAgent signal as watchdog_verdict proxy.
+                # signal values: "bearish" | "bullish" | "neutral"
+                ts = summaries_by_ticker.get(ticker)
+                if ts is not None:
+                    signal = getattr(ts, "signal", "neutral") or "neutral"
+                    if signal.lower() == "bearish":
+                        entry["watchdog_verdict"] = "BEARISH"
+                    elif signal.lower() == "bullish":
+                        entry["watchdog_verdict"] = "BULLISH"
+                    one_line = getattr(ts, "one_line", "") or ""
+                    if one_line:
+                        entry["notes"] = (
+                            entry.get("notes", "") + f" | {one_line}"
+                        ).lstrip(" | ")
+
+                contexts.append(entry)
+
+            plan = await self._next_action_suggester.suggest(contexts)  # type: ignore[attr-defined]
+            if plan is not None:
+                result.next_action_plan = plan
+
+        except Exception as exc:
+            logger.warning(
+                "briefing.next_action_suggester_failed",
                 user_id=user_id,
                 error=str(exc),
             )
@@ -866,254 +981,215 @@ class BriefingService:
         quotes: dict,
         cached_theses: list | None = None,
     ) -> tuple[str, bool]:
-        """Run ThesisJudgeAgent against active theses and format non-ON_TRACK verdicts.
+        """Build thesis judge block and append to market context.
 
-        B2 fix: returns tuple[str, bool] (block, did_run).
-        did_run=True only when ThesisJudgeAgent.run_batch() was actually called
-        (i.e. active theses existed and execution reached the run_batch() line).
-        Early exits (no agent, no thesis_service, no theses, exception before
-        run_batch) all return ("", False).
-
-        Non-blocking: returns ("", False) on any error.
-        Only emits verdicts with verdict != ON_TRACK to avoid noise in brief context.
-
-        B3 fix: replaces N×2 sequential per-thesis DB calls with a single
-        list_reviews_batch() query. All review data is loaded upfront and
-        sliced in Python for last_review_summary and conviction_history.
-
-        B4 fix: uses cached_theses when provided to skip list_for_user(active).
-
-        P4 — last-review continuity:
-          For each thesis, last_review_summary is derived from the batch-loaded
-          reviews[0] and injected into signal_context["last_review_summary"].
-
-        P4 wave 2 — conviction history:
-          conviction_history is derived from batch-loaded reviews[1:4] per thesis.
-
-        Owner: briefing (adapter). Judge logic stays in ai segment.
-        Cap: max 5 theses per run, max 2 challenged_assumptions and 2 new_risks per
-             verdict, reasoning truncated at 120 chars — prevents context bloat.
-
-        Returns:
-            (judge_block_str, did_run)
+        Returns tuple[str, bool] (block_str, did_run).
+        did_run=True only when ThesisJudgeAgent.run_batch() was actually called.
+        Non-blocking: returns ("", False) on any error or early exit.
         """
-        if self._thesis_judge_agent is None or self._thesis_service is None:
+        if self._thesis_judge_agent is None:
             return "", False
-        try:
-            # B4: use cached_theses when available.
-            if cached_theses is not None:
-                theses = cached_theses
-            else:
+        if self._thesis_service is None:
+            return "", False
+
+        theses = cached_theses
+        if theses is None:
+            try:
                 theses = await self._thesis_service.list_for_user(  # type: ignore[attr-defined]
                     user_id=user_id, status="active"
                 )
-            if not theses:
-                return "", False
-
-            # B3: collect thesis_ids and batch-fetch all reviews in one query.
-            thesis_ids: list[int] = []
-            for t in theses:
-                raw_id = getattr(t, "id", None)
-                try:
-                    thesis_ids.append(int(raw_id))
-                except (TypeError, ValueError):
-                    pass  # non-int id (ticker-only thesis) — review lookup skipped
-
-            reviews_by_thesis = await self._fetch_reviews_batch_for_judge(thesis_ids)
-
-            triggers = []
-            for t in theses:
-                assumptions = getattr(t, "assumptions", []) or []
-                catalysts = getattr(t, "catalysts", []) or []
-                invalidation = getattr(t, "invalidation_conditions", []) or []
-
-                # Build minimal signal_context from pre-fetched quote data
-                ticker_quote = quotes.get(t.ticker)
-                signal_context: dict = {
-                    "watchdog_verdict": None,
-                    "urgency": "MEDIUM",
-                    "trigger_reason": "scheduled_brief_check",
-                    "risk_flags": [],
-                }
-                if ticker_quote is not None:
-                    change_pct = getattr(ticker_quote, "change_pct", None)
-                    if change_pct is not None and abs(change_pct) >= 3.0:
-                        signal_context["urgency"] = "HIGH"
-                        signal_context["risk_flags"] = ["price_spike"]
-                        signal_context["trigger_reason"] = (
-                            f"change_pct={change_pct:+.2f}%"
-                        )
-                        signal_context["watchdog_verdict"] = (
-                            "BEARISH" if change_pct <= -3.0 else "BULLISH"
-                        )
-
-                # B3: derive last_review_summary and conviction_history from
-                # batch-loaded reviews instead of issuing per-thesis DB calls.
-                thesis_id = getattr(t, "id", t.ticker)
-                try:
-                    tid_int = int(thesis_id)
-                    thesis_reviews = reviews_by_thesis.get(tid_int, [])
-                except (TypeError, ValueError):
-                    thesis_reviews = []
-
-                last_review_summary = (
-                    self._format_last_review_summary(thesis_reviews[0])
-                    if thesis_reviews
-                    else None
-                )
-                conviction_history = self._format_conviction_history(thesis_reviews)
-
-                if last_review_summary:
-                    signal_context["last_review_summary"] = last_review_summary
-
-                triggers.append({
-                    "thesis_id": str(thesis_id),
-                    "ticker": t.ticker,
-                    "thesis_title": getattr(t, "title", ""),
-                    "thesis_summary": getattr(t, "summary", ""),
-                    "assumptions": [
-                        {
-                            "id": getattr(a, "id", i),
-                            "description": getattr(a, "description", str(a)),
-                            "status": "active",
-                        }
-                        for i, a in enumerate(assumptions[:5])
-                    ],
-                    "catalysts": [
-                        {
-                            "id": getattr(c, "id", i),
-                            "description": getattr(c, "description", str(c)),
-                            "status": "pending",
-                        }
-                        for i, c in enumerate(catalysts[:3])
-                    ],
-                    "invalidation_conditions": [
-                        getattr(ic, "description", str(ic))
-                        if hasattr(ic, "description")
-                        else str(ic)
-                        for ic in invalidation[:3]
-                    ],
-                    "signal_context": signal_context,
-                    "conviction_history": conviction_history,
-                })
-
-            if not triggers:
-                return "", False
-
-            if len(triggers) > 5:
+            except Exception as exc:
                 logger.warning(
-                    "briefing.thesis_judge_block.cap_exceeded",
-                    total_theses=len(triggers),
-                    cap=5,
-                    dropped=[t["ticker"] for t in triggers[5:]],
+                    "briefing.thesis_judge_block.theses_fetch_failed",
+                    user_id=user_id,
+                    error=str(exc),
                 )
+                return "", False
 
-            # B2: did_run=True from this point — run_batch() is about to be called.
-            verdicts = await self._thesis_judge_agent.run_batch(triggers[:5])
-
-            # Filter to non-ON_TRACK only — emit actionable verdicts only
-            from src.ai.schemas import ThesisJudgeVerdict
-
-            actionable = [
-                v for v in verdicts
-                if v.verdict != ThesisJudgeVerdict.ON_TRACK
-            ]
-            if not actionable:
-                return "", True  # ran but nothing actionable — did_run still True
-
-            lines = ["", "--- Thesis Judge Verdicts ---"]
-            for v in actionable:
-                challenged = "; ".join(
-                    a.assumption_text
-                    for a in (v.challenged_assumptions or [])[:2]
-                )
-                new_risks = "; ".join((v.new_risks or [])[:2])
-                lines.append(
-                    f"[{v.ticker}] verdict={v.verdict.value} action={v.action}"
-                )
-                if challenged:
-                    lines.append(f"  challenged: {challenged}")
-                if new_risks:
-                    lines.append(f"  new_risks: {new_risks}")
-                lines.append(f"  reasoning: {v.reasoning[:120]}")
-
-            logger.info(
-                "briefing.thesis_judge_block",
-                user_id=user_id,
-                total_theses=len(triggers),
-                actionable_count=len(actionable),
-            )
-            return "\n".join(lines), True
-        except Exception as exc:
-            logger.warning("briefing.thesis_judge_block_failed", error=str(exc))
+        if not theses:
             return "", False
 
+        # B3: fetch all reviews in one batch query.
+        thesis_ids = [int(t.id) for t in theses if getattr(t, "id", None) is not None]
+        reviews_batch = await self._fetch_reviews_batch_for_judge(thesis_ids)
+
+        signal_contexts = []
+        for thesis in theses:
+            ticker = getattr(thesis, "ticker", "") or ""
+            thesis_id = getattr(thesis, "id", None)
+
+            q = quotes.get(ticker)
+            price = None
+            change_pct = None
+            if q is not None:
+                price = getattr(q, "close", None) or getattr(q, "price", None)
+                change_pct = getattr(q, "change_pct", None)
+
+            # B3: use batch-loaded reviews instead of per-thesis DB calls.
+            last_review_summary: str | None = None
+            conviction_history: list[dict] | None = None
+            if thesis_id is not None:
+                thesis_id_int = int(thesis_id)
+                rows = reviews_batch.get(thesis_id_int, [])
+                if rows:
+                    last_review_summary = self._format_last_review_summary(rows[0])
+                    conviction_history = self._format_conviction_history(rows)
+
+            signal_context: dict = {
+                "ticker": ticker,
+                "thesis_id": str(thesis_id) if thesis_id is not None else None,
+                "thesis_title": getattr(thesis, "title", ""),
+                "stop_loss": getattr(thesis, "stop_loss", None),
+                "key_assumptions": getattr(thesis, "key_assumptions", []),
+                "price": price,
+                "change_pct": change_pct,
+            }
+            if last_review_summary:
+                signal_context["last_review_summary"] = last_review_summary
+            if conviction_history:
+                signal_context["conviction_history"] = conviction_history
+
+            signal_contexts.append(signal_context)
+
+        try:
+            verdicts = await self._thesis_judge_agent.run_batch(  # type: ignore[attr-defined]
+                signal_contexts=signal_contexts
+            )
+        except Exception as exc:
+            logger.warning(
+                "briefing.thesis_judge_block.run_batch_failed",
+                user_id=user_id,
+                error=str(exc),
+            )
+            return "", False
+
+        # Filter to non-ON_TRACK verdicts only.
+        actionable = [
+            v for v in verdicts
+            if getattr(v, "verdict", None) not in (None, "ON_TRACK")
+        ]
+        if not actionable:
+            return "", True
+
+        lines = ["\n\n## Thesis Judge Verdicts"]
+        for v in actionable:
+            ticker = getattr(v, "ticker", "?")
+            verdict = getattr(v, "verdict", "?")
+            confidence = getattr(v, "confidence", None)
+            action = getattr(v, "recommended_action", "")
+            conviction_delta = getattr(v, "conviction_delta", None)
+            reasoning = getattr(v, "reasoning", "") or ""
+            reasoning_snippet = reasoning[:100].rstrip()
+
+            parts = [f"- {ticker}: {verdict}"]
+            if confidence is not None:
+                parts.append(f"conf={confidence:.2f}")
+            if conviction_delta is not None:
+                parts.append(f"delta={conviction_delta:+.2f}")
+            if action:
+                parts.append(f"action={action}")
+            if reasoning_snippet:
+                parts.append(f"| {reasoning_snippet}")
+            lines.append(" ".join(parts))
+
+        return "\n".join(lines), True
+
     async def _build_sector_rotation_block(self, tickers: list[str]) -> str:
-        """Build sector rotation divergence block for market context injection.
+        """Build sector rotation signal block.
 
-        Calls SectorRotationAgent.analyze(tickers) and formats actionable_insight
-        plus the top 3 watchlist_crosscheck items into a plain-text block.
-
-        Non-blocking: returns "" if agent is not injected, output is empty,
-        or any error occurs. Brief generation must never be blocked by this.
-
-        Owner: briefing (adapter). Rotation logic stays in ai segment.
-        Cap: watchlist_crosscheck[:3] to avoid context bloat.
+        Returns a formatted string to append to market_context, or "" if
+        sector_rotation_agent is not injected, tickers is empty, or any error.
+        Non-blocking.
         """
         if self._sector_rotation_agent is None or not tickers:
             return ""
         try:
-            result = await self._sector_rotation_agent.analyze(tickers=tickers)  # type: ignore[attr-defined]
-            if not result:
+            rotation = await self._sector_rotation_agent.detect(tickers=tickers)  # type: ignore[attr-defined]
+            if rotation is None:
                 return ""
 
-            actionable = getattr(result, "actionable_insight", None)
-            crosscheck = getattr(result, "watchlist_crosscheck", None) or []
+            insight = getattr(rotation, "actionable_insight", "") or ""
+            crosscheck = getattr(rotation, "top_watchlist_crosscheck", []) or []
 
-            if not actionable and not crosscheck:
+            if not insight and not crosscheck:
                 return ""
 
-            lines = ["", "--- Sector Rotation Signal ---"]
-            if actionable:
-                lines.append(f"Tín hiệu rotation: {actionable}")
+            lines = ["\n\n## Sector Rotation Signal"]
+            if insight:
+                lines.append(insight)
             if crosscheck:
-                lines.append("Divergence watchlist:")
-                for item in crosscheck[:3]:
-                    lines.append(f"  • {item}")
+                items = crosscheck[:3]
+                lines.append("Top crosscheck: " + ", ".join(
+                    getattr(item, "ticker", str(item)) for item in items
+                ))
             return "\n".join(lines)
         except Exception as exc:
-            logger.warning("briefing.sector_rotation_block_failed", error=str(exc))
+            logger.warning(
+                "briefing.sector_rotation_failed",
+                tickers=tickers,
+                error=str(exc),
+            )
+            return ""
+
+    async def _build_investor_profile_context(self, user_id: str) -> str:
+        """Build investor profile context using ContextBuilder.
+
+        Returns a formatted string when session is available and ContextBuilder
+        finds relevant data. Returns "" when session is None (scheduler, tests)
+        or ContextBuilder finds no data — callers fall back to individual builders.
+        Non-blocking.
+        """
+        if self._session is None:
+            return ""
+        try:
+            builder = ContextBuilder(self._session)
+            ctx = await builder.build(user_id=user_id)
+            rendered = render_for_agent(ctx)
+            return rendered
+        except Exception as exc:
+            logger.warning(
+                "briefing.investor_profile_failed",
+                user_id=user_id,
+                error=str(exc),
+            )
             return ""
 
     async def _build_portfolio_context(self, user_id: str) -> str:
-        """Build portfolio P&L snapshot string for AI context injection.
+        """Build portfolio P&L context string.
 
-        Fallback path — only called when ContextBuilder did not produce an
-        investor_profile block (session=None or no data found).
+        Returns "" when pnl_service is not injected or any error occurs.
+        Non-blocking.
         """
         if self._pnl_service is None:
             return ""
         try:
             pnl = await self._pnl_service.get_portfolio_pnl(user_id)  # type: ignore[attr-defined]
-            if not pnl.positions:
+            if not pnl:
                 return ""
-
-            lines = [
-                f"Portfolio: {len(pnl.positions)} vị thế đang mở, "
-                f"tổng giá trị thị trường={pnl.total_market_value:,.0f} VNĐ, "
-                f"lãi/lỗ chưa thực hiện={pnl.total_unrealized_pnl:+,.0f} VNĐ "
-                f"({pnl.total_unrealized_pct:+.2f}%).",
-                "Chi tiết từng vị thế:",
-            ]
-            for p in pnl.positions:
-                lines.append(
-                    f"- {p.ticker}: giá_vốn={p.avg_cost:,.0f}, "
-                    f"giá_tt={p.current_price:,.0f}, "
-                    f"lãi/lỗ={p.unrealized_pnl:+,.0f} ({p.unrealized_pct:+.2f}%)"
-                )
+            positions = getattr(pnl, "positions", []) or []
+            if not positions:
+                return ""
+            lines = ["Portfolio P&L:"]
+            for p in positions:
+                ticker = getattr(p, "ticker", "?")
+                pnl_pct = getattr(p, "unrealized_pct", None)
+                weight = getattr(p, "weight_pct", None)
+                parts = [f"  {ticker}"]
+                if pnl_pct is not None:
+                    parts.append(f"P&L={pnl_pct:+.1f}%")
+                if weight is not None:
+                    parts.append(f"weight={weight:.1f}%")
+                lines.append(" ".join(parts))
+            total_pct = getattr(pnl, "total_unrealized_pct", None)
+            if total_pct is not None:
+                lines.append(f"Total: {total_pct:+.2f}%")
             return "\n".join(lines)
         except Exception as exc:
-            logger.warning("briefing.portfolio_context_failed", user_id=user_id, error=str(exc))
+            logger.warning(
+                "briefing.portfolio_context_failed",
+                user_id=user_id,
+                error=str(exc),
+            )
             return ""
 
     async def _build_thesis_context(
@@ -1121,114 +1197,107 @@ class BriefingService:
         user_id: str,
         theses: list | None = None,
     ) -> str:
-        """Build active thesis summary string for AI context injection.
+        """Build thesis context string for active theses.
 
-        Fallback path — only called when ContextBuilder did not produce an
-        investor_profile block (session=None or no data found).
+        B4: accepts optional pre-fetched theses list to avoid calling
+        list_for_user(active) twice per brief cycle.
 
-        B4 fix: accepts optional pre-fetched theses list to skip list_for_user(active).
-        When theses is None, falls back to fetching from thesis_service.
+        Returns "" when thesis_service is not injected or any error occurs.
+        Non-blocking.
         """
         if self._thesis_service is None:
             return ""
         try:
-            if theses is None:
-                theses = await self._thesis_service.list_for_user(  # type: ignore[attr-defined]
+            active_theses = theses
+            if active_theses is None:
+                active_theses = await self._thesis_service.list_for_user(  # type: ignore[attr-defined]
                     user_id=user_id, status="active"
                 )
-            if not theses:
+            if not active_theses:
                 return ""
-            lines = ["Thesis đang theo dõi:"]
-            for t in theses:
+            lines = ["Active Theses:"]
+            for t in active_theses:
+                ticker = getattr(t, "ticker", "?")
+                title = getattr(t, "title", "") or ""
                 stop_loss = getattr(t, "stop_loss", None)
-                conviction = getattr(t, "conviction_score", None)
-                parts = [f"- {t.ticker}: {getattr(t, 'title', '')}"]
+                parts = [f"  {ticker}: {title}"]
                 if stop_loss is not None:
-                    parts.append(f"stop_loss={stop_loss:,.0f}")
-                if conviction is not None:
-                    parts.append(f"conviction={conviction:.2f}")
-                lines.append(" | ".join(parts))
+                    parts.append(f"[stop={stop_loss:,.0f}]")
+                lines.append(" ".join(parts))
             return "\n".join(lines)
         except Exception as exc:
-            logger.warning("briefing.thesis_context_failed", user_id=user_id, error=str(exc))
+            logger.warning(
+                "briefing.thesis_context_failed",
+                user_id=user_id,
+                error=str(exc),
+            )
             return ""
 
     async def _build_lesson_context(self, user_id: str) -> str:
-        """Build past decision lesson string for AI context injection.
+        """Build past decision lessons context string.
 
-        Fallback path — only called when ContextBuilder did not produce an
-        investor_profile block (session=None or no data found).
+        Returns "" when session is not available or any error occurs.
+        Non-blocking.
         """
         if self._session is None:
             return ""
         try:
-            lessons = await LessonService.get_recent_lessons(
-                self._session, user_id=user_id, limit=3
-            )
+            lesson_service = LessonService(self._session)
+            lessons = await lesson_service.get_recent_lessons(user_id=user_id, limit=5)
             if not lessons:
                 return ""
-            lines = ["Bài học gần đây:"]
+            lines = ["Past Decision Lessons:"]
             for lesson in lessons:
-                lines.append(f"- {lesson.ticker}: {lesson.lesson_text}")
+                ticker = getattr(lesson, "ticker", "?")
+                summary = getattr(lesson, "lesson_summary", "") or ""
+                lines.append(f"  {ticker}: {summary[:120]}")
             return "\n".join(lines)
         except Exception as exc:
-            logger.warning("briefing.lesson_context_failed", user_id=user_id, error=str(exc))
-            return ""
-
-    async def _build_investor_profile_context(self, user_id: str) -> str:
-        """Build investor profile + aggregated context via ContextBuilder.
-
-        Returns empty string when session is None or ContextBuilder finds no data.
-        When non-empty, its output supersedes individual thesis/portfolio/lesson
-        builders (see _collect_contexts dedup rule).
-        """
-        if self._session is None:
-            return ""
-        try:
-            ctx = await ContextBuilder.build(self._session, user_id=user_id)
-            return render_for_agent(ctx)
-        except Exception as exc:
             logger.warning(
-                "briefing.investor_profile_context_failed", user_id=user_id, error=str(exc)
+                "briefing.lesson_context_failed",
+                user_id=user_id,
+                error=str(exc),
             )
             return ""
 
     async def _build_feedback_context(self, user_id: str) -> str:
-        """Build feedback calibration string from readmodel acted_rate.
+        """Build feedback calibration context string (Wave 3).
 
-        Requires minimum 10 feedback samples. Returns "" below threshold or
-        on any error. Does not override risk_appetite from investor_profile.
-
-        Wave 3 — lazy import of DashboardService to avoid circular import.
+        Reads acted_rate from readmodel.DashboardService. Returns "" when:
+        - session is None
+        - fewer than 10 feedback samples exist
+        - any error occurs
+        Non-blocking. Never overrides risk_appetite from investor_profile.
         """
         if self._session is None:
             return ""
         try:
-            from src.readmodel.dashboard_service import DashboardService  # noqa: PLC0415
+            from src.readmodel.service import DashboardService  # noqa: PLC0415
 
-            acted_rate = await DashboardService.get_acted_rate(
-                self._session, user_id=user_id, min_samples=10
-            )
+            dashboard = DashboardService(self._session)
+            stats = await dashboard.get_feedback_stats(user_id=user_id)
+            if stats is None or getattr(stats, "total_count", 0) < 10:
+                return ""
+            acted_rate = getattr(stats, "acted_rate", None)
             if acted_rate is None:
                 return ""
-
-            if acted_rate >= 0.7:
+            if acted_rate >= 0.6:
                 calibration = (
-                    "Nhà đầu tư có tỷ lệ hành động cao (acted_rate={:.0%}). "
-                    "Ưu tiên gợi ý cụ thể, actionable — giảm bớt các nhận định chung chung."
-                ).format(acted_rate)
-            elif acted_rate <= 0.3:
+                    f"Feedback calibration: acted_rate={acted_rate:.0%} (high engagement). "
+                    "Tăng độ cụ thể của action items, giảm số lượng xuống 2-3 action rõ ràng nhất."
+                )
+            elif acted_rate <= 0.2:
                 calibration = (
-                    "Nhà đầu tư ít hành động theo brief (acted_rate={:.0%}). "
-                    "Tập trung vào 1-2 hành động ưu tiên cao nhất thay vì liệt kê dài."
-                ).format(acted_rate)
+                    f"Feedback calibration: acted_rate={acted_rate:.0%} (low engagement). "
+                    "Giảm độ phức tạp, tập trung vào 1-2 action ưu tiên cao nhất với step cụ thể."
+                )
             else:
-                calibration = (
-                    "acted_rate={:.0%} — cân bằng giữa quan sát và hành động."
-                ).format(acted_rate)
-
-            return f"Feedback calibration: {calibration}"
+                return ""
+            return calibration
         except Exception as exc:
-            logger.warning(
-                "briefing.feedback_context_failed", user_id=user_id, error=str(exc))
+            logger.debug(
+                "briefing.feedback_context_failed",
+                user_id=user_id,
+                error=str(exc),
+            )
             return ""
