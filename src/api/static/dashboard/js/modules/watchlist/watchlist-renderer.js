@@ -9,13 +9,28 @@
 import { esc, fmt, fmtDate } from '../../utils/format.js';
 
 /**
+ * Human-readable labels cho signal_type từ SignalEngine.
+ * Fallback: raw signal_type string nếu không có trong map.
+ */
+const SIGNAL_LABELS = {
+  BREAKOUT:          'Breakout',
+  RISK_SPIKE:        'Risk Spike',
+  STRONG_MOVE:       'Strong Move',
+  THESIS_DIVERGENCE: 'Thesis Div.',
+  TREND_REVERSAL:    'Reversal',
+  STOP_LOSS:         'Stop Loss',
+};
+
+/**
  * Render toàn bộ watchlist vào container.
  *
  * @param {HTMLElement} container
- * @param {Array}       items     - enriched watchlist items ({...WatchlistItemResponse, quote})
- * @param {{ onRemove, onScan, onAdd }} options - action callbacks
+ * @param {Array}       items      - enriched watchlist items ({...WatchlistItemResponse, quote})
+ * @param {{ onRemove, onScan, onAdd, signalsMap }} options - action callbacks + scan context
+ *   signalsMap: { [ticker]: SignalReport[] } — populated after a manual scan,
+ *               empty object on first load (no scan yet this session).
  */
-export function renderWatchlist(container, items, { onRemove, onScan, onAdd } = {}) {
+export function renderWatchlist(container, items, { onRemove, onScan, onAdd, signalsMap = {} } = {}) {
   container.innerHTML = '';
 
   const scanResultId = 'wlScanResult';
@@ -46,7 +61,7 @@ export function renderWatchlist(container, items, { onRemove, onScan, onAdd } = 
     empty.className = 'wl-empty';
     empty.innerHTML = `
       <strong>Watchlist trống</strong>
-      <span>Nhấn “+ Thêm mã” để bắt đầu theo dõi cổ phiếu.</span>
+      <span>Nhấn "+ Thêm mã" để bắt đầu theo dõi cổ phiếu.</span>
     `;
     container.appendChild(empty);
   } else {
@@ -55,7 +70,8 @@ export function renderWatchlist(container, items, { onRemove, onScan, onAdd } = 
     grid.className = 'wl-grid';
 
     for (const item of items) {
-      grid.appendChild(buildCard(item, onRemove));
+      const signalReports = signalsMap[item.ticker] ?? [];
+      grid.appendChild(buildCard(item, onRemove, signalReports));
     }
     container.appendChild(grid);
   }
@@ -85,11 +101,12 @@ export function renderWatchlist(container, items, { onRemove, onScan, onAdd } = 
 /**
  * Build DOM cho một watchlist card.
  *
- * @param {object} item    - enriched watchlist item
- * @param {Function} onRemove
+ * @param {object}    item          - enriched watchlist item
+ * @param {Function}  onRemove
+ * @param {Array}     signalReports - SignalReport[] từ scan session hiện tại ([] nếu chưa scan)
  * @returns {HTMLElement}
  */
-function buildCard(item, onRemove) {
+function buildCard(item, onRemove, signalReports = []) {
   const q = item.quote;
 
   // Price + change
@@ -116,13 +133,28 @@ function buildCard(item, onRemove) {
     ? `<span class="wl-thesis-badge" title="Thesis #${item.thesis_id}">thesis</span>`
     : '';
 
+  // Signal tags — actionable only, sorted by strength desc, max 3
+  const tagsHtml = signalReports
+    .filter(r => r.actionable)
+    .sort((a, b) => b.strength - a.strength)
+    .slice(0, 3)
+    .map(r => {
+      const label = SIGNAL_LABELS[r.signal_type] ?? r.signal_type;
+      const typeSlug = r.signal_type.toLowerCase().replace(/_/g, '-');
+      return `<span class="wl-signal-tag wl-signal-${typeSlug}" title="${esc(r.description ?? '')}">${esc(label)}</span>`;
+    })
+    .join('');
+
   const card = document.createElement('div');
   card.className = 'wl-card';
   card.dataset.ticker = item.ticker;
   card.innerHTML = `
     <div class="wl-card-head">
       <span class="wl-ticker">${esc(item.ticker)}</span>
-      ${thesisBadge}
+      <div class="wl-card-badges">
+        ${thesisBadge}
+        ${tagsHtml}
+      </div>
     </div>
     <div class="wl-price-row">
       ${priceHtml}

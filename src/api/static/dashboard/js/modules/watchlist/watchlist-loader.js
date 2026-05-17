@@ -15,6 +15,13 @@ const WATCHLIST_BASE = '/api/v1/watchlist';
 const MARKET_BASE    = '/api/v1/market';
 
 /**
+ * Module-scope cache: populated after a manual scan, cleared on page reload.
+ * Shape: { [ticker]: SignalReport[] }
+ * Only actionable reports are stored (server already filters via build_summary_json).
+ */
+let _signalsMap = {};
+
+/**
  * Fetch toàn bộ watchlist của current user,
  * enrich mỗi item với quote từ market segment,
  * sau đó render.
@@ -46,9 +53,10 @@ export async function loadWatchlist() {
     );
 
     renderWatchlist(wrap, resolved, {
-      onRemove: handleRemove,
-      onScan:   handleScan,
-      onAdd:    handleAddTicker,
+      onRemove:   handleRemove,
+      onScan:     handleScan,
+      onAdd:      handleAddTicker,
+      signalsMap: _signalsMap,
     });
   } catch (err) {
     wrap.innerHTML = `<p class="empty-state">Lỗi tải watchlist: ${err.message}</p>`;
@@ -94,8 +102,10 @@ async function handleRemove(ticker) {
 
 /**
  * Trigger manual scan, hiện kết quả trong banner.
- * @param {HTMLElement} resultEl — element để inject scan summary
- * @param {HTMLButtonElement} btnEl — nút scan để disable khi scanning
+ * Sau khi scan xong: cache _signalsMap rồi reload watchlist để tags hiện lên card.
+ *
+ * @param {HTMLElement}     resultEl — element để inject scan summary
+ * @param {HTMLButtonElement} btnEl  — nút scan để disable khi scanning
  */
 async function handleScan(resultEl, btnEl) {
   btnEl.classList.add('scanning');
@@ -104,10 +114,19 @@ async function handleScan(resultEl, btnEl) {
 
   try {
     const res = await sendJson(`${WATCHLIST_BASE}/scan`, 'POST');
+
+    // Build signalsMap từ structured scan result
+    // Shape: res.signals.items[] = { ticker, signal_reports[] }
+    const scanItems = res.signals?.items ?? [];
+    _signalsMap = Object.fromEntries(
+      scanItems.map(i => [i.ticker, i.signal_reports ?? []])
+    );
+
     resultEl.textContent =
       `Scan xong: ${res.scanned_tickers} tickers, ${res.triggered} tín hiệu. ${res.summary ?? ''}`;
     resultEl.classList.remove('hidden');
-    // Reload để cập nhật latestScan trên command-strip
+
+    // Reload để re-render cards với signal tags mới
     await loadWatchlist();
   } catch (err) {
     resultEl.textContent = `Lỗi scan: ${err.message}`;

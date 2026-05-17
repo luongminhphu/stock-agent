@@ -6,6 +6,8 @@ Exposes watchlist CRUD via WatchlistService.
 
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -86,4 +88,5 @@ async def trigger_scan(
         "scanned_tickers": len(result.signals) + len(result.errors),
         "triggered": result.triggered_count,
         "summary": result.build_summary(),
+        "signals": json.loads(result.build_summary_json()),
     }
