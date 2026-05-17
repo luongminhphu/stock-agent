@@ -4,21 +4,12 @@ Schemas for SignalEngineAgent.
 Owner: ai segment.
 """
 
+from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
 from src.ai.schemas._base import Verdict, _coerce_confidence
-
-
-class SignalUrgency(StrEnum):
-    CRITICAL = "CRITICAL"
-    HIGH = "HIGH"
-    MEDIUM = "MEDIUM"
-    LOW = "LOW"
-
-
-from enum import StrEnum
 
 
 class SignalUrgency(StrEnum):
@@ -152,8 +143,8 @@ class OpportunityHint(BaseModel):
 class SignalEngineOutput(BaseModel):
     """Structured output from SignalEngineAgent."""
 
-    snapshot_date: str = Field(default="", description="Ngày chạy signal engine, format YYYY-MM-DD")
-    generated_at: str = Field(default="", description="ISO 8601 timestamp khi engine chạy.")
+    snapshot_date: str = Field(default="", description="Ng\u00e0y ch\u1ea1y signal engine, format YYYY-MM-DD")
+    generated_at: str = Field(default="", description="ISO 8601 timestamp khi engine ch\u1ea1y.")
     signal_summary: str = Field(default="", description="1-line summary cho bot header.")
     portfolio_context: PortfolioRiskNote = Field(default_factory=PortfolioRiskNote)
     ranked_signals: list[RankedSignal] = Field(default_factory=list)
@@ -161,7 +152,7 @@ class SignalEngineOutput(BaseModel):
     risk_alerts: list[RiskAlert] = Field(default_factory=list)
     opportunity_windows: list[OpportunityHint] = Field(default_factory=list)
     portfolio_concentration_note: str = Field(default="")
-    confidence: float = Field(ge=0.0, le=1.0, description="Độ tin cậy tổng thể")
+    confidence: float = Field(ge=0.0, le=1.0, description="\u0110\u1ed9 tin c\u1eady t\u1ed5ng th\u1ec3")
     reasoning_summary: str = Field(default="")
 
     @field_validator("confidence", mode="before")
