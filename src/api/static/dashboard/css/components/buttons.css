@@ -2,6 +2,7 @@
    Owner: components
    Tất cả button variants: primary, ghost, danger, icon-btn, icon-text-btn.
    Không phụ thuộc module nào khác ngoài variables.
+   Height chuẩn: 36px cho tất cả variants.
 ──────────────────────────────────────────────────────────────────────────── */
 
 .primary-btn {
@@ -18,10 +19,10 @@
 .primary-btn:hover { filter: brightness(1.05); }
 
 .ghost-btn {
-  min-height: 40px;
+  min-height: 36px;
   padding: 0 14px;
   border: 1px solid var(--line-strong);
-  border-radius: 12px;
+  border-radius: 9px;
   background: transparent;
   color: var(--muted);
   font-weight: 600;
@@ -31,10 +32,10 @@
 .ghost-btn:hover { border-color: var(--brand); color: var(--brand); }
 
 .danger-btn {
-  min-height: 32px;
+  min-height: 36px;
   padding: 0 12px;
   border: 1px solid rgba(248, 113, 113, 0.3);
-  border-radius: 10px;
+  border-radius: 9px;
   background: rgba(248, 113, 113, 0.08);
   color: var(--danger);
   font-weight: 600;
@@ -45,9 +46,9 @@
 
 /* icon-only button (edit / delete trong table) */
 .icon-btn {
-  width: 32px;
-  height: 32px;
-  min-width: 32px;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
   border-radius: 9px;
   border: 1px solid var(--line);
   background: transparent;
