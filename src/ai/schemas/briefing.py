@@ -12,6 +12,7 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from src.ai.schemas._base import Verdict, _coerce_confidence
+from src.ai.schemas.next_action import NextActionPlan
 from src.ai.schemas.portfolio_risk import PortfolioRiskNarrativeOutput
 
 
@@ -129,7 +130,13 @@ class PortfolioPositionBrief(BaseModel):
 
 
 class BriefOutput(BaseModel):
-    """Structured output from BriefingAgent (morning or EOD)."""
+    """Structured output from BriefingAgent (morning or EOD).
+
+    Post-brief enrichment fields (populated by BriefingService after agent call):
+      - portfolio_narrative: PortfolioRiskNarratorAgent output (optional).
+      - next_action_plan:    NextActionSuggester output (optional).
+    Both default to None when their respective agents are not injected.
+    """
 
     headline: str = Field(description="One-sentence market headline")
     sentiment: MarketSentiment
@@ -169,6 +176,16 @@ class BriefOutput(BaseModel):
             "None khi không có portfolio data hoặc agent chưa chạy. "
             "Downstream: bot /brief render opening_line + chapters; "
             "readmodel cache risk_score cho portfolio risk timeline."
+        ),
+    )
+    next_action_plan: NextActionPlan | None = Field(
+        default=None,
+        description=(
+            "Ordered investor action list from NextActionSuggester. "
+            "None khi agent chưa được inject hoặc tickers rỗng. "
+            "actions đã được sort theo urgency_score DESC — caller KHÔNG re-sort. "
+            "Downstream: bot render /brief next-actions section với urgency emoji; "
+            "readmodel cache total_critical cho action badge count."
         ),
     )
     action_queue: ActionQueue = Field(
