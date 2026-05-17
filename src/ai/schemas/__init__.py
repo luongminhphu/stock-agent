@@ -116,6 +116,13 @@ from src.ai.schemas.portfolio_risk import (
     RiskTheme,
 )
 
+# --- Thesis Invalidation ---
+from src.ai.schemas.invalidation import (
+    BreachType,
+    InvalidationSignal,
+    InvalidationVerdict,
+)
+
 __all__ = [
     # Base
     "Verdict",
@@ -190,4 +197,8 @@ __all__ = [
     "RiskTheme",
     "RiskChapter",
     "PortfolioRiskNarrativeOutput",
+    # Thesis Invalidation
+    "BreachType",
+    "InvalidationVerdict",
+    "InvalidationSignal",
 ]
