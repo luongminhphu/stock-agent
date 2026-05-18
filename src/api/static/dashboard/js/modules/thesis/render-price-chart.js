@@ -1,19 +1,12 @@
 /**
  * render-price-chart.js
  * Owner: modules/thesis (market segment)
- * Responsibility: fetch OHLCV 30 ngày gần nhất cho ticker, render mini line
- *   chart (Chart.js) với annotation lines cho entry / target / stop_loss.
- *
- * Public API:
- *   priceMiniChartSlotHTML(thesisId)  → string  (slot placeholder)
- *   loadPriceMiniChart(thesis, slot)  → Promise<void>
- *   destroyPriceChart(thesisId)       → void
  */
 
 import { getJson } from '../../api/client.js';
 import { fmt }     from '../../utils/format.js';
 
-// ─── Instance registry (tránh Chart.js leak) ─────────────────────────────────
+// ─── Instance registry ────────────────────────────────────────────────────────────────────────
 const _chartInstances = new Map();
 
 export function destroyPriceChart(thesisId) {
@@ -24,8 +17,23 @@ export function destroyPriceChart(thesisId) {
   }
 }
 
-// ─── Slot HTML ────────────────────────────────────────────────────────────────
+// ─── Resolve CSS variable → computed hex ────────────────────────────────────────────────────
+/**
+ * Chart.js không resolve CSS custom properties.
+ * Hàm này đọc computed style từ document.body — nơi các CSS variables
+ * đã được resolve bởi browser — và trả về giá trị màu thực.
+ *
+ * @param {string} varName  CSS variable name, e.g. '--muted'
+ * @param {string} fallback Hex fallback nếu variable không tồn tại
+ */
+function cssVar(varName, fallback) {
+  const val = getComputedStyle(document.body)
+    .getPropertyValue(varName)
+    .trim();
+  return val || fallback;
+}
 
+// ─── Slot HTML ─────────────────────────────────────────────────────────────────────────────────
 export function priceMiniChartSlotHTML(thesisId) {
   return `
     <div id="priceMiniChartSlot-${thesisId}" class="price-mini-chart-slot" aria-live="polite">
@@ -35,8 +43,7 @@ export function priceMiniChartSlotHTML(thesisId) {
     </div>`;
 }
 
-// ─── Fetch OHLCV ─────────────────────────────────────────────────────────────
-
+// ─── Fetch OHLCV ────────────────────────────────────────────────────────────────────────────────
 async function fetchOhlcv(ticker, days = 30) {
   if (!ticker) return null;
   try {
@@ -48,14 +55,7 @@ async function fetchOhlcv(ticker, days = 30) {
   }
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/**
- * Chuẩn hóa response OHLCV thành array of { date, close }.
- * API có thể trả về:
- *   - array of { date, close, open, high, low, volume }
- *   - { items: [...] }  hoặc  { data: [...] }
- */
+// ─── Helpers ───────────────────────────────────────────────────────────────────────────────────
 function normalizeOhlcv(raw) {
   const arr = Array.isArray(raw) ? raw : (raw?.items ?? raw?.data ?? []);
   return arr
@@ -67,12 +67,6 @@ function normalizeOhlcv(raw) {
     .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
 }
 
-/**
- * Tạo annotation line config cho Chart.js annotation plugin.
- * @param {number|null} price
- * @param {string}       label
- * @param {string}       color
- */
 function annotationLine(price, label, color) {
   if (price == null || price <= 0) return null;
   return {
@@ -95,11 +89,8 @@ function annotationLine(price, label, color) {
   };
 }
 
-// ─── Render ───────────────────────────────────────────────────────────────────
+// ─── Render ───────────────────────────────────────────────────────────────────────────────────────
 
-/**
- * Render fallback HTML khi không lấy được dữ liệu.
- */
 function renderUnavailable(slot) {
   slot.innerHTML = `
     <div class="price-mini-chart-unavailable">
@@ -107,16 +98,11 @@ function renderUnavailable(slot) {
     </div>`;
 }
 
-/**
- * Load và render mini price chart vào slot.
- * @param {{ id, ticker, entry_price, target_price, stop_loss }} thesis
- * @param {HTMLElement} slot
- */
 export async function loadPriceMiniChart(thesis, slot) {
   if (!slot) return;
 
   const raw = await fetchOhlcv(thesis.ticker, 30);
-  if (!slot.isConnected) return; // slot đã bị unmount
+  if (!slot.isConnected) return;
 
   const points = normalizeOhlcv(raw);
   if (!points.length) {
@@ -124,10 +110,8 @@ export async function loadPriceMiniChart(thesis, slot) {
     return;
   }
 
-  // Huỷ instance cũ nếu có
   destroyPriceChart(thesis.id);
 
-  // Build DOM
   slot.innerHTML = `
     <div class="price-mini-chart-wrap">
       <div class="price-mini-chart-header">
@@ -145,7 +129,6 @@ export async function loadPriceMiniChart(thesis, slot) {
   const canvas = slot.querySelector(`#priceMiniCanvas-${thesis.id}`);
   if (!canvas) return;
 
-  // Lazy-load Chart.js từ CDN nếu chưa có
   if (!window.Chart) {
     await new Promise((resolve, reject) => {
       const s = document.createElement('script');
@@ -156,18 +139,21 @@ export async function loadPriceMiniChart(thesis, slot) {
     });
   }
 
-  // Màu đường giá: xanh nếu close[-1] >= close[0], đỏ nếu ngược lại
+  // ─── Resolve màu tại render-time (sau khi DOM + CSS đã được paint) ───
+  // Chart.js nhận string thần, không resolve var(). Dùng getComputedStyle.
+  const tickColor = cssVar('--muted',       '#94a3b8');  // labels trục x/y
+  const gridColor = cssVar('--chart-grid',  'rgba(148,163,184,0.10)');  // đường kẻ nẹ
+  const tooltipBg = cssVar('--surface',     '#1e293b');  // tooltip background
+  const tooltipFg = cssVar('--text',        '#e2e8f0');  // tooltip text
+
   const first = points[0].close;
   const last  = points[points.length - 1].close;
   const lineColor = last >= first ? '#22c55e' : '#ef4444';
   const fillColor = last >= first ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)';
 
   const labels = points.map(d => {
-    const s = d.date;
-    if (!s) return '';
-    // Hiển thị MM/DD hoặc nguyên nếu không parse được
-    const dt = new Date(s);
-    if (isNaN(dt)) return s.slice(5) || s; // YYYY-MM-DD → MM-DD
+    const dt = new Date(d.date);
+    if (isNaN(dt)) return d.date?.slice(5) || d.date;
     return `${dt.getMonth() + 1}/${dt.getDate()}`;
   });
 
@@ -182,14 +168,13 @@ export async function loadPriceMiniChart(thesis, slot) {
   if (tl) annotations.target = tl;
   if (sl) annotations.stop   = sl;
 
-  // Đăng ký plugin annotation nếu CDN chưa inject
   const hasAnnotation = window.Chart?.registry?.plugins?.get('annotation');
   if (!hasAnnotation && Object.keys(annotations).length) {
-    await new Promise((resolve, reject) => {
+    await new Promise((resolve) => {
       const s = document.createElement('script');
       s.src = 'https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js';
       s.onload  = resolve;
-      s.onerror = () => resolve(); // graceful — chart renders without annotations
+      s.onerror = () => resolve();
       document.head.appendChild(s);
     });
   }
@@ -200,14 +185,14 @@ export async function loadPriceMiniChart(thesis, slot) {
       labels,
       datasets: [{
         data,
-        borderColor:          lineColor,
-        backgroundColor:      fillColor,
-        fill:                 true,
-        tension:              0.3,
-        pointRadius:          0,
-        pointHoverRadius:     4,
+        borderColor:               lineColor,
+        backgroundColor:           fillColor,
+        fill:                      true,
+        tension:                   0.3,
+        pointRadius:               0,
+        pointHoverRadius:          4,
         pointHoverBackgroundColor: lineColor,
-        borderWidth:          1.5,
+        borderWidth:               1.5,
       }],
     },
     options: {
@@ -216,8 +201,14 @@ export async function loadPriceMiniChart(thesis, slot) {
       animation:           { duration: 400 },
       interaction:         { mode: 'index', intersect: false },
       plugins: {
-        legend:   { display: false },
+        legend: { display: false },
         tooltip: {
+          backgroundColor: tooltipBg,
+          titleColor:      tooltipFg,
+          bodyColor:       tooltipFg,
+          borderColor:     'rgba(148,163,184,0.15)',
+          borderWidth:     1,
+          padding:         6,
           callbacks: {
             label: ctx => ` ${fmt(ctx.parsed.y)}₫`,
           },
@@ -229,23 +220,23 @@ export async function loadPriceMiniChart(thesis, slot) {
       scales: {
         x: {
           ticks: {
-            color:    'var(--muted, #888)',
-            font:     { size: 10 },
+            color:         tickColor,   // ← resolved hex, không phải CSS var string
+            font:          { size: 10 },
             maxTicksLimit: 6,
-            maxRotation: 0,
+            maxRotation:   0,
           },
           grid: { display: false },
         },
         y: {
           position: 'right',
           ticks: {
-            color:    'var(--muted, #888)',
-            font:     { size: 10 },
+            color:         tickColor,   // ← idem
+            font:          { size: 10 },
             maxTicksLimit: 4,
-            callback: v => fmt(v) + '₫',
+            callback:      v => fmt(v) + '₫',
           },
           grid: {
-            color: 'rgba(128,128,128,0.08)',
+            color: gridColor,           // ← idem
           },
         },
       },
