@@ -103,11 +103,13 @@ class ThesisService:
                 Assumption(description=desc, status=AssumptionStatus.PENDING)
             )
         for cat_inp in inp.catalysts or []:
+            # Resolve expected_date: explicit date takes priority, then parse timeline string
+            resolved_date = cat_inp.expected_date or parse_timeline_to_date(cat_inp.timeline)
             thesis.catalysts.append(
                 Catalyst(
                     description=cat_inp.description,
                     status=cat_inp.status,
-                    expected_date=cat_inp.expected_date,
+                    expected_date=resolved_date,
                     note=cat_inp.note,
                 )
             )
@@ -182,7 +184,6 @@ class ThesisService:
         """
         resolved = _resolve_user_id(user_id)
         theses = await self._repo.list_active_by_ticker(ticker)
-        # Filter to this user's theses (list_active_by_ticker is not user-scoped)
         user_theses = [t for t in theses if t.user_id == resolved]
         if not user_theses:
             return None

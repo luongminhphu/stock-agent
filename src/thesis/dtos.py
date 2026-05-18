@@ -7,7 +7,7 @@ Import từ đây thay vì từ service.py để tránh circular deps.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from src.thesis.models import AssumptionStatus, CatalystStatus, ThesisDirection
@@ -61,6 +61,7 @@ class AddCatalystInput:
     description: str
     status: CatalystStatus = CatalystStatus.PENDING
     expected_date: datetime | None = None
+    timeline: str | None = None  # AI-generated timeline string, e.g. "Q3/2026", "tháng 6/2026"
     note: str | None = None
 
 
@@ -92,3 +93,7 @@ class AssumptionNotFoundError(Exception):
 
 class CatalystNotFoundError(Exception):
     """Raised when a catalyst does not exist within a thesis."""
+
+
+class RecommendationNotFoundError(Exception):
+    """Raised when a recommendation does not exist."""

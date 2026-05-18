@@ -208,21 +208,17 @@ class ThesisSnapshot(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     thesis_id: Mapped[int] = mapped_column(ForeignKey("theses.id", ondelete="CASCADE"), index=True)
-    # Market snapshot fields (original — 0001)
     price_at_snapshot: Mapped[float | None] = mapped_column(Float, nullable=True)
     pnl_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     score_at_snapshot: Mapped[float | None] = mapped_column(Float, nullable=True)
     snapshotted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
-    # Review-triggered snapshot fields (added in 0007)
     score: Mapped[float | None] = mapped_column(Float, nullable=True)
     verdict: Mapped[str | None] = mapped_column(String(32), nullable=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     recorded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # Conviction timeline breakdown (added in 0012)
     score_breakdown: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # AI conviction score from ThesisReviewOutput.conviction_score (added in 0022)
     conviction_score: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     thesis: Mapped[Thesis] = relationship(back_populates="snapshots")
@@ -274,6 +270,8 @@ class ReviewRecommendation(Base):
     recommended_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     acted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Wave 2: store AI-suggested updated timeline for DELAYED catalysts
+    updated_timeline: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     review: Mapped[ThesisReview] = relationship(back_populates="recommendations")
 
@@ -288,7 +286,7 @@ class DecisionLog(Base):
     user_id: Mapped[str] = mapped_column(String(64), index=True)
     ticker: Mapped[str] = mapped_column(String(20), index=True)
     decision_type: Mapped[DecisionType] = mapped_column(
-        SAEnum(DecisionType, values_callable=_enum_values), index=True
+        SAEnum(DecisionType, values_callable=True), index=True
     )
     decision_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True

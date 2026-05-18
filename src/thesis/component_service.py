@@ -166,15 +166,22 @@ class ComponentService:
     async def add_catalyst(
         self, thesis_id: int, inp: AddCatalystInput
     ) -> Catalyst:
+        # Resolve expected_date: explicit date takes priority, then parse timeline string
+        resolved_date = inp.expected_date or parse_timeline_to_date(inp.timeline)
         catalyst = Catalyst(
             thesis_id=thesis_id,
             description=inp.description,
             status=inp.status,
-            expected_date=inp.expected_date,
+            expected_date=resolved_date,
             note=inp.note,
         )
         await self._repo.save_catalyst(catalyst)
-        logger.info("catalyst.added", thesis_id=thesis_id, catalyst_id=catalyst.id)
+        logger.info(
+            "catalyst.added",
+            thesis_id=thesis_id,
+            catalyst_id=catalyst.id,
+            expected_date=resolved_date.isoformat() if resolved_date else None,
+        )
         await self._recompute_score(thesis_id)
         await self._auto_invalidate_if_needed(thesis_id)
         return catalyst
@@ -194,7 +201,8 @@ class ComponentService:
             inp=AddCatalystInput(
                 description=description,
                 status=status,
-                expected_date=parse_timeline_to_date(timeline),
+                expected_date=None,
+                timeline=timeline,
                 note=note,
             ),
         )
@@ -276,7 +284,6 @@ class ComponentService:
                         expected_date=catalyst.expected_date.isoformat(),
                     )
 
-        # Recompute score + check invalidation cho các thesis bị ảnh hưởng
         for thesis_id in affected_thesis_ids:
             try:
                 await self._recompute_score(thesis_id)
@@ -349,6 +356,17 @@ class ComponentService:
             if target is not None:
                 try:
                     target.status = CatalystStatus(rec.recommended_status.lower())
+                    # Parse updated_timeline → expected_date khi AI suggest DELAYED
+                    if rec.updated_timeline:
+                        parsed_date = parse_timeline_to_date(rec.updated_timeline)
+                        if parsed_date is not None:
+                            target.expected_date = parsed_date
+                            logger.info(
+                                "recommendation.apply.catalyst_date_updated",
+                                catalyst_id=rec.target_id,
+                                updated_timeline=rec.updated_timeline,
+                                parsed_date=parsed_date.isoformat(),
+                            )
                     await self._repo.save_catalyst(target)
                 except ValueError:
                     logger.warning(
