@@ -340,7 +340,9 @@ export async function loadDashboard() {
       getJson(`${base}/stats`).catch(() => null),
       getJson(`${base}/theses?status=${status}`).catch(() => []),
       getJson(`${base}/backtesting/verdict-accuracy`).catch(() => null),
-      getJson(`${base}/catalysts/upcoming?days=30`).catch(() => []),
+      // Bug #3 fix: đồng bộ days=7 để KPI strip (upcoming_catalysts_7d từ stats)
+      // và danh sách catalyst hiển thị cùng 1 window thời gian.
+      getJson(`${base}/catalysts/upcoming?days=7`).catch(() => []),
       getJson(`${base}/scan/latest`).catch(() => null),
       getJson(`${briefBase}/latest?phase=morning`).catch(() => null),
       getJson(`${briefBase}/latest?phase=eod`).catch(() => null),
@@ -364,7 +366,6 @@ export async function loadDashboard() {
       onDelete: (id) => wireDeleteThesis(id),
     });
 
-    // Wave B: inject health heatmap cells after table rows exist in DOM
     renderHealthHeatmap(state.theses);
 
     const accuracyRows = normalizeAccuracyRes(verdictAccuracy);
@@ -443,7 +444,6 @@ export async function loadBacktesting() {
 
 /**
  * renderSummary — populate KPI strip từ stats API response.
- * Dùng đúng signature mới countUp(el, target, opts?).
  */
 export function renderSummary(s, portfolio) {
   if (!s) return;
@@ -515,17 +515,6 @@ export function renderSummary(s, portfolio) {
 // ---------------------------------------------------------------------------
 // W3/W4 consumer: refresh heatmap cell after AI review completes in panel
 // ---------------------------------------------------------------------------
-
-/**
- * bindReviewDoneListener()
- *
- * Registers the 'breakdown:review-done' listener once on document.
- * Called at module init (bottom of this file) — intentionally outside
- * loadDashboard() so the listener is NOT re-registered on each reload.
- *
- * On event: calls refreshHeatmapCell(thesisId) to update the 4 color
- * cells in-place without triggering a full dashboard reload.
- */
 function bindReviewDoneListener() {
   document.addEventListener('breakdown:review-done', (e) => {
     const { thesisId } = e.detail ?? {};
@@ -534,5 +523,4 @@ function bindReviewDoneListener() {
   });
 }
 
-// Register once at module load time
 bindReviewDoneListener();

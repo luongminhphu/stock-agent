@@ -11,11 +11,16 @@ import { esc, fmtDate } from '../../utils/format.js';
 // ---------------------------------------------------------------------------
 // Catalyst calendar list (sidebar)
 // ---------------------------------------------------------------------------
-export function renderCatalystList(list) {
+export function renderCatalystList(raw) {
   const wrap = el('catalystList');
   if (!wrap) return;
+
+  // Bug #1 fix: normalize to Array — API có thể trả { items: null } hoặc
+  // plain object, dùng list.length trực tiếp sẽ crash / silent-empty.
+  const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.items) ? raw.items : []);
+
   if (!list.length) {
-    wrap.innerHTML = '<p class="empty-state">Không có catalyst nào trong 30 ngày tới.</p>';
+    wrap.innerHTML = '<p class="empty-state">Không có catalyst nào trong 7 ngày tới.</p>';
     return;
   }
   wrap.innerHTML = list.map(item => `
@@ -66,21 +71,10 @@ function formatScanHtml(text) {
 
 // ---------------------------------------------------------------------------
 // renderScanDigest — render structured scan card.
-//
-// Accepts the full scan object returned by GET /dashboard/scan/latest.
-// The backend get_scan_latest() already parses the JSON summary and merges
-// structured fields (top_picks, items, signal_count, alert_count, ticker_count)
-// into the root object — so we read directly from `scan`.
-//
-// Fallback chain:
-//   1. Structured (scan.top_picks | scan.items array) → digest card
-//   2. scan.raw / scan.summary string              → formatScanHtml()
-//   3. null / empty                                → "Chưa có scan snapshot."
 // ---------------------------------------------------------------------------
 function renderScanDigest(scan) {
   if (!scan) return 'Chưa có scan snapshot.';
 
-  // ── Structured path ──────────────────────────────────────────────────────
   const topPicks = Array.isArray(scan.top_picks)
     ? scan.top_picks
     : Array.isArray(scan.items)
@@ -100,18 +94,15 @@ function renderScanDigest(scan) {
       ? new Date(scannedAt).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
       : null;
 
-    // Meta row: time · tickers · signals · alerts
     const metaParts = [];
     if (timeLabel)    metaParts.push(`🕐 ${timeLabel}`);
     if (tickerCount)  metaParts.push(`${tickerCount} tickers`);
     if (signalCount)  metaParts.push(`<span class="scan-badge scan-badge--signal">📶 ${signalCount} signals</span>`);
     if (alertCount)   metaParts.push(`<span class="scan-badge scan-badge--alert">⚠️ ${alertCount} alerts</span>`);
 
-    // Top picks pills
     let picksHtml = '';
     if (topPicks && topPicks.length) {
       const pills = topPicks.slice(0, 8).map(p => {
-        // item shape: { ticker, change_pct } or plain string
         const isStr  = typeof p === 'string';
         const ticker = isStr ? p : (p.ticker ?? p.symbol ?? String(p));
         const chg    = isStr ? null : (p.change_pct ?? p.pct ?? null);
@@ -129,7 +120,6 @@ function renderScanDigest(scan) {
         </div>`;
     }
 
-    // Headline / fallback raw text
     const headlineHtml = headline
       ? `<div class="scan-headline">${esc(headline)}</div>`
       : '';
@@ -142,7 +132,6 @@ function renderScanDigest(scan) {
       </div>`;
   }
 
-  // ── Fallback: raw string ─────────────────────────────────────────────────
   const rawText = scan.raw ?? scan.summary ?? null;
   if (rawText) return formatScanHtml(rawText);
 
@@ -352,19 +341,28 @@ export function renderBriefCard(phase, brief, dateStr, existingOutcome = null) {
 
 // ---------------------------------------------------------------------------
 // Wire brief tab switching
+// Bug #4 fix: document.querySelector('.brief-tab-bar') lấy inline tab bar
+// trong <summary> thay vì tab bar bên trong brief context strip.
+// Scope vào #briefContextStrip để tránh collision.
 // ---------------------------------------------------------------------------
 function wireBriefTabs() {
-  const tabBar = document.querySelector('.brief-tab-bar');
+  // Bug #4 fix: scope vào container cụ thể, không dùng document.querySelector
+  const strip  = el('briefContextStrip');
+  const tabBar = strip?.querySelector('[role="tablist"]') ?? null;
   if (!tabBar) return;
 
+  // Tránh đăng ký listener trùng khi renderSnapshots được gọi nhiều lần
+  if (tabBar.dataset.wired) return;
+  tabBar.dataset.wired = '1';
+
   tabBar.addEventListener('click', e => {
-    const btn = e.target.closest('[data-brief-tab]');
+    const btn = e.target.closest('[data-tab]');
     if (!btn) return;
 
-    const target = btn.dataset.briefTab;
+    const target = btn.dataset.tab;
 
     tabBar.querySelectorAll('.brief-tab').forEach(t => {
-      const active = t.dataset.briefTab === target;
+      const active = t.dataset.tab === target;
       t.classList.toggle('active', active);
       t.setAttribute('aria-selected', String(active));
     });
@@ -378,18 +376,8 @@ function wireBriefTabs() {
 
 // ---------------------------------------------------------------------------
 // Snapshots panel (scan + morning brief + eod brief + feedback KPI)
-//
-// data shape:
-//   latest_scan       — full scan object from GET /dashboard/scan/latest (structured)
-//   latest_scan_at    — ISO string (backward compat fallback)
-//   latest_scan_summary — raw string (backward compat fallback)
-//   latest_morning_brief_at, latest_morning_brief_data
-//   latest_eod_brief_at, latest_eod_brief_data
-//   brief_feedback
 // ---------------------------------------------------------------------------
 export function renderSnapshots(data) {
-  // Scan summary block
-  // Priority: structured object (latest_scan) > raw string (latest_scan_summary)
   const scanAt  = el('latestScanAt');
   const scanSum = el('latestScanSummary');
 
@@ -398,11 +386,9 @@ export function renderSnapshots(data) {
 
   if (scanAt)  scanAt.textContent = scanAt_resolved ? fmtDate(scanAt_resolved) : '—';
   if (scanSum) scanSum.innerHTML  = renderScanDigest(scanObj)
-    // If no structured object, fallback to raw summary string
     || formatScanHtml(data.latest_scan_summary ?? null)
     || 'Chưa có scan snapshot.';
 
-  // Morning brief
   const morningWrap = el('morningBriefWrap');
   if (morningWrap) {
     morningWrap.innerHTML = renderBriefCard(
@@ -413,7 +399,6 @@ export function renderSnapshots(data) {
     );
   }
 
-  // EOD brief
   const eodWrap = el('eodBriefWrap');
   if (eodWrap) {
     eodWrap.innerHTML = renderBriefCard(
@@ -424,7 +409,6 @@ export function renderSnapshots(data) {
     );
   }
 
-  // Wave A: brief feedback KPI
   renderFeedbackKpi(data.brief_feedback ?? null);
 
   wireBriefTabs();

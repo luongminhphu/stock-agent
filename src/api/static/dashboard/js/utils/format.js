@@ -14,12 +14,22 @@ export function fmt(n, decimals = 0) {
 
 /**
  * Format date thành dd/mm/yyyy
+ *
+ * Fix bug #2: date-only strings (YYYY-MM-DD) được JS parse thành UTC midnight,
+ * gây lệch -1 ngày với user ở UTC+7. Thêm T00:00 (không có tz suffix) để
+ * JS parse theo local time thay vì UTC.
+ *
  * @param {string|Date|null} d
  * @returns {string}
  */
 export function fmtDate(d) {
   if (!d) return '\u2014';
-  return new Date(d).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const normalized = typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)
+    ? d + 'T00:00'
+    : d;
+  return new Date(normalized).toLocaleDateString('vi-VN', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+  });
 }
 
 /**
