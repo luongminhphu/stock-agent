@@ -1,21 +1,16 @@
 """add updated_timeline to review_recommendations
 
 Revision ID: 0026
-Revises: 0025
+Revises: 20260516_0023
 Create Date: 2026-05-18
-
-Owner: thesis segment.
-Adds updated_timeline column to review_recommendations table so
-AI-suggested timeline updates for DELAYED catalysts are persisted
-and can be applied to catalyst.expected_date via apply_recommendation().
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "0026"
-down_revision = "0025"
+down_revision = "20260516_0023"
 branch_labels = None
 depends_on = None
 
