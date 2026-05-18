@@ -150,16 +150,20 @@ def build_maintenance_embed(
     reviews: list,
     now_utc: datetime.datetime,
     upcoming_catalysts: list[dict] | None = None,
+    catalyst_lookahead_days: int = 30,
 ) -> discord.Embed:
     """Build embed for ThesisMaintenanceScheduler daily summary.
 
     Args:
-        expired_count:       Number of catalysts auto-expired.
-        reviews:             List of ThesisReview ORM objects from review_stale_theses().
-        now_utc:             Current UTC datetime for footer timestamp.
-        upcoming_catalysts:  Optional list of catalyst dicts from get_upcoming_catalysts().
-                             Each dict must have keys: ticker, description, expected_date (str/date).
-                             If None or empty, the catalyst section is omitted (backward compatible).
+        expired_count:            Number of catalysts auto-expired.
+        reviews:                  List of ThesisReview ORM objects from review_stale_theses().
+        now_utc:                  Current UTC datetime for footer timestamp.
+        upcoming_catalysts:       Optional list of catalyst dicts from get_upcoming_catalysts().
+                                  Each dict must have keys: ticker, description, expected_date.
+                                  If None or empty, the catalyst section is omitted.
+        catalyst_lookahead_days:  Lookahead window used in the query — shown in field title
+                                  so the user knows the date range represented.
+                                  Defaults to 30 to match _CATALYST_LOOKAHEAD_DAYS in scheduler.
 
     Returns:
         discord.Embed ready to send.
@@ -184,7 +188,7 @@ def build_maintenance_embed(
         color=_dominant_verdict_color(reviews) if reviews else _COLOR_TEAL,
     )
 
-    # -- Upcoming catalyst section (new) --
+    # -- Upcoming catalyst section --
     if upcoming_catalysts:
         today = now_utc.date()
         urgent_threshold = today + datetime.timedelta(days=3)
@@ -237,7 +241,7 @@ def build_maintenance_embed(
 
         if catalyst_field_lines:
             embed.add_field(
-                name="\U0001f4c5 Catalyst sắp đến (7 ngày tới)",
+                name=f"\U0001f4c5 Catalyst sắp đến ({catalyst_lookahead_days} ngày tới)",
                 value="\n".join(catalyst_field_lines)[:1024],
                 inline=False,
             )

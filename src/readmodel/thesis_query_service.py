@@ -16,7 +16,7 @@ import json
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -413,29 +413,39 @@ class ThesisQueryService:
     async def get_upcoming_catalysts(self, user_id: str, days: int = 30) -> list[dict[str, Any]]:
         """Return PENDING catalysts within [today, today+days] for active theses.
 
-        Fix (Bug A): replaced func.date().between() with explicit datetime range.
-        SQLite stores DateTime(timezone=True) as 'YYYY-MM-DD HH:MM:SS.ffffff +HH:MM'.
-        func.date() cannot parse the timezone suffix and returns NULL, causing
-        BETWEEN to silently match 0 rows. Using >= / <= with timezone-aware
-        datetime objects works correctly on both SQLite and PostgreSQL.
+        Date range matching is robust for both storage formats:
 
-        Fix: output dict includes both "ticker" (read by build_maintenance_embed)
-        and "thesis_ticker" (backward compat for existing API callers).
+        1. Primary clause (tz-aware datetime bounds):
+           Catalyst.expected_date >= start_dt AND Catalyst.expected_date <= end_dt
+           Matches rows stored as timezone-aware datetimes (new rows, e.g.
+           '2026-05-19 00:00:00+00:00').
 
-        days_until: int | None — number of days from today to expected_date (date only).
-            None when expected_date is None.
-            Used by downstream consumers (embed, briefing, API) to sort/filter
-            urgent catalysts without re-parsing the ISO string.
+        2. Fallback clause (func.date() string comparison):
+           func.date(Catalyst.expected_date).between(today_str, end_str)
+           Matches rows stored as naive datetimes (old rows, e.g.
+           '2026-05-19 00:00:00.000000') where timezone suffix is absent and
+           the tz-aware bound comparison fails due to SQLite string ordering.
+
+        Both clauses are combined with OR so catalysts are surfaced regardless
+        of how they were originally persisted. No migration needed.
+
+        Output dict keys:
+            id, thesis_id, description, expected_date (ISO str),
+            days_until (int|None), note, ticker, thesis_ticker (compat),
+            thesis_title, thesis_status.
         """
         from src.thesis.models import Catalyst, CatalystStatus, Thesis, ThesisStatus
 
         today = _today_utc()
         end_date = today + timedelta(days=days)
 
-        # Build timezone-aware datetime bounds — safe for DateTime(timezone=True) columns.
-        # time.min = 00:00:00, time.max = 23:59:59.999999
+        # Primary bounds: tz-aware datetime for new rows
         start_dt = datetime.combine(today, time.min).replace(tzinfo=UTC)
         end_dt = datetime.combine(end_date, time.max).replace(tzinfo=UTC)
+
+        # Fallback bounds: plain date strings for naive rows (SQLite string compare)
+        today_str = today.isoformat()       # "2026-05-19"
+        end_str = end_date.isoformat()      # "2026-06-18"
 
         rows = (
             await self._session.execute(
@@ -455,11 +465,16 @@ class ThesisQueryService:
                     Thesis.status == ThesisStatus.ACTIVE,
                     Catalyst.status == CatalystStatus.PENDING,
                     Catalyst.expected_date.isnot(None),
-                    # Datetime range comparison — works on both SQLite and PostgreSQL.
-                    # func.date().between() silently returns 0 rows on SQLite when
-                    # the column is DateTime(timezone=True) due to timezone suffix.
-                    Catalyst.expected_date >= start_dt,
-                    Catalyst.expected_date <= end_dt,
+                    or_(
+                        # Clause 1: tz-aware datetime — matches new rows
+                        and_(
+                            Catalyst.expected_date >= start_dt,
+                            Catalyst.expected_date <= end_dt,
+                        ),
+                        # Clause 2: func.date() fallback — matches naive rows stored
+                        # without timezone suffix (SQLite string comparison safe)
+                        func.date(Catalyst.expected_date).between(today_str, end_str),
+                    ),
                 )
                 .order_by(Catalyst.expected_date.asc())
                 .limit(100)
