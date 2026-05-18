@@ -16,7 +16,7 @@ import {
   renderBestCalls,
   initCallsTabs,
 } from '../backtesting/render-backtesting.js';
-import { renderCatalystList, renderSnapshots } from '../briefing/render-brief.js';
+import { renderCatalystCalendar, renderSnapshots } from '../briefing/render-brief.js';
 import { loadLeaderboard } from './leaderboard-loader.js';
 import { renderHealthHeatmap, refreshHeatmapCell } from './render-heatmap.js';
 import { countUp, flashValue } from '../../utils/animate.js';
@@ -34,7 +34,7 @@ function wireDeleteThesis(id) {
       try {
         await sendJson(`${thesisApiBase()}/${id}`, 'DELETE');
         closeModal('deleteModal');
-        showToast('🗑 Đã xóa thesis');
+        showToast('\ud83d\uddd1 \u0110ã xóa thesis');
         state.selectedThesisId = null;
         await loadDashboard();
       } catch (err) {
@@ -74,7 +74,7 @@ function showLoadingSkeletons() {
 
 /** Format số VNĐ compact */
 function fmtVnd(val) {
-  if (val == null || isNaN(val)) return '—';
+  if (val == null || isNaN(val)) return '\u2014';
   const abs = Math.abs(val);
   if (abs >= 1_000_000_000) return (val / 1_000_000_000).toFixed(2) + 'B';
   if (abs >= 1_000_000)     return (val / 1_000_000).toFixed(2) + 'M';
@@ -127,7 +127,7 @@ export function renderAlertsStrip(alerts) {
   if (!items.length) { wrap.classList.add('hidden'); return; }
 
   const priorityCls  = { HIGH: 'alert-chip--high', MEDIUM: 'alert-chip--medium', LOW: 'alert-chip--low' };
-  const priorityIcon = { HIGH: '🔴', MEDIUM: '🟡', LOW: '🔵' };
+  const priorityIcon = { HIGH: '\ud83d\udd34', MEDIUM: '\ud83d\udfe1', LOW: '\ud83d\udd35' };
 
   const shown    = items.slice(0, 5);
   const overflow = items.length - shown.length;
@@ -144,8 +144,8 @@ export function renderAlertsStrip(alerts) {
         ? new Date(a.triggered_at).toLocaleString('vi-VN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
         : null;
       return `
-        <div class="alert-chip ${priorityCls[p] ?? 'alert-chip--medium'}" title="${a.ticker} · ${a.label ?? a.condition_type ?? ''} · ${at ?? ''}">
-          <span class="alert-chip__ticker">${priorityIcon[p] ?? '🟡'} ${a.ticker ?? '—'}</span>
+        <div class="alert-chip ${priorityCls[p] ?? 'alert-chip--medium'}" title="${a.ticker} \u00b7 ${a.label ?? a.condition_type ?? ''} \u00b7 ${at ?? ''}">
+          <span class="alert-chip__ticker">${priorityIcon[p] ?? '\ud83d\udfe1'} ${a.ticker ?? '\u2014'}</span>
           <span class="alert-chip__label">${a.label ?? a.condition_type ?? ''}</span>
           ${price ? `<span class="alert-chip__price">@ ${price}</span>` : ''}
         </div>`;
@@ -179,7 +179,7 @@ export function renderSignalsFeed(res) {
   wrap.innerHTML = `
     <div class="signals-section-header">
       <span class="signals-section-title">Tín hiệu kỹ thuật</span>
-      <span class="signals-section-meta muted">${items.length} mã · ${_totalSignals(items, isGrouped)} lần</span>
+      <span class="signals-section-meta muted">${items.length} mã \u00b7 ${_totalSignals(items, isGrouped)} lần</span>
     </div>
     <div class="signals-cards">${cards.join('')}</div>
   `;
@@ -223,7 +223,7 @@ function _buildSignalCard(g) {
   const count     = g.count ?? 1;
   const lastSeen  = g.last_seen
     ? new Date(g.last_seen).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'numeric' })
-    : '—';
+    : '\u2014';
 
   const types = (g.signal_types ?? []).map(t =>
     `<span class="sig-type-tag">${_fmtSignalType(t)}</span>`
@@ -234,7 +234,7 @@ function _buildSignalCard(g) {
     : 'sig-bar--weak';
 
   const countBadge = count > 1
-    ? `<span class="sig-count-badge" title="${count} lần trong 7 ngày">×${count}</span>`
+    ? `<span class="sig-count-badge" title="${count} lần trong 7 ngày">\u00d7${count}</span>`
     : '';
 
   return `
@@ -244,7 +244,7 @@ function _buildSignalCard(g) {
         ${countBadge}
         <span class="signal-card-time muted">${lastSeen}</span>
       </div>
-      <div class="signal-card-types">${types || '<span class="muted">—</span>'}</div>
+      <div class="signal-card-types">${types || '<span class="muted">\u2014</span>'}</div>
       <div class="signal-card-bar-row">
         <div class="sig-bar-track" title="Strength ${strength}%">
           <div class="sig-bar-fill ${barCls}" style="width:${strength}%"></div>
@@ -259,13 +259,13 @@ function _fmtSignalType(type) {
     strong_move:    'STRONG MOVE',
     ma_crossover:   'MA Cross',
     volume_spike:   'Vol Spike',
-    rsi_oversold:   'RSI↓',
-    rsi_overbought: 'RSI↑',
+    rsi_oversold:   'RSI\u2193',
+    rsi_overbought: 'RSI\u2191',
     breakout:       'Breakout',
     breakdown:      'Breakdown',
     macd_signal:    'MACD',
-    price_above:    'Price↑',
-    price_below:    'Price↓',
+    price_above:    'Price\u2191',
+    price_below:    'Price\u2193',
   };
   return MAP[type] ?? type.replace(/_/g, ' ').toUpperCase();
 }
@@ -286,29 +286,29 @@ export function renderActionSurface(stats, catalysts) {
   const items = [];
 
   if (reviewsToday > 0) {
-    items.push({ icon: '⚠️', cls: 'as-item--warn', text: `${reviewsToday} thesis cần review hôm nay`, target: 'thesesTableWrap', label: 'Review ngay' });
+    items.push({ icon: '\u26a0\ufe0f', cls: 'as-item--warn', text: `${reviewsToday} thesis cần review hôm nay`, target: 'thesesTableWrap', label: 'Review ngay' });
   }
   if (staleCount > 0) {
-    items.push({ icon: '🕐', cls: 'as-item--warn', text: `${staleCount} thesis chưa review trong ${staleDays} ngày`, target: 'thesesTableWrap', label: 'Review ngay' });
+    items.push({ icon: '\ud83d\udd50', cls: 'as-item--warn', text: `${staleCount} thesis chưa review trong ${staleDays} ngày`, target: 'thesesTableWrap', label: 'Review ngay' });
   }
   if (riskyCount > 0) {
-    items.push({ icon: '🔴', cls: 'as-item--danger', text: `${riskyCount} thesis có score thấp (< 40)`, target: 'thesesTableWrap', label: 'Xem thesis' });
+    items.push({ icon: '\ud83d\udd34', cls: 'as-item--danger', text: `${riskyCount} thesis có score thấp (< 40)`, target: 'thesesTableWrap', label: 'Xem thesis' });
   }
   if (upcoming7d > 0) {
-    items.push({ icon: '📅', cls: 'as-item--info', text: `${upcoming7d} catalyst trong 7 ngày tới`, target: 'catalystList', label: 'Xem lịch' });
+    items.push({ icon: '\ud83d\udcc5', cls: 'as-item--info', text: `${upcoming7d} catalyst trong 7 ngày tới`, target: 'catalystList', label: 'Xem lịch' });
   }
 
   if (!items.length) { wrap.classList.add('hidden'); wrap.innerHTML = ''; return; }
 
   wrap.classList.remove('hidden');
   wrap.innerHTML = `
-    <div class="as-label">🎯 Việc cần làm hôm nay</div>
+    <div class="as-label">\ud83c\udfaf Việc cần làm hôm nay</div>
     <div class="as-items">
       ${items.map(item => `
         <div class="as-item ${item.cls}">
           <span class="as-icon">${item.icon}</span>
           <span class="as-text">${item.text}</span>
-          <button class="as-cta" data-scroll-to="${item.target}" type="button">${item.label} →</button>
+          <button class="as-cta" data-scroll-to="${item.target}" type="button">${item.label} \u2192</button>
         </div>`).join('')}
     </div>`;
 
@@ -340,8 +340,7 @@ export async function loadDashboard() {
       getJson(`${base}/stats`).catch(() => null),
       getJson(`${base}/theses?status=${status}`).catch(() => []),
       getJson(`${base}/backtesting/verdict-accuracy`).catch(() => null),
-      // Bug #3 fix: đồng bộ days=7 để KPI strip (upcoming_catalysts_7d từ stats)
-      // và danh sách catalyst hiển thị cùng 1 window thời gian.
+      // days=7: catalyst window đồng bộ với KPI strip (upcoming_catalysts_7d)
       getJson(`${base}/catalysts/upcoming?days=7`).catch(() => []),
       getJson(`${base}/scan/latest`).catch(() => null),
       getJson(`${briefBase}/latest?phase=morning`).catch(() => null),
@@ -373,7 +372,8 @@ export async function loadDashboard() {
     renderVerdicts(accuracyRows);
     renderAccuracy(accuracyRows);
 
-    renderCatalystList(catalysts?.items ?? catalysts ?? []);
+    // ←— Catalyst Calendar (timeline view, replaces flat list)
+    renderCatalystCalendar(catalysts?.items ?? catalysts ?? []);
 
     renderSnapshots({
       latest_scan:               latestScan ?? null,
@@ -413,14 +413,14 @@ export async function loadBacktesting() {
   const bestWrap  = el('bestCallsWrap');
   const accWrap   = el('accuracyWrap');
 
-  if (worstWrap) worstWrap.innerHTML = '<p class="muted">Đang tải...</p>';
-  if (bestWrap)  bestWrap.innerHTML  = '<p class="muted">Đang tải...</p>';
+  if (worstWrap) worstWrap.innerHTML = '<p class="muted">\u0110ang tải...</p>';
+  if (bestWrap)  bestWrap.innerHTML  = '<p class="muted">\u0110ang tải...</p>';
 
   try {
     if (state.cachedVerdictAccuracy) {
       renderAccuracy(state.cachedVerdictAccuracy);
     } else {
-      if (accWrap) accWrap.innerHTML = '<p class="muted">Đang tải...</p>';
+      if (accWrap) accWrap.innerHTML = '<p class="muted">\u0110ang tải...</p>';
       const res  = await getJson(`${base}/backtesting/verdict-accuracy`).catch(() => null);
       const rows = Array.isArray(res) ? res : (res?.items ?? []);
       state.cachedVerdictAccuracy = rows;

@@ -7,15 +7,21 @@
 
 import { el } from '../../utils/dom.js';
 import { esc, fmtDate } from '../../utils/format.js';
+import { renderCatalystCalendar } from './render-catalyst-calendar.js';
+
+// Re-export renderCatalystCalendar so existing callers using render-brief.js
+// as entry point keep working without import changes.
+export { renderCatalystCalendar };
 
 // ---------------------------------------------------------------------------
-// Catalyst calendar list (sidebar)
+// Catalyst calendar list (sidebar) — kept for backward compat, not used by
+// dashboard-loader.js anymore (renderCatalystCalendar is used instead).
 // ---------------------------------------------------------------------------
 export function renderCatalystList(raw) {
   const wrap = el('catalystList');
   if (!wrap) return;
 
-  // Bug #1 fix: normalize to Array — API có thể trả { items: null } hoặc
+  // Bug #1 fix: normalize to Array — API ó thể trả { items: null } hoặc
   // plain object, dùng list.length trực tiếp sẽ crash / silent-empty.
   const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.items) ? raw.items : []);
 
@@ -34,7 +40,7 @@ export function renderCatalystList(raw) {
       <div style="display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap;">
         ${item.expected_date
           ? `<span style="font-size:.8rem;color:var(--muted);">&#128197; ${fmtDate(item.expected_date)}</span>`
-          : '<span style="font-size:.8rem;color:var(--muted);">· —</span>'}
+          : '<span style="font-size:.8rem;color:var(--muted);">\u00b7 \u2014</span>'}
         ${item.thesis_title
           ? `<span style="font-size:.78rem;color:var(--muted);font-style:italic;">${esc(item.thesis_title)}</span>`
           : ''}
@@ -46,10 +52,10 @@ export function renderCatalystList(raw) {
 // Sentiment metadata
 // ---------------------------------------------------------------------------
 const SENTIMENT_META = {
-  RISK_ON:   { cls: 'sent-risk-on',   icon: '🟢', label: 'Risk-On'   },
-  RISK_OFF:  { cls: 'sent-risk-off',  icon: '🔴', label: 'Risk-Off'  },
-  MIXED:     { cls: 'sent-mixed',     icon: '⚡',  label: 'Mixed'     },
-  UNCERTAIN: { cls: 'sent-uncertain', icon: '❓',  label: 'Uncertain' },
+  RISK_ON:   { cls: 'sent-risk-on',   icon: '\ud83d\udfe2', label: 'Risk-On'   },
+  RISK_OFF:  { cls: 'sent-risk-off',  icon: '\ud83d\udd34', label: 'Risk-Off'  },
+  MIXED:     { cls: 'sent-mixed',     icon: '\u26a1',  label: 'Mixed'     },
+  UNCERTAIN: { cls: 'sent-uncertain', icon: '\u2753',  label: 'Uncertain' },
 };
 
 // ---------------------------------------------------------------------------
@@ -95,10 +101,10 @@ function renderScanDigest(scan) {
       : null;
 
     const metaParts = [];
-    if (timeLabel)    metaParts.push(`🕐 ${timeLabel}`);
+    if (timeLabel)    metaParts.push(`\ud83d\udd50 ${timeLabel}`);
     if (tickerCount)  metaParts.push(`${tickerCount} tickers`);
-    if (signalCount)  metaParts.push(`<span class="scan-badge scan-badge--signal">📶 ${signalCount} signals</span>`);
-    if (alertCount)   metaParts.push(`<span class="scan-badge scan-badge--alert">⚠️ ${alertCount} alerts</span>`);
+    if (signalCount)  metaParts.push(`<span class="scan-badge scan-badge--signal">\ud83d\udcf6 ${signalCount} signals</span>`);
+    if (alertCount)   metaParts.push(`<span class="scan-badge scan-badge--alert">\u26a0\ufe0f ${alertCount} alerts</span>`);
 
     let picksHtml = '';
     if (topPicks && topPicks.length) {
@@ -126,7 +132,7 @@ function renderScanDigest(scan) {
 
     return `
       <div class="scan-digest">
-        ${metaParts.length ? `<div class="scan-meta">${metaParts.join('<span class="scan-sep">·</span>')}</div>` : ''}
+        ${metaParts.length ? `<div class="scan-meta">${metaParts.join('<span class="scan-sep">\u00b7</span>')}</div>` : ''}
         ${headlineHtml}
         ${picksHtml}
       </div>`;
@@ -142,9 +148,9 @@ function renderScanDigest(scan) {
 // Wave A: Brief Feedback KPI strip
 // ---------------------------------------------------------------------------
 const OUTCOME_META = {
-  acted:    { icon: '✅', label: 'Đã hành động', cls: 'fb-acted'   },
-  watching: { icon: '👀', label: 'Đang theo dõi', cls: 'fb-watching' },
-  skipped:  { icon: '⏭',  label: 'Bỏ qua',        cls: 'fb-skipped'  },
+  acted:    { icon: '\u2705', label: '\u0110ã hành động', cls: 'fb-acted'   },
+  watching: { icon: '\ud83d\udc40', label: '\u0110ang theo dõi', cls: 'fb-watching' },
+  skipped:  { icon: '\u23ed',  label: 'Bỏ qua',        cls: 'fb-skipped'  },
 };
 
 export function renderFeedbackKpi(data) {
@@ -173,7 +179,7 @@ export function renderFeedbackKpi(data) {
     : '';
 
   wrap.innerHTML = (rateHtml || lastHtml || totalHtml)
-    ? `<div class="fb-kpi-strip">${[rateHtml, lastHtml, totalHtml].filter(Boolean).join('<span class="fb-sep">·</span>')}</div>`
+    ? `<div class="fb-kpi-strip">${[rateHtml, lastHtml, totalHtml].filter(Boolean).join('<span class="fb-sep">\u00b7</span>')}</div>`
     : '';
 }
 
@@ -206,7 +212,7 @@ function fmtReviewAge(isoStr) {
 export function renderBriefCard(phase, brief, dateStr, existingOutcome = null) {
   const isEod = phase === 'eod';
   const label = isEod ? 'End-of-Day Brief' : 'Morning Brief';
-  const icon  = isEod ? '🌙' : '🌅';
+  const icon  = isEod ? '\ud83c\udf19' : '\ud83c\udf05';
 
   if (!brief) {
     return `<div class="brief-empty">Chưa có brief.</div>`;
@@ -224,7 +230,7 @@ export function renderBriefCard(phase, brief, dateStr, existingOutcome = null) {
   const ometa = existingOutcome ? (OUTCOME_META[existingOutcome] ?? null) : null;
 
   const { timeStr, ageBadge } = fmtReviewAge(brief.created_at ?? brief.generated_at);
-  const clockLabel = timeStr ?? dateStr ?? '—';
+  const clockLabel = timeStr ?? dateStr ?? '\u2014';
 
   return `
     <div class="brief-card phase-${isEod ? 'eod' : 'morning'}">
@@ -233,7 +239,7 @@ export function renderBriefCard(phase, brief, dateStr, existingOutcome = null) {
         <div>
           <div class="brief-phase-label">${label}</div>
           <div class="brief-date-row">
-            <span class="brief-date" title="Thời điểm generate brief">🕐 ${clockLabel}</span>
+            <span class="brief-date" title="Thời điểm generate brief">\ud83d\udd50 ${clockLabel}</span>
             ${ageBadge
               ? `<span class="brief-age-badge ${ageBadge.cls}">${ageBadge.label}</span>`
               : ''}
@@ -255,7 +261,7 @@ export function renderBriefCard(phase, brief, dateStr, existingOutcome = null) {
 
         ${keyMovers.length ? `
           <div class="brief-section">
-            <div class="brief-section-title">📌 Key Movers</div>
+            <div class="brief-section-title">\ud83d\udccc Key Movers</div>
             <div class="brief-movers">
               ${keyMovers.map(s => {
                 const isStr = typeof s === 'string';
@@ -272,7 +278,7 @@ export function renderBriefCard(phase, brief, dateStr, existingOutcome = null) {
 
         ${watchlistAlerts.length ? `
           <div class="brief-section">
-            <div class="brief-section-title">⚠️ Watchlist Alerts</div>
+            <div class="brief-section-title">\u26a0\ufe0f Watchlist Alerts</div>
             ${watchlistAlerts.map(a =>
               `<div class="brief-item">${esc(a)}</div>`
             ).join('')}
@@ -280,7 +286,7 @@ export function renderBriefCard(phase, brief, dateStr, existingOutcome = null) {
 
         ${actionItems.length ? `
           <div class="brief-section">
-            <div class="brief-section-title">✅ Action Items</div>
+            <div class="brief-section-title">\u2705 Action Items</div>
             ${actionItems.map(a => {
               const tickerMatch = typeof a === 'string' && a.match(/^([A-Z]{2,5})\b/);
               return tickerMatch
@@ -293,11 +299,11 @@ export function renderBriefCard(phase, brief, dateStr, existingOutcome = null) {
 
         ${tickerSummaries.length ? `
           <div class="brief-section">
-            <div class="brief-section-title">📊 Ticker Summaries</div>
+            <div class="brief-section-title">\ud83d\udcca Ticker Summaries</div>
             <table class="brief-ticker-table">
               <thead>
                 <tr>
-                  <th>Mã</th>
+                  <th>M\u00e3</th>
                   <th>Signal</th>
                   <th style="text-align:right;">Chg%</th>
                 </tr>
@@ -317,8 +323,8 @@ export function renderBriefCard(phase, brief, dateStr, existingOutcome = null) {
                         ? `<div class="bt-note" style="font-style:italic;">${esc(t.watch_reason)}</div>`
                         : ''}
                     </td>
-                    <td>${t.signal ? `<span class="bt-signal ${sigCls}">${esc(t.signal)}</span>` : '—'}</td>
-                    <td class="bt-chg ${cls}">${chg != null ? (chg >= 0 ? '+' : '') + Number(chg).toFixed(2) + '%' : '—'}</td>
+                    <td>${t.signal ? `<span class="bt-signal ${sigCls}">${esc(t.signal)}</span>` : '\u2014'}</td>
+                    <td class="bt-chg ${cls}">${chg != null ? (chg >= 0 ? '+' : '') + Number(chg).toFixed(2) + '%' : '\u2014'}</td>
                   </tr>`;
                 }).join('')}
               </tbody>
@@ -330,10 +336,10 @@ export function renderBriefCard(phase, brief, dateStr, existingOutcome = null) {
         <div class="brief-feedback-bar" data-brief-id="${brief.id}">
           ${ometa
             ? `<span class="fb-confirmed">${ometa.icon} ${ometa.label}</span>`
-            : `<span class="fb-prompt">Brief này có hữu ích không?</span>
-               <button class="fb-btn" data-outcome="acted">✅ Đã hành động</button>
-               <button class="fb-btn" data-outcome="watching">👀 Theo dõi</button>
-               <button class="fb-btn" data-outcome="skipped">⏭ Bỏ qua</button>`
+            : `<span class="fb-prompt">Brief n\u00e0y c\u00f3 h\u1eefu \u00edch kh\u00f4ng?</span>
+               <button class="fb-btn" data-outcome="acted">\u2705 \u0110\u00e3 h\u00e0nh \u0111\u1ed9ng</button>
+               <button class="fb-btn" data-outcome="watching">\ud83d\udc40 Theo d\u00f5i</button>
+               <button class="fb-btn" data-outcome="skipped">\u23ed B\u1ecf qua</button>`
           }
         </div>` : ''}
     </div>`;
@@ -384,7 +390,7 @@ export function renderSnapshots(data) {
   const scanObj = data.latest_scan ?? null;
   const scanAt_resolved = scanObj?.scanned_at ?? scanObj?.created_at ?? data.latest_scan_at ?? null;
 
-  if (scanAt)  scanAt.textContent = scanAt_resolved ? fmtDate(scanAt_resolved) : '—';
+  if (scanAt)  scanAt.textContent = scanAt_resolved ? fmtDate(scanAt_resolved) : '\u2014';
   if (scanSum) scanSum.innerHTML  = renderScanDigest(scanObj)
     || formatScanHtml(data.latest_scan_summary ?? null)
     || 'Chưa có scan snapshot.';
