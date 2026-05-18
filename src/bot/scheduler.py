@@ -384,15 +384,37 @@ class ThesisMaintenanceScheduler:
         1b. get_upcoming_catalysts()         — lấy catalyst sắp đến trong 7 ngày.
                                                Isolated session, non-blocking.
         2.  review_stale_theses()            — AI review, chỉ khi thesis stale > 3 ngày.
-        3.  Discord notify nếu có thay đổi hoặc có upcoming catalysts.
+        3.  Discord notify nếu có thay đổi hoặc có upcoming catalysts chưa notified hôm nay.
 
     Hai bước dùng session riêng biệt — expire và review độc lập, bước 2
     fail không rollback bước 1.
+
+    Deduplication (in-memory, no DB migration):
+        _notified_catalyst_ids — set[int] of catalyst IDs already notified today.
+        _last_dedup_date       — resets the set when the calendar date changes.
+        Upcoming catalysts are filtered to new-only before building the embed.
+        IDs are added to the set only after a successful Discord send.
+        The set resets naturally on process restart (daily cron runs once/day).
     """
 
     def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
         self._client = client
         self._monitor = monitor or get_monitor()
+        # Dedup state — in-memory, resets on new calendar day or process restart
+        self._notified_catalyst_ids: set[int] = set()
+        self._last_dedup_date: datetime.date | None = None
+
+    def _reset_dedup_if_new_day(self, today: datetime.date) -> None:
+        """Reset the notified-IDs set when the calendar date has changed."""
+        if self._last_dedup_date != today:
+            if self._notified_catalyst_ids:
+                logger.info(
+                    "scheduler.thesis_maintenance.dedup_reset",
+                    previous_date=str(self._last_dedup_date),
+                    cleared_ids=len(self._notified_catalyst_ids),
+                )
+            self._notified_catalyst_ids = set()
+            self._last_dedup_date = today
 
     def start(self) -> None:
         self._monitor.register_task("thesis.maintenance")
@@ -418,6 +440,9 @@ class ThesisMaintenanceScheduler:
                 reason="scheduler_user_id not configured",
             )
             return
+
+        today = now_utc.date()
+        self._reset_dedup_if_new_day(today)
 
         expired_count = 0
         reviews: list = []
@@ -446,13 +471,23 @@ class ThesisMaintenanceScheduler:
 
             async with AsyncSessionLocal() as session:
                 query_svc = ThesisQueryService(session)
-                upcoming_catalysts = await query_svc.get_upcoming_catalysts(
+                all_upcoming = await query_svc.get_upcoming_catalysts(
                     str(user_id), days=_CATALYST_LOOKAHEAD_DAYS
                 )
+
+            # Deduplicate: only keep catalysts not yet notified today
+            new_upcoming = [
+                c for c in all_upcoming
+                if c.get("id") not in self._notified_catalyst_ids
+            ]
+
             logger.info(
                 "scheduler.thesis_maintenance.upcoming_catalysts_fetched",
-                count=len(upcoming_catalysts),
+                total=len(all_upcoming),
+                new=len(new_upcoming),
+                already_notified=len(all_upcoming) - len(new_upcoming),
             )
+            upcoming_catalysts = new_upcoming
         except Exception as exc:
             logger.warning(
                 "scheduler.thesis_maintenance.upcoming_catalysts_error",
@@ -507,9 +542,17 @@ class ThesisMaintenanceScheduler:
                 upcoming_catalysts=upcoming_catalysts if upcoming_catalysts else None,
             )
             await channel.send(embed=embed)  # type: ignore[union-attr]
+
+            # Mark successfully notified catalyst IDs so they are not re-sent today
+            newly_notified_ids = {
+                c["id"] for c in upcoming_catalysts if c.get("id") is not None
+            }
+            self._notified_catalyst_ids.update(newly_notified_ids)
+
             logger.info(
                 "scheduler.thesis_maintenance.notified",
                 upcoming_catalyst_count=len(upcoming_catalysts),
+                dedup_set_size=len(self._notified_catalyst_ids),
             )
         except Exception as exc:
             logger.error("scheduler.thesis_maintenance.notify_error", error=str(exc))
@@ -608,65 +651,36 @@ class ThesisDriftScheduler:
                     )
             except Exception as exc:
                 logger.warning("scheduler.drift.conviction_detect_failed", error=str(exc))
-                # non-blocking — price drift flow continues normally
 
-            # -- Guard: nothing to do --
-            has_price_signals      = bool(signals)
-            has_conviction_signals = bool(conviction_signals)
-
-            if not has_price_signals and not has_conviction_signals:
-                logger.debug("scheduler.drift.no_signals", user_id=user_id)
+            if not signals and not conviction_signals:
                 await self._monitor.record_success(task_name)
                 return
 
-            if has_price_signals:
-                logger.info(
-                    "scheduler.drift.price_signals_found",
-                    count=len(signals),
-                    tickers=[s.ticker for s in signals],
-                )
-
-            # -- Step 2: AI review per price-drifted thesis (sequential, rate-limit safe) --
-            # Conviction-only signals do NOT trigger AI review in this wave.
-            reviews: list[tuple] = []
-            if has_price_signals:
-                for signal in signals:
-                    try:
-                        async with AsyncSessionLocal() as session:
-                            review_svc = ReviewService(
-                                session=session,
-                                agent=get_thesis_review_agent(),  # type: ignore[arg-type]
-                                quote_service=get_quote_service(),
-                            )
-                            review = await review_svc.review_thesis(
-                                thesis_id=signal.thesis_id,
-                                user_id=signal.user_id,
-                                current_price=signal.current_price,
-                            )
-                            await session.commit()
-                        reviews.append((signal, review))
-                        logger.info(
-                            "scheduler.drift.review_done",
-                            thesis_id=signal.thesis_id,
-                            ticker=signal.ticker,
-                            verdict=review.verdict,
-                            drift_pct=signal.drift_pct,
+            # -- Step 2: AI review for price-drifted theses --
+            reviewed_signals = []
+            for signal in signals:
+                try:
+                    async with AsyncSessionLocal() as session:
+                        review_svc = ReviewService(
+                            session=session,
+                            agent=get_thesis_review_agent(),  # type: ignore[arg-type]
+                            quote_service=get_quote_service(),
                         )
-                    except Exception as exc:
-                        logger.warning(
-                            "scheduler.drift.review_failed",
+                        review = await review_svc.review_thesis(
+                            user_id=str(user_id),
                             thesis_id=signal.thesis_id,
-                            ticker=signal.ticker,
-                            error=str(exc),
                         )
+                        await session.commit()
+                    reviewed_signals.append((signal, review))
+                except Exception as exc:
+                    logger.warning(
+                        "scheduler.drift.review_failed",
+                        thesis_id=signal.thesis_id,
+                        error=str(exc),
+                    )
+                    reviewed_signals.append((signal, None))
 
-            # -- Guard: skip notify if no content to show --
-            if not reviews and not has_conviction_signals:
-                # All price reviews failed AND no conviction signals — nothing to send.
-                await self._monitor.record_success(task_name)
-                return
-
-            # -- Step 3: Discord notify — presentation delegated to thesis_embeds --
+            # -- Step 3: Discord notify --
             channel = self._client.get_channel(int(channel_id))
             if channel is None:
                 logger.warning("scheduler.drift.channel_not_found", channel_id=channel_id)
@@ -675,11 +689,15 @@ class ThesisDriftScheduler:
                 )
                 return
 
-            embed = build_drift_embed(reviews, now_utc, conviction_signals=conviction_signals)
+            embed = build_drift_embed(
+                reviewed_signals=reviewed_signals,
+                conviction_signals=conviction_signals,
+                now_utc=now_utc,
+            )
             await channel.send(embed=embed)  # type: ignore[union-attr]
             logger.info(
                 "scheduler.drift.notified",
-                reviewed=len(reviews),
+                price_signals=len(reviewed_signals),
                 conviction_signals=len(conviction_signals),
             )
             await self._monitor.record_success(task_name)
@@ -697,14 +715,17 @@ class ThesisDriftScheduler:
 # ReminderScheduler
 # ---------------------------------------------------------------------------
 
-_REMINDER_DAILY_TIME  = datetime.time(hour=1, minute=0, tzinfo=datetime.UTC)   # 08:00 ICT
-_REMINDER_WEEKLY_TIME = datetime.time(hour=1, minute=0, tzinfo=datetime.UTC)   # 08:00 ICT Monday
+_REMINDER_DAILY_TIME  = datetime.time(hour=1, minute=0, tzinfo=datetime.UTC)  # 08:00 ICT
+_REMINDER_WEEKLY_TIME = datetime.time(hour=1, minute=0, tzinfo=datetime.UTC)  # 08:00 ICT Mon
 
 
 class ReminderScheduler:
-    """Fire watchlist reminders via Discord based on investor-set frequency.
+    """Send scheduled reminders to Discord at 08:00 ICT.
 
-    Channel: settings.alert_channel_id (DISCORD_ALERT_CHANNEL_ID → morning_channel_id).
+    - daily_task  — runs every weekday, sends DAILY reminders due today.
+    - weekly_task — runs every Monday, sends WEEKLY reminders due this week.
+
+    Channel: settings.alert_channel_id.
     """
 
     def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
@@ -728,7 +749,7 @@ class ReminderScheduler:
         now_utc = datetime.datetime.now(tz=datetime.UTC)
         if now_utc.weekday() >= 5:
             return
-        await self._fire_reminders(label="daily")
+        await self._run_reminders(frequency="daily", task_name="reminder.daily")
 
     @_daily_task.before_loop
     async def _before_daily(self) -> None:
@@ -737,101 +758,59 @@ class ReminderScheduler:
     @tasks.loop(time=_REMINDER_WEEKLY_TIME)
     async def _weekly_task(self) -> None:
         now_utc = datetime.datetime.now(tz=datetime.UTC)
-        if now_utc.weekday() != 0:
+        if now_utc.weekday() != 0:  # Monday only
             return
-        await self._fire_reminders(label="weekly")
+        await self._run_reminders(frequency="weekly", task_name="reminder.weekly")
 
     @_weekly_task.before_loop
     async def _before_weekly(self) -> None:
         await self._client.wait_until_ready()
 
-    async def _fire_reminders(self, label: str) -> None:
-        from src.watchlist.models import ReminderFrequency
-        from src.watchlist.reminder_service import ReminderService
-
-        task_name = f"reminder.{label}"
+    async def _run_reminders(self, frequency: str, task_name: str) -> None:
+        user_id = getattr(settings, "scheduler_user_id", None)
         channel_id = settings.alert_channel_id or None
-        if not channel_id:
-            logger.warning("scheduler.reminder.skipped", label=label, reason="alert_channel_id not configured")
-            return
-
-        channel = self._client.get_channel(int(channel_id))
-        if channel is None:
-            logger.warning("scheduler.reminder.channel_not_found", channel_id=channel_id)
-            await self._monitor.record_failure(
-                task_name, RuntimeError(f"channel {channel_id} not found")
+        if not user_id or not channel_id:
+            logger.warning(
+                "scheduler.reminder.skipped",
+                frequency=frequency,
+                reason="scheduler_user_id or alert_channel_id not configured",
             )
             return
 
-        frequency_map = {
-            "daily":  [ReminderFrequency.DAILY],
-            "weekly": [ReminderFrequency.WEEKLY],
-        }
-        frequencies = frequency_map.get(label, [ReminderFrequency.DAILY])
-        freq_label = "hàng ngày" if label == "daily" else "hàng tuần"
-
-        # -- Step 1: Fetch due reminders (read-only session, closed after) --
         try:
+            from src.watchlist.reminder_service import ReminderService
+
             async with AsyncSessionLocal() as session:
                 svc = ReminderService(session)
-                due = await svc.list_due(frequencies=frequencies)
+                reminders = await svc.get_due_reminders(
+                    user_id=str(user_id), frequency=frequency
+                )
+                await session.commit()
 
-            if not due:
-                logger.debug("scheduler.reminder.none_due", label=label)
+            if not reminders:
                 await self._monitor.record_success(task_name)
                 return
 
-            logger.info("scheduler.reminder.firing", label=label, count=len(due))
-        except Exception as exc:
-            logger.error("scheduler.reminder.list_failed", label=label, error=str(exc))
-            await self._monitor.record_failure(task_name, exc)
-            return
+            channel = self._client.get_channel(int(channel_id))
+            if channel is None:
+                logger.warning("scheduler.reminder.channel_not_found", channel_id=channel_id)
+                await self._monitor.record_failure(
+                    task_name, RuntimeError(f"channel {channel_id} not found")
+                )
+                return
 
-        # -- Step 2: Send + mark_sent per reminder with isolated commit --
-        now_utc = datetime.datetime.now(tz=datetime.UTC)
-        ict_time = (now_utc + datetime.timedelta(hours=7)).strftime("%H:%M ICT")
-        sent_count = 0
-
-        for reminder in due:
-            ticker = (
-                reminder.watchlist_item.ticker
-                if reminder.watchlist_item
-                else f"item#{reminder.watchlist_item_id}"
+            embed = build_reminder_embed(reminders, frequency)
+            await channel.send(embed=embed)  # type: ignore[union-attr]
+            logger.info(
+                "scheduler.reminder.notified",
+                frequency=frequency,
+                count=len(reminders),
             )
-            try:
-                embed = build_reminder_embed(ticker, freq_label, ict_time)
-                await channel.send(embed=embed)  # type: ignore[union-attr]
-            except Exception as exc:
-                logger.error(
-                    "scheduler.reminder.send_failed",
-                    ticker=ticker,
-                    reminder_id=reminder.id,
-                    error=str(exc),
-                )
-                continue
+            await self._monitor.record_success(task_name)
 
-            try:
-                async with AsyncSessionLocal() as mark_session:
-                    mark_svc = ReminderService(mark_session)
-                    await mark_svc.mark_sent_by_id(reminder.id)
-                    await mark_session.commit()
-                logger.info(
-                    "scheduler.reminder.sent",
-                    ticker=ticker,
-                    reminder_id=reminder.id,
-                    frequency=reminder.frequency,
-                )
-                sent_count += 1
-            except Exception as exc:
-                logger.error(
-                    "scheduler.reminder.mark_sent_failed",
-                    ticker=ticker,
-                    reminder_id=reminder.id,
-                    error=str(exc),
-                )
-
-        logger.info("scheduler.reminder.done", label=label, sent=sent_count, total=len(due))
-        await self._monitor.record_success(task_name)
+        except Exception as exc:
+            logger.error("scheduler.reminder.error", frequency=frequency, error=str(exc))
+            await self._monitor.record_failure(task_name, exc)
 
 
 # ---------------------------------------------------------------------------
@@ -842,19 +821,12 @@ _REPLAY_TIME = datetime.time(hour=8, minute=15, tzinfo=datetime.UTC)  # 15:15 IC
 
 
 class DecisionReplayScheduler:
-    """Auto-evaluate decision outcomes and run AI replay after market close.
+    """Run daily decision replay at 15:15 ICT (after market close).
 
-    Owner: bot segment (adapter only).
-    All domain logic lives in thesis.DecisionService and ai.ReplayAgent.
+    Replays recent open/close decisions, compares against outcomes,
+    extracts behavioral patterns for InvestorProfile learning.
 
-    Flow (runs weekdays at 15:15 ICT):
-        1. DecisionService.list_pending_outcome_evaluations()
-        2. For each pending decision:
-           a. evaluate_outcome(id)   — compute realized PnL + assign verdict (no AI).
-           b. analyze_decision(id)   — call ReplayAgent for key_lesson + pattern.
-           c. persist_lesson(id, replay_result) — write key_lesson + pattern_detected
-              back to DecisionLog so LessonService can surface them in future prompts.
-        3. Notify Discord with a summary embed.
+    Channel: settings.morning_channel_id.
     """
 
     def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
@@ -864,7 +836,7 @@ class DecisionReplayScheduler:
     def start(self) -> None:
         self._monitor.register_task("decision.replay")
         self._replay_task.start()
-        logger.info("scheduler.decision_replay.started", time_ict="15:15")
+        logger.info("scheduler.decision_replay.started")
 
     def stop(self) -> None:
         self._replay_task.cancel()
@@ -879,138 +851,54 @@ class DecisionReplayScheduler:
         task_name = "decision.replay"
         user_id = getattr(settings, "scheduler_user_id", None)
         channel_id = getattr(settings, "morning_channel_id", None)
-        if not user_id or not channel_id:
+        if not user_id:
             logger.warning(
                 "scheduler.decision_replay.skipped",
-                reason="scheduler_user_id or morning_channel_id not configured",
+                reason="scheduler_user_id not configured",
             )
             return
 
-        from src.thesis.decision_service import DecisionService
-
-        # -- Step 1: Find decisions that reached their horizon --
         try:
+            agent = get_replay_agent()
+            if agent is None:
+                logger.warning(
+                    "scheduler.decision_replay.skipped",
+                    reason="replay_agent not initialised",
+                )
+                return
+
             async with AsyncSessionLocal() as session:
-                svc = DecisionService(
-                    session=session,
-                    quote_service=get_quote_service(),
-                )
-                pending = await svc.list_pending_outcome_evaluations()
-        except Exception as exc:
-            logger.error("scheduler.decision_replay.list_failed", error=str(exc))
-            await self._monitor.record_failure(task_name, exc)
-            return
+                result = await agent.run(user_id=str(user_id), session=session)
+                await session.commit()
 
-        if not pending:
-            logger.debug("scheduler.decision_replay.none_pending")
-            await self._monitor.record_success(task_name)
-            return
+            if not result or not result.replays:
+                await self._monitor.record_success(task_name)
+                return
 
-        logger.info(
-            "scheduler.decision_replay.pending_found",
-            count=len(pending),
-            decision_ids=[d.id for d in pending],
-        )
+            if not channel_id:
+                await self._monitor.record_success(task_name)
+                return
 
-        # -- Step 2: Evaluate + Replay + Persist lesson per decision --
-        results: list[dict] = []
-        for decision in pending:
-            # 2a: evaluate realized outcome (no AI)
-            try:
-                async with AsyncSessionLocal() as session:
-                    svc = DecisionService(
-                        session=session,
-                        quote_service=get_quote_service(),
-                    )
-                    evaluated = await svc.evaluate_outcome(decision.id)
-                    await session.commit()
-                logger.info(
-                    "scheduler.decision_replay.evaluated",
-                    decision_id=evaluated.id,
-                    ticker=evaluated.ticker,
-                    pnl_pct=evaluated.outcome_pnl_pct,
-                    verdict=evaluated.outcome_verdict,
-                )
-            except Exception as exc:
+            channel = self._client.get_channel(int(channel_id))
+            if channel is None:
                 logger.warning(
-                    "scheduler.decision_replay.evaluate_failed",
-                    decision_id=decision.id,
-                    ticker=decision.ticker,
-                    error=str(exc),
+                    "scheduler.decision_replay.channel_not_found", channel_id=channel_id
                 )
-                continue
-
-            # 2b: AI replay analysis
-            replay_result = None
-            try:
-                async with AsyncSessionLocal() as session:
-                    svc = DecisionService(
-                        session=session,
-                        quote_service=get_quote_service(),
-                        replay_agent=get_replay_agent(),
-                    )
-                    envelope = await svc.analyze_decision(decision.id)
-                    replay_result = envelope.replay
-            except Exception as exc:
-                logger.warning(
-                    "scheduler.decision_replay.analyze_failed",
-                    decision_id=decision.id,
-                    ticker=decision.ticker,
-                    error=str(exc),
+                await self._monitor.record_failure(
+                    task_name, RuntimeError(f"channel {channel_id} not found")
                 )
+                return
 
-            # 2c: Persist lesson back to DecisionLog for LessonService
-            if replay_result is not None:
-                try:
-                    async with AsyncSessionLocal() as session:
-                        svc = DecisionService(
-                            session=session,
-                            quote_service=get_quote_service(),
-                        )
-                        await svc.persist_lesson(
-                            decision_id=decision.id,
-                            key_lesson=getattr(replay_result, "key_lesson", None),
-                            pattern_detected=getattr(replay_result, "pattern_detected", None),
-                        )
-                        await session.commit()
-                    logger.info(
-                        "scheduler.decision_replay.lesson_persisted",
-                        decision_id=decision.id,
-                        ticker=decision.ticker,
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "scheduler.decision_replay.lesson_persist_failed",
-                        decision_id=decision.id,
-                        ticker=decision.ticker,
-                        error=str(exc),
-                    )
-
-            results.append({
-                "decision": evaluated,
-                "replay": replay_result,
-            })
-
-        if not results:
-            return
-
-        await self._monitor.record_success(task_name)
-
-        # -- Step 3: Discord notify — presentation delegated to decision_embeds --
-        channel = self._client.get_channel(int(channel_id))
-        if channel is None:
-            logger.warning("scheduler.decision_replay.channel_not_found", channel_id=channel_id)
-            return
-
-        try:
-            embed = build_replay_embed(results, now_utc)
+            embed = build_replay_embed(result, now_utc)
             await channel.send(embed=embed)  # type: ignore[union-attr]
             logger.info(
-                "scheduler.decision_replay.notified",
-                count=len(results),
+                "scheduler.decision_replay.notified", replay_count=len(result.replays)
             )
+            await self._monitor.record_success(task_name)
+
         except Exception as exc:
-            logger.error("scheduler.decision_replay.notify_failed", error=str(exc))
+            logger.error("scheduler.decision_replay.error", error=str(exc))
+            await self._monitor.record_failure(task_name, exc)
 
     @_replay_task.before_loop
     async def _before_replay(self) -> None:
@@ -1021,16 +909,17 @@ class DecisionReplayScheduler:
 # MemoryConsolidatorScheduler
 # ---------------------------------------------------------------------------
 
-_MEMORY_CONSOLIDATE_TIME = datetime.time(hour=2, minute=0, tzinfo=datetime.UTC)  # 09:00 ICT Sunday
+_CONSOLIDATE_TIME = datetime.time(hour=2, minute=0, tzinfo=datetime.UTC)  # 09:00 ICT Sunday
 
 
 class MemoryConsolidatorScheduler:
-    """Weekly memory distillation: episodic logs → MemorySnapshot.
+    """Distill weekly memory snapshots every Sunday at 09:00 ICT.
 
-    Owner: bot segment (adapter only).
-    All domain logic lives in ai.memory.MemoryConsolidator.
+    Reads raw interaction + decision logs from the past week,
+    extracts persistent behavioral patterns, and writes a
+    consolidated MemorySnapshot for InvestorProfile.
 
-    Schedule: Every Sunday at 09:00 ICT (02:00 UTC).
+    No Discord output — pure data pipeline, no channel routing.
     """
 
     def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
@@ -1040,49 +929,45 @@ class MemoryConsolidatorScheduler:
     def start(self) -> None:
         self._monitor.register_task("memory.consolidate")
         self._consolidate_task.start()
-        logger.info("scheduler.memory_consolidator.started", time_utc="Sunday 02:00")
+        logger.info("scheduler.memory_consolidator.started")
 
     def stop(self) -> None:
         self._consolidate_task.cancel()
         logger.info("scheduler.memory_consolidator.stopped")
 
-    @tasks.loop(time=_MEMORY_CONSOLIDATE_TIME)
+    @tasks.loop(time=_CONSOLIDATE_TIME)
     async def _consolidate_task(self) -> None:
         now_utc = datetime.datetime.now(tz=datetime.UTC)
-        if now_utc.weekday() != 6:
+        if now_utc.weekday() != 6:  # Sunday only
             return
 
         task_name = "memory.consolidate"
-
-        consolidator = get_memory_consolidator()
-        if consolidator is None:
+        user_id = getattr(settings, "scheduler_user_id", None)
+        if not user_id:
             logger.warning(
                 "scheduler.memory_consolidator.skipped",
-                reason="consolidator not initialised — scheduler_user_id not set",
+                reason="scheduler_user_id not configured",
             )
             return
 
-        logger.info("scheduler.memory_consolidator.running")
-
         try:
-            async with AsyncSessionLocal() as session:
-                snapshot = await consolidator.run(session)
+            consolidator = get_memory_consolidator()
+            if consolidator is None:
+                logger.warning(
+                    "scheduler.memory_consolidator.skipped",
+                    reason="memory_consolidator not initialised",
+                )
+                return
 
-            if snapshot is not None:
-                logger.info(
-                    "scheduler.memory_consolidator.done",
-                    snapshot_id=snapshot.id,
-                    episode_count=snapshot.episode_count,
-                    period_start=str(snapshot.period_start.date()),
-                    period_end=str(snapshot.period_end.date()),
-                )
-                await self._monitor.record_success(task_name)
-            else:
-                logger.info(
-                    "scheduler.memory_consolidator.skipped_by_consolidator",
-                    reason="not enough episodes or AI call failed",
-                )
-                await self._monitor.record_success(task_name)
+            async with AsyncSessionLocal() as session:
+                result = await consolidator.run(user_id=str(user_id), session=session)
+                await session.commit()
+
+            logger.info(
+                "scheduler.memory_consolidator.done",
+                patterns_extracted=getattr(result, "patterns_extracted", None),
+            )
+            await self._monitor.record_success(task_name)
 
         except Exception as exc:
             logger.error("scheduler.memory_consolidator.error", error=str(exc))
@@ -1097,15 +982,16 @@ class MemoryConsolidatorScheduler:
 # SignalEngineScheduler
 # ---------------------------------------------------------------------------
 
-_SIGNAL_ENGINE_MORNING_TIME = datetime.time(hour=1, minute=40, tzinfo=datetime.UTC)  # 08:40 ICT
-_SIGNAL_ENGINE_EOD_TIME     = datetime.time(hour=8, minute=10, tzinfo=datetime.UTC)  # 15:10 ICT
+_SIGNAL_MORNING_TIME = datetime.time(hour=1, minute=40, tzinfo=datetime.UTC)  # 08:40 ICT
+_SIGNAL_EOD_TIME     = datetime.time(hour=8, minute=10, tzinfo=datetime.UTC)  # 15:10 ICT
 
 
 class SignalEngineScheduler:
-    """Trigger AI signal engine before morning brief and after market close.
+    """Emit SignalEngineRequestedEvent twice daily — before morning brief and after close.
 
-    Owner: bot segment (adapter only).
-    No business logic — emits SignalEngineRequestedEvent only.
+    Wave 2: bot is a thin timing adapter only.
+    SignalEngineListener (ai segment) handles the cross-check logic.
+    No channel routing — emits events only.
     """
 
     def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
@@ -1124,27 +1010,27 @@ class SignalEngineScheduler:
         self._eod_task.cancel()
         logger.info("scheduler.signal_engine.stopped")
 
-    @tasks.loop(time=_SIGNAL_ENGINE_MORNING_TIME)
+    @tasks.loop(time=_SIGNAL_MORNING_TIME)
     async def _morning_task(self) -> None:
         if datetime.datetime.now(tz=datetime.UTC).weekday() >= 5:
             return
-        await self._emit(phase="morning")
+        await self._emit_signal_engine(phase="morning")
 
     @_morning_task.before_loop
     async def _before_morning(self) -> None:
         await self._client.wait_until_ready()
 
-    @tasks.loop(time=_SIGNAL_ENGINE_EOD_TIME)
+    @tasks.loop(time=_SIGNAL_EOD_TIME)
     async def _eod_task(self) -> None:
         if datetime.datetime.now(tz=datetime.UTC).weekday() >= 5:
             return
-        await self._emit(phase="eod")
+        await self._emit_signal_engine(phase="eod")
 
     @_eod_task.before_loop
     async def _before_eod(self) -> None:
         await self._client.wait_until_ready()
 
-    async def _emit(self, phase: str) -> None:
+    async def _emit_signal_engine(self, phase: str) -> None:
         from src.platform.event_bus import get_event_bus
         from src.platform.events import SignalEngineRequestedEvent
 
@@ -1165,7 +1051,6 @@ class SignalEngineScheduler:
                 SignalEngineRequestedEvent(
                     phase=phase,
                     triggered_by="scheduler",
-                    user_id=str(user_id),
                 )
             )
             logger.info("scheduler.signal_engine.event_emitted", phase=phase)
@@ -1174,10 +1059,3 @@ class SignalEngineScheduler:
         except Exception as exc:
             logger.error("scheduler.signal_engine.emit_error", phase=phase, error=str(exc))
             await self._monitor.record_failure(task_name, exc)
-
-
-# ---------------------------------------------------------------------------
-# Aliases
-# ---------------------------------------------------------------------------
-
-Scheduler = BriefingScheduler
