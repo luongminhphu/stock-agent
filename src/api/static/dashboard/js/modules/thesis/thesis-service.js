@@ -14,7 +14,7 @@ import { esc, fmtDate } from '../../utils/format.js';
 import { thesisApiBase, getJson, sendJson } from '../../api/client.js';
 import { state } from '../../state/dashboard-state.js';
 import { renderThesisDetailHTML, emptyDetailHTML } from './render-thesis-table.js';
-import { wireDetailActions } from './wire-detail-actions.js';
+import { wireDetailActions } from './thesis-form.js';
 import { renderReviewRecommendResult } from './render-ai-review.js';
 import { fetchQuote, renderQuoteStrip } from './market-quote.js';
 import { loadConvictionTimeline } from './conviction-timeline/index.js';
