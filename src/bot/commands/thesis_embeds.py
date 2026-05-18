@@ -149,13 +149,17 @@ def build_maintenance_embed(
     expired_count: int,
     reviews: list,
     now_utc: datetime.datetime,
+    upcoming_catalysts: list[dict] | None = None,
 ) -> discord.Embed:
     """Build embed for ThesisMaintenanceScheduler daily summary.
 
     Args:
-        expired_count: Number of catalysts auto-expired.
-        reviews:       List of ThesisReview ORM objects from review_stale_theses().
-        now_utc:       Current UTC datetime for footer timestamp.
+        expired_count:       Number of catalysts auto-expired.
+        reviews:             List of ThesisReview ORM objects from review_stale_theses().
+        now_utc:             Current UTC datetime for footer timestamp.
+        upcoming_catalysts:  Optional list of catalyst dicts from get_upcoming_catalysts().
+                             Each dict must have keys: ticker, description, expected_date (str/date).
+                             If None or empty, the catalyst section is omitted (backward compatible).
 
     Returns:
         discord.Embed ready to send.
@@ -176,9 +180,68 @@ def build_maintenance_embed(
 
     embed = discord.Embed(
         title="\U0001f527 Thesis Maintenance",  # 🔧
-        description="\n".join(lines),
+        description="\n".join(lines) if lines else None,
         color=_dominant_verdict_color(reviews) if reviews else _COLOR_TEAL,
     )
+
+    # -- Upcoming catalyst section (new) --
+    if upcoming_catalysts:
+        today = now_utc.date()
+        urgent_threshold = today + datetime.timedelta(days=3)
+
+        urgent_lines: list[str] = []
+        upcoming_lines: list[str] = []
+
+        for c in upcoming_catalysts:
+            ticker = c.get("ticker", "?")
+            description = c.get("description") or c.get("name") or "Catalyst"
+            raw_date = c.get("expected_date")
+
+            # Normalise expected_date → date object
+            if raw_date is None:
+                date_str = "?"
+                cat_date = None
+            elif isinstance(raw_date, datetime.datetime):
+                cat_date = raw_date.date()
+                date_str = cat_date.strftime("%d/%m/%Y")
+            elif isinstance(raw_date, datetime.date):
+                cat_date = raw_date
+                date_str = cat_date.strftime("%d/%m/%Y")
+            else:
+                # Assume ISO string e.g. "2026-05-21" or "2026-05-21T00:00:00+00:00"
+                try:
+                    cat_date = datetime.date.fromisoformat(str(raw_date)[:10])
+                    date_str = cat_date.strftime("%d/%m/%Y")
+                except ValueError:
+                    cat_date = None
+                    date_str = str(raw_date)[:10]
+
+            if cat_date is not None and cat_date <= urgent_threshold:
+                days_left = (cat_date - today).days
+                days_str = f"còn **{days_left} ngày**" if days_left > 0 else "**hôm nay**"
+                urgent_lines.append(
+                    f"\u26a1 **{ticker}** — {description} `{date_str}` ({days_str})"
+                )
+            else:
+                upcoming_lines.append(
+                    f"\U0001f4c5 **{ticker}** — {description} `{date_str}`"
+                )
+
+        catalyst_field_lines: list[str] = []
+        if urgent_lines:
+            catalyst_field_lines.extend(urgent_lines)
+        if upcoming_lines:
+            if urgent_lines:
+                catalyst_field_lines.append("")  # separator
+            catalyst_field_lines.extend(upcoming_lines)
+
+        if catalyst_field_lines:
+            embed.add_field(
+                name="\U0001f4c5 Catalyst sắp đến (7 ngày tới)",
+                value="\n".join(catalyst_field_lines)[:1024],
+                inline=False,
+            )
+
     ict_time = (now_utc + datetime.timedelta(hours=7)).strftime("%H:%M ICT")
     embed.set_footer(text=f"Auto-maintenance l\u00fac {ict_time}")
     return embed
