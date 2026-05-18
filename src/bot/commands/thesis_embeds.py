@@ -79,10 +79,10 @@ def _dominant_verdict_color(reviews: list) -> int:
     return _COLOR_TEAL  # neutral/mixed → default info color
 
 
-def _dominant_drift_color(reviews: list[tuple]) -> int:
+def _dominant_drift_color(reviewed_signals: list[tuple]) -> int:
     """Derive sidebar color from dominant drift verdict in (DriftSignal, ThesisReview) tuples."""
-    bullish = sum(1 for _, r in reviews if str(r.verdict).upper() == "BULLISH")
-    bearish = sum(1 for _, r in reviews if str(r.verdict).upper() == "BEARISH")
+    bullish = sum(1 for _, r in reviewed_signals if r and str(r.verdict).upper() == "BULLISH")
+    bearish = sum(1 for _, r in reviewed_signals if r and str(r.verdict).upper() == "BEARISH")
     if bullish > bearish:
         return _COLOR_GREEN
     if bearish > bullish:
@@ -248,14 +248,14 @@ def build_maintenance_embed(
 
 
 def build_drift_embed(
-    reviews: list[tuple],
+    reviewed_signals: list[tuple],
     now_utc: datetime.datetime,
     conviction_signals: list | None = None,
 ) -> discord.Embed:
     """Build embed for ThesisDriftScheduler drift alert notification.
 
     Args:
-        reviews:            List of (DriftSignal, ThesisReview) tuples from drift task.
+        reviewed_signals:   List of (DriftSignal, ThesisReview) tuples from drift task.
         now_utc:            Current UTC datetime for footer timestamp.
         conviction_signals: Optional list of ConvictionDriftSignal — rendered as a
                             separate section below price drift rows. Defaults to None
@@ -267,7 +267,10 @@ def build_drift_embed(
     lines: list[str] = []
 
     # Section 1: Price drift (existing behaviour — unchanged)
-    for signal, review in reviews:
+    for signal, review in reviewed_signals:
+        if review is None:
+            lines.append(f"\u26aa **{signal.ticker}** {signal.direction}{abs(signal.drift_pct):.1f}% drift \u2192 review unavailable")
+            continue
         icon = _DRIFT_VERDICT_ICON.get(str(review.verdict).lower(), "\u26aa")
         lines.append(
             f"{icon} **{signal.ticker}** {signal.direction}{abs(signal.drift_pct):.1f}% "
@@ -293,7 +296,7 @@ def build_drift_embed(
     embed = discord.Embed(
         title="\u26a1 Thesis Drift Alert",
         description="\n".join(lines) if lines else "Kh\u00f4ng c\u00f3 t\u00edn hi\u1ec7u.",
-        color=_dominant_drift_color(reviews) if reviews else _COLOR_ORANGE,
+        color=_dominant_drift_color(reviewed_signals) if reviewed_signals else _COLOR_ORANGE,
     )
     embed.set_footer(
         text=f"Drift \u2265{settings.thesis_drift_threshold_pct:.0f}% detected l\u00fac {ict_time}"

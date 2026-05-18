@@ -523,7 +523,17 @@ class ThesisMaintenanceScheduler:
 
         # -- Step 3: Discord notify — presentation delegated to thesis_embeds --
         has_content = expired_count > 0 or reviews or upcoming_catalysts
-        if not channel_id or not has_content:
+        if not has_content:
+            return
+
+        if not channel_id:
+            logger.warning(
+                "scheduler.thesis_maintenance.notify_skipped",
+                reason="morning_channel_id not configured",
+                expired_count=expired_count,
+                review_count=len(reviews),
+                upcoming_count=len(upcoming_catalysts),
+            )
             return
 
         channel = self._client.get_channel(int(channel_id))
