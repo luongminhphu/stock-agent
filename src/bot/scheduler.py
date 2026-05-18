@@ -371,9 +371,9 @@ class WatchlistScanScheduler:
 # ThesisMaintenanceScheduler
 # ---------------------------------------------------------------------------
 
-_MAINTENANCE_TIME      = datetime.time(hour=1, minute=30, tzinfo=datetime.UTC)  # 08:30 ICT
-_MAINTENANCE_STALE_DAYS = 3
-_CATALYST_LOOKAHEAD_DAYS = 7   # fetch catalysts within this window
+_MAINTENANCE_TIME        = datetime.time(hour=1, minute=30, tzinfo=datetime.UTC)  # 08:30 ICT
+_MAINTENANCE_STALE_DAYS  = 3
+_CATALYST_LOOKAHEAD_DAYS = 30  # fetch catalysts within this window
 
 
 class ThesisMaintenanceScheduler:
@@ -381,7 +381,7 @@ class ThesisMaintenanceScheduler:
 
     Flow:
         1.  auto_expire_overdue_catalysts()  — không tốn token, chạy đầu tiên.
-        1b. get_upcoming_catalysts()         — lấy catalyst sắp đến trong 7 ngày.
+        1b. get_upcoming_catalysts()         — lấy catalyst sắp đến trong 30 ngày.
                                                Isolated session, non-blocking.
         2.  review_stale_theses()            — AI review, chỉ khi thesis stale > 3 ngày.
         3.  Discord notify nếu có thay đổi hoặc có upcoming catalysts chưa notified hôm nay.

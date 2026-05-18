@@ -421,6 +421,11 @@ class ThesisQueryService:
 
         Fix: output dict includes both "ticker" (read by build_maintenance_embed)
         and "thesis_ticker" (backward compat for existing API callers).
+
+        days_until: int | None — number of days from today to expected_date (date only).
+            None when expected_date is None.
+            Used by downstream consumers (embed, briefing, API) to sort/filter
+            urgent catalysts without re-parsing the ISO string.
         """
         from src.thesis.models import Catalyst, CatalystStatus, Thesis, ThesisStatus
 
@@ -467,6 +472,11 @@ class ThesisQueryService:
                 "thesis_id": r.thesis_id,
                 "description": r.description,
                 "expected_date": r.expected_date.isoformat() if r.expected_date else None,
+                "days_until": (
+                    (r.expected_date.date() if isinstance(r.expected_date, datetime) else r.expected_date) - today
+                ).days
+                if r.expected_date is not None
+                else None,
                 "note": r.note,
                 # "ticker" is the key read by build_maintenance_embed() in thesis_embeds.py.
                 # "thesis_ticker" kept for backward compatibility with existing API callers.
