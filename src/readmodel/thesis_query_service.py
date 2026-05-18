@@ -16,8 +16,7 @@ import json
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import Date as SADate
-from sqlalchemy import and_, cast, func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -412,6 +411,16 @@ class ThesisQueryService:
         }
 
     async def get_upcoming_catalysts(self, user_id: str, days: int = 30) -> list[dict[str, Any]]:
+        """Return PENDING catalysts within [today, today+days] for active theses.
+
+        Fix: use func.date() instead of cast(..., SADate) for cross-DB compatibility.
+        SQLite stores DATETIME as string; cast to SADate is a no-op at DB level and
+        causes the BETWEEN comparison to fail silently. func.date() is a native SQL
+        function that works correctly on both SQLite and PostgreSQL.
+
+        Fix: output dict now includes both "ticker" (read by build_maintenance_embed)
+        and "thesis_ticker" (backward compat for any existing callers).
+        """
         from src.thesis.models import Catalyst, CatalystStatus, Thesis, ThesisStatus
 
         today = _today_utc()
@@ -435,7 +444,11 @@ class ThesisQueryService:
                     Thesis.status == ThesisStatus.ACTIVE,
                     Catalyst.status == CatalystStatus.PENDING,
                     Catalyst.expected_date.isnot(None),
-                    cast(Catalyst.expected_date, SADate).between(today, end_date),
+                    # Use func.date() — works on both SQLite (DATETIME string) and PostgreSQL.
+                    # cast(..., SADate) was a no-op on SQLite and caused silent empty results.
+                    func.date(Catalyst.expected_date).between(
+                        today.isoformat(), end_date.isoformat()
+                    ),
                 )
                 .order_by(Catalyst.expected_date.asc())
                 .limit(100)
@@ -449,6 +462,9 @@ class ThesisQueryService:
                 "description": r.description,
                 "expected_date": r.expected_date.isoformat() if r.expected_date else None,
                 "note": r.note,
+                # "ticker" is the key read by build_maintenance_embed() in thesis_embeds.py.
+                # "thesis_ticker" kept for backward compatibility with existing API callers.
+                "ticker": r.thesis_ticker,
                 "thesis_ticker": r.thesis_ticker,
                 "thesis_title": r.thesis_title,
                 "thesis_status": str(r.thesis_status.value),
