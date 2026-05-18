@@ -1,0 +1,221 @@
+/* ─── Catalyst Calendar — timeline view ────────────────────────────────────
+   Owner  : modules/briefing
+   Tokens : uses only variables from base/variables.css
+   Rule   : ZERO hardcoded hex — all colour via token or rgba() from token RGB
+────────────────────────────────────────────────────────────────────────── */
+
+/* ── Legend strip ──────────────────────────────────────────────────────────── */
+
+.cal-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cal-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 0 0 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* ── Urgency pills (shared by legend + day header) ──────────────────────── */
+
+.cal-urgency-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 9999px;
+  font-size: .65rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+/* today  → danger red (most urgent) */
+.cal-urgency--today    { background: rgba(248,113,113,.15); color: var(--danger);  border: 1px solid rgba(248,113,113,.30); }
+/* tomorrow → warning amber */
+.cal-urgency--tomorrow { background: rgba(251,191,36,.13);  color: var(--warning); border: 1px solid rgba(251,191,36,.30); }
+/* this week → brand sky */
+.cal-urgency--week     { background: rgba(125,211,252,.12); color: var(--brand);   border: 1px solid rgba(125,211,252,.25); }
+/* later → muted grey */
+.cal-urgency--later    { background: rgba(148,163,184,.09); color: var(--muted);   border: 1px solid rgba(148,163,184,.18); }
+
+/* ── Day-track container ────────────────────────────────────────────────── */
+
+.cal-day-track {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  transition: border-color .15s;
+}
+
+/* urgency-tinted left border accent */
+.cal-day-track--today    { border-left: 3px solid var(--danger);  }
+.cal-day-track--tomorrow { border-left: 3px solid var(--warning); }
+.cal-day-track--week     { border-left: 3px solid var(--brand);   }
+.cal-day-track--later    { border-left: 3px solid var(--faint);   }
+
+/* ── Day header ─────────────────────────────────────────────────────────── */
+
+.cal-day-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.cal-day-label {
+  font-size: .78rem;
+  font-weight: 700;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cal-day-count {
+  font-size: .65rem;
+  font-weight: 700;
+  color: var(--faint);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 9999px;
+  padding: 1px 8px;
+  line-height: 1.6;
+  flex-shrink: 0;
+}
+
+/* ── Pills container ────────────────────────────────────────────────────── */
+
+.cal-pills {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* ── Single catalyst pill ───────────────────────────────────────────────── */
+
+.cal-pill {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  transition: border-color .12s, background .12s;
+}
+
+.cal-pill:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-3);
+}
+
+/* confirmed state → subtle success tint */
+.cal-pill--confirmed {
+  border-color: rgba(74,222,128,.25);
+  background: rgba(74,222,128,.05);
+}
+.cal-pill--confirmed:hover {
+  border-color: rgba(74,222,128,.40);
+}
+
+/* ── Pill top row (ticker + type badge + confirmed dot) ─────────────────── */
+
+.cal-pill-top {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.cal-ticker {
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .06em;
+  color: var(--brand);
+  text-transform: uppercase;
+  line-height: 1.3;
+}
+
+.cal-type-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 9999px;
+  font-size: .60rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  background: rgba(167,139,250,.10); /* --violet tint */
+  color: var(--violet);
+  border: 1px solid rgba(167,139,250,.20);
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+/* green dot for confirmed catalyst */
+.cal-confirmed-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--success);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* ── Pill body ──────────────────────────────────────────────────────────── */
+
+.cal-pill-desc {
+  font-size: .78rem;
+  color: var(--text);
+  line-height: 1.45;
+  font-weight: 500;
+}
+
+.cal-pill-thesis {
+  font-size: .68rem;
+  color: var(--muted);
+  font-style: italic;
+  line-height: 1.3;
+}
+
+/* ── Empty state ────────────────────────────────────────────────────────── */
+
+.cal-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 24px 0;
+  color: var(--muted);
+  font-size: .82rem;
+  text-align: center;
+}
+
+.cal-empty-icon {
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+/* ── Responsive: on narrow panels collapse pills tighter ────────────────── */
+
+@media (max-width: 540px) {
+  .cal-day-track {
+    padding: 8px 9px;
+  }
+  .cal-pill {
+    padding: 6px 8px;
+  }
+}
