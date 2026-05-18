@@ -127,7 +127,23 @@ class DashboardService:
         return await self._thesis_query.get_thesis_detail(user_id, thesis_id)
 
     async def get_upcoming_catalysts(self, user_id: str, days: int = 30) -> list[dict[str, Any]]:
-        return await self._thesis_query.get_upcoming_catalysts(user_id, days=days)
+        """Upcoming PENDING catalysts — guarded so HTTP 500 never leaks.
+
+        ThesisQueryService.get_upcoming_catalysts() uses datetime range
+        comparison which is safe on both SQLite and PostgreSQL. Any
+        unexpected exception is logged and returns [] instead of 500.
+        """
+        try:
+            return await self._thesis_query.get_upcoming_catalysts(user_id, days=days)
+        except Exception as exc:
+            logger.warning(
+                "dashboard_service.get_upcoming_catalysts.error",
+                user_id=user_id,
+                days=days,
+                error=str(exc),
+                exc_info=True,
+            )
+            return []
 
     async def get_thesis_portfolio_aggregate(
         self,

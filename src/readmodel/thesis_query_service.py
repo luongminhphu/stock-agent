@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import contextlib
 import json
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 from sqlalchemy import and_, func, select
@@ -413,18 +413,24 @@ class ThesisQueryService:
     async def get_upcoming_catalysts(self, user_id: str, days: int = 30) -> list[dict[str, Any]]:
         """Return PENDING catalysts within [today, today+days] for active theses.
 
-        Fix: use func.date() instead of cast(..., SADate) for cross-DB compatibility.
-        SQLite stores DATETIME as string; cast to SADate is a no-op at DB level and
-        causes the BETWEEN comparison to fail silently. func.date() is a native SQL
-        function that works correctly on both SQLite and PostgreSQL.
+        Fix (Bug A): replaced func.date().between() with explicit datetime range.
+        SQLite stores DateTime(timezone=True) as 'YYYY-MM-DD HH:MM:SS.ffffff +HH:MM'.
+        func.date() cannot parse the timezone suffix and returns NULL, causing
+        BETWEEN to silently match 0 rows. Using >= / <= with timezone-aware
+        datetime objects works correctly on both SQLite and PostgreSQL.
 
-        Fix: output dict now includes both "ticker" (read by build_maintenance_embed)
-        and "thesis_ticker" (backward compat for any existing callers).
+        Fix: output dict includes both "ticker" (read by build_maintenance_embed)
+        and "thesis_ticker" (backward compat for existing API callers).
         """
         from src.thesis.models import Catalyst, CatalystStatus, Thesis, ThesisStatus
 
         today = _today_utc()
         end_date = today + timedelta(days=days)
+
+        # Build timezone-aware datetime bounds — safe for DateTime(timezone=True) columns.
+        # time.min = 00:00:00, time.max = 23:59:59.999999
+        start_dt = datetime.combine(today, time.min).replace(tzinfo=UTC)
+        end_dt = datetime.combine(end_date, time.max).replace(tzinfo=UTC)
 
         rows = (
             await self._session.execute(
@@ -444,11 +450,11 @@ class ThesisQueryService:
                     Thesis.status == ThesisStatus.ACTIVE,
                     Catalyst.status == CatalystStatus.PENDING,
                     Catalyst.expected_date.isnot(None),
-                    # Use func.date() — works on both SQLite (DATETIME string) and PostgreSQL.
-                    # cast(..., SADate) was a no-op on SQLite and caused silent empty results.
-                    func.date(Catalyst.expected_date).between(
-                        today.isoformat(), end_date.isoformat()
-                    ),
+                    # Datetime range comparison — works on both SQLite and PostgreSQL.
+                    # func.date().between() silently returns 0 rows on SQLite when
+                    # the column is DateTime(timezone=True) due to timezone suffix.
+                    Catalyst.expected_date >= start_dt,
+                    Catalyst.expected_date <= end_dt,
                 )
                 .order_by(Catalyst.expected_date.asc())
                 .limit(100)
