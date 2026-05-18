@@ -302,7 +302,7 @@ class WatchlistScanScheduler:
             )
             return
 
-        # ── Step 0: Reactivate cooled-down alerts (isolated commit) ───────────────────────
+        # ── Step 0: Reactivate cooled-down alerts (isolated commit) ────────────────────────────────────────────────
         try:
             from src.watchlist.alert_service import AlertService
 
@@ -322,7 +322,7 @@ class WatchlistScanScheduler:
         except Exception as exc:
             logger.warning("scheduler.scan.reactivate_failed", error=str(exc))
 
-        # ── Step 1: Scan ─────────────────────────────────────────────────────────────────
+        # ── Step 1: Scan ─────────────────────────────────────────────────────────────────────────────────────
         try:
             from src.thesis.ticker_direction_query import TickerDirectionQuery
             from src.watchlist.scan_service import ScanService
@@ -373,15 +373,18 @@ class WatchlistScanScheduler:
 
 _MAINTENANCE_TIME      = datetime.time(hour=1, minute=30, tzinfo=datetime.UTC)  # 08:30 ICT
 _MAINTENANCE_STALE_DAYS = 3
+_CATALYST_LOOKAHEAD_DAYS = 7   # fetch catalysts within this window
 
 
 class ThesisMaintenanceScheduler:
     """Chạy lúc 08:30 ICT mỗi ngày làm việc — 15 phút trước morning brief.
 
     Flow:
-        1. auto_expire_overdue_catalysts()  — không tốn token, chạy đầu tiên.
-        2. review_stale_theses()            — AI review, chỉ khi thesis stale > 3 ngày.
-        3. Discord notify nếu có thay đổi.
+        1.  auto_expire_overdue_catalysts()  — không tốn token, chạy đầu tiên.
+        1b. get_upcoming_catalysts()         — lấy catalyst sắp đến trong 7 ngày.
+                                               Isolated session, non-blocking.
+        2.  review_stale_theses()            — AI review, chỉ khi thesis stale > 3 ngày.
+        3.  Discord notify nếu có thay đổi hoặc có upcoming catalysts.
 
     Hai bước dùng session riêng biệt — expire và review độc lập, bước 2
     fail không rollback bước 1.
@@ -418,6 +421,7 @@ class ThesisMaintenanceScheduler:
 
         expired_count = 0
         reviews: list = []
+        upcoming_catalysts: list[dict] = []
 
         # -- Step 1: Auto-expire overdue catalysts (no AI, no token cost) --
         try:
@@ -435,6 +439,26 @@ class ThesisMaintenanceScheduler:
             logger.error("scheduler.thesis_maintenance.expire_error", error=str(exc))
             await self._monitor.record_failure(task_name, exc)
             return
+
+        # -- Step 1b: Fetch upcoming catalysts (no AI, isolated session, non-blocking) --
+        try:
+            from src.readmodel.thesis_query_service import ThesisQueryService
+
+            async with AsyncSessionLocal() as session:
+                query_svc = ThesisQueryService(session)
+                upcoming_catalysts = await query_svc.get_upcoming_catalysts(
+                    str(user_id), days=_CATALYST_LOOKAHEAD_DAYS
+                )
+            logger.info(
+                "scheduler.thesis_maintenance.upcoming_catalysts_fetched",
+                count=len(upcoming_catalysts),
+            )
+        except Exception as exc:
+            logger.warning(
+                "scheduler.thesis_maintenance.upcoming_catalysts_error",
+                error=str(exc),
+            )
+            upcoming_catalysts = []  # non-blocking — continue with empty list
 
         # -- Step 2: AI review for stale theses --
         try:
@@ -463,7 +487,8 @@ class ThesisMaintenanceScheduler:
         await self._monitor.record_success(task_name)
 
         # -- Step 3: Discord notify — presentation delegated to thesis_embeds --
-        if not channel_id or (expired_count == 0 and not reviews):
+        has_content = expired_count > 0 or reviews or upcoming_catalysts
+        if not channel_id or not has_content:
             return
 
         channel = self._client.get_channel(int(channel_id))
@@ -479,9 +504,13 @@ class ThesisMaintenanceScheduler:
                 expired_count=expired_count,
                 reviews=reviews,
                 now_utc=now_utc,
+                upcoming_catalysts=upcoming_catalysts if upcoming_catalysts else None,
             )
             await channel.send(embed=embed)  # type: ignore[union-attr]
-            logger.info("scheduler.thesis_maintenance.notified")
+            logger.info(
+                "scheduler.thesis_maintenance.notified",
+                upcoming_catalyst_count=len(upcoming_catalysts),
+            )
         except Exception as exc:
             logger.error("scheduler.thesis_maintenance.notify_error", error=str(exc))
 
