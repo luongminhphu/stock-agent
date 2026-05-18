@@ -286,7 +286,7 @@ class DecisionLog(Base):
     user_id: Mapped[str] = mapped_column(String(64), index=True)
     ticker: Mapped[str] = mapped_column(String(20), index=True)
     decision_type: Mapped[DecisionType] = mapped_column(
-        SAEnum(DecisionType, values_callable=True), index=True
+        SAEnum(DecisionType, values_callable=_enum_values), index=True
     )
     decision_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
