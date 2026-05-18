@@ -1069,3 +1069,10 @@ class SignalEngineScheduler:
         except Exception as exc:
             logger.error("scheduler.signal_engine.emit_error", phase=phase, error=str(exc))
             await self._monitor.record_failure(task_name, exc)
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat alias
+# ---------------------------------------------------------------------------
+
+Scheduler = BriefingScheduler  # __init__.py re-exports this name; do not remove
