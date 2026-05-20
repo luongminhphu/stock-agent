@@ -381,13 +381,15 @@ class ThesisMaintenanceScheduler:
 
     Flow:
         1.  auto_expire_overdue_catalysts()  — không tốn token, chạy đầu tiên.
+                                               Fail → log + record_failure, tiếp tục (non-blocking).
         1b. get_upcoming_catalysts()         — lấy catalyst sắp đến trong 30 ngày.
                                                Isolated session, non-blocking.
+                                               Chạy độc lập với Step 1 — Step 1 fail không ngăn Step 1b.
         2.  review_stale_theses()            — AI review, chỉ khi thesis stale > 3 ngày.
         3.  Discord notify nếu có thay đổi hoặc có upcoming catalysts chưa notified hôm nay.
 
-    Hai bước dùng session riêng biệt — expire và review độc lập, bước 2
-    fail không rollback bước 1.
+    Tất cả các bước dùng session riêng biệt — expire, upcoming query và review độc lập nhau.
+    Bước nào fail chỉ ảnh hưởng đến output của chính nó, không rollback bước khác.
 
     Deduplication (in-memory, no DB migration):
         _notified_catalyst_ids — set[int] of catalyst IDs already notified today.
@@ -449,6 +451,8 @@ class ThesisMaintenanceScheduler:
         upcoming_catalysts: list[dict] = []
 
         # -- Step 1: Auto-expire overdue catalysts (no AI, no token cost) --
+        # Non-blocking: failure is logged and recorded but does NOT abort Step 1b or Step 2.
+        # expired_count falls back to 0 so the downstream embed still renders correctly.
         try:
             from src.thesis.component_service import ComponentService
 
@@ -463,7 +467,7 @@ class ThesisMaintenanceScheduler:
         except Exception as exc:
             logger.error("scheduler.thesis_maintenance.expire_error", error=str(exc))
             await self._monitor.record_failure(task_name, exc)
-            return
+            # Do NOT return — Step 1b (upcoming catalysts) and Step 2 (AI review) run independently.
 
         # -- Step 1b: Fetch upcoming catalysts (no AI, isolated session, non-blocking) --
         try:
