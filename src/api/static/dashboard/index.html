@@ -150,6 +150,264 @@
         letter-spacing: .05em;
         white-space: nowrap;
       }
+
+      /* ── Wave-2: Investor Memory Layer ─────────────────────────── */
+
+      /* 3-col memory grid: episodic (wide) | patterns | bias */
+      .memory-grid {
+        display: grid;
+        grid-template-columns: 1.6fr 1fr 1fr;
+        gap: var(--gap, 12px);
+        align-items: start;
+      }
+      @media (max-width: 1024px) {
+        .memory-grid { grid-template-columns: 1fr 1fr; }
+        .memory-grid .mem-episodic { grid-column: 1 / -1; }
+      }
+      @media (max-width: 640px) {
+        .memory-grid { grid-template-columns: 1fr; }
+      }
+
+      /* Memory KPI strip (confidence + episode count) */
+      .memory-kpi-strip {
+        display: flex;
+        gap: var(--gap, 12px);
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+      .mem-kpi-card {
+        flex: 1 1 120px;
+        background: var(--surface-2);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        padding: 10px 14px;
+      }
+      .mem-kpi-label {
+        display: block;
+        font-size: .7rem;
+        font-weight: 600;
+        color: var(--faint);
+        text-transform: uppercase;
+        letter-spacing: .05em;
+        margin-bottom: 4px;
+      }
+      .mem-kpi-value {
+        display: block;
+        font-size: 1.35rem;
+        font-weight: 700;
+        color: var(--text);
+        font-variant-numeric: tabular-nums;
+      }
+      .mem-kpi-sub {
+        display: block;
+        font-size: .72rem;
+        color: var(--muted);
+        margin-top: 2px;
+      }
+
+      /* Episode feed list */
+      .mem-episode-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: 420px;
+        overflow-y: auto;
+      }
+      .mem-episode-item {
+        background: var(--surface-2);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        padding: 10px 12px;
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        gap: 6px 10px;
+        align-items: start;
+      }
+      .mem-episode-icon {
+        font-size: 1rem;
+        line-height: 1.4;
+        grid-row: 1 / 3;
+      }
+      .mem-episode-desc {
+        font-size: .82rem;
+        color: var(--text);
+        font-weight: 500;
+        line-height: 1.4;
+      }
+      .mem-episode-meta {
+        font-size: .7rem;
+        color: var(--muted);
+      }
+      .mem-episode-outcome {
+        font-size: .75rem;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+        grid-row: 1 / 3;
+        align-self: center;
+      }
+      .mem-episode-outcome.pos { color: var(--green, #4ade80); }
+      .mem-episode-outcome.neg { color: var(--red, #f87171); }
+      .mem-episode-outcome.pending { color: var(--muted); }
+
+      /* Signal chip on episode */
+      .mem-signal-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 7px;
+        border-radius: 20px;
+        font-size: .67rem;
+        font-weight: 700;
+        letter-spacing: .03em;
+        text-transform: uppercase;
+      }
+      .mem-signal-chip.bought  { background: rgba(74,222,128,.12); color: #4ade80; }
+      .mem-signal-chip.sold    { background: rgba(248,113,113,.12); color: #f87171; }
+      .mem-signal-chip.ignored { background: rgba(148,163,184,.10); color: var(--muted); }
+      .mem-signal-chip.flagged { background: rgba(251,191,36,.12); color: #fbbf24; }
+
+      /* Semantic patterns list */
+      .mem-pattern-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: 420px;
+        overflow-y: auto;
+      }
+      .mem-pattern-item {
+        background: var(--surface-2);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        padding: 10px 12px;
+      }
+      .mem-pattern-type {
+        font-size: .67rem;
+        font-weight: 700;
+        color: var(--brand);
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        margin-bottom: 4px;
+      }
+      .mem-pattern-desc {
+        font-size: .8rem;
+        color: var(--text);
+        line-height: 1.45;
+        margin-bottom: 6px;
+      }
+      .mem-pattern-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .mem-confidence-bar {
+        flex: 1;
+        height: 4px;
+        background: var(--surface-3, rgba(255,255,255,.06));
+        border-radius: 2px;
+        overflow: hidden;
+      }
+      .mem-confidence-fill {
+        height: 100%;
+        background: var(--brand);
+        border-radius: 2px;
+        transition: width .4s ease;
+      }
+      .mem-confidence-label {
+        font-size: .68rem;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      .mem-pattern-episodes {
+        font-size: .67rem;
+        color: var(--faint);
+      }
+
+      /* Bias warnings panel */
+      .mem-bias-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: 420px;
+        overflow-y: auto;
+      }
+      .mem-bias-item {
+        background: var(--surface-2);
+        border: 1px solid var(--line);
+        border-left: 3px solid var(--yellow, #fbbf24);
+        border-radius: var(--radius-sm);
+        padding: 9px 12px;
+      }
+      .mem-bias-item.high {
+        border-left-color: var(--red, #f87171);
+      }
+      .mem-bias-item.low {
+        border-left-color: var(--muted);
+      }
+      .mem-bias-text {
+        font-size: .8rem;
+        color: var(--text);
+        line-height: 1.45;
+      }
+      .mem-bias-meta {
+        font-size: .68rem;
+        color: var(--muted);
+        margin-top: 4px;
+      }
+
+      /* Refresh button for memory */
+      .mem-refresh-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 4px 10px;
+        font-size: .72rem;
+        font-weight: 600;
+        color: var(--muted);
+        background: none;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        transition: color .15s, border-color .15s, background .15s;
+      }
+      .mem-refresh-btn:hover {
+        color: var(--text);
+        border-color: var(--brand);
+        background: rgba(125,211,252,.06);
+      }
+
+      /* Memory empty state */
+      .mem-empty {
+        padding: 28px 16px;
+        text-align: center;
+        color: var(--muted);
+        font-size: .82rem;
+        line-height: 1.6;
+      }
+      .mem-empty-icon {
+        font-size: 1.8rem;
+        margin-bottom: 8px;
+        opacity: .5;
+      }
+      .mem-empty-hint {
+        font-size: .72rem;
+        color: var(--faint);
+        margin-top: 4px;
+      }
+
+      /* Skeleton shimmer reuse */
+      .mem-skel {
+        background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3, rgba(255,255,255,.08)) 50%, var(--surface-2) 75%);
+        background-size: 200% 100%;
+        animation: shimmer 1.5s ease-in-out infinite;
+        border-radius: 4px;
+      }
+      @keyframes shimmer {
+        0%   { background-position: -200% 0; }
+        100% { background-position:  200% 0; }
+      }
     </style>
   </head>
   <body>
@@ -511,10 +769,175 @@
           </section>
         </div><!-- /cluster-c -->
 
+        <!-- ══════════════════════════════════════════════════════════════════
+             CLUSTER D — "Hệ thống đã học được gì từ tôi?"
+             Segment owner: ai/memory
+             API (Wave 2): /api/v1/memory/episodes  /api/v1/memory/patterns  /api/v1/memory/bias
+        ══════════════════════════════════════════════════════════════════ -->
+        <div class="cluster" id="memory" aria-label="Cluster D: Hệ thống đã học được gì từ tôi?">
+          <div class="cluster-label">
+            <span class="cluster-badge">D</span>
+            <span>Hệ thống đã học được gì từ tôi?</span>
+          </div>
+
+          <!-- ── Memory KPI strip ─────────────────────────────────────────────── -->
+          <div class="memory-kpi-strip" id="memoryKpiStrip" aria-label="Memory overview">
+            <article class="mem-kpi-card" id="memKpiEpisodes">
+              <span class="mem-kpi-label">Episodes ghi nhận</span>
+              <strong class="mem-kpi-value">
+                <div class="mem-skel" style="width:40px;height:1.2rem;"></div>
+              </strong>
+              <span class="mem-kpi-sub">hành động + outcome</span>
+            </article>
+            <article class="mem-kpi-card" id="memKpiPatterns">
+              <span class="mem-kpi-label">Patterns học được</span>
+              <strong class="mem-kpi-value">
+                <div class="mem-skel" style="width:40px;height:1.2rem;"></div>
+              </strong>
+              <span class="mem-kpi-sub">semantic patterns active</span>
+            </article>
+            <article class="mem-kpi-card" id="memKpiConfidence">
+              <span class="mem-kpi-label">Avg confidence</span>
+              <strong class="mem-kpi-value">
+                <div class="mem-skel" style="width:52px;height:1.2rem;"></div>
+              </strong>
+              <span class="mem-kpi-sub">độ tin cậy trung bình</span>
+            </article>
+            <article class="mem-kpi-card" id="memKpiBias">
+              <span class="mem-kpi-label">Bias cảnh báo</span>
+              <strong class="mem-kpi-value">
+                <div class="mem-skel" style="width:32px;height:1.2rem;"></div>
+              </strong>
+              <span class="mem-kpi-sub">đang active</span>
+            </article>
+          </div>
+
+          <!-- ── 3-panel memory grid ─────────────────────────────────────────── -->
+          <div class="memory-grid">
+
+            <!-- Panel 1: Episodic feed -->
+            <section class="panel glass mem-episodic" aria-labelledby="memEpisodicTitle">
+              <div class="panel-header split-header">
+                <div>
+                  <p class="eyebrow">⑧ Episodic Memory</p>
+                  <h2 id="memEpisodicTitle">Lịch sử hành động &amp; kết quả</h2>
+                </div>
+                <button class="mem-refresh-btn" id="memRefreshBtn" type="button"
+                  aria-label="Làm mới memory">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                  </svg>
+                  Refresh
+                </button>
+              </div>
+              <div id="episodicFeed" class="mem-episode-list" aria-live="polite">
+                <!-- Skeleton rows while loading -->
+                <div class="mem-episode-item" aria-hidden="true">
+                  <div class="mem-skel" style="width:20px;height:20px;border-radius:4px;"></div>
+                  <div>
+                    <div class="mem-skel" style="width:160px;height:.8rem;margin-bottom:5px;"></div>
+                    <div class="mem-skel" style="width:80px;height:.65rem;"></div>
+                  </div>
+                  <div class="mem-skel" style="width:44px;height:.8rem;"></div>
+                </div>
+                <div class="mem-episode-item" aria-hidden="true">
+                  <div class="mem-skel" style="width:20px;height:20px;border-radius:4px;"></div>
+                  <div>
+                    <div class="mem-skel" style="width:140px;height:.8rem;margin-bottom:5px;"></div>
+                    <div class="mem-skel" style="width:96px;height:.65rem;"></div>
+                  </div>
+                  <div class="mem-skel" style="width:44px;height:.8rem;"></div>
+                </div>
+                <div class="mem-episode-item" aria-hidden="true">
+                  <div class="mem-skel" style="width:20px;height:20px;border-radius:4px;"></div>
+                  <div>
+                    <div class="mem-skel" style="width:180px;height:.8rem;margin-bottom:5px;"></div>
+                    <div class="mem-skel" style="width:72px;height:.65rem;"></div>
+                  </div>
+                  <div class="mem-skel" style="width:44px;height:.8rem;"></div>
+                </div>
+              </div>
+              <!-- Empty state (hidden by default, shown by JS when no episodes) -->
+              <div id="episodicEmpty" class="mem-empty hidden">
+                <div class="mem-empty-icon">🧩</div>
+                <div>Chưa có episode nào được ghi nhận.</div>
+                <div class="mem-empty-hint">Hệ thống sẽ tự động ghi lại khi bạn react với briefing hoặc log decision đầu tiên.</div>
+              </div>
+            </section>
+
+            <!-- Panel 2: Semantic patterns -->
+            <section class="panel glass" aria-labelledby="memPatternsTitle">
+              <div class="panel-header">
+                <p class="eyebrow">⑨ Semantic Patterns</p>
+                <h2 id="memPatternsTitle">Patterns AI học được</h2>
+              </div>
+              <div id="patternsList" class="mem-pattern-list" aria-live="polite">
+                <!-- Skeleton -->
+                <div class="mem-pattern-item" aria-hidden="true">
+                  <div class="mem-skel" style="width:80px;height:.65rem;margin-bottom:6px;"></div>
+                  <div class="mem-skel" style="width:100%;height:.75rem;margin-bottom:3px;"></div>
+                  <div class="mem-skel" style="width:75%;height:.75rem;margin-bottom:8px;"></div>
+                  <div style="display:flex;gap:8px;align-items:center;">
+                    <div class="mem-skel" style="flex:1;height:4px;border-radius:2px;"></div>
+                    <div class="mem-skel" style="width:36px;height:.65rem;"></div>
+                  </div>
+                </div>
+                <div class="mem-pattern-item" aria-hidden="true">
+                  <div class="mem-skel" style="width:64px;height:.65rem;margin-bottom:6px;"></div>
+                  <div class="mem-skel" style="width:100%;height:.75rem;margin-bottom:3px;"></div>
+                  <div class="mem-skel" style="width:85%;height:.75rem;margin-bottom:8px;"></div>
+                  <div style="display:flex;gap:8px;align-items:center;">
+                    <div class="mem-skel" style="flex:1;height:4px;border-radius:2px;"></div>
+                    <div class="mem-skel" style="width:36px;height:.65rem;"></div>
+                  </div>
+                </div>
+              </div>
+              <!-- Empty state -->
+              <div id="patternsEmpty" class="mem-empty hidden">
+                <div class="mem-empty-icon">🔬</div>
+                <div>Chưa đủ dữ liệu để rút ra pattern.</div>
+                <div class="mem-empty-hint">Cần ít nhất 5 episodes cùng loại trước khi AI tổng hợp pattern.</div>
+              </div>
+            </section>
+
+            <!-- Panel 3: Bias warnings -->
+            <section class="panel glass" aria-labelledby="memBiasTitle">
+              <div class="panel-header">
+                <p class="eyebrow">⑩ Bias Warnings</p>
+                <h2 id="memBiasTitle">Cảnh báo thiên kiến đầu tư</h2>
+              </div>
+              <div id="biasList" class="mem-bias-list" aria-live="polite">
+                <!-- Skeleton -->
+                <div class="mem-bias-item" aria-hidden="true" style="border-left-color:var(--line);">
+                  <div class="mem-skel" style="width:100%;height:.75rem;margin-bottom:4px;"></div>
+                  <div class="mem-skel" style="width:80%;height:.75rem;margin-bottom:6px;"></div>
+                  <div class="mem-skel" style="width:64px;height:.65rem;"></div>
+                </div>
+                <div class="mem-bias-item" aria-hidden="true" style="border-left-color:var(--line);">
+                  <div class="mem-skel" style="width:90%;height:.75rem;margin-bottom:4px;"></div>
+                  <div class="mem-skel" style="width:70%;height:.75rem;margin-bottom:6px;"></div>
+                  <div class="mem-skel" style="width:48px;height:.65rem;"></div>
+                </div>
+              </div>
+              <!-- Empty state -->
+              <div id="biasEmpty" class="mem-empty hidden">
+                <div class="mem-empty-icon">✅</div>
+                <div>Không phát hiện thiên kiến nào đang active.</div>
+                <div class="mem-empty-hint">Hệ thống sẽ cảnh báo khi nhận ra xu hướng lặp lại trong decision của bạn.</div>
+              </div>
+            </section>
+
+          </div><!-- /memory-grid -->
+
+        </div><!-- /cluster-d -->
+
       </main>
 
       <footer class="footer-note">
         Static shell · Data từ <code>/api/v1/readmodel/dashboard/</code> &amp; <code>/api/v1/thesis/</code>
+        · Memory từ <code>/api/v1/memory/</code> <em>(Wave 2)</em>
       </footer>
     </div>
 
