@@ -60,7 +60,8 @@ def create_bot() -> commands.Bot:
             _start_drift_scheduler(bot)
             _start_snapshot_scheduler()
             _start_reminder_scheduler(bot)
-            _start_decision_replay_scheduler(bot)
+            _start_outcome_filler_scheduler(bot)  # 15:05 ICT — fills DecisionLog outcomes before replay
+            _start_decision_replay_scheduler(bot)  # 15:15 ICT — reads fresh outcome data
             _start_memory_consolidator_scheduler(bot)
             _start_recommendation_listener(bot)  # Wave 4: event-driven alerts
             _start_opportunity_screen_scheduler(bot)  # Wave 3: sector rotation 09:10 ICT
@@ -224,6 +225,18 @@ def _start_snapshot_scheduler() -> None:
 def _start_reminder_scheduler(bot: commands.Bot) -> None:
     from src.bot.scheduler import ReminderScheduler
     scheduler = ReminderScheduler(bot)
+    scheduler.start()
+
+
+def _start_outcome_filler_scheduler(bot: commands.Bot) -> None:
+    """Wire OutcomeFillerScheduler — weekdays 15:05 ICT.
+
+    Fills DecisionLog.outcome_pnl_pct / outcome_verdict for logs past
+    their review_horizon_days. Runs before DecisionReplayScheduler (15:15)
+    so replay always has fresh outcome data. No Discord message.
+    """
+    from src.bot.scheduler import OutcomeFillerScheduler
+    scheduler = OutcomeFillerScheduler(bot)
     scheduler.start()
 
 

@@ -12,6 +12,7 @@ Registered tasks:
     ThesisDriftScheduler.drift_task            — every 15 min, weekdays 09:00–15:00 ICT
     ReminderScheduler.daily_task               — weekdays 08:00 ICT (DAILY reminders)
     ReminderScheduler.weekly_task              — Mondays 08:00 ICT (WEEKLY reminders)
+    OutcomeFillerScheduler.fill_task           — weekdays 15:05 ICT (fill decision outcomes before replay)
     DecisionReplayScheduler.replay_task        — weekdays 15:15 ICT (after market close)
     MemoryConsolidatorScheduler.consolidate    — Sundays 09:00 ICT (weekly memory distill)
     SignalEngineScheduler.morning_task         — weekdays 08:40 ICT (before morning brief)
@@ -28,6 +29,7 @@ Channel routing:
         alert_channel_id = DISCORD_ALERT_CHANNEL_ID if set, else morning_channel_id
     SignalEngineScheduler emits events only — no channel routing, no Discord message.
     AgendaBuilderScheduler persists only — no Discord message.
+    OutcomeFillerScheduler persists only — no Discord message (silent data enrichment job).
 
 Wave 8:
     BriefingScheduler no longer calls BriefingService directly.
@@ -818,6 +820,86 @@ class ReminderScheduler:
         except Exception as exc:
             logger.error("scheduler.reminder.error", frequency=frequency, error=str(exc))
             await self._monitor.record_failure(task_name, exc)
+
+
+# ---------------------------------------------------------------------------
+# OutcomeFillerScheduler
+# ---------------------------------------------------------------------------
+
+_OUTCOME_FILLER_TIME = datetime.time(hour=8, minute=5, tzinfo=datetime.UTC)  # 15:05 ICT
+
+
+class OutcomeFillerScheduler:
+    """Fill DecisionLog outcome fields daily at 15:05 ICT (weekdays).
+
+    Runs after market close and 10 min before DecisionReplayScheduler (15:15)
+    so replay always reads fresh outcome_pnl_pct / outcome_verdict data.
+
+    Bot is a thin timing adapter only. All business logic lives in
+    thesis.OutcomeFillerService. No Discord message is sent (silent job).
+
+    Flow:
+        1. OutcomeFillerService.fill_pending_outcomes(user_id)
+           — find DecisionLogs past review_horizon_days with null outcome_pnl_pct
+           — fetch quote.price from QuoteService
+           — compute pnl_pct, classify OutcomeVerdict, persist
+        2. session.commit()
+        3. Log filled_count; record success/failure in SchedulerMonitor.
+    """
+
+    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
+        self._client = client
+        self._monitor = monitor or get_monitor()
+
+    def start(self) -> None:
+        self._monitor.register_task("decision.outcome_fill")
+        self._fill_task.start()
+        logger.info("scheduler.outcome_filler.started", time_ict="15:05")
+
+    def stop(self) -> None:
+        self._fill_task.cancel()
+        logger.info("scheduler.outcome_filler.stopped")
+
+    @tasks.loop(time=_OUTCOME_FILLER_TIME)
+    async def _fill_task(self) -> None:
+        now_utc = datetime.datetime.now(tz=datetime.UTC)
+        if now_utc.weekday() >= 5:
+            return
+
+        task_name = "decision.outcome_fill"
+        user_id = getattr(settings, "scheduler_user_id", None)
+        if not user_id:
+            logger.warning(
+                "scheduler.outcome_filler.skipped",
+                reason="scheduler_user_id not configured",
+            )
+            return
+
+        try:
+            from src.thesis.outcome_filler_service import OutcomeFillerService
+
+            async with AsyncSessionLocal() as session:
+                svc = OutcomeFillerService(
+                    session=session,
+                    quote_service=get_quote_service(),
+                )
+                filled_count = await svc.fill_pending_outcomes(user_id=str(user_id))
+                await session.commit()
+
+            logger.info(
+                "scheduler.outcome_filler.done",
+                user_id=user_id,
+                filled_count=filled_count,
+            )
+            await self._monitor.record_success(task_name)
+
+        except Exception as exc:
+            logger.error("scheduler.outcome_filler.error", error=str(exc))
+            await self._monitor.record_failure(task_name, exc)
+
+    @_fill_task.before_loop
+    async def _before_fill(self) -> None:
+        await self._client.wait_until_ready()
 
 
 # ---------------------------------------------------------------------------
