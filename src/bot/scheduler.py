@@ -927,20 +927,23 @@ _MEMORY_CONSOLIDATE_TIME = datetime.time(hour=2, minute=0, tzinfo=datetime.UTC) 
 class MemoryConsolidatorScheduler:
     """Run weekly memory distillation every Sunday at 09:00 ICT.
 
-    Calls MemoryConsolidator.run() — ai segment — to synthesise episodic
-    events from the past week into durable semantic patterns that feed
-    personalization in briefing, thesis review, and watchlist scoring.
+    Calls MemoryConsolidator.run(session) — ai segment — to synthesise episodic
+    AIInteractionLog rows from the past 7 days into a MemorySnapshot (semantic
+    patterns: behavioral_patterns, cognitive_biases, strengths, blind_spots,
+    confidence_calibration).
 
     Flow:
         1. get_memory_consolidator() — retrieve singleton from bootstrap.
            Returns None if scheduler_user_id is not configured → graceful skip.
-        2. consolidator.run() — reads episodic store, calls AI, writes
-           semantic patterns back to DB. All DB work is internal to the
-           consolidator; no session management needed here.
-        3. Log result; record success/failure in SchedulerMonitor.
+        2. Open AsyncSessionLocal → call consolidator.run(session).
+           MemoryConsolidator handles its own commit; session is closed here.
+        3. Log snapshot_id + episode_count from the returned MemorySnapshot.
+           Returns None when episodes < 3 or AI/DB error — both are non-fatal.
+        4. Record success/failure in SchedulerMonitor.
 
     Graceful skip:
-        - If get_memory_consolidator() returns None.
+        - If get_memory_consolidator() returns None (scheduler_user_id not set).
+        - If consolidator.run() returns None (not enough episodes or AI error).
         - All exceptions are caught and recorded; never blocks other schedulers.
     """
 
@@ -975,11 +978,18 @@ class MemoryConsolidatorScheduler:
             return
 
         try:
-            result = await consolidator.run()  # type: ignore[union-attr]
+            async with AsyncSessionLocal() as session:
+                snapshot = await consolidator.run(session)  # type: ignore[union-attr]
+
+            if snapshot is None:
+                # Not enough episodes or AI error — consolidator already logged reason
+                await self._monitor.record_success(task_name)
+                return
+
             logger.info(
                 "scheduler.memory_consolidator.done",
-                patterns_written=getattr(result, "patterns_written", None),
-                episodes_processed=getattr(result, "episodes_processed", None),
+                snapshot_id=snapshot.id,
+                episode_count=snapshot.episode_count,
             )
             await self._monitor.record_success(task_name)
 
