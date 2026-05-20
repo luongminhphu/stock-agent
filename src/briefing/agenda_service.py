@@ -163,16 +163,23 @@ class AgendaService:
         return items
 
     async def _load_memory_signals(self, user_id: str) -> list[MemorySignalItem]:
-        """Load high-confidence memory patterns (≥ 0.65). Safe no-op if memory_service is None."""
+        """Load high-confidence memory patterns (>= 0.65) via MemoryService.
+
+        Uses MemoryService.get_memory_context(session, user_id) and extracts
+        patterns from latest_snapshot.patterns_json.
+        Safe no-op if memory_service is None or on any error.
+        """
         if self._memory_svc is None:
             return []
         try:
             import json as _json
 
-            snapshot = await self._memory_svc.get_latest_snapshot(user_id)
-            if snapshot is None:
+            memory_ctx = await self._memory_svc.get_memory_context(
+                self._session, user_id
+            )
+            if memory_ctx is None or memory_ctx.latest_snapshot is None:
                 return []
-            patterns = _json.loads(snapshot.patterns_json or "[]")
+            patterns = _json.loads(memory_ctx.latest_snapshot.patterns_json or "[]")
             return [
                 MemorySignalItem(
                     ticker=p.get("ticker", ""),

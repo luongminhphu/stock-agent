@@ -16,6 +16,7 @@ Registered tasks:
     MemoryConsolidatorScheduler.consolidate    — Sundays 09:00 ICT (weekly memory distill)
     SignalEngineScheduler.morning_task         — weekdays 08:40 ICT (before morning brief)
     SignalEngineScheduler.eod_task             — weekdays 15:10 ICT (after market close)
+    AgendaBuilderScheduler.agenda_task         — weekdays 07:30 ICT (before all morning tasks)
 
 Note:
     MORNING_CHANNEL_ID and EOD_CHANNEL_ID must be set in settings.
@@ -26,6 +27,7 @@ Channel routing:
     Proactive alerts (WatchlistScan, ThesisDrift, Reminder)      → alert_channel_id
         alert_channel_id = DISCORD_ALERT_CHANNEL_ID if set, else morning_channel_id
     SignalEngineScheduler emits events only — no channel routing, no Discord message.
+    AgendaBuilderScheduler persists only — no Discord message.
 
 Wave 8:
     BriefingScheduler no longer calls BriefingService directly.
@@ -50,6 +52,7 @@ from src.bot.commands.reminder_embeds import build_reminder_embed
 from src.bot.commands.thesis_embeds import build_drift_embed, build_maintenance_embed
 from src.bot.commands.watchlist_embeds import build_scan_embed
 from src.platform.bootstrap import (
+    get_agenda_service_factory,
     get_investor_profile_service,
     get_memory_consolidator,
     get_quote_service,
@@ -451,8 +454,6 @@ class ThesisMaintenanceScheduler:
         upcoming_catalysts: list[dict] = []
 
         # -- Step 1: Auto-expire overdue catalysts (no AI, no token cost) --
-        # Non-blocking: failure is logged and recorded but does NOT abort Step 1b or Step 2.
-        # expired_count falls back to 0 so the downstream embed still renders correctly.
         try:
             from src.thesis.component_service import ComponentService
 
@@ -467,7 +468,6 @@ class ThesisMaintenanceScheduler:
         except Exception as exc:
             logger.error("scheduler.thesis_maintenance.expire_error", error=str(exc))
             await self._monitor.record_failure(task_name, exc)
-            # Do NOT return — Step 1b (upcoming catalysts) and Step 2 (AI review) run independently.
 
         # -- Step 1b: Fetch upcoming catalysts (no AI, isolated session, non-blocking) --
         try:
@@ -479,7 +479,6 @@ class ThesisMaintenanceScheduler:
                     str(user_id), days=_CATALYST_LOOKAHEAD_DAYS
                 )
 
-            # Deduplicate: only keep catalysts not yet notified today
             new_upcoming = [
                 c for c in all_upcoming
                 if c.get("id") not in self._notified_catalyst_ids
@@ -497,7 +496,7 @@ class ThesisMaintenanceScheduler:
                 "scheduler.thesis_maintenance.upcoming_catalysts_error",
                 error=str(exc),
             )
-            upcoming_catalysts = []  # non-blocking — continue with empty list
+            upcoming_catalysts = []
 
         # -- Step 2: AI review for stale theses --
         try:
@@ -525,7 +524,6 @@ class ThesisMaintenanceScheduler:
 
         await self._monitor.record_success(task_name)
 
-        # -- Step 3: Discord notify — presentation delegated to thesis_embeds --
         has_content = expired_count > 0 or reviews or upcoming_catalysts
         if not has_content:
             return
@@ -557,7 +555,6 @@ class ThesisMaintenanceScheduler:
             )
             await channel.send(embed=embed)  # type: ignore[union-attr]
 
-            # Mark successfully notified catalyst IDs so they are not re-sent today
             newly_notified_ids = {
                 c["id"] for c in upcoming_catalysts if c.get("id") is not None
             }
@@ -637,7 +634,6 @@ class ThesisDriftScheduler:
             from src.thesis.drift_service import DriftService
             from src.thesis.review_service import ReviewService
 
-            # -- Step 1a: Detect price-drifted theses (no AI) --
             async with AsyncSessionLocal() as session:
                 drift_svc = DriftService(
                     session=session,
@@ -647,7 +643,6 @@ class ThesisDriftScheduler:
                 )
                 signals = await drift_svc.detect(str(user_id))
 
-            # -- Step 1b: Detect conviction drift (no AI, non-blocking) --
             conviction_signals = []
             try:
                 async with AsyncSessionLocal() as session:
@@ -670,7 +665,6 @@ class ThesisDriftScheduler:
                 await self._monitor.record_success(task_name)
                 return
 
-            # -- Step 2: AI review for price-drifted theses --
             reviewed_signals = []
             for signal in signals:
                 try:
@@ -694,7 +688,6 @@ class ThesisDriftScheduler:
                     )
                     reviewed_signals.append((signal, None))
 
-            # -- Step 3: Discord notify --
             channel = self._client.get_channel(int(channel_id))
             if channel is None:
                 logger.warning("scheduler.drift.channel_not_found", channel_id=channel_id)
@@ -963,7 +956,6 @@ class MemoryConsolidatorScheduler:
     @tasks.loop(time=_MEMORY_CONSOLIDATE_TIME)
     async def _consolidate_task(self) -> None:
         now_utc = datetime.datetime.now(tz=datetime.UTC)
-        # Sunday only (weekday() == 6)
         if now_utc.weekday() != 6:
             return
 
@@ -982,7 +974,6 @@ class MemoryConsolidatorScheduler:
                 snapshot = await consolidator.run(session)  # type: ignore[union-attr]
 
             if snapshot is None:
-                # Not enough episodes or AI error — consolidator already logged reason
                 await self._monitor.record_success(task_name)
                 return
 
@@ -999,4 +990,90 @@ class MemoryConsolidatorScheduler:
 
     @_consolidate_task.before_loop
     async def _before_consolidate(self) -> None:
+        await self._client.wait_until_ready()
+
+
+# ---------------------------------------------------------------------------
+# AgendaBuilderScheduler
+# ---------------------------------------------------------------------------
+
+_AGENDA_TIME = datetime.time(hour=0, minute=30, tzinfo=datetime.UTC)  # 07:30 ICT
+
+
+class AgendaBuilderScheduler:
+    """Build daily investor agenda at 07:30 ICT (weekdays).
+
+    Runs before InvestorProfileScheduler (08:20) and BriefingScheduler (08:45)
+    so the agenda result is persisted before the morning brief fires.
+
+    Flow:
+        1. get_agenda_service_factory() — returns callable(session) -> AgendaService,
+           or None if scheduler_user_id is not configured → graceful skip.
+        2. factory(session) — instantiate AgendaService with agent + MemoryService.
+        3. svc.build_agenda(user_id) — load context, call AgendaBuilderAgent, persist result.
+        4. session.commit() — persist DailyAgendaResult.
+        5. Log decide/watch/defer counts; record success/failure in SchedulerMonitor.
+
+    Graceful skip:
+        - If get_agenda_service_factory() returns None (scheduler_user_id not set).
+        - If build_agenda() returns None (AI error or no data) — non-fatal.
+        - All exceptions are caught and recorded; never blocks downstream schedulers.
+    """
+
+    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
+        self._client = client
+        self._monitor = monitor or get_monitor()
+
+    def start(self) -> None:
+        self._monitor.register_task("agenda.build")
+        self._agenda_task.start()
+        logger.info("scheduler.agenda.started", time_ict="07:30")
+
+    def stop(self) -> None:
+        self._agenda_task.cancel()
+        logger.info("scheduler.agenda.stopped")
+
+    @tasks.loop(time=_AGENDA_TIME)
+    async def _agenda_task(self) -> None:
+        now_utc = datetime.datetime.now(tz=datetime.UTC)
+        if now_utc.weekday() >= 5:
+            return
+
+        task_name = "agenda.build"
+        user_id = getattr(settings, "scheduler_user_id", None)
+        factory = get_agenda_service_factory()
+
+        if not user_id or factory is None:
+            logger.warning(
+                "scheduler.agenda.skipped",
+                reason="agenda_service_factory not initialised — scheduler_user_id not set",
+            )
+            return
+
+        try:
+            async with AsyncSessionLocal() as session:
+                svc = factory(session)
+                result = await svc.build_agenda(str(user_id))
+                await session.commit()
+
+            if result is None:
+                logger.info("scheduler.agenda.no_result", user_id=user_id)
+                await self._monitor.record_success(task_name)
+                return
+
+            logger.info(
+                "scheduler.agenda.done",
+                user_id=user_id,
+                decide=len(result.decide),
+                watch=len(result.watch),
+                defer=len(result.defer),
+            )
+            await self._monitor.record_success(task_name)
+
+        except Exception as exc:
+            logger.error("scheduler.agenda.error", error=str(exc))
+            await self._monitor.record_failure(task_name, exc)
+
+    @_agenda_task.before_loop
+    async def _before_agenda(self) -> None:
         await self._client.wait_until_ready()

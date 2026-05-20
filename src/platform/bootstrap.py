@@ -41,6 +41,8 @@ _opportunity_screen_scheduler: object | None = None  # Wave 3
 _opportunity_screen_subscriber: object | None = None  # Wave 3
 _signal_engine_agent: object | None = None   # Wave 2b: cross-check engine
 _signal_engine_listener: object | None = None  # Wave B2: fully wired
+_agenda_builder_agent: object | None = None   # AgendaBuilderAgent singleton
+_agenda_service_factory: object | None = None  # callable(session) -> AgendaService | None
 
 _pnl_service_class: type | None = None
 
@@ -57,6 +59,7 @@ async def bootstrap() -> None:
     global _briefing_listener, _stress_test_subscriber
     global _opportunity_screen_scheduler, _opportunity_screen_subscriber
     global _signal_engine_agent, _signal_engine_listener
+    global _agenda_builder_agent, _agenda_service_factory
 
     if _quote_service is None:
         from src.market.adapters.factory import build_adapter
@@ -177,6 +180,36 @@ async def bootstrap() -> None:
         else:
             logger.warning(
                 "platform.bootstrap.memory_consolidator_skipped",
+                reason="scheduler_user_id not configured",
+            )
+
+    if _agenda_builder_agent is None:
+        from src.ai.agents.agenda_builder import AgendaBuilderAgent
+
+        _agenda_builder_agent = AgendaBuilderAgent(ai_client=_ai_client)  # type: ignore[arg-type]
+        logger.info("platform.bootstrap.agenda_builder_agent_ready")
+
+    if _agenda_service_factory is None:
+        from src.platform.config import settings
+
+        user_id = getattr(settings, "scheduler_user_id", None)
+        if user_id:
+            from src.ai.memory.memory_service import MemoryService
+            from src.briefing.agenda_service import AgendaService
+
+            _agent_ref = _agenda_builder_agent
+            _agenda_service_factory = lambda session: AgendaService(  # noqa: E731
+                session=session,
+                agenda_agent=_agent_ref,
+                memory_service=MemoryService,
+            )
+            logger.info(
+                "platform.bootstrap.agenda_service_factory_ready",
+                user_id=str(user_id),
+            )
+        else:
+            logger.warning(
+                "platform.bootstrap.agenda_service_factory_skipped",
                 reason="scheduler_user_id not configured",
             )
 
@@ -471,6 +504,11 @@ def get_investor_profile_service() -> tuple | None:
 
 def get_memory_consolidator():
     return _memory_consolidator
+
+
+def get_agenda_service_factory():
+    """Return factory callable(session) -> AgendaService, or None if not configured."""
+    return _agenda_service_factory
 
 
 def get_proactive_alert_agent():
