@@ -7,7 +7,7 @@
 import { el } from '../../utils/dom.js';
 import { esc, fmtDate } from '../../utils/format.js';
 
-export function renderCatalystCalendar(raw, wrapId = 'catalystCalendarWrap') {
+export function renderCatalystCalendar(raw, wrapId = 'catalystList') {
   const wrap = el(wrapId);
   if (!wrap) return;
 

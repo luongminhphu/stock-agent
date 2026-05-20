@@ -340,8 +340,8 @@ export async function loadDashboard() {
       getJson(`${base}/stats`).catch(() => null),
       getJson(`${base}/theses?status=${status}`).catch(() => []),
       getJson(`${base}/backtesting/verdict-accuracy`).catch(() => null),
-      // days=7: catalyst window đồng bộ với KPI strip (upcoming_catalysts_7d)
-      getJson(`${base}/catalysts/upcoming?days=7`).catch(() => []),
+      // days=30: catalyst window aligned with scheduler _CATALYST_LOOKAHEAD_DAYS
+      getJson(`${base}/catalysts/upcoming?days=30`).catch(() => []),
       getJson(`${base}/scan/latest`).catch(() => null),
       getJson(`${briefBase}/latest?phase=morning`).catch(() => null),
       getJson(`${briefBase}/latest?phase=eod`).catch(() => null),
