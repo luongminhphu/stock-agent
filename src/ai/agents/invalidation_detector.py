@@ -24,13 +24,21 @@ Fallback:
   - If AI is unavailable, returns a rule-based InvalidationSignal with
     confidence=0.3 and verdict=CONFIRMED when stop_loss_breached or
     assumption_ratio breach detected. SUSPECTED in all other cases.
+
+Memory logging (Wave 6):
+  - detect() accepts optional session + user_id params.
+  - Every verdict (AI + all fallback paths) is logged as an episodic entry.
+  - Invalidation events are inflection points — the most semantically dense
+    single data point in the system for detecting investor error patterns.
+  - Caller owns session — detector never opens DB directly (boundary preserved).
+  - Backward-compat: session=None skips logging silently.
 """
 
 from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import ValidationError
 
@@ -164,6 +172,8 @@ class ThesisInvalidationDetector:
                 invalid_assumptions=rule_result.invalid_assumptions,
                 total_assumptions=len(thesis.assumptions),
                 score=rule_result.score,
+                session=session,      # Wave 6: pass caller's session
+                user_id=user_id,      # Wave 6: pass user_id for memory log
             )
             # signal.verdict → CONFIRMED / SUSPECTED / CLEARED
             # signal.action  → exit_signal / review / reduce / hold
@@ -188,6 +198,8 @@ class ThesisInvalidationDetector:
         score: float = 0.0,
         watchdog_verdict: str | None = None,
         watchdog_urgency: str | None = None,
+        session: Any = None,
+        user_id: str | None = None,
     ) -> InvalidationSignal:
         """Run AI confirmation on a rule-based invalidation breach.
 
@@ -208,6 +220,9 @@ class ThesisInvalidationDetector:
             score:               Current thesis score (0-100).
             watchdog_verdict:    WatchdogOutput verdict string (optional).
             watchdog_urgency:    WatchdogOutput urgency string (optional).
+            session:             Optional DB session from caller.
+                                 When provided, result is logged as episodic memory.
+            user_id:             Optional user ID for episodic memory logging.
         """
         invalid_assumptions = invalid_assumptions or []
 
@@ -267,6 +282,7 @@ class ThesisInvalidationDetector:
                 "InvalidationDetector: thesis=%s ticker=%s verdict=%s action=%s confidence=%.2f",
                 thesis_id, ticker, signal.verdict, signal.action, signal.confidence,
             )
+            await _log_invalidation_interaction(session, user_id, signal)
             return signal
 
         except AIError as exc:
@@ -281,7 +297,7 @@ class ThesisInvalidationDetector:
                     "InvalidationDetector: AI error thesis=%s ticker=%s: %s",
                     thesis_id, ticker, exc,
                 )
-            return self._fallback(
+            fallback = self._fallback(
                 thesis_id=thesis_id,
                 ticker=ticker,
                 breach_type=breach_type,
@@ -291,13 +307,15 @@ class ThesisInvalidationDetector:
                 watchdog_verdict=watchdog_verdict,
                 watchdog_urgency=watchdog_urgency,
             )
+            await _log_invalidation_interaction(session, user_id, fallback)
+            return fallback
 
         except (json.JSONDecodeError, ValidationError) as exc:
             logger.error(
                 "InvalidationDetector: parse error thesis=%s ticker=%s — possible prompt regression: %s",
                 thesis_id, ticker, exc,
             )
-            return self._fallback(
+            fallback = self._fallback(
                 thesis_id=thesis_id,
                 ticker=ticker,
                 breach_type=breach_type,
@@ -307,13 +325,15 @@ class ThesisInvalidationDetector:
                 watchdog_verdict=watchdog_verdict,
                 watchdog_urgency=watchdog_urgency,
             )
+            await _log_invalidation_interaction(session, user_id, fallback)
+            return fallback
 
         except Exception as exc:
             logger.warning(
                 "InvalidationDetector: unexpected error thesis=%s ticker=%s: %s",
                 thesis_id, ticker, exc,
             )
-            return self._fallback(
+            fallback = self._fallback(
                 thesis_id=thesis_id,
                 ticker=ticker,
                 breach_type=breach_type,
@@ -323,6 +343,8 @@ class ThesisInvalidationDetector:
                 watchdog_verdict=watchdog_verdict,
                 watchdog_urgency=watchdog_urgency,
             )
+            await _log_invalidation_interaction(session, user_id, fallback)
+            return fallback
 
     def _fallback(
         self,
@@ -359,3 +381,69 @@ class ThesisInvalidationDetector:
             mitigating_factors=[],
             checked_at=datetime.now(UTC).isoformat(),
         )
+
+
+# ---------------------------------------------------------------------------
+# Memory interaction logger — module-level helper (Wave 6)
+# ---------------------------------------------------------------------------
+
+
+async def _log_invalidation_interaction(
+    session: Any,
+    user_id: str | None,
+    result: InvalidationSignal,
+) -> None:
+    """Fire-and-forget memory log for invalidation detection events.
+
+    Caller owns the session — invalidation_detector never opens DB directly
+    (boundary: ai segment, no direct DB access).
+
+    Invalidation events are inflection points — the moment a thesis crosses
+    from 'valid' to 'breached'. The verdict (CONFIRMED / SUSPECTED / CLEARED)
+    and breach_type together are the most semantically dense single data point
+    in the system for detecting investor error patterns over time.
+
+    trigger=breach:<breach_type> enables precise semantic grouping downstream:
+      - breach:STOP_LOSS     → price discipline pattern
+      - breach:ASSUMPTION_RATIO → thesis quality pattern
+      - breach:COMPOSITE     → compound risk pattern
+      - breach:WATCHDOG_CRITICAL → signal sensitivity pattern
+
+    Logs every verdict including fallback (confidence=0.3) so the memory layer
+    tracks AI-availability trends as a meta-signal.
+
+    Never raises. Silently skips when session is None or user_id unset.
+    """
+    if session is None or not user_id:
+        return
+    try:
+        from src.ai.memory.memory_service import InteractionEntry, MemoryService
+
+        ticker = getattr(result, "ticker", "") or ""
+        verdict = str(getattr(result, "verdict", "") or "")
+        action = str(getattr(result, "action", "") or "")
+        confidence = getattr(result, "confidence", 0.0) or 0.0
+        breach_type = getattr(result, "breach_type", None)
+        breach_str = (
+            breach_type.value
+            if hasattr(breach_type, "value")
+            else str(breach_type or "")
+        )
+        breach_summary = str(getattr(result, "breach_summary", "") or "")
+
+        entry = InteractionEntry(
+            user_id=user_id,
+            agent_type="invalidation_detector",
+            trigger=f"breach:{breach_str}",
+            tickers=[ticker] if ticker else [],
+            ai_verdict=verdict,
+            ai_key_points=(
+                f"action={action} "
+                f"confidence={confidence:.2f} "
+                f"breach={breach_str} "
+                f"summary={breach_summary[:80]}"
+            ),
+        )
+        await MemoryService.log_interaction(session, entry)
+    except Exception as exc:
+        logger.warning("invalidation_detector.memory_log_failed", error=str(exc))
