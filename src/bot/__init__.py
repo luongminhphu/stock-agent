@@ -22,6 +22,9 @@ Rule: No domain logic in this segment.
 # when running `python -m src.bot`. Consumers should import directly:
 #   from src.bot.app import create_bot, run
 #   from src.bot.scheduler import BriefingScheduler, WatchlistScanScheduler, Scheduler
-from src.bot.scheduler import BriefingScheduler, Scheduler, WatchlistScanScheduler
+from src.bot.scheduler import BriefingScheduler, WatchlistScanScheduler
+
+# Backward-compatibility alias — external code that imports `Scheduler` continues to work.
+Scheduler = BriefingScheduler
 
 __all__ = ["BriefingScheduler", "Scheduler", "WatchlistScanScheduler"]
