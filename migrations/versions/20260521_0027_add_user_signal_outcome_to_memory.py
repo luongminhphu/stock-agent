@@ -2,7 +2,7 @@
 add patterns_json to memory_snapshots.
 
 Revision ID: 20260521_0027
-Revises: 0026_add_updated_timeline_to_review_recommendations
+Revises: 0026
 Create Date: 2026-05-21
 
 ai_interaction_logs:
@@ -23,7 +23,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "20260521_0027"
-down_revision = "0026_add_updated_timeline_to_review_recommendations"
+down_revision = "0026"
 branch_labels = None
 depends_on = None
 
