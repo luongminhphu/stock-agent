@@ -1,5 +1,5 @@
 // api/client.js — HTTP client wrapper cho stock-agent API
-// Owner: api segment (không chứa business/render logic)
+// Owner: api segment (đượng không chứa business/render logic)
 
 /**
  * Base URL cho readmodel dashboard endpoints
@@ -23,6 +23,14 @@ export function thesisApiBase() {
  */
 export function briefingApiBase() {
   return '/api/v1/briefing';
+}
+
+/**
+ * Base URL cho memory endpoints
+ * @returns {string}
+ */
+export function memoryApiBase() {
+  return '/api/v1/memory';
 }
 
 /**
