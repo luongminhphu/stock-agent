@@ -37,6 +37,16 @@ mark_processed boundary fix (Wave 4):
     _mark_processed() now calls WatchlistService.mark_signal_processed(event_id)
     instead of importing watchlist.models / watchlist.repository directly.
     ai segment only knows watchlist.service (public API).
+
+Memory logging (Wave 6):
+    _log_proactive_alert_interaction() fires after every successful AI analysis.
+    Each real-time signal event is an episodic memory entry — the richest
+    single-event data point for semantic synthesis downstream.
+    Uses session_factory (same pattern as _mark_processed) — opens its own
+    short-lived session so memory write never shares a transaction with
+    mark_processed or context fetch.
+    Never raises — all exceptions are caught and logged as warnings.
+    Silently skips when session_factory is None or owner_user_id is not set.
 """
 from __future__ import annotations
 
@@ -70,6 +80,7 @@ class ProactiveAlertAgent:
       3. AIClient.chat() → ProactiveAlertOutput (structured JSON)
       4. Publish RecommendationReadyEvent (with thesis_id + rich Wave 7 fields)
       5. mark_processed() via WatchlistService (best-effort)
+      6. log_interaction() → ai.memory episodic entry (best-effort)
     """
 
     def __init__(
@@ -98,6 +109,7 @@ class ProactiveAlertAgent:
           - AI failure  → log error + return (no partial publish)
           - Bus publish failure  → log error (mark_processed still attempted)
           - mark_processed failure → log warning (event stays in pending inbox)
+          - memory log failure → log warning (non-blocking)
         """
         logger.info(
             "proactive_alert_agent.signal_received",
@@ -118,6 +130,13 @@ class ProactiveAlertAgent:
 
         # ── Step 5: Mark signal_event processed via WatchlistService (best-effort)
         await self._mark_processed(event.event_id)
+
+        # ── Step 6: Log episodic memory entry (best-effort) ─────────────────
+        await _log_proactive_alert_interaction(
+            session_factory=self._session_factory,
+            event=event,
+            output=output,
+        )
 
         if rec_event:
             logger.info(
@@ -290,6 +309,63 @@ class ProactiveAlertAgent:
                 event_id=event_id,
                 error=str(exc),
             )
+
+
+# ---------------------------------------------------------------------------
+# Memory interaction logger — module-level helper (Wave 6)
+# ---------------------------------------------------------------------------
+
+
+async def _log_proactive_alert_interaction(
+    session_factory: Any,
+    event: SignalDetectedEvent,
+    output: ProactiveAlertOutput,
+) -> None:
+    """Fire-and-forget episodic memory log for proactive alert interactions.
+
+    Each real-time signal fire is a high-value episode: symbol, signal_type,
+    AI action verdict, urgency, and confidence are the core fields for
+    downstream semantic synthesis (bias detection, recall accuracy).
+
+    Opens its own short-lived session via session_factory so the memory write
+    never shares a transaction with _mark_processed or context fetch.
+
+    Never raises — all exceptions are caught and logged as warnings.
+    Silently skips when session_factory is None or owner_user_id unset.
+    """
+    if session_factory is None:
+        return
+    try:
+        from src.platform.config import settings
+        user_id = settings.owner_user_id or None
+        if not user_id:
+            return
+
+        from src.ai.memory.memory_service import InteractionEntry, MemoryService
+
+        confidence_val = output.confidence if output.confidence is not None else 0.0
+        risk_signals = getattr(output, "risk_signals", []) or []
+
+        entry = InteractionEntry(
+            user_id=user_id,
+            agent_type="proactive_alert",
+            trigger=f"signal:{event.signal_type}",
+            tickers=[event.symbol] if event.symbol else [],
+            ai_verdict=str(output.action or ""),
+            ai_key_points=(
+                f"urgency={output.urgency} "
+                f"confidence={confidence_val:.2f} "
+                f"strength={event.strength} "
+                f"risk_signals={risk_signals[:3]}"
+            ),
+        )
+
+        async with session_factory() as session:
+            await MemoryService.log_interaction(session, entry)
+            await session.commit()
+
+    except Exception as exc:
+        logger.warning("proactive_alert_agent.memory_log_failed", error=str(exc))
 
 
 def get_proactive_alert_agent(
