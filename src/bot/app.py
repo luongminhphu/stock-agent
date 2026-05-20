@@ -61,6 +61,7 @@ def create_bot() -> commands.Bot:
             _start_snapshot_scheduler()
             _start_reminder_scheduler(bot)
             _start_decision_replay_scheduler(bot)
+            _start_memory_consolidator_scheduler(bot)
             _start_recommendation_listener(bot)  # Wave 4: event-driven alerts
             _start_opportunity_screen_scheduler(bot)  # Wave 3: sector rotation 09:10 ICT
             logger.info(
@@ -226,6 +227,26 @@ def _start_reminder_scheduler(bot: commands.Bot) -> None:
 def _start_decision_replay_scheduler(bot: commands.Bot) -> None:
     from src.bot.scheduler import DecisionReplayScheduler
     scheduler = DecisionReplayScheduler(bot)
+    scheduler.start()
+
+
+def _start_memory_consolidator_scheduler(bot: commands.Bot) -> None:
+    """Wire MemoryConsolidatorScheduler — Sundays 09:00 ICT.
+
+    Returns early with a warning if MemoryConsolidator was not initialised
+    at bootstrap (scheduler_user_id not configured). Non-blocking.
+    """
+    from src.platform.bootstrap import get_memory_consolidator
+    from src.bot.scheduler import MemoryConsolidatorScheduler
+
+    if get_memory_consolidator() is None:
+        logger.warning(
+            "bot.memory_consolidator_scheduler.not_available",
+            reason="MemoryConsolidator not initialised — scheduler_user_id may not be configured",
+        )
+        return
+
+    scheduler = MemoryConsolidatorScheduler(bot)
     scheduler.start()
 
 

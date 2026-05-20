@@ -873,41 +873,39 @@ class DecisionReplayScheduler:
             return
 
         try:
-            agent = get_replay_agent()
-            if agent is None:
-                logger.warning(
-                    "scheduler.decision_replay.skipped",
-                    reason="replay_agent not initialised",
-                )
-                return
-
             async with AsyncSessionLocal() as session:
-                result = await agent.run(user_id=str(user_id), session=session)
+                replay_result = await get_replay_agent().run(
+                    user_id=str(user_id),
+                    session=session,
+                )
                 await session.commit()
 
-            if not result or not result.replays:
+            if not replay_result:
                 await self._monitor.record_success(task_name)
                 return
 
             if not channel_id:
+                logger.warning(
+                    "scheduler.decision_replay.notify_skipped",
+                    reason="morning_channel_id not configured",
+                )
                 await self._monitor.record_success(task_name)
                 return
 
             channel = self._client.get_channel(int(channel_id))
             if channel is None:
                 logger.warning(
-                    "scheduler.decision_replay.channel_not_found", channel_id=channel_id
+                    "scheduler.decision_replay.channel_not_found",
+                    channel_id=channel_id,
                 )
                 await self._monitor.record_failure(
                     task_name, RuntimeError(f"channel {channel_id} not found")
                 )
                 return
 
-            embed = build_replay_embed(result, now_utc)
+            embed = build_replay_embed(replay_result, now_utc)
             await channel.send(embed=embed)  # type: ignore[union-attr]
-            logger.info(
-                "scheduler.decision_replay.notified", replay_count=len(result.replays)
-            )
+            logger.info("scheduler.decision_replay.notified")
             await self._monitor.record_success(task_name)
 
         except Exception as exc:
@@ -923,17 +921,27 @@ class DecisionReplayScheduler:
 # MemoryConsolidatorScheduler
 # ---------------------------------------------------------------------------
 
-_CONSOLIDATE_TIME = datetime.time(hour=2, minute=0, tzinfo=datetime.UTC)  # 09:00 ICT Sunday
+_MEMORY_CONSOLIDATE_TIME = datetime.time(hour=2, minute=0, tzinfo=datetime.UTC)  # 09:00 ICT
 
 
 class MemoryConsolidatorScheduler:
-    """Distill weekly memory snapshots every Sunday at 09:00 ICT.
+    """Run weekly memory distillation every Sunday at 09:00 ICT.
 
-    Reads raw interaction + decision logs from the past week,
-    extracts persistent behavioral patterns, and writes a
-    consolidated MemorySnapshot for InvestorProfile.
+    Calls MemoryConsolidator.run() — ai segment — to synthesise episodic
+    events from the past week into durable semantic patterns that feed
+    personalization in briefing, thesis review, and watchlist scoring.
 
-    No Discord output — pure data pipeline, no channel routing.
+    Flow:
+        1. get_memory_consolidator() — retrieve singleton from bootstrap.
+           Returns None if scheduler_user_id is not configured → graceful skip.
+        2. consolidator.run() — reads episodic store, calls AI, writes
+           semantic patterns back to DB. All DB work is internal to the
+           consolidator; no session management needed here.
+        3. Log result; record success/failure in SchedulerMonitor.
+
+    Graceful skip:
+        - If get_memory_consolidator() returns None.
+        - All exceptions are caught and recorded; never blocks other schedulers.
     """
 
     def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
@@ -943,43 +951,35 @@ class MemoryConsolidatorScheduler:
     def start(self) -> None:
         self._monitor.register_task("memory.consolidate")
         self._consolidate_task.start()
-        logger.info("scheduler.memory_consolidator.started")
+        logger.info("scheduler.memory_consolidator.started", time_ict="Sunday 09:00")
 
     def stop(self) -> None:
         self._consolidate_task.cancel()
         logger.info("scheduler.memory_consolidator.stopped")
 
-    @tasks.loop(time=_CONSOLIDATE_TIME)
+    @tasks.loop(time=_MEMORY_CONSOLIDATE_TIME)
     async def _consolidate_task(self) -> None:
         now_utc = datetime.datetime.now(tz=datetime.UTC)
-        if now_utc.weekday() != 6:  # Sunday only
+        # Sunday only (weekday() == 6)
+        if now_utc.weekday() != 6:
             return
 
         task_name = "memory.consolidate"
-        user_id = getattr(settings, "scheduler_user_id", None)
-        if not user_id:
+
+        consolidator = get_memory_consolidator()
+        if consolidator is None:
             logger.warning(
                 "scheduler.memory_consolidator.skipped",
-                reason="scheduler_user_id not configured",
+                reason="MemoryConsolidator not initialised — scheduler_user_id not set",
             )
             return
 
         try:
-            consolidator = get_memory_consolidator()
-            if consolidator is None:
-                logger.warning(
-                    "scheduler.memory_consolidator.skipped",
-                    reason="memory_consolidator not initialised",
-                )
-                return
-
-            async with AsyncSessionLocal() as session:
-                result = await consolidator.run(user_id=str(user_id), session=session)
-                await session.commit()
-
+            result = await consolidator.run()  # type: ignore[union-attr]
             logger.info(
                 "scheduler.memory_consolidator.done",
-                patterns_extracted=getattr(result, "patterns_extracted", None),
+                patterns_written=getattr(result, "patterns_written", None),
+                episodes_processed=getattr(result, "episodes_processed", None),
             )
             await self._monitor.record_success(task_name)
 
@@ -990,93 +990,3 @@ class MemoryConsolidatorScheduler:
     @_consolidate_task.before_loop
     async def _before_consolidate(self) -> None:
         await self._client.wait_until_ready()
-
-
-# ---------------------------------------------------------------------------
-# SignalEngineScheduler
-# ---------------------------------------------------------------------------
-
-_SIGNAL_MORNING_TIME = datetime.time(hour=1, minute=40, tzinfo=datetime.UTC)  # 08:40 ICT
-_SIGNAL_EOD_TIME     = datetime.time(hour=8, minute=10, tzinfo=datetime.UTC)  # 15:10 ICT
-
-
-class SignalEngineScheduler:
-    """Emit SignalEngineRequestedEvent twice daily — before morning brief and after close.
-
-    Wave 2: bot is a thin timing adapter only.
-    SignalEngineListener (ai segment) handles the cross-check logic.
-    No channel routing — emits events only.
-    """
-
-    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
-        self._client = client
-        self._monitor = monitor or get_monitor()
-
-    def start(self) -> None:
-        self._monitor.register_task("signal_engine.morning")
-        self._monitor.register_task("signal_engine.eod")
-        self._morning_task.start()
-        self._eod_task.start()
-        logger.info("scheduler.signal_engine.started")
-
-    def stop(self) -> None:
-        self._morning_task.cancel()
-        self._eod_task.cancel()
-        logger.info("scheduler.signal_engine.stopped")
-
-    @tasks.loop(time=_SIGNAL_MORNING_TIME)
-    async def _morning_task(self) -> None:
-        if datetime.datetime.now(tz=datetime.UTC).weekday() >= 5:
-            return
-        await self._emit_signal_engine(phase="morning")
-
-    @_morning_task.before_loop
-    async def _before_morning(self) -> None:
-        await self._client.wait_until_ready()
-
-    @tasks.loop(time=_SIGNAL_EOD_TIME)
-    async def _eod_task(self) -> None:
-        if datetime.datetime.now(tz=datetime.UTC).weekday() >= 5:
-            return
-        await self._emit_signal_engine(phase="eod")
-
-    @_eod_task.before_loop
-    async def _before_eod(self) -> None:
-        await self._client.wait_until_ready()
-
-    async def _emit_signal_engine(self, phase: str) -> None:
-        from src.platform.event_bus import get_event_bus
-        from src.platform.events import SignalEngineRequestedEvent
-
-        task_name = f"signal_engine.{phase}"
-        user_id = getattr(settings, "scheduler_user_id", None)
-
-        if not user_id:
-            logger.warning(
-                "scheduler.signal_engine.skipped",
-                phase=phase,
-                reason="scheduler_user_id not configured",
-            )
-            return
-
-        try:
-            bus = get_event_bus()
-            await bus.publish(
-                SignalEngineRequestedEvent(
-                    phase=phase,
-                    triggered_by="scheduler",
-                )
-            )
-            logger.info("scheduler.signal_engine.event_emitted", phase=phase)
-            await self._monitor.record_success(task_name)
-
-        except Exception as exc:
-            logger.error("scheduler.signal_engine.emit_error", phase=phase, error=str(exc))
-            await self._monitor.record_failure(task_name, exc)
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat alias
-# ---------------------------------------------------------------------------
-
-Scheduler = BriefingScheduler  # __init__.py re-exports this name; do not remove
