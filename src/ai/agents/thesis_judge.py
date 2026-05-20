@@ -20,6 +20,12 @@ Boundary:
   - ONLY reads thesis metadata passed in — no DB calls.
   - ONLY uses signal_context passed in — no market API calls.
   - bot and api NEVER call this directly — only through BriefingService.
+
+Memory logging (Wave 6):
+  - run() and run_batch() accept optional session + user_id params.
+  - When provided, every verdict (AI or fallback) is logged as an episodic entry.
+  - caller (BriefingService) passes its own session — agent never opens DB directly.
+  - Backward-compat: session=None skips logging silently.
 """
 
 from __future__ import annotations
@@ -159,6 +165,8 @@ class ThesisJudgeAgent:
         signal_context: dict[str, Any],
         conviction_history: list[dict[str, Any]] | None = None,
         days_since_written: int | None = None,
+        session: Any = None,
+        user_id: str | None = None,
     ) -> ThesisJudgeOutput:
         """Run a single thesis judge check. Returns ThesisJudgeOutput.
 
@@ -185,6 +193,9 @@ class ThesisJudgeAgent:
                                      stress_verdict, signal_summary, last_review_summary.
             conviction_history:      Last N judge verdicts for trend context.
             days_since_written:      Days since thesis was created.
+            session:                 Optional DB session from caller (BriefingService).
+                                     When provided, verdict is logged as episodic memory.
+            user_id:                 Optional user ID for episodic memory logging.
         """
         import json
 
@@ -221,6 +232,7 @@ class ThesisJudgeAgent:
                 result.conviction_delta,
                 result.action,
             )
+            await _log_thesis_judge_interaction(session, user_id, result)
             return result
 
         # Issue K: split error log levels by error type.
@@ -242,11 +254,13 @@ class ThesisJudgeAgent:
                     "ThesisJudge: AI error for thesis=%s ticker=%s: %s",
                     thesis_id, ticker, exc,
                 )
-            return self._fallback(
+            fallback = self._fallback(
                 thesis_id=thesis_id,
                 ticker=ticker,
                 signal_context=signal_context,
             )
+            await _log_thesis_judge_interaction(session, user_id, fallback)
+            return fallback
 
         except (json.JSONDecodeError, ValidationError) as exc:
             # Parse / schema errors may indicate prompt regression — log at ERROR
@@ -256,26 +270,32 @@ class ThesisJudgeAgent:
                 "— possible prompt regression: %s",
                 thesis_id, ticker, exc,
             )
-            return self._fallback(
+            fallback = self._fallback(
                 thesis_id=thesis_id,
                 ticker=ticker,
                 signal_context=signal_context,
             )
+            await _log_thesis_judge_interaction(session, user_id, fallback)
+            return fallback
 
         except Exception as exc:
             logger.warning(
                 "ThesisJudgeAgent unexpected error for thesis=%s ticker=%s: %s",
                 thesis_id, ticker, exc,
             )
-            return self._fallback(
+            fallback = self._fallback(
                 thesis_id=thesis_id,
                 ticker=ticker,
                 signal_context=signal_context,
             )
+            await _log_thesis_judge_interaction(session, user_id, fallback)
+            return fallback
 
     async def run_batch(
         self,
         triggers: list[ThesisJudgeTrigger],
+        session: Any = None,
+        user_id: str | None = None,
     ) -> list[ThesisJudgeOutput]:
         """Run thesis judge for multiple triggers concurrently.
 
@@ -296,6 +316,9 @@ class ThesisJudgeAgent:
                 thesis_title, thesis_summary, assumptions, catalysts,
                 invalidation_conditions, signal_context,
                 conviction_history, days_since_written.
+            session:  Optional DB session from caller (BriefingService).
+                      When provided, every verdict is logged as episodic memory.
+            user_id:  Optional user ID for episodic memory logging.
 
         Returns:
             list[ThesisJudgeOutput] in same order as triggers.
@@ -319,6 +342,8 @@ class ThesisJudgeAgent:
                         signal_context=t.get("signal_context", {}),
                         conviction_history=t.get("conviction_history"),
                         days_since_written=t.get("days_since_written"),
+                        session=session,
+                        user_id=user_id,
                     )
                 except Exception as exc:
                     # Should not reach here (run() has its own try/except),
@@ -386,3 +411,76 @@ class ThesisJudgeAgent:
             confidence=0.3,
             judged_at=datetime.now(UTC).isoformat(),
         )
+
+
+# ---------------------------------------------------------------------------
+# Memory interaction loggers — module-level helpers (Wave 6)
+# ---------------------------------------------------------------------------
+
+
+async def _log_thesis_judge_interaction(
+    session: Any,
+    user_id: str | None,
+    result: ThesisJudgeOutput,
+) -> None:
+    """Fire-and-forget memory log for a single thesis judge verdict.
+
+    Caller (BriefingService) passes its own session — thesis_judge never
+    opens a DB session directly (boundary: ai segment, no DB access).
+
+    Judge verdict + conviction_delta are the xương sống (backbone) of semantic
+    synthesis: they capture whether the investor's conviction is being reinforced
+    or eroded by real-time signals — exactly the pattern to accumulate over time.
+
+    Logs every verdict including fallback (confidence=0.3) so the memory layer
+    can track AI-availability trends as a meta-signal.
+
+    Never raises. Silently skips when session is None or user_id unset.
+    """
+    if session is None or not user_id:
+        return
+    try:
+        from src.ai.memory.memory_service import InteractionEntry, MemoryService
+
+        ticker = getattr(result, "ticker", "") or ""
+        verdict = str(getattr(result, "verdict", "") or "")
+        delta = getattr(result, "conviction_delta", 0.0) or 0.0
+        action = str(getattr(result, "action", "") or "")
+        confidence = getattr(result, "confidence", 0.0) or 0.0
+        challenged = getattr(result, "challenged_assumptions", []) or []
+
+        entry = InteractionEntry(
+            user_id=user_id,
+            agent_type="thesis_judge",
+            trigger="signal_triggered_judge",
+            tickers=[ticker] if ticker else [],
+            ai_verdict=verdict,
+            ai_key_points=(
+                f"conviction_delta={delta:+.2f} "
+                f"action={action} "
+                f"confidence={confidence:.2f} "
+                f"challenged_assumptions={len(challenged)}"
+            ),
+        )
+        await MemoryService.log_interaction(session, entry)
+    except Exception as exc:
+        logger.warning("thesis_judge.memory_log_failed", error=str(exc))
+
+
+async def _log_thesis_judge_batch_interaction(
+    session: Any,
+    user_id: str | None,
+    results: list[ThesisJudgeOutput],
+) -> None:
+    """Log memory entries for a full judge batch concurrently. Never raises.
+
+    Thin wrapper over _log_thesis_judge_interaction — gathers all entries
+    concurrently so a large batch doesn't serialize memory writes.
+    return_exceptions=True ensures one failure never blocks the rest.
+    """
+    if session is None or not user_id or not results:
+        return
+    await asyncio.gather(
+        *[_log_thesis_judge_interaction(session, user_id, r) for r in results],
+        return_exceptions=True,
+    )
