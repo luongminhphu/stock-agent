@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import DateTime, Float, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -24,6 +25,7 @@ class AIInteractionLog(Base):
     the structured verdict returned. Used by:
     - MemoryService.get_recent_episodes()   → feeds ContextBuilder
     - Consolidator.run()                    → distilled into MemorySnapshot
+    - EpisodicStore                         → records user_signal + fills outcome
     """
 
     __tablename__ = "ai_interaction_logs"
@@ -44,7 +46,7 @@ class AIInteractionLog(Base):
     tickers_json: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
-        comment="JSON list of ticker symbols, e.g. '[\"VCB\", \"VNM\"]'",
+        comment='JSON list of ticker symbols, e.g. \'{"VCB", "VNM"}\'',
     )
 
     # AI output — stored as plain text summaries (not raw JSON blobs)
@@ -63,6 +65,21 @@ class AIInteractionLog(Base):
         Text,
         nullable=True,
         comment="Risk signals highlighted by AI, newline-separated.",
+    )
+
+    # User reaction recorded by bot (filled after AI output is sent)
+    user_signal: Mapped[str | None] = mapped_column(
+        String(32),
+        nullable=True,
+        index=True,
+        comment="bought | sold | ignored | flagged | watched",
+    )
+
+    # Price outcome filled by scheduler after N days (JSON)
+    outcome_json: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="JSON: {price_at_signal, price_now, pct_change, thesis_status, filled_at}",
     )
 
     # Optional FK linkage for traceability
@@ -90,10 +107,20 @@ class AIInteractionLog(Base):
     def tickers(self, value: list[str]) -> None:
         self.tickers_json = json.dumps(value)
 
+    @property
+    def outcome(self) -> dict[str, Any] | None:
+        if not self.outcome_json:
+            return None
+        try:
+            return json.loads(self.outcome_json)
+        except (ValueError, TypeError):
+            return None
+
     def __repr__(self) -> str:
         return (
             f"<AIInteractionLog id={self.id} user={self.user_id!r} "
-            f"agent={self.agent_type!r} verdict={self.ai_verdict!r}>"
+            f"agent={self.agent_type!r} verdict={self.ai_verdict!r} "
+            f"signal={self.user_signal!r}>"
         )
 
 
@@ -140,6 +167,14 @@ class MemorySnapshot(Base):
         comment="How well-calibrated confidence scores are vs actual outcomes",
     )
 
+    # Structured patterns for machine-readable prompt injection
+    # [{"pattern_type": "bias|strength|blind_spot", "description": "...", "confidence": 0.8}]
+    patterns_json: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="JSON list of SemanticPattern dicts for downstream prompt injection",
+    )
+
     # How many episodes were used to build this snapshot
     episode_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     # Raw quality signal: ratio of correct verdicts in the period
@@ -148,6 +183,20 @@ class MemorySnapshot(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    @property
+    def patterns(self) -> list[dict[str, Any]]:
+        """Deserialise patterns_json → list of SemanticPattern dicts."""
+        if not self.patterns_json:
+            return []
+        try:
+            return json.loads(self.patterns_json)
+        except (ValueError, TypeError):
+            return []
 
     def __repr__(self) -> str:
         return (
