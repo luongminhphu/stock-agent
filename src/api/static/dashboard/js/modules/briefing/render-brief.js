@@ -26,7 +26,7 @@ export function renderCatalystList(raw) {
   const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.items) ? raw.items : []);
 
   if (!list.length) {
-    wrap.innerHTML = '<p class="empty-state">Không có catalyst nào trong 7 ngày tới.</p>';
+    wrap.innerHTML = '<p class="empty-state">Không có catalyst nào trong 30 ngày tới.</p>';
     return;
   }
   wrap.innerHTML = list.map(item => `
