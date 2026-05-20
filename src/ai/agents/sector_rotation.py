@@ -8,6 +8,14 @@ Boundary rules:
 - Accepts raw market data dicts (no domain models imported).
 - Returns SectorRotationOutput (Pydantic schema, ai segment owns it).
 - Does NOT read from DB, does NOT call watchlist/thesis services.
+
+Memory logging (Wave 6):
+  - analyze() accepts optional session + user_id params.
+  - On success, rotation result is logged as an episodic entry.
+  - trigger=sector_rotation:<regime> groups by market regime for pattern detection.
+  - Caller owns session — agent never opens DB directly (boundary preserved).
+  - Backward-compat: session=None skips logging silently.
+  - Memory log runs before re-raise on AIError so inflection points are not lost.
 """
 
 from __future__ import annotations
@@ -64,7 +72,6 @@ class SectorSignal(BaseModel):
             return 0.5
         try:
             score = float(v)
-            # Normalize 0-10 scale → 0-1
             if score > 1.0:
                 score = score / 10.0
             return max(0.0, min(1.0, score))
@@ -84,8 +91,6 @@ class SectorRotationOutput(BaseModel):
     top_rotate_out: list[str] = Field(default_factory=list)
     sector_signals: list[SectorSignal]
     macro_summary: str
-    # key_risk and next_watch default to "" so Pydantic accepts partial LLM responses;
-    # normalize_model_output fills in meaningful values from key_risks / sector context.
     key_risk: str = Field(default="")
     confidence: str = Field(default="MEDIUM", description="HIGH | MEDIUM | LOW")
     next_watch: str = Field(default="")
@@ -117,12 +122,9 @@ class SectorRotationOutput(BaseModel):
         if not isinstance(data, dict):
             return data
 
-        # market_regime: normalize verbose values → canonical 4-value enum
         raw_regime = str(data.get("market_regime", "")).upper()
         data["market_regime"] = _REGIME_MAP.get(raw_regime, raw_regime) or "UNCLEAR"
 
-        # macro_summary: prefer explicit field, fallback chain:
-        #   regime_rationale (sonar-pro) → regime_description → macro_assessment.regime
         if not data.get("macro_summary"):
             ma = data.get("macro_assessment", {})
             regime = ma.get("regime", "") if isinstance(ma, dict) else ""
@@ -132,11 +134,9 @@ class SectorRotationOutput(BaseModel):
             )
             data["macro_summary"] = f"{regime}: {desc}".strip(": ") or "N/A"
 
-        # key_risk: prefer explicit str, fallback to key_risks list
         if not data.get("key_risk"):
             risks = data.get("key_risks", [])
             if isinstance(risks, list) and risks:
-                # key_risks may be list of str or list of dicts with a "risk" key
                 parts = []
                 for r in risks[:3]:
                     parts.append(r.get("risk", str(r)) if isinstance(r, dict) else str(r))
@@ -144,11 +144,9 @@ class SectorRotationOutput(BaseModel):
             else:
                 data["key_risk"] = str(risks) if risks else "N/A"
 
-        # next_watch: coerce list → str early so field_validator also works
         if isinstance(data.get("next_watch"), list):
             data["next_watch"] = " | ".join(str(i) for i in data["next_watch"])
 
-        # next_watch: fallback to top WATCH signals if LLM omits the field
         if not data.get("next_watch"):
             signals = data.get("sector_signals", [])
             watch_sectors = [
@@ -157,9 +155,6 @@ class SectorRotationOutput(BaseModel):
             ][:3]
             data["next_watch"] = " | ".join(watch_sectors) if watch_sectors else "N/A"
 
-        # sector_signals: normalize dict-of-lists → list[SectorSignal dicts]
-        # Model sometimes returns: {"ROTATE_IN": ["Financials"], "HOLD": [...], ...}
-        # instead of the expected: [{"sector": "Financials", "signal": "ROTATE_IN", ...}]
         raw_signals = data.get("sector_signals")
         if isinstance(raw_signals, dict):
             sector_analysis: list[dict] = data.get("sector_analysis", [])
@@ -183,7 +178,6 @@ class SectorRotationOutput(BaseModel):
                     })
             data["sector_signals"] = normalized
 
-        # top_rotate_in / top_rotate_out: derive from sector_signals if missing
         signals = data.get("sector_signals", [])
         if not data.get("top_rotate_in"):
             data["top_rotate_in"] = [
@@ -196,7 +190,6 @@ class SectorRotationOutput(BaseModel):
                 if isinstance(s, dict) and s.get("signal") == "ROTATE_OUT"
             ][:3]
 
-        # confidence: derive from avg signal confidence float if top-level missing
         if not data.get("confidence"):
             scores = [
                 s.get("confidence", 0.5)
@@ -255,6 +248,8 @@ class SectorRotationAgent:
         sector_performance: list[dict],
         macro_context: str,
         foreign_flow: str = "",
+        session: Any = None,
+        user_id: str | None = None,
     ) -> SectorRotationOutput:
         """Emit sector rotation signal.
 
@@ -262,6 +257,9 @@ class SectorRotationAgent:
             sector_performance: list of {sector, return_1d, return_5d, return_1m, volume_vs_avg}
             macro_context:      free-text macro summary (VN-Index trend, interest rate, FX)
             foreign_flow:       free-text foreign buy/sell summary
+            session:            Optional DB session from caller.
+                                When provided, rotation result is logged as episodic memory.
+            user_id:            Optional user ID for episodic memory logging.
 
         Returns:
             SectorRotationOutput with ranked signals.
@@ -288,6 +286,7 @@ class SectorRotationAgent:
             )
         except AIError:
             logger.error("sector_rotation_agent.api_error")
+            await _log_sector_rotation_interaction(session, user_id, None)
             raise
         except Exception as exc:
             logger.error("sector_rotation_agent.parse_error", error=str(exc))
@@ -299,4 +298,71 @@ class SectorRotationAgent:
             top_in=result.top_rotate_in,
             confidence=result.confidence,
         )
+        await _log_sector_rotation_interaction(session, user_id, result)
         return result
+
+
+# ---------------------------------------------------------------------------
+# Memory interaction logger — module-level helper (Wave 6)
+# ---------------------------------------------------------------------------
+
+
+async def _log_sector_rotation_interaction(
+    session: Any,
+    user_id: str | None,
+    result: SectorRotationOutput | None,
+) -> None:
+    """Fire-and-forget memory log for sector rotation analysis events.
+
+    Caller owns the session — sector_rotation never opens DB directly
+    (boundary: ai segment, no direct DB access).
+
+    Sector rotation events are the macro-level context signal. Logging them
+    lets the memory layer track:
+      - Market regime transitions over time (RISK_ON → RISK_OFF → TRANSITIONING)
+      - Recurring top_rotate_in sectors (structural bias in macro reads)
+      - Correlation between regime and subsequent thesis performance
+
+    trigger=sector_rotation:<regime> uses the regime as a semantic discriminator
+    so downstream synthesis can group by macro phase rather than by date.
+
+    When result is None (AIError path), logs with ai_verdict=ERROR so the
+    memory layer can track AI availability as a meta-signal.
+
+    Never raises. Silently skips when session is None or user_id unset.
+    """
+    if session is None or not user_id:
+        return
+    try:
+        from src.ai.memory.memory_service import InteractionEntry, MemoryService
+
+        if result is None:
+            entry = InteractionEntry(
+                user_id=user_id,
+                agent_type="sector_rotation",
+                trigger="sector_rotation:ERROR",
+                tickers=[],
+                ai_verdict="ERROR",
+                ai_key_points="ai_unavailable",
+            )
+        else:
+            regime = str(result.market_regime or "UNCLEAR")
+            top_in = result.top_rotate_in[:3]
+            top_out = result.top_rotate_out[:3]
+            confidence = str(result.confidence or "MEDIUM")
+
+            entry = InteractionEntry(
+                user_id=user_id,
+                agent_type="sector_rotation",
+                trigger=f"sector_rotation:{regime}",
+                tickers=top_in,
+                ai_verdict=regime,
+                ai_key_points=(
+                    f"top_in={top_in} "
+                    f"top_out={top_out} "
+                    f"confidence={confidence}"
+                ),
+            )
+        await MemoryService.log_interaction(session, entry)
+    except Exception as exc:
+        logger.warning("sector_rotation.memory_log_failed", error=str(exc))

@@ -20,6 +20,14 @@ Fallback:
   - If AI is unavailable, returns a rule-based NextActionPlan derived from
     urgency signals already present in the input contexts.
     confidence=0.3 on all fallback actions.
+
+Memory logging (Wave 6):
+  - suggest() accepts optional session + user_id params.
+  - On AI success, plan-level summary is logged as an episodic entry.
+  - trigger=next_action_plan captures the cross-agent synthesis moment —
+    the highest-level investor intent signal in the system.
+  - Caller owns session — suggester never opens DB directly (boundary preserved).
+  - Backward-compat: session=None skips logging silently.
 """
 
 from __future__ import annotations
@@ -48,7 +56,7 @@ hành động ưu tiên cụ thể, theo thứ tự khẩn cấp giảm dần.
 Quy tắc:
 - Chỉ trả về JSON hợp lệ theo schema được cung cấp.
 - actions phải được sắp xếp theo urgency_score DESC (cao nhất trước).
-- Mỗi action phải có step cụ thể — không chung chung như "theo dõi thêm".
+- Mỗi action phải có step cụ thể — không chung chung như "đắp thêm tích lũy".
 - title < 10 từ, viết ngắn gọn cho bot alert.
 - rationale giải thích TẠI SAO hôm nay, không phải tổng quan thesis.
 - source_signals liệt kê agent/signal đã trigger, e.g. "ThesisJudge:WEAKENING".
@@ -146,14 +154,12 @@ def _fallback_plan(contexts: list[dict[str, Any]]) -> NextActionPlan:
     for ctx in contexts:
         ticker = ctx.get("ticker", "UNKNOWN")
 
-        # Determine highest severity signal
         invalidation_verdict = ctx.get("invalidation_verdict", "")
         judge_verdict = ctx.get("judge_verdict", "")
         watchdog_verdict = ctx.get("watchdog_verdict", "")
         watchdog_urgency = ctx.get("watchdog_urgency", "")
         stop_loss_breached = ctx.get("stop_loss_breached", False)
 
-        # Priority: stop_loss > invalidation > judge > watchdog
         if stop_loss_breached or invalidation_verdict == "CONFIRMED":
             urgency = "critical"
             scope = ActionScope.THESIS_INVALIDATE
@@ -226,33 +232,27 @@ class NextActionSuggester:
                 "ticker": "VHM",
                 "thesis_id": "42",
                 "thesis_title": "VHM phục hồi sau chu kỳ margin call",
-                # from ThesisJudgeOutput:
                 "judge_verdict": "WEAKENING",
                 "conviction_delta": -0.35,
                 "judge_action": "review",
-                # from WatchdogOutput:
                 "watchdog_verdict": "BEARISH",
                 "watchdog_urgency": "HIGH",
                 "health_score": 42,
-                # from ThesisInvalidationDetector (optional):
                 "invalidation_verdict": "SUSPECTED",
                 "breach_type": "ASSUMPTION_RATIO",
                 "invalidation_action": "review",
                 "stop_loss_breached": False,
-                # from SignalEngineOutput (optional):
                 "signal_urgency": "HIGH",
                 "top_signals": ["foreign_sell", "volume_drop"],
-                # free-form note:
                 "notes": "KQKD Q1 dưới kỳ vọng 15%",
-            },
-            {
-                "ticker": "PORTFOLIO",
-                "invalidation_verdict": None,
-                "notes": "Concentration VIC group > 40%",
             },
         ]
 
-        plan = await suggester.suggest(contexts)
+        plan = await suggester.suggest(
+            contexts,
+            session=session,   # Wave 6: pass caller's session
+            user_id=user_id,   # Wave 6: pass user_id for memory log
+        )
         # plan.actions[0] = highest urgency action
         # plan.summary    = 1-2 câu tổng hợp
         # plan.total_critical = badge count
@@ -264,6 +264,8 @@ class NextActionSuggester:
     async def suggest(
         self,
         contexts: list[dict[str, Any]],
+        session: Any = None,
+        user_id: str | None = None,
     ) -> NextActionPlan:
         """Generate ordered NextActionPlan from cross-agent signal contexts.
 
@@ -280,6 +282,9 @@ class NextActionSuggester:
                         stop_loss_breached,
                         signal_urgency, top_signals,
                         notes.
+            session:  Optional DB session from caller.
+                      When provided, plan-level summary is logged as episodic memory.
+            user_id:  Optional user ID for episodic memory logging.
         """
         if not contexts:
             return NextActionPlan(
@@ -299,11 +304,8 @@ class NextActionSuggester:
             )
             data = json.loads(raw)
 
-            # Parse actions list
             raw_actions = data.get("actions", [])
             actions = [SuggestedAction(**a) for a in raw_actions]
-
-            # Sort by urgency_score DESC — AI may not always comply
             actions.sort(key=lambda a: a.urgency_score, reverse=True)
 
             critical_count = sum(1 for a in actions if a.urgency == "critical")
@@ -321,6 +323,7 @@ class NextActionSuggester:
                 critical_count,
                 [a.ticker for a in actions[:3]],
             )
+            await _log_next_action_interaction(session, user_id, plan)
             return plan
 
         except AIError as exc:
@@ -331,9 +334,7 @@ class NextActionSuggester:
                     len(contexts),
                 )
             else:
-                logger.warning(
-                    "NextActionSuggester: AI error: %s", exc
-                )
+                logger.warning("NextActionSuggester: AI error: %s", exc)
             return _fallback_plan(contexts)
 
         except (json.JSONDecodeError, ValidationError) as exc:
@@ -343,7 +344,61 @@ class NextActionSuggester:
             return _fallback_plan(contexts)
 
         except Exception as exc:
-            logger.warning(
-                "NextActionSuggester: unexpected error: %s", exc
-            )
+            logger.warning("NextActionSuggester: unexpected error: %s", exc)
             return _fallback_plan(contexts)
+
+
+# ---------------------------------------------------------------------------
+# Memory interaction logger — module-level helper (Wave 6)
+# ---------------------------------------------------------------------------
+
+
+async def _log_next_action_interaction(
+    session: Any,
+    user_id: str | None,
+    plan: NextActionPlan,
+) -> None:
+    """Fire-and-forget memory log for next-action plan generation events.
+
+    Caller owns the session — next_action_suggester never opens DB directly
+    (boundary: ai segment, no direct DB access).
+
+    next_action_plan events represent the highest-level investor intent signal
+    in the system — the moment all cross-agent outputs are synthesized into
+    a concrete ordered action list. Logging these lets the memory layer track:
+      - What actions were prioritised across time (pattern of urgency distribution)
+      - How often critical actions appear (investor risk exposure trend)
+      - Which tickers recur in top-urgency slots (persistent watch signal)
+
+    trigger=next_action_plan is deliberately coarse-grained (one event per
+    synthesis run) to avoid duplicating the per-ticker signals already logged
+    by ThesisJudge and InvalidationDetector.
+
+    Only logs on AI-success path. Fallback plans are not logged — they carry
+    no new information about investor behaviour, only system availability.
+
+    Never raises. Silently skips when session is None or user_id unset.
+    """
+    if session is None or not user_id:
+        return
+    try:
+        from src.ai.memory.memory_service import InteractionEntry, MemoryService
+
+        tickers = list({
+            a.ticker for a in (plan.actions or []) if a.ticker and a.ticker != "PORTFOLIO"
+        })[:5]
+
+        entry = InteractionEntry(
+            user_id=user_id,
+            agent_type="next_action_suggester",
+            trigger="next_action_plan",
+            tickers=tickers,
+            ai_verdict=(plan.summary or "")[:120],
+            ai_key_points=(
+                f"total_actions={len(plan.actions)} "
+                f"total_critical={plan.total_critical}"
+            ),
+        )
+        await MemoryService.log_interaction(session, entry)
+    except Exception as exc:
+        logger.warning("next_action_suggester.memory_log_failed", error=str(exc))
