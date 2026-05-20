@@ -10,6 +10,7 @@ Builds an InvestorContext from:
   - portfolio segment (portfolio bias — sector exposure, P&L tilt)
   - market.registry (sector key_metrics per position ticker)  ← V2-3
   - ai.memory (MemoryContext — episodic + semantic memory)    ← V2
+  - ai.memory (PatternSynthesisOutput — synthesized patterns) ← Wave 8
 
 Boundary rule:
   ContextBuilder knows ABOUT domain segments but does NOT own their logic.
@@ -18,6 +19,7 @@ Boundary rule:
 Backward compatibility:
   ContextBuilder(session) still works exactly as before.
   memory injection is additive — if MemoryService fails, context is still built.
+  pattern synthesis is additive — if synthesis fails, context is still built.
   sector context injection is additive — if registry fails, context is still built.
   thesis health injection replaces the old flat summary — same slot in
   InvestorContext.active_thesis_summary; zero signature change for agents.
@@ -33,6 +35,16 @@ V3 (ThesisHealthSnapshot):
   Produces urgency-sorted, stop-loss-proximity-aware block instead of a
   flat text dump. Falls back to old summary method if import fails.
 
+Wave 8 (PatternSynthesisOutput injection):
+  _fetch_memory_context() now returns tuple(episodic_block, pattern_block).
+  pattern_block comes from MemoryConsolidator.synthesize_patterns() when
+  the latest snapshot is stale (> PATTERN_STALE_DAYS=3 days) or missing.
+  Two separate InvestorContext slots:
+    memory_context_block      ← existing episodic + snapshot render
+    pattern_synthesis_block   ← new synthesized patterns + bias_warnings
+  render_for_agent() renders both blocks; pattern block auto-skips when
+  PatternSynthesisOutput.confidence < 0.5 (handled inside to_prompt_block()).
+
 Session safety:
   build() runs each _fetch_* inside session.begin_nested() (SAVEPOINT).
   A DB-level failure in any fetch aborts only that savepoint — the outer
@@ -46,6 +58,7 @@ Session safety:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from src.platform.logging import get_logger
@@ -54,6 +67,9 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
+
+# Synthesize fresh patterns when the latest snapshot is older than this.
+_PATTERN_STALE_DAYS = 3
 
 
 @dataclass
@@ -76,8 +92,11 @@ class InvestorContext:
     # From portfolio segment + market.registry (V2-3)
     portfolio_bias: str = ""
 
-    # From ai.memory (V2)
+    # From ai.memory — episodic + snapshot render (V2, unchanged)
     memory_context_block: str = ""
+
+    # From ai.memory — synthesized patterns + bias_warnings (Wave 8)
+    pattern_synthesis_block: str = ""
 
 
 class ContextBuilder:
@@ -277,26 +296,106 @@ class ContextBuilder:
             logger.warning("context_builder.portfolio_bias_failed", error=str(exc))
             return ""
 
-    async def _fetch_memory_context(self, user_id: str | None) -> str:
-        """Fetch episodic + semantic memory for the user.
+    async def _fetch_memory_context(
+        self, user_id: str | None
+    ) -> tuple[str, str]:
+        """Fetch episodic memory block AND synthesize patterns (Wave 8).
 
-        Returns empty string if user_id is None or memory is unavailable.
-        Never raises — memory failure must not block AI calls.
+        Returns:
+            tuple(episodic_block, pattern_block)
+
+            episodic_block: existing MemoryService.get_memory_context() render —
+                            unchanged from V2 output.
+            pattern_block:  PatternSynthesisOutput.to_prompt_block() — non-empty
+                            only when confidence >= 0.5 and synthesis succeeds.
+                            Empty string if synthesis is skipped or fails.
+
+        Synthesis is triggered when:
+          - user_id is set, AND
+          - latest MemorySnapshot is missing or older than _PATTERN_STALE_DAYS (3)
+
+        Both legs are individually guarded: episodic failure does not abort
+        synthesis and vice versa. Neither raises.
         """
         if not user_id:
-            return ""
+            return "", ""
+
+        episodic_block = ""
+        pattern_block = ""
+
+        # --- Leg 1: episodic + snapshot render (unchanged from V2) ---
         try:
             from src.ai.memory.memory_service import MemoryService
 
             mem_ctx = await MemoryService.get_memory_context(
                 self._session, user_id=user_id
             )
-            if mem_ctx.is_empty():
-                return ""
-            return mem_ctx.render()
+            if not mem_ctx.is_empty():
+                episodic_block = mem_ctx.render()
         except Exception as exc:
-            logger.warning("context_builder.memory_context_failed", error=str(exc))
-            return ""
+            logger.warning(
+                "context_builder.memory_episodic_failed",
+                user_id=user_id,
+                error=str(exc),
+            )
+
+        # --- Leg 2: pattern synthesis (Wave 8) ---
+        try:
+            from src.ai.client import AIClient
+            from src.ai.memory.consolidator import MemoryConsolidator
+            from src.ai.memory.repository import MemorySnapshotRepository
+
+            # Check snapshot freshness — only synthesize when stale or missing
+            snapshot_repo = MemorySnapshotRepository(self._session)
+            latest = await snapshot_repo.get_latest(user_id=user_id)
+            stale_threshold = datetime.now(tz=timezone.utc) - timedelta(
+                days=_PATTERN_STALE_DAYS
+            )
+
+            is_stale = (
+                latest is None
+                or getattr(latest, "period_end", None) is None
+                or latest.period_end < stale_threshold
+            )
+
+            if is_stale:
+                logger.info(
+                    "context_builder.pattern_synthesis.trigger",
+                    user_id=user_id,
+                    latest_snapshot_end=str(
+                        getattr(latest, "period_end", None)
+                    ),
+                )
+                ai_client = AIClient()
+                consolidator = MemoryConsolidator(
+                    client=ai_client, user_id=user_id
+                )
+                output = await consolidator.synthesize_patterns(self._session)
+                if output is not None:
+                    pattern_block = output.to_prompt_block()
+                    # to_prompt_block() returns "" when confidence < 0.5 — no extra guard
+            else:
+                # Snapshot is fresh — render pattern block from stored JSON blob
+                behavioral = getattr(latest, "behavioral_patterns", None)
+                if behavioral:
+                    try:
+                        import json
+                        from src.ai.memory.consolidator import PatternSynthesisOutput
+
+                        stored = json.loads(behavioral)
+                        synth = PatternSynthesisOutput(**stored)
+                        pattern_block = synth.to_prompt_block()
+                    except Exception:
+                        pass  # Malformed stored blob — skip silently
+
+        except Exception as exc:
+            logger.warning(
+                "context_builder.pattern_synthesis_failed",
+                user_id=user_id,
+                error=str(exc),
+            )
+
+        return episodic_block, pattern_block
 
 
 # ---------------------------------------------------------------------------
@@ -328,7 +427,20 @@ def _apply_portfolio(ctx: InvestorContext, result: object) -> None:
 
 
 def _apply_memory(ctx: InvestorContext, result: object) -> None:
-    if isinstance(result, str):
+    """Unpack tuple(episodic_block, pattern_block) into two ctx slots.
+
+    Wave 8: _fetch_memory_context() now returns a tuple instead of str.
+    _apply_memory() handles both the new tuple and the legacy str shape
+    for safety — in case a test or stub returns a plain string.
+    """
+    if isinstance(result, tuple) and len(result) == 2:
+        episodic_block, pattern_block = result
+        if isinstance(episodic_block, str):
+            ctx.memory_context_block = episodic_block
+        if isinstance(pattern_block, str):
+            ctx.pattern_synthesis_block = pattern_block
+    elif isinstance(result, str):
+        # Legacy fallback — plain string from old _fetch_memory_context()
         ctx.memory_context_block = result
 
 
@@ -341,6 +453,10 @@ def render_for_agent(ctx: InvestorContext) -> str:
 
     Called by agents just before constructing their system prompt.
     Returns empty string if context is fully empty (no-op for agents).
+
+    Wave 8: renders [Investor patterns] block after [Memory context]
+    when pattern_synthesis_block is non-empty. The block is pre-guarded
+    by PatternSynthesisOutput.to_prompt_block() (confidence < 0.5 → "").
     """
     parts: list[str] = []
 
@@ -371,8 +487,12 @@ def render_for_agent(ctx: InvestorContext) -> str:
     if ctx.portfolio_bias:
         parts.append(f"[Portfolio hi\u1ec7n t\u1ea1i]\n{ctx.portfolio_bias}")
 
-    # Memory — episodic + semantic
+    # Memory — episodic + snapshot render (V2, unchanged)
     if ctx.memory_context_block:
         parts.append(ctx.memory_context_block)
+
+    # Patterns — synthesized patterns + bias_warnings (Wave 8)
+    if ctx.pattern_synthesis_block:
+        parts.append(ctx.pattern_synthesis_block)
 
     return "\n\n".join(parts)
