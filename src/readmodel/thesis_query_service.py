@@ -16,7 +16,8 @@ import json
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import Date as SADate
+from sqlalchemy import and_, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -420,18 +421,19 @@ class ThesisQueryService:
            Matches rows stored as timezone-aware datetimes (new rows, e.g.
            '2026-05-19 00:00:00+00:00').
 
-        2. Fallback clause (func.date() string comparison):
-           func.date(Catalyst.expected_date).between(today_str, end_str)
+        2. Fallback clause (cast to Date — safe for both SQLite and PostgreSQL):
+           cast(Catalyst.expected_date, Date).between(today_str, end_str)
            Matches rows stored as naive datetimes (old rows, e.g.
-           '2026-05-19 00:00:00.000000') where timezone suffix is absent and
-           the tz-aware bound comparison fails due to SQLite string ordering.
+           '2026-05-19 00:00:00.000000') where timezone suffix is absent.
+           Uses cast(..., SADate) instead of func.date() to avoid UTC timezone
+           drift on PostgreSQL timestamptz columns.
 
         Both clauses are combined with OR so catalysts are surfaced regardless
         of how they were originally persisted. No migration needed.
 
         Output dict keys:
             id, thesis_id, description, expected_date (ISO str),
-            days_until (int|None), note, ticker, thesis_ticker (compat),
+            days_until (int >= 0 | None), note, ticker, thesis_ticker (compat),
             thesis_title, thesis_status.
         """
         from src.thesis.models import Catalyst, CatalystStatus, Thesis, ThesisStatus
@@ -443,9 +445,10 @@ class ThesisQueryService:
         start_dt = datetime.combine(today, time.min).replace(tzinfo=UTC)
         end_dt = datetime.combine(end_date, time.max).replace(tzinfo=UTC)
 
-        # Fallback bounds: plain date strings for naive rows (SQLite string compare)
-        today_str = today.isoformat()       # "2026-05-19"
-        end_str = end_date.isoformat()      # "2026-06-18"
+        # Fallback bounds: plain date strings for naive rows.
+        # cast(..., SADate) is safer than func.date() — avoids UTC drift on PG timestamptz.
+        today_str = today.isoformat()   # "2026-05-20"
+        end_str = end_date.isoformat()  # "2026-06-19"
 
         rows = (
             await self._session.execute(
@@ -471,9 +474,9 @@ class ThesisQueryService:
                             Catalyst.expected_date >= start_dt,
                             Catalyst.expected_date <= end_dt,
                         ),
-                        # Clause 2: func.date() fallback — matches naive rows stored
-                        # without timezone suffix (SQLite string comparison safe)
-                        func.date(Catalyst.expected_date).between(today_str, end_str),
+                        # Clause 2: cast to Date — matches naive rows without tz suffix.
+                        # Safer than func.date() which drifts on PG timestamptz columns.
+                        cast(Catalyst.expected_date, SADate).between(today_str, end_str),
                     ),
                 )
                 .order_by(Catalyst.expected_date.asc())
@@ -481,27 +484,44 @@ class ThesisQueryService:
             )
         ).all()
 
-        return [
-            {
-                "id": r.id,
-                "thesis_id": r.thesis_id,
-                "description": r.description,
-                "expected_date": r.expected_date.isoformat() if r.expected_date else None,
-                "days_until": (
-                    (r.expected_date.date() if isinstance(r.expected_date, datetime) else r.expected_date) - today
-                ).days
-                if r.expected_date is not None
-                else None,
-                "note": r.note,
-                # "ticker" is the key read by build_maintenance_embed() in thesis_embeds.py.
-                # "thesis_ticker" kept for backward compatibility with existing API callers.
-                "ticker": r.thesis_ticker,
-                "thesis_ticker": r.thesis_ticker,
-                "thesis_title": r.thesis_title,
-                "thesis_status": str(r.thesis_status.value),
-            }
-            for r in rows
-        ]
+        result = []
+        for r in rows:
+            # Compute days_until; clamp to >= 0 to avoid negative values from
+            # catalysts that expired between the last auto-expire job run and now.
+            days_until: int | None = None
+            if r.expected_date is not None:
+                cat_date = (
+                    r.expected_date.date()
+                    if isinstance(r.expected_date, datetime)
+                    else r.expected_date
+                )
+                days_until = max(0, (cat_date - today).days)
+
+            # thesis_status may arrive as a raw str when selected via .label()
+            # instead of loading a full ORM model — guard against AttributeError.
+            thesis_status_str = (
+                r.thesis_status.value
+                if hasattr(r.thesis_status, "value")
+                else str(r.thesis_status)
+            )
+
+            result.append(
+                {
+                    "id": r.id,
+                    "thesis_id": r.thesis_id,
+                    "description": r.description,
+                    "expected_date": r.expected_date.isoformat() if r.expected_date else None,
+                    "days_until": days_until,
+                    "note": r.note,
+                    # "ticker" is the key read by build_maintenance_embed() in thesis_embeds.py.
+                    # "thesis_ticker" kept for backward compatibility with existing API callers.
+                    "ticker": r.thesis_ticker,
+                    "thesis_ticker": r.thesis_ticker,
+                    "thesis_title": r.thesis_title,
+                    "thesis_status": thesis_status_str,
+                }
+            )
+        return result
 
     async def get_thesis_portfolio_aggregate(
         self,
