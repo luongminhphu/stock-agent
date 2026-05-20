@@ -1,5 +1,5 @@
 /**
- * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard + Wave D lesson loop + Wave E brief ticker + Wave F brief feedback + Wave G brief generate + Wave 1 UX)
+ * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard + Wave D lesson loop + Wave E brief ticker + Wave F brief feedback + Wave G brief generate + Wave 1 UX + Wave 2 memory)
  * Responsibility: import tất cả modules, wire events, khởi động dashboard.
  * Rule: KHÔNG chứa business logic. Chỉ bootstrap + wiring.
  */
@@ -25,6 +25,7 @@ import {
 import { loadLeaderboard }      from './modules/leaderboard/leaderboard-service.js';
 import { bindFeedbackEvents }   from './modules/briefing/brief-feedback.js';
 import { bindGenerateBriefButtons } from './modules/briefing/brief-generate.js';
+import { loadMemory }           from './modules/memory/memory-loader.js';
 import { state }                from './state/dashboard-state.js';
 
 // ---------------------------------------------------------------------------
@@ -332,6 +333,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadWatchlist();
     await loadDecisions();
     loadLeaderboard();
+    loadMemory();
   });
   el('statusFilter')?.addEventListener('change', loadDashboard);
 
@@ -400,6 +402,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadWatchlist(),
     loadDecisions(),
     loadLeaderboard('score'),
+    loadMemory(),          // Wave 2: Cluster D — Investor Memory
   ]);
 
   // 12. Wave 1: KPI clickable — wire sau khi DOM đã render đủ values
