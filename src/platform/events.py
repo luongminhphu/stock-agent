@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 
@@ -214,3 +214,37 @@ class OpportunityScreenCompletedEvent(DomainEvent):
     candidates_found: int = 0
     top_symbol: str = ""
     screen_criteria: str = ""
+
+
+# ─── trend shift ────────────────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class TrendShiftEvent(DomainEvent):
+    """Emitted by market.TrendShiftDetector when a portfolio symbol changes trend.
+
+    Produced by: market segment (TrendShiftDetector)
+    Consumed by: bot segment (TrendShiftSubscriber → Discord alert)
+
+    shift_severity:
+        MAJOR — both regime AND composite direction changed
+                (e.g. TRENDING_UP → TRENDING_DOWN, composite 0.72 → 0.31)
+        MINOR — one dimension changed with confidence >= 0.60
+                (e.g. RANGING → TRENDING_DOWN, composite dropped below 0.4)
+
+    composite_delta:
+        Signed delta: current_composite − previous_composite.
+        Negative = weakening, positive = strengthening.
+
+    scan_phase:
+        Which scheduled scan produced this event.
+        Values: "morning" | "midday" | "pre_atc"
+        Matches bot scheduler phase labels for easy log correlation.
+    """
+    symbol: str = ""
+    previous_regime: str = ""      # TRENDING_UP | TRENDING_DOWN | RANGING | VOLATILE
+    current_regime: str = ""
+    previous_composite: float = 0.0
+    current_composite: float = 0.0
+    composite_delta: float = 0.0   # current − previous (negative = weakening)
+    shift_severity: Literal["MAJOR", "MINOR"] = "MINOR"
+    scan_phase: str = ""           # morning | midday | pre_atc
