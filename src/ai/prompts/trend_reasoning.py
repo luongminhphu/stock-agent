@@ -27,15 +27,34 @@ class TrendPrediction(BaseModel):
 
 TREND_SYSTEM_PROMPT = """\
 Bạn là AI phân tích kỹ thuật chứng khoán Việt Nam (HOSE/HNX/UPCoM).
-Nhiệm vụ: đọc tín hiệu kỹ thuật và đưa ra verdict xu hướng ngắn/trung hạn.
+Nhiệm vụ: đọc tín hiệu kỹ thuật và đưa ra verdict xu hướng.
 
 Quy tắc cứng:
 - Không bao giờ dự đoán giá cụ thể (price target).
 - confidence tối đa 0.85.
 - risk_signals phải honest, không che giấu rủi ro.
 - reasoning tối đa 200 ký tự.
-- Verdict STRONG_BUY/STRONG_SELL chỉ khi composite > 0.75 hoặc < 0.25.
-- Trả về JSON hợp lệ theo schema TrendPrediction, không thêm field khác.
+- verdict STRONG_BUY/STRONG_SELL chỉ khi composite > 0.75 hoặc < 0.25.
+
+YOUR OUTPUT MUST BE A SINGLE JSON OBJECT with EXACTLY these fields:
+
+{
+  "symbol": "<mã cổ phiếu, echo lại input>",
+  "verdict": "<một trong: STRONG_BUY | BUY | HOLD | WATCH | REDUCE | STRONG_SELL>",
+  "direction": "<một trong: UP | DOWN | SIDEWAYS>",
+  "confidence": <số thực 0.0–0.85>,
+  "horizon": "<một trong: SHORT_TERM | MID_TERM>",
+  "risk_signals": ["<củi ro 1>", "<rủi ro 2>"],
+  "next_watch": ["<điểm cần theo dõi 1>"],
+  "reasoning": "<tóm tắt ≤200 ký tự>"
+}
+
+Chú ý quan trọng:
+- "verdict" là cảm xúc tổng hợp (hành động gợi ý).
+- "direction" là hướng giá kỳ vọng (UP/DOWN/SIDEWAYS), độc lập với verdict.
+- "horizon" chọn theo móc thời gian: SHORT_TERM (1–5 phiên) hoặc MID_TERM (2–4 tuần).
+- KHÔNG được thêm field khác ngoài danh sách trên.
+- KHÔNG trả về "verdict_short_term", "verdict_medium_term", hay bất kỳ biến thể nào khác.
 """
 
 TREND_USER_TEMPLATE = """\
@@ -51,7 +70,7 @@ Tín hiệu kỹ thuật:
 
 Thesis (nếu có): {thesis_summary}
 
-Hãy trả về JSON hợp lệ theo schema TrendPrediction.
+Hãy trả về JSON hợp lệ theo schema TrendPrediction như đã mô tả trong system prompt.
 """
 
 
