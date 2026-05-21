@@ -3,6 +3,9 @@
 Owner: market segment.
 Does NOT import from thesis, ai, or bot directly.
 Output: TechnicalSignalBundle — consumed by ai segment (TrendReasoningAgent).
+
+Wave 1: TechnicalSignalComposer (rule-based signals)
+Wave 2: run_with_reasoning() wired in bot layer via TrendReasoningAgent
 """
 from __future__ import annotations
 
@@ -78,7 +81,6 @@ def _macd_histogram(closes: list[float]) -> float:
         return 0.0
     ema12 = _ema(closes, 12)
     ema26 = _ema(closes, 26)
-    # align: ema26 starts at index 25, ema12 at index 11
     macd_line = [ema12[i] - ema26[i - (len(ema12) - len(ema26))] for i in range(len(ema26), len(ema12))]
     if len(macd_line) < 9:
         return 0.0
@@ -91,13 +93,9 @@ def _macd_histogram(closes: list[float]) -> float:
 # ---------------------------------------------------------------------------
 
 class TechnicalSignalComposer:
-    """Compute 4 signal groups from a list of Candle objects.
-
-    Accepts list[Candle] from OHLCVService directly.
-    """
+    """Compute 4 signal groups from a list of Candle objects."""
 
     def compute(self, symbol: str, candles: list) -> TechnicalSignalBundle:
-        """candles: list[Candle] from OHLCVService.get_latest_candles()."""
         if len(candles) < 30:
             return self._insufficient_data(symbol)
 
@@ -130,10 +128,6 @@ class TechnicalSignalComposer:
             composite=round(composite, 3),
             regime=regime,
         )
-
-    # ------------------------------------------------------------------
-    # Individual signal methods
-    # ------------------------------------------------------------------
 
     def _momentum(self, closes: list[float]) -> SignalScore:
         rsi    = _rsi(closes)
@@ -214,14 +208,14 @@ class TechnicalSignalComposer:
 
 
 # ---------------------------------------------------------------------------
-# TrendEngine — orchestrator
+# TrendEngine
 # ---------------------------------------------------------------------------
 
 class TrendEngine:
-    """Orchestrate: fetch OHLCV candles → compute TechnicalSignalBundle.
+    """Orchestrate: fetch OHLCV → TechnicalSignalBundle.
 
-    AI reasoning is done in the ai segment (TrendReasoningAgent, Wave 2).
-    This engine is purely a market concern.
+    Wave 2: bot layer calls run_for_symbol() then passes bundle to
+    TrendReasoningAgent. TrendEngine stays pure market concern.
     """
 
     def __init__(self, ohlcv_service) -> None:

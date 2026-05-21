@@ -1,20 +1,25 @@
-"""Trend command cog.
+"""Trend command cog — Wave 2.
 
 Owner: bot segment — thin adapter only.
-Delegates to TrendEngine (market) for signal computation.
-Wave 2: swap rule-based fallback for TrendReasoningAgent (ai segment).
+Flow:
+    /trend <ticker>
+        → TrendEngine.run_for_symbol()       [market segment]
+        → TrendReasoningAgent.analyze()       [ai segment]
+        → TrendPrediction embed               [bot renders]
 
-Commands:
-    /trend <ticker>  — xu hướng tăng/giảm cho 1 mã
+Fallback: if AIError, falls back to rule-based verdict (Wave 1 logic).
 """
 from __future__ import annotations
 
 import discord
 from discord import app_commands
 
+from src.ai.agents.trend_reasoning import TrendReasoningAgent
+from src.ai.client import AIError
+from src.ai.prompts.trend_reasoning import TrendPrediction
 from src.bot.commands.base import BaseCog
 from src.market.trend_engine import TechnicalSignalBundle, TrendEngine
-from src.platform.bootstrap import get_ohlcv_service
+from src.platform.bootstrap import get_ohlcv_service, get_trend_reasoning_agent
 from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
@@ -37,11 +42,10 @@ _REGIME_LABEL: dict[str, str] = {
 
 
 class TrendCog(BaseCog):
-    """Slash command: /trend"""
 
     @app_commands.command(
         name="trend",
-        description="Phân tích xu hướng tăng/giảm của một mã cổ phiếu",
+        description="Phân tích xu hướng tăng/giảm của một mã cổ phiếu (AI)",
     )
     @app_commands.describe(ticker="Mã cổ phiếu (VD: HPG, VNM, FPT)")
     async def trend(
@@ -53,7 +57,6 @@ class TrendCog(BaseCog):
         symbol = ticker.strip().upper()
 
         engine = TrendEngine(get_ohlcv_service())
-
         try:
             bundle = await engine.run_for_symbol(symbol)
         except Exception as exc:
@@ -65,20 +68,36 @@ class TrendCog(BaseCog):
             )
             return
 
-        # Wave 1: rule-based verdict (Wave 2: replace with TrendReasoningAgent)
-        prediction = _rule_based_prediction(bundle)
+        # Wave 2: AI reasoning — fallback to rule-based on AIError
+        agent: TrendReasoningAgent | None = get_trend_reasoning_agent()
+        prediction: TrendPrediction
+
+        if agent is not None:
+            try:
+                prediction = await agent.analyze(bundle)
+            except AIError as exc:
+                logger.warning(
+                    "trend.ai_fallback",
+                    symbol=symbol,
+                    error=str(exc),
+                )
+                prediction = _rule_based_prediction(bundle)
+                prediction = prediction.model_copy(
+                    update={"reasoning": f"[Fallback rule-based] {prediction.reasoning}"}
+                )
+        else:
+            logger.warning("trend.no_agent", symbol=symbol)
+            prediction = _rule_based_prediction(bundle)
+
         embed = _build_trend_embed(bundle, prediction)
         await interaction.followup.send(embed=embed)
 
 
 # ---------------------------------------------------------------------------
-# Rule-based fallback — Wave 1
-# Replace this function body in Wave 2 with TrendReasoningAgent call.
+# Rule-based fallback
 # ---------------------------------------------------------------------------
 
-def _rule_based_prediction(bundle: TechnicalSignalBundle):
-    from src.ai.prompts.trend_reasoning import TrendPrediction
-
+def _rule_based_prediction(bundle: TechnicalSignalBundle) -> TrendPrediction:
     c = bundle.composite
     if c >= 0.72:
         verdict, direction = "STRONG_BUY", "UP"
@@ -112,7 +131,6 @@ def _rule_based_prediction(bundle: TechnicalSignalBundle):
         next_watch.append("Theo dõi EMA20/50 cross")
 
     confidence = min(0.85, abs(c - 0.5) * 2 * 0.85)
-
     return TrendPrediction(
         symbol=bundle.symbol,
         verdict=verdict,
@@ -121,7 +139,7 @@ def _rule_based_prediction(bundle: TechnicalSignalBundle):
         horizon="SHORT_TERM",
         risk_signals=risks[:5],
         next_watch=next_watch[:3],
-        reasoning=f"Composite {c:.2f} · Regime {bundle.regime} · Rule-based (Wave 1)",
+        reasoning=f"Composite {c:.2f} · Regime {bundle.regime} · Rule-based fallback",
     )
 
 
@@ -129,13 +147,17 @@ def _rule_based_prediction(bundle: TechnicalSignalBundle):
 # Embed builder
 # ---------------------------------------------------------------------------
 
-def _build_trend_embed(bundle: TechnicalSignalBundle, pred) -> discord.Embed:
+def _build_trend_embed(bundle: TechnicalSignalBundle, pred: TrendPrediction) -> discord.Embed:
     icon, colour = _VERDICT_META.get(pred.verdict, ("⚪", discord.Color.greyple()))
     regime_label = _REGIME_LABEL.get(bundle.regime, bundle.regime)
+    stale_flag = " ⚠️ stale" if pred.is_stale else ""
 
     embed = discord.Embed(
         title=f"{icon} {bundle.symbol} — {pred.verdict}",
-        description=f"**{regime_label}** · Horizon: `{pred.horizon.replace('_', ' ').title()}`",
+        description=(
+            f"**{regime_label}**{stale_flag}"
+            f" · Horizon: `{pred.horizon.replace('_', ' ').title()}`"
+        ),
         color=colour,
     )
 
@@ -186,7 +208,7 @@ def _build_trend_embed(bundle: TechnicalSignalBundle, pred) -> discord.Embed:
     embed.set_footer(
         text=(
             f"Composite: {bundle.composite:.2f}"
-            f" · stock-agent"
+            f" · stock-agent AI"
             f" · {bundle.as_of.strftime('%H:%M %d/%m/%Y')} UTC"
         )
     )
