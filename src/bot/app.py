@@ -134,6 +134,7 @@ async def _register_cogs(bot: commands.Bot) -> None:
     from src.bot.commands.stress_test import StressTestCog
     from src.bot.commands.thesis_crud import ThesisCrudCog
     from src.bot.commands.thesis_review import ThesisReviewCog
+    from src.bot.commands.trend import TrendCog
     from src.bot.commands.watchlist import WatchlistCog
     from src.bot.commands.why import WhyCog
 
@@ -152,7 +153,8 @@ async def _register_cogs(bot: commands.Bot) -> None:
     await bot.add_cog(SchedulerTriggerCog(bot))
     await bot.add_cog(HealthCog(bot))
     await bot.add_cog(SectorRotationCog(bot))
-    await bot.add_cog(MemoryCog(bot))  # Wave 9: /memory view + /memory refresh
+    await bot.add_cog(MemoryCog(bot))
+    await bot.add_cog(TrendCog(bot))  # Wave: trend prediction
     logger.info(
         "bot.cogs_loaded",
         cogs=[
@@ -160,7 +162,7 @@ async def _register_cogs(bot: commands.Bot) -> None:
             "BriefingCog", "HelpCog", "WhyCog", "PretradeCog",
             "ConvictionTimelineCog", "PortfolioCog", "StressTestCog",
             "DecisionCog", "SchedulerTriggerCog", "HealthCog", "SectorRotationCog",
-            "MemoryCog",
+            "MemoryCog", "TrendCog",
         ],
     )
 
