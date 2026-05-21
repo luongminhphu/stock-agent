@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import asyncio
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -104,7 +104,6 @@ def _ema_cross_signal(closes: list[float], fast: int = 20, slow: int = 50) -> fl
     ema_slow = _ema(closes, slow)
     diff = ema_fast[-1] - ema_slow[-1]
     price = closes[-1] or 1.0
-    # Normalise: diff/price in [-0.05, +0.05] maps to [0, 1]
     normalised = 0.5 + (diff / price) * 10.0
     return max(0.0, min(1.0, normalised))
 
@@ -120,13 +119,13 @@ def _swing_structure_score(closes: list[float], lookback: int = 20) -> float:
     window = closes[-lookback:]
     half = lookback // 2
     first_half, second_half = window[:half], window[half:]
-    hh = max(second_half) > max(first_half)   # higher high
-    hl = min(second_half) > min(first_half)   # higher low
+    hh = max(second_half) > max(first_half)
+    hl = min(second_half) > min(first_half)
     if hh and hl:
         return 0.8
     if not hh and not hl:
         return 0.2
-    return 0.5  # mixed
+    return 0.5
 
 
 def _obv_slope(closes: list[float], volumes: list[float], window: int = 10) -> float:
@@ -149,23 +148,18 @@ def _obv_slope(closes: list[float], volumes: list[float], window: int = 10) -> f
     num = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, series))
     den = sum((x - mean_x) ** 2 for x in xs) or 1.0
     slope = num / den
-    # Normalise: slope in terms of % of last OBV value
     base = abs(series[-1]) or 1.0
     normalised = 0.5 + (slope / base) * 5.0
     return max(0.0, min(1.0, normalised))
 
 
 def _volume_surge_ratio(volumes: list[float], window: int = 5, baseline: int = 20) -> float:
-    """Recent avg volume / baseline avg volume. Normalised 0-1.
-
-    Surge = ratio > 1.5 → score > 0.5 (bullish confirmation when with trend).
-    """
+    """Recent avg volume / baseline avg volume. Normalised 0-1."""
     if len(volumes) < baseline:
         return 0.5
     recent_avg = sum(volumes[-window:]) / window
     baseline_avg = sum(volumes[-baseline:]) / baseline or 1.0
     ratio = recent_avg / baseline_avg
-    # Map [0, 3] → [0, 1]
     return max(0.0, min(1.0, ratio / 3.0))
 
 
@@ -187,12 +181,7 @@ def _atr(highs: list[float], lows: list[float], closes: list[float], period: int
 def _atr_expansion_ratio(
     highs: list[float], lows: list[float], closes: list[float]
 ) -> float:
-    """ATR-14 / ATR-30 ratio. >1 = expanding (volatile), <1 = contracting.
-
-    Normalised: ratio 1.0 maps to 0.5 (neutral).
-    Contracting ATR → score > 0.5 (volatility-friendly for trending moves).
-    Expanding ATR → score < 0.5 (choppy, higher risk).
-    """
+    """ATR-14 / ATR-30 ratio. Normalised: contraction > 0.5, expansion < 0.5."""
     if len(closes) < 32:
         return 0.5
     atr14 = _atr(highs, lows, closes, 14)
@@ -200,7 +189,6 @@ def _atr_expansion_ratio(
     if atr30 == 0:
         return 0.5
     ratio = atr14 / atr30
-    # Map: ratio=0.5 → score=0.75 (contraction), ratio=2.0 → score=0.0
     normalised = 1.0 - (ratio - 0.5) / 1.5
     return max(0.0, min(1.0, normalised))
 
@@ -216,8 +204,7 @@ def _classify_label(value: float) -> str:
 def _classify_regime(
     structure_value: float, momentum_value: float, volatility_value: float
 ) -> str:
-    """Derive market regime from combined signal dimensions."""
-    if volatility_value < 0.35:  # ATR expanding = volatile
+    if volatility_value < 0.35:
         return "VOLATILE"
     if structure_value >= 0.65 and momentum_value >= 0.55:
         return "TRENDING_UP"
@@ -244,10 +231,6 @@ class TrendSignalComposer:
 
     def compute(self, symbol: str, bars: list[OHLCVBar]) -> dict[str, Any]:
         """Return a dict matching TechnicalSignalBundle fields.
-
-        Returns dict (not Pydantic model) to avoid importing ai schema
-        in market segment. TrendEngine converts to TechnicalSignalBundle
-        via the ai import guard at the top of trend_engine.py.
 
         Returns neutral bundle dict when bars < MIN_BARS.
         """
@@ -312,11 +295,7 @@ class TrendSignalComposer:
         }
 
     def _compute_momentum(self, rsi: float, macd_hist: float) -> float:
-        """Combine RSI and MACD histogram into a 0-1 momentum score."""
-        # RSI: map [20, 80] -> [0, 1]
         rsi_norm = max(0.0, min(1.0, (rsi - 20.0) / 60.0))
-        # MACD histogram: normalise by a typical range heuristic
-        # Use tanh to softly bound: hist=0 → 0.5, large positive → ~1
         macd_norm = 0.5 + 0.5 * math.tanh(macd_hist / 0.5)
         return rsi_norm * 0.5 + macd_norm * 0.5
 
@@ -329,35 +308,31 @@ class TrendEngine:
     """Orchestrates TechnicalSignalBundle computation for one or many symbols.
 
     Args:
-        market_adapter: object with async get_ohlcv(symbol, days) -> list[OHLCVBar].
-                        Adapter is injected; TrendEngine never creates it.
-        days:           Lookback window in calendar days. Default 90 (>= MIN_BARS=60).
+        ohlcv_service: object with async get_ohlcv(symbol, days) -> list[OHLCVBar].
+                       Injected by bootstrap — TrendEngine never creates it.
+        days:          Lookback window in calendar days. Default 90 (>= MIN_BARS=60).
     """
 
-    def __init__(self, market_adapter: Any, days: int = 90) -> None:
-        self._adapter = market_adapter
+    def __init__(self, ohlcv_service: Any, days: int = 90) -> None:
+        self._ohlcv_service = ohlcv_service
         self._days = days
         self._composer = TrendSignalComposer()
 
     async def run_for_symbol(self, symbol: str) -> Any:
         """Compute TechnicalSignalBundle for a single symbol.
 
-        Returns a TechnicalSignalBundle (ai schema) by importing at call
-        time to avoid module-level cross-segment import.
-
+        Late-imports ai schema to avoid module-level cross-segment import.
         Raises on adapter failure — callers (TrendEngineListener) handle.
         """
-        bars = await self._adapter.get_ohlcv(symbol, days=self._days)  # type: ignore[attr-defined]
+        bars = await self._ohlcv_service.get_ohlcv(symbol, days=self._days)  # type: ignore[attr-defined]
         bundle_dict = self._composer.compute(symbol, bars)
-        # Late import: keeps market module importable without ai installed
         from src.ai.schemas.trend_prediction import TechnicalSignalBundle  # noqa: PLC0415
         return TechnicalSignalBundle.model_validate(bundle_dict)
 
     async def run_for_symbols(self, symbols: list[str]) -> list[Any]:
         """Compute TechnicalSignalBundle for all symbols concurrently.
 
-        Failures per symbol are re-raised (return_exceptions=False) so
-        TrendEngineListener can log and skip per-symbol via its own gather.
+        Failed symbols are logged and excluded from the returned list.
         """
         tasks = [self.run_for_symbol(s) for s in symbols]
         results = await asyncio.gather(*tasks, return_exceptions=True)

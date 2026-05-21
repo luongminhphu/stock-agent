@@ -76,18 +76,18 @@ class TrendReasoningAgent:
     """Calls LLM to produce TrendPrediction from TechnicalSignalBundle.
 
     Args:
-        ai_client:   AIClient instance (src/ai/client.py).
+        client:      AIClient instance (src/ai/client.py).
         model:       LLM model identifier. Defaults to "gpt-4o-mini".
         temperature: Sampling temperature. Lower = more deterministic.
     """
 
     def __init__(
         self,
-        ai_client: object,
+        client: object,
         model: str = "gpt-4o-mini",
         temperature: float = 0.2,
     ) -> None:
-        self._client = ai_client
+        self._client = client
         self._model = model
         self._temperature = temperature
 
