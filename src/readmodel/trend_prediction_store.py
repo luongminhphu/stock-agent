@@ -20,6 +20,13 @@ Storage strategy:
 Thread safety:
   asyncio single-threaded — no locking needed for the cache dict.
 
+Async interface (briefing contract):
+  briefing/service._run_trend_predictions() calls:
+    await store.get_for_tickers(tickers=tickers)
+  This method is the primary async read path. All other read methods are
+  sync convenience accessors (get, get_verdict, get_confidence, etc.) that
+  remain callable without await.
+
 Pattern: mirrors TrendSnapshotStore (same segment, same Wave-1 strategy).
 """
 from __future__ import annotations
@@ -48,7 +55,7 @@ class TrendPredictionStore:
         self._session_factory = session_factory  # reserved for Wave 2 DB persist
 
     # ------------------------------------------------------------------
-    # Read
+    # Read — sync accessors
     # ------------------------------------------------------------------
 
     def get(self, symbol: str) -> Any | None:
@@ -110,6 +117,55 @@ class TrendPredictionStore:
         if age is None:
             return True
         return age > max_age_seconds
+
+    # ------------------------------------------------------------------
+    # Read — async interface (briefing / bot / API callers)
+    # ------------------------------------------------------------------
+
+    async def get_for_tickers(
+        self,
+        tickers: list[str],
+        skip_stale: bool = True,
+        max_age_seconds: float = 14400.0,
+    ) -> list[Any]:
+        """Return TrendPrediction objects for a list of tickers.
+
+        Primary async read path — called by briefing/service._run_trend_predictions():
+            predictions = await store.get_for_tickers(tickers=tickers)
+
+        Args:
+            tickers:          List of ticker symbols (case-insensitive).
+            skip_stale:       When True (default), excludes predictions older
+                              than max_age_seconds. Stale verdicts should not
+                              reach the morning brief. Set False to include all.
+            max_age_seconds:  Staleness threshold in seconds. Default 4 hours.
+
+        Returns:
+            List of TrendPrediction objects, one per ticker that has a valid
+            (non-stale) prediction cached. Empty list when cache is cold or
+            all predictions are stale — never raises.
+
+        Note:
+            Wave 1: pure in-memory — no async I/O. The async signature is
+            intentional so callers can await without changes when Wave 2 adds
+            DB persistence.
+        """
+        results: list[Any] = []
+        for ticker in tickers:
+            if skip_stale and self.is_stale(ticker, max_age_seconds):
+                continue
+            pred = self.get(ticker)
+            if pred is not None:
+                results.append(pred)
+        return results
+
+    async def get_top_by_confidence_async(self, n: int = 3) -> list[Any]:
+        """Async wrapper around get_top_by_confidence() for awaitable callers.
+
+        Returns top-N predictions by confidence across all cached symbols.
+        Useful for briefing/bot when surfacing the highest-conviction verdicts.
+        """
+        return self.get_top_by_confidence(n)
 
     # ------------------------------------------------------------------
     # Write
