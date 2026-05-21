@@ -135,7 +135,8 @@ class BriefOutput(BaseModel):
     Post-brief enrichment fields (populated by BriefingService after agent call):
       - portfolio_narrative: PortfolioRiskNarratorAgent output (optional).
       - next_action_plan:    NextActionSuggester output (optional).
-    Both default to None when their respective agents are not injected.
+      - trend_predictions:   TrendPredictionStore output (optional).
+    All default to None when their respective agents/stores are not injected.
     """
 
     headline: str = Field(description="One-sentence market headline")
@@ -186,6 +187,17 @@ class BriefOutput(BaseModel):
             "actions đã được sort theo urgency_score DESC — caller KHÔNG re-sort. "
             "Downstream: bot render /brief next-actions section với urgency emoji; "
             "readmodel cache total_critical cho action badge count."
+        ),
+    )
+    trend_predictions: list[Any] | None = Field(
+        default=None,
+        description=(
+            "Precomputed TrendPrediction list từ TrendPredictionStore. "
+            "None khi store chưa được inject hoặc tickers rỗng. "
+            "Mỗi item có: symbol, verdict, direction, confidence, horizon, "
+            "risk_signals, next_watch, reasoning. "
+            "Downstream: bot render /brief trend section; "
+            "readmodel cache verdict distribution cho dashboard."
         ),
     )
     action_queue: ActionQueue = Field(
