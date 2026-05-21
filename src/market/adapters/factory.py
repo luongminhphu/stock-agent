@@ -12,7 +12,7 @@ All other code calls build_adapter() and works against MarketDataAdapter.
 
 from __future__ import annotations
 
-from src.market.quote_service import MarketDataAdapter
+from src.market.quote_service import MarketDataAdapter, QuoteService
 from src.platform.config import settings
 from src.platform.logging import get_logger
 
@@ -25,7 +25,7 @@ def build_adapter() -> MarketDataAdapter:
     if settings.environment == "test" or getattr(settings, "mock_market", False):
         from src.market.adapters.mock import MockAdapter
 
-        logger.info("market.adapter", provider="mock")
+        logger.info("market.adapter", extra={"provider": "mock"})
         return MockAdapter()
 
     from src.market.adapters.chained import ChainedAdapter
@@ -34,5 +34,24 @@ def build_adapter() -> MarketDataAdapter:
 
     primary = VCIAdapter()
     secondary = VNDirectAdapter()
-    logger.info("market.adapter", provider="chained(vci->vndirect)")
+    logger.info("market.adapter", extra={"provider": "chained(vci->vndirect)"})
     return ChainedAdapter(primary=primary, secondary=secondary)
+
+
+def create_trend_context_fetcher(quote_service: QuoteService) -> "TrendContextFetcher":
+    """Wire TrendContextFetcher từ các adapter đã có.
+
+    Usage::
+
+        quote_svc = QuoteService(adapter=build_adapter())
+        fetcher = create_trend_context_fetcher(quote_svc)
+        trend_engine = TrendEngine(ohlcv_service, context_fetcher=fetcher, ...)
+    """
+    from src.market.news_adapter import TCBSNewsAdapter
+    from src.market.market_regime import MarketRegimeService
+    from src.market.trend_context_fetcher import TrendContextFetcher
+
+    return TrendContextFetcher(
+        news_adapter=TCBSNewsAdapter(),
+        regime_service=MarketRegimeService(quote_service),
+    )
