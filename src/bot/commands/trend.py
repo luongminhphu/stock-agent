@@ -16,9 +16,9 @@ from discord import app_commands
 
 from src.ai.agents.trend_reasoning import TrendReasoningAgent
 from src.ai.client import AIError
-from src.ai.prompts.trend_reasoning import TrendPrediction
+from src.ai.schemas.trend_prediction import TechnicalSignalBundle, TrendPrediction
 from src.bot.commands.base import BaseCog
-from src.market.trend_engine import TechnicalSignalBundle, TrendEngine
+from src.market.trend_engine import TrendEngine
 from src.platform.bootstrap import get_ohlcv_service, get_trend_reasoning_agent
 from src.platform.logging import get_logger
 
