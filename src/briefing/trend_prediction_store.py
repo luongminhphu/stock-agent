@@ -4,7 +4,7 @@ TrendPredictionStore — in-process cache for trend predictions.
 Owner: briefing segment.
 Producer: TrendBatchScheduler (writes via store())
 Consumer:
-    - BriefingService.generate_morning_brief() (reads via get_top())
+    - BriefingService.generate_morning_brief() (reads via get_for_tickers())
     - bot/commands/trend.py (reads via get(symbol))
 
 Design:
@@ -71,6 +71,37 @@ class TrendPredictionStore:
         """Get prediction for a specific symbol. None if not cached."""
         return self._store.get(symbol.upper())
 
+    def get_for_tickers(
+        self,
+        tickers: list[str],
+        min_confidence: float = 0.0,
+    ) -> list["TrendPrediction"]:
+        """Return predictions for the given ticker list, sorted by verdict priority.
+
+        Called by BriefingService._run_trend_predictions().
+        Missing tickers (not yet computed) are silently skipped.
+
+        Args:
+            tickers:        List of ticker symbols to fetch.
+            min_confidence: Exclude predictions below this confidence floor.
+                            Default 0.0 (all predictions returned).
+
+        Returns:
+            List[TrendPrediction] sorted by (verdict_priority ASC, confidence DESC).
+            Empty list when tickers is empty or no predictions exist yet.
+        """
+        preds = [
+            self._store[t.upper()]
+            for t in tickers
+            if t.upper() in self._store
+        ]
+        if min_confidence > 0.0:
+            preds = [p for p in preds if p.confidence >= min_confidence]
+        preds.sort(
+            key=lambda p: (_VERDICT_PRIORITY.get(str(p.verdict), 99), -p.confidence)
+        )
+        return preds
+
     def get_top(
         self,
         n: int = 5,
@@ -94,7 +125,7 @@ class TrendPredictionStore:
             preds = [p for p in preds if p.confidence >= min_confidence]
 
         preds.sort(
-            key=lambda p: (_VERDICT_PRIORITY.get(p.verdict, 99), -p.confidence)
+            key=lambda p: (_VERDICT_PRIORITY.get(str(p.verdict), 99), -p.confidence)
         )
         return preds[:n]
 
