@@ -248,3 +248,29 @@ class TrendShiftEvent(DomainEvent):
     composite_delta: float = 0.0   # current − previous (negative = weakening)
     shift_severity: Literal["MAJOR", "MINOR"] = "MINOR"
     scan_phase: str = ""           # morning | midday | pre_atc
+
+
+# ─── trend prediction ────────────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class TrendPredictionCompletedEvent(DomainEvent):
+    """Emitted by ai.TrendEngineListener after trend prediction run completes.
+
+    Produced by: ai segment (TrendEngineListener)
+    Consumed by:
+      - briefing.BriefingListener: inject top verdicts into morning/eod brief.
+      - bot segment: optional Discord push for actionable verdicts.
+
+    top_verdicts:
+        Tuple of (symbol, verdict) pairs for the top-3 most confident
+        predictions, sorted by confidence descending. Empty tuple on
+        failure or when no symbols are in watchlist.
+
+    scan_phase:
+        Mirrors SignalEngineRequestedEvent.phase so consumers can correlate
+        the prediction run with the triggering scan cycle.
+    """
+    scan_phase: str = "morning"             # morning | eod
+    symbols_analyzed: int = 0
+    top_verdicts: tuple[tuple[str, str], ...] = field(default_factory=tuple)
+    # top_verdicts: (("VHM", "BUY"), ("FPT", "HOLD"), ("TCB", "WATCH"))
