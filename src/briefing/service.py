@@ -15,6 +15,7 @@ Responsibilities:
 - call BriefingAgent for morning/EOD narrative
 - attach PortfolioRiskNarrativeOutput via PortfolioRiskNarratorAgent (optional)
 - attach NextActionPlan via NextActionSuggester (optional)
+- attach TrendPredictions via TrendPredictionStore (optional)
 - persist BriefSnapshot via BriefSnapshotRepository
 - return BriefResult(output, snapshot_id) to adapters
 - record user feedback (acted/watching/skipped) via record_feedback()
@@ -113,6 +114,14 @@ NextActionSuggester (post-brief synthesis):
   NextActionSuggester has built-in fallback (rule-based, confidence=0.3) so
   AI errors are already handled inside the agent — the outer try/except here
   guards against unexpected structural failures only.
+
+TrendPredictionStore (post-brief enrichment):
+  When trend_prediction_store is injected, _run_trend_predictions() is called
+  after _run_next_action_suggester(). It fetches precomputed TrendPrediction
+  objects for the watchlist tickers via store.get_for_tickers(tickers) and
+  attaches the result to BriefOutput.trend_predictions. Fully non-blocking:
+  any failure leaves trend_predictions=None and the brief is unaffected.
+  Store must implement async get_for_tickers(tickers: list[str]) -> list[Any].
 """
 
 from __future__ import annotations
@@ -196,6 +205,12 @@ class BriefingService:
                                  BriefOutput.next_action_plan. Skipped silently when
                                  tickers list is empty.
                                  Pass None (default) to skip — preserves existing behavior.
+        trend_prediction_store:  optional — store chứa TrendPrediction đã được precomputed
+                                 bởi TrendEngine. Khi được inject, _run_trend_predictions()
+                                 fetch top predictions cho watchlist tickers và attach vào
+                                 BriefOutput.trend_predictions. Fully non-blocking.
+                                 Store phải implement: async get_for_tickers(tickers) -> list.
+                                 Pass None (default) to skip — preserves existing behavior.
     """
 
     def __init__(
@@ -210,6 +225,7 @@ class BriefingService:
         thesis_judge_agent: ThesisJudgeAgent | None = None,
         portfolio_risk_narrator: object | None = None,
         next_action_suggester: object | None = None,
+        trend_prediction_store: object | None = None,
     ) -> None:
         self._watchlist_service = watchlist_service
         self._quote_service = quote_service
@@ -222,6 +238,7 @@ class BriefingService:
         self._thesis_judge_agent = thesis_judge_agent
         self._portfolio_risk_narrator = portfolio_risk_narrator
         self._next_action_suggester = next_action_suggester
+        self._trend_prediction_store = trend_prediction_store
 
     async def generate_morning_brief(self, user_id: str) -> BriefResult:
         ctx = await self._collect_contexts(user_id, phase="morning")
@@ -251,11 +268,14 @@ class BriefingService:
         result = await self._run_portfolio_risk_narrator(user_id=user_id, result=result, ctx=ctx)
         # Wire NextActionSuggester — attaches to result.next_action_plan
         result = await self._run_next_action_suggester(user_id=user_id, result=result, ctx=ctx)
+        # Wire TrendPredictionStore — attaches to result.trend_predictions
+        result = await self._run_trend_predictions(user_id=user_id, result=result, ctx=ctx)
         logger.info(
             "briefing.morning_enrichment",
             user_id=user_id,
             has_portfolio_narrative=result.portfolio_narrative is not None,
             has_next_action_plan=result.next_action_plan is not None,
+            has_trend_predictions=result.trend_predictions is not None,
             next_action_critical_count=(
                 result.next_action_plan.total_critical
                 if result.next_action_plan is not None
@@ -295,11 +315,14 @@ class BriefingService:
         result = await self._run_portfolio_risk_narrator(user_id=user_id, result=result, ctx=ctx)
         # Wire NextActionSuggester — attaches to result.next_action_plan
         result = await self._run_next_action_suggester(user_id=user_id, result=result, ctx=ctx)
+        # Wire TrendPredictionStore — attaches to result.trend_predictions
+        result = await self._run_trend_predictions(user_id=user_id, result=result, ctx=ctx)
         logger.info(
             "briefing.eod_enrichment",
             user_id=user_id,
             has_portfolio_narrative=result.portfolio_narrative is not None,
             has_next_action_plan=result.next_action_plan is not None,
+            has_trend_predictions=result.trend_predictions is not None,
             next_action_critical_count=(
                 result.next_action_plan.total_critical
                 if result.next_action_plan is not None
@@ -678,6 +701,45 @@ class BriefingService:
             logger.warning(
                 "briefing.next_action_suggester_failed",
                 user_id=user_id,
+                error=str(exc),
+            )
+        return result
+
+    async def _run_trend_predictions(
+        self,
+        user_id: str,
+        result: BriefOutput,
+        ctx: dict,
+    ) -> BriefOutput:
+        """Fetch precomputed TrendPredictions and attach to result.trend_predictions.
+
+        Fully non-blocking: any failure returns result unchanged (trend_predictions=None).
+        Skipped silently when trend_prediction_store is not injected or tickers is empty.
+
+        Reads from TrendPredictionStore.get_for_tickers(tickers) — expects a
+        list[TrendPrediction]. Store must implement non-blocking fetch; staleness
+        check (is_stale guard) is the store's responsibility, not this method's.
+
+        Owner: briefing (adapter). Store + TrendPrediction schema live in
+        readmodel (persist) or market (compute). This method is purely a wiring
+        point — no business logic.
+        """
+        if self._trend_prediction_store is None:
+            return result
+        tickers = ctx.get("tickers", [])
+        if not tickers:
+            return result
+        try:
+            predictions = await self._trend_prediction_store.get_for_tickers(  # type: ignore[attr-defined]
+                tickers=tickers
+            )
+            if predictions:
+                result.trend_predictions = predictions
+        except Exception as exc:
+            logger.warning(
+                "briefing.trend_predictions_failed",
+                user_id=user_id,
+                tickers=tickers,
                 error=str(exc),
             )
         return result
@@ -1261,39 +1323,33 @@ class BriefingService:
             return ""
 
     async def _build_feedback_context(self, user_id: str) -> str:
-        """Build feedback calibration context string (Wave 3).
+        """Build brief feedback summary context string.
 
-        Reads acted_rate from readmodel.DashboardService. Returns "" when:
-        - session is None
-        - fewer than 10 feedback samples exist
-        - any error occurs
-        Non-blocking. Never overrides risk_appetite from investor_profile.
+        Reads acted_rate from readmodel (lazy import) to avoid circular imports.
+        Returns "" when:
+          - session is None (scheduler, tests without DB)
+          - fewer than 10 feedback samples exist (insufficient signal)
+          - any error occurs
+        Non-blocking. Wave 3 feature.
         """
         if self._session is None:
             return ""
         try:
-            from src.readmodel.service import DashboardService  # noqa: PLC0415
+            from src.readmodel.dashboard_service import DashboardService  # noqa: PLC0415
 
             dashboard = DashboardService(self._session)
-            stats = await dashboard.get_feedback_stats(user_id=user_id)
-            if stats is None or getattr(stats, "total_count", 0) < 10:
+            summary = await dashboard.get_feedback_summary(user_id=user_id)
+            if summary is None:
                 return ""
-            acted_rate = getattr(stats, "acted_rate", None)
-            if acted_rate is None:
+            acted_rate = getattr(summary, "acted_rate", None)
+            sample_count = getattr(summary, "sample_count", 0) or 0
+            if sample_count < 10 or acted_rate is None:
                 return ""
-            if acted_rate >= 0.6:
-                calibration = (
-                    f"Feedback calibration: acted_rate={acted_rate:.0%} (high engagement). "
-                    "Tăng độ cụ thể của action items, giảm số lượng xuống 2-3 action rõ ràng nhất."
-                )
-            elif acted_rate <= 0.2:
-                calibration = (
-                    f"Feedback calibration: acted_rate={acted_rate:.0%} (low engagement). "
-                    "Giảm độ phức tạp, tập trung vào 1-2 action ưu tiên cao nhất với step cụ thể."
-                )
-            else:
-                return ""
-            return calibration
+            return (
+                f"Feedback calibration: acted_rate={acted_rate:.0%} "
+                f"(n={sample_count}). "
+                "Adjust action specificity to match this investor's follow-through rate."
+            )
         except Exception as exc:
             logger.debug(
                 "briefing.feedback_context_failed",
