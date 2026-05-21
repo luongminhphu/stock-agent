@@ -46,7 +46,7 @@ Thesis Judge integration (Wave 2):
   is called. Only non-ON_TRACK verdicts (weakening / invalidated / review_now)
   are appended to market_context so the brief narrative can reference structured
   verdict data rather than inferring thesis health from raw text.
-  Non-blocking: any failure returns ("", False) and brief is unaffected.
+  Non-blocking: any failure returns ("", False, {}) and brief is unaffected.
 
 Last-review continuity (P4):
   _build_thesis_judge_block() now calls _fetch_last_review_summary() for each
@@ -77,10 +77,28 @@ Perf fixes (B1/B3/B4):
 B2 fix:
   thesis_judge_ran now reflects whether ThesisJudgeAgent.run_batch() was
   actually called, not merely whether thesis_judge_agent was injected.
-  _build_thesis_judge_block returns tuple[str, bool] (block, did_run).
-  did_run=True only when run_batch() was reached (active theses existed and
-  no early-exit occurred). _build_market_context_with_judge propagates the
-  tuple; _collect_contexts unpacks it into thesis_judge_ran.
+  _build_thesis_judge_block returns tuple[str, bool, dict] (block, did_run,
+  verdicts_by_ticker). did_run=True only when run_batch() was reached (active
+  theses existed and no early-exit occurred).
+  _build_market_context_with_judge propagates the tuple;
+  _collect_contexts unpacks it into thesis_judge_ran and judge_verdicts.
+
+Judge contract fixes (this patch):
+  J1: _build_thesis_judge_block was calling run_batch(signal_contexts=...)
+      but ThesisJudgeAgent.run_batch() expects the positional param `triggers`.
+      Fixed to run_batch(triggers=...). This was a silent TypeError that caused
+      the judge to never run despite thesis_judge_ran being set True.
+  J2: Per-thesis dict restructured to match ThesisJudgeTrigger TypedDict:
+      thesis_id and ticker are Required top-level keys; signal_context is a
+      nested dict with watchdog_verdict, urgency, trigger_reason, price,
+      change_pct. Previously flat structure caused run_batch to receive
+      malformed triggers silently.
+  J3: _build_thesis_judge_block now returns tuple[str, bool, dict[str, Any]]
+      (block_str, did_run, verdicts_by_ticker). verdicts_by_ticker maps
+      ticker -> ThesisJudgeOutput for downstream structured consumption.
+  J4: _run_next_action_suggester now prefers judge verdicts (verdict,
+      conviction_delta, action) from ctx["judge_verdicts"] over the
+      BriefingAgent.signal proxy. Falls back to old path when judge did not run.
 
 Wave 1 fixes:
   - record_feedback(): outcome validated against BriefFeedbackOutcome.VALID_OUTCOMES
@@ -130,6 +148,7 @@ import json
 import time
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -192,6 +211,8 @@ class BriefingService:
                                  invalidated) are formatted and appended to market_context
                                  AFTER sector rotation block, BEFORE BriefingAgent LLM call.
                                  Only non-ON_TRACK verdicts are emitted to avoid noise.
+                                 Structured verdicts are also forwarded to NextActionSuggester
+                                 via ctx["judge_verdicts"] for richer action recommendations.
                                  Pass None (default) to skip — preserves existing behavior.
         portfolio_risk_narrator: optional — AI agent that produces a structured portfolio
                                  risk narrative (PortfolioRiskNarrativeOutput). When provided,
@@ -436,11 +457,19 @@ class BriefingService:
           _build_thesis_context (fallback path) and _build_thesis_judge_block
           to avoid calling list_for_user(active) twice per brief.
 
+        J3 fix:
+          verdicts_by_ticker (dict[str, ThesisJudgeOutput]) is now propagated
+          from _build_thesis_judge_block through _build_market_context_with_judge
+          into ctx["judge_verdicts"]. _run_next_action_suggester uses this for
+          richer per-ticker action recommendations.
+
         Returns a dict with keys:
           tickers, market_context, portfolio_context, thesis_context,
           past_lessons, investor_profile, feedback_summary,
           context_source, sector_rotation_injected, thesis_judge_ran,
-          quotes (pre-fetched dict, may be {} when judge not injected).
+          quotes (pre-fetched dict, may be {} when judge not injected),
+          judge_verdicts (dict[str, ThesisJudgeOutput], may be {} when judge
+          not injected or run_batch returned no results).
         """
         t_total = time.monotonic()
 
@@ -465,6 +494,8 @@ class BriefingService:
         # kept in ctx so _run_portfolio_risk_narrator / _run_next_action_suggester
         # can reuse without a second fetch.
         _quotes_by_ticker: dict = {}
+        # J3: structured judge verdicts forwarded to _run_next_action_suggester.
+        _judge_verdicts: dict[str, Any] = {}
         if self._thesis_judge_agent is not None:
             # Fetch quotes once — reused by market_context, thesis_judge_block,
             # portfolio_risk_narrator, and next_action_suggester.
@@ -473,13 +504,15 @@ class BriefingService:
                 _quotes_by_ticker = {q.ticker: q for q in _raw_quotes}
             except Exception:
                 _quotes_by_ticker = {}
-            # B2: unpack (market_context_str, did_run) tuple
-            market_context, thesis_judge_ran = await self._build_market_context_with_judge(
-                user_id=user_id,
-                tickers=tickers,
-                phase=phase,
-                quotes=_quotes_by_ticker,
-                cached_theses=cached_theses,
+            # B2/J3: unpack (market_context_str, did_run, verdicts_by_ticker) tuple
+            market_context, thesis_judge_ran, _judge_verdicts = (
+                await self._build_market_context_with_judge(
+                    user_id=user_id,
+                    tickers=tickers,
+                    phase=phase,
+                    quotes=_quotes_by_ticker,
+                    cached_theses=cached_theses,
+                )
             )
         else:
             market_context = await self._build_market_context(tickers, phase=phase)
@@ -551,6 +584,7 @@ class BriefingService:
             "sector_rotation_injected": sector_rotation_injected,
             "thesis_judge_ran": thesis_judge_ran,
             "quotes": _quotes_by_ticker,
+            "judge_verdicts": _judge_verdicts,
         }
 
     async def _run_portfolio_risk_narrator(
@@ -642,12 +676,15 @@ class BriefingService:
         Builds per-ticker signal contexts from:
           - ctx["tickers"]              → one dict per ticker
           - ctx["quotes"]               → price change_pct as market signal hint
+          - ctx["judge_verdicts"]       → structured ThesisJudgeOutput (J4 fix):
+                                          verdict, conviction_delta, action used directly
+                                          when judge ran; richer than BriefingAgent.signal.
           - result.ticker_summaries     → BriefingAgent signal field (bearish/bullish)
-                                          used as lightweight watchdog_verdict proxy
+                                          used as fallback when judge_verdicts is empty.
 
-        In the briefing path, judge/invalidation/watchdog verdicts are not available
-        per-ticker. NextActionSuggester has a built-in rule-based fallback (confidence
-        0.3) so it degrades gracefully when verdict fields are absent.
+        Priority for watchdog_verdict:
+          1. ctx["judge_verdicts"][ticker].verdict — structured judge output (preferred)
+          2. result.ticker_summaries signal proxy — used only when judge did not run
 
         Owner: briefing (adapter). Suggester logic stays in ai segment.
         """
@@ -659,6 +696,8 @@ class BriefingService:
 
         try:
             quotes: dict = ctx.get("quotes", {})
+            # J4: prefer structured judge verdicts over BriefingAgent.signal proxy.
+            judge_verdicts: dict[str, Any] = ctx.get("judge_verdicts", {})
 
             # Build a lookup from ticker_summaries for signal + one_line
             summaries_by_ticker: dict = {}
@@ -676,15 +715,32 @@ class BriefingService:
                     if change_pct is not None:
                         entry["notes"] = f"change_pct={change_pct:+.2f}%"
 
-                # Attach BriefingAgent signal as watchdog_verdict proxy.
-                # signal values: "bearish" | "bullish" | "neutral"
+                # J4: prefer judge verdict when available — richer than signal proxy.
+                jv = judge_verdicts.get(ticker)
+                if jv is not None:
+                    verdict_str = str(getattr(jv, "verdict", "") or "")
+                    if verdict_str:
+                        entry["watchdog_verdict"] = verdict_str
+                    conviction_delta = getattr(jv, "conviction_delta", None)
+                    if conviction_delta is not None:
+                        entry["conviction_delta"] = conviction_delta
+                    judge_action = getattr(jv, "action", None)
+                    if judge_action:
+                        entry["judge_action"] = judge_action
+                else:
+                    # Fallback: use BriefingAgent signal as watchdog_verdict proxy.
+                    # signal values: "bearish" | "bullish" | "neutral"
+                    ts = summaries_by_ticker.get(ticker)
+                    if ts is not None:
+                        signal = getattr(ts, "signal", "neutral") or "neutral"
+                        if signal.lower() == "bearish":
+                            entry["watchdog_verdict"] = "BEARISH"
+                        elif signal.lower() == "bullish":
+                            entry["watchdog_verdict"] = "BULLISH"
+
+                # Always attach one_line from BriefingAgent as notes supplement.
                 ts = summaries_by_ticker.get(ticker)
                 if ts is not None:
-                    signal = getattr(ts, "signal", "neutral") or "neutral"
-                    if signal.lower() == "bearish":
-                        entry["watchdog_verdict"] = "BEARISH"
-                    elif signal.lower() == "bullish":
-                        entry["watchdog_verdict"] = "BULLISH"
                     one_line = getattr(ts, "one_line", "") or ""
                     if one_line:
                         entry["notes"] = (
@@ -858,22 +914,21 @@ class BriefingService:
         phase: str,
         quotes: dict,
         cached_theses: list | None = None,
-    ) -> tuple[str, bool]:
+    ) -> tuple[str, bool, dict[str, Any]]:
         """Build market context with thesis judge verdicts appended.
 
         B1 fix: passes pre-fetched quotes into _build_market_context so quotes
         are never fetched twice in the same brief generation cycle.
 
-        B2 fix: returns tuple[str, bool] (market_context, did_run).
-        did_run reflects whether ThesisJudgeAgent.run_batch() was actually
-        called (propagated from _build_thesis_judge_block). Callers must
-        unpack the tuple — thesis_judge_ran must come from here, not from
-        `self._thesis_judge_agent is not None`.
+        B2 fix: returns tuple[str, bool, dict] (market_context, did_run,
+        verdicts_by_ticker). did_run reflects whether ThesisJudgeAgent.run_batch()
+        was actually called. verdicts_by_ticker maps ticker -> ThesisJudgeOutput
+        for structured consumption by _run_next_action_suggester (J3 fix).
 
         B4 fix: accepts cached_theses from _collect_contexts to avoid a second
         list_for_user(active) call inside _build_thesis_judge_block.
 
-        Non-blocking: falls back to (plain_market_context, False) on any error.
+        Non-blocking: falls back to (plain_market_context, False, {}) on any error.
 
         Args:
             user_id:        For loading active theses via thesis_service.
@@ -883,16 +938,15 @@ class BriefingService:
             cached_theses:  Pre-fetched active theses list (may be None).
 
         Returns:
-            (market_context_str, did_run)
+            (market_context_str, did_run, verdicts_by_ticker)
         """
-        # B1: pass quotes so _build_market_context skips a second fetch.
         base = await self._build_market_context(tickers, phase=phase, quotes=quotes)
-        judge_block, did_run = await self._build_thesis_judge_block(
+        judge_block, did_run, verdicts_by_ticker = await self._build_thesis_judge_block(
             user_id=user_id, quotes=quotes, cached_theses=cached_theses
         )
         if judge_block:
-            return base + judge_block, did_run
-        return base, did_run
+            return base + judge_block, did_run, verdicts_by_ticker
+        return base, did_run, verdicts_by_ticker
 
     async def _fetch_reviews_batch_for_judge(
         self, thesis_ids: list[int]
@@ -1042,17 +1096,29 @@ class BriefingService:
         user_id: str,
         quotes: dict,
         cached_theses: list | None = None,
-    ) -> tuple[str, bool]:
+    ) -> tuple[str, bool, dict[str, Any]]:
         """Build thesis judge block and append to market context.
 
-        Returns tuple[str, bool] (block_str, did_run).
+        Returns tuple[str, bool, dict[str, Any]] (block_str, did_run, verdicts_by_ticker).
         did_run=True only when ThesisJudgeAgent.run_batch() was actually called.
-        Non-blocking: returns ("", False) on any error or early exit.
+        verdicts_by_ticker maps ticker -> ThesisJudgeOutput for all returned verdicts
+        (including ON_TRACK) so _run_next_action_suggester can access structured data.
+        Non-blocking: returns ("", False, {}) on any error or early exit.
+
+        J1 fix: call site corrected from run_batch(signal_contexts=...) to
+        run_batch(triggers=...) to match ThesisJudgeAgent.run_batch() signature.
+
+        J2 fix: per-thesis dict restructured to match ThesisJudgeTrigger TypedDict
+        contract — thesis_id and ticker are Required top-level keys; signal_context
+        is a nested dict with watchdog_verdict, urgency, trigger_reason, price,
+        change_pct fields that ThesisJudgeAgent and its fallback logic expect.
+
+        J3 fix: returns verdicts_by_ticker dict for structured downstream consumption.
         """
         if self._thesis_judge_agent is None:
-            return "", False
+            return "", False, {}
         if self._thesis_service is None:
-            return "", False
+            return "", False, {}
 
         theses = cached_theses
         if theses is None:
@@ -1066,19 +1132,21 @@ class BriefingService:
                     user_id=user_id,
                     error=str(exc),
                 )
-                return "", False
+                return "", False, {}
 
         if not theses:
-            return "", False
+            return "", False, {}
 
         # B3: fetch all reviews in one batch query.
         thesis_ids = [int(t.id) for t in theses if getattr(t, "id", None) is not None]
         reviews_batch = await self._fetch_reviews_batch_for_judge(thesis_ids)
 
-        signal_contexts = []
+        # J1/J2: build triggers matching ThesisJudgeTrigger TypedDict contract.
+        triggers: list[dict] = []
         for thesis in theses:
             ticker = getattr(thesis, "ticker", "") or ""
             thesis_id = getattr(thesis, "id", None)
+            stop_loss = getattr(thesis, "stop_loss", None)
 
             q = quotes.get(ticker)
             price = None
@@ -1097,25 +1165,62 @@ class BriefingService:
                     last_review_summary = self._format_last_review_summary(rows[0])
                     conviction_history = self._format_conviction_history(rows)
 
-            signal_context: dict = {
-                "ticker": ticker,
-                "thesis_id": str(thesis_id) if thesis_id is not None else None,
-                "thesis_title": getattr(thesis, "title", ""),
-                "stop_loss": getattr(thesis, "stop_loss", None),
-                "key_assumptions": getattr(thesis, "key_assumptions", []),
-                "price": price,
-                "change_pct": change_pct,
-            }
-            if last_review_summary:
-                signal_context["last_review_summary"] = last_review_summary
-            if conviction_history:
-                signal_context["conviction_history"] = conviction_history
+            # J2: derive lightweight watchdog signals from price data for
+            # ThesisJudgeAgent fallback path (_derive_fallback_verdict uses
+            # watchdog_verdict + urgency from signal_context).
+            _chg = change_pct or 0.0
+            if _chg < -5.0:
+                watchdog_verdict = "BEARISH"
+                urgency = "CRITICAL"
+            elif _chg < -2.0:
+                watchdog_verdict = "BEARISH"
+                urgency = "HIGH"
+            elif _chg > 3.0:
+                watchdog_verdict = "BULLISH"
+                urgency = "NORMAL"
+            else:
+                watchdog_verdict = "NEUTRAL"
+                urgency = "NORMAL"
 
-            signal_contexts.append(signal_context)
+            trigger: dict = {
+                # Required keys — top-level per ThesisJudgeTrigger
+                "thesis_id": str(thesis_id) if thesis_id is not None else "unknown",
+                "ticker": ticker,
+                # Optional thesis metadata
+                "thesis_title": getattr(thesis, "title", "") or "",
+                "thesis_summary": getattr(thesis, "description", "") or "",
+                "assumptions": getattr(thesis, "key_assumptions", []) or [],
+                "catalysts": [],
+                "invalidation_conditions": (
+                    [f"stop_loss={stop_loss:,.0f}"]
+                    if stop_loss is not None
+                    else []
+                ),
+                # J2: signal_context is a NESTED dict — not flat fields
+                "signal_context": {
+                    "watchdog_verdict": watchdog_verdict,
+                    "urgency": urgency,
+                    "trigger_reason": (
+                        f"Briefing auto-check: price={price}, change_pct={_chg:+.2f}%"
+                    ),
+                    "price": price,
+                    "change_pct": change_pct,
+                    **(  # inject last_review_summary inside signal_context
+                        {"last_review_summary": last_review_summary}
+                        if last_review_summary
+                        else {}
+                    ),
+                },
+            }
+            if conviction_history:
+                trigger["conviction_history"] = conviction_history
+
+            triggers.append(trigger)
 
         try:
+            # J1: correct keyword argument — run_batch(triggers=...) not signal_contexts=
             verdicts = await self._thesis_judge_agent.run_batch(  # type: ignore[attr-defined]
-                signal_contexts=signal_contexts
+                triggers=triggers
             )
         except Exception as exc:
             logger.warning(
@@ -1123,22 +1228,30 @@ class BriefingService:
                 user_id=user_id,
                 error=str(exc),
             )
-            return "", False
+            return "", False, {}
 
-        # Filter to non-ON_TRACK verdicts only.
+        # J3: build verdicts_by_ticker for all verdicts (including ON_TRACK)
+        # so _run_next_action_suggester can access structured data.
+        verdicts_by_ticker: dict[str, Any] = {
+            getattr(v, "ticker", ""): v
+            for v in verdicts
+            if getattr(v, "ticker", "")
+        }
+
+        # Filter to non-ON_TRACK verdicts only for market_context narrative.
         actionable = [
             v for v in verdicts
             if getattr(v, "verdict", None) not in (None, "ON_TRACK")
         ]
         if not actionable:
-            return "", True
+            return "", True, verdicts_by_ticker
 
         lines = ["\n\n## Thesis Judge Verdicts"]
         for v in actionable:
             ticker = getattr(v, "ticker", "?")
             verdict = getattr(v, "verdict", "?")
             confidence = getattr(v, "confidence", None)
-            action = getattr(v, "recommended_action", "")
+            action = getattr(v, "recommended_action", "") or getattr(v, "action", "")
             conviction_delta = getattr(v, "conviction_delta", None)
             reasoning = getattr(v, "reasoning", "") or ""
             reasoning_snippet = reasoning[:100].rstrip()
@@ -1154,7 +1267,7 @@ class BriefingService:
                 parts.append(f"| {reasoning_snippet}")
             lines.append(" ".join(parts))
 
-        return "\n".join(lines), True
+        return "\n".join(lines), True, verdicts_by_ticker
 
     async def _build_sector_rotation_block(self, tickers: list[str]) -> str:
         """Build sector rotation signal block.
