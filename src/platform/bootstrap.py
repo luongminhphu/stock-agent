@@ -44,6 +44,8 @@ _signal_engine_listener: object | None = None  # Wave B2: fully wired
 _agenda_builder_agent: object | None = None   # AgendaBuilderAgent singleton
 _agenda_service_factory: object | None = None  # callable(session) -> AgendaService | None
 _trend_reasoning_agent: object | None = None  # TrendReasoningAgent singleton
+_trend_prediction_store: object | None = None  # TrendPredictionStore singleton
+_trend_engine_listener: object | None = None   # TrendEngineListener singleton
 
 _pnl_service_class: type | None = None
 
@@ -61,7 +63,7 @@ async def bootstrap() -> None:
     global _opportunity_screen_scheduler, _opportunity_screen_subscriber
     global _signal_engine_agent, _signal_engine_listener
     global _agenda_builder_agent, _agenda_service_factory
-    global _trend_reasoning_agent
+    global _trend_reasoning_agent, _trend_prediction_store, _trend_engine_listener
 
     if _quote_service is None:
         from src.market.adapters.factory import build_adapter
@@ -215,27 +217,37 @@ async def bootstrap() -> None:
                 reason="scheduler_user_id not configured",
             )
 
-    # ── Wave 2 (market): TrendReasoningAgent ─────────────────────────────────
+    # ── Wave 2 (market): TrendReasoningAgent ────────────────────────────────────────────
     if _trend_reasoning_agent is None:
         from src.ai.agents.trend_reasoning import TrendReasoningAgent
 
         _trend_reasoning_agent = TrendReasoningAgent(client=_ai_client)  # type: ignore[arg-type]
         logger.info("platform.bootstrap.trend_reasoning_agent_ready")
 
-    # ── Wave 2b: SignalEngineAgent ────────────────────────────────────────────
+    # ── Wave 2b: SignalEngineAgent ────────────────────────────────────────────────────
     if _signal_engine_agent is None:
         from src.ai.agents.signal_engine import SignalEngineAgent
 
         _signal_engine_agent = SignalEngineAgent(ai_client=_ai_client)  # type: ignore[arg-type]
         logger.info("platform.bootstrap.signal_engine_agent_ready")
 
-    # ── Event Bus + subscribers (start bus FIRST) ─────────────────────────────
+    # ── Trend Prediction: TrendPredictionStore (readmodel) ─────────────────────────
+    if _trend_prediction_store is None:
+        from src.readmodel.trend_prediction_store import TrendPredictionStore
+        from src.platform.db import AsyncSessionLocal
+
+        _trend_prediction_store = TrendPredictionStore(
+            session_factory=AsyncSessionLocal,  # reserved for Wave 2 DB persist
+        )
+        logger.info("platform.bootstrap.trend_prediction_store_ready")
+
+    # ── Event Bus + subscribers (start bus FIRST) ──────────────────────────────────
     from src.platform.event_bus import get_event_bus
     bus = get_event_bus()
     await bus.start()
     logger.info("platform.bootstrap.event_bus_ready")
 
-    # ── Wave 3 (readmodel): cache invalidation hooks ──────────────────────────
+    # ── Wave 3 (readmodel): cache invalidation hooks ──────────────────────────────
     # Register immediately after bus.start() so CacheSubscriber handlers
     # are wired before any other subscriber that might emit scan/briefing events.
     # Idempotent — safe to call from both API lifespan and bot on_ready.
@@ -290,7 +302,7 @@ async def bootstrap() -> None:
                 reason="scheduler_user_id not configured",
             )
 
-    # ── G4: StressTest → Watchlist trigger bridge ───────────────────────────
+    # ── G4: StressTest → Watchlist trigger bridge ───────────────────────────────
     if _stress_test_subscriber is None:
         from src.watchlist.stress_test_subscriber import StressTestSubscriber
         from src.platform.db import AsyncSessionLocal
@@ -299,7 +311,7 @@ async def bootstrap() -> None:
         _stress_test_subscriber.register()
         logger.info("platform.bootstrap.stress_test_subscriber_ready")
 
-    # ── Wave 3: OpportunityScreenScheduler + subscriber ───────────────────────
+    # ── Wave 3: OpportunityScreenScheduler + subscriber ───────────────────────────
     # Subscriber registered here (bus already started).
     # Scheduler is initialised here but start() is called by bot on_ready —
     # discord.ext.tasks requires the bot event loop to be running.
@@ -325,7 +337,7 @@ async def bootstrap() -> None:
         _opportunity_screen_subscriber.register()
         logger.info("platform.bootstrap.opportunity_screen_subscriber_ready")
 
-    # ── Wave B2: SignalEngineListener ───────────────────────────────────────────
+    # ── Wave B2: SignalEngineListener ─────────────────────────────────────────────────
     # All 3 required deps are now available as session_factory-backed singletons.
     # portfolio_query and feedback_service remain optional (None = degraded gracefully).
     if _signal_engine_listener is None:
@@ -345,6 +357,30 @@ async def bootstrap() -> None:
         )
         _signal_engine_listener.register()
         logger.info("platform.bootstrap.signal_engine_listener_ready")
+
+    # ── Trend Prediction: TrendEngineListener ───────────────────────────────────────
+    # Co-subscribes SignalEngineRequestedEvent alongside SignalEngineListener.
+    # Deps: TrendReasoningAgent (already wired above), TrendPredictionStore,
+    # WatchlistQueryService, ThesisQueryService (new instances, same session_factory).
+    if _trend_engine_listener is None:
+        from src.ai.trend_engine_listener import TrendEngineListener
+        from src.market.trend_engine import TrendEngine
+        from src.thesis.watchlist_query_service import WatchlistQueryService
+        from src.thesis.thesis_query_service import ThesisQueryService
+        from src.platform.db import AsyncSessionLocal
+
+        _trend_engine = TrendEngine(
+            ohlcv_service=_ohlcv_service,  # type: ignore[arg-type]
+        )
+        _trend_engine_listener = TrendEngineListener(
+            trend_reasoning_agent=_trend_reasoning_agent,  # type: ignore[arg-type]
+            trend_engine=_trend_engine,
+            prediction_store=_trend_prediction_store,  # type: ignore[arg-type]
+            watchlist_query=WatchlistQueryService(session_factory=AsyncSessionLocal),
+            thesis_query=ThesisQueryService(session_factory=AsyncSessionLocal),
+        )
+        _trend_engine_listener.register()
+        logger.info("platform.bootstrap.trend_engine_listener_ready")
 
     logger.info("platform.bootstrap.complete")
 
@@ -574,3 +610,13 @@ def get_opportunity_screen_subscriber():
 def get_trend_reasoning_agent():
     """Return TrendReasoningAgent singleton, or None if bootstrap() not called yet."""
     return _trend_reasoning_agent
+
+
+def get_trend_prediction_store():
+    """Return TrendPredictionStore singleton, or None if bootstrap() not called yet."""
+    return _trend_prediction_store
+
+
+def get_trend_engine_listener():
+    """Return TrendEngineListener singleton, or None if bootstrap() not called yet."""
+    return _trend_engine_listener
