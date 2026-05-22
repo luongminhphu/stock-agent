@@ -138,7 +138,7 @@ from src.ai.schemas.thesis_debate import (
     ChallengeStrength,
     DebateChallenge,
     DebateOutput,
-    DebateStance,
+    OverallStance,
 )
 
 __all__ = [
@@ -227,7 +227,7 @@ __all__ = [
     "PostMortemVerdict",
     "PostMortemOutput",
     # Thesis Debate
-    "DebateStance",
+    "OverallStance",
     "ChallengeStrength",
     "DebateChallenge",
     "DebateOutput",
