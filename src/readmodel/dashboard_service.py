@@ -19,6 +19,7 @@ Endpoints served (via src/api/routes/readmodel.py):
     get_thesis_performances()           — delegates to BacktestingService
     get_price_snapshots()               — delegates to BacktestingService
     get_portfolio()                     — delegates to PortfolioQueryService
+    get_attention_needed()              — aggregated attention panel (Wave B)
 
 Design rules:
 - This class is a thin facade — no query logic lives here.
@@ -40,6 +41,7 @@ from src.platform.logging import get_logger
 from src.readmodel.backtesting_service import BacktestingService
 from src.readmodel.cache import DashboardTTLCache
 from src.readmodel.portfolio_query_service import PortfolioQueryService
+from src.readmodel.schemas import AttentionItem, AttentionPanelResponse, AttentionUrgency
 from src.readmodel.stats_service import StatsService
 from src.readmodel.thesis_query_service import ThesisQueryService
 
@@ -52,7 +54,7 @@ _cache = DashboardTTLCache()
 # ---------------------------------------------------------------------------
 # Cross-segment model imports — consolidated top-level.
 # Guarded so the readmodel segment stays importable even when a peer segment
-# hasn’t been migrated yet (e.g. in unit-test environments).
+# hasn't been migrated yet (e.g. in unit-test environments).
 # ---------------------------------------------------------------------------
 
 try:
@@ -71,15 +73,35 @@ except ImportError:  # pragma: no cover
     _BRIEFING_MODELS_AVAILABLE = False
     BriefFeedback = BriefFeedbackOutcome = BriefSnapshot = None  # type: ignore[assignment,misc]
 
+try:
+    from src.thesis.models import Catalyst, CatalystStatus, Thesis, ThesisReview, ThesisStatus
+
+    _THESIS_MODELS_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    _THESIS_MODELS_AVAILABLE = False
+    Catalyst = CatalystStatus = Thesis = ThesisReview = ThesisStatus = None  # type: ignore[assignment,misc]
+
 
 class QuoteBatchReader(Protocol):
-    """Minimal batch-quote interface required by DashboardService.
-
-    Any object with a compatible get_quotes() method satisfies this contract.
-    Keeps DashboardService loosely coupled from the market segment.
-    """
+    """Minimal batch-quote interface required by DashboardService."""
 
     async def get_quotes(self, tickers: list[str]): ...  # noqa: D102
+
+
+# ---------------------------------------------------------------------------
+# Attention panel constants
+# ---------------------------------------------------------------------------
+
+_OVERDUE_REVIEW_DAYS: int = 14          # thesis without review for > N days
+_UPCOMING_CATALYST_HOURS: int = 72      # catalyst deadline within N hours
+_STOP_LOSS_PROXIMITY_PCT: float = 3.0   # price within N% of stop_loss
+_ATTENTION_CACHE_TTL_SECS: int = 30     # cache TTL (panel is a hint, not a signal)
+
+_URGENCY_ORDER = {
+    AttentionUrgency.CRITICAL: 0,
+    AttentionUrgency.HIGH: 1,
+    AttentionUrgency.MEDIUM: 2,
+}
 
 
 class DashboardService:
@@ -99,7 +121,7 @@ class DashboardService:
         if cached is not None:
             return cached
         result = await self._stats.get_stats(user_id)
-        _cache.set("stats", user_id, result)  # TTL=60s via DEFAULTS
+        _cache.set("stats", user_id, result)
         return result
 
     # ------------------------------------------------------------------
@@ -128,12 +150,6 @@ class DashboardService:
         return await self._thesis_query.get_thesis_detail(user_id, thesis_id)
 
     async def get_upcoming_catalysts(self, user_id: str, days: int = 30) -> list[dict[str, Any]]:
-        """Upcoming PENDING catalysts — guarded so HTTP 500 never leaks.
-
-        ThesisQueryService.get_upcoming_catalysts() uses datetime range
-        comparison which is safe on both SQLite and PostgreSQL. Any
-        unexpected exception is logged and returns [] instead of 500.
-        """
         try:
             return await self._thesis_query.get_upcoming_catalysts(user_id, days=days)
         except Exception as exc:
@@ -152,11 +168,6 @@ class DashboardService:
         price_map: dict[str, float] | None = None,
         position_map: dict[str, tuple[float, float]] | None = None,
     ) -> dict[str, Any]:
-        """Thesis portfolio aggregate: counts + P&L totals + breakdowns.
-
-        Delegates to ThesisQueryService.get_thesis_portfolio_aggregate().
-        price_map / position_map optionally injected by the route layer.
-        """
         return await self._thesis_query.get_thesis_portfolio_aggregate(
             user_id=user_id,
             price_map=price_map,
@@ -169,11 +180,6 @@ class DashboardService:
         thesis_id: int,
         limit: int = 30,
     ) -> list[dict[str, Any]]:
-        """Conviction score series cho 1 thesis — dùng cho sparkline / trend chart.
-
-        Delegates to ThesisQueryService.get_conviction_timeline().
-        Trả về list rỗng nếu thesis không tồn tại hoặc không thuộc user.
-        """
         return await self._thesis_query.get_conviction_timeline(
             user_id=user_id,
             thesis_id=thesis_id,
@@ -227,8 +233,7 @@ class DashboardService:
             return None
 
     # ------------------------------------------------------------------
-    # 8. Latest brief snapshot — 2 queries parallelised via asyncio.gather
-    #    Result cached 30s.
+    # 8. Latest brief snapshot + feedback — cached 30s
     # ------------------------------------------------------------------
 
     async def get_brief_latest(self, user_id: str, phase: str = "morning") -> dict[str, Any] | None:
@@ -242,7 +247,6 @@ class DashboardService:
             return None
 
         try:
-            # Step 1: fetch snapshot (needed to derive brief_snapshot_id for feedback query)
             row = (
                 await self._session.execute(
                     select(BriefSnapshot)
@@ -258,9 +262,6 @@ class DashboardService:
             if not row:
                 return None
 
-            # Step 2: fetch feedback in parallel with content parsing
-            # asyncio.gather runs both coroutines concurrently on the same
-            # event loop — the DB driver multiplexes over the single connection.
             async def _fetch_feedback() -> str | None:
                 return (
                     await self._session.execute(
@@ -303,7 +304,6 @@ class DashboardService:
     async def get_brief_feedback_summary(
         self, user_id: str, days: int = 30
     ) -> dict[str, Any]:
-        """Return brief feedback summary for user."""
         if not _BRIEFING_MODELS_AVAILABLE:
             logger.warning(
                 "get_brief_feedback_summary.import_error",
@@ -361,25 +361,7 @@ class DashboardService:
         user_id: str,
         days: int = 3,
     ) -> list[str]:
-        """Return distinct tickers from briefs the user acted on in the last N days.
-
-        Used by BriefingService._build_feedback_context() to inject a
-        "recently acted" hint into the next brief — closing the feedback →
-        watchlist loop.
-
-        Query strategy:
-          1. Find all BriefFeedback rows with outcome="acted" in the window.
-          2. JOIN to BriefSnapshot to get the tickers CSV column.
-          3. Parse CSV in Python (tickers column is a short string, not worth
-             a DB-side string_split).
-          4. Deduplicate and return sorted list.
-
-        Returns [] on any error or when models are unavailable — caller
-        treats missing feedback context as a no-op, not an error.
-
-        Cache: 60s TTL, keyed by (user_id, days). Feedback changes at most
-        once per brief interaction, so 60s staleness is acceptable.
-        """
+        """Return distinct tickers from briefs the user acted on in the last N days."""
         if not _BRIEFING_MODELS_AVAILABLE:
             return []
 
@@ -391,9 +373,6 @@ class DashboardService:
         try:
             since = datetime.now(UTC) - timedelta(days=days)
 
-            # JOIN: BriefFeedback → BriefSnapshot to get the tickers CSV.
-            # Only fetch snapshots that belong to the user (double-check via
-            # both FK and user_id to prevent cross-user data leaks).
             rows = (
                 await self._session.execute(
                     select(BriefSnapshot.tickers)
@@ -411,7 +390,6 @@ class DashboardService:
                 )
             ).scalars().all()
 
-            # Parse CSV tickers column — e.g. "VHM,TCB,HPG"
             tickers: set[str] = set()
             for csv in rows:
                 if not csv:
@@ -448,7 +426,6 @@ class DashboardService:
         user_id: str,
         limit: int = 50,
     ) -> list[dict[str, Any]]:
-        """Tra list alerts da fire (status=TRIGGERED), sap xep theo triggered_at desc."""
         if not _WATCHLIST_MODELS_AVAILABLE:
             logger.warning("get_triggered_alerts.import_error", detail="Alert model not available")
             return []
@@ -498,19 +475,6 @@ class DashboardService:
         limit: int = 50,
         group_by_ticker: bool = True,
     ) -> list[dict[str, Any]]:
-        """Tra SignalEvent gan day cho user, grouped theo ticker.
-
-        Khi group_by_ticker=True (default):
-          - GROUP BY ticker thực hiện tại DB layer (không fetch 500 rows về Python).
-          - Mỗi ticker trả về 1 entry với fields:
-              ticker, signal_types[], max_strength, max_confidence,
-              count, first_seen, last_seen, source.
-          - signal_types được collect bằng subquery riêng (chỉ DISTINCT types per ticker).
-          - Kết quả cache 30s (key: user_id + ticker + days).
-
-        Khi group_by_ticker=False:
-          - Trả raw list (dùng cho detail view / per-ticker drill-down), không cache.
-        """
         if not _WATCHLIST_MODELS_AVAILABLE:
             logger.warning("get_recent_signals.import_error", detail="SignalEvent model not available")
             return []
@@ -519,7 +483,6 @@ class DashboardService:
             since = datetime.now(UTC) - timedelta(days=days)
 
             if not group_by_ticker:
-                # ---- Raw mode — not cached (used for per-ticker detail drill-down) ----
                 stmt = (
                     select(SignalEvent)
                     .where(
@@ -553,13 +516,11 @@ class DashboardService:
                     })
                 return result
 
-            # ---- Grouped mode: check cache first ----
             cache_extra = f"{ticker or ''}:{days}"
             cached = _cache.get("recent_signals", user_id, extra=cache_extra)
             if cached is not None:
                 return cached
 
-            # Step 1: aggregate stats per ticker at DB level
             agg_stmt = (
                 select(
                     SignalEvent.ticker,
@@ -589,7 +550,6 @@ class DashboardService:
             if not agg_rows:
                 return []
 
-            # Step 2: fetch distinct signal_types for the tickers we got
             tickers_in_result = [r.ticker for r in agg_rows]
             type_rows = (
                 await self._session.execute(
@@ -607,7 +567,6 @@ class DashboardService:
             for t, st in type_rows:
                 types_by_ticker.setdefault(t, set()).add(st)
 
-            # Step 3: assemble response — tz-safe datetime handling
             result = []
             for r in agg_rows:
                 first_seen = r.first_seen
@@ -664,7 +623,6 @@ class DashboardService:
         price_map: dict[str, float] | None = None,
         quote_service: QuoteBatchReader | None = None,
     ) -> dict[str, Any]:
-        """Return portfolio data for user, optionally enriched with live prices."""
         if price_map is None and quote_service is not None:
             theses = await self._thesis_query.get_theses_list(
                 user_id=user_id, status="active", limit=500
@@ -683,3 +641,267 @@ class DashboardService:
                     price_map = {}
 
         return await self._portfolio_query.get_portfolio(user_id, price_map=price_map)
+
+    # ------------------------------------------------------------------
+    # 15. Attention Panel — "Việc cần làm hôm nay" (Wave B)
+    # ------------------------------------------------------------------
+
+    async def get_attention_needed(
+        self,
+        user_id: str,
+        price_map: dict[str, float] | None = None,
+        limit: int = 20,
+    ) -> AttentionPanelResponse:
+        """Aggregate attention items từ 4 nguồn, sắp xếp critical → high → medium.
+
+        Sources:
+          1. triggered_alerts      — alerts đã fire, chưa dismiss
+          2. overdue_reviews       — thesis active, không có AI review > 14 ngày
+          3. upcoming_catalysts    — catalyst PENDING trong 72h tới
+          4. stop_loss_proximity   — giá hiện tại cách stop_loss <= 3%
+
+        price_map: injected từ route layer (QuoteService) — service không tự fetch.
+        Partial results returned nếu một source fail — không raise lên HTTP layer.
+        Cached 30s per (user_id, limit).
+        """
+        cache_extra = str(limit)
+        cached = _cache.get("attention", user_id, extra=cache_extra)
+        if cached is not None:
+            return cached  # type: ignore[return-value]
+
+        now = datetime.now(UTC)
+        items: list[AttentionItem] = []
+        seen: set[tuple[str, str, int | None]] = set()  # dedup key: (kind, ticker, thesis_id)
+
+        def _add(item: AttentionItem) -> None:
+            key = (item.kind, item.ticker, item.thesis_id)
+            if key not in seen:
+                seen.add(key)
+                items.append(item)
+
+        # ---- Source 1: Triggered alerts --------------------------------
+        if _WATCHLIST_MODELS_AVAILABLE:
+            try:
+                alert_rows = (
+                    await self._session.execute(
+                        select(Alert)
+                        .where(
+                            Alert.user_id == user_id,
+                            Alert.status == AlertStatus.TRIGGERED,
+                        )
+                        .order_by(Alert.triggered_at.desc())
+                        .limit(50)
+                    )
+                ).scalars().all()
+
+                for r in alert_rows:
+                    priority = getattr(r, "priority", "medium") or "medium"
+                    urgency = (
+                        AttentionUrgency.CRITICAL
+                        if priority == "critical"
+                        else AttentionUrgency.HIGH
+                        if priority == "high"
+                        else AttentionUrgency.MEDIUM
+                    )
+                    triggered_at = r.triggered_at or now
+                    if triggered_at.tzinfo is None:
+                        triggered_at = triggered_at.replace(tzinfo=UTC)
+                    label = getattr(r, "label", None) or str(getattr(r, "condition_type", "alert"))
+                    _add(AttentionItem(
+                        kind="triggered_alert",
+                        ticker=r.ticker,
+                        thesis_id=getattr(r, "thesis_id", None),
+                        message=f"Alert: {label} @ {r.ticker}",
+                        urgency=urgency,
+                        ts=triggered_at,
+                        metadata={
+                            "alert_id": r.id,
+                            "condition_type": str(getattr(r, "condition_type", "")),
+                            "triggered_price": getattr(r, "triggered_price", None),
+                            "threshold": getattr(r, "threshold", None),
+                        },
+                    ))
+            except Exception as exc:
+                logger.warning("attention.source1_alerts.error", error=str(exc), exc_info=True)
+
+        # ---- Source 2: Overdue reviews ---------------------------------
+        if _THESIS_MODELS_AVAILABLE:
+            try:
+                overdue_cutoff = now - timedelta(days=_OVERDUE_REVIEW_DAYS)
+
+                # Subquery: last reviewed_at per thesis
+                last_review_sq = (
+                    select(
+                        ThesisReview.thesis_id,
+                        func.max(ThesisReview.reviewed_at).label("last_reviewed_at"),
+                    )
+                    .group_by(ThesisReview.thesis_id)
+                    .subquery()
+                )
+
+                # Active theses where last review is older than cutoff OR has no review
+                stmt = (
+                    select(
+                        Thesis.id,
+                        Thesis.ticker,
+                        Thesis.title,
+                        Thesis.created_at,
+                        last_review_sq.c.last_reviewed_at,
+                    )
+                    .outerjoin(last_review_sq, last_review_sq.c.thesis_id == Thesis.id)
+                    .where(
+                        Thesis.user_id == user_id,
+                        Thesis.status == ThesisStatus.ACTIVE,
+                    )
+                    .where(
+                        (last_review_sq.c.last_reviewed_at == None)  # noqa: E711
+                        | (last_review_sq.c.last_reviewed_at < overdue_cutoff)
+                    )
+                    .order_by(
+                        last_review_sq.c.last_reviewed_at.asc().nulls_first()
+                    )
+                    .limit(20)
+                )
+
+                overdue_rows = (await self._session.execute(stmt)).all()
+
+                for row in overdue_rows:
+                    last_reviewed = row.last_reviewed_at
+                    if last_reviewed is not None and last_reviewed.tzinfo is None:
+                        last_reviewed = last_reviewed.replace(tzinfo=UTC)
+
+                    if last_reviewed is None:
+                        days_overdue = (now - row.created_at.replace(tzinfo=UTC)).days
+                        msg = f"{row.ticker}: chưa từng được review AI"
+                    else:
+                        days_overdue = (now - last_reviewed).days
+                        msg = f"{row.ticker}: review AI cách đây {days_overdue} ngày"
+
+                    _add(AttentionItem(
+                        kind="overdue_review",
+                        ticker=row.ticker,
+                        thesis_id=row.id,
+                        message=msg,
+                        urgency=AttentionUrgency.HIGH,
+                        ts=last_reviewed or row.created_at.replace(tzinfo=UTC),
+                        metadata={"days_overdue": days_overdue},
+                    ))
+            except Exception as exc:
+                logger.warning("attention.source2_overdue.error", error=str(exc), exc_info=True)
+
+        # ---- Source 3: Upcoming catalysts within 72h -------------------
+        if _THESIS_MODELS_AVAILABLE:
+            try:
+                cutoff_near = now + timedelta(hours=_UPCOMING_CATALYST_HOURS)
+
+                upcoming_rows = (
+                    await self._session.execute(
+                        select(
+                            Catalyst.id,
+                            Catalyst.thesis_id,
+                            Catalyst.description,
+                            Catalyst.expected_date,
+                            Thesis.ticker,
+                            Thesis.title,
+                        )
+                        .join(Thesis, Thesis.id == Catalyst.thesis_id)
+                        .where(
+                            Thesis.user_id == user_id,
+                            Thesis.status == ThesisStatus.ACTIVE,
+                            Catalyst.status == CatalystStatus.PENDING,
+                            Catalyst.expected_date >= now,
+                            Catalyst.expected_date <= cutoff_near,
+                        )
+                        .order_by(Catalyst.expected_date.asc())
+                        .limit(20)
+                    )
+                ).all()
+
+                for row in upcoming_rows:
+                    expected = row.expected_date
+                    if expected is not None and expected.tzinfo is None:
+                        expected = expected.replace(tzinfo=UTC)
+                    hours_left = round((expected - now).total_seconds() / 3600, 1) if expected else None
+                    desc = (row.description or "")[:80]
+                    msg = (
+                        f"{row.ticker}: catalyst '{desc}' trong {hours_left}h"
+                        if hours_left is not None
+                        else f"{row.ticker}: catalyst sắp đến hạn"
+                    )
+                    _add(AttentionItem(
+                        kind="upcoming_catalyst",
+                        ticker=row.ticker,
+                        thesis_id=row.thesis_id,
+                        message=msg,
+                        urgency=AttentionUrgency.HIGH,
+                        ts=expected or now,
+                        metadata={
+                            "catalyst_id": row.id,
+                            "hours_left": hours_left,
+                            "description": row.description,
+                        },
+                    ))
+            except Exception as exc:
+                logger.warning("attention.source3_catalysts.error", error=str(exc), exc_info=True)
+
+        # ---- Source 4: Stop-loss proximity (requires price_map) --------
+        if price_map and _THESIS_MODELS_AVAILABLE:
+            try:
+                sl_rows = (
+                    await self._session.execute(
+                        select(
+                            Thesis.id,
+                            Thesis.ticker,
+                            Thesis.title,
+                            Thesis.stop_loss,
+                            Thesis.created_at,
+                        )
+                        .where(
+                            Thesis.user_id == user_id,
+                            Thesis.status == ThesisStatus.ACTIVE,
+                            Thesis.stop_loss != None,  # noqa: E711
+                        )
+                    )
+                ).all()
+
+                for row in sl_rows:
+                    current = price_map.get(row.ticker)
+                    if current is None or row.stop_loss is None or row.stop_loss <= 0:
+                        continue
+                    distance_pct = abs(current - row.stop_loss) / row.stop_loss * 100
+                    if distance_pct <= _STOP_LOSS_PROXIMITY_PCT:
+                        created_at = row.created_at
+                        if created_at is not None and created_at.tzinfo is None:
+                            created_at = created_at.replace(tzinfo=UTC)
+                        _add(AttentionItem(
+                            kind="stop_loss_proximity",
+                            ticker=row.ticker,
+                            thesis_id=row.id,
+                            message=(
+                                f"{row.ticker}: giá hiện tại cách stop_loss "
+                                f"{distance_pct:.1f}% "
+                                f"(giá: {current:,.0f} | SL: {row.stop_loss:,.0f})"
+                            ),
+                            urgency=AttentionUrgency.CRITICAL,
+                            ts=now,
+                            metadata={
+                                "current_price": current,
+                                "stop_loss": row.stop_loss,
+                                "distance_pct": round(distance_pct, 2),
+                            },
+                        ))
+            except Exception as exc:
+                logger.warning("attention.source4_stoploss.error", error=str(exc), exc_info=True)
+
+        # ---- Sort: critical → high → medium, stable ts desc within tier ---
+        items.sort(key=lambda x: (_URGENCY_ORDER.get(x.urgency, 99), -(x.ts.timestamp())))
+        items = items[:limit]
+
+        response = AttentionPanelResponse(
+            user_id=user_id,
+            generated_at=now,
+            items=items,
+            total=len(items),
+        )
+        _cache.set("attention", user_id, response, extra=cache_extra)
+        return response

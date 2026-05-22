@@ -29,6 +29,7 @@ from src.api.deps import get_db
 from src.readmodel.dashboard_service import DashboardService
 from src.readmodel.leaderboard_service import LeaderboardService
 from src.readmodel.schemas import (
+    AttentionPanelResponse,
     ConvictionTimelineResponse,
     LeaderboardResponse,
     ReviewTimelineResponse,
@@ -74,17 +75,12 @@ async def _ensure_scan_snapshot(
         quote_service=get_quote_service(),
     )
     await scan_svc.scan_user_if_stale(user_id=user_id, max_age_minutes=30)
-    # ScanService._persist_snapshot() only calls session.add() — the scheduler
-    # commits its own transaction. On the HTTP on-demand path, we must commit
-    # here so the follow-up get_scan_latest() query can see the new row.
     await session.commit()
     return await svc.get_scan_latest(user_id)
 
 
 async def _build_price_map(tickers: list[str]) -> dict[str, float]:
-    """Fetch current prices cho danh sach tickers tu QuoteService.
-    Tra ve {} neu QuoteService unavailable hoac tickers rong.
-    """
+    """Fetch current prices cho danh sach tickers tu QuoteService."""
     if not tickers:
         return {}
     try:
@@ -98,9 +94,7 @@ async def _build_price_map(tickers: list[str]) -> dict[str, float]:
 async def _build_position_map(
     session: AsyncSession, user_id: str
 ) -> dict[str, tuple[float, float]]:
-    """Load open positions for user -> {ticker: (qty, avg_cost)}.
-    Returns {} on error or no positions.
-    """
+    """Load open positions for user -> {ticker: (qty, avg_cost)}."""
     try:
         from src.portfolio.models import Position
 
@@ -191,7 +185,6 @@ async def get_theses_list(
     position_map: dict[str, tuple[float, float]] = {}
 
     if enrich_prices:
-        # Lấy tickers trước (lightweight query không enrich)
         raw_items = await svc.get_theses_list(user_id, status=status, ticker=ticker, limit=limit)
         tickers = list({t["ticker"] for t in raw_items if t.get("ticker")})
         price_map, position_map = await _fetch_price_and_position(
@@ -232,9 +225,7 @@ async def get_theses_list_single_user(
 
 # ---------------------------------------------------------------------------
 # 3. Thesis portfolio aggregate
-# IMPORTANT: must be declared BEFORE /theses/{thesis_id} — FastAPI matches
-# routes in declaration order. "aggregate" would otherwise be cast to int
-# and return 422.
+# IMPORTANT: must be declared BEFORE /theses/{thesis_id}
 # ---------------------------------------------------------------------------
 
 
@@ -247,7 +238,6 @@ async def get_thesis_aggregate(
         Query(description="Fetch live price + position map để tính P&L aggregate"),
     ] = True,
 ) -> dict[str, Any]:
-    """Thesis portfolio aggregate — counts + P&L totals + breakdowns."""
     svc = DashboardService(session)
 
     price_map: dict[str, float] = {}
@@ -283,8 +273,7 @@ async def get_thesis_aggregate_single_user(
 
 
 # ---------------------------------------------------------------------------
-# 4. Thesis detail
-# Declared AFTER /theses/aggregate — see ordering note above.
+# 4. Thesis detail — AFTER /theses/aggregate
 # ---------------------------------------------------------------------------
 
 
@@ -401,7 +390,7 @@ async def get_brief_feedback_summary_single_user(
 
 
 # ---------------------------------------------------------------------------
-# 8. Triggered alerts — panel "Alerts cần xử lý"
+# 8. Triggered alerts
 # ---------------------------------------------------------------------------
 
 
@@ -411,10 +400,6 @@ async def get_triggered_alerts(
     session: Annotated[AsyncSession, Depends(get_db)],
     limit: Annotated[int, Query(ge=1, le=200, description="Số alert tối đa trả về")] = 50,
 ) -> dict[str, Any]:
-    """Alerts đã fire (status=TRIGGERED), chưa được dismiss/reactivate.
-
-    Response shape: {items: [...], total: N}
-    """
     svc = DashboardService(session)
     return _paginated(await svc.get_triggered_alerts(user_id, limit=limit))
 
@@ -429,7 +414,7 @@ async def get_triggered_alerts_single_user(
 
 
 # ---------------------------------------------------------------------------
-# 9. Recent signal events — context kỹ thuật per ticker
+# 9. Recent signal events
 # ---------------------------------------------------------------------------
 
 
@@ -444,22 +429,6 @@ async def get_recent_signals(
     days: Annotated[int, Query(ge=1, le=90, description="Window thời gian (ngày)")] = 7,
     limit: Annotated[int, Query(ge=1, le=200, description="Số signal tối đa trả về")] = 50,
 ) -> dict[str, Any]:
-    """Signal events gần đây (MA crossover, volume spike, RSI oversold, v.v.).
-
-    Response shape: {items: [...], total: N}
-
-    Mỗi item:
-        id           — int
-        event_id     — str  (unique dedup key)
-        ticker       — str
-        signal_type  — str  (VD: "ma_crossover", "volume_spike", "rsi_oversold")
-        strength     — float 0.0-1.0
-        confidence   — float 0.0-1.0
-        source       — str  ("technical" | "ai" | ...)
-        metadata     — dict | null
-        occurred_at  — ISO str
-        processed_at — ISO str | null
-    """
     svc = DashboardService(session)
     return _paginated(
         await svc.get_recent_signals(user_id, ticker=ticker, days=days, limit=limit)
@@ -565,7 +534,7 @@ async def get_price_snapshots_single_user(
 
 
 # ---------------------------------------------------------------------------
-# 13. Portfolio — Trades view (PnlService — positions thực tế từ DB)
+# 13. Portfolio — Trades view
 # ---------------------------------------------------------------------------
 
 
@@ -574,7 +543,6 @@ async def get_portfolio_trades(
     user_id: str,
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict[str, Any]:
-    """Tab Trades: lay positions thuc te tu bang positions + live price tu QuoteService."""
     svc = PnlService(session=session, quote_service=get_quote_service())
     pnl = await svc.get_portfolio_pnl(user_id)
     return {
@@ -610,7 +578,7 @@ async def get_portfolio_trades_single_user(
 
 
 # ---------------------------------------------------------------------------
-# 14. Portfolio — Thesis view (DashboardService — thesis-based positions)
+# 14. Portfolio — Thesis view
 # ---------------------------------------------------------------------------
 
 
@@ -623,7 +591,6 @@ async def get_portfolio(
         Query(description="Fetch gia hien tai tu QuoteService de tinh P&L realtime"),
     ] = True,
 ) -> dict[str, Any]:
-    """Thesis portfolio view — thesis active + aggregate P&L."""
     svc = DashboardService(session)
 
     price_map: dict[str, float] = {}
@@ -647,6 +614,68 @@ async def get_portfolio_single_user(
         user_id=_default_user_id(),
         session=session,
         enrich_prices=enrich_prices,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 15. Attention Panel — "Việc cần làm hôm nay" (Wave B)
+# IMPORTANT: declared BEFORE /dashboard/{user_id}/... routes to avoid
+# FastAPI casting "attention" as a path param in any future nested route.
+# ---------------------------------------------------------------------------
+
+
+@router.get("/dashboard/{user_id}/attention", response_model=AttentionPanelResponse)
+async def get_attention_needed(
+    user_id: str,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    enrich_prices: Annotated[
+        bool,
+        Query(
+            description=(
+                "Fetch live prices để kiểm tra stop_loss proximity. "
+                "Tắt nếu muốn bỏ source stop_loss_proximity."
+            )
+        ),
+    ] = True,
+    limit: Annotated[
+        int,
+        Query(ge=1, le=50, description="Số attention items tối đa trả về"),
+    ] = 20,
+) -> AttentionPanelResponse:
+    """Panel 'Việc cần làm hôm nay' — aggregated từ 4 nguồn ưu tiên.
+
+    Sources (theo thứ tự urgency):
+      1. triggered_alert     — alerts đã fire, chưa dismiss
+      2. stop_loss_proximity — giá trong vòng 3% của stop_loss (critical)
+      3. overdue_review      — thesis active chưa có AI review > 14 ngày
+      4. upcoming_catalyst   — catalyst PENDING trong 72h tới
+
+    Response: AttentionPanelResponse với items sorted critical → high → medium.
+    Cached 30s. Partial results nếu một source fail.
+    """
+    price_map: dict[str, float] = {}
+
+    if enrich_prices:
+        svc_pre = DashboardService(session)
+        active_theses = await svc_pre.get_theses_list(user_id, status="active", limit=500)
+        tickers = list({t["ticker"] for t in active_theses if t.get("ticker")})
+        price_map = await _build_price_map(tickers)
+
+    svc = DashboardService(session)
+    return await svc.get_attention_needed(user_id, price_map=price_map, limit=limit)
+
+
+@router.get("/dashboard/attention", response_model=AttentionPanelResponse)
+async def get_attention_needed_single_user(
+    session: Annotated[AsyncSession, Depends(get_db)],
+    enrich_prices: Annotated[bool, Query(description="Fetch live prices cho stop_loss proximity check")] = True,
+    limit: Annotated[int, Query(ge=1, le=50, description="Số attention items tối đa")] = 20,
+) -> AttentionPanelResponse:
+    return await get_attention_needed(
+        user_id=_default_user_id(),
+        session=session,
+        enrich_prices=enrich_prices,
+        limit=limit,
     )
 
 
@@ -695,8 +724,6 @@ async def get_thesis_timeline(
 
 # ---------------------------------------------------------------------------
 # Review Timeline — 5 AI reviews gần nhất của một thesis
-# IMPORTANT: declared BEFORE /conviction-timeline to keep route ordering
-# explicit and avoid any future path ambiguity.
 # ---------------------------------------------------------------------------
 
 
@@ -709,13 +736,7 @@ async def get_review_timeline(
         Query(ge=1, le=20, description="Số AI reviews gần nhất trả về (mới nhất trước)"),
     ] = 5,
 ) -> ReviewTimelineResponse:
-    """Focused review timeline — N AI reviews gần nhất của một thesis.
-
-    Trả về list ReviewTimelineItem (verdict, confidence, reasoning, risk_signals,
-    next_watch_items, reviewed_price) sắp xếp mới nhất trước.
-
-    Dùng để hiển thị lịch sử review ngắn gọn trên thesis drawer / bot command.
-    """
+    """Focused review timeline — N AI reviews gần nhất của một thesis."""
     svc = ThesisTimelineService(session)
     result = await svc.get_review_timeline(thesis_id, limit=limit)
     if result is None:
@@ -744,16 +765,7 @@ async def get_conviction_timeline(
         ),
     ] = True,
 ) -> ConvictionTimelineResponse:
-    """Conviction score timeline cho một thesis.
-
-    Mỗi điểm ứng với một ThesisSnapshot. Verdict + confidence lấy từ
-    ThesisReview gần nhất (với lookahead 4h để xử lý race condition).
-
-    Option C — live price fallback:
-      Nếu điểm cuối chưa có price (AI review chạy trước snapshot job hôm nay)
-      và enrich_price=true, API sẽ fetch giá hiện tại qua QuoteService và inject
-      vào điểm cuối cùng. Chỉ điểm cuối bị ảnh hưởng — không propagate ngược.
-    """
+    """Conviction score timeline cho một thesis."""
     current_price: float | None = None
 
     if enrich_price:

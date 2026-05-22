@@ -42,11 +42,6 @@ class ThesisSummaryRow(BaseModel):
     score: float | None
 
     # Score context — populated by dashboard_service, sourced from thesis.scoring_service
-    # score_tier:      e.g. "Critical" / "Weak" / "Moderate" / "Healthy" / "Strong"
-    # score_tier_icon: matching emoji e.g. "🔴" / "🟠" / "🟡" / "🟢" / "📎"
-    # score_breakdown: per-dimension contributions, keys match ScoringService.compute_with_breakdown()
-    #                  Only populated when full ORM graph is loaded (e.g. thesis detail).
-    #                  None in list views where we avoid loading assumptions/catalysts.
     score_tier: str | None = None
     score_tier_icon: str | None = None
     score_breakdown: dict[str, float] | None = None
@@ -65,11 +60,11 @@ class ThesisSummaryRow(BaseModel):
     invalid_assumption_count: int
     catalyst_count: int
     triggered_catalyst_count: int
-    change: float | None = None  # thay đổi tuyệt đối so với hôm qua (VND)
-    change_pct: float | None = None  # thay đổi % so với ref_price
-    volume: int | None = None  # khối lượng khớp
-    is_ceiling: bool | None = None  # đang trần?
-    is_floor: bool | None = None  # đang sàn?
+    change: float | None = None
+    change_pct: float | None = None
+    volume: int | None = None
+    is_ceiling: bool | None = None
+    is_floor: bool | None = None
 
 
 class DashboardResponse(BaseModel):
@@ -108,7 +103,7 @@ class LeaderboardEntry(BaseModel):
 
 class LeaderboardResponse(BaseModel):
     user_id: str
-    sort_by: Literal["score", "pnl"]  # which metric drives ranking
+    sort_by: Literal["score", "pnl"]
     entries: list[LeaderboardEntry]
 
 
@@ -132,15 +127,15 @@ class TimelineEvent(BaseModel):
 
     kind: str
     ts: datetime
-    summary: str  # human-readable one-liner, built by query
-    detail: dict | None  # arbitrary extra payload (e.g. verdict, score)
+    summary: str
+    detail: dict | None
 
 
 class ThesisTimelineResponse(BaseModel):
     thesis_id: int
     ticker: str
     title: str
-    events: list[TimelineEvent]  # ordered oldest → newest
+    events: list[TimelineEvent]
 
 
 # ---------------------------------------------------------------------------
@@ -169,8 +164,8 @@ class ReviewTimelineItem(BaseModel):
     review_id: int
     reviewed_at: datetime
     verdict: str
-    confidence: float          # 0.0 – 1.0
-    confidence_pct: int        # round(confidence * 100)
+    confidence: float
+    confidence_pct: int
     reasoning: str | None = None
     risk_signals: list[str] = []
     next_watch_items: list[str] = []
@@ -181,7 +176,7 @@ class ReviewTimelineResponse(BaseModel):
     thesis_id: int
     ticker: str
     title: str
-    items: list[ReviewTimelineItem]   # newest first
+    items: list[ReviewTimelineItem]
     total: int
 
 
@@ -200,45 +195,24 @@ class ConvictionBreakdown(BaseModel):
 
 
 class ConvictionPoint(BaseModel):
-    """One data-point on the Conviction Score Timeline.
+    """One data-point on the Conviction Score Timeline."""
 
-    Sourced from ThesisSnapshot + nearest ThesisReview before that snapshot.
-    breakdown may be None for legacy snapshots created before score_breakdown column.
-    price may be None for review-triggered snapshots (price_at_snapshot not set).
-
-    kind:
-      'snapshot'  — regular scheduler snapshot (no AI review at this exact moment)
-      'reviewed'  — snapshot co-occurs with or follows immediately after an AI review
-
-    reasoning_summary: first 200 chars of nearest prior review.reasoning. None if no review yet.
-    risk_signals: list parsed from nearest prior review.risk_signals JSON. [] if none.
-
-    price_filled:
-      True when price was not available in price_at_snapshot and was filled by one of:
-        - Option B: forward-fill from the last known price in the series.
-        - Option C: live current_price injected by the API/bot caller for the last point.
-      Consumers (FE, bot) can use this flag to render filled points differently
-      (e.g. dashed line, lighter dot, tooltip disclaimer).
-    """
-
-    model_config = ConfigDict(frozen=False)  # explicit: allow post-init mutation for price forward-fill
+    model_config = ConfigDict(frozen=False)
 
     snapshot_id: int
     snapshotted_at: datetime
-    score: float                         # total 0–100
-    score_tier: str                      # "Critical" | "Weak" | "Moderate" | "Healthy" | "Strong"
-    score_tier_icon: str                 # "🔴" | "🟠" | "🟡" | "🟢" | "📎"
+    score: float
+    score_tier: str
+    score_tier_icon: str
     breakdown: ConvictionBreakdown | None = None
-    verdict: str | None = None           # ReviewVerdict from nearest prior AI review
-    confidence: float | None = None      # AI confidence at nearest prior review
-    price: float | None = None           # price_at_snapshot; None for review-triggered snapshots
-    pnl_pct: float | None = None         # vs thesis entry_price
-    price_filled: bool = False           # True if price was forward-filled or live-injected
-
-    # Enriched fields
-    kind: str = "snapshot"               # "snapshot" | "reviewed"
-    reasoning_summary: str | None = None # truncated reasoning from nearest prior review
-    risk_signals: list[str] = []         # parsed from nearest prior review.risk_signals
+    verdict: str | None = None
+    confidence: float | None = None
+    price: float | None = None
+    pnl_pct: float | None = None
+    price_filled: bool = False
+    kind: str = "snapshot"
+    reasoning_summary: str | None = None
+    risk_signals: list[str] = []
 
 
 class ConvictionTrend(StrEnum):
@@ -249,24 +223,15 @@ class ConvictionTrend(StrEnum):
 
 
 class ConvictionTimelineResponse(BaseModel):
-    """Conviction Score Timeline for a single thesis.
-
-    points: oldest → newest (ascending snapshotted_at).
-    trend: computed by comparing avg of first-3 vs last-3 data points.
-           Δ > +5  → improving | Δ < -5  → declining | else → stable.
-           < 2 data-points → insufficient_data.
-    entry_price: from Thesis.entry_price, used by price chart to draw entry dashed line.
-    """
-
     thesis_id: int
     ticker: str
     title: str
-    points: list[ConvictionPoint]         # oldest first
-    trend: str                            # ConvictionTrend value
-    latest_score: float | None            # score of newest point, None if no snapshots
-    earliest_score: float | None          # score of oldest point, None if < 2 snapshots
-    total: int                            # number of data-points returned
-    entry_price: float | None = None      # from Thesis.entry_price (for price chart annotation)
+    points: list[ConvictionPoint]
+    trend: str
+    latest_score: float | None
+    earliest_score: float | None
+    total: int
+    entry_price: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -275,68 +240,86 @@ class ConvictionTimelineResponse(BaseModel):
 
 
 class PortfolioPositionRow(BaseModel):
-    """Một position trong portfolio — tương ứng với một thesis active.
-
-    quantity=None: chỉ track thesis (P&L % có, P&L VND không có).
-    quantity set:  full position view với cost_basis, market_value, pnl_abs.
-    """
-
     thesis_id: int
     ticker: str
     title: str
     status: str
-
-    # Position size
-    quantity: float | None                # số CP nắm giữ
-    entry_price: float | None             # giá vốn (VND)
-    current_price: float | None           # giá hiện tại từ quote service
-
-    # P&L
-    pnl_pct: float | None                 # % so với entry_price
-    pnl_abs: float | None                 # VND = (current - entry) * quantity
-    cost_basis: float | None              # entry_price * quantity
-    market_value: float | None            # current_price * quantity
-
-    # Weight trong tổng portfolio (theo market_value, None nếu thiếu dữ liệu)
+    quantity: float | None
+    entry_price: float | None
+    current_price: float | None
+    pnl_pct: float | None
+    pnl_abs: float | None
+    cost_basis: float | None
+    market_value: float | None
     weight_pct: float | None
-
-    # AI context
     last_verdict: str | None
     score: float | None
     score_tier: str | None
     score_tier_icon: str | None
-
-    # Price movement hôm nay
-    change_pct: float | None = None       # % thay đổi so với hôm qua
+    change_pct: float | None = None
 
 
 class PortfolioSummary(BaseModel):
-    """Tổng hợp portfolio của user.
+    user_id: str
+    generated_at: datetime
+    total_cost_basis: float | None
+    total_market_value: float | None
+    total_pnl_abs: float | None
+    total_pnl_pct: float | None
+    position_count: int
+    winning_count: int
+    losing_count: int
+    neutral_count: int
+    has_quantity_data: bool
+    positions: list[PortfolioPositionRow]
 
-    Bao gồm aggregate P&L + danh sách positions active.
-    Positions được sắp xếp theo pnl_abs desc (người đang lãi nhất đứng đầu).
 
-    has_quantity_data: True nếu ít nhất 1 position có quantity — cho biết
-    UI có nên hiển thị cột VND hay chỉ hiển thị cột %.
+# ---------------------------------------------------------------------------
+# Attention Panel — "Việc cần làm hôm nay"
+# ---------------------------------------------------------------------------
+
+
+class AttentionUrgency(StrEnum):
+    CRITICAL = "critical"   # cần hành động ngay (stop_loss gần, alert critical)
+    HIGH = "high"           # quan trọng, nên xử lý hôm nay (overdue review, catalyst sắp)
+    MEDIUM = "medium"       # theo dõi thêm (alert thường, catalyst xa hơn)
+
+
+class AttentionItem(BaseModel):
+    """Một mục cần chú ý trong ngày — aggregated từ nhiều nguồn.
+
+    kind:
+      'triggered_alert'    — alert đã fire, chưa dismiss
+      'overdue_review'     — thesis active, không có AI review trong >14 ngày
+      'upcoming_catalyst'  — catalyst PENDING trong vòng 72h
+      'stop_loss_proximity'— giá hiện tại cách stop_loss trong vòng 3%
+
+    urgency:
+      'critical' — hành động ngay
+      'high'     — xử lý trong ngày
+      'medium'   — theo dõi
+
+    metadata: tuỳ theo kind — ví dụ {'days_overdue': 21} hoặc {'distance_pct': 1.8}
+    """
+
+    kind: str
+    ticker: str
+    thesis_id: int | None = None
+    message: str
+    urgency: str                        # AttentionUrgency value
+    ts: datetime                        # thời điểm phát sinh (alert.triggered_at, catalyst.deadline, ...)
+    metadata: dict | None = None
+
+
+class AttentionPanelResponse(BaseModel):
+    """Response cho panel 'Việc cần làm hôm nay'.
+
+    items: sorted critical → high → medium, stable sort by ts desc trong mỗi level.
+    total: số items trả về (đã áp dụng limit).
+    generated_at: server time khi query chạy.
     """
 
     user_id: str
     generated_at: datetime
-
-    # Aggregate (chỉ có giá trị khi có ít nhất 1 position có đủ dữ liệu)
-    total_cost_basis: float | None        # tổng vốn đầu tư (VND)
-    total_market_value: float | None      # tổng giá trị thị trượng (VND)
-    total_pnl_abs: float | None           # lãi/lỗ tổng (VND)
-    total_pnl_pct: float | None           # lãi/lỗ % bình quân gia quyền
-
-    # Counts
-    position_count: int                   # tổng số positions
-    winning_count: int                    # pnl_pct > 0
-    losing_count: int                     # pnl_pct < 0
-    neutral_count: int                    # pnl_pct == 0 hoặc None
-
-    # Flag cho UI
-    has_quantity_data: bool               # True nếu ít nhất 1 position có quantity
-
-    # Positions sorted by pnl_abs desc (None pnl_abs đẩy xuống cuối)
-    positions: list[PortfolioPositionRow]
+    items: list[AttentionItem]
+    total: int
