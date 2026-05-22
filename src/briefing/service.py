@@ -40,6 +40,15 @@ Feedback calibration (Wave 3):
   instructs the AI to adjust action count/specificity but never overrides
   risk_appetite from investor_profile.
 
+Feedback loop — acted tickers (Wave 2 connector):
+  _build_feedback_context() now also calls DashboardService.get_acted_tickers_recent()
+  (window: 3 days, cached 60s in readmodel). When tickers are found, a compact
+  "Recently acted: VHM, TCB" line is appended to the feedback block so BriefingAgent
+  knows which tickers the investor already committed to — preventing redundant ACT_TODAY
+  signals on the same positions and surfacing other watchlist tickers instead.
+  Requires minimum 1 acted ticker to inject; falls back silently to empty string
+  when get_acted_tickers_recent returns [] or raises.
+
 Thesis Judge integration (Wave 2):
   When thesis_judge_agent is injected, _build_thesis_judge_block() runs
   ThesisJudgeAgent.run_batch() against all active theses before BriefingAgent
@@ -429,8 +438,9 @@ class BriefingService:
 
         Feedback (Wave 3):
           _build_feedback_context() is independent of the dedup rule — it reads
-          acted_rate from readmodel and is always attempted when session is set.
-          Returns "" when sample < 10 or any error occurs.
+          acted_rate + acted_tickers from readmodel and is always attempted when
+          session is set. Returns "" when sample < 10 and no acted tickers found,
+          or any error occurs.
 
         Thesis Judge (Wave 2):
           When thesis_judge_agent is injected, market_context is built via
@@ -1376,14 +1386,32 @@ class BriefingService:
             return ""
 
     async def _build_feedback_context(self, user_id: str) -> str:
-        """Build brief feedback summary context string.
+        """Build brief feedback calibration block.
 
-        Reads acted_rate from readmodel (lazy import) to avoid circular imports.
+        Combines two signals from readmodel (lazy import to avoid circular imports):
+
+        1. acted_rate (Wave 3 feature):
+           Reads aggregate acted_rate_30d from DashboardService.get_brief_feedback_summary().
+           Requires minimum 10 feedback samples to inject — below that threshold
+           the calibration hint is omitted. Never overrides risk_appetite from
+           investor_profile.
+
+        2. acted_tickers (Wave 2 connector):
+           Reads DashboardService.get_acted_tickers_recent(days=3) — tickers from
+           briefs the user acted on in the last 3 days (cached 60s in readmodel).
+           When found, appends a compact "Recently acted: VHM, TCB" line so
+           BriefingAgent knows which positions already have committed actions —
+           preventing redundant ACT_TODAY signals and surfacing other tickers.
+           Requires minimum 1 acted ticker to inject.
+
+        Either signal is independently useful — the block is non-empty when at
+        least one of them produces output.
+
         Returns "" when:
           - session is None (scheduler, tests without DB)
-          - fewer than 10 feedback samples exist (insufficient signal)
+          - both signals produce no output (sample < 10 AND no acted tickers)
           - any error occurs
-        Non-blocking. Wave 3 feature.
+        Non-blocking.
         """
         if self._session is None:
             return ""
@@ -1391,18 +1419,37 @@ class BriefingService:
             from src.readmodel.dashboard_service import DashboardService  # noqa: PLC0415
 
             dashboard = DashboardService(self._session)
-            summary = await dashboard.get_feedback_summary(user_id=user_id)
-            if summary is None:
-                return ""
-            acted_rate = getattr(summary, "acted_rate", None)
-            sample_count = getattr(summary, "sample_count", 0) or 0
-            if sample_count < 10 or acted_rate is None:
-                return ""
-            return (
-                f"Feedback calibration: acted_rate={acted_rate:.0%} "
-                f"(n={sample_count}). "
-                "Adjust action specificity to match this investor's follow-through rate."
+
+            # Signal 1: acted_rate from feedback summary.
+            summary = await dashboard.get_brief_feedback_summary(user_id=user_id)
+            acted_rate = summary.get("acted_rate_30d") if summary else None
+            total_feedbacks = summary.get("total_feedbacks_30d", 0) if summary else 0
+
+            # Signal 2: recently acted tickers (Wave 2 connector).
+            acted_tickers = await dashboard.get_acted_tickers_recent(
+                user_id=user_id, days=3
             )
+
+            parts: list[str] = []
+
+            if total_feedbacks >= 10 and acted_rate is not None:
+                parts.append(
+                    f"Feedback calibration: acted_rate={acted_rate:.0%} "
+                    f"(n={total_feedbacks}). "
+                    "Adjust action specificity to match this investor's follow-through rate."
+                )
+
+            if acted_tickers:
+                parts.append(
+                    f"Recently acted (last 3d): {', '.join(acted_tickers)}. "
+                    "Avoid redundant ACT_TODAY for these — focus on other watchlist tickers."
+                )
+
+            if not parts:
+                return ""
+
+            return "\n".join(parts)
+
         except Exception as exc:
             logger.debug(
                 "briefing.feedback_context_failed",
