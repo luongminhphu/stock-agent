@@ -18,6 +18,9 @@ Registered tasks:
     SignalEngineScheduler.morning_task         — weekdays 08:40 ICT (before morning brief)
     SignalEngineScheduler.eod_task             — weekdays 15:10 ICT (after market close)
     AgendaBuilderScheduler.agenda_task         — weekdays 07:30 ICT (before all morning tasks)
+    ProactiveWatchScheduler.morning_task       — weekdays 09:15 ICT (after market open)
+    ProactiveWatchScheduler.midday_task        — weekdays 11:15 ICT (mid-session)
+    ProactiveWatchScheduler.pre_atc_task       — weekdays 14:15 ICT (before ATC)
 
 Note:
     MORNING_CHANNEL_ID and EOD_CHANNEL_ID must be set in settings.
@@ -25,11 +28,13 @@ Note:
 
 Channel routing:
     Briefing, ThesisMaintenance, InvestorProfile, DecisionReplay → morning_channel_id
-    Proactive alerts (WatchlistScan, ThesisDrift, Reminder)      → alert_channel_id
+    Proactive alerts (WatchlistScan, ThesisDrift, Reminder, ProactiveWatch)
+                                                                 → alert_channel_id
         alert_channel_id = DISCORD_ALERT_CHANNEL_ID if set, else morning_channel_id
     SignalEngineScheduler emits events only — no channel routing, no Discord message.
     AgendaBuilderScheduler persists only — no Discord message.
     OutcomeFillerScheduler persists only — no Discord message (silent data enrichment job).
+    ProactiveWatchScheduler emits events only — Discord delivery via ProactiveWatchSubscriber.
 
 Wave 8:
     BriefingScheduler no longer calls BriefingService directly.
@@ -40,6 +45,12 @@ Wave 2 (Signal Engine):
     SignalEngineScheduler emits SignalEngineRequestedEvent → ai.SignalEngineListener
     runs watchlist × thesis × portfolio cross-check → emits SignalEngineCompletedEvent
     → briefing.BriefingListener injects summary into brief context.
+
+Wave D (ProactiveWatch):
+    ProactiveWatchScheduler emits ProactiveWatchRequestedEvent (3×/day)
+    → watchlist.ProactiveWatchListener runs ScanService + AlertService
+    → ProactiveWatchAlertFiredEvent × N
+    → bot.ProactiveWatchSubscriber batches and sends Discord embed.
 """
 
 from __future__ import annotations
@@ -307,7 +318,7 @@ class WatchlistScanScheduler:
             )
             return
 
-        # ── Step 0: Reactivate cooled-down alerts (isolated commit) ────────────────────────────────────────────────
+        # ── Step 0: Reactivate cooled-down alerts (isolated commit) ──────────────────────────────────────────────────────────────────────────
         try:
             from src.watchlist.alert_service import AlertService
 
@@ -327,7 +338,7 @@ class WatchlistScanScheduler:
         except Exception as exc:
             logger.warning("scheduler.scan.reactivate_failed", error=str(exc))
 
-        # ── Step 1: Scan ─────────────────────────────────────────────────────────────────────────────────────
+        # ── Step 1: Scan ────────────────────────────────────────────────────────────────────────────────────────────────
         try:
             from src.thesis.ticker_direction_query import TickerDirectionQuery
             from src.watchlist.scan_service import ScanService
@@ -1159,3 +1170,132 @@ class AgendaBuilderScheduler:
     @_agenda_task.before_loop
     async def _before_agenda(self) -> None:
         await self._client.wait_until_ready()
+
+
+# ---------------------------------------------------------------------------
+# ProactiveWatchScheduler
+# ---------------------------------------------------------------------------
+
+# ICT = UTC+7  →  subtract 7h for UTC
+_PROACTIVE_MORNING_TIME = datetime.time(hour=2,  minute=15, tzinfo=datetime.UTC)  # 09:15 ICT
+_PROACTIVE_MIDDAY_TIME  = datetime.time(hour=4,  minute=15, tzinfo=datetime.UTC)  # 11:15 ICT
+_PROACTIVE_PRE_ATC_TIME = datetime.time(hour=7,  minute=15, tzinfo=datetime.UTC)  # 14:15 ICT
+
+
+class ProactiveWatchScheduler:
+    """Emit ProactiveWatchRequestedEvent 3× per trading day.
+
+    Owner: bot segment — thin timing adapter only. No scan logic here.
+
+    Phases:
+        morning  — 09:15 ICT  after market open settles
+        midday   — 11:15 ICT  mid-session check
+        pre_atc  — 14:15 ICT  15 min before ATC
+
+    Event chain:
+        ProactiveWatchRequestedEvent  [bot → watchlist]
+          → watchlist.ProactiveWatchListener
+            → ScanService.scan_user()
+            → AlertService.process_triggered()
+            → ProactiveWatchAlertFiredEvent × N  [watchlist → bot]
+              → ProactiveWatchSubscriber → Discord
+
+    Graceful skip:
+        - Weekends (weekday >= 5).
+        - scheduler_user_id not configured → warning log, no event emitted.
+        - All exceptions caught and recorded; never blocks other schedulers.
+    """
+
+    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
+        self._client = client
+        self._monitor = monitor or get_monitor()
+
+    def start(self) -> None:
+        self._monitor.register_task("proactive_watch.morning")
+        self._monitor.register_task("proactive_watch.midday")
+        self._monitor.register_task("proactive_watch.pre_atc")
+        self._morning_task.start()
+        self._midday_task.start()
+        self._pre_atc_task.start()
+        logger.info(
+            "scheduler.proactive_watch.started",
+            phases=["09:15", "11:15", "14:15"],
+        )
+
+    def stop(self) -> None:
+        self._morning_task.cancel()
+        self._midday_task.cancel()
+        self._pre_atc_task.cancel()
+        logger.info("scheduler.proactive_watch.stopped")
+
+    # ── morning: 09:15 ICT ──────────────────────────────────────────────────────────────
+
+    @tasks.loop(time=_PROACTIVE_MORNING_TIME)
+    async def _morning_task(self) -> None:
+        if datetime.datetime.now(tz=datetime.UTC).weekday() >= 5:
+            return
+        await self._emit(phase="morning", task_name="proactive_watch.morning")
+
+    @_morning_task.before_loop
+    async def _before_morning(self) -> None:
+        await self._client.wait_until_ready()
+
+    # ── midday: 11:15 ICT ──────────────────────────────────────────────────────────────
+
+    @tasks.loop(time=_PROACTIVE_MIDDAY_TIME)
+    async def _midday_task(self) -> None:
+        if datetime.datetime.now(tz=datetime.UTC).weekday() >= 5:
+            return
+        await self._emit(phase="midday", task_name="proactive_watch.midday")
+
+    @_midday_task.before_loop
+    async def _before_midday(self) -> None:
+        await self._client.wait_until_ready()
+
+    # ── pre_atc: 14:15 ICT ────────────────────────────────────────────────────────────
+
+    @tasks.loop(time=_PROACTIVE_PRE_ATC_TIME)
+    async def _pre_atc_task(self) -> None:
+        if datetime.datetime.now(tz=datetime.UTC).weekday() >= 5:
+            return
+        await self._emit(phase="pre_atc", task_name="proactive_watch.pre_atc")
+
+    @_pre_atc_task.before_loop
+    async def _before_pre_atc(self) -> None:
+        await self._client.wait_until_ready()
+
+    # ── shared emit ───────────────────────────────────────────────────────────────────
+
+    async def _emit(self, phase: str, task_name: str) -> None:
+        """Emit ProactiveWatchRequestedEvent — bot’s only responsibility here."""
+        from src.platform.event_bus import get_event_bus
+        from src.platform.events import ProactiveWatchRequestedEvent
+
+        user_id = getattr(settings, "scheduler_user_id", None)
+        if not user_id:
+            logger.warning(
+                "scheduler.proactive_watch.skipped",
+                phase=phase,
+                reason="scheduler_user_id not configured",
+            )
+            return
+
+        try:
+            bus = get_event_bus()
+            await bus.publish(
+                ProactiveWatchRequestedEvent(
+                    user_id=str(user_id),
+                    phase=phase,
+                    triggered_by="scheduler",
+                )
+            )
+            logger.info("scheduler.proactive_watch.event_emitted", phase=phase)
+            await self._monitor.record_success(task_name)
+
+        except Exception as exc:
+            logger.error(
+                "scheduler.proactive_watch.emit_error",
+                phase=phase,
+                error=str(exc),
+            )
+            await self._monitor.record_failure(task_name, exc)
