@@ -31,6 +31,7 @@ export async function loadMemory() {
       _renderEmpty();
     } else {
       _renderKpis(data);
+      _renderContextSummary(data);  // #1 FIX: render AI-generated behaviour summary
       _renderEpisodic(data);
       _renderPatterns(data);
       _renderBias(data);
@@ -58,10 +59,10 @@ function _clearSkeletons() {
 // ---------------------------------------------------------------------------
 
 function _renderKpis(data) {
-  _setKpi('memKpiEpisodes',   '.mem-kpi-value', data.episode_count ?? '—');
-  _setKpi('memKpiPatterns',   '.mem-kpi-value', (data.patterns ?? []).length || '—');
+  _setKpi('memKpiEpisodes',   '.mem-kpi-value', data.episode_count ?? '\u2014');
+  _setKpi('memKpiPatterns',   '.mem-kpi-value', (data.patterns ?? []).length || '\u2014');
   const confPct = data.confidence != null
-    ? `${Math.round(data.confidence * 100)}%` : '—';
+    ? `${Math.round(data.confidence * 100)}%` : '\u2014';
   _setKpi('memKpiConfidence', '.mem-kpi-value', confPct);
   _setKpi('memKpiBias',       '.mem-kpi-value', (data.bias_warnings ?? []).length || '0');
 }
@@ -69,6 +70,35 @@ function _renderKpis(data) {
 function _setKpi(cardId, selector, value) {
   const el = document.getElementById(cardId)?.querySelector(selector);
   if (el) el.textContent = value;
+}
+
+// ---------------------------------------------------------------------------
+// Private: #1 FIX — context summary (AI-generated behaviour narrative)
+// Renders into #memContextSummary if the element exists in the HTML.
+// Hides the block when context_summary is absent so layout stays clean.
+// ---------------------------------------------------------------------------
+
+function _renderContextSummary(data) {
+  const wrap = document.getElementById('memContextSummary');
+  if (!wrap) return;  // element optional — skip silently if HTML not updated yet
+
+  const text = data.context_summary;
+  if (!text) {
+    wrap.classList.add('hidden');
+    return;
+  }
+
+  wrap.classList.remove('hidden');
+  const textEl = wrap.querySelector('.mem-context-text');
+  if (textEl) {
+    textEl.textContent = text;  // textContent — XSS-safe, no need for esc()
+  } else {
+    // Fallback: replace inner HTML if expected structure not found
+    wrap.innerHTML = `
+      <div class="mem-section-title">\ud83d\udca1 T\u00f3m t\u1eaft h\u00e0nh vi</div>
+      <p class="mem-context-text">${esc(text)}</p>
+    `;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -93,11 +123,11 @@ function _renderEpisodic(data) {
     <div class="mem-episode-item">
       <span class="mem-episode-icon">${_actionIcon(ep.action)}</span>
       <div>
-        <div class="mem-episode-desc">${esc(ep.description ?? ep.ticker ?? '—')}</div>
+        <div class="mem-episode-desc">${esc(ep.description ?? ep.ticker ?? '\u2014')}</div>
         <div class="mem-episode-meta">${esc(ep.date ?? ep.created_at ?? '')}</div>
       </div>
       <div class="mem-episode-outcome ${_outcomeClass(ep.outcome)}">
-        ${ep.outcome != null ? ep.outcome : '…'}
+        ${ep.outcome != null ? ep.outcome : '\u2026'}
       </div>
     </div>
   `).join('');
@@ -184,8 +214,10 @@ function _renderEmpty() {
     document.getElementById(id)?.classList.remove('hidden'));
   _setKpi('memKpiEpisodes',   '.mem-kpi-value', '0');
   _setKpi('memKpiPatterns',   '.mem-kpi-value', '0');
-  _setKpi('memKpiConfidence', '.mem-kpi-value', '—');
+  _setKpi('memKpiConfidence', '.mem-kpi-value', '\u2014');
   _setKpi('memKpiBias',       '.mem-kpi-value', '0');
+  // Also hide context summary block on empty state
+  document.getElementById('memContextSummary')?.classList.add('hidden');
 }
 
 function _renderError(message) {
@@ -196,7 +228,7 @@ function _renderError(message) {
   const errEl = document.createElement('div');
   errEl.className = 'mem-empty mem-load-error';
   errEl.style.cssText = 'color:var(--red,#f87171);';
-  errEl.innerHTML = `<div class="mem-empty-icon">⚠️</div><div>${esc(message)}</div>`;
+  errEl.innerHTML = `<div class="mem-empty-icon">\u26a0\ufe0f</div><div>${esc(message)}</div>`;
   target.appendChild(errEl);
 }
 
@@ -205,7 +237,7 @@ function _renderError(message) {
 // ---------------------------------------------------------------------------
 
 function _actionIcon(action) {
-  return { BUY: '🟢', SELL: '🔴', HOLD: '🟡', SKIP: '⚫' }[action] ?? '⚪';
+  return { BUY: '\ud83d\udfe2', SELL: '\ud83d\udd34', HOLD: '\ud83d\udfe1', SKIP: '\u26ab' }[action] ?? '\u26aa';
 }
 
 function _outcomeClass(outcome) {
