@@ -134,7 +134,12 @@ from src.ai.schemas.next_action import (
 from src.ai.schemas.post_mortem import PostMortemOutput, PostMortemVerdict
 
 # --- Thesis Debate ---
-from src.ai.schemas.thesis_debate import ThesisDebateOutput
+from src.ai.schemas.thesis_debate import (
+    ChallengeStrength,
+    DebateChallenge,
+    DebateOutput,
+    DebateStance,
+)
 
 __all__ = [
     # Base
@@ -222,5 +227,8 @@ __all__ = [
     "PostMortemVerdict",
     "PostMortemOutput",
     # Thesis Debate
-    "ThesisDebateOutput",
+    "DebateStance",
+    "ChallengeStrength",
+    "DebateChallenge",
+    "DebateOutput",
 ]
