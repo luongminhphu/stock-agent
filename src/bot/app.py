@@ -65,6 +65,8 @@ def create_bot() -> commands.Bot:
             _start_memory_consolidator_scheduler(bot)
             _start_recommendation_listener(bot)  # Wave 4: event-driven alerts
             _start_opportunity_screen_scheduler(bot)  # Wave 3: sector rotation 09:10 ICT
+            _start_proactive_watch_scheduler(bot)   # Wave D: 09:15 / 11:15 / 14:15 ICT
+            _start_proactive_watch_subscriber(bot)  # Wave D: Discord delivery via alert_channel
             logger.info(
                 "bot.ready",
                 user=str(bot.user),
@@ -308,3 +310,39 @@ def _start_opportunity_screen_scheduler(bot: commands.Bot) -> None:
     if subscriber is not None and hasattr(subscriber, "set_client"):
         subscriber.set_client(bot)
         logger.info("bot.opportunity_screen_subscriber.client_injected")
+
+
+def _start_proactive_watch_scheduler(bot: commands.Bot) -> None:
+    """Wire Wave D: ProactiveWatchScheduler — 3 phases/day weekdays.
+
+    Emits ProactiveWatchRequestedEvent at 09:15, 11:15, 14:15 ICT.
+    ProactiveWatchListener (watchlist segment) handles scan + alert logic.
+    No domain logic here — bot is a thin timing adapter only.
+    """
+    from src.bot.scheduler import ProactiveWatchScheduler
+    scheduler = ProactiveWatchScheduler(bot)
+    scheduler.start()
+
+
+def _start_proactive_watch_subscriber(bot: commands.Bot) -> None:
+    """Wire Wave D: ProactiveWatchSubscriber — Discord delivery for proactive alerts.
+
+    Subscribes to ProactiveWatchAlertFiredEvent (emitted by watchlist segment)
+    and batches alerts from the same scan cycle into a single Discord embed.
+
+    Graceful skip if alert_channel_id is not configured.
+    """
+    from src.bot.proactive_watch_subscriber import ProactiveWatchSubscriber
+
+    channel_id = settings.alert_channel_id
+    if not channel_id:
+        logger.warning(
+            "bot.proactive_watch_subscriber.not_available",
+            reason="alert_channel_id not configured — proactive alerts will not be delivered to Discord",
+        )
+        return
+
+    subscriber = ProactiveWatchSubscriber(channel_id=int(channel_id))
+    subscriber.set_client(bot)
+    subscriber.register()
+    logger.info("bot.proactive_watch_subscriber.registered", channel_id=channel_id)

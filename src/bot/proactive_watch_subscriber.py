@@ -63,7 +63,7 @@ class ProactiveWatchSubscriber:
             events.append(event)
         else:
             events: list[ProactiveWatchAlertFiredEvent] = [event]  # type: ignore[no-redef]
-            task = asyncio.get_event_loop().create_task(
+            task = asyncio.get_running_loop().create_task(
                 self._flush_after_window(scan_id, events)
             )
             self._pending[scan_id] = (task, events)
