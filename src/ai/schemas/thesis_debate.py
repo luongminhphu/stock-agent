@@ -1,6 +1,9 @@
 """Thesis Debate Mode output schema.
 
 Owner: ai segment.
+Contract is derived from bot.commands.debate_embeds — field names and enum
+values here must stay in sync with that consumer.
+
 Distinct from ThesisJudgeOutput:
   - JudgeOutput: verdict + conviction_delta for auto-triggered signal cross-check.
   - DebateOutput: structured adversarial challenges for user-initiated deep review.
@@ -12,36 +15,32 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 
 
-class DebateStance(StrEnum):
-    BULL = "bull"        # AI finds thesis fundamentally sound
-    BEAR = "bear"        # AI finds thesis fundamentally challenged
-    NEUTRAL = "neutral"  # Mixed — valid points on both sides
-
-
 class ChallengeStrength(StrEnum):
-    WEAK = "weak"        # Minor concern, can proceed
-    MODERATE = "moderate"  # Worth addressing before acting
-    STRONG = "strong"    # Must resolve before acting
-    FATAL = "fatal"      # Thesis may be wrong at the core
+    CRITICAL = "critical"       # Must resolve before acting — thesis may be wrong at core
+    SIGNIFICANT = "significant" # Meaningfully weakens the thesis
+    MODERATE = "moderate"       # Worth addressing; manageable risk
+    MINOR = "minor"             # Low concern, can proceed
+
+
+class OverallStance(StrEnum):
+    BULL = "bull"       # AI finds thesis fundamentally sound
+    BEAR = "bear"       # AI finds thesis fundamentally challenged
+    NEUTRAL = "neutral" # Mixed — valid points on both sides
 
 
 class DebateChallenge(BaseModel):
     """A single adversarial challenge targeting the thesis."""
 
-    id: int
-    claim: str = Field(
-        description="Luận điểm phản biện ngắn gọn (1-2 câu)"
+    area: str = Field(
+        description="Lĩnh vực bị challenge (ví dụ: valuation, catalyst, timing, macro)"
     )
-    evidence: str = Field(
-        description="Bằng chứng / dữ liệu / logic cụ thể hỗ trợ challenge này"
-    )
-    targets_assumption: str | None = Field(
-        None,
-        description="ID hoặc mô tả assumption bị tấn công trực tiếp. None nếu attack toàn bộ thesis.",
+    challenge: str = Field(
+        description="Luận điểm phản biện cụ thể (1-3 câu, có evidence/logic rõ ràng)"
     )
     strength: ChallengeStrength
-    rebuttal_hint: str = Field(
-        description="Gợi ý cụ thể để investor có thể phản biện lại challenge này"
+    counter_argument: str | None = Field(
+        None,
+        description="Gợi ý phản biện lại challenge này. None nếu không có hướng rõ ràng.",
     )
 
 
@@ -49,44 +48,26 @@ class DebateOutput(BaseModel):
     """Structured output from ThesisDebateAgent.
 
     Downstream consumers:
+      - bot.debate_embeds: formats challenges into Discord embed.
       - API route: returns directly as JSON response.
-      - Bot: formats challenges into Discord embed.
       - Future: persist as thesis_debate_log for learning loop.
     """
 
-    ticker: str
-    thesis_id: str
-    stance: DebateStance
-
-    # Core adversarial output
-    bull_case_summary: str = Field(
-        description="Tóm tắt lý do thesis CÓ THỂ đúng (2-3 câu). Trung thực — không inflate."
+    verdict: str = Field(
+        description="1-2 câu kết luận thẳng thắn từ góc nhìn devil's advocate"
     )
-    bear_case_summary: str = Field(
-        description="Tóm tắt lý do thesis CÓ THỂ sai (2-3 câu). Cụ thể — không chung chung."
+    overall_stance: OverallStance
+    confidence: float = Field(
+        ge=0.0,
+        le=100.0,
+        description="Mức độ tin cậy AI vào stance này (0-100)",
     )
     challenges: list[DebateChallenge] = Field(
-        description="2-5 challenges cụ thể, có evidence. Sorted by strength DESC."
+        description="2-8 challenges cụ thể, có evidence. Sorted by strength DESC."
     )
-
-    # Verdict fields
-    weakest_link: str = Field(
-        description="Assumption yếu nhất trong thesis hiện tại — điểm dễ bị invalidate nhất"
-    )
-    key_question: str = Field(
-        description="Câu hỏi quan trọng nhất investor cần tự trả lời trước khi hành động"
-    )
-    confidence_adjustment: float = Field(
-        ge=-1.0,
-        le=1.0,
-        description=(
-            "Gợi ý điều chỉnh conviction dựa trên debate. "
-            "-1.0=exit hoàn toàn, 0.0=giữ nguyên, +1.0=double down. "
-            "Thường trong range [-0.4, +0.3] trừ trường hợp extreme."
-        ),
-    )
-    debate_verdict: str = Field(
-        description="1-2 câu kết luận thẳng thắn từ góc nhìn devil's advocate"
+    suggested_action: str | None = Field(
+        None,
+        description="Hành động gợi ý cho investor sau debate. None nếu chưa rõ ràng.",
     )
 
     # Stamped by agent at runtime
