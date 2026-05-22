@@ -301,6 +301,28 @@ class TrendSignalComposer:
 
 
 # ---------------------------------------------------------------------------
+# Candle → OHLCVBar mapper
+# ---------------------------------------------------------------------------
+
+def _candles_to_bars(candles: list[Any], symbol: str) -> list[OHLCVBar]:
+    """Map OHLCVService Candle objects to local OHLCVBar primitives.
+
+    Accepts any object with .close / .high / .low / .volume attributes
+    so this works with both the real Candle dataclass and test stubs.
+    """
+    return [
+        OHLCVBar(
+            close=float(c.close),
+            high=float(c.high),
+            low=float(c.low),
+            volume=float(c.volume),
+            symbol=symbol,
+        )
+        for c in candles
+    ]
+
+
+# ---------------------------------------------------------------------------
 # TrendEngine
 # ---------------------------------------------------------------------------
 
@@ -308,7 +330,7 @@ class TrendEngine:
     """Orchestrates TechnicalSignalBundle computation for one or many symbols.
 
     Args:
-        ohlcv_service: object with async get_ohlcv(symbol, days) -> list[OHLCVBar].
+        ohlcv_service: OHLCVService instance (get_latest_candles / get_candles).
                        Injected by bootstrap — TrendEngine never creates it.
         days:          Lookback window in calendar days. Default 90 (>= MIN_BARS=60).
     """
@@ -324,7 +346,11 @@ class TrendEngine:
         Late-imports ai schema to avoid module-level cross-segment import.
         Raises on adapter failure — callers (TrendEngineListener) handle.
         """
-        bars = await self._ohlcv_service.get_ohlcv(symbol, days=self._days)  # type: ignore[attr-defined]
+        candles = await self._ohlcv_service.get_latest_candles(
+            ticker=symbol,
+            n=self._days,
+        )
+        bars = _candles_to_bars(candles, symbol)
         bundle_dict = self._composer.compute(symbol, bars)
         from src.ai.schemas.trend_prediction import TechnicalSignalBundle  # noqa: PLC0415
         return TechnicalSignalBundle.model_validate(bundle_dict)
