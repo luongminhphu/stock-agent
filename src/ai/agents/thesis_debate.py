@@ -10,7 +10,7 @@ Distinct từ ThesisJudgeAgent:
 Responsibility:
   - Nhận thesis metadata + optional price context + optional debate_focus.
   - Trả về DebateOutput: bull/bear summary, challenges với evidence, verdict.
-  - Sort challenges by strength DESC để downstream render FATAL/STRONG trước.
+  - Sort challenges by strength DESC để downstream render CRITICAL trước.
   - KHÔNG write DB — caller owns persistence decision.
   - KHÔNG emit events — fire-and-return only.
   - KHÔNG tự gọi DB hay market API — tất cả context được inject bởi caller.
@@ -41,18 +41,18 @@ from src.ai.prompts.thesis_debate import SPEC, build_user_prompt
 from src.ai.schemas.thesis_debate import (
     ChallengeStrength,
     DebateOutput,
-    DebateStance,
+    OverallStance,
 )
 from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Strength ordering for sort (FATAL first, WEAK last)
+# Strength ordering for sort (CRITICAL first, MINOR last)
 _STRENGTH_ORDER: dict[ChallengeStrength, int] = {
-    ChallengeStrength.FATAL: 0,
-    ChallengeStrength.STRONG: 1,
+    ChallengeStrength.CRITICAL: 0,
+    ChallengeStrength.SIGNIFICANT: 1,
     ChallengeStrength.MODERATE: 2,
-    ChallengeStrength.WEAK: 3,
+    ChallengeStrength.MINOR: 3,
 }
 
 
@@ -70,7 +70,7 @@ def _fallback_debate(
     return DebateOutput(
         ticker=ticker,
         thesis_id=str(thesis_id),
-        stance=DebateStance.NEUTRAL,
+        stance=OverallStance.NEUTRAL,
         bull_case_summary="AI không available — không thể phân tích bull case.",
         bear_case_summary="AI không available — không thể phân tích bear case.",
         challenges=[],
@@ -103,7 +103,7 @@ class ThesisDebateAgent:
             price_context={"price": 42500, "change_1w": "-2.1%", "change_1m": "-8.3%"},
             debate_focus="entry",  # optional: entry | exit | sizing | None
         )
-        # result.challenges sorted FATAL → STRONG → MODERATE → WEAK
+        # result.challenges sorted CRITICAL → SIGNIFICANT → MODERATE → MINOR
     """
 
     def __init__(self, ai_client: AIClient) -> None:
@@ -176,7 +176,7 @@ class ThesisDebateAgent:
             result.ticker = ticker
             result.debated_at = datetime.now(UTC).isoformat()
 
-            # Sort challenges FATAL → STRONG → MODERATE → WEAK
+            # Sort challenges CRITICAL → SIGNIFICANT → MODERATE → MINOR
             result.challenges.sort(
                 key=lambda c: _STRENGTH_ORDER.get(c.strength, 99)
             )
