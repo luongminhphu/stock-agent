@@ -100,7 +100,7 @@ async def bootstrap() -> None:
     if _thesis_debate_agent is None:
         from src.ai.agents.thesis_debate import ThesisDebateAgent
 
-        _thesis_debate_agent = ThesisDebateAgent(client=_ai_client)  # type: ignore[arg-type]
+        _thesis_debate_agent = ThesisDebateAgent(ai_client=_ai_client)  # type: ignore[arg-type]
         logger.info("platform.bootstrap.thesis_debate_agent_ready")
 
     if _thesis_suggest_agent is None:
@@ -228,21 +228,21 @@ async def bootstrap() -> None:
                 reason="scheduler_user_id not configured",
             )
 
-    # ── Wave 2 (market): TrendReasoningAgent ─────────────────────────────────────────────────────────
+    # ── Wave 2 (market): TrendReasoningAgent ──────────────────────────────────────────────────────────────────────────────
     if _trend_reasoning_agent is None:
         from src.ai.agents.trend_reasoning import TrendReasoningAgent
 
         _trend_reasoning_agent = TrendReasoningAgent(client=_ai_client)  # type: ignore[arg-type]
         logger.info("platform.bootstrap.trend_reasoning_agent_ready")
 
-    # ── Wave 2b: SignalEngineAgent ────────────────────────────────────────────────────────
+    # ── Wave 2b: SignalEngineAgent ────────────────────────────────────────────────
     if _signal_engine_agent is None:
         from src.ai.agents.signal_engine import SignalEngineAgent
 
         _signal_engine_agent = SignalEngineAgent(ai_client=_ai_client)  # type: ignore[arg-type]
         logger.info("platform.bootstrap.signal_engine_agent_ready")
 
-    # ── Trend Prediction: TrendPredictionStore (readmodel) ───────────────────────────────
+    # ── Trend Prediction: TrendPredictionStore (readmodel) ──────────────────────────────────────
     if _trend_prediction_store is None:
         from src.readmodel.trend_prediction_store import TrendPredictionStore
         from src.platform.db import AsyncSessionLocal
@@ -252,13 +252,13 @@ async def bootstrap() -> None:
         )
         logger.info("platform.bootstrap.trend_prediction_store_ready")
 
-    # ── Event Bus + subscribers (start bus FIRST) ───────────────────────────────────────
+    # ── Event Bus + subscribers (start bus FIRST) ───────────────────────────────────────────────
     from src.platform.event_bus import get_event_bus
     bus = get_event_bus()
     await bus.start()
     logger.info("platform.bootstrap.event_bus_ready")
 
-    # ── Wave 3 (readmodel): cache invalidation hooks ──────────────────────────────────
+    # ── Wave 3 (readmodel): cache invalidation hooks ───────────────────────────────────────
     from src.readmodel import CacheSubscriber
     CacheSubscriber.register()
     logger.info("platform.bootstrap.cache_subscriber_ready")
@@ -319,7 +319,7 @@ async def bootstrap() -> None:
         _stress_test_subscriber.register()
         logger.info("platform.bootstrap.stress_test_subscriber_ready")
 
-    # ── Wave 3: OpportunityScreenScheduler + subscriber ──────────────────────────────
+    # ── Wave 3: OpportunityScreenScheduler + subscriber ──────────────────────────────────
     if _opportunity_screen_scheduler is None:
         from src.market.opportunity_screen_scheduler import OpportunityScreenScheduler
 
@@ -335,7 +335,7 @@ async def bootstrap() -> None:
         _opportunity_screen_subscriber.register()
         logger.info("platform.bootstrap.opportunity_screen_subscriber_ready")
 
-    # ── Wave B2: SignalEngineListener ────────────────────────────────────────────────────
+    # ── Wave B2: SignalEngineListener ──────────────────────────────────────────────────────────
     if _signal_engine_listener is None:
         from src.ai.signal_engine_listener import SignalEngineListener
         from src.thesis.watchlist_query_service import WatchlistQueryService
@@ -354,7 +354,7 @@ async def bootstrap() -> None:
         _signal_engine_listener.register()
         logger.info("platform.bootstrap.signal_engine_listener_ready")
 
-    # ── Trend Prediction: TrendEngineListener ──────────────────────────────────────────────
+    # ── Trend Prediction: TrendEngineListener ──────────────────────────────────────────────────────
     if _trend_engine_listener is None:
         from src.ai.trend_engine_listener import TrendEngineListener
         from src.market.trend_engine import TrendEngine
@@ -375,11 +375,7 @@ async def bootstrap() -> None:
         _trend_engine_listener.register()
         logger.info("platform.bootstrap.trend_engine_listener_ready")
 
-    # ── Wave E: PostMortemService + MemoryInjectionListener ────────────────────────────
-    # PostMortemService listens to ThesisClosedEvent → runs AI extraction
-    # → emits ThesisPostMortemReadyEvent
-    # MemoryInjectionListener listens to ThesisPostMortemReadyEvent → writes memory
-    # Both register here; bot.PostMortemSubscriber registers in on_ready (needs discord.Client)
+    # ── Wave E: PostMortemService + MemoryInjectionListener ──────────────────────────────────
     if _post_mortem_service is None:
         from src.thesis.post_mortem_service import PostMortemService
         from src.platform.db import AsyncSessionLocal

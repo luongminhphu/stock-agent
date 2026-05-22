@@ -234,6 +234,31 @@ class AIClient:
                 f"Failed to parse response into {response_schema.__name__}: {exc}\nRaw: {content}"
             ) from exc
 
+    async def structured_call(self, spec: "AISpec", user_prompt: str) -> Any:
+        """Convenience wrapper: call chat() using an AISpec bundle.
+
+        Agents that declare a module-level SPEC (AISpec) use this instead of
+        calling chat() with individual parameters. Keeps agent call sites clean
+        and ensures spec params are always applied consistently.
+
+        Args:
+            spec:        AISpec instance declared in the prompt pack.
+            user_prompt: User message string built by build_user_prompt().
+
+        Returns:
+            Parsed instance of spec.output_schema.
+
+        Raises:
+            AIError: propagated from chat().
+        """
+        return await self.chat(
+            system_prompt=spec.system_prompt,
+            user_prompt=user_prompt,
+            response_schema=spec.output_schema,
+            temperature=spec.temperature,
+            max_tokens=spec.max_tokens,
+        )
+
     def extract_text(self, response: dict[str, Any]) -> str:
         """Extract the assistant message content from a chat completion response."""
         try:
@@ -262,9 +287,12 @@ class AISpec:
 
     Dùng bởi prompt packs (src/ai/prompts/) để khai báo
     system_prompt + output schema + inference params tập trung.
-    Agent nhận AISpec và gọi client.chat() với các field tương ứng.
+    Agent gọi client.structured_call(spec, user_prompt) — params
+    được áp dụng nhất quán mà không cần repeat tại mỗi call site.
 
-    Example:
+    Example::
+
+        # In prompt pack (src/ai/prompts/thesis_debate.py):
         SPEC = AISpec(
             system_prompt=_SYSTEM,
             output_schema=DebateOutput,
@@ -273,12 +301,9 @@ class AISpec:
         )
 
         # In agent:
-        result = await client.chat(
-            system_prompt=SPEC.system_prompt,
+        result = await self._client.structured_call(
+            spec=SPEC,
             user_prompt=build_user_prompt(...),
-            response_schema=SPEC.output_schema,
-            temperature=SPEC.temperature,
-            max_tokens=SPEC.max_tokens,
         )
     """
 
