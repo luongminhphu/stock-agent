@@ -46,6 +46,52 @@ class WatchlistScanCompletedEvent(DomainEvent):
     duration_seconds: float = 0.0
 
 
+@dataclass(frozen=True)
+class ProactiveWatchRequestedEvent(DomainEvent):
+    """Emitted by bot.ProactiveWatchScheduler to trigger a proactive alert scan.
+
+    Produced by: bot segment (scheduler — timing adapter only, no logic)
+    Consumed by: watchlist.ProactiveWatchListener
+
+    phase:
+        morning  — 09:05 ICT  (just after market open)
+        midday   — 11:30 ICT  (mid-session check)
+        pre_atc  — 14:30 ICT  (30 min before ATC)
+    """
+    user_id: str = ""
+    phase: str = "morning"          # morning | midday | pre_atc
+    triggered_by: str = "scheduler"
+
+
+@dataclass(frozen=True)
+class ProactiveWatchAlertFiredEvent(DomainEvent):
+    """Emitted by watchlist.ProactiveWatchListener for each alert that fires.
+
+    Produced by: watchlist segment (ProactiveWatchListener)
+    Consumed by: bot segment (ProactiveWatchSubscriber → Discord notify)
+
+    One event per fired alert — downstream subscriber batches or sends individually.
+
+    condition_type: mirrors AlertConditionType.value string
+        e.g. "PRICE_ABOVE" | "PRICE_BELOW" | "CHANGE_PCT_UP" | "CHANGE_PCT_DOWN"
+             | "VOLUME_SPIKE" | "THESIS_TRIGGER"
+
+    priority: from Alert.priority field
+        "HIGH" | "MEDIUM" | "LOW" | None (standard alerts have no priority)
+    """
+    user_id: str = ""
+    alert_id: int = 0
+    ticker: str = ""
+    condition_type: str = ""
+    threshold: float = 0.0
+    triggered_price: float | None = None
+    note: str = ""
+    label: str = ""
+    priority: str | None = None
+    phase: str = "morning"          # echoes ProactiveWatchRequestedEvent.phase
+    scan_event_id: str = ""         # event_id of originating ProactiveWatchRequestedEvent
+
+
 # ─── portfolio / position ────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
