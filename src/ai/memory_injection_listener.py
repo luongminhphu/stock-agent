@@ -51,8 +51,8 @@ class MemoryInjectionListener:
         entry = _format_memory_entry(event)
         try:
             async with self._session_factory() as session:
-                svc = MemoryService(session)
-                await svc.append(
+                await MemoryService.append(
+                    session=session,
                     user_id=event.user_id,
                     content=entry,
                     tags=list(event.memory_tags),

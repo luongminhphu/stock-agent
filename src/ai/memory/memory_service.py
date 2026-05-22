@@ -1,13 +1,15 @@
 """MemoryService — read/write interface for the ai.memory system.
 
 Write path: agents call log_interaction() after every AI call.
+            post-mortem pipeline calls append() to inject free-text lessons.
 Read path:  ContextBuilder calls get_memory_context() to build the
             memory block injected into every prompt.
 
 Owner: ai segment.
 Callers:
-  - ai/agents/*.py         → log_interaction
-  - ai/context_builder.py  → get_memory_context
+  - ai/agents/*.py              → log_interaction
+  - ai/memory_injection_listener.py → append
+  - ai/context_builder.py       → get_memory_context
   - ai/memory/consolidator.py (internal)
 """
 
@@ -176,6 +178,55 @@ class MemoryService:
             verdict=entry.ai_verdict,
         )
         return saved
+
+    @staticmethod
+    async def append(
+        session: AsyncSession,
+        user_id: str,
+        content: str,
+        tags: list[str] | None = None,
+        source: str = "post_mortem",
+    ) -> AIInteractionLog | None:
+        """Persist a free-text memory entry in an ISOLATED session.
+
+        Used by MemoryInjectionListener to write post-mortem lessons.
+        Stores content as ai_key_points, source as agent_type, tags as tickers
+        so entries surface naturally in get_memory_context() episode renders.
+
+        The `session` param is accepted for API consistency but not used —
+        same isolation pattern as log_interaction().
+
+        Fire-and-forget: all exceptions are swallowed, returns None on failure.
+        """
+        try:
+            from src.platform.db import AsyncSessionLocal  # noqa: PLC0415
+
+            async with AsyncSessionLocal() as write_session:
+                async with write_session.begin():
+                    log = AIInteractionLog(
+                        user_id=user_id,
+                        agent_type=source,
+                        trigger=source,
+                        ai_key_points=content,
+                    )
+                    log.tickers = tags or []
+                    repo = InteractionLogRepository(write_session)
+                    saved = await repo.save(log)
+                    logger.debug(
+                        "memory_service.append.saved",
+                        user_id=user_id,
+                        source=source,
+                        tags=tags,
+                    )
+                    return saved
+        except Exception as exc:
+            logger.warning(
+                "memory_service.append.failed",
+                user_id=user_id,
+                source=source,
+                error=str(exc),
+            )
+            return None
 
     # ------------------------------------------------------------------
     # Read path

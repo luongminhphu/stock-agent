@@ -20,8 +20,6 @@ AI prompt contract:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from src.ai.client import AIClient
 from src.ai.schemas import PostMortemOutput
 from src.platform.db import AsyncSessionLocal
@@ -105,10 +103,11 @@ class PostMortemService:
             pnl_str=pnl_str,
             lesson_context=lesson_context,
         )
-        return await self._ai.structured_completion(
-            prompt=prompt,
-            schema=PostMortemOutput,
+        return await self._ai.chat(
             system_prompt=_SYSTEM_PROMPT,
+            user_prompt=prompt,
+            response_schema=PostMortemOutput,
+            max_tokens=AIClient.COMPLEX_MAX_TOKENS,
         )
 
     async def _emit(self, event: ThesisClosedEvent, output: "PostMortemOutput") -> None:
