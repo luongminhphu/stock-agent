@@ -33,9 +33,6 @@ def create_bot() -> commands.Bot:
 
     @bot.event
     async def on_ready() -> None:
-        # Guard: set flag FIRST before any work so that gateway reconnects
-        # never retry a failing init loop (would cause duplicate cog errors
-        # and empty tree syncs wiping all slash commands from Discord).
         if getattr(bot, "_stock_agent_ready", False):
             logger.warning(
                 "bot.on_ready.skip",
@@ -47,11 +44,8 @@ def create_bot() -> commands.Bot:
 
         try:
             await bootstrap()
-            _inject_briefing_listener(bot)  # Wave 8: inject discord.Client after login
+            _inject_briefing_listener(bot)
             await _register_cogs(bot)
-
-            # Sync tree immediately after cogs are loaded — before schedulers start.
-            # This ensures slash commands are registered even if a scheduler raises.
             await _sync_tree(bot)
 
             _start_briefing_scheduler(bot)
@@ -60,21 +54,20 @@ def create_bot() -> commands.Bot:
             _start_drift_scheduler(bot)
             _start_snapshot_scheduler()
             _start_reminder_scheduler(bot)
-            _start_outcome_filler_scheduler(bot)  # 15:05 ICT — fills DecisionLog outcomes before replay
-            _start_decision_replay_scheduler(bot)  # 15:15 ICT — reads fresh outcome data
+            _start_outcome_filler_scheduler(bot)
+            _start_decision_replay_scheduler(bot)
             _start_memory_consolidator_scheduler(bot)
-            _start_recommendation_listener(bot)  # Wave 4: event-driven alerts
-            _start_opportunity_screen_scheduler(bot)  # Wave 3: sector rotation 09:10 ICT
-            _start_proactive_watch_scheduler(bot)   # Wave D: 09:15 / 11:15 / 14:15 ICT
-            _start_proactive_watch_subscriber(bot)  # Wave D: Discord delivery via alert_channel
+            _start_recommendation_listener(bot)
+            _start_opportunity_screen_scheduler(bot)
+            _start_proactive_watch_scheduler(bot)
+            _start_proactive_watch_subscriber(bot)
+            _start_post_mortem_subscriber(bot)   # Wave E: thesis post-mortem → Discord
             logger.info(
                 "bot.ready",
                 user=str(bot.user),
                 guild_count=len(bot.guilds),
             )
         except Exception as exc:
-            # Log full traceback so the real root cause is never swallowed
-            # by the structured JSON logger truncating the message field.
             logger.exception(
                 "bot.on_ready.failed",
                 error=str(exc),
@@ -84,11 +77,6 @@ def create_bot() -> commands.Bot:
 
     @bot.event
     async def on_close() -> None:
-        """Called by discord.py when the bot disconnects / process exits.
-
-        Gives bootstrap.shutdown() a chance to close httpx clients and other
-        resources before the event loop is torn down.
-        """
         await shutdown()
         logger.info("bot.closed")
 
@@ -104,7 +92,6 @@ def create_bot() -> commands.Bot:
 
 
 def run() -> None:
-    """Entry point called by src/bot/__main__.py."""
     bot = create_bot()
     asyncio.run(bot.start(settings.discord_token))
 
@@ -158,7 +145,7 @@ async def _register_cogs(bot: commands.Bot) -> None:
     await bot.add_cog(HealthCog(bot))
     await bot.add_cog(SectorRotationCog(bot))
     await bot.add_cog(MemoryCog(bot))
-    await bot.add_cog(TrendCog(bot))  # Wave: trend prediction
+    await bot.add_cog(TrendCog(bot))
     logger.info(
         "bot.cogs_loaded",
         cogs=[
@@ -172,12 +159,6 @@ async def _register_cogs(bot: commands.Bot) -> None:
 
 
 def _inject_briefing_listener(bot: commands.Bot) -> None:
-    """Inject discord.Client into BriefingListener after bot login.
-
-    bootstrap() registers BriefingListener on the event bus but cannot
-    pass discord.Client (bot hasn't logged in yet at bootstrap time).
-    This call completes the wiring immediately after on_ready fires.
-    """
     from src.platform.bootstrap import get_briefing_listener
     listener = get_briefing_listener()
     if listener is not None:
@@ -186,9 +167,7 @@ def _inject_briefing_listener(bot: commands.Bot) -> None:
     else:
         logger.error(
             "bot.briefing_listener.not_available",
-            reason="scheduler_user_id not configured — BriefingListener skipped at bootstrap. "
-                   "Morning and EOD briefs will NOT be delivered. "
-                   "Set SCHEDULER_USER_ID in env to enable automatic briefings.",
+            reason="scheduler_user_id not configured — BriefingListener skipped at bootstrap.",
         )
 
 
@@ -222,7 +201,7 @@ def _start_snapshot_scheduler() -> None:
     if scheduler is None:
         logger.warning(
             "bot.snapshot_scheduler.not_available",
-            reason="get_snapshot_scheduler() returned None — scheduler_user_id may not be configured",
+            reason="get_snapshot_scheduler() returned None",
         )
         return
     scheduler.start()
@@ -235,12 +214,6 @@ def _start_reminder_scheduler(bot: commands.Bot) -> None:
 
 
 def _start_outcome_filler_scheduler(bot: commands.Bot) -> None:
-    """Wire OutcomeFillerScheduler — weekdays 15:05 ICT.
-
-    Fills DecisionLog.outcome_pnl_pct / outcome_verdict for logs past
-    their review_horizon_days. Runs before DecisionReplayScheduler (15:15)
-    so replay always has fresh outcome data. No Discord message.
-    """
     from src.bot.scheduler import OutcomeFillerScheduler
     scheduler = OutcomeFillerScheduler(bot)
     scheduler.start()
@@ -253,18 +226,13 @@ def _start_decision_replay_scheduler(bot: commands.Bot) -> None:
 
 
 def _start_memory_consolidator_scheduler(bot: commands.Bot) -> None:
-    """Wire MemoryConsolidatorScheduler — Sundays 09:00 ICT.
-
-    Returns early with a warning if MemoryConsolidator was not initialised
-    at bootstrap (scheduler_user_id not configured). Non-blocking.
-    """
     from src.platform.bootstrap import get_memory_consolidator
     from src.bot.scheduler import MemoryConsolidatorScheduler
 
     if get_memory_consolidator() is None:
         logger.warning(
             "bot.memory_consolidator_scheduler.not_available",
-            reason="MemoryConsolidator not initialised — scheduler_user_id may not be configured",
+            reason="MemoryConsolidator not initialised",
         )
         return
 
@@ -273,22 +241,12 @@ def _start_memory_consolidator_scheduler(bot: commands.Bot) -> None:
 
 
 def _start_recommendation_listener(bot: commands.Bot) -> None:
-    """Wire Wave 4: RecommendationListener subscribes event bus → Discord push."""
     from src.bot.recommendation_listener import RecommendationListener
     listener = RecommendationListener(bot)
     listener.register()
 
 
 def _start_opportunity_screen_scheduler(bot: commands.Bot) -> None:
-    """Wire Wave 3: OpportunityScreenScheduler → sector rotation at 09:10 ICT daily.
-
-    bootstrap() initialises the singleton and registers OpportunityScreenSubscriber
-    on the event bus, but scheduler.start() must be called here (after bot login)
-    because discord.ext.tasks requires the bot event loop to be running.
-
-    Also injects discord.Client into the subscriber so it can deliver
-    sector rotation output to the morning Discord channel.
-    """
     from src.platform.bootstrap import (
         get_opportunity_screen_scheduler,
         get_opportunity_screen_subscriber,
@@ -305,7 +263,6 @@ def _start_opportunity_screen_scheduler(bot: commands.Bot) -> None:
     scheduler.start()
     logger.info("bot.opportunity_screen_scheduler.started")
 
-    # Inject discord.Client so subscriber can post to morning channel
     subscriber = get_opportunity_screen_subscriber()
     if subscriber is not None and hasattr(subscriber, "set_client"):
         subscriber.set_client(bot)
@@ -313,32 +270,19 @@ def _start_opportunity_screen_scheduler(bot: commands.Bot) -> None:
 
 
 def _start_proactive_watch_scheduler(bot: commands.Bot) -> None:
-    """Wire Wave D: ProactiveWatchScheduler — 3 phases/day weekdays.
-
-    Emits ProactiveWatchRequestedEvent at 09:15, 11:15, 14:15 ICT.
-    ProactiveWatchListener (watchlist segment) handles scan + alert logic.
-    No domain logic here — bot is a thin timing adapter only.
-    """
     from src.bot.scheduler import ProactiveWatchScheduler
     scheduler = ProactiveWatchScheduler(bot)
     scheduler.start()
 
 
 def _start_proactive_watch_subscriber(bot: commands.Bot) -> None:
-    """Wire Wave D: ProactiveWatchSubscriber — Discord delivery for proactive alerts.
-
-    Subscribes to ProactiveWatchAlertFiredEvent (emitted by watchlist segment)
-    and batches alerts from the same scan cycle into a single Discord embed.
-
-    Graceful skip if alert_channel_id is not configured.
-    """
     from src.bot.proactive_watch_subscriber import ProactiveWatchSubscriber
 
     channel_id = settings.alert_channel_id
     if not channel_id:
         logger.warning(
             "bot.proactive_watch_subscriber.not_available",
-            reason="alert_channel_id not configured — proactive alerts will not be delivered to Discord",
+            reason="alert_channel_id not configured",
         )
         return
 
@@ -346,3 +290,28 @@ def _start_proactive_watch_subscriber(bot: commands.Bot) -> None:
     subscriber.set_client(bot)
     subscriber.register()
     logger.info("bot.proactive_watch_subscriber.registered", channel_id=channel_id)
+
+
+def _start_post_mortem_subscriber(bot: commands.Bot) -> None:
+    """Wire Wave E: PostMortemSubscriber → Discord embed on thesis close/invalidate.
+
+    Uses decision_channel_id if configured, falls back to morning_channel_id.
+    Graceful skip if neither channel is set.
+    """
+    from src.bot.post_mortem_subscriber import PostMortemSubscriber
+
+    channel_id = (
+        getattr(settings, "decision_channel_id", None)
+        or getattr(settings, "morning_channel_id", None)
+    )
+    if not channel_id:
+        logger.warning(
+            "bot.post_mortem_subscriber.not_available",
+            reason="decision_channel_id and morning_channel_id not configured — post-mortem embeds disabled",
+        )
+        return
+
+    subscriber = PostMortemSubscriber(channel_id=int(channel_id))
+    subscriber.set_client(bot)
+    subscriber.register()
+    logger.info("bot.post_mortem_subscriber.registered", channel_id=channel_id)

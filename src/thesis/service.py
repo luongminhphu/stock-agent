@@ -69,6 +69,35 @@ def _resolve_user_id(user_id: str | None) -> str:
     return resolved
 
 
+async def _emit_thesis_closed(thesis: Thesis, close_reason: str) -> None:
+    """Fire-and-forget: emit ThesisClosedEvent after DB commit.
+
+    Non-blocking — any failure in the event bus does not affect the caller.
+    outcome_pnl_pct is intentionally None here; DecisionLog may not be
+    populated yet. PostMortemService can query LessonService if needed.
+    """
+    try:
+        from src.platform.event_bus import get_event_bus
+        from src.platform.events import ThesisClosedEvent
+        event = ThesisClosedEvent(
+            thesis_id=thesis.id,
+            user_id=thesis.user_id,
+            ticker=thesis.ticker,
+            close_reason=close_reason,
+            thesis_title=thesis.title or "",
+            thesis_summary=thesis.summary or "",
+            outcome_pnl_pct=None,
+        )
+        await get_event_bus().publish(event)
+    except Exception as exc:
+        logger.warning(
+            "thesis.close.event_emit_failed",
+            thesis_id=thesis.id,
+            close_reason=close_reason,
+            error=str(exc),
+        )
+
+
 class ThesisService:
     """Thesis lifecycle: create, update, close, invalidate, delete.
 
@@ -103,7 +132,6 @@ class ThesisService:
                 Assumption(description=desc, status=AssumptionStatus.PENDING)
             )
         for cat_inp in inp.catalysts or []:
-            # Resolve expected_date: explicit date takes priority, then parse timeline string
             resolved_date = cat_inp.expected_date or parse_timeline_to_date(cat_inp.timeline)
             thesis.catalysts.append(
                 Catalyst(
@@ -141,6 +169,7 @@ class ThesisService:
         thesis.closed_at = datetime.now(UTC)
         await self._repo.save(thesis)
         logger.info("thesis.closed", thesis_id=thesis_id)
+        await _emit_thesis_closed(thesis, close_reason="closed")
         return thesis
 
     async def invalidate(self, thesis_id: int, user_id: str) -> Thesis:
@@ -150,6 +179,7 @@ class ThesisService:
         thesis.closed_at = datetime.now(UTC)
         await self._repo.save(thesis)
         logger.info("thesis.invalidated", thesis_id=thesis_id)
+        await _emit_thesis_closed(thesis, close_reason="invalidated")
         return thesis
 
     async def delete(self, thesis_id: int, user_id: str) -> None:
@@ -173,15 +203,7 @@ class ThesisService:
         ticker: str,
         user_id: str | None = None,
     ) -> str | None:
-        """Return str(thesis.id) of the first ACTIVE thesis for ticker.
-
-        Single-user convenience: user_id defaults to settings.owner_user_id
-        when None. Returns None when no active thesis exists for the ticker.
-
-        Read-only — does not modify any state.
-        Consumed by ai segment (ProactiveAlertAgent) to populate
-        RecommendationReadyEvent.thesis_id without importing repo layer.
-        """
+        """Return str(thesis.id) of the first ACTIVE thesis for ticker."""
         resolved = _resolve_user_id(user_id)
         theses = await self._repo.list_active_by_ticker(ticker)
         user_theses = [t for t in theses if t.user_id == resolved]
@@ -190,7 +212,7 @@ class ThesisService:
         return str(user_theses[0].id)
 
     # ------------------------------------------------------------------
-    # Assumption proxy (ownership check ở đây, CRUD ở ComponentService)
+    # Assumption proxy
     # ------------------------------------------------------------------
 
     async def add_assumption(

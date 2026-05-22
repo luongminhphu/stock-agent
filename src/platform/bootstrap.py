@@ -47,6 +47,8 @@ _agenda_service_factory: object | None = None  # callable(session) -> AgendaServ
 _trend_reasoning_agent: object | None = None  # TrendReasoningAgent singleton
 _trend_prediction_store: object | None = None  # TrendPredictionStore singleton
 _trend_engine_listener: object | None = None   # TrendEngineListener singleton
+_post_mortem_service: object | None = None     # Wave E: PostMortemService singleton
+_memory_injection_listener: object | None = None  # Wave E: MemoryInjectionListener singleton
 
 _pnl_service_class: type | None = None
 
@@ -66,6 +68,7 @@ async def bootstrap() -> None:
     global _signal_engine_agent, _signal_engine_listener
     global _agenda_builder_agent, _agenda_service_factory
     global _trend_reasoning_agent, _trend_prediction_store, _trend_engine_listener
+    global _post_mortem_service, _memory_injection_listener
 
     if _quote_service is None:
         from src.market.adapters.factory import build_adapter
@@ -225,40 +228,37 @@ async def bootstrap() -> None:
                 reason="scheduler_user_id not configured",
             )
 
-    # ── Wave 2 (market): TrendReasoningAgent ───────────────────────────────────────────────
+    # ── Wave 2 (market): TrendReasoningAgent ─────────────────────────────────────────────────────────
     if _trend_reasoning_agent is None:
         from src.ai.agents.trend_reasoning import TrendReasoningAgent
 
         _trend_reasoning_agent = TrendReasoningAgent(client=_ai_client)  # type: ignore[arg-type]
         logger.info("platform.bootstrap.trend_reasoning_agent_ready")
 
-    # ── Wave 2b: SignalEngineAgent ──────────────────────────────────────────────────
+    # ── Wave 2b: SignalEngineAgent ────────────────────────────────────────────────────────
     if _signal_engine_agent is None:
         from src.ai.agents.signal_engine import SignalEngineAgent
 
         _signal_engine_agent = SignalEngineAgent(ai_client=_ai_client)  # type: ignore[arg-type]
         logger.info("platform.bootstrap.signal_engine_agent_ready")
 
-    # ── Trend Prediction: TrendPredictionStore (readmodel) ─────────────────────────
+    # ── Trend Prediction: TrendPredictionStore (readmodel) ───────────────────────────────
     if _trend_prediction_store is None:
         from src.readmodel.trend_prediction_store import TrendPredictionStore
         from src.platform.db import AsyncSessionLocal
 
         _trend_prediction_store = TrendPredictionStore(
-            session_factory=AsyncSessionLocal,  # reserved for Wave 2 DB persist
+            session_factory=AsyncSessionLocal,
         )
         logger.info("platform.bootstrap.trend_prediction_store_ready")
 
-    # ── Event Bus + subscribers (start bus FIRST) ──────────────────────────────────
+    # ── Event Bus + subscribers (start bus FIRST) ───────────────────────────────────────
     from src.platform.event_bus import get_event_bus
     bus = get_event_bus()
     await bus.start()
     logger.info("platform.bootstrap.event_bus_ready")
 
-    # ── Wave 3 (readmodel): cache invalidation hooks ──────────────────────────────
-    # Register immediately after bus.start() so CacheSubscriber handlers
-    # are wired before any other subscriber that might emit scan/briefing events.
-    # Idempotent — safe to call from both API lifespan and bot on_ready.
+    # ── Wave 3 (readmodel): cache invalidation hooks ──────────────────────────────────
     from src.readmodel import CacheSubscriber
     CacheSubscriber.register()
     logger.info("platform.bootstrap.cache_subscriber_ready")
@@ -310,7 +310,7 @@ async def bootstrap() -> None:
                 reason="scheduler_user_id not configured",
             )
 
-    # ── G4: StressTest → Watchlist trigger bridge ──────────────────────────────
+    # ── G4: StressTest → Watchlist trigger bridge ──────────────────────────────────
     if _stress_test_subscriber is None:
         from src.watchlist.stress_test_subscriber import StressTestSubscriber
         from src.platform.db import AsyncSessionLocal
@@ -319,17 +319,7 @@ async def bootstrap() -> None:
         _stress_test_subscriber.register()
         logger.info("platform.bootstrap.stress_test_subscriber_ready")
 
-    # ── Wave 3: OpportunityScreenScheduler + subscriber ───────────────────────────
-    # Subscriber registered here (bus already started).
-    # Scheduler is initialised here but start() is called by bot on_ready —
-    # discord.ext.tasks requires the bot event loop to be running.
-    #
-    # Chain:
-    #   OpportunityScreenScheduler._run()  [09:10 ICT daily]
-    #     → run_opportunity_screen_job()   [market segment]
-    #       → OpportunityScreenCompletedEvent → EventBus
-    #         → OpportunityScreenSubscriber._handle()  [market segment stub]
-    #           → (Wave 3 TODO) AI cross-check → Discord morning channel
+    # ── Wave 3: OpportunityScreenScheduler + subscriber ──────────────────────────────
     if _opportunity_screen_scheduler is None:
         from src.market.opportunity_screen_scheduler import OpportunityScreenScheduler
 
@@ -345,9 +335,7 @@ async def bootstrap() -> None:
         _opportunity_screen_subscriber.register()
         logger.info("platform.bootstrap.opportunity_screen_subscriber_ready")
 
-    # ── Wave B2: SignalEngineListener ───────────────────────────────────────────────────
-    # All 3 required deps are now available as session_factory-backed singletons.
-    # portfolio_query and feedback_service remain optional (None = degraded gracefully).
+    # ── Wave B2: SignalEngineListener ────────────────────────────────────────────────────
     if _signal_engine_listener is None:
         from src.ai.signal_engine_listener import SignalEngineListener
         from src.thesis.watchlist_query_service import WatchlistQueryService
@@ -360,16 +348,13 @@ async def bootstrap() -> None:
             watchdog_service=WatchlistQueryService(session_factory=AsyncSessionLocal),
             stress_test_service=StressTestQueryService(session_factory=AsyncSessionLocal),
             thesis_query=ThesisQueryService(session_factory=AsyncSessionLocal),
-            portfolio_query=None,   # Wave B3: wire when PortfolioQueryService ready
-            feedback_service=None,  # Wave B3: wire when FeedbackService ready
+            portfolio_query=None,
+            feedback_service=None,
         )
         _signal_engine_listener.register()
         logger.info("platform.bootstrap.signal_engine_listener_ready")
 
-    # ── Trend Prediction: TrendEngineListener ───────────────────────────────────────────
-    # Co-subscribes SignalEngineRequestedEvent alongside SignalEngineListener.
-    # Deps: TrendReasoningAgent (already wired above), TrendPredictionStore,
-    # WatchlistQueryService, ThesisQueryService (new instances, same session_factory).
+    # ── Trend Prediction: TrendEngineListener ──────────────────────────────────────────────
     if _trend_engine_listener is None:
         from src.ai.trend_engine_listener import TrendEngineListener
         from src.market.trend_engine import TrendEngine
@@ -390,15 +375,37 @@ async def bootstrap() -> None:
         _trend_engine_listener.register()
         logger.info("platform.bootstrap.trend_engine_listener_ready")
 
+    # ── Wave E: PostMortemService + MemoryInjectionListener ────────────────────────────
+    # PostMortemService listens to ThesisClosedEvent → runs AI extraction
+    # → emits ThesisPostMortemReadyEvent
+    # MemoryInjectionListener listens to ThesisPostMortemReadyEvent → writes memory
+    # Both register here; bot.PostMortemSubscriber registers in on_ready (needs discord.Client)
+    if _post_mortem_service is None:
+        from src.thesis.post_mortem_service import PostMortemService
+        from src.platform.db import AsyncSessionLocal
+
+        _post_mortem_service = PostMortemService(
+            ai_client=_ai_client,  # type: ignore[arg-type]
+            session_factory=AsyncSessionLocal,
+        )
+        _post_mortem_service.register()  # type: ignore[union-attr]
+        logger.info("platform.bootstrap.post_mortem_service_ready")
+
+    if _memory_injection_listener is None:
+        from src.ai.memory_injection_listener import MemoryInjectionListener
+        from src.platform.db import AsyncSessionLocal
+
+        _memory_injection_listener = MemoryInjectionListener(
+            session_factory=AsyncSessionLocal,
+        )
+        _memory_injection_listener.register()  # type: ignore[union-attr]
+        logger.info("platform.bootstrap.memory_injection_listener_ready")
+
     logger.info("platform.bootstrap.complete")
 
 
 async def shutdown() -> None:
-    """Gracefully release resources held by singletons.
-
-    Call this in the API lifespan teardown and in the bot on_close handler.
-    Safe to call even if bootstrap() was never called (all singletons are None).
-    """
+    """Gracefully release resources held by singletons."""
     global _quote_service, _ohlcv_service, _ai_client
     global _snapshot_scheduler, _opportunity_screen_scheduler
 
@@ -544,7 +551,6 @@ def get_snapshot_scheduler():
 
 
 def get_pnl_service():
-    """Return a factory: factory(session) -> PnlService."""
     if _pnl_service_class is None:
         raise RuntimeError("PnlService not initialised — call bootstrap() first.")
     quote_svc = get_quote_service()
@@ -566,7 +572,6 @@ def get_memory_consolidator():
 
 
 def get_agenda_service_factory():
-    """Return factory callable(session) -> AgendaService, or None if not configured."""
     return _agenda_service_factory
 
 
@@ -583,12 +588,10 @@ def get_thesis_review_listener():
 
 
 def get_briefing_listener():
-    """Return BriefingListener singleton, or None if scheduler_user_id is not set."""
     return _briefing_listener
 
 
 def get_stress_test_subscriber():
-    """Return StressTestSubscriber singleton, or None if not initialised."""
     return _stress_test_subscriber
 
 
@@ -599,38 +602,34 @@ def get_signal_engine_agent():
 
 
 def get_signal_engine_listener():
-    """Return SignalEngineListener singleton, or None if not initialised."""
     return _signal_engine_listener
 
 
 def get_opportunity_screen_scheduler():
-    """Return the OpportunityScreenScheduler singleton.
-
-    Call scheduler.start() in bot on_ready AFTER bootstrap() returns.
-    Returns None if bootstrap() has not been called yet.
-    """
     return _opportunity_screen_scheduler
 
 
 def get_opportunity_screen_subscriber():
-    """Return the OpportunityScreenSubscriber singleton.
-
-    Call subscriber.set_client(bot) in bot on_ready to inject discord.Client.
-    Returns None if not initialised.
-    """
     return _opportunity_screen_subscriber
 
 
 def get_trend_reasoning_agent():
-    """Return TrendReasoningAgent singleton, or None if bootstrap() not called yet."""
     return _trend_reasoning_agent
 
 
 def get_trend_prediction_store():
-    """Return TrendPredictionStore singleton, or None if bootstrap() not called yet."""
     return _trend_prediction_store
 
 
 def get_trend_engine_listener():
-    """Return TrendEngineListener singleton, or None if bootstrap() not called yet."""
     return _trend_engine_listener
+
+
+def get_post_mortem_service():
+    """Return PostMortemService singleton, or None if bootstrap() not called yet."""
+    return _post_mortem_service
+
+
+def get_memory_injection_listener():
+    """Return MemoryInjectionListener singleton, or None if bootstrap() not called yet."""
+    return _memory_injection_listener
