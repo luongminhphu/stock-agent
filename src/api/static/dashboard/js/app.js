@@ -198,6 +198,20 @@ function bindBriefTickerClick() {
 }
 
 // ---------------------------------------------------------------------------
+// #3 FIX: Watchlist thesis badge click → navigate to thesis detail
+// Listens for 'navigate:thesis' dispatched by watchlist-renderer.js
+// ---------------------------------------------------------------------------
+function bindWatchlistThesisNavigate() {
+  document.addEventListener('navigate:thesis', (e) => {
+    const { thesisId } = e.detail ?? {};
+    if (!thesisId) return;
+    loadThesisDetail(thesisId);
+    document.getElementById('thesesTableWrap')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Watchlist add modal: wire form submit
 // ---------------------------------------------------------------------------
 function bindWatchlistAddModal() {
@@ -241,7 +255,7 @@ function bindDecisionTabs() {
       decisionsPane?.classList.add('hidden');
       lessonsPane?.classList.remove('hidden');
       const wrap = el('lessonsListWrap');
-      if (wrap && (wrap.innerHTML.includes('\u0110ang tải') || wrap.children.length === 0)) {
+      if (wrap && (wrap.innerHTML.includes('Đang tải') || wrap.children.length === 0)) {
         await loadLessons();
       }
     }
@@ -300,6 +314,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 1d. Wave G: generate brief buttons → POST /briefing/{phase}/generate
   bindGenerateBriefButtons();
+
+  // 1e. #3 FIX: watchlist thesis badge → navigate:thesis → loadThesisDetail
+  bindWatchlistThesisNavigate();
 
   // 2. Bind thesis form + delete confirm (submit handlers)
   bindThesisFormEvents({
@@ -362,7 +379,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!state.aiApplyThesisId || !state.aiSelectedRecIds.length) return;
     const btn = el('aiApplyConfirmBtn');
     btn.disabled = true;
-    btn.textContent = '\u0110ang áp dụng…';
+    btn.textContent = 'Đang áp dụng…';
     try {
       await sendJson(
         `${thesisApiBase()}/${state.aiApplyThesisId}/recommendations/apply`,
@@ -370,7 +387,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         { recommendation_ids: state.aiSelectedRecIds },
       );
       closeModal('aiApplyModal');
-      showToast('\u2705 \u0110ã áp dụng gợi ý AI');
+      showToast('✅ Đã áp dụng gợi ý AI');
       await loadThesisDetail(state.aiApplyThesisId);
     } catch (err) {
       showToast(`Lỗi áp dụng: ${err.message}`, 'error');

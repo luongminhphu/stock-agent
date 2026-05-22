@@ -8,6 +8,9 @@ import { bindRefreshButton } from './memory-api.js';
 
 const PANEL_ID = 'memory-panel';
 
+// Guard: prevent double-bind on re-renders (tab revisit, reload)
+let _refreshWired = false;
+
 function panel() {
   return document.getElementById(PANEL_ID);
 }
@@ -104,6 +107,14 @@ export function renderMemoryPanel(data) {
     ? `<div class="memory-regime">${data.market_regime_reads.map(_esc).join(' &rsaquo; ')}</div>`
     : '';
 
+  // #1 FIX: render context_summary khi có — AI-generated tóm tắt hành vi nhà đầu tư
+  const contextHtml = data.context_summary
+    ? `<div class="memory-section memory-context-summary">
+        <div class="memory-section-title">💡 Tóm tắt hành vi</div>
+        <p class="memory-context-text">${_esc(data.context_summary)}</p>
+      </div>`
+    : '';
+
   const footerParts = [];
   if (data.episode_count) footerParts.push(`${data.episode_count} episodes`);
   if (data.period_end) footerParts.push(`Cập nhật: ${data.period_end}`);
@@ -133,6 +144,8 @@ export function renderMemoryPanel(data) {
     </div>` : ''
     }
 
+    ${contextHtml}
+
     <div class="memory-section">
       <div class="memory-section-title">🔄 Patterns</div>
       <ul class="memory-list">${patternsHtml}</ul>
@@ -159,22 +172,26 @@ export function renderMemoryPanel(data) {
 export async function loadMemoryPanel() {
   renderMemoryLoading();
 
-  // Wire refresh once — delegate pattern avoids double-bind on re-renders
-  bindRefreshButton(result => {
-    // Refresh returned new synthesis data — re-render panel in-place
-    if (result?.status === 'ok') {
-      renderMemoryPanel({
-        has_snapshot: true,
-        episode_count: null,
-        confidence: result.confidence,
-        period_end: null,
-        patterns: result.patterns ?? [],
-        bias_warnings: result.bias_warnings ?? [],
-        market_regime_reads: result.market_regime_reads ?? [],
-        context_summary: null,
-      });
-    }
-  });
+  // #2 FIX: guard against double-bind — bindRefreshButton adds a DOM listener;
+  // calling it on every re-render stacks duplicate handlers.
+  if (!_refreshWired) {
+    bindRefreshButton(result => {
+      // Refresh returned new synthesis data — re-render panel in-place
+      if (result?.status === 'ok') {
+        renderMemoryPanel({
+          has_snapshot: true,
+          episode_count: null,
+          confidence: result.confidence,
+          period_end: null,
+          patterns: result.patterns ?? [],
+          bias_warnings: result.bias_warnings ?? [],
+          market_regime_reads: result.market_regime_reads ?? [],
+          context_summary: result.context_summary ?? null,
+        });
+      }
+    });
+    _refreshWired = true;
+  }
 
   try {
     const data = await fetchMemorySnapshot();

@@ -128,9 +128,14 @@ function buildCard(item, onRemove, signalReports = []) {
   const ceilBadge  = q?.is_ceiling ? '<span class="wl-ceil-badge">TRẦN</span>'  : '';
   const floorBadge = q?.is_floor   ? '<span class="wl-floor-badge">SÀN</span>' : '';
 
-  // Thesis link badge
+  // #3 FIX: thesis badge — clickable nếu có thesis_id
+  // dispatch 'navigate:thesis' event lên document → app.js listener xử lý
   const thesisBadge = item.thesis_id
-    ? `<span class="wl-thesis-badge" title="Thesis #${item.thesis_id}">thesis</span>`
+    ? `<span class="wl-thesis-badge wl-thesis-badge--link"
+           role="button"
+           tabindex="0"
+           title="Xem Thesis #${item.thesis_id}"
+           data-thesis-id="${item.thesis_id}">thesis ↗</span>`
     : '';
 
   // Signal tags — actionable only, sorted by strength desc, max 3
@@ -177,6 +182,22 @@ function buildCard(item, onRemove, signalReports = []) {
       e.stopPropagation();
       onRemove(item.ticker);
     });
+  }
+
+  // #3 FIX: wire thesis badge click — dispatch event, app.js handles navigation
+  if (item.thesis_id) {
+    const badge = card.querySelector('.wl-thesis-badge--link');
+    if (badge) {
+      const navigate = () => {
+        document.dispatchEvent(new CustomEvent('navigate:thesis', {
+          detail: { thesisId: item.thesis_id },
+        }));
+      };
+      badge.addEventListener('click', (e) => { e.stopPropagation(); navigate(); });
+      badge.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(); }
+      });
+    }
   }
 
   return card;
