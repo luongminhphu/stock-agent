@@ -16,7 +16,9 @@ from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
 
-_RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+# HTTP 5xx status codes that trigger AIUnavailableError (and tenacity retry).
+# 429 is handled separately — it raises AIRateLimitError before this check.
+_5XX_STATUS = {500, 502, 503, 504}
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -37,10 +39,6 @@ class AIUnavailableError(AIError):
 PerplexityError = AIError
 PerplexityRateLimitError = AIRateLimitError
 PerplexityUnavailableError = AIUnavailableError
-
-
-def _is_retryable(exc: BaseException) -> bool:
-    return isinstance(exc, (AIRateLimitError, AIUnavailableError))
 
 
 class AIClient:
@@ -164,7 +162,7 @@ class AIClient:
 
         if response.status_code == 429:
             raise AIRateLimitError("Rate limited")
-        if response.status_code in _RETRYABLE_STATUS:
+        if response.status_code in _5XX_STATUS:
             raise AIUnavailableError(f"HTTP {response.status_code}")
         if response.status_code >= 400:
             raise AIError(f"API error {response.status_code}: {response.text}")
