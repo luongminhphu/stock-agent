@@ -8,6 +8,7 @@ Write-side domain models (thesis.models) must NOT be imported here.
 from __future__ import annotations
 
 from datetime import datetime
+from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -116,7 +117,7 @@ class LeaderboardResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class TimelineEventKind(str):
+class TimelineEventKind(StrEnum):
     CREATED = "created"
     REVIEWED = "reviewed"
     ASSUMPTION_UPDATED = "assumption_updated"
@@ -220,6 +221,8 @@ class ConvictionPoint(BaseModel):
       (e.g. dashed line, lighter dot, tooltip disclaimer).
     """
 
+    model_config = ConfigDict(frozen=False)  # explicit: allow post-init mutation for price forward-fill
+
     snapshot_id: int
     snapshotted_at: datetime
     score: float                         # total 0–100
@@ -238,7 +241,7 @@ class ConvictionPoint(BaseModel):
     risk_signals: list[str] = []         # parsed from nearest prior review.risk_signals
 
 
-class ConvictionTrend(str):
+class ConvictionTrend(StrEnum):
     IMPROVING = "improving"
     DECLINING = "declining"
     STABLE = "stable"
