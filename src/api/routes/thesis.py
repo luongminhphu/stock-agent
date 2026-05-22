@@ -1,8 +1,8 @@
-"""Thesis routes — CRUD for thesis, assumption, catalyst + AI review + AI suggest.
+"""Thesis routes — CRUD for thesis, assumption, catalyst + AI review + AI suggest + AI debate.
 
 Owner: api segment.
 No business logic here — delegates entirely to ThesisService, ScoringService,
-ReviewService, ThesisSuggestAgent.
+ReviewService, ThesisSuggestAgent, ThesisDebateAgent.
 
 Endpoints:
     POST   /thesis/suggest                                        — AI draft thesis for a ticker (no persist)
@@ -30,19 +30,25 @@ Endpoints:
     GET    /thesis/{thesis_id}/reviews/latest                     — latest review only
     GET    /thesis/{thesis_id}/recommendations                    — list PENDING AI recommendations
     POST   /thesis/{thesis_id}/recommendations/{rec_id}/apply     — accept or reject a recommendation
+    POST   /thesis/{thesis_id}/debate                             — trigger AI debate (devil's advocate)
 """
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from src.ai.agents.suggest_agent import ThesisSuggestAgent
+from src.ai.agents.thesis_debate import ThesisDebateAgent
 from src.ai.client import AIError
 from src.ai.schemas import ThesisSuggestionResult
+from src.ai.schemas.thesis_debate import DebateOutput
 from src.api.deps import (
     get_current_user_id,
     get_review_service,
     get_symbol_registry,
+    get_thesis_debate_agent,
     get_thesis_service,
     get_thesis_suggest_agent,
     get_timeline_service,
@@ -58,6 +64,7 @@ from src.api.dto.thesis import (
     CatalystListResponse,
     CatalystResponse,
     CatalystUpdateRequest,
+    DebateRequest,
     HealthScoreBreakdown,
     HealthScoreResponse,
     RecommendationListResponse,
@@ -778,3 +785,65 @@ async def apply_ai_review_bulk(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         ) from exc
+
+
+# ---------------------------------------------------------------------------
+# AI Debate — Wave C.2
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{thesis_id}/debate", response_model=DebateOutput)
+async def debate_thesis(
+    thesis_id: int,
+    body: DebateRequest,
+    user_id: str = Depends(get_current_user_id),
+    svc: ThesisService = Depends(get_thesis_service),
+    agent: ThesisDebateAgent = Depends(get_thesis_debate_agent),  # type: ignore[type-arg]
+) -> DebateOutput:
+    """Trigger AI debate (devil's advocate) for a thesis.
+
+    User-initiated, deep adversarial analysis. Does NOT persist to DB —
+    fire-and-return per ThesisDebateAgent contract.
+
+    debate_focus narrows the analysis:
+      - "entry"  → challenge entry timing and valuation
+      - "exit"   → challenge exit/target price assumptions
+      - "sizing" → challenge position sizing vs conviction and risk
+      - null     → full debate across all dimensions
+
+    Returns DebateOutput with challenges sorted CRITICAL → MINOR.
+    On AI failure: returns fallback with empty challenges and confidence=0.0.
+    """
+    try:
+        thesis = await svc.get(thesis_id, user_id)
+    except ThesisNotFoundError as exc:
+        raise _not_found(exc) from exc
+
+    assumptions = [
+        {"id": a.id, "description": a.description, "status": a.status.value}
+        for a in (thesis.assumptions or [])
+    ]
+    catalysts = [
+        {"id": c.id, "description": c.description, "status": c.status.value}
+        for c in (thesis.catalysts or [])
+    ]
+    # Derive invalidation conditions from explicitly invalid assumptions
+    invalidation_conditions = [
+        a.description
+        for a in (thesis.assumptions or [])
+        if a.status.value == "invalid"
+    ]
+    days_since = (datetime.now(UTC) - thesis.created_at).days
+
+    return await agent.run(
+        thesis_id=thesis_id,
+        ticker=thesis.ticker,
+        thesis_title=thesis.title,
+        thesis_summary=thesis.summary or "",
+        assumptions=assumptions,
+        catalysts=catalysts,
+        invalidation_conditions=invalidation_conditions,
+        days_since_written=days_since,
+        debate_focus=body.debate_focus,
+        user_id=user_id,
+    )

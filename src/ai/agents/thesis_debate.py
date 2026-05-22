@@ -16,7 +16,7 @@ Responsibility:
   - KHÔNG tự gọi DB hay market API — tất cả context được inject bởi caller.
 
 Caller:
-  - API route: POST /readmodel/dashboard/theses/{id}/debate (Wave C.2)
+  - API route: POST /thesis/{id}/debate (Wave C.2)
   - Bot: !debate command (Wave C.2)
 
 Fallback:
@@ -31,7 +31,6 @@ Memory logging (Wave C.3, optional):
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import ValidationError
@@ -64,21 +63,15 @@ def _fallback_debate(
     """Rule-based fallback when AI is unavailable.
 
     Returns a neutral DebateOutput with empty challenges.
-    confidence_adjustment=0.0 signals no information gain.
+    confidence=0.0 signals no information gain.
     Caller should surface a user-facing message about degraded quality.
     """
     return DebateOutput(
-        ticker=ticker,
-        thesis_id=str(thesis_id),
-        stance=OverallStance.NEUTRAL,
-        bull_case_summary="AI không available — không thể phân tích bull case.",
-        bear_case_summary="AI không available — không thể phân tích bear case.",
+        overall_stance=OverallStance.NEUTRAL,
+        verdict="AI không available — debate mode tạm thời không khả dụng. Vui lòng thử lại sau.",
+        confidence=0.0,
         challenges=[],
-        weakest_link="Không xác định được — cần AI để phân tích.",
-        key_question="AI tạm thời không available. Vui lòng thử lại sau.",
-        confidence_adjustment=0.0,
-        debate_verdict="Debate mode tạm thời không available. Kết quả không có giá trị phân tích.",
-        debated_at=datetime.now(UTC).isoformat(),
+        suggested_action=None,
     )
 
 
@@ -171,11 +164,6 @@ class ThesisDebateAgent:
                 user_prompt=user_prompt,
             )
 
-            # Stamp runtime fields
-            result.thesis_id = str(thesis_id)
-            result.ticker = ticker
-            result.debated_at = datetime.now(UTC).isoformat()
-
             # Sort challenges CRITICAL → SIGNIFICANT → MODERATE → MINOR
             result.challenges.sort(
                 key=lambda c: _STRENGTH_ORDER.get(c.strength, 99)
@@ -183,13 +171,12 @@ class ThesisDebateAgent:
 
             logger.info(
                 "ThesisDebate: thesis=%s ticker=%s stance=%s "
-                "challenges=%d adj=%+.2f weakest_link=%r",
+                "challenges=%d confidence=%.1f",
                 thesis_id,
                 ticker,
-                result.stance,
+                result.overall_stance,
                 len(result.challenges),
-                result.confidence_adjustment,
-                result.weakest_link[:60] if result.weakest_link else "",
+                result.confidence,
             )
             return result
 
