@@ -134,20 +134,28 @@ _URGENCY_SCORE_MAP = {
     "LOW": 0.20,
 }
 
-_VERDICT_SCOPE_MAP = {
-    "INVALIDATED": ActionScope.THESIS_INVALIDATE,
-    "WEAKENING": ActionScope.THESIS_REVIEW,
-    "BEARISH": ActionScope.SIGNAL_RESPOND,
-    "CONFIRMED": ActionScope.THESIS_INVALIDATE,
-    "SUSPECTED": ActionScope.THESIS_REVIEW,
+# Maps verdict → (urgency, ActionScope) for _fallback_plan rule engine.
+# Priority order (highest severity first):
+#   INVALIDATED / CONFIRMED_INVALID → critical, force exit consideration
+#   WEAKENING / SUSPECTED           → high, thesis review
+#   REVIEW_NOW                      → high, thesis review
+#   BEARISH (watchdog proxy)        → high, signal respond
+# ON_TRACK is intentionally absent — no fallback action needed.
+_VERDICT_FALLBACK: dict[str, tuple[str, ActionScope]] = {
+    "INVALIDATED":       ("critical", ActionScope.THESIS_INVALIDATE),
+    "CONFIRMED_INVALID": ("critical", ActionScope.THESIS_INVALIDATE),
+    "WEAKENING":         ("high",     ActionScope.THESIS_REVIEW),
+    "SUSPECTED":         ("high",     ActionScope.THESIS_REVIEW),
+    "REVIEW_NOW":        ("high",     ActionScope.THESIS_REVIEW),
+    "BEARISH":           ("high",     ActionScope.SIGNAL_RESPOND),
 }
 
 
 def _fallback_plan(contexts: list[dict[str, Any]]) -> NextActionPlan:
     """Rule-based NextActionPlan when AI is unavailable.
 
-    Derives urgency and scope from the highest-severity signal per ticker.
-    All fallback actions have confidence=0.3.
+    Derives urgency and scope from the highest-severity signal per ticker
+    using _VERDICT_FALLBACK. All fallback actions have confidence=0.3.
     """
     actions: list[SuggestedAction] = []
 
@@ -155,37 +163,45 @@ def _fallback_plan(contexts: list[dict[str, Any]]) -> NextActionPlan:
         ticker = ctx.get("ticker", "UNKNOWN")
 
         invalidation_verdict = ctx.get("invalidation_verdict", "")
-        judge_verdict = ctx.get("judge_verdict", "")
-        watchdog_verdict = ctx.get("watchdog_verdict", "")
-        watchdog_urgency = ctx.get("watchdog_urgency", "")
-        stop_loss_breached = ctx.get("stop_loss_breached", False)
+        judge_verdict        = ctx.get("judge_verdict", "")
+        watchdog_verdict     = (ctx.get("watchdog_verdict") or "").upper()
+        watchdog_urgency     = (ctx.get("watchdog_urgency") or "").upper()
+        stop_loss_breached   = ctx.get("stop_loss_breached", False)
 
-        if stop_loss_breached or invalidation_verdict == "CONFIRMED":
+        # --- resolve urgency + scope via priority cascade ---
+        if stop_loss_breached or invalidation_verdict in ("CONFIRMED", "CONFIRMED_INVALID"):
             urgency = "critical"
-            scope = ActionScope.THESIS_INVALIDATE
-            title = f"{ticker}: Cân nhắc thoát vị thế"
-            step = "Kiểm tra lại stop-loss và xem xét đóng vị thế nếu thesis bị vô hiệu hóa."
-            source = [f"invalidation:{invalidation_verdict}", "stop_loss_breach" if stop_loss_breached else ""]
-        elif judge_verdict in ("INVALIDATED", "WEAKENING") or invalidation_verdict == "SUSPECTED":
-            urgency = "high"
-            scope = ActionScope.THESIS_REVIEW
-            title = f"{ticker}: Review thesis ngay"
-            step = "Chạy ThesisReview hoặc review thủ công các assumptions đang bị thách thức."
-            source = [f"ThesisJudge:{judge_verdict}", f"Invalidation:{invalidation_verdict}"]
-        elif (watchdog_verdict or "").upper() == "BEARISH" or (watchdog_urgency or "").upper() in ("HIGH", "CRITICAL"):
-            urgency = "high"
-            scope = ActionScope.SIGNAL_RESPOND
-            title = f"{ticker}: Tín hiệu tiêu cực"
-            step = "Theo dõi sát diễn biến giá và dòng tiền. Cân nhắc reduce nếu tín hiệu duy trì."
-            source = [f"Watchdog:{watchdog_verdict}:{watchdog_urgency}"]
+            scope   = ActionScope.THESIS_INVALIDATE
+            title   = f"{ticker}: Cân nhắc thoát vị thế"
+            step    = "Kiểm tra lại stop-loss và xem xét đóng vị thế nếu thesis bị vô hiệu hóa."
+            source  = [
+                f"invalidation:{invalidation_verdict}",
+                *(["stop_loss_breach"] if stop_loss_breached else []),
+            ]
+        elif judge_verdict and judge_verdict in _VERDICT_FALLBACK:
+            urgency, scope = _VERDICT_FALLBACK[judge_verdict]
+            title   = f"{ticker}: Review thesis ngay"
+            step    = "Chạy ThesisReview hoặc review thủ công các assumptions đang bị thách thức."
+            source  = [f"ThesisJudge:{judge_verdict}"]
+            if invalidation_verdict:
+                source.append(f"Invalidation:{invalidation_verdict}")
+        elif invalidation_verdict in _VERDICT_FALLBACK:
+            urgency, scope = _VERDICT_FALLBACK[invalidation_verdict]
+            title   = f"{ticker}: Review thesis ngay"
+            step    = "Chạy ThesisReview hoặc review thủ công các assumptions đang bị thách thức."
+            source  = [f"Invalidation:{invalidation_verdict}"]
+        elif watchdog_verdict == "BEARISH" or watchdog_urgency in ("HIGH", "CRITICAL"):
+            urgency, scope = _VERDICT_FALLBACK["BEARISH"]
+            title   = f"{ticker}: Tín hiệu tiêu cực"
+            step    = "Theo dõi sát diễn biến giá và dòng tiền. Cân nhắc reduce nếu tín hiệu duy trì."
+            source  = [f"Watchdog:{watchdog_verdict}:{watchdog_urgency}"]
         else:
             urgency = "low"
-            scope = ActionScope.WATCHLIST_MONITOR
-            title = f"{ticker}: Tiếp tục theo dõi"
-            step = "Không có tín hiệu bất thường. Duy trì monitoring theo kế hoạch."
-            source = ["no_breach_detected"]
+            scope   = ActionScope.WATCHLIST_MONITOR
+            title   = f"{ticker}: Tiếp tục theo dõi"
+            step    = "Không có tín hiệu bất thường. Duy trì monitoring theo kế hoạch."
+            source  = ["no_breach_detected"]
 
-        source_signals = [s for s in source if s]
         actions.append(
             SuggestedAction(
                 ticker=ticker,
@@ -196,7 +212,7 @@ def _fallback_plan(contexts: list[dict[str, Any]]) -> NextActionPlan:
                 title=title,
                 step=step,
                 rationale="[Fallback] AI không khả dụng — rule-based từ signal contexts.",
-                source_signals=source_signals,
+                source_signals=[s for s in source if s],
                 confidence=0.3,
             )
         )
