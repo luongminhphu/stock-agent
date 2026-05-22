@@ -277,7 +277,7 @@ class ThesisTimelineService:
           Option C — live price fallback: if the last point still has no price after
             forward-fill, and current_price is provided by the caller (e.g. from a live
             quote fetched by the API/bot adapter), it is injected into that last point.
-            This covers the edge case where today's AI review ran before the market
+            This covers the edge case where today’s AI review ran before the market
             snapshot job.
             current_price does NOT propagate backwards — only the last point is affected.
         """
@@ -369,14 +369,14 @@ class ThesisTimelineService:
                 last_known_price = point.price
             elif last_known_price is not None:
                 point.price = last_known_price
-                point.price_filled = True  # type: ignore[attr-defined]
+                point.price_filled = True
 
         # ------------------------------------------------------------------
         # Option C: live price fallback for the last point only
         # ------------------------------------------------------------------
         if points and points[-1].price is None and current_price is not None:
             points[-1].price = current_price
-            points[-1].price_filled = True  # type: ignore[attr-defined]
+            points[-1].price_filled = True
 
         trend = _compute_trend(points)
         latest_score = points[-1].score if points else None
