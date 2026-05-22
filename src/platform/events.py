@@ -54,9 +54,9 @@ class ProactiveWatchRequestedEvent(DomainEvent):
     Consumed by: watchlist.ProactiveWatchListener
 
     phase:
-        morning  — 09:05 ICT  (just after market open)
-        midday   — 11:30 ICT  (mid-session check)
-        pre_atc  — 14:30 ICT  (30 min before ATC)
+        morning  — 09:15 ICT  (just after market open)
+        midday   — 11:15 ICT  (mid-session check)
+        pre_atc  — 14:15 ICT  (30 min before ATC)
     """
     user_id: str = ""
     phase: str = "morning"          # morning | midday | pre_atc
@@ -129,6 +129,72 @@ class ThesisReviewRequestedEvent(DomainEvent):
     thesis_id: str = ""
     symbol: str = ""
     reason: str = "scheduled"      # scheduled | signal | manual
+
+
+@dataclass(frozen=True)
+class ThesisClosedEvent(DomainEvent):
+    """Emitted by ThesisService when a thesis is closed or invalidated.
+
+    Produced by: thesis segment (ThesisService.close / ThesisService.invalidate)
+    Consumed by: thesis.PostMortemService → triggers AI lesson extraction
+
+    close_reason:
+        closed      — investor manually closed the thesis (target reached, position exited)
+        invalidated — thesis hit an invalidation trigger
+
+    outcome_pnl_pct:
+        Final realised P&L percentage, if available from DecisionLog.
+        None when P&L data is not yet available (post-mortem still runs,
+        AI will note the absence).
+
+    thesis_summary:
+        Snapshot of the thesis title + summary at close time.
+        Avoids a second DB lookup inside PostMortemService.
+    """
+    thesis_id: int = 0
+    user_id: str = ""
+    ticker: str = ""
+    close_reason: str = "closed"    # closed | invalidated
+    thesis_title: str = ""
+    thesis_summary: str = ""
+    outcome_pnl_pct: float | None = None
+
+
+@dataclass(frozen=True)
+class ThesisPostMortemReadyEvent(DomainEvent):
+    """Emitted by thesis.PostMortemService after AI lesson extraction completes.
+
+    Produced by: thesis segment (PostMortemService)
+    Consumed by:
+      - ai.MemoryInjectionListener  → write structured memory entry
+      - bot.PostMortemSubscriber    → Discord embed in decision channel
+
+    lesson:
+        Core lesson extracted by AI — what went right/wrong with this thesis.
+
+    pattern:
+        Short pattern label for indexing (e.g. "premature_entry", "thesis_drift",
+        "catalyst_miss", "correct_breakout"). Empty string if AI could not classify.
+
+    verdict:
+        AI verdict on outcome quality.
+        Values: CORRECT | INCORRECT | MIXED | INCONCLUSIVE
+
+    memory_tags:
+        Tuple of keyword tags for memory store indexing.
+        e.g. ("breakout", "VCB", "catalyst_miss")
+    """
+    thesis_id: int = 0
+    user_id: str = ""
+    ticker: str = ""
+    close_reason: str = "closed"
+    thesis_title: str = ""
+    lesson: str = ""
+    pattern: str = ""
+    verdict: str = "INCONCLUSIVE"   # CORRECT | INCORRECT | MIXED | INCONCLUSIVE
+    confidence: float = 0.0
+    outcome_pnl_pct: float | None = None
+    memory_tags: tuple[str, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)
