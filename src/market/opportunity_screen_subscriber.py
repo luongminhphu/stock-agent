@@ -72,15 +72,8 @@ class OpportunityScreenSubscriber:
             logger.debug("opportunity_screen_subscriber.no_candidates_skip")
             return
 
-        # ── Wave 3 TODO: cross-check with watchlist + thesis, then emit AI event ──
-        # from src.platform.event_bus import get_event_bus
-        # from src.platform.events import OpportunityAIAnalysisRequestedEvent
-        # bus = get_event_bus()
-        # await bus.publish(OpportunityAIAnalysisRequestedEvent(
-        #     candidates_found=candidates_found,
-        #     top_symbol=top_symbol,
-        #     screen_criteria=screen_criteria,
-        # ))
+        # Wave 3 TODO: emit OpportunityAIAnalysisRequestedEvent so ai segment
+        # can cross-check candidates against watchlist + active theses.
         logger.debug(
             "opportunity_screen_subscriber.ai_hook_pending",
             note="Wave 3: AI cross-check not yet implemented",
