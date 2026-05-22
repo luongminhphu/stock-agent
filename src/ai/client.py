@@ -35,12 +35,6 @@ class AIUnavailableError(AIError):
     """HTTP 5xx — upstream unavailable."""
 
 
-# Legacy aliases — kept for backward compatibility
-PerplexityError = AIError
-PerplexityRateLimitError = AIRateLimitError
-PerplexityUnavailableError = AIUnavailableError
-
-
 class AIClient:
     """Async AI client (Perplexity backend) with retry and structured JSON output support.
 
@@ -259,7 +253,3 @@ def _strip_json_fences(text: str) -> str:
         if text.endswith("```"):
             text = text[:-3].rstrip()
     return text
-
-
-# Backward-compat alias — bootstrap.py and any legacy callers still work
-PerplexityClient = AIClient
