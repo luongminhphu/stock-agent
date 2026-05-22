@@ -14,7 +14,8 @@ Prompt design:
   - Bundle labels (BULLISH/NEUTRAL/BEARISH) are sent, not raw prices.
     This prevents the LLM from hallucinating specific price targets.
   - thesis_context is optional ("N/A" when not available).
-  - Instructs LLM to return structured JSON matching TrendPrediction.
+  - system_prompt defines role + output contract (stable across requests).
+  - user_prompt carries per-request signal data (changes every call).
 
 Fallback (non-blocking):
   When LLM call fails or returns unparseable output, _rule_based_fallback()
@@ -36,25 +37,13 @@ from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
 
-_TREND_REASONING_PROMPT = """
+_SYSTEM_PROMPT = """\
 Bạn là AI phân tích kỹ thuật cho thị trường chứng khoán Việt Nam.
-Dựa trên dữ liệu kỹ thuật bên dưới, hãy đưa ra dự đoán xu hướng cho mã {symbol}.
+Dựa trên dữ liệu kỹ thuật được cung cấp, hãy đưa ra dự đoán xu hướng.
 
-## Tín hiệu kỹ thuật
-- Momentum (RSI/MACD):  {momentum_label} (score: {momentum_value:.2f})
-- Structure (EMA/Swing): {structure_label} (score: {structure_value:.2f})
-- Volume (OBV/Surge):    {volume_label} (score: {volume_value:.2f})
-- Volatility (ATR):      {volatility_label} (score: {volatility_value:.2f})
-- Composite score:       {composite:.2f}
-- Regime:                {regime}
-
-## Thesis context
-{thesis_context}
-
-## Yêu cầu output (JSON nghiêm ngặt)
-Trả về JSON với đúng các field sau — KHÔNG thêm field khác:
+You MUST return a JSON object with EXACTLY these fields — no extra fields:
 {{
-  "symbol": "{symbol}",
+  "symbol": "<ticker>",
   "verdict": "<STRONG_BUY|BUY|HOLD|WATCH|REDUCE|STRONG_SELL>",
   "direction": "<UP|DOWN|SIDEWAYS>",
   "confidence": <float 0.0-0.85>,
@@ -64,11 +53,26 @@ Trả về JSON với đúng các field sau — KHÔNG thêm field khác:
   "reasoning": "<1 câu tóm tắt, tối đa 200 ký tự>"
 }}
 
-Quy tắc:
+Quy tắc bắt buộc:
 - confidence tối đa 0.85 — không được vượt quá.
 - Không đề cập giá cụ thể trong reasoning hoặc next_watch.
 - next_watch phải là điều kiện kỹ thuật (ví dụ: "MACD cross confirm", "Break above EMA50").
 - Nếu tín hiệu mâu thuẫn, ưu tiên structure và volume hơn momentum đơn thuần.
+"""
+
+_USER_PROMPT_TEMPLATE = """\
+Phân tích xu hướng cho mã {symbol}.
+
+## Tín hiệu kỹ thuật
+- Momentum (RSI/MACD):   {momentum_label} (score: {momentum_value:.2f})
+- Structure (EMA/Swing): {structure_label} (score: {structure_value:.2f})
+- Volume (OBV/Surge):    {volume_label} (score: {volume_value:.2f})
+- Volatility (ATR):      {volatility_label} (score: {volatility_value:.2f})
+- Composite score:       {composite:.2f}
+- Regime:                {regime}
+
+## Thesis context
+{thesis_context}
 """
 
 
@@ -77,14 +81,14 @@ class TrendReasoningAgent:
 
     Args:
         client:      AIClient instance (src/ai/client.py).
-        model:       LLM model identifier. Defaults to "gpt-4o-mini".
+        model:       LLM model override. None → uses AIClient.DEFAULT_MODEL.
         temperature: Sampling temperature. Lower = more deterministic.
     """
 
     def __init__(
         self,
         client: object,
-        model: str = "gpt-4o-mini",
+        model: str | None = None,
         temperature: float = 0.2,
     ) -> None:
         self._client = client
@@ -107,7 +111,7 @@ class TrendReasoningAgent:
             thesis_context: Optional thesis summary string for context.
                             Pass \"N/A\" when unavailable.
         """
-        prompt = _TREND_REASONING_PROMPT.format(
+        user_prompt = _USER_PROMPT_TEMPLATE.format(
             symbol=bundle.symbol,
             momentum_label=bundle.momentum.label.value,
             momentum_value=bundle.momentum.value,
@@ -123,13 +127,14 @@ class TrendReasoningAgent:
         )
 
         try:
-            raw = await self._client.complete(  # type: ignore[attr-defined]
-                prompt=prompt,
+            prediction = await self._client.chat(  # type: ignore[attr-defined]
+                system_prompt=_SYSTEM_PROMPT,
+                user_prompt=user_prompt,
+                response_schema=TrendPrediction,
                 model=self._model,
                 temperature=self._temperature,
-                response_format={"type": "json_object"},
             )
-            return TrendPrediction.model_validate_json(raw)
+            return prediction
         except Exception as exc:
             logger.warning(
                 "trend_reasoning_agent.llm_failed",
