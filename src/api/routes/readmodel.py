@@ -31,6 +31,7 @@ from src.readmodel.leaderboard_service import LeaderboardService
 from src.readmodel.schemas import (
     ConvictionTimelineResponse,
     LeaderboardResponse,
+    ReviewTimelineResponse,
     ThesisTimelineResponse,
 )
 from src.readmodel.timeline_service import ThesisTimelineService
@@ -134,6 +135,15 @@ async def _fetch_price_and_position(
         _build_position_map(session, user_id),
     )
     return price_map, position_map
+
+
+async def _resolve_thesis_ticker(session: AsyncSession, thesis_id: int) -> str | None:
+    """Resolve ticker for a thesis_id. Returns None if thesis not found."""
+    from src.thesis.models import Thesis
+
+    result = await session.execute(select(Thesis.ticker).where(Thesis.id == thesis_id))
+    row = result.scalar_one_or_none()
+    return row
 
 
 # ---------------------------------------------------------------------------
@@ -684,7 +694,37 @@ async def get_thesis_timeline(
 
 
 # ---------------------------------------------------------------------------
-# Conviction Score Timeline
+# Review Timeline — 5 AI reviews gần nhất của một thesis
+# IMPORTANT: declared BEFORE /conviction-timeline to keep route ordering
+# explicit and avoid any future path ambiguity.
+# ---------------------------------------------------------------------------
+
+
+@router.get("/thesis/{thesis_id}/review-timeline", response_model=ReviewTimelineResponse)
+async def get_review_timeline(
+    thesis_id: int,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    limit: Annotated[
+        int,
+        Query(ge=1, le=20, description="Số AI reviews gần nhất trả về (mới nhất trước)"),
+    ] = 5,
+) -> ReviewTimelineResponse:
+    """Focused review timeline — N AI reviews gần nhất của một thesis.
+
+    Trả về list ReviewTimelineItem (verdict, confidence, reasoning, risk_signals,
+    next_watch_items, reviewed_price) sắp xếp mới nhất trước.
+
+    Dùng để hiển thị lịch sử review ngắn gọn trên thesis drawer / bot command.
+    """
+    svc = ThesisTimelineService(session)
+    result = await svc.get_review_timeline(thesis_id, limit=limit)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Thesis {thesis_id} not found")
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Conviction Score Timeline — with live price injection (Option C fix)
 # ---------------------------------------------------------------------------
 
 
@@ -693,9 +733,41 @@ async def get_conviction_timeline(
     thesis_id: int,
     session: Annotated[AsyncSession, Depends(get_db)],
     limit: Annotated[int, Query(ge=1, le=100, description="Số data-point tối đa trả về")] = 20,
+    enrich_price: Annotated[
+        bool,
+        Query(
+            description=(
+                "Fetch live price từ QuoteService để inject vào điểm cuối cùng "
+                "(Option C — fallback khi AI review chạy trước market snapshot job). "
+                "Tắt nếu muốn dùng dữ liệu snapshot thuần túy."
+            )
+        ),
+    ] = True,
 ) -> ConvictionTimelineResponse:
+    """Conviction score timeline cho một thesis.
+
+    Mỗi điểm ứng với một ThesisSnapshot. Verdict + confidence lấy từ
+    ThesisReview gần nhất (với lookahead 4h để xử lý race condition).
+
+    Option C — live price fallback:
+      Nếu điểm cuối chưa có price (AI review chạy trước snapshot job hôm nay)
+      và enrich_price=true, API sẽ fetch giá hiện tại qua QuoteService và inject
+      vào điểm cuối cùng. Chỉ điểm cuối bị ảnh hưởng — không propagate ngược.
+    """
+    current_price: float | None = None
+
+    if enrich_price:
+        ticker = await _resolve_thesis_ticker(session, thesis_id)
+        if ticker:
+            price_map = await _build_price_map([ticker])
+            current_price = price_map.get(ticker)
+
     svc = ThesisTimelineService(session)
-    result = await svc.get_conviction_timeline(thesis_id, limit=limit)
+    result = await svc.get_conviction_timeline(
+        thesis_id,
+        limit=limit,
+        current_price=current_price,
+    )
     if result is None:
         raise HTTPException(status_code=404, detail=f"Thesis {thesis_id} not found")
     return result
