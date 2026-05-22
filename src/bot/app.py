@@ -122,6 +122,7 @@ async def _register_cogs(bot: commands.Bot) -> None:
     """Load all command cogs. Add new cogs here only — no logic."""
     from src.bot.commands.briefing import BriefingCog
     from src.bot.commands.conviction_timeline import ConvictionTimelineCog
+    from src.bot.commands.debate import DebateCog
     from src.bot.commands.decision import DecisionCog
     from src.bot.commands.health import HealthCog
     from src.bot.commands.help import HelpCog
@@ -141,6 +142,7 @@ async def _register_cogs(bot: commands.Bot) -> None:
     await bot.add_cog(WatchlistCog(bot))
     await bot.add_cog(ThesisCrudCog(bot))
     await bot.add_cog(ThesisReviewCog(bot))
+    await bot.add_cog(DebateCog(bot))
     await bot.add_cog(MarketCog(bot))
     await bot.add_cog(BriefingCog(bot))
     await bot.add_cog(HelpCog(bot))
@@ -158,8 +160,8 @@ async def _register_cogs(bot: commands.Bot) -> None:
     logger.info(
         "bot.cogs_loaded",
         cogs=[
-            "WatchlistCog", "ThesisCrudCog", "ThesisReviewCog", "MarketCog",
-            "BriefingCog", "HelpCog", "WhyCog", "PretradeCog",
+            "WatchlistCog", "ThesisCrudCog", "ThesisReviewCog", "DebateCog",
+            "MarketCog", "BriefingCog", "HelpCog", "WhyCog", "PretradeCog",
             "ConvictionTimelineCog", "PortfolioCog", "StressTestCog",
             "DecisionCog", "SchedulerTriggerCog", "HealthCog", "SectorRotationCog",
             "MemoryCog", "TrendCog",
