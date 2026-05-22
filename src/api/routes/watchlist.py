@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.deps import get_current_user_id, get_db, get_scan_service
 from src.api.dto.watchlist import (
     AddWatchlistItemRequest,
+    UpdateNoteRequest,
     WatchlistItemResponse,
     WatchlistListResponse,
 )
@@ -74,6 +75,41 @@ async def remove_from_watchlist(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"'{ticker.upper()}' not found in your watchlist.",
         ) from exc
+
+
+@router.patch("/{ticker}/note", response_model=WatchlistItemResponse)
+async def update_watchlist_note(
+    ticker: str,
+    body: UpdateNoteRequest,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+) -> WatchlistItemResponse:
+    """Update the note for a watchlist item.
+
+    Busts the readmodel cache for the user so the dashboard sees the new
+    note on the next poll without waiting for TTL expiry.
+    """
+    svc = WatchlistService(db)
+    try:
+        item = await svc.update_note(
+            user_id=user_id,
+            ticker=ticker.upper(),
+            note=body.note,
+        )
+    except WatchlistItemNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"'{ticker.upper()}' not found in your watchlist.",
+        ) from exc
+
+    # Bust readmodel cache so dashboard reflects the new note immediately
+    try:
+        from src.readmodel.cache_subscriber import get_cache
+        get_cache().invalidate_user(user_id)
+    except Exception:
+        pass  # cache bust is best-effort — never fail the write
+
+    return WatchlistItemResponse.model_validate(item)
 
 
 @router.post("/scan", status_code=status.HTTP_200_OK)

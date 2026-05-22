@@ -4,12 +4,18 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AddWatchlistItemRequest(BaseModel):
     ticker: str
     note: str = ""
+
+
+class UpdateNoteRequest(BaseModel):
+    """Body for PATCH /watchlist/{ticker}/note."""
+
+    note: str = Field(..., description="New note text. Pass empty string to clear.")
 
 
 class WatchlistItemResponse(BaseModel):
