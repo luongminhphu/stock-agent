@@ -18,11 +18,15 @@ Boundary:
 """
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
+
+# Predictions older than this are considered stale (e.g. from a previous
+# session or a cached result that was never refreshed).
+_STALE_THRESHOLD = timedelta(minutes=5)
 
 
 # ---------------------------------------------------------------------------
@@ -160,7 +164,20 @@ class TrendPrediction(BaseModel):
             return ""
         return v[:200]
 
+    # ------------------------------------------------------------------
     # Convenience helpers for downstream formatters
+    # ------------------------------------------------------------------
+
+    @property
+    def is_stale(self) -> bool:
+        """True when this prediction is older than _STALE_THRESHOLD (5 min).
+
+        Used by bot embeds to show a ⚠️ stale warning when the cached
+        result is from a previous session or was never refreshed.
+        """
+        age = datetime.now(UTC) - self.generated_at
+        return age > _STALE_THRESHOLD
+
     @property
     def is_actionable(self) -> bool:
         """True when verdict warrants immediate attention (BUY/SELL signals)."""
