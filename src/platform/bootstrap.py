@@ -23,6 +23,7 @@ _quote_service: object | None = None
 _ohlcv_service: object | None = None
 _ai_client: object | None = None
 _thesis_review_agent: object | None = None
+_thesis_debate_agent: object | None = None
 _thesis_suggest_agent: object | None = None
 _briefing_agent: object | None = None
 _why_agent: object | None = None
@@ -55,6 +56,7 @@ async def bootstrap() -> None:
     configure_logging()
 
     global _quote_service, _ohlcv_service, _ai_client, _thesis_review_agent
+    global _thesis_debate_agent
     global _thesis_suggest_agent, _briefing_agent, _why_agent, _pretrade_agent
     global _stress_test_agent, _replay_agent, _snapshot_scheduler
     global _sector_rotation_agent, _investor_profile_service, _pnl_service_class
@@ -91,6 +93,12 @@ async def bootstrap() -> None:
 
         _thesis_review_agent = ThesisReviewAgent(client=_ai_client)  # type: ignore[arg-type]
         logger.info("platform.bootstrap.thesis_review_agent_ready")
+
+    if _thesis_debate_agent is None:
+        from src.ai.agents.thesis_debate import ThesisDebateAgent
+
+        _thesis_debate_agent = ThesisDebateAgent(client=_ai_client)  # type: ignore[arg-type]
+        logger.info("platform.bootstrap.thesis_debate_agent_ready")
 
     if _thesis_suggest_agent is None:
         from src.ai.agents.suggest_agent import ThesisSuggestAgent
@@ -217,14 +225,14 @@ async def bootstrap() -> None:
                 reason="scheduler_user_id not configured",
             )
 
-    # ── Wave 2 (market): TrendReasoningAgent ────────────────────────────────────────────
+    # ── Wave 2 (market): TrendReasoningAgent ───────────────────────────────────────────────
     if _trend_reasoning_agent is None:
         from src.ai.agents.trend_reasoning import TrendReasoningAgent
 
         _trend_reasoning_agent = TrendReasoningAgent(client=_ai_client)  # type: ignore[arg-type]
         logger.info("platform.bootstrap.trend_reasoning_agent_ready")
 
-    # ── Wave 2b: SignalEngineAgent ────────────────────────────────────────────────────
+    # ── Wave 2b: SignalEngineAgent ──────────────────────────────────────────────────
     if _signal_engine_agent is None:
         from src.ai.agents.signal_engine import SignalEngineAgent
 
@@ -302,7 +310,7 @@ async def bootstrap() -> None:
                 reason="scheduler_user_id not configured",
             )
 
-    # ── G4: StressTest → Watchlist trigger bridge ───────────────────────────────
+    # ── G4: StressTest → Watchlist trigger bridge ──────────────────────────────
     if _stress_test_subscriber is None:
         from src.watchlist.stress_test_subscriber import StressTestSubscriber
         from src.platform.db import AsyncSessionLocal
@@ -337,7 +345,7 @@ async def bootstrap() -> None:
         _opportunity_screen_subscriber.register()
         logger.info("platform.bootstrap.opportunity_screen_subscriber_ready")
 
-    # ── Wave B2: SignalEngineListener ─────────────────────────────────────────────────
+    # ── Wave B2: SignalEngineListener ───────────────────────────────────────────────────
     # All 3 required deps are now available as session_factory-backed singletons.
     # portfolio_query and feedback_service remain optional (None = degraded gracefully).
     if _signal_engine_listener is None:
@@ -358,7 +366,7 @@ async def bootstrap() -> None:
         _signal_engine_listener.register()
         logger.info("platform.bootstrap.signal_engine_listener_ready")
 
-    # ── Trend Prediction: TrendEngineListener ───────────────────────────────────────
+    # ── Trend Prediction: TrendEngineListener ───────────────────────────────────────────
     # Co-subscribes SignalEngineRequestedEvent alongside SignalEngineListener.
     # Deps: TrendReasoningAgent (already wired above), TrendPredictionStore,
     # WatchlistQueryService, ThesisQueryService (new instances, same session_factory).
@@ -476,6 +484,12 @@ def get_thesis_review_agent():
     if _thesis_review_agent is None:
         raise RuntimeError("ThesisReviewAgent not initialised — call bootstrap() first.")
     return _thesis_review_agent
+
+
+def get_thesis_debate_agent():
+    if _thesis_debate_agent is None:
+        raise RuntimeError("ThesisDebateAgent not initialised — call bootstrap() first.")
+    return _thesis_debate_agent
 
 
 def get_thesis_suggest_agent():
