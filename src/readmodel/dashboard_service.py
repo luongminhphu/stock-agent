@@ -12,6 +12,7 @@ Endpoints served (via src/api/routes/readmodel.py):
     get_scan_latest()                   — snapshot scan gan nhat (WatchlistScan)
     get_brief_latest()                  — snapshot brief gan nhat (BriefSnapshot)
     get_brief_feedback_summary()        — feedback summary cho brief (BriefFeedback)
+    get_acted_tickers_recent()          — tickers user đã act trong N ngày gần nhất
     get_triggered_alerts()              — alerts da fire, chua xu ly (Alert)
     get_recent_signals()                — signal history per ticker (SignalEvent)
     get_verdict_accuracy()              — delegates to BacktestingService
@@ -51,7 +52,7 @@ _cache = DashboardTTLCache()
 # ---------------------------------------------------------------------------
 # Cross-segment model imports — consolidated top-level.
 # Guarded so the readmodel segment stays importable even when a peer segment
-# hasn't been migrated yet (e.g. in unit-test environments).
+# hasn’t been migrated yet (e.g. in unit-test environments).
 # ---------------------------------------------------------------------------
 
 try:
@@ -63,12 +64,12 @@ except ImportError:  # pragma: no cover
     Alert = AlertStatus = SignalEvent = WatchlistScan = None  # type: ignore[assignment,misc]
 
 try:
-    from src.briefing.models import BriefFeedback, BriefSnapshot
+    from src.briefing.models import BriefFeedback, BriefFeedbackOutcome, BriefSnapshot
 
     _BRIEFING_MODELS_AVAILABLE = True
 except ImportError:  # pragma: no cover
     _BRIEFING_MODELS_AVAILABLE = False
-    BriefFeedback = BriefSnapshot = None  # type: ignore[assignment,misc]
+    BriefFeedback = BriefFeedbackOutcome = BriefSnapshot = None  # type: ignore[assignment,misc]
 
 
 class QuoteBatchReader(Protocol):
@@ -354,6 +355,89 @@ class DashboardService:
                 "acted_rate_30d": None,
                 "total_feedbacks_30d": 0,
             }
+
+    async def get_acted_tickers_recent(
+        self,
+        user_id: str,
+        days: int = 3,
+    ) -> list[str]:
+        """Return distinct tickers from briefs the user acted on in the last N days.
+
+        Used by BriefingService._build_feedback_context() to inject a
+        "recently acted" hint into the next brief — closing the feedback →
+        watchlist loop.
+
+        Query strategy:
+          1. Find all BriefFeedback rows with outcome="acted" in the window.
+          2. JOIN to BriefSnapshot to get the tickers CSV column.
+          3. Parse CSV in Python (tickers column is a short string, not worth
+             a DB-side string_split).
+          4. Deduplicate and return sorted list.
+
+        Returns [] on any error or when models are unavailable — caller
+        treats missing feedback context as a no-op, not an error.
+
+        Cache: 60s TTL, keyed by (user_id, days). Feedback changes at most
+        once per brief interaction, so 60s staleness is acceptable.
+        """
+        if not _BRIEFING_MODELS_AVAILABLE:
+            return []
+
+        cache_extra = str(days)
+        cached = _cache.get("acted_tickers", user_id, extra=cache_extra)
+        if cached is not None:
+            return cached
+
+        try:
+            since = datetime.now(UTC) - timedelta(days=days)
+
+            # JOIN: BriefFeedback → BriefSnapshot to get the tickers CSV.
+            # Only fetch snapshots that belong to the user (double-check via
+            # both FK and user_id to prevent cross-user data leaks).
+            rows = (
+                await self._session.execute(
+                    select(BriefSnapshot.tickers)
+                    .join(
+                        BriefFeedback,
+                        BriefFeedback.brief_snapshot_id == BriefSnapshot.id,
+                    )
+                    .where(
+                        BriefFeedback.user_id == user_id,
+                        BriefSnapshot.user_id == user_id,
+                        BriefFeedback.outcome == BriefFeedbackOutcome.ACTED,
+                        BriefFeedback.created_at >= since,
+                    )
+                    .distinct()
+                )
+            ).scalars().all()
+
+            # Parse CSV tickers column — e.g. "VHM,TCB,HPG"
+            tickers: set[str] = set()
+            for csv in rows:
+                if not csv:
+                    continue
+                for t in csv.split(","):
+                    cleaned = t.strip().upper()
+                    if cleaned:
+                        tickers.add(cleaned)
+
+            result = sorted(tickers)
+            _cache.set("acted_tickers", user_id, result, extra=cache_extra)
+            logger.info(
+                "get_acted_tickers_recent: user=%s days=%d tickers=%s",
+                user_id, days, result,
+            )
+            return result
+
+        except Exception as exc:
+            logger.warning(
+                "get_acted_tickers_recent.db_error",
+                user_id=user_id,
+                days=days,
+                error=str(exc),
+                exc_info=True,
+            )
+            return []
 
     # ------------------------------------------------------------------
     # 9. Triggered alerts — cross-segment (watchlist)
