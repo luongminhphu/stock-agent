@@ -17,7 +17,6 @@ const MARKET_BASE    = '/api/v1/market';
 /**
  * Module-scope cache: populated after a manual scan, cleared on page reload.
  * Shape: { [ticker]: SignalReport[] }
- * Only actionable reports are stored (server already filters via build_summary_json).
  */
 let _signalsMap = {};
 
@@ -56,6 +55,7 @@ export async function loadWatchlist() {
       onRemove:   handleRemove,
       onScan:     handleScan,
       onAdd:      handleAddTicker,
+      onEditNote: handleEditNote,
       signalsMap: _signalsMap,
     });
   } catch (err) {
@@ -66,8 +66,6 @@ export async function loadWatchlist() {
 
 /**
  * Thêm ticker vào watchlist, reload sau khi thành công.
- * @param {string} ticker
- * @param {string} note
  */
 export async function handleAddTicker(ticker, note = '') {
   if (!ticker) return;
@@ -88,7 +86,6 @@ export async function handleAddTicker(ticker, note = '') {
 
 /**
  * Xóa ticker khỏi watchlist, reload sau khi thành công.
- * @param {string} ticker
  */
 async function handleRemove(ticker) {
   try {
@@ -101,11 +98,43 @@ async function handleRemove(ticker) {
 }
 
 /**
+ * Sửa ghi chú cho một watchlist item.
+ * Dùng window.prompt để nhận input — lightweight, không cần modal mới.
+ * Sau khi PATCH thành công: cập nhật DOM tại chỗ (không reload toàn bộ watchlist).
+ *
+ * @param {string}      ticker
+ * @param {string}      currentNote  - giá trị hiện tại để pre-fill prompt
+ * @param {HTMLElement} cardEl       - card DOM node để patch note in-place
+ */
+async function handleEditNote(ticker, currentNote, cardEl) {
+  const newNote = window.prompt(`Ghi chú cho ${ticker}:`, currentNote ?? '');
+
+  // null = user bấm Cancel
+  if (newNote === null) return;
+
+  try {
+    const updated = await sendJson(
+      `${WATCHLIST_BASE}/${encodeURIComponent(ticker)}/note`,
+      'PATCH',
+      { note: newNote },
+    );
+
+    // Patch note in-place — avoid full reload
+    const noteEl = cardEl?.querySelector('[data-note]');
+    if (noteEl) {
+      noteEl.textContent = updated.note ?? '';
+      noteEl.classList.toggle('wl-note--empty', !updated.note);
+    }
+
+    showToast(`✏️ Đã cập nhật ghi chú ${ticker}`);
+  } catch (err) {
+    showToast(`Lỗi cập nhật ghi chú: ${err.message}`, 'error');
+  }
+}
+
+/**
  * Trigger manual scan, hiện kết quả trong banner.
  * Sau khi scan xong: cache _signalsMap rồi reload watchlist để tags hiện lên card.
- *
- * @param {HTMLElement}     resultEl — element để inject scan summary
- * @param {HTMLButtonElement} btnEl  — nút scan để disable khi scanning
  */
 async function handleScan(resultEl, btnEl) {
   btnEl.classList.add('scanning');
@@ -115,8 +144,6 @@ async function handleScan(resultEl, btnEl) {
   try {
     const res = await sendJson(`${WATCHLIST_BASE}/scan`, 'POST');
 
-    // Build signalsMap từ structured scan result
-    // Shape: res.signals.items[] = { ticker, signal_reports[] }
     const scanItems = res.signals?.items ?? [];
     _signalsMap = Object.fromEntries(
       scanItems.map(i => [i.ticker, i.signal_reports ?? []])
@@ -126,7 +153,6 @@ async function handleScan(resultEl, btnEl) {
       `Scan xong: ${res.scanned_tickers} tickers, ${res.triggered} tín hiệu. ${res.summary ?? ''}`;
     resultEl.classList.remove('hidden');
 
-    // Reload để re-render cards với signal tags mới
     await loadWatchlist();
   } catch (err) {
     resultEl.textContent = `Lỗi scan: ${err.message}`;

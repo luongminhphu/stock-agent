@@ -26,11 +26,11 @@ const SIGNAL_LABELS = {
  *
  * @param {HTMLElement} container
  * @param {Array}       items      - enriched watchlist items ({...WatchlistItemResponse, quote})
- * @param {{ onRemove, onScan, onAdd, signalsMap }} options - action callbacks + scan context
+ * @param {{ onRemove, onScan, onAdd, onEditNote, signalsMap }} options
  *   signalsMap: { [ticker]: SignalReport[] } — populated after a manual scan,
  *               empty object on first load (no scan yet this session).
  */
-export function renderWatchlist(container, items, { onRemove, onScan, onAdd, signalsMap = {} } = {}) {
+export function renderWatchlist(container, items, { onRemove, onScan, onAdd, onEditNote, signalsMap = {} } = {}) {
   container.innerHTML = '';
 
   const scanResultId = 'wlScanResult';
@@ -71,7 +71,7 @@ export function renderWatchlist(container, items, { onRemove, onScan, onAdd, sig
 
     for (const item of items) {
       const signalReports = signalsMap[item.ticker] ?? [];
-      grid.appendChild(buildCard(item, onRemove, signalReports));
+      grid.appendChild(buildCard(item, onRemove, onEditNote, signalReports));
     }
     container.appendChild(grid);
   }
@@ -103,10 +103,11 @@ export function renderWatchlist(container, items, { onRemove, onScan, onAdd, sig
  *
  * @param {object}    item          - enriched watchlist item
  * @param {Function}  onRemove
+ * @param {Function}  onEditNote    - callback(ticker, currentNote)
  * @param {Array}     signalReports - SignalReport[] từ scan session hiện tại ([] nếu chưa scan)
  * @returns {HTMLElement}
  */
-function buildCard(item, onRemove, signalReports = []) {
+function buildCard(item, onRemove, onEditNote, signalReports = []) {
   const q = item.quote;
 
   // Price + change
@@ -129,7 +130,6 @@ function buildCard(item, onRemove, signalReports = []) {
   const floorBadge = q?.is_floor   ? '<span class="wl-floor-badge">SÀN</span>' : '';
 
   // #3 FIX: thesis badge — clickable nếu có thesis_id
-  // dispatch 'navigate:thesis' event lên document → app.js listener xử lý
   const thesisBadge = item.thesis_id
     ? `<span class="wl-thesis-badge wl-thesis-badge--link"
            role="button"
@@ -167,9 +167,12 @@ function buildCard(item, onRemove, signalReports = []) {
       ${ceilBadge}
       ${floorBadge}
     </div>
-    ${item.note ? `<p class="wl-note">${esc(item.note)}</p>` : ''}
+    ${item.note ? `<p class="wl-note" data-note>${esc(item.note)}</p>` : `<p class="wl-note wl-note--empty" data-note></p>`}
     <div class="wl-card-foot">
       <span class="wl-added-at">+${fmtDate(item.added_at)}</span>
+      <button class="wl-edit-note-btn ghost-btn" data-ticker="${esc(item.ticker)}"
+        aria-label="Sửa ghi chú ${esc(item.ticker)}" title="Sửa ghi chú"
+        style="font-size:0.75rem;min-height:28px;padding:0 8px;color:var(--muted);">✎</button>
       <button class="wl-remove-btn" data-ticker="${esc(item.ticker)}" aria-label="Xóa ${esc(item.ticker)} khỏi watchlist" title="Xóa">
         ✕
       </button>
@@ -184,7 +187,15 @@ function buildCard(item, onRemove, signalReports = []) {
     });
   }
 
-  // #3 FIX: wire thesis badge click — dispatch event, app.js handles navigation
+  // Wire edit-note button
+  if (onEditNote) {
+    card.querySelector('.wl-edit-note-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      onEditNote(item.ticker, item.note ?? '', card);
+    });
+  }
+
+  // #3 FIX: wire thesis badge click
   if (item.thesis_id) {
     const badge = card.querySelector('.wl-thesis-badge--link');
     if (badge) {
