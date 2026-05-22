@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass, field
 from typing import Any, Type, TypeVar
 
 import httpx
@@ -253,3 +254,35 @@ def _strip_json_fences(text: str) -> str:
         if text.endswith("```"):
             text = text[:-3].rstrip()
     return text
+
+
+@dataclass(frozen=True)
+class AISpec:
+    """Bundle prompt spec cho một AI agent task.
+
+    Dùng bởi prompt packs (src/ai/prompts/) để khai báo
+    system_prompt + output schema + inference params tập trung.
+    Agent nhận AISpec và gọi client.chat() với các field tương ứng.
+
+    Example:
+        SPEC = AISpec(
+            system_prompt=_SYSTEM,
+            output_schema=DebateOutput,
+            temperature=0.4,
+            max_tokens=1800,
+        )
+
+        # In agent:
+        result = await client.chat(
+            system_prompt=SPEC.system_prompt,
+            user_prompt=build_user_prompt(...),
+            response_schema=SPEC.output_schema,
+            temperature=SPEC.temperature,
+            max_tokens=SPEC.max_tokens,
+        )
+    """
+
+    system_prompt: str
+    output_schema: Type[BaseModel]
+    temperature: float = 0.2
+    max_tokens: int = field(default=AIClient.DEFAULT_MAX_TOKENS)
