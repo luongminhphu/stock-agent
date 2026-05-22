@@ -37,7 +37,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from src.ai.agents.suggest_agent import ThesisSuggestAgent
-from src.ai.client import PerplexityError
+from src.ai.client import AIError
 from src.ai.schemas import ThesisSuggestionResult
 from src.api.deps import (
     get_current_user_id,
@@ -155,7 +155,7 @@ async def suggest_thesis(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"AI response could not be parsed: {exc}",
         ) from exc
-    except PerplexityError as exc:
+    except AIError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"AI suggest failed: {exc}",
