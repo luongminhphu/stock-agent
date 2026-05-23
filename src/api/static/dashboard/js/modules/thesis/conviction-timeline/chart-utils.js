@@ -7,8 +7,11 @@
 import { TIER, tierColor } from './constants.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Lazy CDN loader
+// Lazy local loader (self-hosted — no CDN, no Tracking Prevention warnings)
 // ─────────────────────────────────────────────────────────────────────────────
+
+const CHART_JS_SRC      = '/static/dashboard/js/vendor/chart.umd.min.js';
+const ANNOTATION_SRC    = '/static/dashboard/js/vendor/chartjs-plugin-annotation.min.js';
 
 let _chartJsReady = null;
 
@@ -28,15 +31,15 @@ export function ensureChartJs() {
     }
     if (!window.Chart) {
       loadScript(
-        'https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js',
+        CHART_JS_SRC,
         () => loadScript(
-          'https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js',
+          ANNOTATION_SRC,
           () => { Chart.register(window['chartjs-plugin-annotation']); resolve(); }
         )
       );
     } else {
       loadScript(
-        'https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js',
+        ANNOTATION_SRC,
         () => { Chart.register(window['chartjs-plugin-annotation']); resolve(); }
       );
     }
