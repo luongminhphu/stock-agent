@@ -46,6 +46,7 @@ def create_bot() -> commands.Bot:
         try:
             await bootstrap()
             _inject_briefing_listener(bot)
+            _inject_intelligence_listener(bot)
             await _register_cogs(bot)
             await _sync_tree(bot)
 
@@ -170,6 +171,20 @@ def _inject_briefing_listener(bot: commands.Bot) -> None:
         logger.error(
             "bot.briefing_listener.not_available",
             reason="scheduler_user_id not configured — BriefingListener skipped at bootstrap.",
+        )
+
+
+def _inject_intelligence_listener(bot: commands.Bot) -> None:
+    """Inject Discord client into IntelligenceEngineListener for verdict pushes."""
+    from src.platform.bootstrap import get_intelligence_engine_listener
+    listener = get_intelligence_engine_listener()
+    if listener is not None:
+        listener.set_client(bot)
+        logger.info("bot.intelligence_listener.client_injected")
+    else:
+        logger.warning(
+            "bot.intelligence_listener.not_available",
+            reason="IntelligenceEngineListener not initialised at bootstrap — verdict Discord push disabled.",
         )
 
 

@@ -404,15 +404,24 @@ async def bootstrap() -> None:
     if _intelligence_engine_listener is None:
         from src.core.intelligence_listener import IntelligenceEngineListener
         from src.ai.agents.intelligence_verdict import IntelligenceVerdictAgent
+        from src.platform.config import settings
 
         _intelligence_verdict_agent = IntelligenceVerdictAgent(
             ai_client=_ai_client  # type: ignore[arg-type]
         )
+        # Resolve alert channel at bootstrap time so it's available before set_client()
+        raw_channel = settings.alert_channel_id
+        channel_id = int(raw_channel) if raw_channel else None
+
         _intelligence_engine_listener = IntelligenceEngineListener(
             verdict_agent=_intelligence_verdict_agent,
+            channel_id=channel_id,
         )
         _intelligence_engine_listener.register()
-        logger.info("platform.bootstrap.intelligence_engine_listener_ready")
+        logger.info(
+            "platform.bootstrap.intelligence_engine_listener_ready",
+            discord_channel_id=channel_id,
+        )
 
     # ── core: EngineFeedbackListener ──────────────────────────────────────────
     if _engine_feedback_listener is None:
@@ -567,3 +576,20 @@ def get_signal_engine_agent():
     if _signal_engine_agent is None:
         raise RuntimeError("bootstrap() has not been called")
     return _signal_engine_agent
+
+
+def get_briefing_listener():
+    return _briefing_listener
+
+
+def get_opportunity_screen_scheduler():
+    return _opportunity_screen_scheduler
+
+
+def get_opportunity_screen_subscriber():
+    return _opportunity_screen_subscriber
+
+
+def get_intelligence_engine_listener():
+    """Return the IntelligenceEngineListener singleton (may be None before bootstrap)."""
+    return _intelligence_engine_listener
