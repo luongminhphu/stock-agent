@@ -127,7 +127,7 @@ main {
 
 /* ── Panel ───────────────────────────────────────────────────────── */
 .panel {
-  border-radius: var(--radius, 10px);
+  border-radius: var(--radius-md, 18px);
   border: 1px solid var(--line);
   background: var(--surface);
   overflow: hidden;
@@ -140,7 +140,11 @@ main {
 }
 
 .panel-header {
-  padding: var(--space-md, 16px) var(--space-md, 16px) 8px;
+  padding: var(--panel-pad, 16px) var(--panel-pad, 16px) 8px;
+}
+
+.panel-body {
+  padding: 0 var(--panel-pad, 16px) var(--panel-pad, 16px);
 }
 
 .split-header {
@@ -371,5 +375,9 @@ main {
   }
   .topbar {
     padding: 8px 12px;
+  }
+  .panel-header,
+  .panel-body {
+    padding-inline: 12px;
   }
 }
