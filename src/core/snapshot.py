@@ -19,6 +19,8 @@ logger = get_logger(__name__)
 _MARKET_OPEN_UTC  = datetime.time(2, 0)   # 09:00 ICT
 _MARKET_CLOSE_UTC = datetime.time(8, 0)   # 15:00 ICT
 
+_TREND_CONFIDENCE_THRESHOLD = 0.6  # proxy for "active trend signal"
+
 
 def _current_market_phase() -> str:
     now = datetime.datetime.now(tz=datetime.timezone.utc)
@@ -139,6 +141,50 @@ async def _fetch_portfolio_context(user_id: str) -> PortfolioContext:
         return PortfolioContext()
 
 
+async def _fetch_market_context() -> MarketContext:
+    """Build MarketContext: market_phase + opportunity_count + trend_shift_count.
+
+    - opportunity_count: OpportunityScreenService.run() → len(candidates).
+      Stateless, lightweight, no AI call. Falls back to 0 on any error.
+    - trend_shift_count: reads TrendPredictionStore singleton (readmodel, in-memory).
+      Counts symbols with confidence >= _TREND_CONFIDENCE_THRESHOLD as proxy for
+      active trend signals. Avoids heavy TrendShiftDetector which requires
+      trend_engine + snapshot_store + full symbol scan.
+    """
+    phase = _current_market_phase()
+    opportunity_count = 0
+    trend_shift_count = 0
+
+    # --- opportunity_count ---
+    try:
+        from src.market.opportunity_screen_service import OpportunityScreenService
+        from src.platform.bootstrap import get_quote_service
+
+        screen_svc = OpportunityScreenService(get_quote_service())
+        result = await screen_svc.run()
+        opportunity_count = len(result.candidates)
+    except Exception as exc:
+        logger.warning("snapshot.opportunity_count_failed", error=str(exc))
+
+    # --- trend_shift_count (active trend signals proxy) ---
+    try:
+        from src.platform.bootstrap import get_trend_prediction_store
+
+        store = get_trend_prediction_store()
+        trend_shift_count = sum(
+            1 for sym in store.all_symbols()
+            if (store.get_confidence(sym) or 0.0) >= _TREND_CONFIDENCE_THRESHOLD
+        )
+    except Exception as exc:
+        logger.warning("snapshot.trend_shift_count_failed", error=str(exc))
+
+    return MarketContext(
+        market_phase=phase,
+        opportunity_count=opportunity_count,
+        trend_shift_count=trend_shift_count,
+    )
+
+
 async def build_snapshot(
     user_id: str,
     trigger_source: str = "",
@@ -153,12 +199,12 @@ async def build_snapshot(
                                Passed through to SystemSnapshot.signal_engine_summary
                                and injected into the AI verdict prompt for richer context.
     """
-    watchlist_ctx, thesis_ctx, portfolio_ctx = await asyncio.gather(
+    watchlist_ctx, thesis_ctx, portfolio_ctx, market_ctx = await asyncio.gather(
         _fetch_watchlist_context(user_id),
         _fetch_thesis_context(user_id),
         _fetch_portfolio_context(user_id),
+        _fetch_market_context(),
     )
-    market_ctx = MarketContext(market_phase=_current_market_phase())
 
     snap = SystemSnapshot(
         watchlist=watchlist_ctx,
@@ -176,6 +222,8 @@ async def build_snapshot(
         drift_thesis=thesis_ctx.drift_detected_count,
         invalidated_thesis=thesis_ctx.invalidated_count,
         phase=market_ctx.market_phase,
+        opportunity_count=market_ctx.opportunity_count,
+        trend_shift_count=market_ctx.trend_shift_count,
         has_signal_engine_summary=bool(signal_engine_summary),
     )
     return snap
