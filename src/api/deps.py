@@ -32,6 +32,9 @@ from src.platform.bootstrap import (
 from src.platform.bootstrap import (
     get_thesis_suggest_agent as _get_suggest_agent,
 )
+from src.platform.bootstrap import (
+    get_ai_client as _get_ai_client,
+)
 from src.platform.db import AsyncSessionLocal
 
 
@@ -90,6 +93,15 @@ def get_thesis_debate_agent() -> object:
 
 def get_briefing_agent() -> object:
     return _get_briefing_agent()
+
+
+def get_ai_client() -> object:
+    """Return the AIClient singleton (initialised at bootstrap).
+
+    Owner: ai segment.
+    Routes that need to call AI directly (not via a dedicated agent) use this.
+    """
+    return _get_ai_client()
 
 
 def get_symbol_registry() -> "SymbolRegistry":  # type: ignore[name-defined]  # noqa: F821

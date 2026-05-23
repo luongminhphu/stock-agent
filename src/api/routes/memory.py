@@ -18,7 +18,7 @@ import json
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.deps import get_current_user_id, get_db
+from src.api.deps import get_ai_client, get_current_user_id, get_db
 
 router = APIRouter(prefix="/memory", tags=["memory"])
 
@@ -59,6 +59,7 @@ async def get_memory_snapshot(
 async def refresh_memory(
     user_id: str = Depends(get_current_user_id),
     session: AsyncSession = Depends(get_db),
+    ai_client: object = Depends(get_ai_client),
 ) -> dict:
     """Trigger on-demand pattern synthesis and persist snapshot.
 
@@ -68,12 +69,11 @@ async def refresh_memory(
     On success returns the SAME shape as GET /snapshot so the caller can update
     the UI in a single round-trip — no follow-up GET needed.
     """
-    from src.ai.client import AIClient
     from src.ai.memory.consolidator import MemoryConsolidator
     from src.ai.memory.repository import MemorySnapshotRepository
 
     try:
-        consolidator = MemoryConsolidator(client=AIClient(), user_id=user_id)
+        consolidator = MemoryConsolidator(client=ai_client, user_id=user_id)  # type: ignore[arg-type]
         output = await consolidator.synthesize_patterns(session)
     except Exception as exc:
         raise HTTPException(
