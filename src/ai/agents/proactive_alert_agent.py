@@ -47,6 +47,15 @@ Memory logging (Wave 6):
     mark_processed or context fetch.
     Never raises — all exceptions are caught and logged as warnings.
     Silently skips when session_factory is None or owner_user_id is not set.
+
+Memory logging field mapping (Wave 6 fix):
+    ai_verdict    ← output.urgency  (MONITORING / ALERT / CRITICAL)
+                    This is the dashboard-facing verdict for alert episodes.
+                    output.action (BUY/HOLD/SELL) is recorded in ai_key_points.
+    ai_confidence ← output.confidence
+    ai_risk_signals ← plain-text lines from output.risk_signals[].description
+                      (never Python repr)
+    ai_key_points ← human-readable summary: action + urgency + signal context
 """
 from __future__ import annotations
 
@@ -323,12 +332,15 @@ async def _log_proactive_alert_interaction(
 ) -> None:
     """Fire-and-forget episodic memory log for proactive alert interactions.
 
-    Each real-time signal fire is a high-value episode: symbol, signal_type,
-    AI action verdict, urgency, and confidence are the core fields for
-    downstream semantic synthesis (bias detection, recall accuracy).
-
-    Opens its own short-lived session via session_factory so the memory write
-    never shares a transaction with _mark_processed or context fetch.
+    Field mapping (canonical — matches AIInteractionLog schema comments):
+      ai_verdict    ← output.urgency  (MONITORING / ALERT / CRITICAL)
+                      Urgency is the dashboard-facing verdict for alert episodes.
+                      output.action (BUY/HOLD/SELL) goes into ai_key_points.
+      ai_confidence ← output.confidence
+      ai_risk_signals ← plain-text lines extracted from output.risk_signals
+                        Each RiskSignal's .description joined by newline.
+                        Never Python repr — dashboard reads this as plain text.
+      ai_key_points ← human-readable 1-liner: "action=HOLD signal=BREAKOUT ..."
 
     Never raises — all exceptions are caught and logged as warnings.
     Silently skips when session_factory is None or owner_user_id unset.
@@ -344,20 +356,38 @@ async def _log_proactive_alert_interaction(
         from src.ai.memory.memory_service import InteractionEntry, MemoryService
 
         confidence_val = output.confidence if output.confidence is not None else 0.0
-        risk_signals = getattr(output, "risk_signals", []) or []
+        risk_signals_raw = getattr(output, "risk_signals", []) or []
+
+        # Extract plain-text descriptions — never store Python repr
+        risk_lines: list[str] = []
+        for rs in risk_signals_raw[:5]:
+            if isinstance(rs, str):
+                risk_lines.append(rs.strip())
+            else:
+                desc = getattr(rs, "description", None) or str(rs)
+                if desc:
+                    risk_lines.append(desc.strip())
+        ai_risk_signals = "\n".join(risk_lines) if risk_lines else None
+
+        # ai_verdict = urgency token (what the dashboard shows as the verdict label)
+        urgency: str = (getattr(output, "urgency", None) or "MONITORING").upper()
+
+        # ai_key_points = compact human-readable summary
+        action: str = (getattr(output, "action", None) or "HOLD").upper()
+        ai_key_points = (
+            f"action={action} signal={event.signal_type} "
+            f"strength={event.strength:.2f} conf={confidence_val:.0%}"
+        )
 
         entry = InteractionEntry(
             user_id=user_id,
             agent_type="proactive_alert",
             trigger=f"signal:{event.signal_type}",
             tickers=[event.symbol] if event.symbol else [],
-            ai_verdict=str(output.action or ""),
-            ai_key_points=(
-                f"urgency={output.urgency} "
-                f"confidence={confidence_val:.2f} "
-                f"strength={event.strength} "
-                f"risk_signals={risk_signals[:3]}"
-            ),
+            ai_verdict=urgency,
+            ai_confidence=confidence_val,
+            ai_key_points=ai_key_points,
+            ai_risk_signals=ai_risk_signals,
         )
 
         async with session_factory() as session:
