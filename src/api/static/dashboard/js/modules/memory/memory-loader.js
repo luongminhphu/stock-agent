@@ -1,7 +1,7 @@
 // modules/memory/memory-loader.js
 // Owner: dashboard adapter (thin wire)
 // Responsibility: wire Cluster D HTML IDs ↔ /api/v1/memory/snapshot
-// Rule: không chứa business logic — fetch qua memory-api.js, render inline helpers
+// Rule: đừng chứa business logic — fetch qua memory-api.js, render inline helpers
 // Segment: ai/memory (data) + dashboard (adapter)
 
 import { fetchMemorySnapshot, bindRefreshButton } from './memory-api.js';
@@ -17,10 +17,8 @@ export async function loadMemory() {
   _clearSkeletons();
 
   if (!_refreshWired) {
-    // Wire #memRefreshBtn: set data-memory-refresh so bindRefreshButton picks it up
     const btn = document.getElementById('memRefreshBtn');
     if (btn) btn.setAttribute('data-memory-refresh', '');
-
     bindRefreshButton(() => loadMemory());
     _refreshWired = true;
   }
@@ -31,7 +29,7 @@ export async function loadMemory() {
       _renderEmpty();
     } else {
       _renderKpis(data);
-      _renderContextSummary(data);  // #1 FIX: render AI-generated behaviour summary
+      _renderContextSummary(data);
       _renderEpisodic(data);
       _renderPatterns(data);
       _renderBias(data);
@@ -73,27 +71,21 @@ function _setKpi(cardId, selector, value) {
 }
 
 // ---------------------------------------------------------------------------
-// Private: #1 FIX — context summary (AI-generated behaviour narrative)
-// Renders into #memContextSummary if the element exists in the HTML.
-// Hides the block when context_summary is absent so layout stays clean.
+// Private: context summary
 // ---------------------------------------------------------------------------
 
 function _renderContextSummary(data) {
   const wrap = document.getElementById('memContextSummary');
-  if (!wrap) return;  // element optional — skip silently if HTML not updated yet
+  if (!wrap) return;
 
   const text = data.context_summary;
-  if (!text) {
-    wrap.classList.add('hidden');
-    return;
-  }
+  if (!text) { wrap.classList.add('hidden'); return; }
 
   wrap.classList.remove('hidden');
   const textEl = wrap.querySelector('.mem-context-text');
   if (textEl) {
-    textEl.textContent = text;  // textContent — XSS-safe, no need for esc()
+    textEl.textContent = text;
   } else {
-    // Fallback: replace inner HTML if expected structure not found
     wrap.innerHTML = `
       <div class="mem-section-title">\ud83d\udca1 T\u00f3m t\u1eaft h\u00e0nh vi</div>
       <p class="mem-context-text">${esc(text)}</p>
@@ -102,7 +94,7 @@ function _renderContextSummary(data) {
 }
 
 // ---------------------------------------------------------------------------
-// Private: episodic feed
+// Private: episodic feed — richer card layout
 // ---------------------------------------------------------------------------
 
 function _renderEpisodic(data) {
@@ -119,18 +111,66 @@ function _renderEpisodic(data) {
 
   empty?.classList.add('hidden');
   feed.classList.remove('hidden');
-  feed.innerHTML = episodes.map(ep => `
+  feed.innerHTML = episodes.map(ep => _episodeCard(ep)).join('');
+}
+
+function _episodeCard(ep) {
+  const tickers    = (ep.tickers ?? []).join(', ') || ep.ticker || '\u2014';
+  const agentLabel = _agentLabel(ep.agent_type ?? '');
+  const verdict    = ep.ai_verdict ?? '';
+  const conf       = ep.ai_confidence != null ? Math.round(ep.ai_confidence * 100) : null;
+  const keyPoint   = _firstLine(ep.ai_key_points);
+  const riskSignal = _firstLine(ep.ai_risk_signals);
+  const date       = ep.date ?? ep.created_at ?? '';
+
+  // Verdict badge
+  const verdictBadge = verdict
+    ? `<span class="mem-ep-verdict mem-ep-verdict--${_verdictClass(verdict)}">${esc(verdict)}</span>`
+    : '';
+
+  // Confidence bar
+  const confBar = conf != null ? `
+    <div class="mem-ep-conf">
+      <div class="mem-ep-conf-bar"><div class="mem-ep-conf-fill" style="width:${conf}%"></div></div>
+      <span class="mem-ep-conf-label">${conf}%</span>
+    </div>` : '';
+
+  // Key point line
+  const keyPointLine = keyPoint
+    ? `<div class="mem-ep-keypoint">\ud83d\udca1 ${esc(keyPoint)}</div>` : '';
+
+  // Risk signal line
+  const riskLine = riskSignal
+    ? `<div class="mem-ep-risk">\u26a0\ufe0f ${esc(riskSignal)}</div>` : '';
+
+  // Outcome badge
+  const outcomeBadge = ep.outcome != null
+    ? `<span class="mem-ep-outcome ${_outcomeClass(ep.outcome)}">${Number(ep.outcome) > 0 ? '+' : ''}${ep.outcome}</span>`
+    : `<span class="mem-ep-outcome pending">ch\u01b0a c\u00f3 k\u1ebft qu\u1ea3</span>`;
+
+  return `
     <div class="mem-episode-item">
-      <span class="mem-episode-icon">${_actionIcon(ep.action)}</span>
-      <div>
-        <div class="mem-episode-desc">${esc(ep.description ?? ep.ticker ?? '\u2014')}</div>
-        <div class="mem-episode-meta">${esc(ep.date ?? ep.created_at ?? '')}</div>
+      <div class="mem-ep-header">
+        <div class="mem-ep-left">
+          <span class="mem-ep-icon">${_actionIcon(ep.action)}</span>
+          <div class="mem-ep-title">
+            <span class="mem-ep-ticker">${esc(tickers)}</span>
+            <span class="mem-ep-agent">${esc(agentLabel)}</span>
+          </div>
+        </div>
+        <div class="mem-ep-right">
+          ${verdictBadge}
+          ${outcomeBadge}
+        </div>
       </div>
-      <div class="mem-episode-outcome ${_outcomeClass(ep.outcome)}">
-        ${ep.outcome != null ? ep.outcome : '\u2026'}
+      ${confBar}
+      ${keyPointLine}
+      ${riskLine}
+      <div class="mem-ep-footer">
+        <span class="mem-ep-date">${esc(date)}</span>
       </div>
     </div>
-  `).join('');
+  `;
 }
 
 // ---------------------------------------------------------------------------
@@ -216,7 +256,6 @@ function _renderEmpty() {
   _setKpi('memKpiPatterns',   '.mem-kpi-value', '0');
   _setKpi('memKpiConfidence', '.mem-kpi-value', '\u2014');
   _setKpi('memKpiBias',       '.mem-kpi-value', '0');
-  // Also hide context summary block on empty state
   document.getElementById('memContextSummary')?.classList.add('hidden');
 }
 
@@ -240,7 +279,34 @@ function _actionIcon(action) {
   return { BUY: '\ud83d\udfe2', SELL: '\ud83d\udd34', HOLD: '\ud83d\udfe1', SKIP: '\u26ab' }[action] ?? '\u26aa';
 }
 
+function _verdictClass(verdict) {
+  const v = (verdict ?? '').toUpperCase();
+  if (v.includes('BUY'))  return 'buy';
+  if (v.includes('SELL')) return 'sell';
+  if (v.includes('HOLD') || v.includes('WATCH')) return 'hold';
+  if (v.includes('SKIP') || v.includes('AVOID')) return 'skip';
+  return 'neutral';
+}
+
 function _outcomeClass(outcome) {
   if (outcome == null) return 'pending';
   return Number(outcome) > 0 ? 'pos' : Number(outcome) < 0 ? 'neg' : 'pending';
+}
+
+function _agentLabel(agentType) {
+  const map = {
+    thesis_review:   'Ph\u00e2n t\u00edch thesis',
+    briefing:        'Morning brief',
+    morning_brief:   'Morning brief',
+    eod_brief:       'Cu\u1ed1i ng\u00e0y',
+    post_mortem:     'Post-mortem',
+    watchlist_scan:  'Watchlist scan',
+  };
+  return map[agentType] ?? agentType;
+}
+
+function _firstLine(text) {
+  if (!text) return null;
+  const line = text.split('\n')[0].trim();
+  return line.length > 120 ? line.slice(0, 117) + '\u2026' : line || null;
 }
