@@ -9,8 +9,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import Date as SADate
-from sqlalchemy import and_, cast, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.logging import get_logger
@@ -18,13 +17,15 @@ from src.platform.logging import get_logger
 logger = get_logger(__name__)
 
 _VN_OFFSET = timedelta(hours=7)
+_VN_TZ = "Asia/Ho_Chi_Minh"
 
 # Thesis chưa được review trong N ngày → coi là "stale"
 _STALE_REVIEW_DAYS = 14
 
 
-def _today_utc() -> date:
-    return datetime.now(UTC).date()
+def _today_ict() -> date:
+    """Today's date in Indochina Time (UTC+7) — matches user-visible calendar."""
+    return (datetime.now(UTC) + _VN_OFFSET).date()
 
 
 class StatsService:
@@ -90,8 +91,11 @@ class StatsService:
         ).all()
         verdict_map: dict[str, int] = {str(r.verdict): r.cnt for r in verdict_rows}
 
-        today = _today_utc()
-        in_7d = today + timedelta(days=7)
+        # Use ICT date for boundary so "today" matches Vietnamese calendar,
+        # not UTC date (which may be behind by up to 7 hours).
+        # func.timezone converts TIMESTAMPTZ → local timestamp before extracting DATE.
+        today_ict = _today_ict()
+        in_7d_ict = today_ict + timedelta(days=7)
         upcoming_7d = (
             await self._session.scalar(
                 select(func.count(Catalyst.id))
@@ -101,7 +105,9 @@ class StatsService:
                     Thesis.status == ThesisStatus.ACTIVE,
                     Catalyst.status == CatalystStatus.PENDING,
                     Catalyst.expected_date.isnot(None),
-                    cast(Catalyst.expected_date, SADate).between(today, in_7d),
+                    func.date(
+                        func.timezone(_VN_TZ, Catalyst.expected_date)
+                    ).between(today_ict, in_7d_ict),
                 )
             )
             or 0

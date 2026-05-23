@@ -32,7 +32,7 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import UTC, datetime, timedelta
-from typing import Any, Protocol
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -102,6 +102,20 @@ _URGENCY_ORDER = {
     AttentionUrgency.HIGH: 1,
     AttentionUrgency.MEDIUM: 2,
 }
+
+
+def _ensure_utc(dt: datetime) -> datetime:
+    """Return dt as a UTC-aware datetime.
+
+    - If dt is already timezone-aware, convert to UTC via astimezone().
+    - If dt is naive, assume UTC and attach tzinfo (no conversion needed).
+
+    Never use .replace(tzinfo=UTC) on aware datetimes — that silently overwrites
+    the offset without adjusting the wall-clock value.
+    """
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
 
 
 class DashboardService:
@@ -767,11 +781,14 @@ class DashboardService:
 
                 for row in overdue_rows:
                     last_reviewed = row.last_reviewed_at
-                    if last_reviewed is not None and last_reviewed.tzinfo is None:
-                        last_reviewed = last_reviewed.replace(tzinfo=UTC)
+                    if last_reviewed is not None:
+                        # Use _ensure_utc: aware → astimezone(UTC), naive → attach UTC
+                        last_reviewed = _ensure_utc(last_reviewed)
+
+                    created_at_utc = _ensure_utc(row.created_at)
 
                     if last_reviewed is None:
-                        days_overdue = (now - row.created_at.replace(tzinfo=UTC)).days
+                        days_overdue = (now - created_at_utc).days
                         msg = f"{row.ticker}: chưa từng được review AI"
                     else:
                         days_overdue = (now - last_reviewed).days
@@ -783,7 +800,7 @@ class DashboardService:
                         thesis_id=row.id,
                         message=msg,
                         urgency=AttentionUrgency.HIGH,
-                        ts=last_reviewed or row.created_at.replace(tzinfo=UTC),
+                        ts=last_reviewed or created_at_utc,
                         metadata={"days_overdue": days_overdue},
                     ))
             except Exception as exc:
@@ -819,8 +836,8 @@ class DashboardService:
 
                 for row in upcoming_rows:
                     expected = row.expected_date
-                    if expected is not None and expected.tzinfo is None:
-                        expected = expected.replace(tzinfo=UTC)
+                    if expected is not None:
+                        expected = _ensure_utc(expected)
                     hours_left = round((expected - now).total_seconds() / 3600, 1) if expected else None
                     desc = (row.description or "")[:80]
                     msg = (
@@ -870,9 +887,7 @@ class DashboardService:
                         continue
                     distance_pct = abs(current - row.stop_loss) / row.stop_loss * 100
                     if distance_pct <= _STOP_LOSS_PROXIMITY_PCT:
-                        created_at = row.created_at
-                        if created_at is not None and created_at.tzinfo is None:
-                            created_at = created_at.replace(tzinfo=UTC)
+                        created_at_utc = _ensure_utc(row.created_at)
                         _add(AttentionItem(
                             kind="stop_loss_proximity",
                             ticker=row.ticker,
