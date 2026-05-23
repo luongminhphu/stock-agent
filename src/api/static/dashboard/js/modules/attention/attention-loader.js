@@ -18,7 +18,7 @@ let _refreshTimer = null;
 // ---------------------------------------------------------------------------
 
 async function fetchAttentionPanel(limit = 20) {
-  const res = await fetch(`${apiBase()}/readmodel/dashboard/attention?limit=${limit}`, {
+  const res = await fetch(`${apiBase()}/attention?limit=${limit}`, {
     headers: { 'Content-Type': 'application/json' },
   });
   if (!res.ok) throw new Error(`attention ${res.status}`);
