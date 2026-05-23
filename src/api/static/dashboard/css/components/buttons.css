@@ -82,3 +82,21 @@
 }
 .icon-text-btn:hover { border-color: var(--brand); color: var(--brand); }
 .icon-text-btn svg { flex-shrink: 0; }
+
+/* Compact ghost button — dùng trong detail-section-header "+" actions */
+.ghost-btn--compact {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.ghost-btn--compact:hover { border-color: var(--brand); color: var(--brand); }
