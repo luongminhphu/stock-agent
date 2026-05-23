@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import calendar
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from src.platform.logging import get_logger
 
@@ -29,6 +29,18 @@ _MONTH_MAP: dict[str, int] = {
 
 _Q_END_MONTH: dict[int, int] = {1: 3, 2: 6, 3: 9, 4: 12}
 _Q_END_DAY: dict[int, int] = {3: 31, 6: 30, 9: 30, 12: 31}
+
+# Defensive fallback: map horizon enum values (legacy AI output) → relative days.
+# Handles old data where AI produced SHORT_TERM / MEDIUM_TERM / LONG_TERM instead
+# of a concrete date string. Resolution is approximate; use only as last resort.
+_HORIZON_DAYS: dict[str, int] = {
+    "SHORT_TERM": 90,
+    "SHORT": 90,
+    "MEDIUM_TERM": 270,
+    "MEDIUM": 270,
+    "LONG_TERM": 540,
+    "LONG": 540,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -50,6 +62,9 @@ def parse_timeline_to_date(timeline: str | None) -> datetime | None:
       "cuối năm 2026"    → 2026-12-31
       "end of 2026"      → 2026-12-31
       "2026"             → 2026-12-31  (fallback)
+      "SHORT_TERM"       → now + 90 days  (legacy enum fallback)
+      "MEDIUM_TERM"      → now + 270 days (legacy enum fallback)
+      "LONG_TERM"        → now + 540 days (legacy enum fallback)
 
     Returns None if no pattern matches.
     """
@@ -103,6 +118,17 @@ def parse_timeline_to_date(timeline: str | None) -> datetime | None:
     m = re.search(r"\b(20\d{2})\b", t)
     if m:
         return datetime(int(m.group(1)), 12, 31, tzinfo=UTC)
+
+    # Horizon enum fallback: SHORT_TERM / MEDIUM_TERM / LONG_TERM (legacy AI output).
+    # Normalise separators before lookup so "SHORT-TERM" also matches.
+    key = re.sub(r"[\s\-]+", "_", t)
+    if key in _HORIZON_DAYS:
+        logger.warning(
+            "parse_timeline_to_date.horizon_enum_fallback",
+            raw=timeline,
+            days=_HORIZON_DAYS[key],
+        )
+        return datetime.now(UTC) + timedelta(days=_HORIZON_DAYS[key])
 
     logger.warning("parse_timeline_to_date.unmatched", raw=timeline)
     return None
