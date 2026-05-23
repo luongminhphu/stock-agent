@@ -27,7 +27,7 @@ TREND_META: dict[str, tuple[str, int]] = {
     "improving":         ("\U0001f4c8 Improving",        0x27AE60),
     "declining":         ("\U0001f4c9 Declining",        0xE74C3C),
     "stable":            ("\u27a1\ufe0f Stable",          0x3498DB),
-    "insufficient_data": ("\u26aa Insufficient data",    COLORS.MUTED),
+    "insufficient_data": ("\u26aa Insufficient data",    COLORS.GREY),
 }
 
 TIER_ICON: dict[str, str] = {
@@ -185,5 +185,5 @@ def build_conviction_not_found_embed(
     return discord.Embed(
         title=f"\u26aa No conviction data \u2014 {ticker_upper}",
         description=description,
-        colour=COLORS.MUTED,
+        colour=COLORS.GREY,
     )
