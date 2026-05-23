@@ -2,14 +2,16 @@
 
 Write path: agents call log_interaction() after every AI call.
             post-mortem pipeline calls append() to inject free-text lessons.
+            bot.SignalReactionListener calls log_user_signal() on emoji react.
 Read path:  ContextBuilder calls get_memory_context() to build the
             memory block injected into every prompt.
 
 Owner: ai segment.
 Callers:
-  - ai/agents/*.py              → log_interaction
-  - ai/memory_injection_listener.py → append
-  - ai/context_builder.py       → get_memory_context
+  - ai/agents/*.py                     → log_interaction
+  - ai/memory_injection_listener.py    → append
+  - ai/context_builder.py              → get_memory_context
+  - bot/signal_reaction_listener.py    → log_user_signal
   - ai/memory/consolidator.py (internal)
 """
 
@@ -31,18 +33,15 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 # Max episodes rendered into the prompt context block.
-# Also used as the default fetch limit in get_memory_context().
-# Change here propagates to both fetch and render — no silent drift.
 _PROMPT_EPISODE_CAP = 10
+
+# Valid user_signal values — mirrors UserBehaviorLog.signal
+VALID_USER_SIGNALS = frozenset({"bought", "sold", "watched", "ignored", "flagged"})
 
 
 @dataclass
 class InteractionEntry:
-    """Value object passed by agents to log_interaction().
-
-    Agents extract fields from their AI output schema and populate this.
-    Keeps agents decoupled from ORM model internals.
-    """
+    """Value object passed by agents to log_interaction()."""
 
     user_id: str
     agent_type: str
@@ -50,20 +49,15 @@ class InteractionEntry:
     tickers: list[str] = field(default_factory=list)
     ai_verdict: str | None = None
     ai_confidence: float | None = None
-    ai_key_points: str | None = None        # newline-separated prose
-    ai_risk_signals: str | None = None      # newline-separated prose
+    ai_key_points: str | None = None
+    ai_risk_signals: str | None = None
     thesis_id: int | None = None
     decision_id: int | None = None
 
 
 @dataclass
 class MemoryContext:
-    """Assembled memory context passed to ContextBuilder.
-
-    Contains both recent episodic excerpts (L2) and the latest
-    semantic snapshot (L3). ContextBuilder renders this into a
-    prompt block via .render() or as_context_block().
-    """
+    """Assembled memory context passed to ContextBuilder."""
 
     user_id: str
     recent_episodes: list[AIInteractionLog] = field(default_factory=list)
@@ -73,21 +67,14 @@ class MemoryContext:
         return not self.recent_episodes and self.latest_snapshot is None
 
     def render(self) -> str:
-        """Render full memory context for injection into AI prompts.
-
-        Structure:
-          [Semantic memory — from latest MemorySnapshot]
-          [Recent interactions — last N episodic entries]
-        """
+        """Render full memory context for injection into AI prompts."""
         parts: list[str] = []
 
-        # Layer 3: Semantic snapshot
         if self.latest_snapshot:
             block = self.latest_snapshot.as_context_block()
             if block:
                 parts.append(block)
 
-        # Layer 2: Recent episodes (compact format)
         if self.recent_episodes:
             episode_lines = ["[Recent AI interactions — newest first]"]
             for ep in self.recent_episodes[:_PROMPT_EPISODE_CAP]:
@@ -102,9 +89,8 @@ class MemoryContext:
                 if ep.ai_confidence is not None:
                     line_parts.append(f"conf={ep.ai_confidence:.0%}")
                 episode_lines.append(" | ".join(line_parts))
-                # Key points on next line, indented
                 if ep.ai_key_points:
-                    for kp in ep.ai_key_points.splitlines()[:2]:  # max 2 lines
+                    for kp in ep.ai_key_points.splitlines()[:2]:
                         episode_lines.append(f"  → {kp.strip()}")
             parts.append("\n".join(episode_lines))
 
@@ -120,20 +106,13 @@ class MemoryService:
 
     @staticmethod
     async def log_interaction(
-        session: AsyncSession,  # kept for backward compat — no longer used for write
+        session: AsyncSession,
         entry: InteractionEntry,
     ) -> AIInteractionLog | None:
         """Persist one episodic memory entry in an ISOLATED session.
 
-        Always opens its own AsyncSessionLocal session so that a log
-        failure can never poison the caller's transaction.
-
-        The `session` param is retained for backward compatibility with
-        all existing agents — it is intentionally unused here and will
-        be removed in a future wave once all call sites are updated.
-
-        Fire-and-forget: all exceptions are swallowed, returns None on
-        failure so callers can safely ignore the return value.
+        The `session` param is retained for backward compatibility.
+        Fire-and-forget: all exceptions are swallowed.
         """
         try:
             from src.platform.db import AsyncSessionLocal  # noqa: PLC0415
@@ -189,13 +168,6 @@ class MemoryService:
         """Persist a free-text memory entry in an ISOLATED session.
 
         Used by MemoryInjectionListener to write post-mortem lessons.
-        Stores content as ai_key_points, source as agent_type, tags as tickers
-        so entries surface naturally in get_memory_context() episode renders.
-
-        The `session` param is accepted for API consistency but not used —
-        same isolation pattern as log_interaction().
-
-        Fire-and-forget: all exceptions are swallowed, returns None on failure.
         """
         try:
             from src.platform.db import AsyncSessionLocal  # noqa: PLC0415
@@ -227,6 +199,90 @@ class MemoryService:
             )
             return None
 
+    @staticmethod
+    async def log_user_signal(
+        user_id: str,
+        signal: str,
+        ticker: str | None = None,
+        interaction_log_id: int | None = None,
+        agent_type: str | None = None,
+        source: str = "discord_reaction",
+        note: str | None = None,
+    ) -> bool:
+        """Record a deliberate investor action as a UserBehaviorLog row.
+
+        Wave B: writes to user_behavior_logs (clean investor signal table)
+        AND back-fills AIInteractionLog.user_signal on the linked row so
+        pattern synthesis queries continue to work without schema change.
+
+        Args:
+            user_id:            Discord / investor user id.
+            signal:             One of VALID_USER_SIGNALS.
+            ticker:             Optional ticker context (e.g. VNM).
+            interaction_log_id: ID of the AIInteractionLog that was reacted to.
+            agent_type:         Denormalised agent type for fast queries.
+            source:             Origin of the signal (default: discord_reaction).
+            note:               Optional free-text note.
+
+        Returns:
+            True on success, False on any failure (fire-and-forget semantics).
+        """
+        if signal not in VALID_USER_SIGNALS:
+            logger.warning(
+                "memory_service.log_user_signal.invalid",
+                signal=signal,
+                valid=list(VALID_USER_SIGNALS),
+            )
+            return False
+
+        try:
+            from src.platform.db import AsyncSessionLocal  # noqa: PLC0415
+            from src.ai.memory.user_behavior_log import UserBehaviorLog  # noqa: PLC0415
+
+            async with AsyncSessionLocal() as session:
+                async with session.begin():
+                    # 1. Write UserBehaviorLog row
+                    behavior = UserBehaviorLog(
+                        user_id=user_id,
+                        signal=signal,
+                        source=source,
+                        interaction_log_id=interaction_log_id,
+                        ticker=ticker,
+                        agent_type=agent_type,
+                        note=note,
+                    )
+                    session.add(behavior)
+
+                    # 2. Back-fill AIInteractionLog.user_signal (compat layer)
+                    if interaction_log_id is not None:
+                        repo = InteractionLogRepository(session)
+                        log_row = await repo.get_by_id(interaction_log_id)
+                        if log_row is not None and log_row.user_signal is None:
+                            log_row.user_signal = signal
+                            logger.debug(
+                                "memory_service.log_user_signal.backfilled",
+                                interaction_log_id=interaction_log_id,
+                                signal=signal,
+                            )
+
+            logger.info(
+                "memory_service.log_user_signal.ok",
+                user_id=user_id,
+                signal=signal,
+                ticker=ticker,
+                source=source,
+            )
+            return True
+
+        except Exception as exc:
+            logger.warning(
+                "memory_service.log_user_signal.failed",
+                user_id=user_id,
+                signal=signal,
+                error=str(exc),
+            )
+            return False
+
     # ------------------------------------------------------------------
     # Read path
     # ------------------------------------------------------------------
@@ -240,26 +296,8 @@ class MemoryService:
     ) -> MemoryContext:
         """Assemble full memory context for a user.
 
-        Args:
-            session:       Active AsyncSession.
-            user_id:       Owner of the memory.
-            episode_limit: Max raw episodes fetched before filtering.
-                           Defaults to _PROMPT_EPISODE_CAP so fetch and
-                           render caps stay in sync automatically.
-            thesis_id:     Optional — when provided, filters episodes to
-                           those logged for this thesis (ep.thesis_id matches)
-                           or legacy rows with no thesis_id (ep.thesis_id is
-                           None). This prevents cross-thesis memory bleed.
-                           Callers that omit thesis_id get the full user-level
-                           memory (backward-compatible).
-
-        Each query (episodes, snapshot) fails independently — a failure
-        in one does not abort the other. Returns an empty MemoryContext
-        (not None) when no data exists, so callers never need to null-check.
-
-        Note: queries are run sequentially (not via asyncio.gather) because
-        SQLAlchemy 2.0 AsyncSession does not support concurrent operations
-        on the same session object (raises ISCE on gather).
+        Each query (episodes, snapshot) fails independently.
+        Returns an empty MemoryContext (not None) when no data exists.
         """
         episodes: list[AIInteractionLog] = []
         snapshot: MemorySnapshot | None = None
@@ -285,9 +323,6 @@ class MemoryService:
                 error=str(exc),
             )
 
-        # Scope episodes to thesis when caller provides thesis_id.
-        # Legacy rows (ep.thesis_id is None) are kept to avoid losing
-        # historical context that was logged before thesis_id tracking.
         if thesis_id is not None and episodes:
             episodes = [
                 ep for ep in episodes
