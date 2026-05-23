@@ -116,12 +116,12 @@ function _renderEpisodic(data) {
 
 /**
  * Compact single-row episode card:
- *   🟡  PC1 · Watchlist scan    MONITORING · 63%  ⚠ Giá tăng mạnh ~6%   21/05 07:13
+ *   🟡  PC1 · Watchlist scan    MONITORING · 63%  ⚠ Giá tăng mạnh ~6%   +4.2%   21/05 07:13
  *
  * Design rules:
  * - Chỉ 1 dòng thông tin chính, không conf bar, không keypoint block riêng
  * - Risk signal được sanitize khỏi Python repr (RiskSignal(...))
- * - Outcome chỉ hiện khi có giá trị; "chưa có kết quả" bị ẩn để tiết kiệm space
+ * - Outcome hiển thị dạng % với dấu + cho positive; "chưa có kết quả" bị ẩn để tiết kiệm space
  */
 function _episodeCard(ep) {
   const tickers    = (ep.tickers ?? []).join(', ') || ep.ticker || '\u2014';
@@ -141,8 +141,14 @@ function _episodeCard(ep) {
   const riskSnippet = riskSnip
     ? `<span class="mem-ep-risk-snip">\u26a0\ufe0f ${esc(riskSnip)}</span>` : '';
 
+  // Fix: append % unit; handle float rounding for clean display
   const outcomeTag = ep.outcome != null
-    ? `<span class="mem-ep-outcome ${_outcomeClass(ep.outcome)}">${Number(ep.outcome) > 0 ? '+' : ''}${ep.outcome}</span>`
+    ? (() => {
+        const val = Number(ep.outcome);
+        const sign = val > 0 ? '+' : '';
+        const display = Number.isInteger(val) ? val : val.toFixed(2).replace(/\.?0+$/, '');
+        return `<span class="mem-ep-outcome ${_outcomeClass(ep.outcome)}">${sign}${display}%</span>`;
+      })()
     : '';
 
   return `
