@@ -116,10 +116,10 @@ dialog::backdrop {
 .suggest-bar .form-field { flex: 1; }
 
 .suggest-btn {
-  min-height: 40px;
-  padding: 0 16px;
+  min-height: 36px;
+  padding: 0 14px;
   border: 1px solid rgba(125, 211, 252, 0.36);
-  border-radius: 12px;
+  border-radius: 9px;
   background: rgba(125, 211, 252, 0.1);
   color: var(--brand);
   font-weight: 700;
@@ -128,6 +128,7 @@ dialog::backdrop {
   display: flex;
   align-items: center;
   gap: 6px;
+  font-size: 0.82rem;
 }
 .suggest-btn:hover { background: rgba(125, 211, 252, 0.18); }
 .suggest-btn:disabled { opacity: 0.5; cursor: not-allowed; }
