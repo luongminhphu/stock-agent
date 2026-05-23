@@ -141,6 +141,9 @@ from src.ai.schemas.thesis_debate import (
     OverallStance,
 )
 
+# --- Intelligence Verdict ---
+from src.ai.schemas.intelligence_verdict import VerdictOutput
+
 __all__ = [
     # Base
     "Verdict",
@@ -231,4 +234,6 @@ __all__ = [
     "ChallengeStrength",
     "DebateChallenge",
     "DebateOutput",
+    # Intelligence Verdict
+    "VerdictOutput",
 ]
