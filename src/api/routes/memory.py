@@ -23,7 +23,7 @@ from src.api.deps import get_ai_client, get_current_user_id, get_db
 router = APIRouter(prefix="/memory", tags=["memory"])
 
 
-# ── READ — no AI ──────────────────────────────────────────────────────────────
+# ── READ — no AI ────────────────────────────────────────────────────────────────────────────────────
 
 @router.get("/snapshot")
 async def get_memory_snapshot(
@@ -50,10 +50,12 @@ async def get_memory_snapshot(
             detail="No memory data yet. Use the system to accumulate episodes.",
         )
 
-    return _build_snapshot_response(snapshot)
+    response = _build_snapshot_response(snapshot)
+    response["episodes"] = [_serialize_episode(ep) for ep in mem_ctx.recent_episodes]
+    return response
 
 
-# ── REFRESH — explicit AI trigger ─────────────────────────────────────────────
+# ── REFRESH — explicit AI trigger ─────────────────────────────────────────────────────────────────────
 
 @router.post("/refresh")
 async def refresh_memory(
@@ -70,6 +72,7 @@ async def refresh_memory(
     the UI in a single round-trip — no follow-up GET needed.
     """
     from src.ai.memory.consolidator import MemoryConsolidator
+    from src.ai.memory.memory_service import MemoryService
     from src.ai.memory.repository import MemorySnapshotRepository
 
     try:
@@ -96,12 +99,16 @@ async def refresh_memory(
     snapshot_repo = MemorySnapshotRepository(session)
     snapshot = await snapshot_repo.get_latest(user_id=user_id)
 
+    # Also reload episodes so the refreshed response includes the full list
+    mem_ctx = await MemoryService.get_memory_context(session, user_id=user_id)
+
     response = _build_snapshot_response(snapshot)
+    response["episodes"] = [_serialize_episode(ep) for ep in mem_ctx.recent_episodes]
     response["status"] = "ok"
     return response
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Helpers ────────────────────────────────────────────────────────────────────────────────────
 
 def _build_snapshot_response(snapshot: object | None) -> dict:
     """Serialise a MemorySnapshot ORM row into the canonical snapshot dict.
@@ -146,4 +153,58 @@ def _build_snapshot_response(snapshot: object | None) -> dict:
         "patterns": patterns,
         "bias_warnings": bias_warnings,
         "market_regime_reads": market_regime_reads,
+        # episodes is injected by callers after this helper returns
+        # so each endpoint controls which mem_ctx it passes
+    }
+
+
+def _serialize_episode(ep: object) -> dict:
+    """Serialise one AIInteractionLog row for the dashboard episodic feed.
+
+    Keys match what _renderEpisodic() in memory-loader.js expects:
+      ep.description  — human-readable label (derived from tickers + agent_type)
+      ep.ticker       — primary ticker (fallback label)
+      ep.date         — formatted timestamp
+      ep.action       — BUY / SELL / HOLD / SKIP (mapped from ai_verdict)
+      ep.outcome      — numeric PnL or null when pending
+    """
+    tickers: list[str] = getattr(ep, "tickers", None) or []
+    agent_type: str = getattr(ep, "agent_type", "") or ""
+    ai_verdict: str | None = getattr(ep, "ai_verdict", None)
+    ai_confidence: float | None = getattr(ep, "ai_confidence", None)
+    ai_key_points: str | None = getattr(ep, "ai_key_points", None)
+    ai_risk_signals: str | None = getattr(ep, "ai_risk_signals", None)
+    thesis_id: int | None = getattr(ep, "thesis_id", None)
+    trigger: str = getattr(ep, "trigger", "") or ""
+    created_at = getattr(ep, "created_at", None)
+
+    # Human-readable description: "VNM • thesis_review" or just the agent type
+    ticker_label = ", ".join(tickers) if tickers else None
+    description = f"{ticker_label} • {agent_type}" if ticker_label else agent_type
+
+    # Map ai_verdict to action icon key expected by _actionIcon()
+    _verdict_to_action = {
+        "BUY": "BUY", "STRONG_BUY": "BUY",
+        "SELL": "SELL", "STRONG_SELL": "SELL",
+        "HOLD": "HOLD", "WATCH": "HOLD",
+        "SKIP": "SKIP", "AVOID": "SKIP",
+    }
+    action = _verdict_to_action.get((ai_verdict or "").upper(), "HOLD")
+
+    return {
+        "id": getattr(ep, "id", None),
+        "description": description,
+        "ticker": tickers[0] if tickers else None,
+        "tickers": tickers,
+        "agent_type": agent_type,
+        "action": action,
+        "ai_verdict": ai_verdict,
+        "ai_confidence": ai_confidence,
+        "ai_key_points": ai_key_points,
+        "ai_risk_signals": ai_risk_signals,
+        "thesis_id": thesis_id,
+        "trigger": trigger,
+        "outcome": None,  # Wave 2: populated when decision outcome is logged
+        "date": created_at.strftime("%d/%m/%Y %H:%M") if created_at else None,
+        "created_at": created_at.strftime("%d/%m/%Y %H:%M") if created_at else None,
     }
