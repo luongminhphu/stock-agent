@@ -1,17 +1,9 @@
 """Core Intelligence Engine — bounded context.
 
 Owner: core segment.
+Responsible for: cross-segment snapshot, signal synthesis, verdict dispatch,
+feedback recording, and self-improvement suggestions.
 
-Responsibilities:
-    - Cross-segment SystemSnapshot aggregation
-    - Signal ranking and filtering
-    - AI verdict synthesis (Wave 2)
-    - Feedback ingestion and signal reweighting (Wave 3)
-    - Self-improvement suggestion generation (Wave 4)
-
-Segment rules:
-    - core reads from all segments; it does NOT own their data
-    - core never writes directly to watchlist, thesis, briefing, or portfolio
-    - core communicates outward via events only (IntelligenceEngineCompletedEvent)
-    - bot and api are thin adapters — they trigger core via IntelligenceEngineRequestedEvent
+This segment is a consumer of all other segments.
+It must never be imported by other segments (dependency goes one way only).
 """

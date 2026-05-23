@@ -18,6 +18,7 @@ Route groups:
     /api/v1/decisions      — log, list, evaluate, replay trade decisions
     /api/v1/lessons        — list persisted AI lessons from Decision Replay loop
     /api/v1/memory         — investor memory snapshot + pattern refresh (wave 9b)
+    /api/v1/core           — Intelligence Engine: snapshot, verdict, feedback (wave 10)
 """
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from src.api.routes.briefing import router as briefing_router
+from src.api.routes.core_engine import router as core_engine_router
 from src.api.routes.decisions import router as decisions_router
 from src.api.routes.health import router as health_router
 from src.api.routes.market import router as market_router
@@ -169,7 +171,7 @@ def create_app() -> FastAPI:
     # index.html serving (with no-store). html=False prevents StaticFiles from
     # intercepting GET /dashboard and serving the file with the wrong cache header.
     #
-    # Mount order: registered AFTER the explicit route. FastAPI’s router checks
+    # Mount order: registered AFTER the explicit route. FastAPI's router checks
     # exact routes before mounts, so GET /dashboard → FileResponse (no-store);
     # GET /dashboard/css/variables.css → StaticFiles (must-revalidate).
     if _DASHBOARD_DIR.exists():
@@ -188,6 +190,7 @@ def create_app() -> FastAPI:
     app.include_router(readmodel_router, prefix="/api/v1")
     app.include_router(decisions_router, prefix="/api/v1")
     app.include_router(memory_router, prefix="/api/v1")  # Wave 9b
+    app.include_router(core_engine_router, prefix="/api/v1")  # Wave 10 — Intelligence Engine
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request, exc: Exception) -> JSONResponse:

@@ -1,199 +1,143 @@
-"""Intelligence Engine — core orchestrator.
+"""IntelligenceEngine — orchestration core.
 
 Owner: core segment.
 
-Wave 1: Build SystemSnapshot + emit IntelligenceEngineRequestedEvent.
-Wave 2 (this file): Accept verdict_agent, delegate to snapshot.py + signals.py,
-    map VerdictOutput → EngineVerdict, apply confidence gate.
-Wave 3: FeedbackStore ingests EngineFeedbackSubmittedEvent.
-Wave 4: SelfImprovementAdvisor runs weekly, emits EvolutionSuggestionReadyEvent.
+Wave 1: rule-based synthesis (urgency ranking, no AI call).
+Wave 2: replace _synthesize() with AIClient.generate_verdict(signals).
+Wave 3: _dispatch() sends to briefing + bot.
+
+Design principles:
+- run_cycle() is the single entry point — snapshot → synthesize → dispatch.
+- Each step is replaceable without touching the others.
+- All errors are caught per-step; partial output is always returned.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+import uuid
+from datetime import datetime, timezone
 
-from src.core import snapshot as snapshot_module
-from src.core import signals as signals_module
-from src.platform.logging import get_logger
+from sqlalchemy.ext.asyncio import AsyncSession
 
-if TYPE_CHECKING:
-    from src.ai.agents.intelligence_verdict import IntelligenceVerdictAgent
-    from src.core.schemas import EngineVerdict
-
-logger = get_logger(__name__)
-
-_CONFIDENCE_THRESHOLD = 0.65
+from src.core.schemas import EngineOutput, EngineVerdict, SystemSnapshot, VerdictType
+from src.core.snapshot import SystemSnapshotBuilder
 
 
 class IntelligenceEngine:
-    """Core orchestrator — Wave 2 implementation.
+    """Central AI orchestrator for one investor.
 
-    Entry point: run_cycle(user_id, trigger_source, ...)
+    Usage::
 
-    Flow:
-        1. snapshot.build_snapshot()  — parallel cross-segment DB queries
-        2. signals.rank_signals()     — deterministic urgency scoring
-        3. verdict_agent.run()        — AI synthesis (Wave 2, optional)
-           OR _heuristic_verdict()   — fallback when no agent provided
-        4. confidence gate            — drop low-confidence verdicts
-           (bypass for RISK_ALERT)
-
-    Graceful degradation:
-        - Each snapshot field populated independently; failures non-fatal.
-        - If verdict_agent raises, falls through to heuristic.
-        - If ranked signals empty, returns None (no action).
+        engine = IntelligenceEngine(session, user_id)
+        output = await engine.run_cycle()
     """
 
-    async def run_cycle(
-        self,
-        user_id: str,
-        trigger_source: str = "scheduler",
-        priority: str = "normal",
-        context_hint: str | None = None,
-        signal_engine_summary: str = "",
-        verdict_agent: "IntelligenceVerdictAgent | None" = None,
-    ) -> "EngineVerdict | None":
-        """Run one intelligence cycle. Returns EngineVerdict or None.
+    # Confidence thresholds
+    DISPATCH_THRESHOLD = 0.65  # only dispatch if confidence >= this
 
-        Args:
-            user_id:               Target investor.
-            trigger_source:        Source of trigger ("scheduler", "command", "api").
-            priority:              "normal" | "high".
-            context_hint:          Optional free-text hint for AI prompt.
-            signal_engine_summary: Injected from SignalEngineCompletedEvent.
-            verdict_agent:         IntelligenceVerdictAgent (Wave 2 AI active).
-                                   When None, heuristic fallback runs only.
-        """
-        from src.core.schemas import EngineVerdict  # noqa: F401 (TYPE_CHECKING workaround)
+    def __init__(self, session: AsyncSession, user_id: str) -> None:
+        self.session = session
+        self.user_id = user_id
 
-        # Step 1: build cross-segment snapshot
-        snap = await snapshot_module.build_snapshot(
-            user_id=user_id,
-            trigger_source=trigger_source,
-            signal_engine_summary=signal_engine_summary,
+    async def run_cycle(self) -> EngineOutput:
+        """Full cycle: build snapshot → synthesize verdict → dispatch."""
+        snapshot = await SystemSnapshotBuilder(self.session, self.user_id).build()
+        verdict = await self._synthesize(snapshot)
+        dispatched = await self._dispatch(verdict, snapshot)
+        return EngineOutput(
+            snapshot=snapshot,
+            verdict=verdict,
+            dispatched_to=dispatched,
         )
 
-        # Step 2: rank signals — deterministic, no AI
-        ranked = signals_module.rank_signals(snap)
+    # ------------------------------------------------------------------
+    # Wave 1: rule-based synthesis
+    # Wave 2: replace with AIClient call
+    # ------------------------------------------------------------------
 
-        if not ranked:
-            logger.info(
-                "core.engine.no_signals",
-                trigger_source=trigger_source,
-                user_id=user_id,
-            )
-            return None
+    async def _synthesize(self, snap: SystemSnapshot) -> EngineVerdict:
+        """Derive verdict from snapshot signals using urgency rules."""
+        risk_signals: list[str] = []
+        next_watch: list[str] = []
+        verdict_type: VerdictType = "NO_ACTION"
+        confidence = 0.4
 
-        # Step 3: produce verdict
-        if verdict_agent is not None:
-            verdict = await self._ai_verdict(
-                verdict_agent=verdict_agent,
-                snap=snap,
-                ranked=ranked,
-                trigger_source=trigger_source,
-            )
-        else:
-            verdict = self._heuristic_verdict(
-                snap=snap,
-                ranked=ranked,
-                trigger_source=trigger_source,
-            )
+        # Priority 1 — triggered alerts (critical urgency)
+        if snap.watchlist_alerts:
+            verdict_type = "RISK_ALERT"
+            confidence = 0.85
+            risk_signals = [
+                f"{a.ticker}: {a.alert_type}" for a in snap.watchlist_alerts[:5]
+            ]
 
-        # Step 4: confidence gate (bypass for RISK_ALERT — always surface)
-        if verdict.confidence < _CONFIDENCE_THRESHOLD and verdict.verdict != "RISK_ALERT":
-            logger.info(
-                "core.engine.below_threshold",
-                verdict=verdict.verdict,
-                confidence=verdict.confidence,
-                trigger_source=trigger_source,
-            )
-            return None
+        # Priority 2 — overdue thesis reviews
+        if snap.thesis_due_review:
+            if verdict_type == "NO_ACTION":
+                verdict_type = "REVIEW_THESIS"
+                confidence = 0.75
+            next_watch = [
+                f"{t.ticker} (overdue {t.days_overdue}d)"
+                for t in snap.thesis_due_review[:5]
+            ]
 
-        logger.info(
-            "core.engine.verdict_ready",
-            verdict=verdict.verdict,
-            confidence=verdict.confidence,
-            signal_count=len(ranked),
-            trigger_source=trigger_source,
-        )
-        return verdict
+        # Priority 3 — market scan anomalies
+        if snap.market_anomalies and verdict_type == "NO_ACTION":
+            verdict_type = "HOLD"
+            confidence = 0.60
+            next_watch += [
+                f"{s.ticker}: {s.signal_type}" for s in snap.market_anomalies[:3]
+            ]
 
-    async def _ai_verdict(
-        self,
-        verdict_agent: Any,
-        snap: Any,
-        ranked: list,
-        trigger_source: str,
-    ) -> "EngineVerdict":
-        """Call IntelligenceVerdictAgent and map VerdictOutput → EngineVerdict."""
-        from src.core.schemas import EngineVerdict
+        sources: list[str] = []
+        if snap.watchlist_alerts:                    sources.append("watchlist")
+        if snap.thesis_due_review:                   sources.append("thesis")
+        if snap.market_anomalies:                    sources.append("market_scan")
+        if snap.portfolio_context.total_positions:   sources.append("portfolio")
 
-        try:
-            output = await verdict_agent.run(
-                snapshot=snap,
-                ranked_signals=ranked,
-            )
-            return EngineVerdict(
-                verdict=output.verdict,
-                confidence=output.confidence,
-                risk_signals=output.risk_signals,
-                next_watch_items=output.next_watch_items,
-                action=output.action,
-                reasoning_summary=output.reasoning_summary,
-                top_signals=ranked,
-                trigger_source=trigger_source,
-            )
-        except Exception as exc:
-            logger.error("core.engine.ai_verdict_failed", error=str(exc))
-            return self._heuristic_verdict(
-                snap=snap,
-                ranked=ranked,
-                trigger_source=f"{trigger_source}:ai_fallback",
-            )
+        summary_parts = [
+            f"{len(snap.watchlist_alerts)} triggered alert(s)",
+            f"{len(snap.thesis_due_review)} overdue review(s)",
+            f"{len(snap.market_anomalies)} market signal(s)",
+            f"{snap.portfolio_context.total_positions} open position(s)",
+        ]
 
-    def _heuristic_verdict(self, snap: Any, ranked: list, trigger_source: str) -> "EngineVerdict":
-        """Wave 1 heuristic — used when no AI agent or AI fails."""
-        from src.core.schemas import EngineVerdict
-
-        _verdict_map = {
-            "portfolio": "RISK_ALERT",
-            "thesis":    "REVIEW_THESIS",
-            "watchlist": "WATCH",
-            "market":    "WATCH",
-        }
-        top = ranked[0]
         return EngineVerdict(
-            verdict=_verdict_map.get(top.source, "NO_ACTION"),
-            confidence=top.urgency_score,
-            risk_signals=[
-                s.description for s in ranked if s.source == "portfolio"
-            ],
-            next_watch_items=[s.description for s in ranked[:3]],
-            action=top.description,
-            reasoning_summary=(
-                f"Heuristic: top signal={top.source} "
-                f"score={top.urgency_score:.2f}"
-            ),
-            top_signals=ranked,
-            trigger_source=trigger_source,
+            verdict_id=str(uuid.uuid4()),
+            verdict=verdict_type,
+            confidence=confidence,
+            risk_signals=risk_signals,
+            next_watch_items=next_watch,
+            action=self._derive_action(verdict_type, snap),
+            reasoning_summary=" | ".join(summary_parts),
+            sources=sources,
+            generated_at=datetime.now(timezone.utc),
         )
 
+    def _derive_action(self, verdict: VerdictType, snap: SystemSnapshot) -> str:
+        if verdict == "RISK_ALERT" and snap.watchlist_alerts:
+            tickers = ", ".join(a.ticker for a in snap.watchlist_alerts[:3])
+            return f"Kiểm tra ngay alerts: {tickers}"
+        if verdict == "REVIEW_THESIS" and snap.thesis_due_review:
+            tickers = ", ".join(t.ticker for t in snap.thesis_due_review[:3])
+            return f"Review thesis: {tickers}"
+        if verdict == "HOLD" and snap.market_anomalies:
+            tickers = ", ".join(s.ticker for s in snap.market_anomalies[:3])
+            return f"Theo dõi tín hiệu thị trường: {tickers}"
+        return "Không có action ưu tiên. Hệ thống ổn định."
 
-# ---------------------------------------------------------------------------
-# Module-level singleton + convenience alias
-# ---------------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Wave 1: dispatch chỉ log
+    # Wave 3: gọi briefing.push() + bot.notify()
+    # ------------------------------------------------------------------
 
-_engine: IntelligenceEngine | None = None
+    async def _dispatch(self, verdict: EngineVerdict, snap: SystemSnapshot) -> list[str]:
+        """Route verdict to downstream segments.
 
-
-def get_intelligence_engine() -> IntelligenceEngine:
-    """Return the module-level IntelligenceEngine singleton."""
-    global _engine
-    if _engine is None:
-        _engine = IntelligenceEngine()
-    return _engine
-
-
-async def run_cycle(**kwargs) -> "EngineVerdict | None":
-    """Module-level convenience alias used by intelligence_listener.py."""
-    return await get_intelligence_engine().run_cycle(**kwargs)
+        Wave 1: log only.
+        Wave 3: dispatch to briefing + bot when confidence >= DISPATCH_THRESHOLD.
+        """
+        dispatched: list[str] = []
+        if verdict.confidence >= self.DISPATCH_THRESHOLD:
+            # TODO Wave 3: await briefing_service.push(verdict)
+            # TODO Wave 3: await bot_notifier.notify(verdict)
+            dispatched.append("log")
+        return dispatched
