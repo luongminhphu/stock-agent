@@ -24,6 +24,7 @@ def create_bot() -> commands.Bot:
     """Create and configure the Discord bot instance."""
     intents = discord.Intents.default()
     intents.message_content = True
+    intents.reactions = True  # Wave B: required for on_raw_reaction_add
 
     bot = commands.Bot(
         command_prefix="/",
@@ -61,7 +62,8 @@ def create_bot() -> commands.Bot:
             _start_opportunity_screen_scheduler(bot)
             _start_proactive_watch_scheduler(bot)
             _start_proactive_watch_subscriber(bot)
-            _start_post_mortem_subscriber(bot)   # Wave E: thesis post-mortem → Discord
+            _start_post_mortem_subscriber(bot)          # Wave E: thesis post-mortem → Discord
+            _start_signal_reaction_listener(bot)        # Wave B: emoji reaction → user_signal
             logger.info(
                 "bot.ready",
                 user=str(bot.user),
@@ -293,11 +295,7 @@ def _start_proactive_watch_subscriber(bot: commands.Bot) -> None:
 
 
 def _start_post_mortem_subscriber(bot: commands.Bot) -> None:
-    """Wire Wave E: PostMortemSubscriber → Discord embed on thesis close/invalidate.
-
-    Uses decision_channel_id if configured, falls back to morning_channel_id.
-    Graceful skip if neither channel is set.
-    """
+    """Wire Wave E: PostMortemSubscriber → Discord embed on thesis close/invalidate."""
     from src.bot.post_mortem_subscriber import PostMortemSubscriber
 
     channel_id = (
@@ -315,3 +313,14 @@ def _start_post_mortem_subscriber(bot: commands.Bot) -> None:
     subscriber.set_client(bot)
     subscriber.register()
     logger.info("bot.post_mortem_subscriber.registered", channel_id=channel_id)
+
+
+def _start_signal_reaction_listener(bot: commands.Bot) -> None:
+    """Wire Wave B: SignalReactionListener → captures emoji reactions as investor signals.
+
+    Requires intents.reactions = True (set in create_bot()).
+    Always registers — no config dependency.
+    """
+    from src.bot.signal_reaction_listener import SignalReactionListener
+    listener = SignalReactionListener(bot)
+    listener.register()
