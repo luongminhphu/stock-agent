@@ -13,6 +13,12 @@
      .as-icon         → emoji
      .as-text         → description
      .as-cta          → scroll-to button
+   Skeleton (static HTML, removed by JS before render):
+     .as-item--skel   → non-interactive skeleton wrapper
+     .as-skel         → shimmer base
+     .as-skel--icon   → icon-sized block
+     .as-skel--text   → text-line block
+     .as-skel--cta    → button-sized block
 ──────────────────────────────────────────────────────────────────────────── */
 
 .action-surface {
@@ -89,4 +95,38 @@
 .as-cta:hover {
   background: rgba(125, 211, 252, 0.08);
   border-color: rgba(125, 211, 252, 0.45);
+}
+
+/* ── Skeleton loader ──────────────────────────────────────────────────────── */
+
+.as-item--skel {
+  pointer-events: none;
+  border-left-color: var(--line);
+  cursor: default;
+}
+
+.as-skel {
+  display: block;
+  background: linear-gradient(
+    90deg,
+    var(--surface-3, rgba(255,255,255,.06)) 25%,
+    var(--surface-2) 50%,
+    var(--surface-3, rgba(255,255,255,.06)) 75%
+  );
+  background-size: 200% 100%;
+  animation: as-shimmer 1.5s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+.as-skel--icon { width: 20px; height: 20px; border-radius: 4px; flex-shrink: 0; }
+.as-skel--text { flex: 1; height: 14px; }
+.as-skel--cta  { width: 56px; height: 24px; border-radius: 8px; flex-shrink: 0; }
+
+@keyframes as-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .as-skel { animation: none; }
 }

@@ -562,12 +562,34 @@
           ></div>
 
           <!-- ── 5. ACTION SURFACE ─────────────────────────────────────────────── -->
+          <!--
+            JS contract (renderActionSurface in dashboard-loader.js):
+              1. el.querySelector('[data-as-skeleton]').remove()
+              2. el.setAttribute('aria-busy', 'false')
+              3. inject real .as-label + .as-items content
+              4. el.classList.remove('hidden')  ← only when items.length > 0
+          -->
           <div
             id="actionSurface"
             class="action-surface hidden"
             aria-live="polite"
             aria-label="Việc cần làm hôm nay"
-          ></div>
+            aria-busy="true"
+          >
+            <div class="as-label" aria-hidden="true">Việc cần làm hôm nay</div>
+            <div class="as-items" data-as-skeleton aria-hidden="true">
+              <div class="as-item as-item--skel">
+                <span class="as-skel as-skel--icon"></span>
+                <span class="as-skel as-skel--text"></span>
+                <span class="as-skel as-skel--cta"></span>
+              </div>
+              <div class="as-item as-item--skel">
+                <span class="as-skel as-skel--icon"></span>
+                <span class="as-skel as-skel--text"></span>
+                <span class="as-skel as-skel--cta"></span>
+              </div>
+            </div>
+          </div>
 
           <!-- ── 6. BRIEFING ──────────────────────────────────────────────────────── -->
           <details class="brief-collapsible" id="briefCollapsible">
