@@ -31,7 +31,7 @@ export function thesisTableSkeletonHTML(rows = 5) {
     return `<tr style="pointer-events:none;">${cells}</tr>`;
   }).join('');
   return `
-    <div class="skel-table-wrap" aria-busy="true" aria-label="Đang tải danh sách thesis…">
+    <div class="skel-table-wrap" aria-busy="true" aria-label="Đang tải danh sách thesis\u2026">
       <table>
         <thead><tr>${headerCells}</tr></thead>
         <tbody>${bodyRows}</tbody>
@@ -41,14 +41,12 @@ export function thesisTableSkeletonHTML(rows = 5) {
 
 /**
  * Wave C: slot HTML cho thesis event timeline.
- * Render placeholder skeleton ngay lập tức;
- * thesis-service.js swap nội dung sau khi fetch xong.
  */
 function thesisTimelineSlotHTML(thesisId) {
   return `
     <div id="thesisTimelineSlot-${thesisId}" class="tl-slot" aria-live="polite">
       <div class="tl-section">
-        <div class="tl-section-title">📅 Lịch sử thesis</div>
+        <div class="tl-section-title">\uD83D\uDCC5 Lịch sử thesis</div>
         <div class="tl-skeleton">
           <div class="skel skel-text" style="width:55%;"></div>
           <div class="skel skel-text" style="width:40%;"></div>
@@ -59,97 +57,224 @@ function thesisTimelineSlotHTML(thesisId) {
 }
 
 /**
- * Render toàn bộ detail panel cho một thesis.
- * WAVE 3b: quote-strip-placeholder async.
- * Wave C:  thesisTimelineSlot async (sau conviction timeline).
- * Wave C+: priceMiniChartSlot async — Chart.js line chart 30d OHLCV
- *          với annotation lines entry / target / stop_loss.
+ * Tính upside% từ entry → target
+ */
+function calcUpside(entry, target) {
+  if (!entry || !target || entry <= 0) return null;
+  return ((target - entry) / entry * 100).toFixed(1);
+}
+
+/**
+ * Render toàn bộ detail panel theo tab layout.
+ *
+ * Structure:
+ *   .detail-sticky-bar        — ticker + badges + key metrics (always visible)
+ *   .detail-tab-nav           — Overview / Assumptions / Catalysts / Reviews / History
+ *   .detail-tab-panels        — content per tab (only active shown)
  */
 export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
   const assumList = Array.isArray(assumptions) ? assumptions : (assumptions?.items ?? []);
   const catList   = Array.isArray(catalysts)   ? catalysts   : (catalysts?.items ?? []);
 
+  const upside = calcUpside(t.entry_price, t.target_price);
+  const downsideRisk = t.entry_price && t.stop_loss
+    ? ((t.stop_loss - t.entry_price) / t.entry_price * 100).toFixed(1)
+    : null;
+
+  const assumInvalid = assumList.filter(a => ['invalid','needs_monitoring'].includes(a.status?.toLowerCase())).length;
+  const catPending   = catList.filter(c => c.status?.toLowerCase() === 'pending').length;
+  const catExpired   = catList.filter(c => c.status?.toLowerCase() === 'expired').length;
+
   return `
-    <div class="detail-head">
-      <div>
-        <div class="detail-meta">
-          <span class="badge" style="font-size:.9rem;padding:6px 12px;">${esc(t.ticker)}</span>
+    <!-- \u2500\u2500 Sticky command bar \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
+    <div class="detail-sticky-bar">
+      <div class="dsb-left">
+        <span class="dsb-ticker">${esc(t.ticker)}</span>
+        <div class="dsb-badges">
           ${t.direction ? badge(t.direction) : ''}
           ${badge(t.status)}
           ${t.score_tier ? `<span class="badge ${scoreClass(t.score)}">${esc(t.score_tier_icon ?? '')} ${esc(t.score_tier)}</span>` : ''}
         </div>
-        <h2 style="margin-top:10px;">${esc(t.title ?? '—')}</h2>
       </div>
-      <div class="detail-head-actions">
-        <button class="ghost-btn" id="detailEditBtn">✏️ Sửa</button>
-        <button class="danger-btn" id="detailDeleteBtn">🗑 Xóa thesis</button>
-      </div>
-    </div>
-
-    <!-- WAVE 3b: quote strip slot — filled async by thesis-service after render -->
-    <div id="quoteStripSlot" data-ticker="${esc(t.ticker)}">
-      ${quoteStripSkeletonHTML()}
-    </div>
-
-    <!-- Wave C+: price mini chart slot — Chart.js 30d OHLCV với entry/target/stop lines -->
-    ${priceMiniChartSlotHTML(t.id)}
-
-    ${t.summary ? `<p class="detail-summary">${esc(t.summary)}</p>` : ''}
-
-    <div class="detail-grid">
-      <div class="detail-stat"><span>Score</span><strong class="${scoreClass(t.score)}">${fmtScore(t.score)}/100</strong>${t.score_tier ? `<span style="color:var(--muted);font-size:.82rem;">${esc(t.score_tier_icon ?? '')} ${esc(t.score_tier ?? '')}</span>` : ''}</div>
-      <div class="detail-stat"><span>Entry</span><strong>${t.entry_price ? fmt(t.entry_price) + '₫' : '—'}</strong></div>
-      <div class="detail-stat"><span>Target</span><strong>${t.target_price ? fmt(t.target_price) + '₫' : '—'}</strong></div>
-      <div class="detail-stat"><span>Stop loss</span><strong>${t.stop_loss ? fmt(t.stop_loss) + '₫' : '—'}</strong></div>
-      <div class="detail-stat"><span>Tạo lúc</span><strong style="font-size:.9rem;">${fmtDate(t.created_at)}</strong></div>
-      <div class="detail-stat"><span>Cập nhật</span><strong style="font-size:.9rem;">${fmtDate(t.updated_at)}</strong></div>
-    </div>
-
-    ${renderScoreBreakdown(t.score_breakdown)}
-
-    <div class="detail-columns">
-      <div class="detail-col">
-        <div class="col-header">
-          <h3>Assumptions <span class="count-badge">${assumList.length}</span></h3>
-          <button class="icon-btn" id="addAssumBtn" title="Thêm assumption">＋</button>
+      <div class="dsb-kpis">
+        <div class="dsb-kpi">
+          <span class="dsb-kpi-label">Score</span>
+          <strong class="dsb-kpi-value ${scoreClass(t.score)}">${fmtScore(t.score)}/100</strong>
         </div>
-        ${assumList.length ? assumList.map(a => `
-          <div class="item-row item-row--${a.status?.toLowerCase() ?? 'unknown'}" data-assum-id="${a.id}">
-            <div class="item-row-body">
-              <span class="item-text">${esc(a.description ?? '—')}</span>
-              <span class="badge badge--${a.status?.toLowerCase() ?? 'unknown'}">${esc(a.status ?? '—')}</span>
-            </div>
-            <div class="item-row-actions">
-              <button class="icon-btn edit-assum-btn" data-id="${a.id}" title="Sửa">✏️</button>
-              <button class="icon-btn danger delete-assum-btn" data-id="${a.id}" title="Xóa">🗑</button>
-            </div>
-          </div>`).join('') : '<p class="empty-state">Chưa có assumption nào.</p>'}
+        ${t.entry_price ? `<div class="dsb-kpi">
+          <span class="dsb-kpi-label">Entry</span>
+          <strong class="dsb-kpi-value">${fmt(t.entry_price)}\u20ab</strong>
+        </div>` : ''}
+        ${t.target_price ? `<div class="dsb-kpi dsb-kpi--upside">
+          <span class="dsb-kpi-label">Target</span>
+          <strong class="dsb-kpi-value">${fmt(t.target_price)}\u20ab ${upside ? `<span class="dsb-upside">+${upside}%</span>` : ''}</strong>
+        </div>` : ''}
+        ${t.stop_loss ? `<div class="dsb-kpi dsb-kpi--risk">
+          <span class="dsb-kpi-label">Stop</span>
+          <strong class="dsb-kpi-value">${fmt(t.stop_loss)}\u20ab ${downsideRisk ? `<span class="dsb-downside">${downsideRisk}%</span>` : ''}</strong>
+        </div>` : ''}
       </div>
-
-      <div class="detail-col">
-        <div class="col-header">
-          <h3>Catalysts <span class="count-badge">${catList.length}</span></h3>
-          <button class="icon-btn" id="addCatBtn" title="Thêm catalyst">＋</button>
-        </div>
-        ${catList.length ? catList.map(c => `
-          <div class="item-row item-row--${c.status?.toLowerCase() ?? 'unknown'}" data-cat-id="${c.id}">
-            <div class="item-row-body">
-              <span class="item-text">${esc(c.description ?? '—')}</span>
-              <span class="badge badge--${c.status?.toLowerCase() ?? 'unknown'}">${esc(c.status ?? '—')}</span>
-            </div>
-            <div class="item-row-actions">
-              <button class="icon-btn edit-cat-btn" data-id="${c.id}" title="Sửa">✏️</button>
-              <button class="icon-btn danger delete-cat-btn" data-id="${c.id}" title="Xóa">🗑</button>
-            </div>
-          </div>`).join('') : '<p class="empty-state">Chưa có catalyst nào.</p>'}
+      <div class="dsb-actions">
+        <button class="ghost-btn" id="detailEditBtn">\u270f\ufe0f S\u1eeda</button>
+        <button class="danger-btn" id="detailDeleteBtn">\uD83D\uDDD1 X\u00f3a</button>
       </div>
     </div>
 
-    ${renderReviewRecommendSection(t.id)}
+    <!-- \u2500\u2500 Tab nav \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
+    <nav class="detail-tab-nav" role="tablist" aria-label="Thesis sections">
+      <button class="dtab active" role="tab" aria-selected="true"  data-tab="overview"     aria-controls="dtab-overview">\uD83D\uDCCA Overview</button>
+      <button class="dtab"        role="tab" aria-selected="false" data-tab="assumptions"  aria-controls="dtab-assumptions">
+        Assumptions <span class="dtab-count ${assumInvalid > 0 ? 'dtab-count--warn' : ''}">${assumList.length}</span>
+      </button>
+      <button class="dtab"        role="tab" aria-selected="false" data-tab="catalysts"    aria-controls="dtab-catalysts">
+        Catalysts <span class="dtab-count ${catExpired > 0 ? 'dtab-count--danger' : catPending > 0 ? 'dtab-count--warn' : ''}">${catList.length}</span>
+      </button>
+      <button class="dtab"        role="tab" aria-selected="false" data-tab="reviews"      aria-controls="dtab-reviews">\uD83D\uDD0D Reviews</button>
+      <button class="dtab"        role="tab" aria-selected="false" data-tab="history"      aria-controls="dtab-history">\uD83D\uDCC5 History</button>
+    </nav>
 
-    ${convictionTimelineSlotHTML(t.id)}
+    <!-- \u2500\u2500 Tab panels \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
+    <div class="detail-tab-panels">
 
-    ${thesisTimelineSlotHTML(t.id)}`;
+      <!-- OVERVIEW -------------------------------------------------------- -->
+      <div id="dtab-overview" class="dtab-panel active" role="tabpanel">
+        <div id="quoteStripSlot" data-ticker="${esc(t.ticker)}">
+          ${quoteStripSkeletonHTML()}
+        </div>
+
+        ${priceMiniChartSlotHTML(t.id)}
+
+        ${t.summary ? `<p class="detail-summary">${esc(t.summary)}</p>` : ''}
+
+        <div class="overview-meta-grid">
+          <div class="meta-stat">
+            <span class="meta-stat-label">T\u1ea1o l\u00fac</span>
+            <span class="meta-stat-value">${fmtDate(t.created_at)}</span>
+          </div>
+          <div class="meta-stat">
+            <span class="meta-stat-label">C\u1eadp nh\u1eadt</span>
+            <span class="meta-stat-value">${fmtDate(t.updated_at)}</span>
+          </div>
+          <div class="meta-stat">
+            <span class="meta-stat-label">Assumptions</span>
+            <span class="meta-stat-value">${assumList.length} <span style="color:var(--muted);font-size:.8rem;">(${assumInvalid} c\u1ea7n xem)</span></span>
+          </div>
+          <div class="meta-stat">
+            <span class="meta-stat-label">Catalysts</span>
+            <span class="meta-stat-value">${catList.length} <span style="color:var(--muted);font-size:.8rem;">(${catPending} pending)</span></span>
+          </div>
+        </div>
+
+        ${renderScoreBreakdown(t.score_breakdown)}
+      </div>
+
+      <!-- ASSUMPTIONS ----------------------------------------------------- -->
+      <div id="dtab-assumptions" class="dtab-panel" role="tabpanel">
+        <div class="tab-panel-toolbar">
+          <span class="tab-panel-title">Assumptions <span class="count-badge">${assumList.length}</span></span>
+          <button class="icon-btn" id="addAssumBtn" title="Th\u00eam assumption">\uff0b Th\u00eam</button>
+        </div>
+        <div class="item-list" id="assumptionList">
+          ${assumList.length ? assumList.map(a => `
+            <div class="item-card item-card--${a.status?.toLowerCase() ?? 'unknown'}" data-assum-id="${a.id}">
+              <div class="item-card-body">
+                <span class="item-card-text">${esc(a.description ?? '\u2014')}</span>
+                <span class="badge badge--${a.status?.toLowerCase() ?? 'unknown'}">${esc(a.status ?? '\u2014')}</span>
+              </div>
+              <div class="item-card-actions">
+                <button class="icon-btn edit-assum-btn" data-id="${a.id}" title="S\u1eeda">\u270f\ufe0f</button>
+                <button class="icon-btn danger delete-assum-btn" data-id="${a.id}" title="X\u00f3a">\uD83D\uDDD1</button>
+              </div>
+            </div>`).join('') : '<p class="empty-state">Ch\u01b0a c\u00f3 assumption n\u00e0o.</p>'}
+        </div>
+      </div>
+
+      <!-- CATALYSTS ------------------------------------------------------- -->
+      <div id="dtab-catalysts" class="dtab-panel" role="tabpanel">
+        <div class="tab-panel-toolbar">
+          <span class="tab-panel-title">Catalysts <span class="count-badge">${catList.length}</span></span>
+          <button class="icon-btn" id="addCatBtn" title="Th\u00eam catalyst">\uff0b Th\u00eam</button>
+        </div>
+        <div class="item-list" id="catalystList">
+          ${catList.length ? catList.map(c => `
+            <div class="item-card item-card--${c.status?.toLowerCase() ?? 'unknown'}" data-cat-id="${c.id}">
+              <div class="item-card-body">
+                <span class="item-card-text">${esc(c.description ?? '\u2014')}</span>
+                <div class="item-card-meta">
+                  <span class="badge badge--${c.status?.toLowerCase() ?? 'unknown'}">${esc(c.status ?? '\u2014')}</span>
+                  ${c.expected_date ? `<span class="item-card-date">\uD83D\uDCC5 ${fmtDate(c.expected_date)}</span>` : ''}
+                </div>
+              </div>
+              <div class="item-card-actions">
+                <button class="icon-btn edit-cat-btn" data-id="${c.id}" title="S\u1eeda">\u270f\ufe0f</button>
+                <button class="icon-btn danger delete-cat-btn" data-id="${c.id}" title="X\u00f3a">\uD83D\uDDD1</button>
+              </div>
+            </div>`).join('') : '<p class="empty-state">Ch\u01b0a c\u00f3 catalyst n\u00e0o.</p>'}
+        </div>
+      </div>
+
+      <!-- REVIEWS --------------------------------------------------------- -->
+      <div id="dtab-reviews" class="dtab-panel" role="tabpanel">
+        ${renderReviewRecommendSection(t.id)}
+        <div id="convictionTimelineSlot-${t.id}" class="conviction-slot">
+          <div class="skel skel-text" style="width:40%;margin-bottom:6px;"></div>
+          <div class="skel skel-text" style="width:60%;"></div>
+        </div>
+      </div>
+
+      <!-- HISTORY --------------------------------------------------------- -->
+      <div id="dtab-history" class="dtab-panel" role="tabpanel">
+        ${thesisTimelineSlotHTML(t.id)}
+      </div>
+
+    </div>
+
+    <script>
+    (function() {
+      const nav    = document.querySelector('.detail-tab-nav');
+      const panels = document.querySelectorAll('.dtab-panel');
+      if (!nav) return;
+      nav.addEventListener('click', function(e) {
+        const btn = e.target.closest('.dtab');
+        if (!btn) return;
+        nav.querySelectorAll('.dtab').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected','false'); });
+        panels.forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        btn.setAttribute('aria-selected','true');
+        const target = document.getElementById('dtab-' + btn.dataset.tab);
+        if (target) target.classList.add('active');
+      });
+    })();
+    <\/script>`;
+}
+
+/**
+ * Skeleton cho detail panel khi đang load.
+ */
+export function detailSkeletonHTML() {
+  return `
+    <div class="skel-detail-wrap" aria-busy="true" aria-label="\u0110ang t\u1ea3i thesis...">
+      <div class="detail-sticky-bar" style="opacity:.5;">
+        <div class="dsb-left">
+          <div class="skel" style="width:60px;height:24px;border-radius:8px;"></div>
+          <div class="skel skel-badge" style="width:70px;"></div>
+        </div>
+        <div class="dsb-kpis">
+          <div class="skel skel-text" style="width:48px;"></div>
+          <div class="skel skel-text" style="width:56px;"></div>
+          <div class="skel skel-text" style="width:56px;"></div>
+        </div>
+      </div>
+      <div class="detail-tab-nav" style="opacity:.4;">
+        ${['Overview','Assumptions','Catalysts','Reviews','History'].map(l => `<button class="dtab">${l}</button>`).join('')}
+      </div>
+      <div style="padding:20px;display:grid;gap:12px;">
+        <div class="skel" style="height:80px;border-radius:12px;"></div>
+        <div class="skel" style="height:120px;border-radius:12px;"></div>
+        <div class="skel skel-text" style="width:70%;"></div>
+        <div class="skel skel-text" style="width:55%;"></div>
+      </div>
+    </div>`;
 }
 
 /**
@@ -170,20 +295,19 @@ export function renderThesesTable(list, callbacks = {}) {
   const { onSelect = null, onEdit = null, onDelete = null } = callbacks ?? {};
   const wrap = document.getElementById('thesesTableWrap');
   if (!list.length) {
-    wrap.innerHTML = '<p class="empty-state">Chưa có thesis nào. Nhấn <strong>+ Thesis mới</strong> để tạo.</p>';
+    wrap.innerHTML = '<p class="empty-state">Ch\u01b0a c\u00f3 thesis n\u00e0o. Nh\u1ea5n <strong>+ Thesis m\u1edbi</strong> \u0111\u1ec3 t\u1ea1o.</p>';
     return;
   }
 
-  // Destroy existing spark instances trước khi re-render
   list.forEach(t => destroySpark(t.id));
 
   wrap.innerHTML = `
     <table>
       <thead>
         <tr>
-          <th>Mã</th><th>Tiêu đề</th><th>Score</th>
+          <th>M\u00e3</th><th>Ti\u00eau \u0111\u1ec1</th><th>Score</th>
           <th style="width:80px;text-align:center;">Trend</th>
-          <th>Status</th><th>Cập nhật</th><th style="width:1%;white-space:nowrap;"></th>
+          <th>Status</th><th>C\u1eadp nh\u1eadt</th><th style="width:1%;white-space:nowrap;"></th>
         </tr>
       </thead>
       <tbody>
@@ -197,9 +321,9 @@ export function renderThesesTable(list, callbacks = {}) {
 
           let tierBadge = '';
           if (tier === 'CRITICAL') {
-            tierBadge = `<span class="badge score-low" style="font-size:.72rem;">🔴 CRITICAL</span>`;
+            tierBadge = `<span class="badge score-low" style="font-size:.72rem;">\uD83D\uDD34 CRITICAL</span>`;
           } else if (tier === 'AT_RISK') {
-            tierBadge = `<span class="badge score-mid" style="font-size:.72rem;">⚠ AT_RISK</span>`;
+            tierBadge = `<span class="badge score-mid" style="font-size:.72rem;">\u26a0 AT_RISK</span>`;
           } else if (tier || t.score_tier_icon) {
             tierBadge = `<span style="font-size:.78rem;color:var(--muted);">${esc(t.score_tier_icon ?? '')} ${esc(tier)}</span>`;
           }
@@ -212,7 +336,7 @@ export function renderThesesTable(list, callbacks = {}) {
                 ${t.direction ? badge(t.direction) : ''}
               </div>
             </td>
-            <td>${esc(t.title ?? '—')}</td>
+            <td>${esc(t.title ?? '\u2014')}</td>
             <td class="${scoreClass(t.score)}">
               <div style="display:flex;flex-direction:column;gap:2px;">
                 <strong>${fmtScore(t.score)}</strong>
@@ -233,8 +357,8 @@ export function renderThesesTable(list, callbacks = {}) {
             <td style="color:var(--muted);font-size:.82rem;">${fmtDate(t.updated_at)}</td>
             <td style="width:1%;white-space:nowrap;">
               <div style="display:flex;gap:6px;">
-                <button class="icon-btn edit-thesis-btn" data-id="${t.id}" title="Sửa thesis">✏️</button>
-                <button class="icon-btn danger delete-thesis-btn" data-id="${t.id}" title="Xóa thesis">🗑</button>
+                <button class="icon-btn edit-thesis-btn" data-id="${t.id}" title="S\u1eeda thesis">\u270f\ufe0f</button>
+                <button class="icon-btn danger delete-thesis-btn" data-id="${t.id}" title="X\u00f3a thesis">\uD83D\uDDD1</button>
               </div>
             </td>
           </tr>`;
@@ -242,35 +366,23 @@ export function renderThesesTable(list, callbacks = {}) {
       </tbody>
     </table>`;
 
-  // Row click + action buttons
   wrap.querySelectorAll('tbody tr').forEach(row => {
     row.addEventListener('click', e => {
       if (e.target.closest('.edit-thesis-btn') || e.target.closest('.delete-thesis-btn')) return;
       const id = row.dataset.id;
       state.selectedThesisId = id;
-      wrap.querySelectorAll('tbody tr').forEach(r => r.classList.toggle('is-selected', r.dataset.id === id));
-      onSelect?.(id);
+      if (onSelect) onSelect(id);
+      wrap.querySelectorAll('tr').forEach(r => r.classList.remove('is-selected'));
+      row.classList.add('is-selected');
     });
-    row.querySelector('.edit-thesis-btn')?.addEventListener('click', e => {
-      e.stopPropagation();
-      onEdit?.(row.dataset.id);
-    });
-    row.querySelector('.delete-thesis-btn')?.addEventListener('click', e => {
-      e.stopPropagation();
-      onDelete?.(row.dataset.id);
-    });
+    const editBtn = row.querySelector('.edit-thesis-btn');
+    const delBtn  = row.querySelector('.delete-thesis-btn');
+    if (editBtn && onEdit)   editBtn.addEventListener('click',   () => onEdit(row.dataset.id));
+    if (delBtn  && onDelete) delBtn.addEventListener('click',    () => onDelete(row.dataset.id));
   });
 
-  // Lazy-load spark charts khi row visible
-  const sparkObserver = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (!entry.isIntersecting) return;
-      const canvas = entry.target;
-      const id = canvas.dataset.thesisId;
-      sparkObserver.unobserve(canvas);
-      loadSparkChart(id, canvas);
-    });
-  }, { rootMargin: '100px' });
-
-  wrap.querySelectorAll('canvas[data-thesis-id]').forEach(c => sparkObserver.observe(c));
+  list.forEach(t => {
+    const canvas = document.getElementById(`spark-${t.id}`);
+    if (canvas) loadSparkChart(t.id, canvas);
+  });
 }
