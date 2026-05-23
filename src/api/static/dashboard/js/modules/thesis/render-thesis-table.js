@@ -212,7 +212,9 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
             <div class="item-card item-card--${a.status?.toLowerCase() ?? 'unknown'}" data-assum-id="${a.id}">
               <div class="item-card-body">
                 <span class="item-card-text">${esc(a.description ?? '\u2014')}</span>
-                <span class="badge badge--${a.status?.toLowerCase() ?? 'unknown'}">${esc(a.status ?? '\u2014')}</span>
+                <div class="item-card-meta">
+                  <span class="badge badge--${a.status?.toLowerCase() ?? 'unknown'}">${esc(a.status ?? '\u2014')}</span>
+                </div>
               </div>
               <div class="item-card-actions">
                 <button class="icon-btn edit-assum-btn" data-id="${a.id}" title="S\u1eeda">\u270f\ufe0f</button>
