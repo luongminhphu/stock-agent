@@ -24,8 +24,8 @@ import datetime
 import discord
 
 from src.bot.commands.proactive_watch_embeds import (
-    build_proactive_alert_embed,
-    build_proactive_batch_embed,
+    build_proactive_watch_embed,
+    build_proactive_watch_batch_embed,
 )
 from src.platform.event_bus import get_event_bus
 from src.platform.events import ProactiveWatchAlertFiredEvent
@@ -98,9 +98,16 @@ class ProactiveWatchSubscriber:
         now_utc = datetime.datetime.now(tz=datetime.UTC)
         try:
             if len(events) == 1:
-                embed = build_proactive_alert_embed(events[0], now_utc)
+                e = events[0]
+                embed = build_proactive_watch_embed(
+                    ticker=e.ticker,
+                    condition=e.condition,
+                    priority=e.priority,
+                    details=e.details,
+                    triggered_at=e.triggered_at,
+                )
             else:
-                embed = build_proactive_batch_embed(events, now_utc)
+                embed = build_proactive_watch_batch_embed(events, now_utc)
 
             await channel.send(embed=embed)  # type: ignore[union-attr]
             logger.info(
