@@ -386,3 +386,55 @@ class TrendPredictionCompletedEvent(DomainEvent):
     symbols_analyzed: int = 0
     top_verdicts: tuple[tuple[str, str], ...] = field(default_factory=tuple)
     # top_verdicts: (("VHM", "BUY"), ("FPT", "HOLD"), ("TCB", "WATCH"))
+
+
+# ─── core intelligence engine ────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class IntelligenceEngineRequestedEvent(DomainEvent):
+    """Trigger an Intelligence Engine cycle.
+
+    Produced by: bot.IntelligenceEngineScheduler | api command | any segment emitter
+    Consumed by: core.IntelligenceEngineListener
+
+    trigger_type:
+        scheduled    — from bot scheduler (pre_market, midday, eod)
+        event_driven — triggered by another event (e.g. multi-signal convergence)
+        manual       — user-initiated via Discord command or API
+
+    priority:
+        low    — defer if system is busy
+        normal — standard cycle
+        high   — bypass confidence threshold, always dispatch verdict
+    """
+    trigger_type: str = "scheduled"   # scheduled | event_driven | manual
+    trigger_source: str = ""           # e.g. "scheduler:pre_market" | "user:discord"
+    user_id: str = ""
+    priority: str = "normal"           # low | normal | high
+    context_hint: str | None = None    # optional freeform hint injected into reasoning
+
+
+@dataclass(frozen=True)
+class IntelligenceEngineCompletedEvent(DomainEvent):
+    """Emitted after an Intelligence Engine cycle completes.
+
+    Produced by: core.IntelligenceEngineListener
+    Consumed by:
+      - briefing.BriefingListener  → inject verdict context into next brief
+      - bot.EngineSubscriber       → Discord embed when action_required=True
+
+    verdict:
+        BUY_SIGNAL | SELL_SIGNAL | HOLD | REVIEW_THESIS | RISK_ALERT | WATCH | NO_ACTION
+
+    action_required:
+        True when verdict is actionable (not NO_ACTION or HOLD).
+        Downstream subscribers use this to decide whether to notify.
+
+    summary:
+        Human-readable action string, ready for Discord or briefing injection.
+    """
+    verdict: str = "NO_ACTION"
+    confidence: float = 0.0
+    action_required: bool = False
+    summary: str = ""
+    trigger_source: str = ""
