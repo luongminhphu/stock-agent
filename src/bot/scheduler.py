@@ -21,6 +21,8 @@ Registered tasks:
     ProactiveWatchScheduler.morning_task       — weekdays 09:15 ICT (after market open)
     ProactiveWatchScheduler.midday_task        — weekdays 11:15 ICT (mid-session)
     ProactiveWatchScheduler.pre_atc_task       — weekdays 14:15 ICT (before ATC)
+    IntelligenceEngineScheduler.morning_task   — weekdays 08:35 ICT (after ThesisMaintenance, before SignalEngine)
+    IntelligenceEngineScheduler.eod_task       — weekdays 15:12 ICT (after SignalEngine.eod, before DecisionReplay)
 
 Note:
     MORNING_CHANNEL_ID and EOD_CHANNEL_ID must be set in settings.
@@ -35,6 +37,8 @@ Channel routing:
     AgendaBuilderScheduler persists only — no Discord message.
     OutcomeFillerScheduler persists only — no Discord message (silent data enrichment job).
     ProactiveWatchScheduler emits events only — Discord delivery via ProactiveWatchSubscriber.
+    IntelligenceEngineScheduler emits events only — no channel routing, no Discord message.
+        Wave 2: IntelligenceEngineListener (ai segment) handles verdict + delivery.
 
 Wave 8:
     BriefingScheduler no longer calls BriefingService directly.
@@ -51,6 +55,13 @@ Wave D (ProactiveWatch):
     → watchlist.ProactiveWatchListener runs ScanService + AlertService
     → ProactiveWatchAlertFiredEvent × N
     → bot.ProactiveWatchSubscriber batches and sends Discord embed.
+
+Core Engine (Wave 1):
+    IntelligenceEngineScheduler emits IntelligenceEngineRequestedEvent (2×/day)
+    → core.IntelligenceEngine.run_cycle() builds SystemSnapshot
+    → publishes IntelligenceEngineRequestedEvent with snapshot context
+    Wave 2: ai.IntelligenceEngineListener subscribes → produces verdict
+    → emits IntelligenceEngineCompletedEvent → bot subscriber → Discord.
 """
 
 from __future__ import annotations
@@ -1267,7 +1278,7 @@ class ProactiveWatchScheduler:
     # ── shared emit ───────────────────────────────────────────────────────────────────
 
     async def _emit(self, phase: str, task_name: str) -> None:
-        """Emit ProactiveWatchRequestedEvent — bot’s only responsibility here."""
+        """Emit ProactiveWatchRequestedEvent — bot's only responsibility here."""
         from src.platform.event_bus import get_event_bus
         from src.platform.events import ProactiveWatchRequestedEvent
 
@@ -1295,6 +1306,126 @@ class ProactiveWatchScheduler:
         except Exception as exc:
             logger.error(
                 "scheduler.proactive_watch.emit_error",
+                phase=phase,
+                error=str(exc),
+            )
+            await self._monitor.record_failure(task_name, exc)
+
+
+# ---------------------------------------------------------------------------
+# IntelligenceEngineScheduler
+# ---------------------------------------------------------------------------
+
+# ICT = UTC+7  →  subtract 7h for UTC
+_IE_MORNING_TIME = datetime.time(hour=1, minute=35, tzinfo=datetime.UTC)  # 08:35 ICT
+_IE_EOD_TIME     = datetime.time(hour=8, minute=12, tzinfo=datetime.UTC)  # 15:12 ICT
+
+
+class IntelligenceEngineScheduler:
+    """Trigger IntelligenceEngine.run_cycle() twice per trading day.
+
+    Owner: bot segment — thin timing adapter only.
+    All engine logic lives in src/core/engine.py.
+    AI verdict synthesis in Wave 2: ai.IntelligenceEngineListener.
+
+    Timing:
+        morning — 08:35 ICT  after ThesisMaintenance (08:30), before SignalEngine (08:40)
+        eod     — 15:12 ICT  after SignalEngine.eod (15:10), before DecisionReplay (15:15)
+
+    Flow:
+        1. get_intelligence_engine() — module-level singleton from src.core.engine.
+        2. engine.run_cycle(user_id, phase, triggered_by="scheduler")
+           — builds SystemSnapshot (cross-segment DB reads, all non-fatal)
+           — emits IntelligenceEngineRequestedEvent with snapshot context
+        3. Record success/failure in SchedulerMonitor.
+
+    No Discord output from this scheduler.
+    Wave 2: ai.IntelligenceEngineListener produces IntelligenceEngineCompletedEvent
+    → bot.IntelligenceEngineSubscriber (to be added) → Discord embed.
+
+    Graceful skip:
+        - Weekends (weekday >= 5).
+        - scheduler_user_id not configured → warning log, no cycle run.
+        - All exceptions caught and recorded; never blocks other schedulers.
+    """
+
+    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
+        self._client = client
+        self._monitor = monitor or get_monitor()
+
+    def start(self) -> None:
+        self._monitor.register_task("intelligence_engine.morning")
+        self._monitor.register_task("intelligence_engine.eod")
+        self._morning_task.start()
+        self._eod_task.start()
+        logger.info(
+            "scheduler.intelligence_engine.started",
+            phases=["08:35", "15:12"],
+        )
+
+    def stop(self) -> None:
+        self._morning_task.cancel()
+        self._eod_task.cancel()
+        logger.info("scheduler.intelligence_engine.stopped")
+
+    # ── morning: 08:35 ICT ────────────────────────────────────────────────────────────
+
+    @tasks.loop(time=_IE_MORNING_TIME)
+    async def _morning_task(self) -> None:
+        if datetime.datetime.now(tz=datetime.UTC).weekday() >= 5:
+            return
+        await self._run_cycle(phase="morning", task_name="intelligence_engine.morning")
+
+    @_morning_task.before_loop
+    async def _before_morning(self) -> None:
+        await self._client.wait_until_ready()
+
+    # ── eod: 15:12 ICT ───────────────────────────────────────────────────────────────
+
+    @tasks.loop(time=_IE_EOD_TIME)
+    async def _eod_task(self) -> None:
+        if datetime.datetime.now(tz=datetime.UTC).weekday() >= 5:
+            return
+        await self._run_cycle(phase="eod", task_name="intelligence_engine.eod")
+
+    @_eod_task.before_loop
+    async def _before_eod(self) -> None:
+        await self._client.wait_until_ready()
+
+    # ── shared cycle runner ───────────────────────────────────────────────────────────
+
+    async def _run_cycle(self, phase: str, task_name: str) -> None:
+        """Call IntelligenceEngine.run_cycle() — bot delegates all logic to core segment."""
+        from src.core.engine import get_intelligence_engine
+
+        user_id = getattr(settings, "scheduler_user_id", None)
+        if not user_id:
+            logger.warning(
+                "scheduler.intelligence_engine.skipped",
+                phase=phase,
+                reason="scheduler_user_id not configured",
+            )
+            return
+
+        try:
+            engine = get_intelligence_engine()
+            snapshot = await engine.run_cycle(
+                user_id=str(user_id),
+                phase=phase,
+                triggered_by="scheduler",
+            )
+            logger.info(
+                "scheduler.intelligence_engine.cycle_done",
+                phase=phase,
+                active_alerts=snapshot.active_alert_count,
+                stale_theses=snapshot.stale_thesis_count,
+                high_risk_positions=snapshot.high_risk_position_count,
+            )
+            await self._monitor.record_success(task_name)
+
+        except Exception as exc:
+            logger.error(
+                "scheduler.intelligence_engine.error",
                 phase=phase,
                 error=str(exc),
             )
