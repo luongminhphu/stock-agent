@@ -1,72 +1,39 @@
-/* ─── Thesis Detail, Reviews & Score ─────────────────────────────────────────
+/* ─── Thesis Module ──────────────────────────────────────────────────────────────────
    Owner: modules/thesis
-   detail-shell, detail-head, detail-grid, detail-item, review-timeline,
-   review-card, review-box. Score breakdown delegated to render-score.js.
-───────────────────────────────────────────────────────────────────────────── */
+   Thesis board, detail panel, assumptions/catalysts display, review cards.
+   Phụ thuộc: variables.css, reset.css (components, layout đã được import trước)
+──────────────────────────────────────────────────────────────────────────── */
 
+/* ── Thesis board (table container) ───────────────────────────────────────────── */
+#thesesTableWrap {
+  overflow-x: auto;
+}
+
+/* ── Thesis detail shell ────────────────────────────────────────────────────────── */
 .detail-shell {
-  padding: 16px;
-  background: linear-gradient(180deg, rgba(8, 16, 29, 0.74), rgba(12, 21, 36, 0.88));
-  border: 1px solid var(--line);
-}
-.empty-detail {
-  min-height: 240px;
   display: grid;
+  gap: 16px;
+  padding: 16px 0 0;
+}
+.detail-shell.empty-detail {
   place-items: center;
-}
-.empty-detail-copy {
   text-align: center;
-  max-width: 320px;
-}
-.empty-detail-copy p { color: var(--muted); margin-top: 8px; font-size: 0.84rem; }
-
-.detail-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 14px;
-  margin-bottom: 14px;
-}
-.detail-head-actions {
-  display: flex;
-  gap: 8px;
-  flex-shrink: 0;
-  flex-wrap: wrap;
-  align-items: center;
-}
-.detail-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
-}
-.detail-summary {
+  padding: 32px 16px;
   color: var(--muted);
-  line-height: 1.6;
-  margin-bottom: 14px;
-  font-size: 0.84rem;
 }
-.detail-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 14px;
-}
-.detail-stat {
-  padding: 12px 14px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(148, 163, 184, 0.12);
-}
-.detail-stat span {
-  display: block;
-  color: var(--muted);
-  font-size: 0.7rem;
+.empty-detail-copy h3 {
   margin-bottom: 6px;
+  color: var(--text);
+  font-size: 1rem;
 }
-.detail-stat strong { font-size: 0.96rem; }
+.empty-detail-copy p {
+  font-size: 0.82rem;
+  line-height: 1.55;
+  max-width: 36ch;
+}
 
-.detail-columns {
+/* ── Detail header row ──────────────────────────────────────────────────────────── */
+.detail-meta-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
@@ -122,7 +89,7 @@ tr.row--critical {
 tr.row--at-risk:hover  { background: rgba(251, 191, 36, 0.08); }
 tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
 
-/* ── Review timeline ────────────────────────────────────────────── */
+/* ── Review timeline ────────────────────────────────────────────────────────── */
 .review-timeline {
   display: grid;
   gap: 10px;
@@ -181,12 +148,12 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
 /* ── Form stack (inline rows inside thesis modal) ─────────────────────── */
 .form-stack { display: grid; gap: 8px; }
 
-/* ────────────────────────────────────────────────────────────────────────────
+/* ──────────────────────────────────────────────────────────────────────────────
    WAVE 2d — SKELETON LOADER
    Owner: modules/thesis
    Classes: .skel, .skel-text, .skel-heading, .skel-badge, .skel-stat,
             .skel-row, .skel-item, .skel-detail-wrap, .skel-table-wrap
-──────────────────────────────────────────────────────────────────────────── */
+────────────────────────────────────────────────────────────────────────────── */
 
 @keyframes shimmer {
   0%   { background-position: -200% 0; }
@@ -218,117 +185,47 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
   margin-bottom: 10px;
   border-radius: 8px;
 }
-
 .skel-text {
   height: 0.85em;
+  width: 100%;
   border-radius: 4px;
-  margin-bottom: 6px;
 }
-.skel-text:last-child { width: 55%; }
-
 .skel-badge {
-  height: 1.4em;
-  width: 56px;
-  border-radius: 20px;
-  display: inline-block;
+  height: 20px;
+  width: 64px;
+  border-radius: 99px;
 }
-
-/* Stat box — mirrors .detail-stat */
 .skel-stat {
-  height: 58px;
-  border-radius: 16px;
+  height: 2em;
+  width: 56px;
+  border-radius: 6px;
 }
 
-/* Generic row (for table rows) */
+/* Row + item wrappers */
 .skel-row {
-  height: 44px;
-  border-radius: 8px;
-  margin-bottom: 6px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
 }
-
-/* Assumption / catalyst item */
 .skel-item {
-  height: 72px;
-  border-radius: 16px;
-  margin-bottom: 8px;
-}
-
-/* ── Composed skeletons ─────────────────────────────────────────── */
-
-/* Wrapper cho detail-shell skeleton: padding khớp với real detail */
-.skel-detail-wrap {
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-/* Wrapper cho table skeleton */
-.skel-table-wrap {
+  display: grid;
+  gap: 6px;
   padding: 12px;
-  display: flex;
-  flex-direction: column;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(148, 163, 184, 0.08);
+}
+.skel-detail-wrap {
+  display: grid;
+  gap: 14px;
+  padding: 16px 0 0;
+}
+.skel-table-wrap {
+  display: grid;
   gap: 8px;
 }
 
-/* 3-col stat grid mirror */
-.skel-stat-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-/* 2-col columns mirror */
-.skel-columns {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
-/* ────────────────────────────────────────────────────────────────────────────
-   Wave C+ — PRICE MINI CHART
-   Owner: modules/thesis (market segment data)
-   Slot rendered by priceMiniChartSlotHTML(), populated by loadPriceMiniChart()
-   Classes: .price-mini-chart-slot, .price-mini-chart-skeleton,
-            .price-mini-chart-wrap, .price-mini-chart-header,
-            .price-mini-chart-title, .price-mini-chart-canvas-wrap,
-            .price-mini-chart-unavailable
-──────────────────────────────────────────────────────────────────────────── */
-
-/* Outer slot — tách biệt khỏi quote strip phía trên */
-.price-mini-chart-slot {
-  margin-bottom: 14px;
-}
-
-/* Skeleton placeholder — khớp height với canvas thực (120px) */
-.price-mini-chart-skeleton {
-  padding: 0;
-}
-
-/* Card container khi chart đã load */
-.price-mini-chart-wrap {
-  padding: 12px 14px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.025);
-  border: 1px solid rgba(148, 163, 184, 0.10);
-}
-
-/* Header row: title bên trái, có thể mở rộng thêm action bên phải sau */
-.price-mini-chart-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-
-.price-mini-chart-title {
-  font-size: 0.72rem;
-  color: var(--muted);
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-}
-
-/* Canvas wrapper — height cố định để Chart.js maintainAspectRatio: false hoạt động */
+/* ── Canvas wrapper — height cố định để Chart.js maintainAspectRatio: false hoạt động */
 .price-mini-chart-canvas-wrap {
   position: relative;
   height: 120px;
@@ -357,4 +254,59 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
 .price-mini-chart-unavailable span {
   font-size: 0.76rem;
   color: var(--faint);
+}
+
+/* ── Inline form rows (assumptions / catalysts inside thesis modal) ───────
+   .form-row-item: flex row, fields shrink correctly, delete btn aligned.
+   .form-section--tight: tighter padding for sections inside modal.
+─────────────────────────────────────────────────────────────────────────── */
+.form-row-item {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(148, 163, 184, 0.10);
+}
+
+/* Each form-field inside a row must not overflow */
+.form-row-item .form-field {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
+/* Timeline field: shorter, fixed width */
+.form-row-item .form-field:has(.form-catalyst-timeline) {
+  flex: 0 0 160px;
+}
+
+/* Delete button: stay right, not stretch */
+.form-row-item > div:last-child {
+  flex: 0 0 auto;
+  align-self: flex-end;
+  padding-bottom: 1px;
+}
+
+/* icon-btn inside form-row-item: 28px compact version */
+.form-row-item .icon-btn {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  border-radius: 7px;
+  font-size: 0.8rem;
+}
+
+/* Section tight: used in thesis modal sub-sections */
+.form-section--tight {
+  padding: 10px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.10);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.form-section--tight .detail-section-header {
+  margin-bottom: 8px;
 }
