@@ -15,7 +15,6 @@ Callers:
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -257,64 +256,52 @@ class MemoryService:
         Each query (episodes, snapshot) fails independently — a failure
         in one does not abort the other. Returns an empty MemoryContext
         (not None) when no data exists, so callers never need to null-check.
+
+        Note: queries are run sequentially (not via asyncio.gather) because
+        SQLAlchemy 2.0 AsyncSession does not support concurrent operations
+        on the same session object (raises ISCE on gather).
         """
+        episodes: list[AIInteractionLog] = []
+        snapshot: MemorySnapshot | None = None
+
+        episode_repo = InteractionLogRepository(session)
+        snapshot_repo = MemorySnapshotRepository(session)
+
         try:
-            episode_repo = InteractionLogRepository(session)
-            snapshot_repo = MemorySnapshotRepository(session)
-
-            results = await asyncio.gather(
-                episode_repo.get_recent(user_id, limit=episode_limit),
-                snapshot_repo.get_latest(user_id),
-                return_exceptions=True,
-            )
-
-            episodes: list[AIInteractionLog]
-            snapshot: MemorySnapshot | None
-
-            if isinstance(results[0], BaseException):
-                logger.warning(
-                    "memory_service.episodes_failed",
-                    user_id=user_id,
-                    error=str(results[0]),
-                )
-                episodes = []
-            else:
-                episodes = results[0]
-
-            if isinstance(results[1], BaseException):
-                logger.warning(
-                    "memory_service.snapshot_failed",
-                    user_id=user_id,
-                    error=str(results[1]),
-                )
-                snapshot = None
-            else:
-                snapshot = results[1]
-
-            # Scope episodes to thesis when caller provides thesis_id.
-            # Legacy rows (ep.thesis_id is None) are kept to avoid losing
-            # historical context that was logged before thesis_id tracking.
-            if thesis_id is not None and episodes:
-                episodes = [
-                    ep for ep in episodes
-                    if ep.thesis_id is None or ep.thesis_id == thesis_id
-                ]
-                logger.debug(
-                    "memory_service.episodes_filtered_by_thesis",
-                    user_id=user_id,
-                    thesis_id=thesis_id,
-                    count=len(episodes),
-                )
-
-            return MemoryContext(
-                user_id=user_id,
-                recent_episodes=episodes,
-                latest_snapshot=snapshot,
-            )
+            episodes = await episode_repo.get_recent(user_id, limit=episode_limit)
         except Exception as exc:
             logger.warning(
-                "memory_service.get_memory_context.failed",
+                "memory_service.episodes_failed",
                 user_id=user_id,
                 error=str(exc),
             )
-            return MemoryContext(user_id=user_id)
+
+        try:
+            snapshot = await snapshot_repo.get_latest(user_id)
+        except Exception as exc:
+            logger.warning(
+                "memory_service.snapshot_failed",
+                user_id=user_id,
+                error=str(exc),
+            )
+
+        # Scope episodes to thesis when caller provides thesis_id.
+        # Legacy rows (ep.thesis_id is None) are kept to avoid losing
+        # historical context that was logged before thesis_id tracking.
+        if thesis_id is not None and episodes:
+            episodes = [
+                ep for ep in episodes
+                if ep.thesis_id is None or ep.thesis_id == thesis_id
+            ]
+            logger.debug(
+                "memory_service.episodes_filtered_by_thesis",
+                user_id=user_id,
+                thesis_id=thesis_id,
+                count=len(episodes),
+            )
+
+        return MemoryContext(
+            user_id=user_id,
+            recent_episodes=episodes,
+            latest_snapshot=snapshot,
+        )
