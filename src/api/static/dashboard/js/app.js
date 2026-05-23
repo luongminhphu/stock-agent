@@ -1,5 +1,5 @@
 /**
- * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard + Wave D lesson loop + Wave E brief ticker + Wave F brief feedback + Wave G brief generate + Wave 1 UX + Wave 2 memory)
+ * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard + Wave D lesson loop + Wave E brief ticker + Wave F brief feedback + Wave G brief generate + Wave 1 UX + Wave 2 memory + AttentionPanel)
  * Responsibility: import tất cả modules, wire events, khởi động dashboard.
  * Rule: KHÔNG chứa business logic. Chỉ bootstrap + wiring.
  */
@@ -26,6 +26,7 @@ import { loadLeaderboard }      from './modules/leaderboard/leaderboard-service.
 import { bindFeedbackEvents }   from './modules/briefing/brief-feedback.js';
 import { bindGenerateBriefButtons } from './modules/briefing/brief-generate.js';
 import { loadMemory }           from './modules/memory/memory-loader.js';
+import { loadAttentionPanel, startAttentionAutoRefresh } from './modules/attention/attention-loader.js';
 import { state }                from './state/dashboard-state.js';
 
 // ---------------------------------------------------------------------------
@@ -285,7 +286,7 @@ function bindLeaderboardSort() {
 // ---------------------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', async () => {
 
-  // ── Error boundary: surface module-load failures visibly ──────────────────
+  // ── Error boundary: surface module-load failures visibly ──────────────────────
   window.addEventListener('error', (e) => {
     if (e.filename?.includes('/static/dashboard/')) {
       const banner = document.getElementById('errorBanner');
@@ -324,6 +325,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       await loadDashboard();
       if (thesisId) await loadThesisDetail(thesisId);
       await loadPortfolio();
+      // Refresh attention panel sau khi thesis thay đổi
+      loadAttentionPanel();
     },
   });
 
@@ -351,6 +354,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadDecisions();
     loadLeaderboard();
     loadMemory();
+    loadAttentionPanel();   // reload attention panel cùng reloadBtn
   });
   el('statusFilter')?.addEventListener('change', loadDashboard);
 
@@ -419,9 +423,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadWatchlist(),
     loadDecisions(),
     loadLeaderboard('score'),
-    loadMemory(),          // Wave 2: Cluster D — Investor Memory
+    loadMemory(),           // Wave 2: Cluster D — Investor Memory
+    loadAttentionPanel(),   // AttentionPanel — Việc cần làm hôm nay
   ]);
 
   // 12. Wave 1: KPI clickable — wire sau khi DOM đã render đủ values
   initKpiClickable();
+
+  // 13. AttentionPanel auto-refresh mỗi 5 phút
+  startAttentionAutoRefresh();
 });
