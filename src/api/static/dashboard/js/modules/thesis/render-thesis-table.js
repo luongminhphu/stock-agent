@@ -65,12 +65,45 @@ function calcUpside(entry, target) {
 }
 
 /**
+ * Wire tab switching cho detail panel.
+ * Gọi sau khi inject innerHTML — KHÔNG đặt inline script vì
+ * browser không execute <script> được inject qua innerHTML.
+ *
+ * @param {HTMLElement} wrap - container chứa .detail-tab-nav và .dtab-panel
+ */
+export function wireTabNav(wrap) {
+  const nav    = wrap.querySelector('.detail-tab-nav');
+  const panels = wrap.querySelectorAll('.dtab-panel');
+  if (!nav || !panels.length) return;
+
+  nav.addEventListener('click', function(e) {
+    const btn = e.target.closest('.dtab');
+    if (!btn) return;
+
+    nav.querySelectorAll('.dtab').forEach(b => {
+      b.classList.remove('active');
+      b.setAttribute('aria-selected', 'false');
+    });
+    panels.forEach(p => p.classList.remove('active'));
+
+    btn.classList.add('active');
+    btn.setAttribute('aria-selected', 'true');
+
+    const target = wrap.querySelector('#dtab-' + btn.dataset.tab);
+    if (target) target.classList.add('active');
+  });
+}
+
+/**
  * Render toàn bộ detail panel theo tab layout.
  *
  * Structure:
  *   .detail-sticky-bar        — ticker + badges + key metrics (always visible)
  *   .detail-tab-nav           — Overview / Assumptions / Catalysts / Reviews / History
  *   .detail-tab-panels        — content per tab (only active shown)
+ *
+ * NOTE: Không chứa inline <script>. Tab switching được wire bởi wireTabNav()
+ * sau khi HTML được inject vào DOM (xem thesis-service.js → loadThesisDetail).
  */
 export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
   const assumList = Array.isArray(assumptions) ? assumptions : (assumptions?.items ?? []);
@@ -227,25 +260,7 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
         ${thesisTimelineSlotHTML(t.id)}
       </div>
 
-    </div>
-
-    <script>
-    (function() {
-      const nav    = document.querySelector('.detail-tab-nav');
-      const panels = document.querySelectorAll('.dtab-panel');
-      if (!nav) return;
-      nav.addEventListener('click', function(e) {
-        const btn = e.target.closest('.dtab');
-        if (!btn) return;
-        nav.querySelectorAll('.dtab').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected','false'); });
-        panels.forEach(p => p.classList.remove('active'));
-        btn.classList.add('active');
-        btn.setAttribute('aria-selected','true');
-        const target = document.getElementById('dtab-' + btn.dataset.tab);
-        if (target) target.classList.add('active');
-      });
-    })();
-    <\/script>`;
+    </div>`;
 }
 
 /**
@@ -279,17 +294,6 @@ export function detailSkeletonHTML() {
 
 /**
  * Render thesis list table (left panel).
- * data-ticker + data-thesis-id on each <tr> enables the lesson→review
- * UI loop: decision-loader dispatches 'decision:lesson-persisted' with
- * a ticker, thesis-service finds the row via [data-ticker] and adds a badge.
- *
- * Spark chart: lazy-loaded per row via IntersectionObserver.
- * destroySpark() called before re-render to prevent Chart.js instance leaks.
- *
- * Score tier badge rules:
- *   CRITICAL  → .badge.score-low  (red, var(--danger))
- *   AT_RISK   → .badge.score-mid  (amber, var(--warning))
- *   other     → muted faint span (no change)
  */
 export function renderThesesTable(list, callbacks = {}) {
   const { onSelect = null, onEdit = null, onDelete = null } = callbacks ?? {};

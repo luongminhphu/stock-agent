@@ -13,7 +13,7 @@ import { el, showToast, openModal, closeModal } from '../../utils/dom.js';
 import { esc, fmtDate } from '../../utils/format.js';
 import { thesisApiBase, getJson, sendJson } from '../../api/client.js';
 import { state } from '../../state/dashboard-state.js';
-import { renderThesisDetailHTML, emptyDetailHTML } from './render-thesis-table.js';
+import { renderThesisDetailHTML, emptyDetailHTML, wireTabNav } from './render-thesis-table.js';
 import { wireDetailActions } from './thesis-form.js';
 import { renderReviewRecommendResult } from './render-ai-review.js';
 import { fetchQuote, renderQuoteStrip } from './market-quote.js';
@@ -66,7 +66,6 @@ function detailSkeletonHTML() {
 
 // ---------------------------------------------------------------------------
 // Wave C: render thesis event timeline từ /readmodel/thesis/{id}/timeline
-// Gọi async sau render chính — không block UI.
 // ---------------------------------------------------------------------------
 const TIMELINE_EVENT_META = {
   created:              { icon: '🚀', label: 'Tạo thesis'           },
@@ -82,10 +81,6 @@ const TIMELINE_EVENT_META = {
 
 const TIMELINE_MAX = 30;
 
-/**
- * Serialize event detail thành string có thể đọc được.
- * Fix: ev.detail có thể là object (e.g. {old_status, new_status}) → [object Object]
- */
 function formatEventDetail(raw) {
   if (raw == null) return null;
   if (typeof raw === 'string') {
@@ -103,9 +98,6 @@ function formatEventDetail(raw) {
   }
 }
 
-/**
- * Trả về true nếu event có đủ thông tin để hiển thị (không trống).
- */
 function isEventVisible(ev) {
   if (!ev || !ev.event_type) return false;
   const detail = formatEventDetail(ev.detail ?? ev.description ?? ev.summary ?? null);
@@ -199,7 +191,11 @@ export async function loadThesisDetail(thesisId) {
       wrap.innerHTML = emptyDetailHTML();
       return;
     }
+
     wrap.innerHTML = renderThesisDetailHTML(thesis, assumptions, catalysts, reviews);
+
+    // Wire tab switching — phải gọi SAU khi set innerHTML
+    wireTabNav(wrap);
 
     wireDetailActions(thesisId, wrap);
 
