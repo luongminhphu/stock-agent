@@ -6,16 +6,10 @@ import { quoteStripSkeletonHTML } from './market-quote.js';
 import { priceMiniChartSlotHTML } from './render-price-chart.js';
 import { state } from '../../state/dashboard-state.js';
 
-/**
- * HTML khi chưa chọn thesis nào.
- */
 export function emptyDetailHTML() {
   return `<div class="empty-detail"><div class="empty-detail-copy"><h3>Chọn một thesis</h3><p>Xem assumptions, catalysts và review history.</p></div></div>`;
 }
 
-/**
- * WAVE 2d — skeleton cho danh sách thesis table.
- */
 export function thesisTableSkeletonHTML(rows = 5) {
   const cols = 7;
   const headerCells = Array.from({ length: cols }, () =>
@@ -39,9 +33,6 @@ export function thesisTableSkeletonHTML(rows = 5) {
     </div>`;
 }
 
-/**
- * Wave C: slot HTML cho thesis event timeline.
- */
 function thesisTimelineSlotHTML(thesisId) {
   return `
     <div id="thesisTimelineSlot-${thesisId}" class="tl-slot" aria-live="polite">
@@ -56,21 +47,11 @@ function thesisTimelineSlotHTML(thesisId) {
     </div>`;
 }
 
-/**
- * Tính upside% từ entry → target
- */
 function calcUpside(entry, target) {
   if (!entry || !target || entry <= 0) return null;
   return ((target - entry) / entry * 100).toFixed(1);
 }
 
-/**
- * Wire tab switching cho detail panel.
- * Gọi sau khi inject innerHTML — KHÔNG đặt inline script vì
- * browser không execute <script> được inject qua innerHTML.
- *
- * @param {HTMLElement} wrap - container chứa .detail-tab-nav và .dtab-panel
- */
 export function wireTabNav(wrap) {
   const nav    = wrap.querySelector('.detail-tab-nav');
   const panels = wrap.querySelectorAll('.dtab-panel');
@@ -94,17 +75,6 @@ export function wireTabNav(wrap) {
   });
 }
 
-/**
- * Render toàn bộ detail panel theo tab layout.
- *
- * Structure:
- *   .detail-sticky-bar        — ticker + badges + key metrics (always visible)
- *   .detail-tab-nav           — Overview / Assumptions / Catalysts / Reviews / History
- *   .detail-tab-panels        — content per tab (only active shown)
- *
- * NOTE: Không chứa inline <script>. Tab switching được wire bởi wireTabNav()
- * sau khi HTML được inject vào DOM (xem thesis-service.js → loadThesisDetail).
- */
 export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
   const assumList = Array.isArray(assumptions) ? assumptions : (assumptions?.items ?? []);
   const catList   = Array.isArray(catalysts)   ? catalysts   : (catalysts?.items ?? []);
@@ -119,7 +89,6 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
   const catExpired   = catList.filter(c => c.status?.toLowerCase() === 'expired').length;
 
   return `
-    <!-- \u2500\u2500 Sticky command bar \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
     <div class="detail-sticky-bar">
       <div class="dsb-left">
         <span class="dsb-ticker">${esc(t.ticker)}</span>
@@ -153,7 +122,6 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
       </div>
     </div>
 
-    <!-- \u2500\u2500 Tab nav \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
     <nav class="detail-tab-nav" role="tablist" aria-label="Thesis sections">
       <button class="dtab active" role="tab" aria-selected="true"  data-tab="overview"     aria-controls="dtab-overview">\uD83D\uDCCA Overview</button>
       <button class="dtab"        role="tab" aria-selected="false" data-tab="assumptions"  aria-controls="dtab-assumptions">
@@ -166,19 +134,15 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
       <button class="dtab"        role="tab" aria-selected="false" data-tab="history"      aria-controls="dtab-history">\uD83D\uDCC5 History</button>
     </nav>
 
-    <!-- \u2500\u2500 Tab panels \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
     <div class="detail-tab-panels">
 
-      <!-- OVERVIEW -------------------------------------------------------- -->
+      <!-- OVERVIEW -->
       <div id="dtab-overview" class="dtab-panel active" role="tabpanel">
         <div id="quoteStripSlot" data-ticker="${esc(t.ticker)}">
           ${quoteStripSkeletonHTML()}
         </div>
-
         ${priceMiniChartSlotHTML(t.id)}
-
         ${t.summary ? `<p class="detail-summary">${esc(t.summary)}</p>` : ''}
-
         <div class="overview-meta-grid">
           <div class="meta-stat">
             <span class="meta-stat-label">T\u1ea1o l\u00fac</span>
@@ -197,15 +161,14 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
             <span class="meta-stat-value">${catList.length} <span style="color:var(--muted);font-size:.8rem;">(${catPending} pending)</span></span>
           </div>
         </div>
-
         ${renderScoreBreakdown(t.score_breakdown)}
       </div>
 
-      <!-- ASSUMPTIONS ----------------------------------------------------- -->
+      <!-- ASSUMPTIONS -->
       <div id="dtab-assumptions" class="dtab-panel" role="tabpanel">
         <div class="tab-panel-toolbar">
           <span class="tab-panel-title">Assumptions <span class="count-badge">${assumList.length}</span></span>
-          <button class="icon-btn" id="addAssumBtn" title="Th\u00eam assumption">\uff0b Th\u00eam</button>
+          <button class="primary-btn" id="addAssumBtn" type="button">+ Thêm Assumption</button>
         </div>
         <div class="item-list" id="assumptionList">
           ${assumList.length ? assumList.map(a => `
@@ -224,11 +187,11 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
         </div>
       </div>
 
-      <!-- CATALYSTS ------------------------------------------------------- -->
+      <!-- CATALYSTS -->
       <div id="dtab-catalysts" class="dtab-panel" role="tabpanel">
         <div class="tab-panel-toolbar">
           <span class="tab-panel-title">Catalysts <span class="count-badge">${catList.length}</span></span>
-          <button class="icon-btn" id="addCatBtn" title="Th\u00eam catalyst">\uff0b Th\u00eam</button>
+          <button class="primary-btn" id="addCatBtn" type="button">+ Thêm Catalyst</button>
         </div>
         <div class="item-list" id="catalystList">
           ${catList.length ? catList.map(c => `
@@ -248,7 +211,7 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
         </div>
       </div>
 
-      <!-- REVIEWS --------------------------------------------------------- -->
+      <!-- REVIEWS -->
       <div id="dtab-reviews" class="dtab-panel" role="tabpanel">
         ${renderReviewRecommendSection(t.id)}
         <div id="convictionTimelineSlot-${t.id}" class="conviction-slot">
@@ -257,7 +220,7 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
         </div>
       </div>
 
-      <!-- HISTORY --------------------------------------------------------- -->
+      <!-- HISTORY -->
       <div id="dtab-history" class="dtab-panel" role="tabpanel">
         ${thesisTimelineSlotHTML(t.id)}
       </div>
@@ -265,9 +228,6 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
     </div>`;
 }
 
-/**
- * Skeleton cho detail panel khi đang load.
- */
 export function detailSkeletonHTML() {
   return `
     <div class="skel-detail-wrap" aria-busy="true" aria-label="\u0110ang t\u1ea3i thesis...">
@@ -294,9 +254,6 @@ export function detailSkeletonHTML() {
     </div>`;
 }
 
-/**
- * Render thesis list table (left panel).
- */
 export function renderThesesTable(list, callbacks = {}) {
   const { onSelect = null, onEdit = null, onDelete = null } = callbacks ?? {};
   const wrap = document.getElementById('thesesTableWrap');
