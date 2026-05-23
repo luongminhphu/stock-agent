@@ -7,15 +7,22 @@ No Discord logic. No DB models. No segment-specific imports at module level.
 Input:  triggered via IntelligenceEngineListener (EventBus)
 Output: EngineVerdict → emitted as IntelligenceEngineCompletedEvent
 
-Wave 1: deterministic heuristic verdict (zero AI cost)
-Wave 2: AI synthesis via ai segment (planned)
+Wave 1: deterministic heuristic verdict (zero AI cost) — always available as fallback.
+Wave 2: AI synthesis via IntelligenceVerdictAgent (ai segment).
+         Activated when verdict_agent is passed to run_cycle().
+         Falls back to Wave 1 if AI returns NO_ACTION or confidence too low.
 """
 from __future__ import annotations
 
-from typing import Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from src.core import schemas, signals, snapshot
 from src.platform.logging import get_logger
+
+if TYPE_CHECKING:
+    # Avoid hard coupling at module level — ai segment is optional dependency.
+    # Type hint only; IntelligenceVerdictAgent is duck-typed at runtime.
+    from src.ai.agents.intelligence_verdict import IntelligenceVerdictAgent
 
 logger = get_logger(__name__)
 
@@ -25,16 +32,15 @@ _CONFIDENCE_DISPATCH_THRESHOLD = 0.55
 _HIGH_URGENCY_THRESHOLD         = 0.70
 
 
-def _derive_verdict(
+def _derive_verdict_heuristic(
     ranked: list[schemas.RankedSignal],
     snap: schemas.SystemSnapshot,
 ) -> tuple[
     Literal["BUY_SIGNAL", "SELL_SIGNAL", "HOLD", "REVIEW_THESIS", "RISK_ALERT", "WATCH", "NO_ACTION"],
     float,
 ]:
-    """Heuristic verdict from top signals.
-    Wave 1: fully deterministic.
-    Wave 2: replace body with AI call via ai segment.
+    """Wave 1 heuristic verdict — fully deterministic, zero AI cost.
+    Used as fallback when AI agent is unavailable or returns low confidence.
     """
     if not ranked:
         return "NO_ACTION", 0.3
@@ -85,16 +91,31 @@ async def run_cycle(
     trigger_source: str,
     priority: str = "normal",
     context_hint: str | None = None,
+    verdict_agent: Any | None = None,
 ) -> schemas.EngineVerdict | None:
     """
     Main engine cycle.
-    Returns None if snapshot failed completely or confidence < threshold.
+
+    Args:
+        user_id:       Owner of this cycle.
+        trigger_source: What triggered this run (e.g. "scheduler", "bot_command").
+        priority:      "high" bypasses the confidence gate.
+        context_hint:  Optional free-text context appended to reasoning.
+        verdict_agent: Optional IntelligenceVerdictAgent instance (ai segment).
+                       When provided, AI synthesis runs first (Wave 2).
+                       Falls back to Wave 1 heuristic if:
+                         - AI returns verdict=NO_ACTION, or
+                         - AI confidence < threshold and priority != "high".
+
+    Returns:
+        EngineVerdict if confidence threshold met (or priority=high), else None.
     """
     logger.info(
         "engine.cycle_start",
         user_id=user_id,
         trigger_source=trigger_source,
         priority=priority,
+        wave="2_ai" if verdict_agent is not None else "1_heuristic",
     )
 
     # 1. Build cross-segment state
@@ -107,8 +128,39 @@ async def run_cycle(
     # 2. Rank signals
     ranked = signals.rank_signals(snap)
 
-    # 3. Derive verdict (Wave 1: heuristic; Wave 2: ai segment)
-    verdict_label, confidence = _derive_verdict(ranked, snap)
+    # 3a. Wave 2: AI synthesis path
+    if verdict_agent is not None:
+        ai_out = await verdict_agent.run(snap, ranked)
+
+        if ai_out.verdict != "NO_ACTION" and (
+            ai_out.confidence >= _CONFIDENCE_DISPATCH_THRESHOLD or priority == "high"
+        ):
+            logger.info(
+                "engine.ai_verdict_accepted",
+                verdict=ai_out.verdict,
+                confidence=ai_out.confidence,
+            )
+            return schemas.EngineVerdict(
+                verdict=ai_out.verdict,
+                confidence=ai_out.confidence,
+                risk_signals=ai_out.risk_signals,
+                next_watch_items=ai_out.next_watch_items,
+                action=ai_out.action,
+                reasoning_summary=ai_out.reasoning_summary,
+                top_signals=ranked[:5],
+                trigger_source=trigger_source,
+            )
+
+        # AI returned NO_ACTION or low confidence — fall through to heuristic
+        logger.info(
+            "engine.ai_verdict_fallback",
+            ai_verdict=ai_out.verdict,
+            ai_confidence=ai_out.confidence,
+            reason="no_action_or_below_threshold",
+        )
+
+    # 3b. Wave 1: heuristic fallback (or sole path when no agent provided)
+    verdict_label, confidence = _derive_verdict_heuristic(ranked, snap)
 
     # 4. Confidence gate
     if confidence < _CONFIDENCE_DISPATCH_THRESHOLD and priority != "high":
@@ -125,7 +177,7 @@ async def run_cycle(
     next_watch_items = snap.watchlist.top_tickers[:5]
 
     reasoning = (
-        f"Trigger: {trigger_source}. "
+        f"[heuristic] Trigger: {trigger_source}. "
         f"Phase: {snap.market.market_phase}. "
         f"Top signals ({len(ranked)}): "
         + "; ".join(f"{s.source}={s.urgency_score:.2f}" for s in ranked[:3])
