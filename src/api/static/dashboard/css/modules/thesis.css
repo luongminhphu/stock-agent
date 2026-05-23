@@ -1,15 +1,15 @@
-/* ─── Thesis Module ──────────────────────────────────────────────────────────────────
+/* ─── Thesis Detail, Reviews & Score ─────────────────────────────────────────
    Owner: modules/thesis
-   Thesis board, detail panel, assumptions/catalysts display, review cards.
-   Phụ thuộc: variables.css, reset.css (components, layout đã được import trước)
-──────────────────────────────────────────────────────────────────────────── */
+   detail-shell, detail-head, detail-grid, detail-item, review-timeline,
+   review-card, review-box. Score breakdown delegated to render-score.js.
+───────────────────────────────────────────────────────────────────────────── */
 
-/* ── Thesis board (table container) ───────────────────────────────────────────── */
+/* ── Thesis board (table container) ───────────────────────────────────────── */
 #thesesTableWrap {
   overflow-x: auto;
 }
 
-/* ── Thesis detail shell ────────────────────────────────────────────────────────── */
+/* ── Thesis detail shell ──────────────────────────────────────────────────── */
 .detail-shell {
   display: grid;
   gap: 16px;
@@ -32,7 +32,64 @@
   max-width: 36ch;
 }
 
-/* ── Detail header row ──────────────────────────────────────────────────────────── */
+/* ── Detail header row ────────────────────────────────────────────────────── */
+.detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.detail-head-left  { display: flex; flex-direction: column; gap: 4px; }
+.detail-head-right { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+.detail-ticker {
+  font-size: 1.12rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+.detail-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.35;
+}
+.detail-desc {
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.55;
+  margin-top: 4px;
+}
+
+/* ── Detail grid ──────────────────────────────────────────────────────────── */
+.detail-grid {
+  display: grid;
+  gap: 16px;
+}
+.detail-grid-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+@media (max-width: 640px) {
+  .detail-grid-cols { grid-template-columns: 1fr; }
+}
+
+/* ── Detail section wrapper ───────────────────────────────────────────────── */
+.detail-section {
+  display: grid;
+  gap: 8px;
+}
+.detail-section h3 {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin: 0;
+}
+
+/* ── Meta grid (price targets, dates) ────────────────────────────────────── */
 .detail-meta-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -73,6 +130,29 @@
   line-height: 1.5;
 }
 
+/* ── Meta stat box ────────────────────────────────────────────────────────── */
+.meta-box {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.meta-box-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+}
+.meta-box-value {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
 /* ── Score tier row highlights ─────────────────────────────────────────────
    Applied to <tr> in renderThesesTable when score_tier is AT_RISK/CRITICAL.
    Uses border-left accent + subtle bg tint — no solid side border on cards
@@ -89,7 +169,7 @@ tr.row--critical {
 tr.row--at-risk:hover  { background: rgba(251, 191, 36, 0.08); }
 tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
 
-/* ── Review timeline ────────────────────────────────────────────────────────── */
+/* ── Review timeline ────────────────────────────────────────────── */
 .review-timeline {
   display: grid;
   gap: 10px;
@@ -148,12 +228,12 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
 /* ── Form stack (inline rows inside thesis modal) ─────────────────────── */
 .form-stack { display: grid; gap: 8px; }
 
-/* ──────────────────────────────────────────────────────────────────────────────
+/* ────────────────────────────────────────────────────────────────────────────
    WAVE 2d — SKELETON LOADER
    Owner: modules/thesis
    Classes: .skel, .skel-text, .skel-heading, .skel-badge, .skel-stat,
             .skel-row, .skel-item, .skel-detail-wrap, .skel-table-wrap
-────────────────────────────────────────────────────────────────────────────── */
+─────────────────────────────────────────────────────────────────────────── */
 
 @keyframes shimmer {
   0%   { background-position: -200% 0; }
@@ -225,7 +305,7 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
   gap: 8px;
 }
 
-/* ── Canvas wrapper — height cố định để Chart.js maintainAspectRatio: false hoạt động */
+/* Canvas wrapper — height cố định để Chart.js maintainAspectRatio: false hoạt động */
 .price-mini-chart-canvas-wrap {
   position: relative;
   height: 120px;
@@ -259,7 +339,7 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
 /* ── Inline form rows (assumptions / catalysts inside thesis modal) ───────
    .form-row-item: flex row, fields shrink correctly, delete btn aligned.
    .form-section--tight: tighter padding for sections inside modal.
-─────────────────────────────────────────────────────────────────────────── */
+──────────────────────────────────────────────────────────────────────────── */
 .form-row-item {
   display: flex;
   flex-direction: row;
