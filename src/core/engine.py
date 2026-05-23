@@ -2,12 +2,12 @@
 
 Owner: core segment.
 
-Wave 1: rule-based synthesis (urgency ranking, no AI call).
+Wave 1: signals-based synthesis (rule-based, no AI call).
 Wave 2: replace _synthesize() with AIClient.generate_verdict(signals).
 Wave 3: _dispatch() sends to briefing + bot.
 
 Design principles:
-- run_cycle() is the single entry point — snapshot → synthesize → dispatch.
+- run_cycle() is the single entry point — snapshot → signals → synthesize → dispatch.
 - Each step is replaceable without touching the others.
 - All errors are caught per-step; partial output is always returned.
 """
@@ -18,7 +18,8 @@ from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.schemas import EngineOutput, EngineVerdict, SystemSnapshot, VerdictType
+from src.core.schemas import EngineOutput, EngineVerdict, RankedSignal, SystemSnapshot, VerdictType
+from src.core.signals import rank_signals
 from src.core.snapshot import SystemSnapshotBuilder
 
 
@@ -31,7 +32,6 @@ class IntelligenceEngine:
         output = await engine.run_cycle()
     """
 
-    # Confidence thresholds
     DISPATCH_THRESHOLD = 0.65  # only dispatch if confidence >= this
 
     def __init__(self, session: AsyncSession, user_id: str) -> None:
@@ -39,10 +39,11 @@ class IntelligenceEngine:
         self.user_id = user_id
 
     async def run_cycle(self) -> EngineOutput:
-        """Full cycle: build snapshot → synthesize verdict → dispatch."""
+        """Full cycle: build snapshot → rank signals → synthesize verdict → dispatch."""
         snapshot = await SystemSnapshotBuilder(self.session, self.user_id).build()
-        verdict = await self._synthesize(snapshot)
-        dispatched = await self._dispatch(verdict, snapshot)
+        signals = rank_signals(snapshot)
+        verdict = await self._synthesize(snapshot, signals)
+        dispatched = await self._dispatch(verdict)
         return EngineOutput(
             snapshot=snapshot,
             verdict=verdict,
@@ -50,55 +51,33 @@ class IntelligenceEngine:
         )
 
     # ------------------------------------------------------------------
-    # Wave 1: rule-based synthesis
-    # Wave 2: replace with AIClient call
+    # Wave 1: signals-based rule synthesis
+    # Wave 2: replace body with AIClient.generate_verdict(signals)
     # ------------------------------------------------------------------
 
-    async def _synthesize(self, snap: SystemSnapshot) -> EngineVerdict:
-        """Derive verdict from snapshot signals using urgency rules."""
-        risk_signals: list[str] = []
-        next_watch: list[str] = []
-        verdict_type: VerdictType = "NO_ACTION"
-        confidence = 0.4
+    async def _synthesize(
+        self,
+        snap: SystemSnapshot,
+        signals: list[RankedSignal],
+    ) -> EngineVerdict:
+        """Derive verdict from ranked signals using priority rules."""
+        if not signals:
+            return self._no_action_verdict(snap)
 
-        # Priority 1 — triggered alerts (critical urgency)
-        if snap.watchlist_alerts:
-            verdict_type = "RISK_ALERT"
-            confidence = 0.85
-            risk_signals = [
-                f"{a.ticker}: {a.alert_type}" for a in snap.watchlist_alerts[:5]
-            ]
+        top = signals[0]
+        verdict_type, confidence = self._map_signal_to_verdict(top)
 
-        # Priority 2 — overdue thesis reviews
-        if snap.thesis_due_review:
-            if verdict_type == "NO_ACTION":
-                verdict_type = "REVIEW_THESIS"
-                confidence = 0.75
-            next_watch = [
-                f"{t.ticker} (overdue {t.days_overdue}d)"
-                for t in snap.thesis_due_review[:5]
-            ]
+        risk_signals = [
+            s.description for s in signals if s.source in ("portfolio", "watchlist")
+        ][:5]
+        next_watch = [
+            s.description for s in signals if s.source in ("thesis", "market")
+        ][:5]
+        sources = list({s.source for s in signals})
 
-        # Priority 3 — market scan anomalies
-        if snap.market_anomalies and verdict_type == "NO_ACTION":
-            verdict_type = "HOLD"
-            confidence = 0.60
-            next_watch += [
-                f"{s.ticker}: {s.signal_type}" for s in snap.market_anomalies[:3]
-            ]
-
-        sources: list[str] = []
-        if snap.watchlist_alerts:                    sources.append("watchlist")
-        if snap.thesis_due_review:                   sources.append("thesis")
-        if snap.market_anomalies:                    sources.append("market_scan")
-        if snap.portfolio_context.total_positions:   sources.append("portfolio")
-
-        summary_parts = [
-            f"{len(snap.watchlist_alerts)} triggered alert(s)",
-            f"{len(snap.thesis_due_review)} overdue review(s)",
-            f"{len(snap.market_anomalies)} market signal(s)",
-            f"{snap.portfolio_context.total_positions} open position(s)",
-        ]
+        summary = " | ".join(
+            f"{s.source}:{s.urgency_score:.2f}" for s in signals[:4]
+        )
 
         return EngineVerdict(
             verdict_id=str(uuid.uuid4()),
@@ -107,21 +86,52 @@ class IntelligenceEngine:
             risk_signals=risk_signals,
             next_watch_items=next_watch,
             action=self._derive_action(verdict_type, snap),
-            reasoning_summary=" | ".join(summary_parts),
+            reasoning_summary=summary,
             sources=sources,
             generated_at=datetime.now(timezone.utc),
         )
 
+    def _map_signal_to_verdict(
+        self, top: RankedSignal
+    ) -> tuple[VerdictType, float]:
+        """Map the highest-scored signal to a verdict + confidence."""
+        if top.source == "portfolio":
+            return "RISK_ALERT", min(0.95, 0.70 + top.urgency_score * 0.25)
+        if top.source == "thesis" and "invalidate" in top.description.lower():
+            return "REVIEW_THESIS", min(0.90, 0.65 + top.urgency_score * 0.25)
+        if top.source == "watchlist":
+            return "RISK_ALERT", min(0.85, 0.60 + top.urgency_score * 0.25)
+        if top.source == "thesis":
+            return "REVIEW_THESIS", min(0.80, 0.55 + top.urgency_score * 0.25)
+        if top.source == "market" and top.urgency_score >= 0.4:
+            return "HOLD", min(0.75, 0.50 + top.urgency_score * 0.25)
+        return "NO_ACTION", 0.40
+
+    def _no_action_verdict(self, snap: SystemSnapshot) -> EngineVerdict:
+        return EngineVerdict(
+            verdict_id=str(uuid.uuid4()),
+            verdict="NO_ACTION",
+            confidence=0.40,
+            risk_signals=[],
+            next_watch_items=[],
+            action="Không có action ưu tiên. Hệ thống ổn định.",
+            reasoning_summary="0 signals detected across all segments",
+            sources=[],
+            generated_at=datetime.now(timezone.utc),
+        )
+
     def _derive_action(self, verdict: VerdictType, snap: SystemSnapshot) -> str:
-        if verdict == "RISK_ALERT" and snap.watchlist_alerts:
-            tickers = ", ".join(a.ticker for a in snap.watchlist_alerts[:3])
-            return f"Kiểm tra ngay alerts: {tickers}"
-        if verdict == "REVIEW_THESIS" and snap.thesis_due_review:
+        if verdict == "RISK_ALERT":
+            tickers = ", ".join(
+                a.ticker for a in snap.watchlist_alerts[:3]
+            ) or ", ".join(snap.portfolio.top_exposed_tickers[:3])
+            return f"Kiểm tra ngay: {tickers}" if tickers else "Kiểm tra risk breach"
+        if verdict == "REVIEW_THESIS":
             tickers = ", ".join(t.ticker for t in snap.thesis_due_review[:3])
-            return f"Review thesis: {tickers}"
-        if verdict == "HOLD" and snap.market_anomalies:
+            return f"Review thesis: {tickers}" if tickers else "Review thesis overdue"
+        if verdict == "HOLD":
             tickers = ", ".join(s.ticker for s in snap.market_anomalies[:3])
-            return f"Theo dõi tín hiệu thị trường: {tickers}"
+            return f"Theo dõi tín hiệu thị trường: {tickers}" if tickers else "Theo dõi thị trường"
         return "Không có action ưu tiên. Hệ thống ổn định."
 
     # ------------------------------------------------------------------
@@ -129,7 +139,7 @@ class IntelligenceEngine:
     # Wave 3: gọi briefing.push() + bot.notify()
     # ------------------------------------------------------------------
 
-    async def _dispatch(self, verdict: EngineVerdict, snap: SystemSnapshot) -> list[str]:
+    async def _dispatch(self, verdict: EngineVerdict) -> list[str]:
         """Route verdict to downstream segments.
 
         Wave 1: log only.

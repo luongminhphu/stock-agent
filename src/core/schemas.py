@@ -12,10 +12,42 @@ from pydantic import BaseModel, Field
 
 
 # ---------------------------------------------------------------------------
+# SystemSnapshot sub-models (nested, used by signals.py)
+# ---------------------------------------------------------------------------
+
+
+class WatchlistContext(BaseModel):
+    triggered_alert_count: int = 0
+    top_tickers: list[str] = Field(default_factory=list)
+    has_volume_spike: bool = False
+
+
+class ThesisContext(BaseModel):
+    invalidated_count: int = 0
+    drift_detected_count: int = 0
+    stale_count: int = 0
+    stale_tickers: list[str] = Field(default_factory=list)
+
+
+class MarketContext(BaseModel):
+    trend_shift_count: int = 0
+    opportunity_count: int = 0
+    top_opportunity_tickers: list[str] = Field(default_factory=list)
+
+
+class PortfolioContext(BaseModel):
+    total_positions: int = 0
+    risk_breach_count: int = 0
+    total_market_value: float | None = None
+    top_exposed_tickers: list[str] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
 # SystemSnapshot — cross-segment state at a point in time
 # ---------------------------------------------------------------------------
 
 
+# Flat compat aliases (used by engine.py Wave 1 legacy paths)
 class WatchlistAlert(BaseModel):
     ticker: str
     alert_type: str
@@ -37,13 +69,14 @@ class MarketSignal(BaseModel):
     note: str | None = None
 
 
-class PortfolioContext(BaseModel):
-    total_positions: int = 0
-    total_market_value: float | None = None
-    top_exposed_tickers: list[str] = Field(default_factory=list)
-
-
 class SystemSnapshot(BaseModel):
+    # Nested sub-models (primary, consumed by signals.py)
+    watchlist: WatchlistContext = Field(default_factory=WatchlistContext)
+    thesis: ThesisContext = Field(default_factory=ThesisContext)
+    market: MarketContext = Field(default_factory=MarketContext)
+    portfolio: PortfolioContext = Field(default_factory=PortfolioContext)
+
+    # Flat legacy lists (consumed by engine.py _derive_action, briefing)
     watchlist_alerts: list[WatchlistAlert] = Field(default_factory=list)
     thesis_due_review: list[ThesisRef] = Field(default_factory=list)
     market_anomalies: list[MarketSignal] = Field(default_factory=list)
@@ -53,7 +86,19 @@ class SystemSnapshot(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# EngineVerdict — structured AI output
+# RankedSignal — output of signals.rank_signals()
+# ---------------------------------------------------------------------------
+
+
+class RankedSignal(BaseModel):
+    source: Literal["watchlist", "thesis", "market", "portfolio"]
+    description: str
+    urgency_score: float = Field(ge=0.0, le=1.0)
+    raw_count: int | None = None
+
+
+# ---------------------------------------------------------------------------
+# EngineVerdict — structured output of engine synthesis
 # ---------------------------------------------------------------------------
 
 VerdictType = Literal[
@@ -93,3 +138,4 @@ class FeedbackEntry(BaseModel):
     verdict_id: str
     outcome: Literal["correct", "incorrect", "partial", "not_acted"]
     user_note: str | None = None
+    delta_score: float = 0.0  # used by evolution.py to reweight signal weights
