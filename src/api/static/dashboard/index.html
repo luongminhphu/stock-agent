@@ -612,7 +612,9 @@
                 <strong>Thesis</strong>: Conviction + score từ thesis active.
               </p>
             </div>
-            <div id="portfolioSection">Đang tải…</div>
+            <div class="panel-body">
+              <div id="portfolioSection">Đang tải…</div>
+            </div>
           </section>
 
         </div><!-- /cluster-a -->
@@ -647,11 +649,13 @@
                 </label>
               </div>
             </div>
-            <div id="thesesTableWrap" class="empty-state">Chưa tải dữ liệu…</div>
-            <div id="thesisDetail" class="detail-shell empty-detail">
-              <div class="empty-detail-copy">
-                <h3>Chọn một thesis</h3>
-                <p>Xem assumptions, catalysts, reasoning và các điểm cần theo dõi tiếp theo.</p>
+            <div class="panel-body">
+              <div id="thesesTableWrap" class="empty-state">Chưa tải dữ liệu…</div>
+              <div id="thesisDetail" class="detail-shell empty-detail">
+                <div class="empty-detail-copy">
+                  <h3>Chọn một thesis</h3>
+                  <p>Xem assumptions, catalysts, reasoning và các điểm cần theo dõi tiếp theo.</p>
+                </div>
               </div>
             </div>
           </section>
@@ -659,7 +663,7 @@
           <div class="panel-duo">
             <section id="leaderboardStrip" class="panel glass lb-strip"
               aria-labelledby="lbStripTitle" aria-live="polite">
-              <div class="lb-strip-header">
+              <div class="panel-header split-header">
                 <div>
                   <p class="eyebrow">⑤ 🏆 Thesis Leaderboard</p>
                   <h2 id="lbStripTitle">Top theses theo score</h2>
@@ -686,27 +690,29 @@
                 </div>
                 <p class="muted panel-hint">Verdict quality · Worst &amp; Best calls theo avg PnL snapshot.</p>
               </div>
-              <div class="backtesting-grid">
-                <div class="subpanel">
-                  <h3>📊 Verdict accuracy</h3>
-                  <div id="accuracyWrap" class="empty-state">Chưa tải dữ liệu…</div>
-                </div>
-                <div class="subpanel" id="callsPanel">
-                  <div class="calls-tab-bar" role="tablist" aria-label="Calls view">
-                    <button class="calls-tab active" role="tab" aria-selected="true"
-                      aria-controls="worstCallsPane" data-calls-tab="worst">
-                      🔴 Worst calls
-                    </button>
-                    <button class="calls-tab" role="tab" aria-selected="false"
-                      aria-controls="bestCallsPane" data-calls-tab="best">
-                      🟢 Best calls
-                    </button>
+              <div class="panel-body">
+                <div class="backtesting-grid">
+                  <div class="subpanel">
+                    <h3>📊 Verdict accuracy</h3>
+                    <div id="accuracyWrap" class="empty-state">Chưa tải dữ liệu…</div>
                   </div>
-                  <div id="worstCallsPane" class="calls-pane" role="tabpanel">
-                    <div id="worstCallsWrap" class="empty-state">Chưa tải dữ liệu…</div>
-                  </div>
-                  <div id="bestCallsPane" class="calls-pane hidden" role="tabpanel">
-                    <div id="bestCallsWrap" class="empty-state">Chưa tải dữ liệu…</div>
+                  <div class="subpanel" id="callsPanel">
+                    <div class="calls-tab-bar" role="tablist" aria-label="Calls view">
+                      <button class="calls-tab active" role="tab" aria-selected="true"
+                        aria-controls="worstCallsPane" data-calls-tab="worst">
+                        🔴 Worst calls
+                      </button>
+                      <button class="calls-tab" role="tab" aria-selected="false"
+                        aria-controls="bestCallsPane" data-calls-tab="best">
+                        🟢 Best calls
+                      </button>
+                    </div>
+                    <div id="worstCallsPane" class="calls-pane" role="tabpanel">
+                      <div id="worstCallsWrap" class="empty-state">Chưa tải dữ liệu…</div>
+                    </div>
+                    <div id="bestCallsPane" class="calls-pane hidden" role="tabpanel">
+                      <div id="bestCallsWrap" class="empty-state">Chưa tải dữ liệu…</div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -725,46 +731,47 @@
           </div>
 
           <section class="panel glass decision-layer" aria-labelledby="decisionTitle">
-            <div class="dec-panel-header">
+            <div class="panel-header split-header">
               <div>
                 <p class="eyebrow">⑦ Decision Log &amp; AI Lessons</p>
                 <h2 id="decisionTitle">Ghi lại quyết định &amp; Bài học từ AI Replay</h2>
               </div>
               <button id="newDecisionBtn" class="primary-btn" type="button">+ Log Decision</button>
             </div>
+            <div class="panel-body">
+              <div id="decisionKpiStrip" class="dec-kpi-strip"
+                aria-label="Decision KPI tổng quan" aria-live="polite">
+                <article class="dec-kpi-card" id="dkpiTotal">
+                  <span class="dec-kpi-label">Tổng decisions</span>
+                  <strong class="dec-kpi-value"><div class="skel skel-text"></div></strong>
+                </article>
+                <article class="dec-kpi-card" id="dkpiWinRate">
+                  <span class="dec-kpi-label">Win rate</span>
+                  <strong class="dec-kpi-value"><div class="skel skel-text"></div></strong>
+                  <span class="dec-kpi-sub">evaluated</span>
+                </article>
+                <article class="dec-kpi-card" id="dkpiBuyCount">
+                  <span class="dec-kpi-label">MUA / BÁN</span>
+                  <strong class="dec-kpi-value"><div class="skel skel-text"></div></strong>
+                </article>
+                <article class="dec-kpi-card dec-kpi-card--alert" id="dkpiPending">
+                  <span class="dec-kpi-label">Chờ evaluate</span>
+                  <strong class="dec-kpi-value"><div class="skel skel-text"></div></strong>
+                  <span class="dec-kpi-sub">quá hạn review</span>
+                </article>
+              </div>
 
-            <div id="decisionKpiStrip" class="dec-kpi-strip"
-              aria-label="Decision KPI tổng quan" aria-live="polite">
-              <article class="dec-kpi-card" id="dkpiTotal">
-                <span class="dec-kpi-label">Tổng decisions</span>
-                <strong class="dec-kpi-value"><div class="skel skel-text"></div></strong>
-              </article>
-              <article class="dec-kpi-card" id="dkpiWinRate">
-                <span class="dec-kpi-label">Win rate</span>
-                <strong class="dec-kpi-value"><div class="skel skel-text"></div></strong>
-                <span class="dec-kpi-sub">evaluated</span>
-              </article>
-              <article class="dec-kpi-card" id="dkpiBuyCount">
-                <span class="dec-kpi-label">MUA / BÁN</span>
-                <strong class="dec-kpi-value"><div class="skel skel-text"></div></strong>
-              </article>
-              <article class="dec-kpi-card dec-kpi-card--alert" id="dkpiPending">
-                <span class="dec-kpi-label">Chờ evaluate</span>
-                <strong class="dec-kpi-value"><div class="skel skel-text"></div></strong>
-                <span class="dec-kpi-sub">quá hạn review</span>
-              </article>
-            </div>
+              <div class="dec-tab-bar" role="tablist" aria-label="Decision views">
+                <button class="dec-tab active" role="tab" data-tab="decisions">📋 Decisions</button>
+                <button class="dec-tab" role="tab" data-tab="lessons">🧠 AI Lessons</button>
+              </div>
 
-            <div class="dec-tab-bar" role="tablist" aria-label="Decision views">
-              <button class="dec-tab active" role="tab" data-tab="decisions">📋 Decisions</button>
-              <button class="dec-tab" role="tab" data-tab="lessons">🧠 AI Lessons</button>
-            </div>
-
-            <div id="decisionsPane">
-              <div id="decisionsTableWrap">Đang tải…</div>
-            </div>
-            <div id="lessonsPane" class="hidden">
-              <div id="lessonsListWrap">Đang tải…</div>
+              <div id="decisionsPane">
+                <div id="decisionsTableWrap">Đang tải…</div>
+              </div>
+              <div id="lessonsPane" class="hidden">
+                <div id="lessonsListWrap">Đang tải…</div>
+              </div>
             </div>
           </section>
         </div><!-- /cluster-c -->
@@ -832,38 +839,40 @@
                   Refresh
                 </button>
               </div>
-              <div id="episodicFeed" class="mem-episode-list" aria-live="polite">
-                <!-- Skeleton rows while loading -->
-                <div class="mem-episode-item" aria-hidden="true">
-                  <div class="mem-skel" style="width:20px;height:20px;border-radius:4px;"></div>
-                  <div>
-                    <div class="mem-skel" style="width:160px;height:.8rem;margin-bottom:5px;"></div>
-                    <div class="mem-skel" style="width:80px;height:.65rem;"></div>
+              <div class="panel-body">
+                <div id="episodicFeed" class="mem-episode-list" aria-live="polite">
+                  <!-- Skeleton rows while loading -->
+                  <div class="mem-episode-item" aria-hidden="true">
+                    <div class="mem-skel" style="width:20px;height:20px;border-radius:4px;"></div>
+                    <div>
+                      <div class="mem-skel" style="width:160px;height:.8rem;margin-bottom:5px;"></div>
+                      <div class="mem-skel" style="width:80px;height:.65rem;"></div>
+                    </div>
+                    <div class="mem-skel" style="width:44px;height:.8rem;"></div>
                   </div>
-                  <div class="mem-skel" style="width:44px;height:.8rem;"></div>
-                </div>
-                <div class="mem-episode-item" aria-hidden="true">
-                  <div class="mem-skel" style="width:20px;height:20px;border-radius:4px;"></div>
-                  <div>
-                    <div class="mem-skel" style="width:140px;height:.8rem;margin-bottom:5px;"></div>
-                    <div class="mem-skel" style="width:96px;height:.65rem;"></div>
+                  <div class="mem-episode-item" aria-hidden="true">
+                    <div class="mem-skel" style="width:20px;height:20px;border-radius:4px;"></div>
+                    <div>
+                      <div class="mem-skel" style="width:140px;height:.8rem;margin-bottom:5px;"></div>
+                      <div class="mem-skel" style="width:96px;height:.65rem;"></div>
+                    </div>
+                    <div class="mem-skel" style="width:44px;height:.8rem;"></div>
                   </div>
-                  <div class="mem-skel" style="width:44px;height:.8rem;"></div>
-                </div>
-                <div class="mem-episode-item" aria-hidden="true">
-                  <div class="mem-skel" style="width:20px;height:20px;border-radius:4px;"></div>
-                  <div>
-                    <div class="mem-skel" style="width:180px;height:.8rem;margin-bottom:5px;"></div>
-                    <div class="mem-skel" style="width:72px;height:.65rem;"></div>
+                  <div class="mem-episode-item" aria-hidden="true">
+                    <div class="mem-skel" style="width:20px;height:20px;border-radius:4px;"></div>
+                    <div>
+                      <div class="mem-skel" style="width:180px;height:.8rem;margin-bottom:5px;"></div>
+                      <div class="mem-skel" style="width:72px;height:.65rem;"></div>
+                    </div>
+                    <div class="mem-skel" style="width:44px;height:.8rem;"></div>
                   </div>
-                  <div class="mem-skel" style="width:44px;height:.8rem;"></div>
                 </div>
-              </div>
-              <!-- Empty state (hidden by default, shown by JS when no episodes) -->
-              <div id="episodicEmpty" class="mem-empty hidden">
-                <div class="mem-empty-icon">🧩</div>
-                <div>Chưa có episode nào được ghi nhận.</div>
-                <div class="mem-empty-hint">Hệ thống sẽ tự động ghi lại khi bạn react với briefing hoặc log decision đầu tiên.</div>
+                <!-- Empty state (hidden by default, shown by JS when no episodes) -->
+                <div id="episodicEmpty" class="mem-empty hidden">
+                  <div class="mem-empty-icon">🧩</div>
+                  <div>Chưa có episode nào được ghi nhận.</div>
+                  <div class="mem-empty-hint">Hệ thống sẽ tự động ghi lại khi bạn react với briefing hoặc log decision đầu tiên.</div>
+                </div>
               </div>
             </section>
 
@@ -873,32 +882,34 @@
                 <p class="eyebrow">⑨ Semantic Patterns</p>
                 <h2 id="memPatternsTitle">Patterns AI học được</h2>
               </div>
-              <div id="patternsList" class="mem-pattern-list" aria-live="polite">
-                <!-- Skeleton -->
-                <div class="mem-pattern-item" aria-hidden="true">
-                  <div class="mem-skel" style="width:80px;height:.65rem;margin-bottom:6px;"></div>
-                  <div class="mem-skel" style="width:100%;height:.75rem;margin-bottom:3px;"></div>
-                  <div class="mem-skel" style="width:75%;height:.75rem;margin-bottom:8px;"></div>
-                  <div style="display:flex;gap:8px;align-items:center;">
-                    <div class="mem-skel" style="flex:1;height:4px;border-radius:2px;"></div>
-                    <div class="mem-skel" style="width:36px;height:.65rem;"></div>
+              <div class="panel-body">
+                <div id="patternsList" class="mem-pattern-list" aria-live="polite">
+                  <!-- Skeleton -->
+                  <div class="mem-pattern-item" aria-hidden="true">
+                    <div class="mem-skel" style="width:80px;height:.65rem;margin-bottom:6px;"></div>
+                    <div class="mem-skel" style="width:100%;height:.75rem;margin-bottom:3px;"></div>
+                    <div class="mem-skel" style="width:75%;height:.75rem;margin-bottom:8px;"></div>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                      <div class="mem-skel" style="flex:1;height:4px;border-radius:2px;"></div>
+                      <div class="mem-skel" style="width:36px;height:.65rem;"></div>
+                    </div>
+                  </div>
+                  <div class="mem-pattern-item" aria-hidden="true">
+                    <div class="mem-skel" style="width:64px;height:.65rem;margin-bottom:6px;"></div>
+                    <div class="mem-skel" style="width:100%;height:.75rem;margin-bottom:3px;"></div>
+                    <div class="mem-skel" style="width:85%;height:.75rem;margin-bottom:8px;"></div>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                      <div class="mem-skel" style="flex:1;height:4px;border-radius:2px;"></div>
+                      <div class="mem-skel" style="width:36px;height:.65rem;"></div>
+                    </div>
                   </div>
                 </div>
-                <div class="mem-pattern-item" aria-hidden="true">
-                  <div class="mem-skel" style="width:64px;height:.65rem;margin-bottom:6px;"></div>
-                  <div class="mem-skel" style="width:100%;height:.75rem;margin-bottom:3px;"></div>
-                  <div class="mem-skel" style="width:85%;height:.75rem;margin-bottom:8px;"></div>
-                  <div style="display:flex;gap:8px;align-items:center;">
-                    <div class="mem-skel" style="flex:1;height:4px;border-radius:2px;"></div>
-                    <div class="mem-skel" style="width:36px;height:.65rem;"></div>
-                  </div>
+                <!-- Empty state -->
+                <div id="patternsEmpty" class="mem-empty hidden">
+                  <div class="mem-empty-icon">🔬</div>
+                  <div>Chưa đủ dữ liệu để rút ra pattern.</div>
+                  <div class="mem-empty-hint">Cần ít nhất 5 episodes cùng loại trước khi AI tổng hợp pattern.</div>
                 </div>
-              </div>
-              <!-- Empty state -->
-              <div id="patternsEmpty" class="mem-empty hidden">
-                <div class="mem-empty-icon">🔬</div>
-                <div>Chưa đủ dữ liệu để rút ra pattern.</div>
-                <div class="mem-empty-hint">Cần ít nhất 5 episodes cùng loại trước khi AI tổng hợp pattern.</div>
               </div>
             </section>
 
@@ -908,24 +919,26 @@
                 <p class="eyebrow">⑩ Bias Warnings</p>
                 <h2 id="memBiasTitle">Cảnh báo thiên kiến đầu tư</h2>
               </div>
-              <div id="biasList" class="mem-bias-list" aria-live="polite">
-                <!-- Skeleton -->
-                <div class="mem-bias-item" aria-hidden="true" style="border-left-color:var(--line);">
-                  <div class="mem-skel" style="width:100%;height:.75rem;margin-bottom:4px;"></div>
-                  <div class="mem-skel" style="width:80%;height:.75rem;margin-bottom:6px;"></div>
-                  <div class="mem-skel" style="width:64px;height:.65rem;"></div>
+              <div class="panel-body">
+                <div id="biasList" class="mem-bias-list" aria-live="polite">
+                  <!-- Skeleton -->
+                  <div class="mem-bias-item" aria-hidden="true" style="border-left-color:var(--line);">
+                    <div class="mem-skel" style="width:100%;height:.75rem;margin-bottom:4px;"></div>
+                    <div class="mem-skel" style="width:80%;height:.75rem;margin-bottom:6px;"></div>
+                    <div class="mem-skel" style="width:64px;height:.65rem;"></div>
+                  </div>
+                  <div class="mem-bias-item" aria-hidden="true" style="border-left-color:var(--line);">
+                    <div class="mem-skel" style="width:90%;height:.75rem;margin-bottom:4px;"></div>
+                    <div class="mem-skel" style="width:70%;height:.75rem;margin-bottom:6px;"></div>
+                    <div class="mem-skel" style="width:48px;height:.65rem;"></div>
+                  </div>
                 </div>
-                <div class="mem-bias-item" aria-hidden="true" style="border-left-color:var(--line);">
-                  <div class="mem-skel" style="width:90%;height:.75rem;margin-bottom:4px;"></div>
-                  <div class="mem-skel" style="width:70%;height:.75rem;margin-bottom:6px;"></div>
-                  <div class="mem-skel" style="width:48px;height:.65rem;"></div>
+                <!-- Empty state -->
+                <div id="biasEmpty" class="mem-empty hidden">
+                  <div class="mem-empty-icon">✅</div>
+                  <div>Không phát hiện thiên kiến nào đang active.</div>
+                  <div class="mem-empty-hint">Hệ thống sẽ cảnh báo khi nhận ra xu hướng lặp lại trong decision của bạn.</div>
                 </div>
-              </div>
-              <!-- Empty state -->
-              <div id="biasEmpty" class="mem-empty hidden">
-                <div class="mem-empty-icon">✅</div>
-                <div>Không phát hiện thiên kiến nào đang active.</div>
-                <div class="mem-empty-hint">Hệ thống sẽ cảnh báo khi nhận ra xu hướng lặp lại trong decision của bạn.</div>
               </div>
             </section>
 

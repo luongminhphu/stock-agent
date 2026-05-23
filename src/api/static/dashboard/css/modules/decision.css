@@ -5,41 +5,17 @@
             lesson-grid, lesson-card, replay-panel
 
    POSITIONING NOTE: outer geometry owned by layout.css.
+   PADDING NOTE: horizontal + vertical padding for panel content is now owned
+   by .panel-body in layout.css. Do NOT re-declare padding-inline here.
 ──────────────────────────────────────────────────────────────────────────────── */
 
 /* ── Decision layer outer geometry (mirrors .validation-layer pattern) ──────── */
 .decision-layer {
-  /* padding-inline handled by .cluster wrapper — do NOT re-declare here */
   margin-bottom: var(--layer-gap);
   max-width: var(--content-max);
   margin-inline: auto;
   width: 100%;
   box-sizing: border-box;
-}
-
-/* ── Section header actions ─────────────────────────────────────────────────────────── */
-/* .dec-panel-header geometry is defined in layout.css (uses var(--panel-pad)).
-   Only decision-specific overrides here: */
-.dec-panel-header {
-  margin-bottom: var(--layer-gap, 16px);
-}
-
-/* ── Inner content padding — mirrors .panel-header horizontal rhythm ──────── */
-/* These blocks sit directly inside .decision-layer (whose padding-inline is   */
-/* reset to 0 by .cluster). They declare their own padding-inline to match     */
-/* the visual rhythm of .panel-header { padding: 16px var(--panel-pad) }       */
-/* used by all other panels (①–⑥).                                            */
-.dec-kpi-strip {
-  padding-inline: var(--panel-pad);
-}
-
-.dec-tab-bar {
-  padding-inline: var(--panel-pad);
-}
-
-.dec-content-pane {
-  padding-inline: var(--panel-pad);
-  padding-bottom: var(--panel-pad);
 }
 
 /* ── Tab bar (reuses .brief-tab-bar pattern) ────────────────────────────────────── */

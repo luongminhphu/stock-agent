@@ -1,6 +1,9 @@
 /* leaderboard.css — Thesis Leaderboard strip
    Owner: dashboard / readmodel adapter
    Depends on: variables.css, layout.css
+   PADDING NOTE: .panel-header (renamed from .lb-strip-header) horizontal
+   padding is now owned by layout.css via var(--panel-pad). Do NOT
+   re-declare padding-inline here.
    ─────────────────────────────────────────────────────────────────── */
 
 /* ── Strip container ─────────────────────────────────────────────── */
@@ -12,21 +15,7 @@
   overflow: hidden;
 }
 
-.lb-strip-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  padding: var(--space-md, 16px) var(--space-md, 16px) 0;
-}
-
-.lb-strip-header > div {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-/* ── Sort bar ────────────────────────────────────────────────────── */
+/* ── Sort bar (sits inside .panel-header .split-header) ──────────── */
 .lb-sort-bar {
   display: flex;
   align-items: center;
@@ -75,7 +64,7 @@
   grid-template-columns: 1.4rem 1fr auto;
   align-items: center;
   gap: 8px;
-  padding: 7px var(--space-md, 16px);
+  padding: 7px var(--panel-pad, 16px);
   border-bottom: 1px solid var(--line, rgba(255,255,255,.06));
   transition: background .15s;
   cursor: default;
