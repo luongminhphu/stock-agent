@@ -94,7 +94,7 @@ function _renderContextSummary(data) {
 }
 
 // ---------------------------------------------------------------------------
-// Private: episodic feed — richer card layout
+// Private: episodic feed — compact single-line card
 // ---------------------------------------------------------------------------
 
 function _renderEpisodic(data) {
@@ -114,61 +114,49 @@ function _renderEpisodic(data) {
   feed.innerHTML = episodes.map(ep => _episodeCard(ep)).join('');
 }
 
+/**
+ * Compact single-row episode card:
+ *   🟡  PC1 · Watchlist scan    MONITORING · 63%  ⚠ Giá tăng mạnh ~6%   21/05 07:13
+ *
+ * Design rules:
+ * - Chỉ 1 dòng thông tin chính, không conf bar, không keypoint block riêng
+ * - Risk signal được sanitize khỏi Python repr (RiskSignal(...))
+ * - Outcome chỉ hiện khi có giá trị; "chưa có kết quả" bị ẩn để tiết kiệm space
+ */
 function _episodeCard(ep) {
   const tickers    = (ep.tickers ?? []).join(', ') || ep.ticker || '\u2014';
   const agentLabel = _agentLabel(ep.agent_type ?? '');
-  const verdict    = ep.ai_verdict ?? '';
+  const verdict    = _cleanVerdict(ep.ai_verdict ?? '');
   const conf       = ep.ai_confidence != null ? Math.round(ep.ai_confidence * 100) : null;
-  const keyPoint   = _firstLine(ep.ai_key_points);
-  const riskSignal = _firstLine(ep.ai_risk_signals);
-  const date       = ep.date ?? ep.created_at ?? '';
+  const riskSnip   = _extractRiskSnippet(ep.ai_risk_signals);
+  const date       = _formatDate(ep.date ?? ep.created_at ?? '');
 
-  // Verdict badge
-  const verdictBadge = verdict
+  const confTag = conf != null
+    ? `<span class="mem-ep-conf-tag">${conf}%</span>` : '';
+
+  const verdictTag = verdict
     ? `<span class="mem-ep-verdict mem-ep-verdict--${_verdictClass(verdict)}">${esc(verdict)}</span>`
     : '';
 
-  // Confidence bar
-  const confBar = conf != null ? `
-    <div class="mem-ep-conf">
-      <div class="mem-ep-conf-bar"><div class="mem-ep-conf-fill" style="width:${conf}%"></div></div>
-      <span class="mem-ep-conf-label">${conf}%</span>
-    </div>` : '';
+  const riskSnippet = riskSnip
+    ? `<span class="mem-ep-risk-snip">\u26a0\ufe0f ${esc(riskSnip)}</span>` : '';
 
-  // Key point line
-  const keyPointLine = keyPoint
-    ? `<div class="mem-ep-keypoint">\ud83d\udca1 ${esc(keyPoint)}</div>` : '';
-
-  // Risk signal line
-  const riskLine = riskSignal
-    ? `<div class="mem-ep-risk">\u26a0\ufe0f ${esc(riskSignal)}</div>` : '';
-
-  // Outcome badge
-  const outcomeBadge = ep.outcome != null
+  const outcomeTag = ep.outcome != null
     ? `<span class="mem-ep-outcome ${_outcomeClass(ep.outcome)}">${Number(ep.outcome) > 0 ? '+' : ''}${ep.outcome}</span>`
-    : `<span class="mem-ep-outcome pending">ch\u01b0a c\u00f3 k\u1ebft qu\u1ea3</span>`;
+    : '';
 
   return `
-    <div class="mem-episode-item">
-      <div class="mem-ep-header">
-        <div class="mem-ep-left">
-          <span class="mem-ep-icon">${_actionIcon(ep.action)}</span>
-          <div class="mem-ep-title">
-            <span class="mem-ep-ticker">${esc(tickers)}</span>
-            <span class="mem-ep-agent">${esc(agentLabel)}</span>
-          </div>
-        </div>
-        <div class="mem-ep-right">
-          ${verdictBadge}
-          ${outcomeBadge}
-        </div>
-      </div>
-      ${confBar}
-      ${keyPointLine}
-      ${riskLine}
-      <div class="mem-ep-footer">
-        <span class="mem-ep-date">${esc(date)}</span>
-      </div>
+    <div class="mem-episode-item mem-episode-item--compact">
+      <span class="mem-ep-icon">${_actionIcon(ep.action)}</span>
+      <span class="mem-ep-ticker">${esc(tickers)}</span>
+      <span class="mem-ep-agent">${esc(agentLabel)}</span>
+      <span class="mem-ep-divider">\u00b7</span>
+      ${verdictTag}
+      ${confTag}
+      ${riskSnippet}
+      <span class="mem-ep-spacer"></span>
+      ${outcomeTag}
+      <span class="mem-ep-date">${esc(date)}</span>
     </div>
   `;
 }
@@ -295,18 +283,87 @@ function _outcomeClass(outcome) {
 
 function _agentLabel(agentType) {
   const map = {
-    thesis_review:   'Ph\u00e2n t\u00edch thesis',
-    briefing:        'Morning brief',
-    morning_brief:   'Morning brief',
-    eod_brief:       'Cu\u1ed1i ng\u00e0y',
+    thesis_review:   'Thesis',
+    briefing:        'Morning',
+    morning_brief:   'Morning',
+    eod_brief:       'EOD',
     post_mortem:     'Post-mortem',
-    watchlist_scan:  'Watchlist scan',
+    watchlist_scan:  'Scan',
+    proactive_alert: 'Alert',
   };
   return map[agentType] ?? agentType;
 }
 
-function _firstLine(text) {
-  if (!text) return null;
-  const line = text.split('\n')[0].trim();
-  return line.length > 120 ? line.slice(0, 117) + '\u2026' : line || null;
+/**
+ * Clean up ai_verdict — strip leading urgency= prefix if backend leaks it.
+ * e.g. "urgency=MONITORING confidence=0.63 ..." → "MONITORING"
+ */
+function _cleanVerdict(raw) {
+  if (!raw) return '';
+  // If it looks like key=value pairs, extract urgency or first value
+  if (raw.includes('=')) {
+    const m = raw.match(/urgency\s*=\s*(\S+)/i);
+    if (m) return m[1].replace(/,+$/, '');
+    // fallback: grab first value token
+    const first = raw.match(/=\s*(\S+)/);
+    if (first) return first[1].replace(/,+$/, '');
+  }
+  // Plain string — truncate if long
+  return raw.length > 20 ? raw.slice(0, 18) + '\u2026' : raw;
+}
+
+/**
+ * Extract a short human-readable snippet from ai_risk_signals.
+ * Handles:
+ *   - Plain string
+ *   - Python repr: [RiskSignal(description='...', ...)]
+ *   - JSON array of objects
+ */
+function _extractRiskSnippet(raw) {
+  if (!raw) return null;
+  const s = String(raw).trim();
+  if (!s || s === '[]' || s === 'null') return null;
+
+  // Python repr: RiskSignal(description='...')
+  const reprMatch = s.match(/description\s*=\s*['"]([^'"]{1,100})/i);
+  if (reprMatch) return _truncate(reprMatch[1]);
+
+  // JSON array
+  try {
+    const arr = JSON.parse(s);
+    if (Array.isArray(arr) && arr.length) {
+      const first = arr[0];
+      const desc = typeof first === 'string' ? first : (first.description ?? first.signal ?? '');
+      return _truncate(desc);
+    }
+  } catch (_) { /* not JSON */ }
+
+  // Plain string fallback
+  const plain = s.split('\n')[0].trim();
+  return plain.length > 2 ? _truncate(plain) : null;
+}
+
+function _truncate(str, max = 60) {
+  const s = String(str).trim();
+  return s.length > max ? s.slice(0, max - 1) + '\u2026' : s || null;
+}
+
+/**
+ * Format ISO/datetime string → "DD/MM HH:mm"
+ */
+function _formatDate(raw) {
+  if (!raw) return '';
+  // Already formatted like "21/05/2026 07:13" → keep DD/MM HH:mm
+  const already = raw.match(/(\d{2}\/\d{2})(?:\/\d{4})?\s+(\d{2}:\d{2})/);
+  if (already) return `${already[1]} ${already[2]}`;
+  // ISO 8601
+  try {
+    const d = new Date(raw);
+    if (isNaN(d)) return raw;
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mi = String(d.getMinutes()).padStart(2, '0');
+    return `${dd}/${mm} ${hh}:${mi}`;
+  } catch (_) { return raw; }
 }
