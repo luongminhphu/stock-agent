@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +23,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.deps import get_ai_client, get_current_user_id, get_db
 
 router = APIRouter(prefix="/memory", tags=["memory"])
+
+# Indochina Time — UTC+7 (no DST)
+_ICT = timezone(timedelta(hours=7))
 
 
 # ── READ — no AI ───────────────────────────────────────────────────────────────────────────────────────
@@ -124,7 +128,7 @@ def _build_snapshot_response(snapshot: object | None) -> dict:
         episode_count = getattr(snapshot, "episode_count", 0) or 0
         raw_period_end = getattr(snapshot, "period_end", None)
         if raw_period_end:
-            period_end = raw_period_end.strftime("%d/%m/%Y %H:%M")
+            period_end = raw_period_end.astimezone(_ICT).strftime("%d/%m/%Y %H:%M")
 
         behavioral = getattr(snapshot, "behavioral_patterns", None)
         if behavioral:
@@ -155,6 +159,9 @@ def _serialize_episode(ep: object) -> dict:
 
     Cleans ai_verdict and ai_risk_signals so the dashboard receives plain text
     instead of raw key=value blobs or Python repr strings.
+
+    Timestamps are converted to ICT (UTC+7) before formatting so the
+    dashboard shows local Vietnamese market time, not UTC.
     """
     tickers: list[str] = getattr(ep, "tickers", None) or []
     agent_type: str = getattr(ep, "agent_type", "") or ""
@@ -167,8 +174,6 @@ def _serialize_episode(ep: object) -> dict:
     created_at = getattr(ep, "created_at", None)
 
     # ── Parse ai_verdict ───────────────────────────────────────────────────────────────────────
-    # Some agents store verdict as "urgency=MONITORING confidence=0.63 ..."
-    # We want: ai_verdict = "MONITORING", action = "HOLD" (default for monitoring)
     ai_verdict = _parse_verdict(raw_verdict)
 
     # ── Map verdict → action icon key ───────────────────────────────────────────────────────────────────────
@@ -188,6 +193,19 @@ def _serialize_episode(ep: object) -> dict:
     ticker_label = ", ".join(tickers) if tickers else None
     description = f"{ticker_label} • {agent_type}" if ticker_label else agent_type
 
+    # ── Convert timestamp to ICT (UTC+7) ──────────────────────────────────────────────────────
+    if created_at is not None:
+        # created_at may be timezone-aware (UTC from DB) or naive — handle both
+        if created_at.tzinfo is None:
+            # Naive: assume UTC, attach tzinfo then convert
+            from datetime import timezone as _tz
+            created_at_ict = created_at.replace(tzinfo=_tz.utc).astimezone(_ICT)
+        else:
+            created_at_ict = created_at.astimezone(_ICT)
+        date_str = created_at_ict.strftime("%d/%m/%Y %H:%M")
+    else:
+        date_str = None
+
     return {
         "id": getattr(ep, "id", None),
         "description": description,
@@ -202,8 +220,8 @@ def _serialize_episode(ep: object) -> dict:
         "thesis_id": thesis_id,
         "trigger": trigger,
         "outcome": None,
-        "date": created_at.strftime("%d/%m/%Y %H:%M") if created_at else None,
-        "created_at": created_at.strftime("%d/%m/%Y %H:%M") if created_at else None,
+        "date": date_str,
+        "created_at": date_str,
     }
 
 
