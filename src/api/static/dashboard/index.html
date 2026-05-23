@@ -1186,8 +1186,13 @@
               </select>
             </div>
             <div class="form-field">
-              <label for="catalystExpectedAtField">Ngày kỳ vọng</label>
-              <input id="catalystExpectedAtField" name="expected_at" type="date" />
+              <label for="catalystTimelineField">Timeline kỳ vọng</label>
+              <input
+                id="catalystTimelineField"
+                name="expected_timeline"
+                type="text"
+                placeholder="Q3 2025, tháng 8/2025, 15/08/2025…"
+              />
             </div>
           </div>
           <div class="modal-footer">
@@ -1231,58 +1236,3 @@
           <div class="form-row">
             <div class="form-field">
               <label for="decTickerField">Mã CK *</label>
-              <input id="decTickerField" name="ticker" class="ticker-input" placeholder="VNM" required />
-            </div>
-            <div class="form-field">
-              <label for="decActionField">Hành động *</label>
-              <select id="decActionField" name="decision_type">
-                <option value="BUY">MUA</option>
-                <option value="SELL">BÁN</option>
-                <option value="HOLD">GIỮ</option>
-                <option value="SKIP">BẾ QUA</option>
-              </select>
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-field">
-              <label for="decPriceField">Giá thực hiện</label>
-              <input id="decPriceField" name="price" type="number" placeholder="85000" step="100" />
-            </div>
-            <div class="form-field">
-              <label for="decQtyField">Khối lượng</label>
-              <input id="decQtyField" name="quantity" type="number" placeholder="1000" step="100" />
-            </div>
-          </div>
-          <div class="form-field">
-            <label for="decisionThesisSelect">Thesis liên quan</label>
-            <select id="decisionThesisSelect" name="thesis_id">
-              <option value="">— Chọn thesis (không bắt buộc) —</option>
-            </select>
-          </div>
-          <div class="form-field">
-            <label for="decReasonField">Lý do quyết định *</label>
-            <textarea id="decReasonField" name="reasoning" placeholder="Tại sao quyết định này? Thesis nào dẫn đến hành động này?" rows="3"></textarea>
-          </div>
-          <div class="form-field">
-            <label for="decEmotionField">Cảm xúc lúc ra quyết định</label>
-            <select id="decEmotionField" name="emotion_tag">
-              <option value="">— chọn —</option>
-              <option value="confident">Tự tin</option>
-              <option value="uncertain">Không chắc</option>
-              <option value="fearful">Lo sợ</option>
-              <option value="greedy">Tham lam</option>
-              <option value="fomo">FOMO</option>
-              <option value="disciplined">Kỷ luật</option>
-            </select>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="ghost-btn" data-close="decisionModal">Hủy</button>
-            <button type="submit" class="primary-btn">Lưu Decision</button>
-          </div>
-        </form>
-      </div>
-    </dialog>
-
-    <script type="module" src="/static/dashboard/js/app.js?v=19" data-cfasync="false"></script>
-  </body>
-</html>
