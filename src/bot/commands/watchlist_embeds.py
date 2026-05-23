@@ -11,15 +11,7 @@ import datetime
 
 import discord
 
-# ---------------------------------------------------------------------------
-# Color standard (shared across all embed builders)
-# 🟢 up/positive  🔴 down/negative  🟠 mixed/alert  🔵 info-only
-# ---------------------------------------------------------------------------
-
-_COLOR_GREEN  = 0x57F287  # Discord green
-_COLOR_RED    = 0xED4245  # Discord red
-_COLOR_ORANGE = 0xFF6B35  # mixed / alert
-_COLOR_TEAL   = 0x4F98A3  # info-only (no directional signal)
+from src.bot.discord_helper import COLORS, fmt_ict
 
 
 def _price_icon(change_pct: float, has_alerts: bool) -> str:
@@ -32,29 +24,21 @@ def _price_icon(change_pct: float, has_alerts: bool) -> str:
 def _dominant_color(signals: list) -> int:
     """Return embed sidebar color based on majority direction of signals."""
     if not signals:
-        return _COLOR_TEAL
+        return COLORS.TEAL
     ups   = sum(1 for s in signals if s.change_pct >= 0)
     downs = len(signals) - ups
     if ups > downs:
-        return _COLOR_GREEN
+        return COLORS.GREEN
     if downs > ups:
-        return _COLOR_RED
-    return _COLOR_ORANGE
+        return COLORS.RED
+    return COLORS.ORANGE
 
 
 def build_scan_embed(
     result: object,
     now_utc: datetime.datetime,
 ) -> discord.Embed:
-    """Build embed for WatchlistScanScheduler periodic scan notification.
-
-    Args:
-        result:   ScanResult returned by ScanService.scan_user().
-        now_utc:  Current UTC datetime for footer timestamp.
-
-    Returns:
-        discord.Embed ready to send.
-    """
+    """Build embed for WatchlistScanScheduler periodic scan notification."""
     signals = getattr(result, "signals", []) or []
     on_signal_reminders = getattr(result, "on_signal_reminders", []) or []
 
@@ -72,15 +56,14 @@ def build_scan_embed(
         lines.append(f"\u23f0 **{ticker}** \u2014 nh\u1eafc nh\u1edf theo d\u00f5i (ON_SIGNAL)")
 
     embed = discord.Embed(
-        title="\U0001f4e1 Watchlist Scan",  # 📡
+        title="\U0001f4e1 Watchlist Scan",
         description="\n".join(lines),
         color=_dominant_color(signals),
     )
 
-    ict_time = (now_utc + datetime.timedelta(hours=7)).strftime("%H:%M ICT")
     signal_count = len(signals)
     reminder_count = len(on_signal_reminders)
-    footer_parts = [f"Scan l\u00fac {ict_time}"]
+    footer_parts = [f"Scan l\u00fac {fmt_ict(now_utc, fmt='%H:%M ICT')}"]
     if signal_count:
         footer_parts.append(f"{signal_count} t\u00edn hi\u1ec7u")
     if reminder_count:

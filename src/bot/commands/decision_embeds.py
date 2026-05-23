@@ -12,31 +12,24 @@ import datetime
 
 import discord
 
+from src.bot.discord_helper import COLORS, VERDICT_ICONS, confidence_bar, fmt_ict
+
 # ---------------------------------------------------------------------------
 # Shared verdict metadata
 # ---------------------------------------------------------------------------
 
 VERDICT_META: dict[str, dict] = {
-    "CORRECT":   {"emoji": "\u2705",       "color": discord.Color.green()},   # ✅
-    "INCORRECT": {"emoji": "\u274c",       "color": discord.Color.red()},     # ❌
-    "MIXED":     {"emoji": "\u2696\ufe0f", "color": discord.Color.orange()},  # ⚖️
+    "CORRECT":   {"emoji": VERDICT_ICONS["CORRECT"],   "color": discord.Color.green()},
+    "INCORRECT": {"emoji": VERDICT_ICONS["INCORRECT"], "color": discord.Color.red()},
+    "MIXED":     {"emoji": VERDICT_ICONS["MIXED"],     "color": discord.Color.orange()},
 }
 DEFAULT_VERDICT_META: dict = {"emoji": "\U0001f4cb", "color": discord.Color.blue()}  # 📋
 
 _VERDICT_ICON: dict[str, str] = {
-    "CORRECT":   "\u2705",      # ✅
-    "INCORRECT": "\u274c",      # ❌
-    "MIXED":     "\U0001f7e1",  # 🟡
+    "CORRECT":   VERDICT_ICONS["CORRECT"],
+    "INCORRECT": VERDICT_ICONS["INCORRECT"],
+    "MIXED":     VERDICT_ICONS["MIXED"],
 }
-
-# ---------------------------------------------------------------------------
-# Color standard (shared across all embed builders)
-# ---------------------------------------------------------------------------
-
-_COLOR_GREEN  = 0x57F287
-_COLOR_RED    = 0xED4245
-_COLOR_ORANGE = 0xFF6B35
-_COLOR_TEAL   = 0x4F98A3
 
 
 def _batch_outcome_color(results: list[dict]) -> int:
@@ -44,10 +37,10 @@ def _batch_outcome_color(results: list[dict]) -> int:
     correct   = sum(1 for i in results if str(getattr(i.get("decision"), "outcome_verdict", "")).upper() == "CORRECT")
     incorrect = sum(1 for i in results if str(getattr(i.get("decision"), "outcome_verdict", "")).upper() == "INCORRECT")
     if correct > incorrect:
-        return _COLOR_GREEN
+        return COLORS.GREEN
     if incorrect > correct:
-        return _COLOR_RED
-    return _COLOR_ORANGE
+        return COLORS.RED
+    return COLORS.ORANGE
 
 
 # ---------------------------------------------------------------------------
@@ -58,37 +51,27 @@ def build_replay_embed(
     results: list[dict],
     now_utc: datetime.datetime,
 ) -> discord.Embed:
-    """Build embed for DecisionReplayScheduler end-of-day summary.
-
-    Args:
-        results:  List of dicts with keys 'decision' (DecisionLog ORM) and
-                  'replay' (ReplayOutput | None).
-        now_utc:  Current UTC datetime for footer timestamp.
-
-    Returns:
-        discord.Embed ready to send.
-    """
+    """Build embed for DecisionReplayScheduler end-of-day summary."""
     lines: list[str] = []
     for item in results:
         d = item["decision"]
         r = item["replay"]
-        icon = _VERDICT_ICON.get(str(d.outcome_verdict).upper(), "\u26aa")  # ⚪ fallback
+        icon = _VERDICT_ICON.get(str(d.outcome_verdict).upper(), "\u26aa")
         pnl_str = f"{d.outcome_pnl_pct:+.1f}%" if d.outcome_pnl_pct is not None else "N/A"
         line = f"{icon} **{d.ticker}** {d.decision_type} \u2192 {d.outcome_verdict} ({pnl_str})"
         if r and getattr(r, "key_lesson", None):
-            line += f"\n    \U0001f4a1 _{r.key_lesson}_"  # 💡
+            line += f"\n    \U0001f4a1 _{r.key_lesson}_"
         if r and getattr(r, "pattern_detected", None):
-            line += f"\n    \U0001f50d Pattern: `{r.pattern_detected}`"  # 🔍
+            line += f"\n    \U0001f50d Pattern: `{r.pattern_detected}`"
         lines.append(line)
 
-    ict_time = (now_utc + datetime.timedelta(hours=7)).strftime("%H:%M ICT")
     embed = discord.Embed(
-        title="\U0001f504 Decision Replay \u2014 K\u1ebft qu\u1ea3 sau horizon",  # 🔄
+        title="\U0001f504 Decision Replay \u2014 Kết quả sau horizon",
         description="\n\n".join(lines),
         color=_batch_outcome_color(results),
     )
     embed.set_footer(
-        text=f"{len(results)} quy\u1ebft \u0111\u1ecbnh \u0111\u01b0\u1ee3c \u0111\u00e1nh gi\u00e1 l\u00fac {ict_time}"
+        text=f"{len(results)} quyết định được đánh giá lúc {fmt_ict(now_utc, fmt='%H:%M ICT')}"
     )
     return embed
 
@@ -98,15 +81,7 @@ def build_replay_embed(
 # ---------------------------------------------------------------------------
 
 def build_single_replay_embed(decision_id: int, envelope) -> discord.Embed:
-    """Build Discord embed for /replay command result.
-
-    Args:
-        decision_id: PK of the replayed decision (for title).
-        envelope:    DecisionReplayEnvelope from DecisionService.replay_decision().
-
-    Returns:
-        discord.Embed ready to send as ephemeral followup.
-    """
+    """Build Discord embed for /replay command result."""
     verdict = envelope.outcome_verdict or "MIXED"
     meta = VERDICT_META.get(verdict, DEFAULT_VERDICT_META)
     replay = envelope.replay
@@ -116,7 +91,7 @@ def build_single_replay_embed(decision_id: int, envelope) -> discord.Embed:
     if replay is None:
         return discord.Embed(
             title=title,
-            description="ReplayAgent kh\u00f4ng kh\u1ea3 d\u1ee5ng. Outcome \u0111\u00e3 \u0111\u01b0\u1ee3c evaluate.",
+            description="ReplayAgent không khả dụng. Outcome đã được evaluate.",
             color=meta["color"],
         )
 
@@ -127,23 +102,22 @@ def build_single_replay_embed(decision_id: int, envelope) -> discord.Embed:
     key_lesson = getattr(replay, "key_lesson", None)
     pattern    = getattr(replay, "pattern_detected", None)
     adjustment = getattr(replay, "suggested_adjustment", None)
-    confidence = getattr(replay, "confidence", None)
+    conf       = getattr(replay, "confidence", None)
 
     if what_right:
-        embed.add_field(name="\u2705 \u0110\u00fang \u1edf \u0111i\u1ec3m n\u00e0o", value=what_right, inline=False)
+        embed.add_field(name="\u2705 Đúng ở điểm nào", value=what_right, inline=False)
     if what_wrong:
-        embed.add_field(name="\u274c Sai \u1edf \u0111i\u1ec3m n\u00e0o", value=what_wrong, inline=False)
+        embed.add_field(name="\u274c Sai ở điểm nào", value=what_wrong, inline=False)
     if key_lesson:
         embed.add_field(name="\U0001f4a1 Key lesson", value=key_lesson, inline=False)
     if pattern:
         embed.add_field(name="\U0001f501 Pattern", value=f"`{pattern}`", inline=True)
     if adjustment:
-        embed.add_field(name="\U0001f3af \u0110i\u1ec1u ch\u1ec9nh g\u1ee3i \u00fd", value=adjustment, inline=False)
+        embed.add_field(name="\U0001f3af Điều chỉnh gợi ý", value=adjustment, inline=False)
 
-    if confidence is not None:
-        conf_bar = "\u2588" * round(confidence * 10) + "\u2591" * (10 - round(confidence * 10))
+    if conf is not None:
         embed.set_footer(
-            text=f"Confidence: {conf_bar} {confidence:.0%}  \u00b7  stock-agent replay"
+            text=f"Confidence: {confidence_bar(conf)} {conf:.0%}  \u00b7  stock-agent replay"
         )
 
     return embed
@@ -155,25 +129,16 @@ def build_lessons_embed(
     ticker: str | None,
     limit: int,
 ) -> discord.Embed:
-    """Build Discord embed listing AI-generated lessons for /lessons command.
-
-    Args:
-        rows:   List of DecisionLog rows with key_lesson set (newest first).
-        ticker: Optional ticker filter that was applied (for title).
-        limit:  Requested limit (for footer display).
-
-    Returns:
-        discord.Embed ready to send as ephemeral followup.
-    """
-    title = f"\U0001f9e0 Lessons \u2014 {ticker.upper()}" if ticker else "\U0001f9e0 Lessons \u2014 T\u1ea5t c\u1ea3 m\u00e3"
+    """Build Discord embed listing AI-generated lessons for /lessons command."""
+    title = f"\U0001f9e0 Lessons \u2014 {ticker.upper()}" if ticker else "\U0001f9e0 Lessons \u2014 Tất cả mã"
 
     if not rows:
-        scope = f"m\u00e3 **{ticker.upper()}**" if ticker else "b\u1ea5t k\u1ef3 m\u00e3 n\u00e0o"
+        scope = f"mã **{ticker.upper()}**" if ticker else "bất kỳ mã nào"
         embed = discord.Embed(
             title=title,
             description=(
-                f"Ch\u01b0a c\u00f3 b\u00e0i h\u1ecdc n\u00e0o \u0111\u01b0\u1ee3c ghi nh\u1eadn cho {scope}.\n"
-                "D\u00f9ng `/replay <decision_id>` sau khi horizon qua \u0111\u1ec3 AI ph\u00e2n t\u00edch."
+                f"Chưa có bài học nào được ghi nhận cho {scope}.\n"
+                "Dùng `/replay <decision_id>` sau khi horizon qua để AI phân tích."
             ),
             color=discord.Color.greyple(),
         )
@@ -194,6 +159,6 @@ def build_lessons_embed(
         embed.add_field(name=field_name, value=row.key_lesson, inline=False)
 
     embed.set_footer(
-        text=f"Hi\u1ec3n th\u1ecb {len(rows)}/{limit} b\u00e0i h\u1ecdc m\u1edbi nh\u1ea5t  \u00b7  stock-agent"
+        text=f"Hiển thị {len(rows)}/{limit} bài học mới nhất  \u00b7  stock-agent"
     )
     return embed

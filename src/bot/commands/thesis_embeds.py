@@ -12,6 +12,14 @@ import json
 
 import discord
 
+from src.bot.discord_helper import (
+    COLORS,
+    VERDICT_ICONS,
+    STATUS_ICONS,
+    confidence_bar,
+    fmt_ict,
+    truncate,
+)
 from src.thesis.models import ReviewVerdict, ThesisStatus
 
 # ---------------------------------------------------------------------------
@@ -26,17 +34,17 @@ _VERDICT_COLOUR: dict[ReviewVerdict, discord.Color] = {
 }
 
 _VERDICT_ICON: dict[ReviewVerdict, str] = {
-    ReviewVerdict.BULLISH:   "\U0001f7e2",   # 🟢
-    ReviewVerdict.BEARISH:   "\U0001f534",   # 🔴
-    ReviewVerdict.NEUTRAL:   "\U0001f7e1",   # 🟡
-    ReviewVerdict.WATCHLIST: "\U0001f535",   # 🔵
+    ReviewVerdict.BULLISH:   VERDICT_ICONS["BULLISH"],
+    ReviewVerdict.BEARISH:   VERDICT_ICONS["BEARISH"],
+    ReviewVerdict.NEUTRAL:   VERDICT_ICONS["NEUTRAL"],
+    ReviewVerdict.WATCHLIST: VERDICT_ICONS["WATCHLIST"],
 }
 
 STATUS_ICON: dict[ThesisStatus, str] = {
-    ThesisStatus.ACTIVE:      "\U0001f7e2",     # 🟢
-    ThesisStatus.PAUSED:      "\u23f8\ufe0f",  # ⏸️
-    ThesisStatus.INVALIDATED: "\u274c",         # ❌
-    ThesisStatus.CLOSED:      "\u2705",          # ✅
+    ThesisStatus.ACTIVE:      STATUS_ICONS["ACTIVE"],
+    ThesisStatus.PAUSED:      STATUS_ICONS["PAUSED"],
+    ThesisStatus.INVALIDATED: STATUS_ICONS["INVALIDATED"],
+    ThesisStatus.CLOSED:      STATUS_ICONS["CLOSED"],
 }
 
 TARGET_ICON: dict[str, str] = {
@@ -46,26 +54,17 @@ TARGET_ICON: dict[str, str] = {
 
 # Drift verdict → icon (string keys from AI output)
 _DRIFT_VERDICT_ICON: dict[str, str] = {
-    "bullish": "\U0001f7e2",   # 🟢
-    "bearish": "\U0001f534",   # 🔴
-    "neutral": "\U0001f7e1",   # 🟡
+    "bullish": VERDICT_ICONS["BULLISH"],
+    "bearish": VERDICT_ICONS["BEARISH"],
+    "neutral": VERDICT_ICONS["NEUTRAL"],
 }
 
 # Conviction drift severity → icon
 _CONVICTION_SEVERITY_ICON: dict[str, str] = {
-    "CRITICAL": "\U0001f53b",  # 🔻
-    "HIGH":     "\u2b07\ufe0f",  # ⬇️
-    "MEDIUM":   "\U0001f4c9",  # 📉
+    "CRITICAL": "\U0001f53b",    # 🔻
+    "HIGH":     "\u2b07\ufe0f", # ⬇️
+    "MEDIUM":   "\U0001f4c9",    # 📉
 }
-
-# ---------------------------------------------------------------------------
-# Color standard (shared across all embed builders)
-# ---------------------------------------------------------------------------
-
-_COLOR_GREEN  = 0x57F287
-_COLOR_RED    = 0xED4245
-_COLOR_ORANGE = 0xFF6B35
-_COLOR_TEAL   = 0x4F98A3
 
 
 def _dominant_verdict_color(reviews: list) -> int:
@@ -73,10 +72,10 @@ def _dominant_verdict_color(reviews: list) -> int:
     bullish = sum(1 for r in reviews if str(r.verdict).upper() == "BULLISH")
     bearish = sum(1 for r in reviews if str(r.verdict).upper() == "BEARISH")
     if bullish > bearish:
-        return _COLOR_GREEN
+        return COLORS.GREEN
     if bearish > bullish:
-        return _COLOR_RED
-    return _COLOR_TEAL  # neutral/mixed → default info color
+        return COLORS.RED
+    return COLORS.TEAL  # neutral/mixed → default info color
 
 
 def _dominant_drift_color(reviewed_signals: list[tuple]) -> int:
@@ -84,10 +83,10 @@ def _dominant_drift_color(reviewed_signals: list[tuple]) -> int:
     bullish = sum(1 for _, r in reviewed_signals if r and str(r.verdict).upper() == "BULLISH")
     bearish = sum(1 for _, r in reviewed_signals if r and str(r.verdict).upper() == "BEARISH")
     if bullish > bearish:
-        return _COLOR_GREEN
+        return COLORS.GREEN
     if bearish > bullish:
-        return _COLOR_RED
-    return _COLOR_ORANGE  # drift alert with no clear direction → orange
+        return COLORS.RED
+    return COLORS.ORANGE  # drift alert with no clear direction → orange
 
 
 # ---------------------------------------------------------------------------
@@ -103,7 +102,7 @@ def build_review_embed(review: object) -> discord.Embed:
 
     embed = discord.Embed(
         title=f"{icon} Thesis #{review.thesis_id} \u2014 {verdict.value}",  # type: ignore[attr-defined]
-        description=review.reasoning[:1000] if review.reasoning else "",  # type: ignore[attr-defined]
+        description=truncate(review.reasoning or "", 1000),  # type: ignore[attr-defined]
         colour=colour,
     )
     embed.add_field(
@@ -140,7 +139,7 @@ def build_review_embed(review: object) -> discord.Embed:
         else "N/A"
     )
     reviewed_at = getattr(review, "reviewed_at", None)
-    ts_str = reviewed_at.strftime("%H:%M %d/%m/%Y") if reviewed_at else "N/A"
+    ts_str = fmt_ict(reviewed_at) if reviewed_at else "N/A"
     embed.set_footer(text=f"Price at review: {price_str} \u2022 {ts_str} \u2022 stock-agent AI")
     return embed
 
@@ -152,22 +151,7 @@ def build_maintenance_embed(
     upcoming_catalysts: list[dict] | None = None,
     catalyst_lookahead_days: int = 30,
 ) -> discord.Embed:
-    """Build embed for ThesisMaintenanceScheduler daily summary.
-
-    Args:
-        expired_count:            Number of catalysts auto-expired.
-        reviews:                  List of ThesisReview ORM objects from review_stale_theses().
-        now_utc:                  Current UTC datetime for footer timestamp.
-        upcoming_catalysts:       Optional list of catalyst dicts from get_upcoming_catalysts().
-                                  Each dict must have keys: ticker, description, expected_date.
-                                  If None or empty, the catalyst section is omitted.
-        catalyst_lookahead_days:  Lookahead window used in the query — shown in field title
-                                  so the user knows the date range represented.
-                                  Defaults to 30 to match _CATALYST_LOOKAHEAD_DAYS in scheduler.
-
-    Returns:
-        discord.Embed ready to send.
-    """
+    """Build embed for ThesisMaintenanceScheduler daily summary."""
     lines: list[str] = []
     if expired_count:
         lines.append(f"\u23f0 **{expired_count}** catalyst \u0111\u00e3 h\u1ebft h\u1ea1n \u2192 EXPIRED")
@@ -183,16 +167,14 @@ def build_maintenance_embed(
         )
 
     embed = discord.Embed(
-        title="\U0001f527 Thesis Maintenance",  # 🔧
+        title="\U0001f527 Thesis Maintenance",
         description="\n".join(lines) if lines else None,
-        color=_dominant_verdict_color(reviews) if reviews else _COLOR_TEAL,
+        color=_dominant_verdict_color(reviews) if reviews else COLORS.TEAL,
     )
 
-    # -- Upcoming catalyst section --
     if upcoming_catalysts:
         today = now_utc.date()
         urgent_threshold = today + datetime.timedelta(days=3)
-
         urgent_lines: list[str] = []
         upcoming_lines: list[str] = []
 
@@ -201,7 +183,6 @@ def build_maintenance_embed(
             description = c.get("description") or c.get("name") or "Catalyst"
             raw_date = c.get("expected_date")
 
-            # Normalise expected_date → date object
             if raw_date is None:
                 date_str = "?"
                 cat_date = None
@@ -212,7 +193,6 @@ def build_maintenance_embed(
                 cat_date = raw_date
                 date_str = cat_date.strftime("%d/%m/%Y")
             else:
-                # Assume ISO string e.g. "2026-05-21" or "2026-05-21T00:00:00+00:00"
                 try:
                     cat_date = datetime.date.fromisoformat(str(raw_date)[:10])
                     date_str = cat_date.strftime("%d/%m/%Y")
@@ -236,18 +216,17 @@ def build_maintenance_embed(
             catalyst_field_lines.extend(urgent_lines)
         if upcoming_lines:
             if urgent_lines:
-                catalyst_field_lines.append("")  # separator
+                catalyst_field_lines.append("")
             catalyst_field_lines.extend(upcoming_lines)
 
         if catalyst_field_lines:
             embed.add_field(
                 name=f"\U0001f4c5 Catalyst sắp đến ({catalyst_lookahead_days} ngày tới)",
-                value="\n".join(catalyst_field_lines)[:1024],
+                value=truncate("\n".join(catalyst_field_lines), 1024),
                 inline=False,
             )
 
-    ict_time = (now_utc + datetime.timedelta(hours=7)).strftime("%H:%M ICT")
-    embed.set_footer(text=f"Auto-maintenance l\u00fac {ict_time}")
+    embed.set_footer(text=f"Auto-maintenance lúc {fmt_ict(now_utc, fmt='%H:%M ICT')}")
     return embed
 
 
@@ -256,21 +235,9 @@ def build_drift_embed(
     now_utc: datetime.datetime,
     conviction_signals: list | None = None,
 ) -> discord.Embed:
-    """Build embed for ThesisDriftScheduler drift alert notification.
-
-    Args:
-        reviewed_signals:   List of (DriftSignal, ThesisReview) tuples from drift task.
-        now_utc:            Current UTC datetime for footer timestamp.
-        conviction_signals: Optional list of ConvictionDriftSignal — rendered as a
-                            separate section below price drift rows. Defaults to None
-                            (backward compatible).
-
-    Returns:
-        discord.Embed ready to send.
-    """
+    """Build embed for ThesisDriftScheduler drift alert notification."""
     lines: list[str] = []
 
-    # Section 1: Price drift (existing behaviour — unchanged)
     for signal, review in reviewed_signals:
         if review is None:
             lines.append(f"\u26aa **{signal.ticker}** {signal.direction}{abs(signal.drift_pct):.1f}% drift \u2192 review unavailable")
@@ -282,10 +249,9 @@ def build_drift_embed(
             f"(confidence {review.confidence:.0%})"
         )
 
-    # Section 2: Conviction drift (new — only when signals provided)
     if conviction_signals:
         if lines:
-            lines.append("")  # blank separator between sections
+            lines.append("")
         lines.append("**\U0001f4ca Conviction Drift**")
         for sig in conviction_signals:
             sev_icon = _CONVICTION_SEVERITY_ICON.get(sig.severity, "\U0001f4c9")
@@ -296,19 +262,12 @@ def build_drift_embed(
             )
 
     from src.platform.config import settings  # lazy import — avoids circular at module level
-    ict_time = (now_utc + datetime.timedelta(hours=7)).strftime("%H:%M ICT")
     embed = discord.Embed(
         title="\u26a1 Thesis Drift Alert",
-        description="\n".join(lines) if lines else "Kh\u00f4ng c\u00f3 t\u00edn hi\u1ec7u.",
-        color=_dominant_drift_color(reviewed_signals) if reviewed_signals else _COLOR_ORANGE,
+        description="\n".join(lines) if lines else "Không có tín hiệu.",
+        color=_dominant_drift_color(reviewed_signals) if reviewed_signals else COLORS.ORANGE,
     )
     embed.set_footer(
-        text=f"Drift \u2265{settings.thesis_drift_threshold_pct:.0f}% detected l\u00fac {ict_time}"
+        text=f"Drift \u2265{settings.thesis_drift_threshold_pct:.0f}% detected lúc {fmt_ict(now_utc, fmt='%H:%M ICT')}"
     )
     return embed
-
-
-def confidence_bar(confidence: float, length: int = 10) -> str:
-    """Return a Unicode progress bar for a 0..1 confidence value."""
-    filled = round(confidence * length)
-    return "\u2588" * filled + "\u2591" * (length - filled)

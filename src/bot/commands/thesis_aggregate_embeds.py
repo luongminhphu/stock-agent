@@ -14,25 +14,18 @@ import datetime
 
 import discord
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-_COLOR_GREEN = 0x57F287   # profit
-_COLOR_RED   = 0xED4245   # loss
-_COLOR_TEAL  = 0x4F98A3   # neutral / no data
-_COLOR_GOLD  = 0xFCC419   # mixed / borderline
+from src.bot.discord_helper import COLORS, fmt_ict
 
 
 def _pnl_color(pnl_pct: float | None) -> int:
     """Return sidebar colour based on aggregate P&L direction."""
     if pnl_pct is None:
-        return _COLOR_TEAL
+        return COLORS.TEAL
     if pnl_pct > 3:
-        return _COLOR_GREEN
+        return COLORS.GREEN
     if pnl_pct < -3:
-        return _COLOR_RED
-    return _COLOR_GOLD
+        return COLORS.RED
+    return COLORS.GOLD
 
 
 def _fmt_vnd(value: float | None) -> str:
@@ -56,24 +49,12 @@ def _breakdown_bar(counts: dict[str, int], keys: list[str], icons: dict[str, str
         n = counts.get(k, 0)
         if n > 0:
             icon = icons.get(k, "")
-            parts.append(f"{icon} **{k}** ×{n}")
+            parts.append(f"{icon} **{k}** \u00d7{n}")
     return "  ".join(parts) if parts else "—"
 
 
-# ---------------------------------------------------------------------------
-# Public builder
-# ---------------------------------------------------------------------------
-
-
 def build_aggregate_embed(data: dict) -> discord.Embed:
-    """Build a Discord Embed from a thesis portfolio aggregate dict.
-
-    Args:
-        data: dict returned by DashboardService.get_thesis_portfolio_aggregate()
-
-    Returns:
-        discord.Embed ready to pass to interaction.followup.send(embed=...)
-    """
+    """Build a Discord Embed from a thesis portfolio aggregate dict."""
     total     = data.get("total_theses", 0)
     pnl_pct   = data.get("total_pnl_pct")
     pnl_abs   = data.get("total_pnl_abs")
@@ -88,21 +69,17 @@ def build_aggregate_embed(data: dict) -> discord.Embed:
 
     generated_at: str | None = data.get("generated_at")
 
-    color = _pnl_color(pnl_pct)
-
     embed = discord.Embed(
-        title=f"📊 Thesis Portfolio Summary — {total} theses active",
-        color=color,
+        title=f"\U0001f4ca Thesis Portfolio Summary \u2014 {total} theses active",
+        color=_pnl_color(pnl_pct),
     )
 
-    # ── P&L block ─────────────────────────────────────────────────────
     if cost is not None or market is not None or pnl_abs is not None:
         pnl_line = _fmt_pct(pnl_pct)
         if pnl_abs is not None:
             pnl_line += f"  ({_fmt_vnd(pnl_abs)})"
-
         embed.add_field(
-            name="💰 P&L tổng danh mục",
+            name="\U0001f4b0 P&L tổng danh mục",
             value=(
                 f"Vốn: `{_fmt_vnd(cost)}`\n"
                 f"Market value: `{_fmt_vnd(market)}`\n"
@@ -112,14 +89,13 @@ def build_aggregate_embed(data: dict) -> discord.Embed:
         )
     else:
         embed.add_field(
-            name="💰 P&L tổng danh mục",
+            name="\U0001f4b0 P&L tổng danh mục",
             value="_Chưa có dữ liệu position / giá._",
             inline=False,
         )
 
-    # ── Coverage block ─────────────────────────────────────────────────
     embed.add_field(
-        name="📁 Coverage",
+        name="\U0001f4c1 Coverage",
         value=(
             f"Có open position: **{with_pos}** / {total}\n"
             f"Đã review AI: **{reviewed}** / {total}"
@@ -127,68 +103,51 @@ def build_aggregate_embed(data: dict) -> discord.Embed:
         inline=False,
     )
 
-    # ── Verdict breakdown ──────────────────────────────────────────────
     verdict_icons = {
-        "bullish":   "🟢",
-        "bearish":   "🔴",
-        "neutral":   "🟡",
-        "watchlist": "🔵",
-        "none":      "⚪",
+        "bullish":   "\U0001f7e2",
+        "bearish":   "\U0001f534",
+        "neutral":   "\U0001f7e1",
+        "watchlist": "\U0001f535",
+        "none":      "\u26aa",
     }
     embed.add_field(
-        name="🧠 Verdict breakdown",
-        value=_breakdown_bar(
-            verdict_bd,
-            ["bullish", "neutral", "bearish", "watchlist", "none"],
-            verdict_icons,
-        ),
+        name="\U0001f9e0 Verdict breakdown",
+        value=_breakdown_bar(verdict_bd, ["bullish", "neutral", "bearish", "watchlist", "none"], verdict_icons),
         inline=False,
     )
 
-    # ── Tier breakdown ─────────────────────────────────────────────────
     tier_icons = {
-        "Strong":   "📎",
-        "Healthy":  "🟢",
-        "Moderate": "🟡",
-        "Weak":     "🟠",
-        "Critical": "🔴",
-        "none":     "⚪",
+        "Strong":   "\U0001f4ce",
+        "Healthy":  "\U0001f7e2",
+        "Moderate": "\U0001f7e1",
+        "Weak":     "\U0001f7e0",
+        "Critical": "\U0001f534",
+        "none":     "\u26aa",
     }
     embed.add_field(
-        name="🏆 Score tier breakdown",
-        value=_breakdown_bar(
-            tier_bd,
-            ["Strong", "Healthy", "Moderate", "Weak", "Critical", "none"],
-            tier_icons,
-        ),
+        name="\U0001f3c6 Score tier breakdown",
+        value=_breakdown_bar(tier_bd, ["Strong", "Healthy", "Moderate", "Weak", "Critical", "none"], tier_icons),
         inline=False,
     )
 
-    # ── P&L status breakdown ───────────────────────────────────────────
     pnl_icons = {
-        "profit":  "🟢",
-        "neutral": "🟡",
-        "loss":    "🔴",
-        "none":    "⚪",
+        "profit":  "\U0001f7e2",
+        "neutral": "\U0001f7e1",
+        "loss":    "\U0001f534",
+        "none":    "\u26aa",
     }
     embed.add_field(
-        name="📈 P&L status breakdown",
-        value=_breakdown_bar(
-            pnl_bd,
-            ["profit", "neutral", "loss", "none"],
-            pnl_icons,
-        ),
+        name="\U0001f4c8 P&L status breakdown",
+        value=_breakdown_bar(pnl_bd, ["profit", "neutral", "loss", "none"], pnl_icons),
         inline=False,
     )
 
-    # ── Footer ─────────────────────────────────────────────────────────
     if generated_at:
         try:
             dt_utc = datetime.datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
-            dt_ict = dt_utc + datetime.timedelta(hours=7)
-            ts_str = dt_ict.strftime("%H:%M ICT %d/%m/%Y")
+            ts_str = fmt_ict(dt_utc, fmt="%H:%M ICT %d/%m/%Y")
         except (ValueError, AttributeError):
             ts_str = generated_at
-        embed.set_footer(text=f"Cập nhật lúc {ts_str} · stock-agent")
+        embed.set_footer(text=f"Cập nhật lúc {ts_str} \u00b7 stock-agent")
 
     return embed
