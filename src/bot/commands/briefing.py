@@ -16,7 +16,7 @@ from src.ai.schemas import BriefOutput, MarketSentiment
 from src.bot.commands.base import BaseCog
 from src.briefing.formatter import build_brief_pages, format_eod_brief, format_morning_brief
 from src.briefing.service import BriefingService
-from src.platform.bootstrap import get_briefing_agent, get_pnl_service, get_quote_service
+from src.platform.bootstrap import get_briefing_agent, get_pnl_service_class, get_quote_service
 from src.platform.db import get_session
 from src.platform.logging import get_logger
 from src.watchlist.service import WatchlistService
@@ -127,7 +127,7 @@ class BriefingCog(BaseCog):
                     watchlist_service=WatchlistService(session=session),
                     quote_service=get_quote_service(),
                     briefing_agent=get_briefing_agent(),
-                    pnl_service=get_pnl_service()(session),
+                    pnl_service=get_pnl_service_class()(session),
                     session=session,
                 )
                 if phase == "morning":
