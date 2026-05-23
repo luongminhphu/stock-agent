@@ -18,7 +18,7 @@ class DomainEvent:
     occurred_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
-# ─── watchlist / signal ─────────────────────────────────────────────────────
+# ─── watchlist / signal ───────────────────────────────────────────────
 
 @dataclass(frozen=True)
 class SignalDetectedEvent(DomainEvent):
@@ -92,7 +92,7 @@ class ProactiveWatchAlertFiredEvent(DomainEvent):
     scan_event_id: str = ""         # event_id of originating ProactiveWatchRequestedEvent
 
 
-# ─── portfolio / position ────────────────────────────────────────────────────
+# ─── portfolio / position ────────────────────────────────────────────
 
 @dataclass(frozen=True)
 class PositionRiskBreachedEvent(DomainEvent):
@@ -112,7 +112,7 @@ class PortfolioSnapshotReadyEvent(DomainEvent):
     unrealized_pnl: float = 0.0
 
 
-# ─── thesis ─────────────────────────────────────────────────────────────────────
+# ─── thesis ──────────────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
 class ThesisInvalidatedEvent(DomainEvent):
@@ -220,7 +220,7 @@ class StressTestCompletedEvent(DomainEvent):
     stress_scenario: str = ""
 
 
-# ─── AI recommendations ──────────────────────────────────────────────────────
+# ─── AI recommendations ──────────────────────────────────────────────
 
 @dataclass(frozen=True)
 class RecommendationReadyEvent(DomainEvent):
@@ -283,7 +283,7 @@ class SignalEngineCompletedEvent(DomainEvent):
     summary: str = ""               # AI-generated narrative for BriefingService
 
 
-# ─── briefing ──────────────────────────────────────────────────────────────────────
+# ─── briefing ────────────────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
 class BriefingRequestedEvent(DomainEvent):
@@ -308,7 +308,7 @@ class BriefingReadyEvent(DomainEvent):
     user_id: str = ""
 
 
-# ─── market ─────────────────────────────────────────────────────────────────────
+# ─── market ─────────────────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
 class MarketDataRefreshedEvent(DomainEvent):
@@ -318,7 +318,7 @@ class MarketDataRefreshedEvent(DomainEvent):
     trading_date: str = ""         # YYYY-MM-DD
 
 
-# ─── opportunity screen ─────────────────────────────────────────────────────
+# ─── opportunity screen ───────────────────────────────────────────────
 
 @dataclass(frozen=True)
 class OpportunityScreenCompletedEvent(DomainEvent):
@@ -362,7 +362,7 @@ class TrendShiftEvent(DomainEvent):
     scan_phase: str = ""           # morning | midday | pre_atc
 
 
-# ─── trend prediction ────────────────────────────────────────────────────────
+# ─── trend prediction ───────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
 class TrendPredictionCompletedEvent(DomainEvent):
@@ -388,7 +388,7 @@ class TrendPredictionCompletedEvent(DomainEvent):
     # top_verdicts: (("VHM", "BUY"), ("FPT", "HOLD"), ("TCB", "WATCH"))
 
 
-# ─── core intelligence engine ────────────────────────────────────────────────
+# ─── core intelligence engine ──────────────────────────────────────────────
 
 @dataclass(frozen=True)
 class IntelligenceEngineRequestedEvent(DomainEvent):
@@ -406,12 +406,18 @@ class IntelligenceEngineRequestedEvent(DomainEvent):
         low    — defer if system is busy
         normal — standard cycle
         high   — bypass confidence threshold, always dispatch verdict
+
+    signal_engine_summary:
+        Optional narrative from a prior SignalEngineCompletedEvent.summary.
+        When provided, injected into SystemSnapshot and the AI verdict prompt
+        for richer cross-segment context. Empty string = not available.
     """
     trigger_type: str = "scheduled"   # scheduled | event_driven | manual
     trigger_source: str = ""           # e.g. "scheduler:pre_market" | "user:discord"
     user_id: str = ""
     priority: str = "normal"           # low | normal | high
     context_hint: str | None = None    # optional freeform hint injected into reasoning
+    signal_engine_summary: str = ""    # from SignalEngineCompletedEvent.summary if available
 
 
 @dataclass(frozen=True)
@@ -432,9 +438,51 @@ class IntelligenceEngineCompletedEvent(DomainEvent):
 
     summary:
         Human-readable action string, ready for Discord or briefing injection.
+
+    verdict_event_id:
+        Echoes the event_id of this IntelligenceEngineCompletedEvent so that
+        downstream feedback submissions can reference it in
+        EngineFeedbackSubmittedEvent.verdict_event_id.
     """
     verdict: str = "NO_ACTION"
     confidence: float = 0.0
     action_required: bool = False
     summary: str = ""
     trigger_source: str = ""
+    verdict_event_id: str = field(default_factory=lambda: str(uuid4()))
+
+
+# ─── core intelligence feedback ───────────────────────────────────────────
+
+@dataclass(frozen=True)
+class EngineFeedbackSubmittedEvent(DomainEvent):
+    """Emitted when a user submits outcome feedback on an EngineVerdict.
+
+    Produced by: bot.FeedbackCommandHandler | api.feedback_router
+    Consumed by: core.EngineFeedbackListener → FeedbackStore.record()
+
+    verdict_event_id:
+        The event_id of the IntelligenceEngineCompletedEvent being rated.
+        Used to link feedback to the original verdict row.
+
+    verdict:
+        The verdict string echoed from the original completed event
+        (BUY_SIGNAL | SELL_SIGNAL | HOLD | REVIEW_THESIS | RISK_ALERT | WATCH | NO_ACTION).
+        Stored denormalised so feedback queries don’t need a join.
+
+    outcome:
+        correct    — verdict proved right, user acted and it worked
+        incorrect  — verdict was wrong or misleading
+        partial    — partly correct (e.g. right direction, wrong timing)
+        not_acted  — user saw it but didn’t act (neutral signal)
+
+    user_note:
+        Optional free-text note from the user explaining the outcome.
+        Stored in DB and surfaced to Wave 4 evolution analysis.
+    """
+    verdict_event_id: str = ""
+    user_id: str = ""
+    verdict: str = ""
+    outcome: str = "not_acted"     # correct | incorrect | partial | not_acted
+    trigger_source: str = ""
+    user_note: str = ""

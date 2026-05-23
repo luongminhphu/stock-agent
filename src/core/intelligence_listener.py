@@ -4,27 +4,13 @@ IntelligenceEngineListener — EventBus subscriber wiring the core engine.
 Owner: core segment.
 
 Consumed event : IntelligenceEngineRequestedEvent
-                 (produced by: bot.scheduler | api command | any segment emitter)
-
 Emitted event  : IntelligenceEngineCompletedEvent
-                 (consumed by: briefing.BriefingListener, bot.EngineSubscriber)
 
-Pattern follows repo convention:
-    __init__(bus) → register() → bus.subscribe() → async _handle()
-
-No Discord logic. No domain logic from other segments.
-
-Wave 2 wiring:
-    Pass an IntelligenceVerdictAgent instance to enable AI synthesis.
-    Omit (or pass None) to run Wave 1 heuristic only.
-
-    Example bootstrap::
-
-        from src.ai.agents.intelligence_verdict import IntelligenceVerdictAgent
-        from src.core.intelligence_listener import IntelligenceEngineListener
-
-        verdict_agent = IntelligenceVerdictAgent(ai_client)
-        IntelligenceEngineListener(bus, verdict_agent=verdict_agent).register()
+Wave 3 change:
+    Passes event.signal_engine_summary into engine.run_cycle() so the
+    AI verdict prompt receives richer cross-segment context.
+    verdict_event_id echoed on IntelligenceEngineCompletedEvent so
+    downstream feedback submissions can reference it.
 
 Boot: call IntelligenceEngineListener(...).register() in platform bootstrap.
 """
@@ -74,6 +60,7 @@ class IntelligenceEngineListener:
             trigger_source=event.trigger_source,
             priority=event.priority,
             user_id=event.user_id,
+            has_signal_summary=bool(event.signal_engine_summary),
         )
 
         verdict = await engine.run_cycle(
@@ -81,6 +68,7 @@ class IntelligenceEngineListener:
             trigger_source=event.trigger_source,
             priority=event.priority,
             context_hint=event.context_hint,
+            signal_engine_summary=event.signal_engine_summary,
             verdict_agent=self._verdict_agent,
         )
 
@@ -92,13 +80,13 @@ class IntelligenceEngineListener:
             )
             return
 
-        # Emit to downstream: briefing.BriefingListener, bot.EngineSubscriber
         completed = IntelligenceEngineCompletedEvent(
             verdict=verdict.verdict,
             confidence=verdict.confidence,
             action_required=verdict.verdict not in ("NO_ACTION", "HOLD"),
             summary=verdict.action,
             trigger_source=event.trigger_source,
+            # verdict_event_id auto-generated via field default_factory
         )
         await self._bus.publish(completed)
 
@@ -107,4 +95,5 @@ class IntelligenceEngineListener:
             verdict=verdict.verdict,
             confidence=verdict.confidence,
             action_required=completed.action_required,
+            verdict_event_id=completed.verdict_event_id,
         )
