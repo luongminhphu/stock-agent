@@ -6,13 +6,16 @@ Convention: module-level SPEC + build_user_prompt() function.
 
 SPEC declares system_prompt, output_schema, temperature, max_tokens.
 Agent calls client.structured_call(spec=SPEC, user_prompt=build_user_prompt(...)).
+
+Note: VerdictOutput is imported from src.ai.schemas (NOT from agents) to
+avoide the circular import: agents -> prompts -> agents.
 """
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 from src.ai.client import AIClient, AISpec
-from src.ai.agents.intelligence_verdict import VerdictOutput
+from src.ai.schemas import VerdictOutput  # breaks the circular import
 
 if TYPE_CHECKING:
     from src.core.schemas import RankedSignal, SystemSnapshot
@@ -46,8 +49,8 @@ SPEC = AISpec(
 
 
 def build_user_prompt(
-    snapshot: SystemSnapshot,
-    ranked_signals: list[RankedSignal],
+    snapshot: "SystemSnapshot",
+    ranked_signals: "list[RankedSignal]",
 ) -> str:
     """Serialize SystemSnapshot + ranked signals into a structured prompt string."""
 

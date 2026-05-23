@@ -7,7 +7,7 @@ Called by: core.engine via thin interface — no prompt/AI logic in core.
 Pattern: AISpec + structured_call(), same as all other agents in this module.
 
 Input:  SystemSnapshot + list[RankedSignal]  (from src.core.schemas)
-Output: VerdictOutput (Pydantic structured)
+Output: VerdictOutput (from src.ai.schemas)
 
 Fallback contract:
     Any exception from AIClient is caught here.
@@ -16,32 +16,21 @@ Fallback contract:
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
-
-from pydantic import BaseModel, Field
+from typing import TYPE_CHECKING
 
 from src.ai.client import AIClient
+from src.ai.schemas import VerdictOutput  # canonical location — no circular import
 from src.ai.prompts.intelligence_verdict import SPEC, build_user_prompt
 from src.platform.logging import get_logger
 
 if TYPE_CHECKING:
     from src.core.schemas import RankedSignal, SystemSnapshot
 
+# Re-export for any external code that does:
+#   from src.ai.agents.intelligence_verdict import VerdictOutput
+__all__ = ["IntelligenceVerdictAgent", "VerdictOutput"]
+
 logger = get_logger(__name__)
-
-
-class VerdictOutput(BaseModel):
-    """Structured AI verdict — downstream-safe, stable keys."""
-
-    verdict: Literal[
-        "BUY_SIGNAL", "SELL_SIGNAL", "HOLD",
-        "REVIEW_THESIS", "RISK_ALERT", "WATCH", "NO_ACTION"
-    ]
-    confidence: float = Field(ge=0.0, le=1.0)
-    risk_signals: list[str] = Field(default_factory=list)
-    next_watch_items: list[str] = Field(default_factory=list)
-    action: str = ""
-    reasoning_summary: str = ""
 
 
 _FALLBACK = VerdictOutput(
@@ -69,8 +58,8 @@ class IntelligenceVerdictAgent:
 
     async def run(
         self,
-        snapshot: SystemSnapshot,
-        ranked_signals: list[RankedSignal],
+        snapshot: "SystemSnapshot",
+        ranked_signals: "list[RankedSignal]",
     ) -> VerdictOutput:
         user_prompt = build_user_prompt(snapshot, ranked_signals)
 
