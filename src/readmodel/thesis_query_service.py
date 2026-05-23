@@ -412,43 +412,27 @@ class ThesisQueryService:
         }
 
     async def get_upcoming_catalysts(self, user_id: str, days: int = 30) -> list[dict[str, Any]]:
-        """Return PENDING catalysts within [today, today+days] for active theses.
+        """Return PENDING catalysts for active theses, ordered by expected_date.
 
-        Date range matching is robust for both storage formats:
+        Includes ALL PENDING catalysts regardless of whether expected_date is set:
+        - Catalysts with a date are sorted first (ASC by date).
+        - Catalysts without a date (open-ended / condition-based) appear last.
 
-        1. Primary clause (tz-aware datetime bounds):
-           Catalyst.expected_date >= start_dt AND Catalyst.expected_date <= end_dt
-           Matches rows stored as timezone-aware datetimes (new rows, e.g.
-           '2026-05-19 00:00:00+00:00').
+        This intentionally replaces the previous date-range filter which excluded
+        every row when expected_date = NULL — making the feature return [] always.
 
-        2. Fallback clause (cast to Date — safe for both SQLite and PostgreSQL):
-           cast(Catalyst.expected_date, Date).between(today_str, end_str)
-           Matches rows stored as naive datetimes (old rows, e.g.
-           '2026-05-19 00:00:00.000000') where timezone suffix is absent.
-           Uses cast(..., SADate) instead of func.date() to avoid UTC timezone
-           drift on PostgreSQL timestamptz columns.
-
-        Both clauses are combined with OR so catalysts are surfaced regardless
-        of how they were originally persisted. No migration needed.
+        The ``days`` parameter is kept for API compatibility but is no longer used
+        as a hard filter. Callers can use ``days_until`` in the response to apply
+        client-side filtering if desired.
 
         Output dict keys:
-            id, thesis_id, description, expected_date (ISO str),
-            days_until (int >= 0 | None), note, ticker, thesis_ticker (compat),
-            thesis_title, thesis_status.
+            id, thesis_id, description, expected_date (ISO str | None),
+            has_date (bool), days_until (int >= 0 | None),
+            note, ticker, thesis_ticker (compat), thesis_title, thesis_status.
         """
         from src.thesis.models import Catalyst, CatalystStatus, Thesis, ThesisStatus
 
         today = _today_utc()
-        end_date = today + timedelta(days=days)
-
-        # Primary bounds: tz-aware datetime for new rows
-        start_dt = datetime.combine(today, time.min).replace(tzinfo=UTC)
-        end_dt = datetime.combine(end_date, time.max).replace(tzinfo=UTC)
-
-        # Fallback bounds: plain date strings for naive rows.
-        # cast(..., SADate) is safer than func.date() — avoids UTC drift on PG timestamptz.
-        today_str = today.isoformat()   # "2026-05-20"
-        end_str = end_date.isoformat()  # "2026-06-19"
 
         rows = (
             await self._session.execute(
@@ -467,29 +451,21 @@ class ThesisQueryService:
                     Thesis.user_id == user_id,
                     Thesis.status == ThesisStatus.ACTIVE,
                     Catalyst.status == CatalystStatus.PENDING,
-                    Catalyst.expected_date.isnot(None),
-                    or_(
-                        # Clause 1: tz-aware datetime — matches new rows
-                        and_(
-                            Catalyst.expected_date >= start_dt,
-                            Catalyst.expected_date <= end_dt,
-                        ),
-                        # Clause 2: cast to Date — matches naive rows without tz suffix.
-                        # Safer than func.date() which drifts on PG timestamptz columns.
-                        cast(Catalyst.expected_date, SADate).between(today_str, end_str),
-                    ),
                 )
-                .order_by(Catalyst.expected_date.asc())
+                # Dated catalysts sort first (ASC); NULL-date (open-ended) go to the end.
+                .order_by(Catalyst.expected_date.asc().nulls_last())
                 .limit(100)
             )
         ).all()
 
         result = []
         for r in rows:
+            has_date = r.expected_date is not None
+
             # Compute days_until; clamp to >= 0 to avoid negative values from
             # catalysts that expired between the last auto-expire job run and now.
             days_until: int | None = None
-            if r.expected_date is not None:
+            if has_date:
                 cat_date = (
                     r.expected_date.date()
                     if isinstance(r.expected_date, datetime)
@@ -511,6 +487,8 @@ class ThesisQueryService:
                     "thesis_id": r.thesis_id,
                     "description": r.description,
                     "expected_date": r.expected_date.isoformat() if r.expected_date else None,
+                    # has_date lets UI bucket into "Có ngày" vs "Chờ điều kiện"
+                    "has_date": has_date,
                     "days_until": days_until,
                     "note": r.note,
                     # "ticker" is the key read by build_maintenance_embed() in thesis_embeds.py.
