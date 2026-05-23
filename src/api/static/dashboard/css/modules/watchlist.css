@@ -9,6 +9,11 @@
    padding on .watchlist-layer here — it will override layout.css centering.
 ────────────────────────────────────────────────────────────────────────────── */
 
+.watchlist-layer > #watchlistSection,
+.watchlist-layer > #catalystList {
+  padding: 0 var(--panel-pad, 16px) var(--panel-pad, 16px);
+}
+
 /* ── Toolbar: title + add/scan actions ──────────────────────────────────────── */
 .wl-toolbar {
   display: flex;
