@@ -2,256 +2,185 @@
 
 Owner: core segment.
 
-Wave 1 (this file):
-    - Build SystemSnapshot from cross-segment DB queries
-    - Emit IntelligenceEngineRequestedEvent via event bus
-    - Triggered by IntelligenceEngineScheduler (bot) or API endpoint
-
-Wave 2 (next):
-    - IntelligenceEngineListener (ai segment) subscribes to IntelligenceEngineRequestedEvent
-    - Runs AI verdict synthesis → emits IntelligenceEngineCompletedEvent
-
-Wave 3:
-    - FeedbackStore ingests EngineFeedbackSubmittedEvent
-    - Signal weights adjusted based on outcome history
-
-Wave 4:
-    - SelfImprovementAdvisor runs weekly, emits EvolutionSuggestionReadyEvent
-    - Owner reviews suggestions before any code change
+Wave 1: Build SystemSnapshot + emit IntelligenceEngineRequestedEvent.
+Wave 2 (this file): Accept verdict_agent, delegate to snapshot.py + signals.py,
+    map VerdictOutput → EngineVerdict, apply confidence gate.
+Wave 3: FeedbackStore ingests EngineFeedbackSubmittedEvent.
+Wave 4: SelfImprovementAdvisor runs weekly, emits EvolutionSuggestionReadyEvent.
 """
-
 from __future__ import annotations
 
-import datetime
-from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from src.core import snapshot as snapshot_module
+from src.core import signals as signals_module
 from src.platform.logging import get_logger
+
+if TYPE_CHECKING:
+    from src.ai.agents.intelligence_verdict import IntelligenceVerdictAgent
+    from src.core.schemas import EngineVerdict
 
 logger = get_logger(__name__)
 
+_CONFIDENCE_THRESHOLD = 0.65
 
-# ---------------------------------------------------------------------------
-# SystemSnapshot — cross-segment state at a point in time
-# ---------------------------------------------------------------------------
-
-@dataclass
-class SystemSnapshot:
-    """Aggregated view of system state across all segments.
-
-    Wave 1: populated with lightweight counts — no heavy AI queries.
-    Wave 2+: enriched with signal scores, thesis health, portfolio risk.
-
-    Fields are additive — unset fields default to safe zero values.
-    Callers should never raise on missing data; degrade gracefully.
-    """
-    user_id: str
-    phase: str                          # "morning" | "eod"
-    triggered_by: str                   # "scheduler" | "command" | "api"
-    timestamp: datetime.datetime = field(
-        default_factory=lambda: datetime.datetime.now(tz=datetime.UTC)
-    )
-
-    # watchlist segment
-    active_alert_count: int = 0
-    triggered_alert_count: int = 0      # alerts fired in last scan cycle
-
-    # thesis segment
-    active_thesis_count: int = 0
-    stale_thesis_count: int = 0         # not reviewed in > 3 days
-    thesis_due_review: list[str] = field(default_factory=list)  # thesis IDs
-
-    # market segment
-    market_anomaly_tickers: list[str] = field(default_factory=list)
-
-    # portfolio segment
-    open_position_count: int = 0
-    high_risk_position_count: int = 0   # positions breaching risk thresholds
-
-    # signal engine (injected by SignalEngineCompletedEvent if available)
-    signal_engine_summary: str = ""
-    ranked_signal_count: int = 0
-    risk_alert_count: int = 0
-    opportunity_count: int = 0
-
-    # freeform metadata for downstream consumers
-    meta: dict[str, Any] = field(default_factory=dict)
-
-
-# ---------------------------------------------------------------------------
-# IntelligenceEngine
-# ---------------------------------------------------------------------------
 
 class IntelligenceEngine:
-    """Core orchestrator — Wave 1 implementation.
+    """Core orchestrator — Wave 2 implementation.
 
-    Entry point: run_cycle(user_id, phase, triggered_by)
+    Entry point: run_cycle(user_id, trigger_source, ...)
 
-    Wave 1 flow:
-        1. build_snapshot()  — aggregate cross-segment counts from DB
-        2. _emit_requested() — publish IntelligenceEngineRequestedEvent
-           (AI listener in Wave 2 will subscribe and produce verdict)
-        3. Return snapshot for callers that need it synchronously
-           (e.g. direct API calls, test harness)
+    Flow:
+        1. snapshot.build_snapshot()  — parallel cross-segment DB queries
+        2. signals.rank_signals()     — deterministic urgency scoring
+        3. verdict_agent.run()        — AI synthesis (Wave 2, optional)
+           OR _heuristic_verdict()   — fallback when no agent provided
+        4. confidence gate            — drop low-confidence verdicts
+           (bypass for RISK_ALERT)
 
     Graceful degradation:
-        - Each snapshot field is populated independently; one segment
-          failing never blocks the others.
-        - If event bus publish fails, snapshot is still returned.
-          Downstream silence is preferable to an exception cascade.
+        - Each snapshot field populated independently; failures non-fatal.
+        - If verdict_agent raises, falls through to heuristic.
+        - If ranked signals empty, returns None (no action).
     """
 
     async def run_cycle(
         self,
         user_id: str,
-        phase: str,
-        triggered_by: str = "scheduler",
+        trigger_source: str = "scheduler",
+        priority: str = "normal",
+        context_hint: str | None = None,
         signal_engine_summary: str = "",
-    ) -> SystemSnapshot:
-        """Run one intelligence cycle. Returns the built snapshot.
+        verdict_agent: "IntelligenceVerdictAgent | None" = None,
+    ) -> "EngineVerdict | None":
+        """Run one intelligence cycle. Returns EngineVerdict or None.
 
         Args:
-            user_id:               Target investor (settings.scheduler_user_id).
-            phase:                 "morning" or "eod".
-            triggered_by:          Source of trigger ("scheduler", "command", "api").
-            signal_engine_summary: Optional summary injected from SignalEngineCompletedEvent.
+            user_id:               Target investor.
+            trigger_source:        Source of trigger ("scheduler", "command", "api").
+            priority:              "normal" | "high".
+            context_hint:          Optional free-text hint for AI prompt.
+            signal_engine_summary: Injected from SignalEngineCompletedEvent.
+            verdict_agent:         IntelligenceVerdictAgent (Wave 2 AI active).
+                                   When None, heuristic fallback runs only.
         """
-        snapshot = await self._build_snapshot(
+        from src.core.schemas import EngineVerdict  # noqa: F401 (TYPE_CHECKING workaround)
+
+        # Step 1: build cross-segment snapshot
+        snap = await snapshot_module.build_snapshot(
             user_id=user_id,
-            phase=phase,
-            triggered_by=triggered_by,
+            trigger_source=trigger_source,
             signal_engine_summary=signal_engine_summary,
         )
 
-        await self._emit_requested(snapshot)
+        # Step 2: rank signals — deterministic, no AI
+        ranked = signals_module.rank_signals(snap)
 
-        return snapshot
+        if not ranked:
+            logger.info(
+                "core.engine.no_signals",
+                trigger_source=trigger_source,
+                user_id=user_id,
+            )
+            return None
 
-    # ── snapshot assembly ──────────────────────────────────────────────────
+        # Step 3: produce verdict
+        if verdict_agent is not None:
+            verdict = await self._ai_verdict(
+                verdict_agent=verdict_agent,
+                snap=snap,
+                ranked=ranked,
+                trigger_source=trigger_source,
+            )
+        else:
+            verdict = self._heuristic_verdict(
+                snap=snap,
+                ranked=ranked,
+                trigger_source=trigger_source,
+            )
 
-    async def _build_snapshot(
-        self,
-        user_id: str,
-        phase: str,
-        triggered_by: str,
-        signal_engine_summary: str,
-    ) -> SystemSnapshot:
-        """Aggregate cross-segment state. Each block is isolated — failures are non-fatal."""
-        from src.platform.db import AsyncSessionLocal
-
-        snapshot = SystemSnapshot(
-            user_id=user_id,
-            phase=phase,
-            triggered_by=triggered_by,
-            signal_engine_summary=signal_engine_summary,
-        )
-
-        # ── watchlist ──────────────────────────────────────────────────────
-        try:
-            from src.watchlist.alert_service import AlertService
-
-            async with AsyncSessionLocal() as session:
-                alert_svc = AlertService(session)
-                alerts = await alert_svc.get_active_alerts(user_id)
-                snapshot.active_alert_count = len(alerts)
-                snapshot.triggered_alert_count = sum(
-                    1 for a in alerts if getattr(a, "is_triggered", False)
-                )
-        except Exception as exc:
-            logger.warning("core.engine.snapshot.watchlist_failed", error=str(exc))
-
-        # ── thesis ────────────────────────────────────────────────────────
-        try:
-            from src.thesis.thesis_service import ThesisService
-
-            async with AsyncSessionLocal() as session:
-                thesis_svc = ThesisService(session)
-                theses = await thesis_svc.get_active_theses(user_id)
-                snapshot.active_thesis_count = len(theses)
-                stale_cutoff = datetime.datetime.now(tz=datetime.UTC) - datetime.timedelta(days=3)
-                stale = [
-                    str(t.id) for t in theses
-                    if getattr(t, "last_reviewed_at", None)
-                    and t.last_reviewed_at < stale_cutoff
-                ]
-                snapshot.stale_thesis_count = len(stale)
-                snapshot.thesis_due_review = stale
-        except Exception as exc:
-            logger.warning("core.engine.snapshot.thesis_failed", error=str(exc))
-
-        # ── portfolio ─────────────────────────────────────────────────────
-        try:
-            from src.portfolio.portfolio_service import PortfolioService
-
-            async with AsyncSessionLocal() as session:
-                portfolio_svc = PortfolioService(session)
-                positions = await portfolio_svc.get_open_positions(user_id)
-                snapshot.open_position_count = len(positions)
-                snapshot.high_risk_position_count = sum(
-                    1 for p in positions if getattr(p, "is_high_risk", False)
-                )
-        except Exception as exc:
-            logger.warning("core.engine.snapshot.portfolio_failed", error=str(exc))
+        # Step 4: confidence gate (bypass for RISK_ALERT — always surface)
+        if verdict.confidence < _CONFIDENCE_THRESHOLD and verdict.verdict != "RISK_ALERT":
+            logger.info(
+                "core.engine.below_threshold",
+                verdict=verdict.verdict,
+                confidence=verdict.confidence,
+                trigger_source=trigger_source,
+            )
+            return None
 
         logger.info(
-            "core.engine.snapshot_built",
-            user_id=user_id,
-            phase=phase,
-            active_alerts=snapshot.active_alert_count,
-            active_theses=snapshot.active_thesis_count,
-            stale_theses=snapshot.stale_thesis_count,
-            open_positions=snapshot.open_position_count,
-            high_risk_positions=snapshot.high_risk_position_count,
-            signal_engine_summary_len=len(signal_engine_summary),
+            "core.engine.verdict_ready",
+            verdict=verdict.verdict,
+            confidence=verdict.confidence,
+            signal_count=len(ranked),
+            trigger_source=trigger_source,
         )
+        return verdict
 
-        return snapshot
-
-    # ── event emit ─────────────────────────────────────────────────────────
-
-    async def _emit_requested(
+    async def _ai_verdict(
         self,
-        snapshot: SystemSnapshot,
-    ) -> None:
-        """Publish IntelligenceEngineRequestedEvent with snapshot context.
+        verdict_agent: Any,
+        snap: Any,
+        ranked: list,
+        trigger_source: str,
+    ) -> "EngineVerdict":
+        """Call IntelligenceVerdictAgent and map VerdictOutput → EngineVerdict."""
+        from src.core.schemas import EngineVerdict
 
-        Wave 2: IntelligenceEngineListener (ai segment) subscribes here
-        and produces IntelligenceEngineCompletedEvent with AI verdict.
-        """
         try:
-            from src.platform.event_bus import get_event_bus
-            from src.platform.events import IntelligenceEngineRequestedEvent
-
-            context_hint = (
-                f"phase={snapshot.phase} "
-                f"alerts={snapshot.active_alert_count} "
-                f"stale_theses={snapshot.stale_thesis_count} "
-                f"high_risk_positions={snapshot.high_risk_position_count}"
+            output = await verdict_agent.run(
+                snapshot=snap,
+                ranked_signals=ranked,
             )
-
-            bus = get_event_bus()
-            await bus.publish(
-                IntelligenceEngineRequestedEvent(
-                    trigger_type="scheduled",
-                    trigger_source=snapshot.triggered_by,
-                    user_id=snapshot.user_id,
-                    priority="high" if snapshot.high_risk_position_count > 0 else "normal",
-                    context_hint=context_hint,
-                    signal_engine_summary=snapshot.signal_engine_summary,
-                )
-            )
-            logger.info(
-                "core.engine.event_emitted",
-                phase=snapshot.phase,
-                priority="high" if snapshot.high_risk_position_count > 0 else "normal",
+            return EngineVerdict(
+                verdict=output.verdict,
+                confidence=output.confidence,
+                risk_signals=output.risk_signals,
+                next_watch_items=output.next_watch_items,
+                action=output.action,
+                reasoning_summary=output.reasoning_summary,
+                top_signals=ranked,
+                trigger_source=trigger_source,
             )
         except Exception as exc:
-            logger.error("core.engine.emit_failed", error=str(exc))
-            # Non-fatal: snapshot was already built and logged
+            logger.error("core.engine.ai_verdict_failed", error=str(exc))
+            return self._heuristic_verdict(
+                snap=snap,
+                ranked=ranked,
+                trigger_source=f"{trigger_source}:ai_fallback",
+            )
+
+    def _heuristic_verdict(self, snap: Any, ranked: list, trigger_source: str) -> "EngineVerdict":
+        """Wave 1 heuristic — used when no AI agent or AI fails."""
+        from src.core.schemas import EngineVerdict
+
+        _verdict_map = {
+            "portfolio": "RISK_ALERT",
+            "thesis":    "REVIEW_THESIS",
+            "watchlist": "WATCH",
+            "market":    "WATCH",
+        }
+        top = ranked[0]
+        return EngineVerdict(
+            verdict=_verdict_map.get(top.source, "NO_ACTION"),
+            confidence=top.urgency_score,
+            risk_signals=[
+                s.description for s in ranked if s.source == "portfolio"
+            ],
+            next_watch_items=[s.description for s in ranked[:3]],
+            action=top.description,
+            reasoning_summary=(
+                f"Heuristic: top signal={top.source} "
+                f"score={top.urgency_score:.2f}"
+            ),
+            top_signals=ranked,
+            trigger_source=trigger_source,
+        )
 
 
 # ---------------------------------------------------------------------------
-# Module-level singleton
+# Module-level singleton + convenience alias
 # ---------------------------------------------------------------------------
 
 _engine: IntelligenceEngine | None = None
@@ -263,3 +192,8 @@ def get_intelligence_engine() -> IntelligenceEngine:
     if _engine is None:
         _engine = IntelligenceEngine()
     return _engine
+
+
+async def run_cycle(**kwargs) -> "EngineVerdict | None":
+    """Module-level convenience alias used by intelligence_listener.py."""
+    return await get_intelligence_engine().run_cycle(**kwargs)

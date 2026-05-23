@@ -49,6 +49,8 @@ _trend_prediction_store: object | None = None  # TrendPredictionStore singleton
 _trend_engine_listener: object | None = None   # TrendEngineListener singleton
 _post_mortem_service: object | None = None     # Wave E: PostMortemService singleton
 _memory_injection_listener: object | None = None  # Wave E: MemoryInjectionListener singleton
+_intelligence_engine_listener: object | None = None  # core: IntelligenceEngine Wave 2
+_engine_feedback_listener: object | None = None      # core: FeedbackStore bridge
 
 _pnl_service_class: type | None = None
 
@@ -69,6 +71,7 @@ async def bootstrap() -> None:
     global _agenda_builder_agent, _agenda_service_factory
     global _trend_reasoning_agent, _trend_prediction_store, _trend_engine_listener
     global _post_mortem_service, _memory_injection_listener
+    global _intelligence_engine_listener, _engine_feedback_listener
 
     if _quote_service is None:
         from src.market.adapters.factory import build_adapter
@@ -235,7 +238,7 @@ async def bootstrap() -> None:
         _trend_reasoning_agent = TrendReasoningAgent(client=_ai_client)  # type: ignore[arg-type]
         logger.info("platform.bootstrap.trend_reasoning_agent_ready")
 
-    # ── Wave 2b: SignalEngineAgent ────────────────────────────────────────────────
+    # ── Wave 2b: SignalEngineAgent ────────────────────────────────────────────
     if _signal_engine_agent is None:
         from src.ai.agents.signal_engine import SignalEngineAgent
 
@@ -397,6 +400,28 @@ async def bootstrap() -> None:
         _memory_injection_listener.register()  # type: ignore[union-attr]
         logger.info("platform.bootstrap.memory_injection_listener_ready")
 
+    # ── core: IntelligenceEngineListener (Wave 2 AI active) ───────────────────
+    if _intelligence_engine_listener is None:
+        from src.core.intelligence_listener import IntelligenceEngineListener
+        from src.ai.agents.intelligence_verdict import IntelligenceVerdictAgent
+
+        _intelligence_verdict_agent = IntelligenceVerdictAgent(
+            ai_client=_ai_client  # type: ignore[arg-type]
+        )
+        _intelligence_engine_listener = IntelligenceEngineListener(
+            verdict_agent=_intelligence_verdict_agent,
+        )
+        _intelligence_engine_listener.register()
+        logger.info("platform.bootstrap.intelligence_engine_listener_ready")
+
+    # ── core: EngineFeedbackListener ──────────────────────────────────────────
+    if _engine_feedback_listener is None:
+        from src.core.feedback_listener import EngineFeedbackListener
+
+        _engine_feedback_listener = EngineFeedbackListener()
+        _engine_feedback_listener.register()
+        logger.info("platform.bootstrap.engine_feedback_listener_ready")
+
     logger.info("platform.bootstrap.complete")
 
 
@@ -419,147 +444,96 @@ async def shutdown() -> None:
         except Exception as exc:
             logger.warning("platform.shutdown.opportunity_screen_scheduler_failed", error=str(exc))
 
-    try:
-        from src.platform.event_bus import get_event_bus
-        bus = get_event_bus()
-        await bus.stop()
-        dead = getattr(bus, "dead_letters", [])
-        if dead:
-            logger.warning(
-                "platform.shutdown.event_bus_dead_letters",
-                count=len(dead),
-                entries=[str(d) for d in dead],
-            )
-        logger.info("platform.shutdown.event_bus_stopped")
-    except Exception as exc:
-        logger.warning("platform.shutdown.event_bus_stop_failed", error=str(exc))
-
-    if _quote_service is not None:
-        try:
-            await _quote_service.close()  # type: ignore[union-attr]
-            logger.info("platform.shutdown.quote_service_closed")
-        except Exception as exc:
-            logger.warning("platform.shutdown.quote_service_close_failed", error=str(exc))
-
-    if _ohlcv_service is not None:
-        try:
-            await _ohlcv_service.close()  # type: ignore[union-attr]
-            logger.info("platform.shutdown.ohlcv_service_closed")
-        except Exception as exc:
-            logger.warning("platform.shutdown.ohlcv_service_close_failed", error=str(exc))
-
-    if _ai_client is not None:
-        try:
-            await _ai_client.aclose()  # type: ignore[union-attr]
-            logger.info("platform.shutdown.ai_client_closed")
-        except Exception as exc:
-            logger.warning("platform.shutdown.ai_client_close_failed", error=str(exc))
-
-    logger.info("platform.shutdown.complete")
-
 
 # ---------------------------------------------------------------------------
-# Getters
+# Getters — raise RuntimeError if called before bootstrap()
 # ---------------------------------------------------------------------------
 
 def get_quote_service():
     if _quote_service is None:
-        raise RuntimeError("QuoteService not initialised — call bootstrap() first.")
+        raise RuntimeError("bootstrap() has not been called")
     return _quote_service
 
 
 def get_ohlcv_service():
     if _ohlcv_service is None:
-        raise RuntimeError("OHLCVService not initialised — call bootstrap() first.")
+        raise RuntimeError("bootstrap() has not been called")
     return _ohlcv_service
 
 
 def get_ai_client():
     if _ai_client is None:
-        raise RuntimeError("AIClient not initialised — call bootstrap() first.")
+        raise RuntimeError("bootstrap() has not been called")
     return _ai_client
-
-
-get_perplexity_client = get_ai_client
 
 
 def get_thesis_review_agent():
     if _thesis_review_agent is None:
-        raise RuntimeError("ThesisReviewAgent not initialised — call bootstrap() first.")
+        raise RuntimeError("bootstrap() has not been called")
     return _thesis_review_agent
 
 
 def get_thesis_debate_agent():
     if _thesis_debate_agent is None:
-        raise RuntimeError("ThesisDebateAgent not initialised — call bootstrap() first.")
+        raise RuntimeError("bootstrap() has not been called")
     return _thesis_debate_agent
 
 
 def get_thesis_suggest_agent():
     if _thesis_suggest_agent is None:
-        raise RuntimeError("ThesisSuggestAgent not initialised — call bootstrap() first.")
+        raise RuntimeError("bootstrap() has not been called")
     return _thesis_suggest_agent
-
-
-get_suggest_agent = get_thesis_suggest_agent
 
 
 def get_briefing_agent():
     if _briefing_agent is None:
-        raise RuntimeError("BriefingAgent not initialised — call bootstrap() first.")
+        raise RuntimeError("bootstrap() has not been called")
     return _briefing_agent
 
 
 def get_why_agent():
     if _why_agent is None:
-        raise RuntimeError("WhyAgent not initialised — call bootstrap() first.")
+        raise RuntimeError("bootstrap() has not been called")
     return _why_agent
 
 
 def get_pretrade_agent():
     if _pretrade_agent is None:
-        raise RuntimeError("PreTradeAgent not initialised — call bootstrap() first.")
+        raise RuntimeError("bootstrap() has not been called")
     return _pretrade_agent
 
 
 def get_stress_test_agent():
     if _stress_test_agent is None:
-        raise RuntimeError("StressTestAgent not initialised — call bootstrap() first.")
+        raise RuntimeError("bootstrap() has not been called")
     return _stress_test_agent
 
 
 def get_replay_agent():
     if _replay_agent is None:
-        raise RuntimeError("ReplayAgent not initialised — call bootstrap() first.")
+        raise RuntimeError("bootstrap() has not been called")
     return _replay_agent
 
 
 def get_sector_rotation_agent():
     if _sector_rotation_agent is None:
-        raise RuntimeError("SectorRotationAgent not initialised — call bootstrap() first.")
+        raise RuntimeError("bootstrap() has not been called")
     return _sector_rotation_agent
 
 
 def get_snapshot_scheduler():
     if _snapshot_scheduler is None:
-        raise RuntimeError("SnapshotScheduler not initialised — call bootstrap() first.")
+        raise RuntimeError("bootstrap() has not been called")
     return _snapshot_scheduler
-
-
-def get_pnl_service():
-    if _pnl_service_class is None:
-        raise RuntimeError("PnlService not initialised — call bootstrap() first.")
-    quote_svc = get_quote_service()
-    return lambda session: _pnl_service_class(session, quote_svc)  # type: ignore[misc]
 
 
 def get_pnl_service_class():
     if _pnl_service_class is None:
-        raise RuntimeError("PnlService not initialised — call bootstrap() first.")
+        raise RuntimeError("bootstrap() has not been called")
     return _pnl_service_class
 
 
-def get_investor_profile_service() -> tuple | None:
+def get_investor_profile_service():
     return _investor_profile_service
 
 
@@ -567,65 +541,29 @@ def get_memory_consolidator():
     return _memory_consolidator
 
 
+def get_agenda_builder_agent():
+    if _agenda_builder_agent is None:
+        raise RuntimeError("bootstrap() has not been called")
+    return _agenda_builder_agent
+
+
 def get_agenda_service_factory():
     return _agenda_service_factory
 
 
-def get_proactive_alert_agent():
-    if _proactive_alert_agent is None:
-        raise RuntimeError("ProactiveAlertAgent not initialised — call bootstrap() first.")
-    return _proactive_alert_agent
-
-
-def get_thesis_review_listener():
-    if _thesis_review_listener is None:
-        raise RuntimeError("ThesisReviewListener not initialised — call bootstrap() first.")
-    return _thesis_review_listener
-
-
-def get_briefing_listener():
-    return _briefing_listener
-
-
-def get_stress_test_subscriber():
-    return _stress_test_subscriber
-
-
-def get_signal_engine_agent():
-    if _signal_engine_agent is None:
-        raise RuntimeError("SignalEngineAgent not initialised — call bootstrap() first.")
-    return _signal_engine_agent
-
-
-def get_signal_engine_listener():
-    return _signal_engine_listener
-
-
-def get_opportunity_screen_scheduler():
-    return _opportunity_screen_scheduler
-
-
-def get_opportunity_screen_subscriber():
-    return _opportunity_screen_subscriber
-
-
 def get_trend_reasoning_agent():
+    if _trend_reasoning_agent is None:
+        raise RuntimeError("bootstrap() has not been called")
     return _trend_reasoning_agent
 
 
 def get_trend_prediction_store():
+    if _trend_prediction_store is None:
+        raise RuntimeError("bootstrap() has not been called")
     return _trend_prediction_store
 
 
-def get_trend_engine_listener():
-    return _trend_engine_listener
-
-
-def get_post_mortem_service():
-    """Return PostMortemService singleton, or None if bootstrap() not called yet."""
-    return _post_mortem_service
-
-
-def get_memory_injection_listener():
-    """Return MemoryInjectionListener singleton, or None if bootstrap() not called yet."""
-    return _memory_injection_listener
+def get_signal_engine_agent():
+    if _signal_engine_agent is None:
+        raise RuntimeError("bootstrap() has not been called")
+    return _signal_engine_agent
