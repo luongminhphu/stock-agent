@@ -7,11 +7,9 @@
 import { TIER, tierColor } from './constants.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Lazy local loader (self-hosted — no CDN, no Tracking Prevention warnings)
+// Lazy CDN loader
+// crossOrigin='anonymous' suppresses Edge/Safari ITP storage-access warnings
 // ─────────────────────────────────────────────────────────────────────────────
-
-const CHART_JS_SRC      = '/static/dashboard/js/vendor/chart.umd.min.js';
-const ANNOTATION_SRC    = '/static/dashboard/js/vendor/chartjs-plugin-annotation.min.js';
 
 let _chartJsReady = null;
 
@@ -24,22 +22,24 @@ export function ensureChartJs() {
   _chartJsReady = new Promise((resolve, reject) => {
     function loadScript(src, onload) {
       const s = document.createElement('script');
-      s.src = src; s.defer = true;
+      s.src = src;
+      s.defer = true;
+      s.crossOrigin = 'anonymous';  // suppress ITP storage-access warnings
       s.onload = onload;
       s.onerror = () => reject(new Error('Failed to load ' + src));
       document.head.appendChild(s);
     }
     if (!window.Chart) {
       loadScript(
-        CHART_JS_SRC,
+        'https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js',
         () => loadScript(
-          ANNOTATION_SRC,
+          'https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js',
           () => { Chart.register(window['chartjs-plugin-annotation']); resolve(); }
         )
       );
     } else {
       loadScript(
-        ANNOTATION_SRC,
+        'https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js',
         () => { Chart.register(window['chartjs-plugin-annotation']); resolve(); }
       );
     }
