@@ -1,6 +1,9 @@
 // api/client.js — HTTP client wrapper cho stock-agent API
 // Owner: api segment (đượng không chứa business/render logic)
 
+const DEFAULT_HEADERS = Object.freeze({ 'Content-Type': 'application/json' });
+const inflightGetRequests = new Map();
+
 /**
  * Base URL cho readmodel dashboard endpoints
  * @returns {string}
@@ -38,17 +41,15 @@ export function memoryApiBase() {
  * @returns {Record<string, string>}
  */
 export function authHeaders() {
-  return { 'Content-Type': 'application/json' };
+  return DEFAULT_HEADERS;
 }
 
-/**
- * Fetch JSON với error handling chuẩn
- * Throw Error nếu response không ok
- * @param {string} url
- * @param {RequestInit} options
- * @returns {Promise<any|null>}
- */
-export async function getJson(url, options = {}) {
+function buildRequestKey(url, options = {}) {
+  const method = (options.method ?? 'GET').toUpperCase();
+  return `${method}:${url}`;
+}
+
+async function fetchJson(url, options = {}) {
   const r = await fetch(url, {
     ...options,
     headers: { ...authHeaders(), ...(options.headers ?? {}) },
@@ -59,6 +60,34 @@ export async function getJson(url, options = {}) {
   }
   if (r.status === 204 || r.headers.get('content-length') === '0') return null;
   return r.json();
+}
+
+/**
+ * Fetch JSON với error handling chuẩn
+ * Throw Error nếu response không ok
+ * PERF Wave 2:
+ * - Deduplicate in-flight GET requests theo method+url
+ * - Reuse default headers object
+ * @param {string} url
+ * @param {RequestInit} options
+ * @returns {Promise<any|null>}
+ */
+export async function getJson(url, options = {}) {
+  const method = (options.method ?? 'GET').toUpperCase();
+  const isGet = method === 'GET' && options.body == null;
+  const requestKey = buildRequestKey(url, options);
+
+  if (isGet && inflightGetRequests.has(requestKey)) {
+    return inflightGetRequests.get(requestKey);
+  }
+
+  const promise = fetchJson(url, options)
+    .finally(() => {
+      if (isGet) inflightGetRequests.delete(requestKey);
+    });
+
+  if (isGet) inflightGetRequests.set(requestKey, promise);
+  return promise;
 }
 
 /**

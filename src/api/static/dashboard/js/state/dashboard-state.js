@@ -6,6 +6,10 @@ export const state = {
   latestAiReviews: {},
   aiApplyThesisId: null,
   aiSelectedRecIds: [],
+
+  // Wave 2 PERF: backtesting cache metadata
+  cachedVerdictAccuracy: null,
+  cachedVerdictAccuracyAt: 0,
 };
 
 export function resetAiApply() {
