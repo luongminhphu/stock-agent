@@ -1,20 +1,31 @@
-/* quick-trade.css — B/S inline buttons + modal + toast
+/* ─── quick-trade.css ──────────────────────────────────────────────────────────
    Owner: api/dashboard UI
-   Token system: dùng dashboard navy tokens (variables.css)
-   --bg-2:       #0d1728
-   --surface-3:  rgba(20,37,63,0.92)
-   --line:       rgba(148,163,184,0.18)
-   --line-strong:rgba(148,163,184,0.28)
-   --text:       #ecf3ff
-   --muted:      #96a7c6
-   --faint:      #61718f
-   --brand:      #7dd3fc  (sky-blue)
-   --brand-strong:#38bdf8
-   --success:    #4ade80
-   --danger:     #f87171
-*/
+   Single source of truth: TẤT CẢ màu sắc lấy từ variables.css tokens.
+   KHÔNG có hardcode hex nào ở đây — nếu token thiếu → sửa variables.css.
 
-/* ─── Inline B / S buttons ───────────────────────────────────────────── */
+   Token reference (variables.css):
+     --bg            #08111f       nền sâu nhất
+     --bg-2          #0d1728       nền panel
+     --surface       rgba(13,23,40,.82)
+     --surface-2     rgba(15,28,48,.92)
+     --surface-3     rgba(20,37,63,.92)
+     --text          #ecf3ff
+     --muted         #96a7c6
+     --faint         #61718f
+     --line          rgba(148,163,184,.18)
+     --line-strong   rgba(148,163,184,.28)
+     --brand         #7dd3fc       sky-blue
+     --brand-strong  #38bdf8
+     --success       #4ade80
+     --danger        #f87171
+     --warning       #fbbf24
+     --shadow        0 24px 70px rgba(2,6,23,.36)
+     --radius-lg     24px
+     --radius-md     18px
+     --radius-sm     14px
+──────────────────────────────────────────────────────────────────────────── */
+
+/* ── Inline B / S buttons ────────────────────────────────────────────────── */
 .qt-inline-actions,
 .action-btns {
   display:     inline-flex;
@@ -25,93 +36,83 @@
 }
 
 .qt-btn-inline {
-  display:          inline-flex;
-  align-items:      center;
-  justify-content:  center;
-  width:            30px;
-  height:           28px;
-  border-radius:    5px;
-  border:           none;
-  font-size:        12px;
-  font-weight:      700;
-  line-height:      1;
-  cursor:           pointer;
-  transition:       background 140ms ease,
-                    transform  100ms ease,
-                    box-shadow 140ms ease;
-  user-select:      none;
-  letter-spacing:   0.5px;
+  display:         inline-flex;
+  align-items:     center;
+  justify-content: center;
+  width:           30px;
+  height:          28px;
+  border-radius:   5px;
+  border:          none;
+  font-size:       12px;
+  font-weight:     700;
+  line-height:     1;
+  cursor:          pointer;
+  transition:      background 140ms ease, transform 100ms ease, box-shadow 140ms ease;
+  user-select:     none;
+  letter-spacing:  0.5px;
 }
 
-/* Buy — xanh lá (--success tone) */
+/* Buy — success green */
 .qt-btn-buy {
-  background: #16a34a;
-  color:      #fff;
-  box-shadow: 0 1px 3px rgba(22,163,74,0.30);
+  background: var(--success);
+  color:      var(--bg);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--success) 40%, transparent);
 }
 .qt-btn-buy:hover {
-  background: #15803d;
-  box-shadow: 0 2px 8px rgba(22,163,74,0.45);
-  transform:  translateY(-1px);
+  filter:    brightness(1.12);
+  transform: translateY(-1px);
 }
 .qt-btn-buy:active {
-  background: #14532d;
-  transform:  scale(0.93);
-  box-shadow: none;
+  filter:    brightness(0.88);
+  transform: scale(0.93);
 }
 
-/* Sell — đỏ (--danger tone) */
+/* Sell — danger red */
 .qt-btn-sell {
-  background: #dc2626;
-  color:      #fff;
-  box-shadow: 0 1px 3px rgba(220,38,38,0.30);
+  background: var(--danger);
+  color:      var(--bg);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--danger) 40%, transparent);
 }
 .qt-btn-sell:hover {
-  background: #b91c1c;
-  box-shadow: 0 2px 8px rgba(220,38,38,0.45);
-  transform:  translateY(-1px);
+  filter:    brightness(1.12);
+  transform: translateY(-1px);
 }
 .qt-btn-sell:active {
-  background: #7f1d1d;
-  transform:  scale(0.93);
-  box-shadow: none;
+  filter:    brightness(0.88);
+  transform: scale(0.93);
 }
 
-/* ─── Modal backdrop ──────────────────────────────────────────────── */
+/* ── Modal backdrop ───────────────────────────────────────────────────────── */
 .qt-backdrop {
-  position:         fixed;
-  inset:            0;
-  z-index:          1000;
-  display:          flex;
-  align-items:      center;
-  justify-content:  center;
-  background:       rgba(2, 6, 18, 0.78);
-  backdrop-filter:  blur(6px);
-  animation:        qtFadeIn 160ms ease;
+  position:        fixed;
+  inset:           0;
+  z-index:         1000;
+  display:         flex;
+  align-items:     center;
+  justify-content: center;
+  /* đồng bộ với dialog::backdrop trong modal.css */
+  background:      rgba(2, 6, 18, 0.78);
+  backdrop-filter: blur(6px);
+  animation:       qtFadeIn 160ms ease;
 }
-.qt-backdrop[hidden] {
-  display: none;
-}
+.qt-backdrop[hidden] { display: none; }
 
 @keyframes qtFadeIn {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
 
-/* ─── Modal box ────────────────────────────────────────────────────────── */
+/* ── Modal box — cùng hệ màu với <dialog> trong modal.css ────────────────── */
 .qt-modal {
-  /* navy gradient đồng bộ với dashboard dialog */
-  background:    linear-gradient(180deg,
-                   var(--surface-3, rgba(20,37,63,0.98)),
-                   var(--bg-2,      #0d1728));
-  border:        1px solid var(--line-strong, rgba(148,163,184,0.28));
-  border-radius: var(--radius-lg, 18px);
+  background:    linear-gradient(180deg, var(--surface-3), var(--bg-2));
+  border:        1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
   width:         min(480px, 92vw);
-  box-shadow:    0 24px 70px rgba(2, 6, 23, 0.72),
-                 0 0 0 1px var(--line, rgba(148,163,184,0.18));
+  box-shadow:    var(--shadow), 0 0 0 1px var(--line);
   overflow:      hidden;
-  animation:     qtSlideUp 180ms cubic-bezier(0.16,1,0.3,1);
+  color:         var(--text);
   color-scheme:  dark;
+  animation:     qtSlideUp 180ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes qtSlideUp {
@@ -119,43 +120,47 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* ── Header ─────────────────────────────────────────────────────────────── */
 .qt-modal-header {
   display:         flex;
   align-items:     center;
   justify-content: space-between;
   padding:         16px 20px 14px;
-  border-bottom:   1px solid var(--line, rgba(148,163,184,0.18));
+  border-bottom:   1px solid var(--line);
 }
 
 .qt-modal-title {
   font-size:      1.05rem;
   font-weight:    600;
-  color:          var(--text, #ecf3ff);
+  color:          var(--text);
   letter-spacing: -0.02em;
 }
 
 .qt-close {
-  background:    none;
-  border:        1px solid var(--line, rgba(148,163,184,0.18));
-  color:         var(--muted, #96a7c6);
-  font-size:     16px;
+  width:         32px;
+  height:        32px;
+  display:       grid;
+  place-items:   center;
+  background:    transparent;
+  border:        1px solid var(--line);
+  border-radius: 10px;
+  color:         var(--muted);
+  font-size:     1rem;
   cursor:        pointer;
-  padding:       4px 8px;
-  border-radius: 8px;
-  transition:    border-color 150ms, color 150ms;
-  line-height:   1;
+  flex-shrink:   0;
+  transition:    border-color 0.15s, color 0.15s;
 }
 .qt-close:hover {
-  border-color: var(--danger, #f87171);
-  color:        var(--danger, #f87171);
+  border-color: var(--danger);
+  color:        var(--danger);
 }
 
-/* ─── Modal body ────────────────────────────────────────────────────────── */
+/* ── Body ────────────────────────────────────────────────────────────────── */
 .qt-modal-body {
-  padding: 18px 20px;
-  display: flex;
+  padding:        18px 20px;
+  display:        flex;
   flex-direction: column;
-  gap: 10px;
+  gap:            10px;
 }
 
 .qt-ticker-row {
@@ -165,6 +170,7 @@
   margin-bottom: 4px;
 }
 
+/* Badge MUA / BÁN */
 .qt-badge {
   display:        inline-block;
   padding:        4px 12px;
@@ -174,125 +180,124 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
-.qt-badge-buy  {
-  background: rgba(74, 222, 128, 0.12);
-  color:      var(--success, #4ade80);
-  border:     1px solid rgba(74, 222, 128, 0.32);
+.qt-badge-buy {
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+  color:      var(--success);
+  border:     1px solid color-mix(in srgb, var(--success) 32%, transparent);
 }
 .qt-badge-sell {
-  background: rgba(248, 113, 113, 0.12);
-  color:      var(--danger, #f87171);
-  border:     1px solid rgba(248, 113, 113, 0.32);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color:      var(--danger);
+  border:     1px solid color-mix(in srgb, var(--danger) 32%, transparent);
 }
 
 .qt-ticker-label {
   font-size:      1.2rem;
   font-weight:    700;
-  color:          var(--text, #ecf3ff);
+  color:          var(--text);
   letter-spacing: 0.04em;
 }
 
+/* Field labels */
 .qt-label {
-  font-size:   0.72rem;
-  color:       var(--muted, #96a7c6);
-  font-weight: 600;
-  margin-top:  4px;
+  font-size:      0.72rem;
+  font-weight:    600;
+  color:          var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  margin-top:     4px;
 }
 
-/* inputs bên trong quick-trade modal — navy theme */
+/* ── Inputs — đồng bộ với dialog input trong modal.css ───────────────────── */
 .qt-input {
-  background:    rgba(13, 23, 40, 0.9);
-  border:        1px solid var(--line-strong, rgba(148,163,184,0.28));
-  border-radius: var(--radius-sm, 14px);
-  color:         var(--text, #ecf3ff);
+  background:    rgba(13, 23, 40, 0.9);   /* tương đương --bg-2 + opacity */
+  border:        1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color:         var(--text);
   font-size:     0.88rem;
+  font-family:   var(--font-body);
   padding:       9px 13px;
   width:         100%;
-  transition:    border-color 150ms, box-shadow 150ms;
   outline:       none;
+  transition:    border-color 0.15s ease, box-shadow 0.15s ease;
   color-scheme:  dark;
 }
 .qt-input:focus {
-  border-color: var(--brand, #7dd3fc);
-  box-shadow:   0 0 0 3px rgba(125, 211, 252, 0.14);
+  border-color: var(--brand);
+  box-shadow:   0 0 0 3px color-mix(in srgb, var(--brand) 14%, transparent);
 }
-.qt-input::placeholder {
-  color: var(--faint, #61718f);
-}
+.qt-input::placeholder { color: var(--faint); }
 .qt-input:disabled {
   opacity: 0.45;
   cursor:  not-allowed;
 }
-
-/* select fallback — option items */
+/* Select option items */
 .qt-input option {
-  background: #0d1728;
-  color:      var(--text, #ecf3ff);
+  background: #0d1728; /* --bg-2 literal — browser không hỗ trợ var() trong option */
+  color:      var(--text);
 }
 
+/* Summary line dưới input */
 .qt-summary {
   font-size:  0.78rem;
-  color:      var(--muted, #96a7c6);
+  color:      var(--muted);
   min-height: 18px;
   margin-top: 2px;
 }
 
+/* Inline error */
 .qt-error {
   font-size:     0.78rem;
-  color:         var(--danger, #f87171);
-  background:    rgba(248, 113, 113, 0.08);
-  border:        1px solid rgba(248, 113, 113, 0.28);
-  border-radius: var(--radius-sm, 10px);
+  color:         var(--danger);
+  background:    var(--danger-bg);
+  border:        1px solid color-mix(in srgb, var(--danger) 28%, transparent);
+  border-radius: var(--radius-sm);
   padding:       8px 12px;
   margin-top:    2px;
 }
 
-/* ─── Modal footer ────────────────────────────────────────────────────────── */
+/* ── Footer ──────────────────────────────────────────────────────────────── */
 .qt-modal-footer {
   display:         flex;
   justify-content: flex-end;
   gap:             10px;
   padding:         12px 20px 16px;
-  border-top:      1px solid var(--line, rgba(148,163,184,0.18));
+  border-top:      1px solid var(--line);
 }
 
 .qt-btn {
   padding:       9px 20px;
-  border-radius: var(--radius-sm, 12px);
+  border-radius: var(--radius-sm);
   font-size:     0.84rem;
   font-weight:   600;
   border:        none;
   cursor:        pointer;
-  transition:    opacity 150ms, transform 100ms, background 150ms;
+  transition:    background 0.15s ease, opacity 0.15s, transform 0.1s;
 }
-.qt-btn:active { transform: scale(0.97); }
-.qt-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.qt-btn:active    { transform: scale(0.97); }
+.qt-btn:disabled  { opacity: 0.45; cursor: not-allowed; }
 
 /* Xác nhận — sky-blue brand */
 .qt-btn-primary {
-  background: var(--brand-strong, #38bdf8);
-  color:      #08111f;    /* --bg: đủ tương phản trên nền sáng */
+  background:  var(--brand-strong);
+  color:       var(--bg);          /* dark bg → đủ contrast trên sky-blue */
   font-weight: 700;
 }
-.qt-btn-primary:hover:not(:disabled) {
-  background: var(--brand, #7dd3fc);
-}
+.qt-btn-primary:hover:not(:disabled) { background: var(--brand); }
 
-/* Hủy — ghost style match dashboard */
+/* Huỷ — ghost, match dashboard cancel buttons */
 .qt-btn-secondary {
-  background:  transparent;
-  color:       var(--muted, #96a7c6);
-  border:      1px solid var(--line-strong, rgba(148,163,184,0.28));
+  background:   transparent;
+  color:        var(--muted);
+  border:       1px solid var(--line-strong);
 }
 .qt-btn-secondary:hover:not(:disabled) {
-  background:   rgba(148, 163, 184, 0.08);
-  border-color: var(--brand, #7dd3fc);
-  color:        var(--text, #ecf3ff);
+  background:   color-mix(in srgb, var(--brand) 8%, transparent);
+  border-color: var(--brand);
+  color:        var(--text);
 }
 
-/* ─── Toast ────────────────────────────────────────────────────────────────────────── */
+/* ── Toast ───────────────────────────────────────────────────────────────── */
 #qt-toast-container {
   position:       fixed;
   bottom:         24px;
@@ -305,19 +310,18 @@
 }
 
 .qt-toast {
-  background:    linear-gradient(135deg, var(--surface-3, rgba(20,37,63,0.98)), var(--bg-2, #0d1728));
-  border:        1px solid var(--line-strong, rgba(148,163,184,0.28));
-  border-radius: var(--radius-sm, 12px);
-  color:         var(--text, #ecf3ff);
+  background:    linear-gradient(135deg, var(--surface-3), var(--bg-2));
+  border:        1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color:         var(--text);
   font-size:     0.82rem;
   padding:       10px 16px;
-  box-shadow:    0 8px 24px rgba(2, 6, 23, 0.55);
+  box-shadow:    var(--shadow);
   max-width:     420px;
   opacity:       0;
   transform:     translateY(8px);
   transition:    opacity 250ms ease, transform 250ms ease;
 }
-
 .qt-toast-visible {
   opacity:   1;
   transform: translateY(0);
