@@ -18,7 +18,7 @@ import { thesisApiBase, getJson, sendJson } from '../../api/client.js';
 import { state } from '../../state/dashboard-state.js';
 import { renderThesisDetailHTML, emptyDetailHTML, wireTabNav } from './render-thesis-table.js';
 import { wireDetailActions } from './thesis-form.js';
-import { renderReviewRecommendResult } from './render-ai-review.js';
+import { renderReviewRecommendResult, wireReviewQuickTrade } from './render-ai-review.js';
 import { fetchQuote, renderQuoteStrip } from './market-quote.js';
 import { loadConvictionTimeline } from './conviction-timeline/index.js';
 import { loadPriceMiniChart, destroyPriceChart } from './render-price-chart.js';
@@ -257,10 +257,13 @@ export async function triggerAiReview(thesisId) {
     }
     result.innerHTML = renderReviewRecommendResult(thesisId, data);
     result.classList.remove('hidden');
+
+    // Wire B/S quick-trade buttons sau khi inject HTML vào DOM
+    wireReviewQuickTrade(result);
+
     await loadConvictionTimeline(thesisId);
 
     // Wave 2 wire: AI review xong → notify app → AttentionPanel refresh
-    // AttentionPanel có thể đang hiển "cần review thesis X" — sau khi review xong phải biết.
     document.dispatchEvent(new CustomEvent('thesis:review-complete', {
       detail: { thesisId },
     }));
