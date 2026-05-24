@@ -9,6 +9,13 @@
  *   - renderErrorBanner(errors)      → HTML collapsible banner
  *   - tab badge (N) khi tab có errors
  *   - cell-error marker cho missing critical data trong row
+ *
+ * Wave 2 — QuickTrade modal integration:
+ *   - Xoá inline B/S button HTML khỏi renderer
+ *   - <tr> rows mang data-thesis-id để QuickTrade.injectTradeButtons() pick up
+ *   - renderPortfolio() gọi QuickTrade.injectTradeButtons(tbody) sau khi inject HTML
+ *   - Trades tab: data-thesis-id từ position.thesis_id (nếu có)
+ *   - Thesis tab: data-thesis-id từ position.id (thesis_id của thesis đó)
  */
 
 import { el } from '../../utils/dom.js';
@@ -211,17 +218,14 @@ function renderTradesTab(data, errors) {
   const rows = positions.map(p => {
     const pct      = p.unrealized_pct ?? null;
     const hasError = missingPriceTickers.has(p.ticker);
+    // data-thesis-id: forward nếu position được liên kết thesis
+    const thesisAttr = p.thesis_id ? ` data-thesis-id="${p.thesis_id}"` : '';
     return `
-      <tr${hasError ? ' class="row-data-error"' : ''}>
+      <tr class="col-ticker${hasError ? ' row-data-error' : ''}"${thesisAttr}>
         <td class="col-ticker">
           <strong>${p.ticker}</strong>${hasError ? ' <span class="cell-error-dot" title="Thiếu dữ liệu giá">●</span>' : ''}
         </td>
-        <td class="col-action">
-          <div class="action-btns">
-            <button class="action-btn action-btn--buy"  data-ticker="${p.ticker}" title="Mua thêm ${p.ticker}">B</button>
-            <button class="action-btn action-btn--sell" data-ticker="${p.ticker}" title="Bán ${p.ticker}">S</button>
-          </div>
-        </td>
+        <td class="col-action"></td>
         <td class="num">${p.qty != null ? p.qty.toLocaleString('vi-VN') : '—'}</td>
         <td class="num">${fmtVnd(p.avg_cost)}</td>
         <td class="num${p.current_price == null ? ' cell-missing' : ''}">${fmtVnd(p.current_price)}</td>
@@ -303,18 +307,15 @@ function renderThesisTab(data, errors) {
     const entryDisplay = p.avg_cost ?? p.entry_price;
     const entryLabel   = p.avg_cost != null ? 'avg_cost' : 'entry';
     const hasError     = missingEntryTickers.has(p.ticker);
+    // data-thesis-id: p.id là thesis_id của thesis position này
+    const thesisAttr   = p.id ? ` data-thesis-id="${p.id}"` : '';
 
     return `
-      <tr${hasError ? ' class="row-data-error"' : ''}>
+      <tr${hasError ? ' class="row-data-error"' : ''}${thesisAttr}>
         <td class="col-ticker">
           <strong>${p.ticker}</strong>${hasError ? ' <span class="cell-error-dot" title="Thiếu entry & avg_cost">●</span>' : ''}
         </td>
-        <td class="col-action">
-          <div class="action-btns">
-            <button class="action-btn action-btn--buy"  data-ticker="${p.ticker}" title="Mua thêm ${p.ticker}">B</button>
-            <button class="action-btn action-btn--sell" data-ticker="${p.ticker}" title="Bán ${p.ticker}">S</button>
-          </div>
-        </td>
+        <td class="col-action"></td>
         <td><span class="verdict-badge ${badge.cls}">${badge.icon} ${verdict || '—'}</span></td>
         <td class="num${entryDisplay == null ? ' cell-missing' : ''}" title="${entryLabel}">${fmtVnd(entryDisplay)}</td>
         <td class="num${p.current_price == null ? ' cell-missing' : ''}">${fmtVnd(p.current_price)}</td>
@@ -350,7 +351,7 @@ function renderThesisTab(data, errors) {
             <th class="num">Score</th>
           </tr>
         </thead>
-        <tbody>${rows}</tbody>
+        <tbody data-holdings-tbody>${rows}</tbody>
       </table>
     </div>`;
 }
@@ -388,6 +389,19 @@ export function renderPortfolio(wrap, { trades, thesis }) {
   // Wire error banner toggles
   wrap.querySelectorAll('.perr-banner').forEach(banner => wireBannerToggle(banner));
 
+  // Inject QuickTrade modal buttons vào tất cả tbody[data-holdings-tbody]
+  // QuickTrade.injectTradeButtons() đọc data-thesis-id từ <tr> và col-ticker từ td.col-ticker
+  // Safe to call nếu QuickTrade chưa load — guard window.QuickTrade
+  if (window.QuickTrade) {
+    wrap.querySelectorAll('tbody[data-holdings-tbody]').forEach(tbody => {
+      window.QuickTrade.injectTradeButtons(tbody);
+    });
+  }
+
+  // Expose refresh callback cho QuickTrade toast — reload toàn bộ portfolio data
+  // Caller (portfolio-loader.js) có thể override window.__qtRefreshHoldings
+  // nếu chưa set thì no-op
+
   // Wire tab switching
   wrap.querySelectorAll('.portfolio-tab').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -400,6 +414,15 @@ export function renderPortfolio(wrap, { trades, thesis }) {
       btn.classList.add('active');
       btn.setAttribute('aria-selected', 'true');
       wrap.querySelector(`#${btn.getAttribute('aria-controls')}`)?.classList.remove('hidden');
+
+      // Re-inject QuickTrade buttons khi tab switch (pane vừa unhidden)
+      const paneId = btn.getAttribute('aria-controls');
+      const pane   = wrap.querySelector(`#${paneId}`);
+      if (pane && window.QuickTrade) {
+        pane.querySelectorAll('tbody[data-holdings-tbody]').forEach(tbody => {
+          window.QuickTrade.injectTradeButtons(tbody);
+        });
+      }
     });
   });
 }
