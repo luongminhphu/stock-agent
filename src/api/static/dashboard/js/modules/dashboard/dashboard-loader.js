@@ -34,7 +34,7 @@ function wireDeleteThesis(id) {
       try {
         await sendJson(`${thesisApiBase()}/${id}`, 'DELETE');
         closeModal('deleteModal');
-        showToast('\ud83d\uddd1 \u0110ã xóa thesis');
+        showToast('\ud83d\uddd1 Đã xóa thesis');
         state.selectedThesisId = null;
         await loadDashboard();
       } catch (err) {
@@ -407,27 +407,40 @@ export async function loadDashboard() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// loadBacktesting — PERF: fetch verdict-accuracy + thesis-performances in
+// parallel (Promise.all) instead of sequential awaits.
+// Previously: ~2 serial roundtrips. Now: ~1 roundtrip.
+// ---------------------------------------------------------------------------
 export async function loadBacktesting() {
   const base      = apiBase();
   const worstWrap = el('worstCallsWrap');
   const bestWrap  = el('bestCallsWrap');
   const accWrap   = el('accuracyWrap');
 
-  if (worstWrap) worstWrap.innerHTML = '<p class="muted">\u0110ang tải...</p>';
-  if (bestWrap)  bestWrap.innerHTML  = '<p class="muted">\u0110ang tải...</p>';
+  if (worstWrap) worstWrap.innerHTML = '<p class="muted">Đang tải...</p>';
+  if (bestWrap)  bestWrap.innerHTML  = '<p class="muted">Đang tải...</p>';
 
   try {
-    if (state.cachedVerdictAccuracy) {
-      renderAccuracy(state.cachedVerdictAccuracy);
-    } else {
-      if (accWrap) accWrap.innerHTML = '<p class="muted">\u0110ang tải...</p>';
-      const res  = await getJson(`${base}/backtesting/verdict-accuracy`).catch(() => null);
-      const rows = Array.isArray(res) ? res : (res?.items ?? []);
-      state.cachedVerdictAccuracy = rows;
-      renderAccuracy(rows);
-    }
+    // Fetch cả 2 endpoints song song
+    const needsAccuracy = !state.cachedVerdictAccuracy;
+    if (needsAccuracy && accWrap) accWrap.innerHTML = '<p class="muted">Đang tải...</p>';
 
-    const perfRes  = await getJson(`${base}/backtesting/thesis-performances`).catch(() => null);
+    const [accuracyRes, perfRes] = await Promise.all([
+      needsAccuracy
+        ? getJson(`${base}/backtesting/verdict-accuracy`).catch(() => null)
+        : Promise.resolve(null),
+      getJson(`${base}/backtesting/thesis-performances`).catch(() => null),
+    ]);
+
+    // Accuracy — dùng cache nếu đã có, ngược lại dùng kết quả vừa fetch
+    const rows = needsAccuracy
+      ? (Array.isArray(accuracyRes) ? accuracyRes : (accuracyRes?.items ?? []))
+      : state.cachedVerdictAccuracy;
+    if (needsAccuracy) state.cachedVerdictAccuracy = rows;
+    renderAccuracy(rows);
+
+    // Performance — worst/best calls
     const perfRows = Array.isArray(perfRes) ? perfRes : (perfRes?.items ?? []);
     const { worst, best } = splitPerformance(perfRows);
     renderWorstCalls(worst);

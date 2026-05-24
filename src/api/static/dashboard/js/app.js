@@ -27,6 +27,7 @@ import { bindFeedbackEvents }   from './modules/briefing/brief-feedback.js';
 import { bindGenerateBriefButtons } from './modules/briefing/brief-generate.js';
 import { loadMemory }           from './modules/memory/memory-loader.js';
 import { loadAttentionPanel, startAttentionAutoRefresh } from './modules/attention/attention-loader.js';
+import { debounce }             from './utils/debounce.js';
 import { state }                from './state/dashboard-state.js';
 
 // ---------------------------------------------------------------------------
@@ -354,9 +355,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadDecisions();
     loadLeaderboard();
     loadMemory();
-    loadAttentionPanel();   // reload attention panel cùng reloadBtn
+    loadAttentionPanel();
   });
-  el('statusFilter')?.addEventListener('change', loadDashboard);
+
+  // PERF: debounce statusFilter — tránh trigger full reload khi user click nhanh
+  // 200ms delay đủ để ignore double-click mà không gây lag cảm nhận được
+  el('statusFilter')?.addEventListener('change', debounce(loadDashboard, 200));
 
   // 5. Form row add buttons
   el('addFormAssumptionBtn')?.addEventListener('click', () => {
