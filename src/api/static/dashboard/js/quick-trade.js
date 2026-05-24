@@ -1,15 +1,15 @@
 /**
  * quick-trade.js — B/S quick-trade buttons for Holdings table (Trades tab)
  *
- * Injects a [B] and [S] button next to every ticker in the holdings table.
+ * Injects a [B] and [S] button into the .col-action cell of every holdings row.
  * Clicking opens a modal → user enters qty + price → POST /api/v1/portfolio/buy|sell
  * On success: dismisses modal, refreshes holdings data, shows inline toast.
  *
  * Dependencies: none (vanilla JS, no framework).
- * Called from: holdings.js or main.js after holdings table is rendered.
+ * Called from: portfolio-loader.js after holdings table is rendered.
  *
  * Public API:
- *   initQuickTrade()   — call once after DOM is ready
+ *   initQuickTrade()             — call once after DOM is ready
  *   injectTradeButtons(tbodyEl)  — call after each holdings table re-render
  */
 
@@ -132,7 +132,7 @@
     const price = parseFloat(document.getElementById('qt-price').value);
     const note  = document.getElementById('qt-note').value.trim() || null;
 
-    if (!qty || qty <= 0)   { _showError('Số lượng phải lớn hơn 0.'); return; }
+    if (!qty || qty <= 0)     { _showError('Số lượng phải lớn hơn 0.'); return; }
     if (!price || price <= 0) { _showError('Giá phải lớn hơn 0.'); return; }
 
     const btn = document.getElementById('qt-confirm-btn');
@@ -197,7 +197,6 @@
     toast.className   = 'qt-toast';
     toast.textContent = msg;
     container.appendChild(toast);
-    // animate in
     requestAnimationFrame(() => { toast.classList.add('qt-toast-visible'); });
     setTimeout(() => {
       toast.classList.remove('qt-toast-visible');
@@ -207,24 +206,32 @@
 
   // ─── Button injection ──────────────────────────────────────────────────────
   /**
-   * Inject [B] [S] buttons into every ticker cell in the given tbody.
-   * Safe to call multiple times — skips rows already injected.
-   *
-   * Convention: the first <td> of each row contains the ticker text.
-   * Modify the selector below if your table structure differs.
+   * Inject [B] [S] buttons vào ô .col-action của mỗi row trong tbody.
+   * - Ưu tiên td.col-action (layout mới với cột Hành động riêng).
+   * - Fallback về td:first-child nếu chưa có col-action (backward compat).
+   * - Safe to call nhiều lần — skip row đã inject rồi.
    */
   function injectTradeButtons(tbodyEl) {
     if (!tbodyEl) return;
     tbodyEl.querySelectorAll('tr').forEach(function (row) {
-      const tickerCell = row.querySelector('td:first-child');
-      if (!tickerCell) return;
-      if (tickerCell.querySelector('.qt-btn-inline')) return; // already injected
+      // Ưu tiên cột Action riêng
+      const actionCell = row.querySelector('td.col-action');
+      const targetCell = actionCell || row.querySelector('td:first-child');
+      if (!targetCell) return;
 
-      const ticker = tickerCell.textContent.trim();
+      // Skip nếu đã inject
+      if (targetCell.querySelector('.qt-btn-inline')) return;
+
+      // Lấy ticker từ td.col-ticker hoặc td:first-child
+      const tickerCell = row.querySelector('td.col-ticker') || row.querySelector('td:first-child');
+      const ticker = tickerCell ? tickerCell.textContent.trim() : '';
       if (!ticker) return;
 
-      const wrap = document.createElement('span');
-      wrap.className = 'qt-inline-actions';
+      // Nếu là cột action riêng: xóa nội dung placeholder (nút trắng từ renderer)
+      if (actionCell) actionCell.innerHTML = '';
+
+      const wrap = document.createElement('div');
+      wrap.className = 'action-btns';
 
       const bBtn = document.createElement('button');
       bBtn.className   = 'qt-btn-inline qt-btn-buy';
@@ -248,14 +255,13 @@
 
       wrap.appendChild(bBtn);
       wrap.appendChild(sBtn);
-      tickerCell.appendChild(wrap);
+      targetCell.appendChild(wrap);
     });
   }
 
   // ─── Init ──────────────────────────────────────────────────────────────────
   function initQuickTrade() {
     ensureModal();
-    // Inject into any already-rendered holdings tbody
     document.querySelectorAll('[data-holdings-tbody]').forEach(injectTradeButtons);
   }
 
