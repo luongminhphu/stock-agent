@@ -257,6 +257,10 @@ export function detailSkeletonHTML() {
 export function renderThesesTable(list, callbacks = {}) {
   const { onSelect = null, onEdit = null, onDelete = null } = callbacks ?? {};
   const wrap = document.getElementById('thesesTableWrap');
+  if (!wrap) {
+    console.warn('[render-thesis-table] #thesesTableWrap not found in DOM, skipping render');
+    return;
+  }
   if (!list.length) {
     wrap.innerHTML = '<p class="empty-state">Ch\u01b0a c\u00f3 thesis n\u00e0o. Nh\u1ea5n <strong>+ Thesis m\u1edbi</strong> \u0111\u1ec3 t\u1ea1o.</p>';
     return;
@@ -295,7 +299,7 @@ export function renderThesesTable(list, callbacks = {}) {
           <tr data-id="${t.id}" data-ticker="${esc(t.ticker)}" data-thesis-id="${t.id}" class="${rowClass}">
             <td class="ticker-cell">
               <div style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap;">
-                <strong>${esc(t.ticker)}</strong>
+                <strong style="display:inline-block;min-width:3.5rem;">${esc(t.ticker)}</strong>
                 ${t.direction ? badge(t.direction) : ''}
               </div>
             </td>
