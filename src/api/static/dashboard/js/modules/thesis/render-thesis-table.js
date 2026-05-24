@@ -11,21 +11,22 @@ export function emptyDetailHTML() {
 }
 
 export function thesisTableSkeletonHTML(rows = 5) {
-  const cols = 7;
+  const cols = 8;
   const headerCells = Array.from({ length: cols }, () =>
     `<th><div class="skel skel-text" style="width:${30 + Math.random() * 40 | 0}%;"></div></th>`
   ).join('');
   const bodyRows = Array.from({ length: rows }, () => {
     const cells = Array.from({ length: cols }, (_, i) => {
       if (i === cols - 1) return `<td><div class="skel skel-badge" style="width:64px;"></div></td>`;
-      if (i === 3) return `<td><div class="skel" style="width:80px;height:36px;border-radius:4px;"></div></td>`;
-      const w = [48, 72, 36, 52, 60, 40][i] ?? 50;
+      if (i === 1) return `<td><div class="skel skel-badge" style="width:56px;"></div></td>`;
+      if (i === 4) return `<td><div class="skel" style="width:80px;height:36px;border-radius:4px;"></div></td>`;
+      const w = [48, 40, 72, 36, 52, 60, 40][i] ?? 50;
       return `<td><div class="skel skel-text" style="width:${w}%;"></div></td>`;
     }).join('');
     return `<tr style="pointer-events:none;">${cells}</tr>`;
   }).join('');
   return `
-    <div class="skel-table-wrap" aria-busy="true" aria-label="Đang tải danh sách thesis\u2026">
+    <div class="skel-table-wrap" aria-busy="true" aria-label="Đang tải danh sách thesis…">
       <table>
         <thead><tr>${headerCells}</tr></thead>
         <tbody>${bodyRows}</tbody>
@@ -272,9 +273,14 @@ export function renderThesesTable(list, callbacks = {}) {
     <table>
       <thead>
         <tr>
-          <th>M\u00e3</th><th>Ti\u00eau \u0111\u1ec1</th><th>Score</th>
+          <th>M\u00e3</th>
+          <th style="width:72px;text-align:center;">H\u01b0\u1edbng</th>
+          <th>Ti\u00eau \u0111\u1ec1</th>
+          <th>Score</th>
           <th style="width:80px;text-align:center;">Trend</th>
-          <th>Status</th><th>C\u1eadp nh\u1eadt</th><th style="width:1%;white-space:nowrap;"></th>
+          <th>Status</th>
+          <th>C\u1eadp nh\u1eadt</th>
+          <th style="width:1%;white-space:nowrap;"></th>
         </tr>
       </thead>
       <tbody>
@@ -297,11 +303,9 @@ export function renderThesesTable(list, callbacks = {}) {
 
           return `
           <tr data-id="${t.id}" data-ticker="${esc(t.ticker)}" data-thesis-id="${t.id}" class="${rowClass}">
-            <td class="ticker-cell">
-              <div style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap;">
-                <strong style="display:inline-block;min-width:3.5rem;">${esc(t.ticker)}</strong>
-                ${t.direction ? badge(t.direction) : ''}
-              </div>
+            <td class="ticker-cell"><strong>${esc(t.ticker)}</strong></td>
+            <td style="text-align:center;white-space:nowrap;">
+              ${t.direction ? badge(t.direction) : '<span style="color:var(--muted);">\u2014</span>'}
             </td>
             <td>${esc(t.title ?? '\u2014')}</td>
             <td class="${scoreClass(t.score)}">
