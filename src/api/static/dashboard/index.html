@@ -1071,10 +1071,13 @@
             </div>
             <div class="form-field">
               <label for="thesisDirectionField">Hướng</label>
+              <!-- fix: option values must match ThesisDirection enum (LONG/SHORT/NEUTRAL) -->
+              <!-- blank option allows direction to be omitted (null) -->
               <select id="thesisDirectionField" name="direction">
-                <option value="bullish">bullish</option>
-                <option value="bearish">bearish</option>
-                <option value="neutral">neutral</option>
+                <option value="">— không chọn —</option>
+                <option value="LONG">LONG (Mua)</option>
+                <option value="SHORT">SHORT (Bán / Short)</option>
+                <option value="NEUTRAL">NEUTRAL</option>
               </select>
             </div>
           </div>
