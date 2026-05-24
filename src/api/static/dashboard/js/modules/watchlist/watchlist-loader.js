@@ -5,6 +5,10 @@
  *                 → delegate render sang watchlist-renderer.js
  * Rule: KHÔNG chứa DOM manipulation trực tiếp (ngoài error fallback).
  *       KHÔNG chứa business logic. Chỉ fetch → enrich → render.
+ *
+ * Events dispatched:
+ *   watchlist:changed      — sau add/remove thành công → AttentionPanel refresh
+ *   watchlist:scan-complete — sau scan thành công → AttentionPanel refresh
  */
 
 import { el, showToast }         from '../../utils/dom.js';
@@ -19,6 +23,11 @@ const MARKET_BASE    = '/api/v1/market';
  * Shape: { [ticker]: SignalReport[] }
  */
 let _signalsMap = {};
+
+/** Helper: dispatch a watchlist domain event so app.js can wire side effects. */
+function dispatchWatchlistEvent(name, detail = {}) {
+  document.dispatchEvent(new CustomEvent(name, { detail }));
+}
 
 /**
  * Fetch toàn bộ watchlist của current user,
@@ -66,6 +75,7 @@ export async function loadWatchlist() {
 
 /**
  * Thêm ticker vào watchlist, reload sau khi thành công.
+ * Dispatches watchlist:changed so AttentionPanel can refresh.
  */
 export async function handleAddTicker(ticker, note = '') {
   if (!ticker) return;
@@ -76,6 +86,7 @@ export async function handleAddTicker(ticker, note = '') {
     });
     showToast(`✅ Đã thêm ${ticker.toUpperCase()} vào watchlist`);
     await loadWatchlist();
+    dispatchWatchlistEvent('watchlist:changed', { action: 'add', ticker: ticker.toUpperCase() });
   } catch (err) {
     const msg = err.message.includes('409')
       ? `${ticker.toUpperCase()} đã có trong watchlist`
@@ -86,12 +97,14 @@ export async function handleAddTicker(ticker, note = '') {
 
 /**
  * Xóa ticker khỏi watchlist, reload sau khi thành công.
+ * Dispatches watchlist:changed so AttentionPanel can refresh.
  */
 async function handleRemove(ticker) {
   try {
     await sendJson(`${WATCHLIST_BASE}/${encodeURIComponent(ticker)}`, 'DELETE');
     showToast(`🗑 Đã xóa ${ticker} khỏi watchlist`);
     await loadWatchlist();
+    dispatchWatchlistEvent('watchlist:changed', { action: 'remove', ticker });
   } catch (err) {
     showToast(`Lỗi xóa: ${err.message}`, 'error');
   }
@@ -135,6 +148,7 @@ async function handleEditNote(ticker, currentNote, cardEl) {
 /**
  * Trigger manual scan, hiện kết quả trong banner.
  * Sau khi scan xong: cache _signalsMap rồi reload watchlist để tags hiện lên card.
+ * Dispatches watchlist:scan-complete so AttentionPanel can refresh.
  */
 async function handleScan(resultEl, btnEl) {
   btnEl.classList.add('scanning');
@@ -154,6 +168,10 @@ async function handleScan(resultEl, btnEl) {
     resultEl.classList.remove('hidden');
 
     await loadWatchlist();
+    dispatchWatchlistEvent('watchlist:scan-complete', {
+      scanned: res.scanned_tickers,
+      triggered: res.triggered,
+    });
   } catch (err) {
     resultEl.textContent = `Lỗi scan: ${err.message}`;
     resultEl.classList.remove('hidden');

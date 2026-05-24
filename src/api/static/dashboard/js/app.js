@@ -1,5 +1,5 @@
 /**
- * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard + Wave D lesson loop + Wave E brief ticker + Wave F brief feedback + Wave G brief generate + Wave 1 UX + Wave 2 memory + AttentionPanel)
+ * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard + Wave D lesson loop + Wave E brief ticker + Wave F brief feedback + Wave G brief generate + Wave 1 UX + Wave 2 memory + AttentionPanel + Wave 1 wire)
  * Responsibility: import tất cả modules, wire events, khởi động dashboard.
  * Rule: KHÔNG chứa business logic. Chỉ bootstrap + wiring.
  */
@@ -299,6 +299,27 @@ function bindQuickTradeDecisionRefresh() {
 }
 
 // ---------------------------------------------------------------------------
+// Wave 1 wire: watchlist mutations → AttentionPanel refresh
+//
+// watchlist:changed      — dispatched by watchlist-loader after add/remove
+// watchlist:scan-complete — dispatched by watchlist-loader after scan
+//
+// AttentionPanel tracks "việc cần làm hôm nay" which includes signal alerts
+// from the watchlist. When the watchlist changes, the panel must reflect
+// the new state without the user having to reload manually.
+//
+// Design intent: watchlist action → AttentionPanel always up-to-date.
+// ---------------------------------------------------------------------------
+function bindWatchlistAttentionRefresh() {
+  document.addEventListener('watchlist:changed', () => {
+    loadAttentionPanel();
+  });
+  document.addEventListener('watchlist:scan-complete', () => {
+    loadAttentionPanel();
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Bootstrap
 // ---------------------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', async () => {
@@ -342,6 +363,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       await loadDashboard();
       if (thesisId) await loadThesisDetail(thesisId);
       await loadPortfolio();
+      // Refresh watchlist so thesis badge appears immediately on matching card
+      await loadWatchlist();
       // Refresh attention panel sau khi thesis thay đổi
       loadAttentionPanel();
     },
@@ -438,7 +461,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 11. Loop wire: B/S trade → decision:logged event → Cluster C auto-refresh
   bindQuickTradeDecisionRefresh();
 
-  // 12. Initial parallel load — initKpiClickable() gọi sau khi data render xong
+  // 12. Wave 1 wire: watchlist mutations → AttentionPanel refresh
+  bindWatchlistAttentionRefresh();
+
+  // 13. Initial parallel load — initKpiClickable() gọi sau khi data render xong
   await Promise.all([
     loadDashboard(),
     loadBacktesting(),
@@ -450,9 +476,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadAttentionPanel(),   // AttentionPanel — Việc cần làm hôm nay
   ]);
 
-  // 13. Wave 1: KPI clickable — wire sau khi DOM đã render đủ values
+  // 14. Wave 1: KPI clickable — wire sau khi DOM đã render đủ values
   initKpiClickable();
 
-  // 14. AttentionPanel auto-refresh mỗi 5 phút
+  // 15. AttentionPanel auto-refresh mỗi 5 phút
   startAttentionAutoRefresh();
 });
