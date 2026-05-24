@@ -7,6 +7,9 @@
  * - openApplyAiReviewModal()
  * - confirmDeleteThesis / Assumption / Catalyst
  * - bindLessonPersistedEvent()   ← Wave D: listen decision:lesson-persisted
+ *
+ * Events dispatched:
+ *   thesis:review-complete  — after AI review succeeds → AttentionPanel refresh
  */
 
 import { el, showToast, openModal, closeModal } from '../../utils/dom.js';
@@ -255,6 +258,12 @@ export async function triggerAiReview(thesisId) {
     result.innerHTML = renderReviewRecommendResult(thesisId, data);
     result.classList.remove('hidden');
     await loadConvictionTimeline(thesisId);
+
+    // Wave 2 wire: AI review xong → notify app → AttentionPanel refresh
+    // AttentionPanel có thể đang hiển "cần review thesis X" — sau khi review xong phải biết.
+    document.dispatchEvent(new CustomEvent('thesis:review-complete', {
+      detail: { thesisId },
+    }));
   } catch (err) {
     result.innerHTML = `<div class="error-banner" style="margin:0;">AI review lỗi: ${esc(err.message)}</div>`;
     result.classList.remove('hidden');

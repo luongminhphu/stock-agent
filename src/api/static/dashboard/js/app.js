@@ -1,5 +1,5 @@
 /**
- * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard + Wave D lesson loop + Wave E brief ticker + Wave F brief feedback + Wave G brief generate + Wave 1 UX + Wave 2 memory + AttentionPanel + Wave 1 wire)
+ * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard + Wave D lesson loop + Wave E brief ticker + Wave F brief feedback + Wave G brief generate + Wave 1 UX + Wave 2 memory + AttentionPanel + Wave 1 wire + Wave 2 wire)
  * Responsibility: import tất cả modules, wire events, khởi động dashboard.
  * Rule: KHÔNG chứa business logic. Chỉ bootstrap + wiring.
  */
@@ -303,18 +303,33 @@ function bindQuickTradeDecisionRefresh() {
 //
 // watchlist:changed      — dispatched by watchlist-loader after add/remove
 // watchlist:scan-complete — dispatched by watchlist-loader after scan
-//
-// AttentionPanel tracks "việc cần làm hôm nay" which includes signal alerts
-// from the watchlist. When the watchlist changes, the panel must reflect
-// the new state without the user having to reload manually.
-//
-// Design intent: watchlist action → AttentionPanel always up-to-date.
 // ---------------------------------------------------------------------------
 function bindWatchlistAttentionRefresh() {
   document.addEventListener('watchlist:changed', () => {
     loadAttentionPanel();
   });
   document.addEventListener('watchlist:scan-complete', () => {
+    loadAttentionPanel();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Wave 2 wire: AI Review + Briefing generate → AttentionPanel refresh
+//
+// thesis:review-complete  — dispatched by thesis-service after triggerAiReview()
+// briefing:generated      — dispatched by brief-generate after POST succeeds
+//
+// AttentionPanel may hold items like "chưa review thesis X" or derive action
+// items from the latest brief. After either event, the panel must re-fetch
+// to stay accurate without the user reloading manually.
+//
+// Design intent: AI action → AttentionPanel always reflects current state.
+// ---------------------------------------------------------------------------
+function bindReviewAndBriefAttentionRefresh() {
+  document.addEventListener('thesis:review-complete', () => {
+    loadAttentionPanel();
+  });
+  document.addEventListener('briefing:generated', () => {
     loadAttentionPanel();
   });
 }
@@ -398,7 +413,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // PERF: debounce statusFilter — tránh trigger full reload khi user click nhanh
-  // 200ms delay đủ để ignore double-click mà không gây lag cảm nhận được
   el('statusFilter')?.addEventListener('change', debounce(loadDashboard, 200));
 
   // 5. Form row add buttons
@@ -463,6 +477,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 12. Wave 1 wire: watchlist mutations → AttentionPanel refresh
   bindWatchlistAttentionRefresh();
+
+  // 12b. Wave 2 wire: AI Review + Briefing generate → AttentionPanel refresh
+  bindReviewAndBriefAttentionRefresh();
 
   // 13. Initial parallel load — initKpiClickable() gọi sau khi data render xong
   await Promise.all([
