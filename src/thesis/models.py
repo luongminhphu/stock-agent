@@ -123,6 +123,10 @@ class Thesis(Base):
     target_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     stop_loss: Mapped[float | None] = mapped_column(Float, nullable=True)
     entry_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # actual_entry_price: giá vào lệnh thực tế, được set tự động khi /buy execute.
+    # Khác với entry_price (giá tham chiếu thesis gốc, immutable).
+    # Chỉ set lần đầu tiên — không overwrite khi mua thêm (avg down).
+    actual_entry_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
@@ -151,6 +155,7 @@ class Thesis(Base):
     def risk_reward(self) -> float | None:
         """Computed risk/reward ratio: upside / downside.
 
+        Uses entry_price (thesis reference price) — not actual_entry_price.
         Returns None when any required price field is missing,
         or when downside <= 0 (stop_loss >= entry_price).
         """

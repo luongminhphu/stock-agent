@@ -32,6 +32,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.logging import get_logger
@@ -89,6 +90,10 @@ class PortfolioService:
         ContextBuilder._fetch_portfolio_bias(). Omit to leave unchanged
         on an existing position, or NULL on a new one.
 
+        After saving the trade, if thesis_id is provided, backfills
+        thesis.actual_entry_price on the first buy only (guards None check
+        so avg-down trades do not overwrite the original entry price).
+
         Raises:
             ValueError: qty or price is not positive.
 
@@ -139,6 +144,9 @@ class PortfolioService:
         )
         await self._repo.save_trade(trade)
 
+        # Backfill actual_entry_price on the linked thesis (first buy only).
+        await self._backfill_thesis_entry(thesis_id=thesis_id, actual_price=price, user_id=user_id)
+
         logger.info(
             "portfolio.bought",
             user_id=user_id,
@@ -148,8 +156,49 @@ class PortfolioService:
             new_avg_cost=position.avg_cost,
             new_qty=position.qty,
             sector=sector,
+            thesis_id=thesis_id,
         )
         return position, trade
+
+    async def _backfill_thesis_entry(
+        self,
+        thesis_id: int | None,
+        actual_price: float,
+        user_id: str,
+    ) -> None:
+        """Set thesis.actual_entry_price on the first BUY execution.
+
+        Only writes when:
+          - thesis_id is not None
+          - thesis belongs to user_id
+          - thesis.actual_entry_price is currently None (first buy guard)
+
+        Intentionally uses direct SA query (no ThesisService import) to
+        avoid cross-segment dependency. This is a narrow, single-field
+        write — acceptable at this boundary.
+        """
+        if thesis_id is None:
+            return
+
+        # Lazy import to keep the cross-segment surface minimal.
+        from src.thesis.models import Thesis  # noqa: PLC0415
+
+        result = await self._session.execute(
+            select(Thesis).where(
+                Thesis.id == thesis_id,
+                Thesis.user_id == user_id,
+            )
+        )
+        thesis = result.scalar_one_or_none()
+        if thesis is not None and thesis.actual_entry_price is None:
+            thesis.actual_entry_price = actual_price
+            logger.info(
+                "thesis.actual_entry_price_set",
+                thesis_id=thesis_id,
+                ticker=thesis.ticker,
+                actual_entry_price=actual_price,
+                entry_price=thesis.entry_price,
+            )
 
     # ------------------------------------------------------------------
     # Sell
