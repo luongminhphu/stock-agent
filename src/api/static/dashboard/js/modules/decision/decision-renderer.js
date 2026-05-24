@@ -86,6 +86,9 @@ function buildDecisionRow(d, onEvaluate, onReplay) {
   const tr = document.createElement('tr');
   tr.className = 'dec-row';
   tr.dataset.id = d.id;
+  // FIX: gắn thesis_id để evaluateDecision có thể đọc từ DOM
+  // Wave 3 contract: evaluateDecision dùng closest('tr[data-thesis-id]')
+  tr.dataset.thesisId = d.thesis_id ?? '';
   tr.innerHTML = `
     <td><span class="dec-ticker">${esc(d.ticker)}</span></td>
     <td><span class="dec-type ${typeInfo.cls}">${typeInfo.label}</span></td>

@@ -55,6 +55,42 @@ export function renderReviewRecommendResult(thesisId, d) {
   const riskItems    = risks.map(r => `<li>${esc(r)}</li>`).join('');
   const watchItems   = watches.map(w => `<li>${esc(w)}</li>`).join('');
 
+  // Gợi ý action type dựa trên verdict — dùng để pre-fill nút B/S
+  const verdictUpper = String(d.verdict ?? '').toUpperCase();
+  const suggestedType = verdictUpper === 'BUY' ? 'BUY'
+    : verdictUpper === 'SELL' ? 'SELL'
+    : null;
+
+  // Lấy ticker từ thesis đang mở (state.theses đã load)
+  const thesis  = state.theses?.find(t => String(t.id) === String(thesisId));
+  const ticker  = thesis?.ticker ?? '';
+
+  // Quick-trade buttons — chỉ hiện nếu verdict là BUY hoặc SELL
+  const quickTradeHTML = ticker ? `
+    <div class="review-quick-trade" style="display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap;">
+      <span style="font-size:.8rem;color:var(--muted);">📌 Ghi nhanh lệnh cho <strong>${esc(ticker)}</strong>:</span>
+      <button
+        class="review-trade-btn review-trade-btn--buy ghost-btn"
+        data-trade-ticker="${esc(ticker)}"
+        data-trade-thesis-id="${thesisId}"
+        data-trade-type="BUY"
+        style="min-height:28px;padding:0 14px;font-size:.8rem;font-weight:600;
+               color:#6daa45;border-color:rgba(109,170,69,.4);
+               ${suggestedType === 'BUY' ? 'background:rgba(109,170,69,.1);' : ''}"
+        title="Log lệnh MUA ${esc(ticker)}"
+      >B</button>
+      <button
+        class="review-trade-btn review-trade-btn--sell ghost-btn"
+        data-trade-ticker="${esc(ticker)}"
+        data-trade-thesis-id="${thesisId}"
+        data-trade-type="SELL"
+        style="min-height:28px;padding:0 14px;font-size:.8rem;font-weight:600;
+               color:#dd6974;border-color:rgba(221,105,116,.4);
+               ${suggestedType === 'SELL' ? 'background:rgba(221,105,116,.1);' : ''}"
+        title="Log lệnh BÁN ${esc(ticker)}"
+      >S</button>
+    </div>` : '';
+
   return `
     <div class="suggest-body">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
@@ -88,6 +124,9 @@ export function renderReviewRecommendResult(thesisId, d) {
           • Verdict: ${esc(String(d.verdict ?? '').toUpperCase()) || 'N/A'}, confidence ${confPct}%<br/>
           ${risks[0] ? `• Rủi ro chính: ${esc(risks[0])}` : '• Rủi ro chính: Chưa có rủi ro nổi bật được nêu rõ.'}
         </div>
+
+        ${quickTradeHTML}
+
         <div style="display:flex;gap:10px;margin-top:10px;align-items:center;flex-wrap:wrap;">
           <span style="
             display:inline-flex;align-items:center;gap:6px;
@@ -104,4 +143,33 @@ export function renderReviewRecommendResult(thesisId, d) {
       </div>
     </div>
   `;
+}
+
+/**
+ * wireReviewQuickTrade — gắn click handler cho các nút B/S trong AI review result.
+ * Gọi sau khi inject renderReviewRecommendResult vào DOM.
+ *
+ * Khi user nhấn B hoặc S:
+ *   1. Dispatch CustomEvent 'openDecisionModal:prefill' với { ticker, thesisId, decisionType }
+ *   2. app.js lắng nghe event này và mở modal Log Decision với giá trị pre-fill sẵn.
+ *
+ * @param {HTMLElement} container — element chứa kết quả review (aiReviewResult-{id})
+ */
+export function wireReviewQuickTrade(container) {
+  if (!container) return;
+  container.addEventListener('click', (e) => {
+    const btn = e.target.closest('.review-trade-btn');
+    if (!btn) return;
+    e.stopPropagation();
+
+    const ticker     = btn.dataset.tradeTicker;
+    const thesisId   = btn.dataset.tradeThesisId ? Number(btn.dataset.tradeThesisId) : null;
+    const decisionType = btn.dataset.tradeType; // 'BUY' | 'SELL'
+
+    if (!ticker || !decisionType) return;
+
+    document.dispatchEvent(new CustomEvent('openDecisionModal:prefill', {
+      detail: { ticker, thesisId, decisionType },
+    }));
+  });
 }

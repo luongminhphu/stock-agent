@@ -1,5 +1,5 @@
 /**
- * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard + Wave D lesson loop + Wave E brief ticker + Wave F brief feedback + Wave G brief generate + Wave 1 UX + Wave 2 memory + AttentionPanel + Wave 1 wire + Wave 2 wire + Wave 3 wire)
+ * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard + Wave D lesson loop + Wave E brief ticker + Wave F brief feedback + Wave G brief generate + Wave 1 UX + Wave 2 memory + AttentionPanel + Wave 1 wire + Wave 2 wire + Wave 3 wire + Wave 4 wire)
  * Responsibility: import tất cả modules, wire events, khởi động dashboard.
  * Rule: KHÔNG chứa business logic. Chỉ bootstrap + wiring.
  */
@@ -326,6 +326,64 @@ function bindDecisionThesisRefresh() {
 }
 
 // ---------------------------------------------------------------------------
+// Wave 4 wire: decision events → AttentionPanel refresh ngay (không chờ 5 phút)
+//
+// decision:lesson-persisted — sau replay có key_lesson
+//   → lesson mới thường tạo "cần review thesis" attention item
+// decision:changed          — sau evaluate hoặc replay bất kỳ
+//   → outcome mới có thể ảnh hưởng đến stop-loss proximity hoặc overdue_review items
+//
+// AttentionPanel tự có auto-refresh 5 phút, nhưng với các action có latency thấp
+// (evaluate, replay) thì refresh ngay cho phép investor thấy impact ngay lập tức.
+// ---------------------------------------------------------------------------
+function bindDecisionLessonAttentionRefresh() {
+  document.addEventListener('decision:lesson-persisted', () => {
+    loadAttentionPanel();
+  });
+  document.addEventListener('decision:changed', () => {
+    // Không cần guard thesisId ở đây — attention là global readmodel,
+    // bất kỳ decision change nào cũng có thể ảnh hưởng attention items.
+    loadAttentionPanel();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Wave 4 wire: Review tab B/S → openDecisionModal:prefill
+//
+// render-ai-review.js dispatch 'openDecisionModal:prefill' khi user nhấn B/S.
+// app.js nhận event → pre-fill form decisionModal → mở modal.
+// Adapter layer: không có business logic — chỉ map event → UI.
+// ---------------------------------------------------------------------------
+function bindReviewQuickTradeModal() {
+  document.addEventListener('openDecisionModal:prefill', async (e) => {
+    const { ticker, thesisId, decisionType } = e.detail ?? {};
+    if (!ticker || !decisionType) return;
+
+    // Mở modal (populate thesis select)
+    await openDecisionModal();
+
+    // Pre-fill ticker
+    const tickerField = document.getElementById('decTickerField');
+    if (tickerField) tickerField.value = ticker;
+
+    // Pre-fill action type (BUY / SELL)
+    const actionField = document.getElementById('decActionField') ??
+      document.querySelector('[name="decActionField"]');
+    if (actionField) actionField.value = decisionType;
+
+    // Pre-fill thesis select nếu thesisId có
+    if (thesisId) {
+      const sel = document.getElementById('decisionThesisSelect');
+      if (sel) {
+        // Select option matching thesisId nếu đã populate
+        const opt = sel.querySelector(`option[value="${thesisId}"]`);
+        if (opt) sel.value = String(thesisId);
+      }
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Bootstrap
 // ---------------------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', async () => {
@@ -472,6 +530,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 12c. Wave 3 wire: decision:changed { thesisId } → loadThesisDetail if selected
   bindDecisionThesisRefresh();
+
+  // 12d. Wave 4 wire: decision:lesson-persisted + decision:changed → AttentionPanel refresh ngay
+  bindDecisionLessonAttentionRefresh();
+
+  // 12e. Wave 4 wire: Review tab B/S → openDecisionModal:prefill
+  bindReviewQuickTradeModal();
 
   // 13. Initial parallel load
   await Promise.all([
