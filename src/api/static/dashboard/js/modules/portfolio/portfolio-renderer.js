@@ -213,7 +213,15 @@ function renderTradesTab(data, errors) {
     const hasError = missingPriceTickers.has(p.ticker);
     return `
       <tr${hasError ? ' class="row-data-error"' : ''}>
-        <td><strong>${p.ticker}</strong>${hasError ? ' <span class="cell-error-dot" title="Thiếu dữ liệu giá">●</span>' : ''}</td>
+        <td class="col-ticker">
+          <strong>${p.ticker}</strong>${hasError ? ' <span class="cell-error-dot" title="Thiếu dữ liệu giá">●</span>' : ''}
+        </td>
+        <td class="col-action">
+          <div class="action-btns">
+            <button class="action-btn action-btn--buy"  data-ticker="${p.ticker}" title="Mua thêm ${p.ticker}">B</button>
+            <button class="action-btn action-btn--sell" data-ticker="${p.ticker}" title="Bán ${p.ticker}">S</button>
+          </div>
+        </td>
         <td class="num">${p.qty != null ? p.qty.toLocaleString('vi-VN') : '—'}</td>
         <td class="num">${fmtVnd(p.avg_cost)}</td>
         <td class="num${p.current_price == null ? ' cell-missing' : ''}">${fmtVnd(p.current_price)}</td>
@@ -240,9 +248,15 @@ function renderTradesTab(data, errors) {
       <table class="data-table">
         <thead>
           <tr>
-            <th>Ticker</th><th class="num">Khối lượng</th><th class="num">Giá vốn TB</th>
-            <th class="num">Giá HT</th><th class="num">Chi phí vốn</th>
-            <th class="num">Thị giá</th><th class="num">P&amp;L</th><th class="num">%P&amp;L</th>
+            <th class="col-ticker">Ticker</th>
+            <th class="col-action">Hành động</th>
+            <th class="num">Khối lượng</th>
+            <th class="num">Giá vốn TB</th>
+            <th class="num">Giá HT</th>
+            <th class="num">Chi phí vốn</th>
+            <th class="num">Thị giá</th>
+            <th class="num">P&amp;L</th>
+            <th class="num">%P&amp;L</th>
           </tr>
         </thead>
         <tbody data-holdings-tbody>${rows}</tbody>
@@ -292,7 +306,15 @@ function renderThesisTab(data, errors) {
 
     return `
       <tr${hasError ? ' class="row-data-error"' : ''}>
-        <td><strong>${p.ticker}</strong>${hasError ? ' <span class="cell-error-dot" title="Thiếu entry & avg_cost">●</span>' : ''}</td>
+        <td class="col-ticker">
+          <strong>${p.ticker}</strong>${hasError ? ' <span class="cell-error-dot" title="Thiếu entry & avg_cost">●</span>' : ''}
+        </td>
+        <td class="col-action">
+          <div class="action-btns">
+            <button class="action-btn action-btn--buy"  data-ticker="${p.ticker}" title="Mua thêm ${p.ticker}">B</button>
+            <button class="action-btn action-btn--sell" data-ticker="${p.ticker}" title="Bán ${p.ticker}">S</button>
+          </div>
+        </td>
         <td><span class="verdict-badge ${badge.cls}">${badge.icon} ${verdict || '—'}</span></td>
         <td class="num${entryDisplay == null ? ' cell-missing' : ''}" title="${entryLabel}">${fmtVnd(entryDisplay)}</td>
         <td class="num${p.current_price == null ? ' cell-missing' : ''}">${fmtVnd(p.current_price)}</td>
@@ -319,8 +341,13 @@ function renderThesisTab(data, errors) {
       <table class="data-table">
         <thead>
           <tr>
-            <th>Ticker</th><th>Verdict</th><th class="num">Entry</th>
-            <th class="num">Giá HT</th><th class="num">P&amp;L %</th><th class="num">Score</th>
+            <th class="col-ticker">Ticker</th>
+            <th class="col-action">Hành động</th>
+            <th>Verdict</th>
+            <th class="num">Entry</th>
+            <th class="num">Giá HT</th>
+            <th class="num">P&amp;L %</th>
+            <th class="num">Score</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
