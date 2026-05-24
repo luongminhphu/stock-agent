@@ -163,7 +163,7 @@ export async function openEditThesisModal(thesisId) {
     el('thesisTargetField').value    = t.target_price ?? '';
     el('thesisStopField').value      = t.stop_loss ?? '';
     el('thesisStatusField').value    = t.status ?? 'active';
-    el('thesisDirectionField').value = t.direction ?? 'bullish';
+    el('thesisDirectionField').value = t.direction ?? '';  // fix: was ?? 'bullish' — invalid enum fallback
     el('suggestTicker').value        = t.ticker ?? '';
     clearFormRows();
     const aWrap   = el('thesisFormAssumptionRows');
@@ -283,7 +283,7 @@ export function bindThesisFormEvents({ onThesisSaved } = {}) {
       target_price: el('thesisTargetField').value ? Number(el('thesisTargetField').value) : null,
       stop_loss:    el('thesisStopField').value   ? Number(el('thesisStopField').value)   : null,
       status:       el('thesisStatusField').value,
-      direction:    el('thesisDirectionField').value,
+      direction:    el('thesisDirectionField').value || null,  // fix: omit if empty to avoid invalid enum
     };
     const assumptions = collectFormAssumptions();
     const catalysts   = collectFormCatalysts();
