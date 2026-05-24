@@ -556,6 +556,9 @@ async def get_portfolio_trades(
                 "market_value": p.market_value,
                 "unrealized_pnl": p.unrealized_pnl,
                 "unrealized_pct": p.unrealized_pct,
+                # thesis_id: forward to frontend so QuickTrade can pre-select the linked
+                # thesis in the dropdown (Trades tab only — Thesis tab uses p.id directly).
+                "thesis_id": p.thesis_id,
             }
             for p in pnl.positions
         ],

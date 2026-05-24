@@ -11,11 +11,19 @@
  *   - cell-error marker cho missing critical data trong row
  *
  * Wave 2 — QuickTrade modal integration:
- *   - Xoá inline B/S button HTML khỏi renderer
  *   - <tr> rows mang data-thesis-id để QuickTrade.injectTradeButtons() pick up
- *   - renderPortfolio() gọi QuickTrade.injectTradeButtons(tbody) sau khi inject HTML
- *   - Trades tab: data-thesis-id từ position.thesis_id (nếu có)
- *   - Thesis tab: data-thesis-id từ position.id (thesis_id của thesis đó)
+ *   - renderPortfolio() gọi QuickTrade.injectTradeButtons(tbody, opts) sau khi inject HTML
+ *
+ * Thesis wiring per tab:
+ *   Trades tab:
+ *     - data-thesis-id từ position.thesis_id (có thể null)
+ *     - injectTradeButtons(tbody)              → fromThesisTab = false (mặc định)
+ *     - Modal hiển thị dropdown chọn thesis theo ticker
+ *
+ *   Thesis tab:
+ *     - data-thesis-id từ position.id (luôn có — đây chính là thesis_id của row đó)
+ *     - injectTradeButtons(tbody, { fromThesisTab: true })
+ *     - Modal ẩn dropdown, hiển thị badge read-only, thesis_id luôn được forward
  */
 
 import { el } from '../../utils/dom.js';
@@ -28,10 +36,6 @@ function fmtVnd(val) {
   return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val);
 }
 
-/**
- * Format tỷ lệ phần trăm.
- * Nhận vào dạng % thực (vd: 65.94, -2.83).
- */
 function fmtPct(val) {
   if (val == null) return '—';
   const sign = val >= 0 ? '+' : '';
@@ -51,83 +55,30 @@ function pnlIcon(val) {
 // ---------------------------------------------------------------------------
 // Error Collector
 // ---------------------------------------------------------------------------
-/**
- * severity: 'critical' | 'warning' | 'info'
- * scope:    'trades' | 'thesis' | 'both'
- */
 function collectErrors(trades, thesis) {
   const errors = [];
 
-  // --- Trades ---
   if (trades === null) {
-    errors.push({
-      severity: 'critical',
-      scope: 'trades',
-      message: 'API trades không phản hồi — dữ liệu vị thế không khả dụng.',
-    });
+    errors.push({ severity: 'critical', scope: 'trades', message: 'API trades không phản hồi — dữ liệu vị thế không khả dụng.' });
   } else if (trades) {
     const positions = trades.positions ?? [];
     const missingPrice = positions.filter(p => p.current_price == null).length;
     const missingCost  = positions.filter(p => p.avg_cost == null && p.cost_basis == null).length;
-    if (missingPrice > 0) {
-      errors.push({
-        severity: 'warning',
-        scope: 'trades',
-        message: `${missingPrice} position${missingPrice > 1 ? 's' : ''} thiếu giá thị trường hiện tại.`,
-      });
-    }
-    if (missingCost > 0) {
-      errors.push({
-        severity: 'warning',
-        scope: 'trades',
-        message: `${missingCost} position${missingCost > 1 ? 's' : ''} thiếu giá vốn — P&L có thể không chính xác.`,
-      });
-    }
+    if (missingPrice > 0) errors.push({ severity: 'warning', scope: 'trades', message: `${missingPrice} position${missingPrice > 1 ? 's' : ''} thiếu giá thị trường hiện tại.` });
+    if (missingCost > 0)  errors.push({ severity: 'warning', scope: 'trades', message: `${missingCost} position${missingCost > 1 ? 's' : ''} thiếu giá vốn — P&L có thể không chính xác.` });
   }
 
-  // --- Thesis ---
   if (thesis === null) {
-    errors.push({
-      severity: 'critical',
-      scope: 'thesis',
-      message: 'API thesis portfolio không phản hồi — dữ liệu thesis không khả dụng.',
-    });
+    errors.push({ severity: 'critical', scope: 'thesis', message: 'API thesis portfolio không phản hồi — dữ liệu thesis không khả dụng.' });
   } else if (thesis) {
     const positions = thesis.positions ?? [];
-    const missingEntry = positions.filter(
-      p => p.entry_price == null && p.avg_cost == null,
-    ).length;
+    const missingEntry = positions.filter(p => p.entry_price == null && p.avg_cost == null).length;
     const missingPrice = positions.filter(p => p.current_price == null).length;
     const missingScore = positions.filter(p => p.score == null).length;
-
-    if (missingEntry > 0) {
-      errors.push({
-        severity: 'warning',
-        scope: 'thesis',
-        message: `${missingEntry} thesis thiếu cả entry_price lẫn avg_cost — P&L % không tính được.`,
-      });
-    }
-    if (missingPrice > 0) {
-      errors.push({
-        severity: 'warning',
-        scope: 'thesis',
-        message: `${missingPrice} thesis thiếu giá thị trường hiện tại.`,
-      });
-    }
-    if (!thesis.has_quantity_data) {
-      errors.push({
-        severity: 'info',
-        scope: 'thesis',
-        message: 'Một số thesis chưa có quantity — thị giá & vốn có thể không đầy đủ.',
-      });
-    }
-    if (missingScore > 0) {
-      errors.push({
-        severity: 'info',
-        scope: 'thesis',
-        message: `${missingScore} thesis chưa có điểm AI score.`,
-      });
-    }
+    if (missingEntry > 0) errors.push({ severity: 'warning', scope: 'thesis', message: `${missingEntry} thesis thiếu cả entry_price lẫn avg_cost — P&L % không tính được.` });
+    if (missingPrice > 0) errors.push({ severity: 'warning', scope: 'thesis', message: `${missingPrice} thesis thiếu giá thị trường hiện tại.` });
+    if (!thesis.has_quantity_data) errors.push({ severity: 'info', scope: 'thesis', message: 'Một số thesis chưa có quantity — thị giá & vốn có thể không đầy đủ.' });
+    if (missingScore > 0) errors.push({ severity: 'info', scope: 'thesis', message: `${missingScore} thesis chưa có điểm AI score.` });
   }
 
   return errors;
@@ -144,36 +95,28 @@ const SEVERITY_META = {
 
 function renderErrorBanner(errors) {
   if (!errors.length) return '';
-
   const criticalCount = errors.filter(e => e.severity === 'critical').length;
   const warningCount  = errors.filter(e => e.severity === 'warning').length;
   const totalCount    = errors.length;
-
-  const summaryParts = [];
+  const summaryParts  = [];
   if (criticalCount) summaryParts.push(`🔴 ${criticalCount} nghiêm trọng`);
   if (warningCount)  summaryParts.push(`🟡 ${warningCount} cảnh báo`);
   const infoCount = totalCount - criticalCount - warningCount;
   if (infoCount)     summaryParts.push(`🔵 ${infoCount} thông tin`);
-
   const items = errors.map(e => {
     const meta = SEVERITY_META[e.severity] ?? SEVERITY_META.info;
     return `<li class="perr-item ${meta.cls}">${meta.icon} ${e.message}</li>`;
   }).join('');
-
   return `
     <div class="perr-banner" role="alert" aria-live="polite">
-      <button class="perr-toggle" aria-expanded="false" aria-controls="perrList"
-              type="button">
+      <button class="perr-toggle" aria-expanded="false" aria-controls="perrList" type="button">
         <span class="perr-summary">⚠️ ${totalCount} vấn đề dữ liệu — ${summaryParts.join(', ')}</span>
         <span class="perr-chevron" aria-hidden="true">▾</span>
       </button>
-      <ul class="perr-list" id="perrList" hidden>
-        ${items}
-      </ul>
+      <ul class="perr-list" id="perrList" hidden>${items}</ul>
     </div>`;
 }
 
-// Wire banner toggle — gọi sau khi banner được inject vào DOM
 function wireBannerToggle(wrap) {
   const btn  = wrap.querySelector('.perr-toggle');
   const list = wrap.querySelector('.perr-list');
@@ -186,9 +129,6 @@ function wireBannerToggle(wrap) {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Tab badge helper
-// ---------------------------------------------------------------------------
 function badgeHTML(count) {
   if (!count) return '';
   return `<span class="perr-tab-badge" aria-label="${count} vấn đề">${count}</span>`;
@@ -199,26 +139,20 @@ function badgeHTML(count) {
 // ---------------------------------------------------------------------------
 function renderTradesTab(data, errors) {
   if (!data) return '<p class="empty-state">Không thể tải dữ liệu giao dịch.</p>';
-
   const positions = data.positions ?? [];
-  if (!positions.length) {
-    return '<p class="empty-state">Chưa có vị thế nào. Dùng <code>/buy</code> trên Discord để bắt đầu.</p>';
-  }
+  if (!positions.length) return '<p class="empty-state">Chưa có vị thế nào. Dùng <code>/buy</code> trên Discord để bắt đầu.</p>';
 
   const totalPnl  = data.total_unrealized_pnl ?? 0;
   const totalPct  = data.total_unrealized_pct ?? 0;
   const totalCost = data.total_cost_basis ?? 0;
   const totalMkt  = data.total_market_value ?? 0;
 
-  // Tập hợp tickers có lỗi để đánh dấu row
-  const missingPriceTickers = new Set(
-    positions.filter(p => p.current_price == null).map(p => p.ticker),
-  );
+  const missingPriceTickers = new Set(positions.filter(p => p.current_price == null).map(p => p.ticker));
 
   const rows = positions.map(p => {
     const pct      = p.unrealized_pct ?? null;
     const hasError = missingPriceTickers.has(p.ticker);
-    // data-thesis-id: forward nếu position được liên kết thesis
+    // thesis_id từ backend (PositionPnl.thesis_id) — cho phép QuickTrade pre-select dropdown
     const thesisAttr = p.thesis_id ? ` data-thesis-id="${p.thesis_id}"` : '';
     return `
       <tr class="col-ticker${hasError ? ' row-data-error' : ''}"${thesisAttr}>
@@ -231,15 +165,12 @@ function renderTradesTab(data, errors) {
         <td class="num${p.current_price == null ? ' cell-missing' : ''}">${fmtVnd(p.current_price)}</td>
         <td class="num">${fmtVnd(p.cost_basis)}</td>
         <td class="num">${fmtVnd(p.market_value)}</td>
-        <td class="num ${pnlClass(p.unrealized_pnl)}">
-          ${pnlIcon(p.unrealized_pnl)} ${fmtVnd(p.unrealized_pnl)}
-        </td>
+        <td class="num ${pnlClass(p.unrealized_pnl)}">${pnlIcon(p.unrealized_pnl)} ${fmtVnd(p.unrealized_pnl)}</td>
         <td class="num ${pnlClass(pct)}">${fmtPct(pct)}</td>
       </tr>`;
   }).join('');
 
   const banner = renderErrorBanner(errors.filter(e => e.scope === 'trades'));
-
   return `
     ${banner}
     <div class="portfolio-summary">
@@ -263,7 +194,7 @@ function renderTradesTab(data, errors) {
             <th class="num">%P&amp;L</th>
           </tr>
         </thead>
-        <tbody data-holdings-tbody>${rows}</tbody>
+        <tbody data-holdings-tbody data-tab="trades">${rows}</tbody>
       </table>
     </div>`;
 }
@@ -280,22 +211,16 @@ const VERDICT_BADGE = {
 
 function renderThesisTab(data, errors) {
   if (!data) return '<p class="empty-state">Không thể tải dữ liệu thesis portfolio.</p>';
-
   const positions = data.positions ?? [];
-  if (!positions.length) {
-    return '<p class="empty-state">Chưa có thesis active nào. Dùng <code>/thesis add</code> hoặc tạo trực tiếp tại đây.</p>';
-  }
+  if (!positions.length) return '<p class="empty-state">Chưa có thesis active nào. Dùng <code>/thesis add</code> hoặc tạo trực tiếp tại đây.</p>';
 
   const totalPnlPct = data.total_pnl_pct;
   const winning     = data.winning_count ?? 0;
   const losing      = data.losing_count ?? 0;
   const n           = data.position_count ?? positions.length;
 
-  // Tickers thiếu entry để đánh dấu row
   const missingEntryTickers = new Set(
-    positions
-      .filter(p => p.entry_price == null && p.avg_cost == null)
-      .map(p => p.ticker),
+    positions.filter(p => p.entry_price == null && p.avg_cost == null).map(p => p.ticker),
   );
 
   const rows = positions.map(p => {
@@ -307,7 +232,7 @@ function renderThesisTab(data, errors) {
     const entryDisplay = p.avg_cost ?? p.entry_price;
     const entryLabel   = p.avg_cost != null ? 'avg_cost' : 'entry';
     const hasError     = missingEntryTickers.has(p.ticker);
-    // data-thesis-id: p.id là thesis_id của thesis position này
+    // p.id là thesis_id — luôn có — modal sẽ dùng làm read-only (fromThesisTab = true)
     const thesisAttr   = p.id ? ` data-thesis-id="${p.id}"` : '';
 
     return `
@@ -327,7 +252,6 @@ function renderThesisTab(data, errors) {
   const summaryPnl = totalPnlPct != null
     ? `${pnlIcon(totalPnlPct)} P&amp;L avg: <strong class="${pnlClass(totalPnlPct)}">${fmtPct(totalPnlPct)}</strong>`
     : '';
-
   const banner = renderErrorBanner(errors.filter(e => e.scope === 'thesis'));
 
   return `
@@ -351,7 +275,7 @@ function renderThesisTab(data, errors) {
             <th class="num">Score</th>
           </tr>
         </thead>
-        <tbody data-holdings-tbody>${rows}</tbody>
+        <tbody data-holdings-tbody data-tab="thesis">${rows}</tbody>
       </table>
     </div>`;
 }
@@ -364,12 +288,8 @@ export function renderPortfolio(wrap, { trades, thesis }) {
   const tradesErrors = errors.filter(e => e.scope === 'trades');
   const thesisErrors = errors.filter(e => e.scope === 'thesis');
 
-  const tradesBadge = badgeHTML(
-    tradesErrors.filter(e => e.severity !== 'info').length,
-  );
-  const thesisBadge = badgeHTML(
-    thesisErrors.filter(e => e.severity !== 'info').length,
-  );
+  const tradesBadge = badgeHTML(tradesErrors.filter(e => e.severity !== 'info').length);
+  const thesisBadge = badgeHTML(thesisErrors.filter(e => e.severity !== 'info').length);
 
   wrap.innerHTML = `
     <div class="portfolio-tab-bar" role="tablist" aria-label="Portfolio view">
@@ -386,21 +306,10 @@ export function renderPortfolio(wrap, { trades, thesis }) {
     <div id="portfolioThesisPane" class="portfolio-pane hidden">${renderThesisTab(thesis, errors)}</div>
   `;
 
-  // Wire error banner toggles
   wrap.querySelectorAll('.perr-banner').forEach(banner => wireBannerToggle(banner));
 
-  // Inject QuickTrade modal buttons vào tất cả tbody[data-holdings-tbody]
-  // QuickTrade.injectTradeButtons() đọc data-thesis-id từ <tr> và col-ticker từ td.col-ticker
-  // Safe to call nếu QuickTrade chưa load — guard window.QuickTrade
-  if (window.QuickTrade) {
-    wrap.querySelectorAll('tbody[data-holdings-tbody]').forEach(tbody => {
-      window.QuickTrade.injectTradeButtons(tbody);
-    });
-  }
-
-  // Expose refresh callback cho QuickTrade toast — reload toàn bộ portfolio data
-  // Caller (portfolio-loader.js) có thể override window.__qtRefreshHoldings
-  // nếu chưa set thì no-op
+  // Inject trade buttons — per-tab opts
+  _injectAllTradeButtons(wrap);
 
   // Wire tab switching
   wrap.querySelectorAll('.portfolio-tab').forEach(btn => {
@@ -410,19 +319,38 @@ export function renderPortfolio(wrap, { trades, thesis }) {
         t.setAttribute('aria-selected', 'false');
       });
       wrap.querySelectorAll('.portfolio-pane').forEach(p => p.classList.add('hidden'));
-
       btn.classList.add('active');
       btn.setAttribute('aria-selected', 'true');
       wrap.querySelector(`#${btn.getAttribute('aria-controls')}`)?.classList.remove('hidden');
 
-      // Re-inject QuickTrade buttons khi tab switch (pane vừa unhidden)
+      // Re-inject on tab switch (pane vừa unhidden)
       const paneId = btn.getAttribute('aria-controls');
       const pane   = wrap.querySelector(`#${paneId}`);
       if (pane && window.QuickTrade) {
         pane.querySelectorAll('tbody[data-holdings-tbody]').forEach(tbody => {
-          window.QuickTrade.injectTradeButtons(tbody);
+          window.QuickTrade.injectTradeButtons(tbody, _tbodyOpts(tbody));
         });
       }
     });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Derive { fromThesisTab } opts from tbody's data-tab attribute.
+ * data-tab="thesis"  → fromThesisTab: true
+ * data-tab="trades" or missing → fromThesisTab: false
+ */
+function _tbodyOpts(tbody) {
+  return { fromThesisTab: tbody.dataset.tab === 'thesis' };
+}
+
+function _injectAllTradeButtons(wrap) {
+  if (!window.QuickTrade) return;
+  wrap.querySelectorAll('tbody[data-holdings-tbody]').forEach(tbody => {
+    window.QuickTrade.injectTradeButtons(tbody, _tbodyOpts(tbody));
   });
 }

@@ -1,21 +1,31 @@
 /**
- * quick-trade.js — B/S quick-trade buttons for Holdings table (Trades tab)
+ * quick-trade.js — B/S quick-trade buttons for Holdings table
  *
  * Injects a [B] and [S] button into the .col-action cell of every holdings row.
  * Clicking opens a modal → user enters qty + price + optional rationale
  * → POST /api/v1/portfolio/buy|sell
  *
- * If a thesis_id is stored on the row (data-thesis-id attribute on <tr>),
- * it is forwarded automatically so the backend can create a DecisionLog.
+ * Thesis wiring — two modes controlled by `fromThesisTab` flag:
+ *
+ *   fromThesisTab = false  (Trades tab)
+ *     - Renders a <select> dropdown populated with active theses for the ticker.
+ *     - If position already has a linked thesis_id (data-thesis-id on <tr>),
+ *       that option is pre-selected.
+ *     - If only one thesis exists for the ticker, it is auto-selected.
+ *     - User can change the selection or leave it blank (no DecisionLog).
+ *
+ *   fromThesisTab = true  (Thesis tab)
+ *     - thesis_id is already known from the row — no dropdown needed.
+ *     - Modal shows a read-only thesis badge instead of a dropdown.
+ *     - thesis_id is always forwarded to the backend.
  *
  * On success: dismisses modal, refreshes holdings data, shows inline toast.
  *
  * Dependencies: none (vanilla JS, no framework).
- * Called from: portfolio-loader.js after holdings table is rendered.
- *
  * Public API:
- *   initQuickTrade()             — call once after DOM is ready
- *   injectTradeButtons(tbodyEl)  — call after each holdings table re-render
+ *   QuickTrade.init()                    — call once after DOM is ready
+ *   QuickTrade.injectTradeButtons(tbody) — call after each table re-render
+ *   QuickTrade.openModal(ticker, type, thesisId, opts)
  */
 
 (function (global) {
@@ -39,14 +49,38 @@
               <span class="qt-badge" id="qt-type-badge">MUA</span>
               <span class="qt-ticker-label" id="qt-ticker-display"></span>
             </div>
+
             <label class="qt-label" for="qt-qty">Số lượng (cp)</label>
             <input class="qt-input" id="qt-qty" type="number" min="1" step="100" placeholder="VD: 1000" />
+
             <label class="qt-label" for="qt-price">Giá (VND/cp)</label>
             <input class="qt-input" id="qt-price" type="number" min="100" step="100" placeholder="VD: 48500" />
-            <label class="qt-label" for="qt-rationale">Lý do quyết định <span class="qt-optional">(tuỳ chọn — để log decision)</span></label>
-            <input class="qt-input" id="qt-rationale" type="text" maxlength="500" placeholder="VD: Breakout khỏi vùng tích luỹ, volume tăng mạnh" />
+
+            <!-- Thesis section — toggled by fromThesisTab -->
+            <div id="qt-thesis-section">
+              <!-- Trades tab: dropdown -->
+              <div id="qt-thesis-dropdown-wrap">
+                <label class="qt-label" for="qt-thesis-select">
+                  Thesis liên kết <span class="qt-optional">(để log decision)</span>
+                </label>
+                <select class="qt-input qt-select" id="qt-thesis-select">
+                  <option value="">— Không liên kết thesis —</option>
+                </select>
+              </div>
+              <!-- Thesis tab: read-only badge -->
+              <div id="qt-thesis-badge-wrap" hidden>
+                <label class="qt-label">Thesis</label>
+                <div class="qt-thesis-readonly" id="qt-thesis-badge-label"></div>
+              </div>
+            </div>
+
+            <label class="qt-label" for="qt-rationale">Lý do quyết định <span class="qt-optional">(tuỳ chọn)</span></label>
+            <textarea class="qt-input qt-textarea" id="qt-rationale" maxlength="500"
+              placeholder="VD: Breakout khỏi vùng tích luỹ, volume tăng mạnh" rows="3"></textarea>
+
             <label class="qt-label" for="qt-note">Ghi chú (tuỳ chọn)</label>
             <input class="qt-input" id="qt-note" type="text" maxlength="200" placeholder="" />
+
             <div class="qt-summary" id="qt-summary"></div>
             <div class="qt-error" id="qt-error" hidden></div>
           </div>
@@ -62,19 +96,27 @@
   }
 
   // ─── State ─────────────────────────────────────────────────────────────────
-  let _currentTicker   = '';
-  let _currentType     = 'buy'; // 'buy' | 'sell'
-  let _currentThesisId = null;  // int | null — forwarded from data-thesis-id
+  let _currentTicker      = '';
+  let _currentType        = 'buy';
+  let _currentThesisId    = null;   // resolved thesis_id to send to backend
+  let _fromThesisTab      = false;  // true → suppress dropdown, show badge
 
   // ─── Modal lifecycle ───────────────────────────────────────────────────────
-  function openModal(ticker, type, thesisId) {
+  /**
+   * @param {string} ticker
+   * @param {'buy'|'sell'} type
+   * @param {number|null} thesisId  — from data-thesis-id on <tr>
+   * @param {{ fromThesisTab?: boolean }} opts
+   */
+  function openModal(ticker, type, thesisId, opts) {
     _currentTicker   = ticker.toUpperCase();
     _currentType     = type;
     _currentThesisId = thesisId || null;
+    _fromThesisTab   = !!(opts && opts.fromThesisTab);
 
     const badge = document.getElementById('qt-type-badge');
-    badge.textContent  = type === 'buy' ? 'MUA' : 'BÁN';
-    badge.className    = 'qt-badge ' + (type === 'buy' ? 'qt-badge-buy' : 'qt-badge-sell');
+    badge.textContent = type === 'buy' ? 'MUA' : 'BÁN';
+    badge.className   = 'qt-badge ' + (type === 'buy' ? 'qt-badge-buy' : 'qt-badge-sell');
 
     document.getElementById('qt-ticker-display').textContent = _currentTicker;
     document.getElementById('qt-title').textContent =
@@ -86,12 +128,23 @@
     document.getElementById('qt-summary').textContent = '';
     _hideError();
 
-    // Hint: nếu không có thesis, rationale sẽ không tạo DecisionLog
-    const rationaleLabel = document.querySelector('label[for="qt-rationale"] .qt-optional');
-    if (rationaleLabel) {
-      rationaleLabel.textContent = _currentThesisId
-        ? '(có thesis — sẽ log decision nếu điền)'
-        : '(cần thesis_id để log decision)';
+    const dropdownWrap = document.getElementById('qt-thesis-dropdown-wrap');
+    const badgeWrap    = document.getElementById('qt-thesis-badge-wrap');
+    const badgeLabel   = document.getElementById('qt-thesis-badge-label');
+    const select       = document.getElementById('qt-thesis-select');
+
+    if (_fromThesisTab) {
+      // Thesis tab — thesis already known, show read-only badge
+      dropdownWrap.hidden = true;
+      badgeWrap.hidden    = false;
+      badgeLabel.textContent = _currentThesisId
+        ? `Thesis #${_currentThesisId}`
+        : '—';
+    } else {
+      // Trades tab — show dropdown, populate async
+      dropdownWrap.hidden = false;
+      badgeWrap.hidden    = true;
+      _loadThesisOptions(_currentTicker, _currentThesisId);
     }
 
     document.getElementById(MODAL_ID).removeAttribute('hidden');
@@ -102,6 +155,47 @@
     document.getElementById(MODAL_ID).setAttribute('hidden', '');
   }
 
+  // ─── Thesis dropdown population (Trades tab only) ─────────────────────────
+  async function _loadThesisOptions(ticker, preselectedId) {
+    const select = document.getElementById('qt-thesis-select');
+    if (!select) return;
+
+    // Reset + loading state
+    select.innerHTML = '<option value="">Đang tải thesis…</option>';
+    select.disabled  = true;
+
+    try {
+      const res = await fetch(
+        `/api/v1/readmodel/dashboard/theses?status=active&ticker=${encodeURIComponent(ticker)}&enrich_prices=false`,
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data  = await res.json();
+      const items = (data.items || []).filter(t => t.ticker === ticker);
+
+      select.innerHTML = '<option value="">— Không liên kết thesis —</option>';
+
+      items.forEach(function (t) {
+        const opt = document.createElement('option');
+        opt.value       = String(t.id);
+        const verdict   = t.last_verdict ? ` (${t.last_verdict})` : '';
+        opt.textContent = `#${t.id} ${t.ticker} — ${t.title || 'Không có tiêu đề'}${verdict}`;
+        if (preselectedId && t.id === preselectedId) opt.selected = true;
+        select.appendChild(opt);
+      });
+
+      // Auto-select if exactly one thesis for this ticker
+      if (items.length === 1 && !preselectedId) {
+        select.value = String(items[0].id);
+      }
+    } catch (_err) {
+      // Fail silently — user can still trade without thesis link
+      select.innerHTML = '<option value="">— Không tải được thesis —</option>';
+    } finally {
+      select.disabled = false;
+    }
+  }
+
+  // ─── Events ────────────────────────────────────────────────────────────────
   function _bindModalEvents() {
     document.getElementById('qt-close-btn').addEventListener('click', closeModal);
     document.getElementById('qt-cancel-btn').addEventListener('click', closeModal);
@@ -111,7 +205,6 @@
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') closeModal();
     });
-    // Live summary
     ['qt-qty', 'qt-price'].forEach(function (id) {
       document.getElementById(id).addEventListener('input', _updateSummary);
     });
@@ -143,6 +236,18 @@
     document.getElementById('qt-error').setAttribute('hidden', '');
   }
 
+  // ─── Resolve final thesis_id before submit ─────────────────────────────────
+  function _resolveThesisId() {
+    if (_fromThesisTab) {
+      // Thesis tab: always use the row's thesis_id
+      return _currentThesisId;
+    }
+    // Trades tab: prefer dropdown selection over row's thesis_id
+    const select = document.getElementById('qt-thesis-select');
+    if (select && select.value) return parseInt(select.value, 10);
+    return _currentThesisId;
+  }
+
   // ─── API call ──────────────────────────────────────────────────────────────
   async function _handleConfirm() {
     _hideError();
@@ -158,11 +263,12 @@
     btn.disabled    = true;
     btn.textContent = 'Đang xử lý…';
 
+    const resolvedThesisId = _resolveThesisId();
     const endpoint = '/api/v1/portfolio/' + _currentType;
     const body = { ticker: _currentTicker, qty, price };
-    if (note)              body.note      = note;
-    if (rationale)         body.rationale = rationale;
-    if (_currentThesisId)  body.thesis_id = _currentThesisId;
+    if (note)               body.note      = note;
+    if (rationale)          body.rationale = rationale;
+    if (resolvedThesisId)   body.thesis_id = resolvedThesisId;
 
     try {
       const res = await fetch(endpoint, {
@@ -182,7 +288,6 @@
       closeModal();
       _showToast(_buildSuccessMsg(result));
 
-      // Refresh holdings table if callback registered
       if (typeof global.__qtRefreshHoldings === 'function') {
         global.__qtRefreshHoldings();
       }
@@ -229,31 +334,29 @@
   // ─── Button injection ──────────────────────────────────────────────────────
   /**
    * Inject [B] [S] buttons vào ô .col-action của mỗi row trong tbody.
-   * - Ưu tiên td.col-action (layout mới với cột Hành động riêng).
-   * - Fallback về td:first-child nếu chưa có col-action (backward compat).
-   * - Đọc data-thesis-id từ <tr> để forward vào modal nếu có.
-   * - Safe to call nhiều lần — skip row đã inject rồi.
+   *
+   * @param {HTMLElement} tbodyEl
+   * @param {{ fromThesisTab?: boolean }} opts
+   *   fromThesisTab = true  → Thesis tab: thesis_id đã chắc, không cần dropdown
+   *   fromThesisTab = false → Trades tab: dropdown fetch theo ticker
    */
-  function injectTradeButtons(tbodyEl) {
+  function injectTradeButtons(tbodyEl, opts) {
     if (!tbodyEl) return;
+    const fromThesisTab = !!(opts && opts.fromThesisTab);
+
     tbodyEl.querySelectorAll('tr').forEach(function (row) {
-      // Ưu tiên cột Action riêng
       const actionCell = row.querySelector('td.col-action');
       const targetCell = actionCell || row.querySelector('td:first-child');
       if (!targetCell) return;
 
-      // Skip nếu đã inject
       if (targetCell.querySelector('.qt-btn-inline')) return;
 
-      // Lấy ticker từ td.col-ticker hoặc td:first-child
       const tickerCell = row.querySelector('td.col-ticker') || row.querySelector('td:first-child');
       const ticker = tickerCell ? tickerCell.textContent.trim() : '';
       if (!ticker) return;
 
-      // Đọc thesis_id từ data attribute trên <tr> nếu có
       const thesisId = row.dataset.thesisId ? parseInt(row.dataset.thesisId, 10) : null;
 
-      // Nếu là cột action riêng: xoá nội dung placeholder (nút trắng từ renderer)
       if (actionCell) actionCell.innerHTML = '';
 
       const wrap = document.createElement('div');
@@ -266,7 +369,7 @@
       bBtn.setAttribute('aria-label', 'Mua ' + ticker);
       bBtn.addEventListener('click', function (e) {
         e.stopPropagation();
-        openModal(ticker, 'buy', thesisId);
+        openModal(ticker, 'buy', thesisId, { fromThesisTab: fromThesisTab });
       });
 
       const sBtn = document.createElement('button');
@@ -276,7 +379,7 @@
       sBtn.setAttribute('aria-label', 'Bán ' + ticker);
       sBtn.addEventListener('click', function (e) {
         e.stopPropagation();
-        openModal(ticker, 'sell', thesisId);
+        openModal(ticker, 'sell', thesisId, { fromThesisTab: fromThesisTab });
       });
 
       wrap.appendChild(bBtn);
@@ -288,7 +391,11 @@
   // ─── Init ──────────────────────────────────────────────────────────────────
   function initQuickTrade() {
     ensureModal();
-    document.querySelectorAll('[data-holdings-tbody]').forEach(injectTradeButtons);
+    document.querySelectorAll('[data-holdings-tbody]').forEach(function (tbody) {
+      // Init scan cannot know fromThesisTab — defaults to false (Trades behaviour).
+      // Renderer calls injectTradeButtons(tbody, { fromThesisTab: true }) for Thesis tbody.
+      injectTradeButtons(tbody);
+    });
   }
 
   // ─── Public API ────────────────────────────────────────────────────────────
