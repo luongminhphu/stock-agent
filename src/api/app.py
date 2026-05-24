@@ -19,6 +19,7 @@ Route groups:
     /api/v1/lessons        — list persisted AI lessons from Decision Replay loop
     /api/v1/memory         — investor memory snapshot + pattern refresh (wave 9b)
     /api/v1/core           — Intelligence Engine: snapshot, verdict, feedback (wave 10)
+    /api/v1/portfolio      — buy/sell quick-trade actions (wave 11)
 """
 
 from __future__ import annotations
@@ -39,6 +40,7 @@ from src.api.routes.decisions import router as decisions_router
 from src.api.routes.health import router as health_router
 from src.api.routes.market import router as market_router
 from src.api.routes.memory import router as memory_router
+from src.api.routes.portfolio import router as portfolio_router
 from src.api.routes.readmodel import router as readmodel_router
 from src.api.routes.thesis import router as thesis_router
 from src.api.routes.watchlist import router as watchlist_router
@@ -189,8 +191,9 @@ def create_app() -> FastAPI:
     app.include_router(briefing_router, prefix="/api/v1")
     app.include_router(readmodel_router, prefix="/api/v1")
     app.include_router(decisions_router, prefix="/api/v1")
-    app.include_router(memory_router, prefix="/api/v1")  # Wave 9b
+    app.include_router(memory_router, prefix="/api/v1")       # Wave 9b
     app.include_router(core_engine_router, prefix="/api/v1")  # Wave 10 — Intelligence Engine
+    app.include_router(portfolio_router, prefix="/api/v1")    # Wave 11 — Quick Trade
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request, exc: Exception) -> JSONResponse:
