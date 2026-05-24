@@ -283,6 +283,22 @@ function bindLeaderboardSort() {
 }
 
 // ---------------------------------------------------------------------------
+// Loop wire: trade action → Cluster C auto-refresh
+//
+// Listens for 'decision:logged' dispatched by quick-trade.js after a
+// successful buy/sell where backend confirmed decision_logged: true.
+// Calls loadDecisions() so Cluster C updates without any manual input.
+//
+// Design intent: every action in the app feeds the next waiting capability.
+// portfolio (B/S) → decision log (auto) → Cluster C refresh (auto)
+// ---------------------------------------------------------------------------
+function bindQuickTradeDecisionRefresh() {
+  document.addEventListener('decision:logged', async () => {
+    await loadDecisions();
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Bootstrap
 // ---------------------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', async () => {
@@ -419,7 +435,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 10. Leaderboard wiring
   bindLeaderboardSort();
 
-  // 11. Initial parallel load — initKpiClickable() gọi sau khi data render xong
+  // 11. Loop wire: B/S trade → decision:logged event → Cluster C auto-refresh
+  bindQuickTradeDecisionRefresh();
+
+  // 12. Initial parallel load — initKpiClickable() gọi sau khi data render xong
   await Promise.all([
     loadDashboard(),
     loadBacktesting(),
@@ -431,9 +450,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadAttentionPanel(),   // AttentionPanel — Việc cần làm hôm nay
   ]);
 
-  // 12. Wave 1: KPI clickable — wire sau khi DOM đã render đủ values
+  // 13. Wave 1: KPI clickable — wire sau khi DOM đã render đủ values
   initKpiClickable();
 
-  // 13. AttentionPanel auto-refresh mỗi 5 phút
+  // 14. AttentionPanel auto-refresh mỗi 5 phút
   startAttentionAutoRefresh();
 });

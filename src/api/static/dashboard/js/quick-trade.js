@@ -19,7 +19,11 @@
  *     - Modal shows a read-only thesis badge instead of a dropdown.
  *     - thesis_id is always forwarded to the backend.
  *
- * On success: dismisses modal, refreshes holdings data, shows inline toast.
+ * On success:
+ *   - Dismisses modal, refreshes holdings data, shows inline toast.
+ *   - If backend confirms decision_logged: true, dispatches CustomEvent
+ *     'decision:logged' on document so Cluster C auto-refreshes without
+ *     requiring manual input.
  *
  * Dependencies: none (vanilla JS, no framework).
  * Public API:
@@ -288,8 +292,25 @@
       closeModal();
       _showToast(_buildSuccessMsg(result));
 
+      // Refresh holdings
       if (typeof global.__qtRefreshHoldings === 'function') {
         global.__qtRefreshHoldings();
+      }
+
+      // ─── Loop wire: trade action → Cluster C auto-refresh ─────────────
+      // If backend confirmed decision was logged (thesis_id + rationale
+      // were provided), notify the app so Cluster C refreshes automatically
+      // without any manual input. Loose coupling via CustomEvent — this
+      // module knows nothing about decision-loader.js.
+      if (result.decision_logged) {
+        document.dispatchEvent(new CustomEvent('decision:logged', {
+          detail: {
+            ticker:     result.ticker,
+            trade_type: result.trade_type,  // 'buy' | 'sell'
+            price:      result.price,
+            qty:        result.qty,
+          },
+        }));
       }
     } catch (err) {
       _showError('Không thể kết nối server. Kiểm tra lại kết nối.');
