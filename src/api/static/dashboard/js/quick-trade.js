@@ -2,7 +2,12 @@
  * quick-trade.js — B/S quick-trade buttons for Holdings table (Trades tab)
  *
  * Injects a [B] and [S] button into the .col-action cell of every holdings row.
- * Clicking opens a modal → user enters qty + price → POST /api/v1/portfolio/buy|sell
+ * Clicking opens a modal → user enters qty + price + optional rationale
+ * → POST /api/v1/portfolio/buy|sell
+ *
+ * If a thesis_id is stored on the row (data-thesis-id attribute on <tr>),
+ * it is forwarded automatically so the backend can create a DecisionLog.
+ *
  * On success: dismisses modal, refreshes holdings data, shows inline toast.
  *
  * Dependencies: none (vanilla JS, no framework).
@@ -38,6 +43,8 @@
             <input class="qt-input" id="qt-qty" type="number" min="1" step="100" placeholder="VD: 1000" />
             <label class="qt-label" for="qt-price">Giá (VND/cp)</label>
             <input class="qt-input" id="qt-price" type="number" min="100" step="100" placeholder="VD: 48500" />
+            <label class="qt-label" for="qt-rationale">Lý do quyết định <span class="qt-optional">(tuỳ chọn — để log decision)</span></label>
+            <input class="qt-input" id="qt-rationale" type="text" maxlength="500" placeholder="VD: Breakout khỏi vùng tích luỹ, volume tăng mạnh" />
             <label class="qt-label" for="qt-note">Ghi chú (tuỳ chọn)</label>
             <input class="qt-input" id="qt-note" type="text" maxlength="200" placeholder="" />
             <div class="qt-summary" id="qt-summary"></div>
@@ -55,13 +62,15 @@
   }
 
   // ─── State ─────────────────────────────────────────────────────────────────
-  let _currentTicker = '';
-  let _currentType   = 'buy'; // 'buy' | 'sell'
+  let _currentTicker   = '';
+  let _currentType     = 'buy'; // 'buy' | 'sell'
+  let _currentThesisId = null;  // int | null — forwarded from data-thesis-id
 
   // ─── Modal lifecycle ───────────────────────────────────────────────────────
-  function openModal(ticker, type) {
-    _currentTicker = ticker.toUpperCase();
-    _currentType   = type;
+  function openModal(ticker, type, thesisId) {
+    _currentTicker   = ticker.toUpperCase();
+    _currentType     = type;
+    _currentThesisId = thesisId || null;
 
     const badge = document.getElementById('qt-type-badge');
     badge.textContent  = type === 'buy' ? 'MUA' : 'BÁN';
@@ -70,11 +79,20 @@
     document.getElementById('qt-ticker-display').textContent = _currentTicker;
     document.getElementById('qt-title').textContent =
       (type === 'buy' ? 'Lệnh MUA — ' : 'Lệnh BÁN — ') + _currentTicker;
-    document.getElementById('qt-qty').value   = '';
-    document.getElementById('qt-price').value = '';
-    document.getElementById('qt-note').value  = '';
+    document.getElementById('qt-qty').value       = '';
+    document.getElementById('qt-price').value     = '';
+    document.getElementById('qt-rationale').value = '';
+    document.getElementById('qt-note').value      = '';
     document.getElementById('qt-summary').textContent = '';
     _hideError();
+
+    // Hint: nếu không có thesis, rationale sẽ không tạo DecisionLog
+    const rationaleLabel = document.querySelector('label[for="qt-rationale"] .qt-optional');
+    if (rationaleLabel) {
+      rationaleLabel.textContent = _currentThesisId
+        ? '(có thesis — sẽ log decision nếu điền)'
+        : '(cần thesis_id để log decision)';
+    }
 
     document.getElementById(MODAL_ID).removeAttribute('hidden');
     document.getElementById('qt-qty').focus();
@@ -128,9 +146,10 @@
   // ─── API call ──────────────────────────────────────────────────────────────
   async function _handleConfirm() {
     _hideError();
-    const qty   = parseFloat(document.getElementById('qt-qty').value);
-    const price = parseFloat(document.getElementById('qt-price').value);
-    const note  = document.getElementById('qt-note').value.trim() || null;
+    const qty       = parseFloat(document.getElementById('qt-qty').value);
+    const price     = parseFloat(document.getElementById('qt-price').value);
+    const rationale = document.getElementById('qt-rationale').value.trim() || null;
+    const note      = document.getElementById('qt-note').value.trim() || null;
 
     if (!qty || qty <= 0)     { _showError('Số lượng phải lớn hơn 0.'); return; }
     if (!price || price <= 0) { _showError('Giá phải lớn hơn 0.'); return; }
@@ -141,7 +160,9 @@
 
     const endpoint = '/api/v1/portfolio/' + _currentType;
     const body = { ticker: _currentTicker, qty, price };
-    if (note) body.note = note;
+    if (note)              body.note      = note;
+    if (rationale)         body.rationale = rationale;
+    if (_currentThesisId)  body.thesis_id = _currentThesisId;
 
     try {
       const res = await fetch(endpoint, {
@@ -182,6 +203,7 @@
       ' @ ' + result.price.toLocaleString('vi-VN') + ' ₫';
     if (sign) msg += ' | Realized P&L: ' + sign;
     if (result.position_closed) msg += ' | Vị thế đã đóng';
+    if (result.decision_logged) msg += ' | 📋 Decision logged';
     return msg;
   }
 
@@ -209,6 +231,7 @@
    * Inject [B] [S] buttons vào ô .col-action của mỗi row trong tbody.
    * - Ưu tiên td.col-action (layout mới với cột Hành động riêng).
    * - Fallback về td:first-child nếu chưa có col-action (backward compat).
+   * - Đọc data-thesis-id từ <tr> để forward vào modal nếu có.
    * - Safe to call nhiều lần — skip row đã inject rồi.
    */
   function injectTradeButtons(tbodyEl) {
@@ -227,7 +250,10 @@
       const ticker = tickerCell ? tickerCell.textContent.trim() : '';
       if (!ticker) return;
 
-      // Nếu là cột action riêng: xóa nội dung placeholder (nút trắng từ renderer)
+      // Đọc thesis_id từ data attribute trên <tr> nếu có
+      const thesisId = row.dataset.thesisId ? parseInt(row.dataset.thesisId, 10) : null;
+
+      // Nếu là cột action riêng: xoá nội dung placeholder (nút trắng từ renderer)
       if (actionCell) actionCell.innerHTML = '';
 
       const wrap = document.createElement('div');
@@ -240,7 +266,7 @@
       bBtn.setAttribute('aria-label', 'Mua ' + ticker);
       bBtn.addEventListener('click', function (e) {
         e.stopPropagation();
-        openModal(ticker, 'buy');
+        openModal(ticker, 'buy', thesisId);
       });
 
       const sBtn = document.createElement('button');
@@ -250,7 +276,7 @@
       sBtn.setAttribute('aria-label', 'Bán ' + ticker);
       sBtn.addEventListener('click', function (e) {
         e.stopPropagation();
-        openModal(ticker, 'sell');
+        openModal(ticker, 'sell', thesisId);
       });
 
       wrap.appendChild(bBtn);

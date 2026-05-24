@@ -11,6 +11,11 @@ Endpoints:
 
 Both endpoints are scoped to the authenticated owner via get_current_user_id.
 
+Decision log (fire-and-forget):
+    If thesis_id + rationale are provided, a DecisionLog entry is created
+    automatically after the trade is persisted. Failure to log the decision
+    never blocks the trade response — the trade is the source of truth.
+
 Error mapping:
     ValueError              → 400 Bad Request
     PositionNotFoundError   → 404 Not Found
@@ -25,13 +30,15 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.deps import get_current_user_id, get_db
+from src.api.deps import get_current_user_id, get_db, get_quote_service
+from src.platform.logging import get_logger
 from src.portfolio.service import (
     InsufficientQtyError,
     PortfolioService,
     PositionNotFoundError,
 )
 
+logger = get_logger(__name__)
 router = APIRouter(tags=["portfolio"])
 
 
@@ -46,6 +53,12 @@ class BuyRequest(BaseModel):
     thesis_id: int | None = Field(None, description="ID thesis liên kết (tuỳ chọn)")
     sector: str | None = Field(None, max_length=64, description="Ngành (tuỳ chọn)")
     note: str | None = Field(None, max_length=500)
+    # Wave 1: optional decision log fields
+    rationale: str | None = Field(
+        None,
+        max_length=500,
+        description="Lý do quyết định mua — nếu cung cấp cùng thesis_id, sẽ tự động tạo DecisionLog",
+    )
 
 
 class SellRequest(BaseModel):
@@ -53,6 +66,16 @@ class SellRequest(BaseModel):
     qty: float = Field(..., gt=0, description="Số lượng bán (cp)")
     price: float = Field(..., gt=0, description="Giá bán (VND/cp)")
     note: str | None = Field(None, max_length=500)
+    # Wave 1: optional decision log fields
+    thesis_id: int | None = Field(
+        None,
+        description="ID thesis liên kết — cần thiết để tạo DecisionLog khi bán",
+    )
+    rationale: str | None = Field(
+        None,
+        max_length=500,
+        description="Lý do quyết định bán — nếu cung cấp cùng thesis_id, sẽ tự động tạo DecisionLog",
+    )
 
 
 class TradeResponse(BaseModel):
@@ -66,6 +89,58 @@ class TradeResponse(BaseModel):
     position_qty: float
     realized_pnl: float | None
     position_closed: bool
+    decision_logged: bool = Field(
+        False,
+        description="True nếu DecisionLog đã được tạo thành công cho lệnh này",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+async def _try_log_decision(
+    session: AsyncSession,
+    user_id: str,
+    ticker: str,
+    thesis_id: int | None,
+    decision_type: str,
+    rationale: str | None,
+    quote_svc: object,
+) -> bool:
+    """Fire-and-forget decision log after a trade is persisted.
+
+    Returns True if the DecisionLog was created successfully, False otherwise.
+    Failure is always soft — logged as WARNING, never re-raised.
+
+    Contract:
+      - Only logs when both thesis_id AND rationale are provided.
+      - Uses the same session; DecisionService commits internally.
+    """
+    if not thesis_id or not rationale:
+        return False
+
+    try:
+        from src.thesis.decision_service import DecisionService  # noqa: PLC0415
+
+        svc = DecisionService(session=session, quote_service=quote_svc)
+        await svc.log_decision(
+            user_id=user_id,
+            thesis_id=thesis_id,
+            decision_type=decision_type,
+            rationale=rationale,
+        )
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "portfolio.decision_log_failed",
+            user_id=user_id,
+            ticker=ticker,
+            thesis_id=thesis_id,
+            decision_type=decision_type,
+            error=str(exc),
+        )
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -82,11 +157,15 @@ async def buy_stock(
     body: BuyRequest,
     user_id: Annotated[str, Depends(get_current_user_id)],
     session: AsyncSession = Depends(get_db),
+    quote_svc: object = Depends(get_quote_service),
 ) -> TradeResponse:
     """Thực hiện lệnh MUA: tạo Trade(BUY), tính lại avg_cost (VWAP).
 
     Nếu chưa có position → tạo mới.
     Nếu đã có position → cộng dồn, cập nhật avg_cost.
+
+    Nếu thesis_id + rationale được cung cấp → tạo DecisionLog(BUY) tự động.
+    Failure của decision log không ảnh hưởng đến response trade.
     """
     svc = PortfolioService(session)
     try:
@@ -104,6 +183,16 @@ async def buy_stock(
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
 
+    decision_logged = await _try_log_decision(
+        session=session,
+        user_id=user_id,
+        ticker=trade.ticker,
+        thesis_id=body.thesis_id,
+        decision_type="BUY",
+        rationale=body.rationale,
+        quote_svc=quote_svc,
+    )
+
     return TradeResponse(
         trade_id=trade.id,
         position_id=position.id,
@@ -115,6 +204,7 @@ async def buy_stock(
         position_qty=position.qty,
         realized_pnl=None,
         position_closed=False,
+        decision_logged=decision_logged,
     )
 
 
@@ -128,11 +218,15 @@ async def sell_stock(
     body: SellRequest,
     user_id: Annotated[str, Depends(get_current_user_id)],
     session: AsyncSession = Depends(get_db),
+    quote_svc: object = Depends(get_quote_service),
 ) -> TradeResponse:
     """Thực hiện lệnh BÁN: tạo Trade(SELL), tính realized_pnl.
 
     Partial sell → position vẫn open, qty giảm.
     Full sell → position.closed_at được set.
+
+    Nếu thesis_id + rationale được cung cấp → tạo DecisionLog(SELL) tự động.
+    Failure của decision log không ảnh hưởng đến response trade.
 
     Raises 404 khi không có position mở cho ticker.
     Raises 422 khi qty bán > qty đang giữ.
@@ -155,6 +249,16 @@ async def sell_stock(
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
 
+    decision_logged = await _try_log_decision(
+        session=session,
+        user_id=user_id,
+        ticker=trade.ticker,
+        thesis_id=body.thesis_id,
+        decision_type="SELL",
+        rationale=body.rationale,
+        quote_svc=quote_svc,
+    )
+
     return TradeResponse(
         trade_id=trade.id,
         position_id=position.id,
@@ -166,4 +270,5 @@ async def sell_stock(
         position_qty=position.qty,
         realized_pnl=trade.realized_pnl,
         position_closed=position.closed_at is not None,
+        decision_logged=decision_logged,
     )
