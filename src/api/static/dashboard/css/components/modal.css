@@ -1,11 +1,11 @@
-/* ─── Modal & Forms ────────────────────────────────────────────────────────────
+/* ─── Modal & Forms ───────────────────────────────────────────────────────────────────
    Owner: components
    dialog, modal-inner, form-grid, suggest-bar, suggest-result.
    Toast → toast.css
    Không phụ thuộc module nào khác ngoài variables.
-──────────────────────────────────────────────────────────────────────────── */
+────────────────────────────────────────────────────────────────────── */
 
-/* ── Dialog shell ───────────────────────────────────────────────────────────────── */
+/* ── Dialog shell ──────────────────────────────────────────────────────────────────────── */
 dialog {
   position: fixed;
   inset: 0;
@@ -13,18 +13,23 @@ dialog {
   width: min(640px, calc(100vw - 32px));
   max-height: calc(100dvh - 48px);
   overflow-y: auto;
-  background: linear-gradient(180deg, #0d1a2d, #0a1320);
+  /* Dùng token surface-3 → bg-2 để khớp hệ màu navy của dashboard */
+  background: linear-gradient(180deg, var(--surface-3), var(--bg-2));
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-lg);
-  box-shadow: 0 32px 80px rgba(2, 6, 23, 0.72);
+  box-shadow: 0 32px 80px rgba(2, 6, 23, 0.72),
+              0 0 0 1px var(--line);
   color: var(--text);
   padding: 0;
+  /* Smooth entry */
+  transition: opacity 0.18s ease, transform 0.18s ease;
 }
 dialog::backdrop {
   background: rgba(2, 6, 18, 0.78);
   backdrop-filter: blur(6px);
 }
 
+/* ── Inner layout ────────────────────────────────────────────────────────────────────── */
 .modal-inner {
   padding: 22px;
   display: grid;
@@ -39,6 +44,7 @@ dialog::backdrop {
 .modal-header h2 {
   font-size: 1.08rem;
   letter-spacing: -0.03em;
+  color: var(--text);
 }
 .modal-close {
   width: 32px;
@@ -52,6 +58,7 @@ dialog::backdrop {
   display: grid;
   place-items: center;
   flex-shrink: 0;
+  transition: border-color 0.15s, color 0.15s;
 }
 .modal-close:hover { border-color: var(--danger); color: var(--danger); }
 
@@ -63,7 +70,7 @@ dialog::backdrop {
   border-top: 1px solid var(--line);
 }
 
-/* ── Forms ────────────────────────────────────────────────────────────────────── */
+/* ── Form fields ──────────────────────────────────────────────────────────────────── */
 .form-grid {
   display: grid;
   gap: 12px;
@@ -103,7 +110,48 @@ dialog::backdrop {
   text-transform: uppercase;
 }
 
-/* ── AI Suggest bar & result ─────────────────────────────────────────────────────── */
+/* ── Input / Select / Textarea — theme đồng bộ với dashboard ───────────────── */
+dialog input,
+dialog select,
+dialog textarea {
+  background: rgba(13, 23, 40, 0.9);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  font-family: var(--font-body);
+  width: 100%;
+  min-width: 0;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  /* — loại bỏ màu xanh lá mặc định của browser trên dark bg — */
+  color-scheme: dark;
+}
+dialog input::placeholder,
+dialog textarea::placeholder {
+  color: var(--faint);
+}
+dialog input:focus,
+dialog select:focus,
+dialog textarea:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.14);
+}
+dialog input:disabled,
+dialog select:disabled,
+dialog textarea:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Dropdown options — browser default hay render trắng trên nền tối */
+dialog select option {
+  background: #0d1728;
+  color: var(--text);
+}
+
+/* ── AI Suggest bar & result ───────────────────────────────────────────────── */
 .suggest-bar {
   display: flex;
   gap: 10px;
@@ -129,6 +177,7 @@ dialog::backdrop {
   align-items: center;
   gap: 6px;
   font-size: 0.82rem;
+  transition: background 0.15s;
 }
 .suggest-btn:hover { background: rgba(125, 211, 252, 0.18); }
 .suggest-btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -171,6 +220,7 @@ dialog::backdrop {
   font-size: 0.76rem;
   font-weight: 700;
   cursor: pointer;
+  transition: background 0.15s;
 }
 .apply-suggest-btn:hover { background: rgba(74, 222, 128, 0.16); }
 
