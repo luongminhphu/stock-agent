@@ -4,11 +4,13 @@
    Falls back to sensible values when tokens are absent.
 */
 
-/* ─── Inline B / S buttons ─────────────────────────────────────────────────── */
-.qt-inline-actions {
-  display:      inline-flex;
-  gap:          4px;
-  margin-left:  8px;
+/* ─── Inline B / S buttons ────────────────────────────────────────────── */
+.qt-inline-actions,
+.action-btns {
+  display:     inline-flex;
+  align-items: center;
+  gap:         10px;          /* tăng từ 4px → 10px, giảm click nhầm */
+  margin-left: 4px;
   vertical-align: middle;
 }
 
@@ -16,24 +18,56 @@
   display:          inline-flex;
   align-items:      center;
   justify-content:  center;
-  width:            22px;
-  height:           22px;
-  border-radius:    4px;
+  width:            30px;     /* tăng từ 22px → 30px */
+  height:           28px;     /* tăng từ 22px → 28px */
+  border-radius:    5px;
   border:           none;
-  font-size:        11px;
+  font-size:        12px;     /* tăng từ 11px → 12px */
   font-weight:      700;
   line-height:      1;
   cursor:           pointer;
-  transition:       opacity 140ms ease, transform 100ms ease;
+  transition:       background 140ms ease,
+                    transform  100ms ease,
+                    box-shadow 140ms ease;
   user-select:      none;
+  letter-spacing:   0.5px;
 }
-.qt-btn-inline:hover  { opacity: 0.82; }
-.qt-btn-inline:active { transform: scale(0.92); }
 
-.qt-btn-buy  { background: #16a34a; color: #fff; }
-.qt-btn-sell { background: #dc2626; color: #fff; }
+/* Buy — xanh lá */
+.qt-btn-buy {
+  background: #16a34a;
+  color:      #fff;
+  box-shadow: 0 1px 3px rgba(22,163,74,0.30);
+}
+.qt-btn-buy:hover {
+  background: #15803d;
+  box-shadow: 0 2px 8px rgba(22,163,74,0.45);
+  transform:  translateY(-1px);
+}
+.qt-btn-buy:active {
+  background: #14532d;
+  transform:  scale(0.93);
+  box-shadow: none;
+}
 
-/* ─── Modal backdrop ────────────────────────────────────────────────────────── */
+/* Sell — đỏ */
+.qt-btn-sell {
+  background: #dc2626;
+  color:      #fff;
+  box-shadow: 0 1px 3px rgba(220,38,38,0.30);
+}
+.qt-btn-sell:hover {
+  background: #b91c1c;
+  box-shadow: 0 2px 8px rgba(220,38,38,0.45);
+  transform:  translateY(-1px);
+}
+.qt-btn-sell:active {
+  background: #7f1d1d;
+  transform:  scale(0.93);
+  box-shadow: none;
+}
+
+/* ─── Modal backdrop ────────────────────────────────────────────────── */
 .qt-backdrop {
   position:         fixed;
   inset:            0;
@@ -54,7 +88,7 @@
   to   { opacity: 1; }
 }
 
-/* ─── Modal box ─────────────────────────────────────────────────────────────── */
+/* ─── Modal box ───────────────────────────────────────────────────────── */
 .qt-modal {
   background:    var(--color-surface, #1e1e1e);
   border:        1px solid var(--color-border, #333);
@@ -96,7 +130,7 @@
 }
 .qt-close:hover { background: var(--color-surface-offset, #2a2a2a); }
 
-/* ─── Modal body ────────────────────────────────────────────────────────────── */
+/* ─── Modal body ───────────────────────────────────────────────────────── */
 .qt-modal-body {
   padding: 16px 18px;
   display: flex;
@@ -171,7 +205,7 @@
   margin-top:    2px;
 }
 
-/* ─── Modal footer ──────────────────────────────────────────────────────────── */
+/* ─── Modal footer ───────────────────────────────────────────────────────── */
 .qt-modal-footer {
   display:         flex;
   justify-content: flex-end;
@@ -205,7 +239,7 @@
 }
 .qt-btn-secondary:hover:not(:disabled) { background: var(--color-surface-dynamic, #333); }
 
-/* ─── Toast ─────────────────────────────────────────────────────────────────── */
+/* ─── Toast ───────────────────────────────────────────────────────────────────── */
 #qt-toast-container {
   position:       fixed;
   bottom:         24px;
