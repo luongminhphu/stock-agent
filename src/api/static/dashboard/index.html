@@ -8,3 +8,524 @@
     <link rel="stylesheet" href="/static/dashboard/dashboard.css" />
     <link rel="stylesheet" href="/static/dashboard/css/signals.css" />
     <link rel="stylesheet" href="/static/dashboard/css/quick-trade.css" />
+    <link rel="stylesheet" href="/static/dashboard/css/heatmap.css" />
+    <style>
+      /* ── Wave-1 layout additions ──────────────────────────────────────── */
+
+      /*
+        KPI strip: 5-col grid, 2 rows
+        Row 1: Portfolio | Unrealized P&L | Risky | Open | Paused
+        Row 2: Upcoming 7d | Cần review gấp | Latest Scan (span 3)
+      */
+      .kpi-strip {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: var(--gap, 12px);
+      }
+      .kpi-strip .kpi-row-divider {
+        grid-column: 1 / -1;
+        height: 1px;
+        background: var(--line);
+        margin: 2px 0;
+        opacity: .5;
+      }
+      /* Latest Scan spans the remaining 3 columns in row 2 */
+      .kpi-strip .signal-card--scan {
+        grid-column: span 3;
+      }
+      @media (max-width: 900px) {
+        .kpi-strip {
+          grid-template-columns: repeat(2, 1fr);
+        }
+        .kpi-strip .signal-card--scan {
+          grid-column: span 2;
+        }
+      }
+      @media (max-width: 540px) {
+        .kpi-strip {
+          grid-template-columns: 1fr 1fr;
+        }
+        .kpi-strip .signal-card--scan {
+          grid-column: 1 / -1;
+        }
+      }
+
+      /* Side-by-side grid: Watchlist + Catalyst / Leaderboard + Backtesting */
+      .panel-duo {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: var(--gap, 12px);
+        align-items: start;
+      }
+      @media (max-width: 860px) {
+        .panel-duo { grid-template-columns: 1fr; }
+      }
+
+      /* Portfolio section */
+      .portfolio-pane.hidden { display: none; }
+      .portfolio-tab-bar {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 8px;
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 6px;
+      }
+      .portfolio-tab {
+        background: none;
+        border: none;
+        padding: 4px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        position: relative;
+      }
+      .portfolio-tab.active {
+        background: var(--surface-2);
+        color: var(--text);
+        font-weight: 600;
+      }
+      .portfolio-tab:hover:not(.active) { background: var(--surface-2); }
+
+      /* P&L colors */
+      .pnl-positive { color: var(--green, #22c55e); font-weight: 600; }
+      .pnl-negative { color: var(--red,   #ef4444); font-weight: 600; }
+
+      /* Portfolio summary chips */
+      .portfolio-summary {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 8px;
+        font-size: 0.82rem;
+      }
+      .summary-chip {
+        background: var(--surface-2);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 3px 8px;
+        white-space: nowrap;
+      }
+
+      /* table helpers */
+      .table-scroll { overflow-x: auto; }
+      .data-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+      .data-table th { text-align: left; padding: 4px 8px;
+                       border-bottom: 1px solid var(--line); color: var(--text-muted); font-weight:500; }
+      .data-table td { padding: 5px 8px; border-bottom: 1px solid var(--line, #e5e7eb); }
+      .data-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+      .data-table th.num { text-align: right; }
+      .empty-state { color: var(--text-muted); text-align: center; padding: 24px 0; font-size: 0.88rem; }
+
+      /* Row / cell error markers */
+      .row-data-error { background: color-mix(in srgb, var(--red, #ef4444) 5%, transparent); }
+      .cell-missing { opacity: 0.45; font-style: italic; }
+      .cell-error-dot { color: var(--red, #ef4444); font-size: 0.6rem; vertical-align: super; }
+
+      /* Error banner */
+      .perr-banner { border: 1px solid var(--line); border-radius: 6px;
+                     margin-bottom: 10px; overflow: hidden; font-size: 0.82rem; }
+      .perr-toggle { width: 100%; display: flex; justify-content: space-between;
+                     align-items: center; padding: 6px 10px; background: var(--surface-2);
+                     border: none; cursor: pointer; text-align: left; font-size: inherit; }
+      .perr-summary { flex: 1; }
+      .perr-chevron { font-size: 0.7rem; margin-left: 6px; }
+      .perr-list { list-style: none; margin: 0; padding: 6px 10px 8px;
+                   display: flex; flex-direction: column; gap: 4px; }
+      .perr-item { padding: 3px 6px; border-radius: 4px; }
+      .perr-critical { background: color-mix(in srgb, #ef4444 10%, transparent); }
+      .perr-warning  { background: color-mix(in srgb, #f59e0b 10%, transparent); }
+      .perr-info     { background: color-mix(in srgb, #3b82f6  8%, transparent); }
+      .perr-tab-badge {
+        display: inline-flex; align-items: center; justify-content: center;
+        background: #ef4444; color: #fff;
+        border-radius: 9999px; font-size: 0.65rem; font-weight: 700;
+        min-width: 16px; height: 16px; padding: 0 4px;
+        margin-left: 5px; vertical-align: middle;
+        line-height: 1;
+      }
+
+      /* Verdict badges */
+      .verdict-badge { display: inline-flex; align-items: center; gap: 3px;
+                       font-size: 0.78rem; padding: 2px 6px; border-radius: 4px;
+                       font-weight: 500; white-space: nowrap; }
+      .badge-bullish  { background: color-mix(in srgb, #22c55e 12%, transparent); color: #15803d; }
+      .badge-bearish  { background: color-mix(in srgb, #ef4444 12%, transparent); color: #b91c1c; }
+      .badge-neutral  { background: color-mix(in srgb, #6b7280 12%, transparent); color: #374151; }
+      .badge-watchlist{ background: color-mix(in srgb, #3b82f6 12%, transparent); color: #1d4ed8; }
+      .badge-unknown  { background: var(--surface-2); color: var(--text-muted); }
+
+      /* ── Attention Queue (Wave 4) ─────────────────────────────────────── */
+      .attn-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+      .attn-item {
+        display: flex; gap: 8px; align-items: flex-start;
+        padding: 6px 8px; border-radius: 6px;
+        border-left: 3px solid transparent;
+        background: var(--surface-2, #f8f8f8);
+        font-size: 0.82rem;
+      }
+      .attn-item[data-priority="critical"] { border-left-color: #ef4444; }
+      .attn-item[data-priority="high"]     { border-left-color: #f59e0b; }
+      .attn-item[data-priority="medium"]   { border-left-color: #3b82f6; }
+      .attn-item[data-priority="low"]      { border-left-color: #6b7280; }
+      .attn-icon  { font-size: 1rem; flex-shrink: 0; }
+      .attn-body  { flex: 1; min-width: 0; }
+      .attn-ticker{ font-weight: 700; margin-right: 4px; }
+      .attn-reason{ color: var(--text-muted); }
+      .attn-age   { font-size: 0.72rem; color: var(--text-muted); margin-top: 1px; }
+      .attn-action {
+        flex-shrink: 0;
+        font-size: 0.75rem;
+        padding: 2px 8px;
+        border-radius: 4px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        cursor: pointer;
+        color: var(--text);
+      }
+      .attn-action:hover { background: var(--surface-2); }
+
+      /* ── Leaderboard (Wave 5) ──────────────────────────────────────────── */
+      .ldr-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+      .ldr-tab {
+        background: none; border: none; padding: 3px 10px;
+        border-radius: 4px; cursor: pointer; font-size: 0.8rem;
+        color: var(--text-muted);
+      }
+      .ldr-tab.active { background: var(--surface-2); color: var(--text); font-weight: 600; }
+      .ldr-tab:hover:not(.active) { background: var(--surface-2); }
+      .ldr-pane.hidden { display: none; }
+
+      /* ── Backtesting panel (Wave 6) ────────────────────────────────────── */
+      .bt-form { display: flex; gap: 6px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 10px; }
+      .bt-form label { font-size: 0.78rem; color: var(--text-muted); display: flex;
+                       flex-direction: column; gap: 3px; }
+      .bt-form input, .bt-form select {
+        padding: 4px 8px; border: 1px solid var(--line); border-radius: 4px;
+        background: var(--surface); color: var(--text); font-size: 0.82rem;
+        width: 110px;
+      }
+      .bt-form button {
+        padding: 5px 14px; border-radius: 4px; border: none;
+        background: var(--accent, #2563eb); color: #fff;
+        font-size: 0.82rem; cursor: pointer;
+      }
+      .bt-form button:hover { opacity: 0.85; }
+      .bt-form button:disabled { opacity: 0.5; cursor: default; }
+      .bt-result { font-size: 0.82rem; }
+      .bt-metrics { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+      .bt-metric {
+        background: var(--surface-2); border: 1px solid var(--line);
+        border-radius: 6px; padding: 4px 10px;
+        display: flex; flex-direction: column; gap: 1px;
+      }
+      .bt-metric-label { font-size: 0.7rem; color: var(--text-muted); }
+      .bt-metric-value { font-size: 0.88rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+      .bt-empty { color: var(--text-muted); font-size: 0.85rem; text-align: center; padding: 16px 0; }
+      .bt-error { color: var(--red, #ef4444); font-size: 0.82rem; }
+
+      /* ── Memory panel (Wave 7) ───────────────────────────────────────────── */
+      .mem-search { display: flex; gap: 6px; margin-bottom: 8px; }
+      .mem-search input {
+        flex: 1; padding: 5px 8px;
+        border: 1px solid var(--line); border-radius: 4px;
+        background: var(--surface); color: var(--text); font-size: 0.82rem;
+      }
+      .mem-search button {
+        padding: 5px 12px; border-radius: 4px; border: none;
+        background: var(--accent, #2563eb); color: #fff;
+        font-size: 0.82rem; cursor: pointer;
+      }
+      .mem-search button:hover { opacity: 0.85; }
+      .mem-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+      .mem-item {
+        padding: 6px 8px; background: var(--surface-2);
+        border-radius: 6px; border: 1px solid var(--line);
+        font-size: 0.82rem;
+      }
+      .mem-meta {
+        font-size: 0.72rem; color: var(--text-muted); margin-top: 2px;
+        display: flex; gap: 8px;
+      }
+      .mem-type {
+        display: inline-block; padding: 1px 5px; border-radius: 3px;
+        background: color-mix(in srgb, var(--accent, #2563eb) 10%, transparent);
+        color: var(--accent, #2563eb); font-size: 0.7rem; font-weight: 500;
+      }
+
+      /* ── Decision Log (Wave 8) ──────────────────────────────────────────── */
+      .decision-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+      .decision-item {
+        padding: 8px 10px; background: var(--surface-2);
+        border-radius: 6px; border: 1px solid var(--line); font-size: 0.82rem;
+      }
+      .decision-header {
+        display: flex; justify-content: space-between; align-items: flex-start;
+        gap: 8px; margin-bottom: 4px;
+      }
+      .decision-ticker { font-weight: 700; font-size: 0.88rem; }
+      .decision-action {
+        font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; font-weight: 500;
+        white-space: nowrap;
+      }
+      .decision-action.buy  { background: color-mix(in srgb, #22c55e 12%, transparent); color: #15803d; }
+      .decision-action.sell { background: color-mix(in srgb, #ef4444 12%, transparent); color: #b91c1c; }
+      .decision-action.hold { background: color-mix(in srgb, #6b7280 12%, transparent); color: #374151; }
+      .decision-action.watch{ background: color-mix(in srgb, #3b82f6 12%, transparent); color: #1d4ed8; }
+      .decision-reasoning { color: var(--text-muted); margin-bottom: 4px; line-height: 1.4; }
+      .decision-meta {
+        font-size: 0.72rem; color: var(--text-muted); display: flex; gap: 8px; flex-wrap: wrap;
+      }
+      .decision-confidence {
+        display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 0.7rem; font-weight: 500;
+      }
+      .decision-confidence.high   { background: color-mix(in srgb, #22c55e 12%, transparent); color: #15803d; }
+      .decision-confidence.medium { background: color-mix(in srgb, #f59e0b 12%, transparent); color: #92400e; }
+      .decision-confidence.low    { background: color-mix(in srgb, #ef4444 12%, transparent); color: #b91c1c; }
+
+      /* ── Heatmap (Wave 9) ──────────────────────────────────────────────── */
+      .heatmap-container {
+        padding: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <span class="brand">📈 stock-agent</span>
+      <nav class="nav-tabs" role="tablist">
+        <button class="tab active" data-tab="dashboard" role="tab" aria-selected="true">Dashboard</button>
+        <button class="tab" data-tab="watchlist" role="tab" aria-selected="false">Watchlist</button>
+        <button class="tab" data-tab="thesis" role="tab" aria-selected="false">Thesis</button>
+        <button class="tab" data-tab="briefing" role="tab" aria-selected="false">Briefing</button>
+        <button class="tab" data-tab="portfolio" role="tab" aria-selected="false">Portfolio</button>
+      </nav>
+      <div class="topbar-right">
+        <button id="refreshBtn" class="btn-icon" title="Làm mới">🔄</button>
+        <span id="lastUpdated" class="muted" style="font-size:0.78rem"></span>
+      </div>
+    </header>
+
+    <main class="main-content">
+      <!-- Dashboard tab -->
+      <section class="tab-panel active" id="panel-dashboard" role="tabpanel">
+        <!-- KPI strip row 1 -->
+        <div class="kpi-strip" id="kpiStrip">
+          <!-- KPI cards injected by JS -->
+        </div>
+
+        <!-- Briefing preview -->
+        <section class="panel" id="briefingPreview">
+          <div class="panel-header">
+            <span class="panel-title">📰 Morning Brief</span>
+            <button class="btn-sm" id="viewFullBriefingBtn">Xem đầy đủ</button>
+          </div>
+          <div id="briefingPreviewContent"><p class="muted">Đang tải briefing...</p></div>
+        </section>
+
+        <!-- Side-by-side: Watchlist + Catalyst -->
+        <div class="panel-duo">
+          <section class="panel" id="watchlistSection">
+            <div class="panel-header">
+              <span class="panel-title">📄 Watchlist</span>
+              <div style="display:flex;gap:6px;align-items:center">
+                <input id="addTickerInput" class="input-sm" placeholder="Thêm ticker…" style="width:90px" />
+                <button class="btn-sm" id="addTickerBtn">+ Thêm</button>
+              </div>
+            </div>
+            <div id="watchlistContent"><p class="muted">Đang tải...</p></div>
+          </section>
+
+          <section class="panel" id="catalystSection">
+            <div class="panel-header">
+              <span class="panel-title">⚡ Catalyst Timeline</span>
+            </div>
+            <div id="catalystContent"><p class="muted">Đang tải...</p></div>
+          </section>
+        </div>
+
+        <!-- Side-by-side: Leaderboard + Backtesting -->
+        <div class="panel-duo">
+          <section class="panel" id="leaderboardSection">
+            <div class="panel-header">
+              <span class="panel-title">🏆 Leaderboard</span>
+            </div>
+            <div id="leaderboardContent"><p class="muted">Đang tải...</p></div>
+          </section>
+
+          <section class="panel" id="backtestingSection">
+            <div class="panel-header">
+              <span class="panel-title">🧪 Backtesting</span>
+            </div>
+            <div id="backtestingContent">
+              <div class="bt-form">
+                <label>Ticker
+                  <input id="btTicker" type="text" placeholder="VNM" maxlength="10" />
+                </label>
+                <label>Từ ngày
+                  <input id="btFrom" type="date" />
+                </label>
+                <label>Tới ngày
+                  <input id="btTo" type="date" />
+                </label>
+                <label>Chiến lược
+                  <select id="btStrategy">
+                    <option value="sma_crossover">SMA Crossover</option>
+                    <option value="rsi_mean_reversion">RSI Mean Reversion</option>
+                    <option value="momentum">Momentum</option>
+                  </select>
+                </label>
+                <label>Vốn (VND)
+                  <input id="btCapital" type="number" value="100000000" min="1000000" />
+                </label>
+                <button id="btRunBtn">Chạy</button>
+              </div>
+              <div id="btResult" class="bt-result"><p class="bt-empty">Nhập thông số và nhấn “Chạy” để xem kết quả backtest.</p></div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Heatmap -->
+        <section class="panel" id="heatmapSection">
+          <div class="panel-header">
+            <span class="panel-title">🌡️ Market Heatmap</span>
+          </div>
+          <div id="heatmapContent" class="heatmap-container"><p class="muted">Đang tải heatmap...</p></div>
+        </section>
+
+        <!-- Attention Queue -->
+        <section class="panel" id="attentionSection">
+          <div class="panel-header">
+            <span class="panel-title">🔔 Cần Chú Ý</span>
+          </div>
+          <div id="attentionContent"><p class="muted">Đang tải...</p></div>
+        </section>
+
+        <!-- Decision Log -->
+        <section class="panel" id="decisionSection">
+          <div class="panel-header">
+            <span class="panel-title">📝 Decision Log</span>
+          </div>
+          <div id="decisionContent"><p class="muted">Đang tải...</p></div>
+        </section>
+
+        <!-- Memory Browser -->
+        <section class="panel" id="memorySection">
+          <div class="panel-header">
+            <span class="panel-title">🧠 Memory Browser</span>
+          </div>
+          <div id="memoryContent">
+            <div class="mem-search">
+              <input id="memSearchInput" type="text" placeholder="Tìm kiếm memory…" />
+              <button id="memSearchBtn">🔍 Tìm</button>
+            </div>
+            <div id="memSearchResults"><p class="muted">Nhập từ khóa và nhấn Tìm.</p></div>
+          </div>
+        </section>
+      </section>
+
+      <!-- Watchlist tab -->
+      <section class="tab-panel" id="panel-watchlist" role="tabpanel">
+        <section class="panel">
+          <div class="panel-header">
+            <span class="panel-title">📄 Watchlist Đầy Đủ</span>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input id="addTickerInput2" class="input-sm" placeholder="Thêm ticker…" style="width:90px" />
+              <button class="btn-sm" id="addTickerBtn2">+ Thêm</button>
+            </div>
+          </div>
+          <div id="watchlistFull"><p class="muted">Đang tải...</p></div>
+        </section>
+      </section>
+
+      <!-- Thesis tab -->
+      <section class="tab-panel" id="panel-thesis" role="tabpanel">
+        <section class="panel">
+          <div class="panel-header">
+            <span class="panel-title">📝 Thesis Manager</span>
+            <button class="btn-sm" id="newThesisBtn">+ New Thesis</button>
+          </div>
+          <div id="thesisContent"><p class="muted">Đang tải thesis...</p></div>
+        </section>
+      </section>
+
+      <!-- Briefing tab -->
+      <section class="tab-panel" id="panel-briefing" role="tabpanel">
+        <section class="panel">
+          <div class="panel-header">
+            <span class="panel-title">📰 Briefing Đầy Đủ</span>
+            <button class="btn-sm" id="generateBriefingBtn">🤖 Generate</button>
+          </div>
+          <div id="briefingFull"><p class="muted">Đang tải...</p></div>
+        </section>
+      </section>
+
+      <!-- Portfolio tab -->
+      <section class="tab-panel" id="panel-portfolio" role="tabpanel">
+        <section class="panel">
+          <div class="panel-header">
+            <span class="panel-title">💼 Portfolio</span>
+          </div>
+          <div id="portfolioSection"><p class="muted">Đang tải portfolio...</p></div>
+        </section>
+      </section>
+    </main>
+
+    <!-- Thesis modal -->
+    <div id="thesisModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="thesisModalTitle">
+      <div class="modal">
+        <div class="modal-header">
+          <h2 class="modal-title" id="thesisModalTitle">New Thesis</h2>
+          <button class="modal-close" id="thesisModalClose" aria-label="Đóng">&times;</button>
+        </div>
+        <div class="modal-body">
+          <form id="thesisForm">
+            <div class="form-group">
+              <label for="thesisTicker">Ticker *</label>
+              <input type="text" id="thesisTicker" required placeholder="VNM, HPG, …" maxlength="10" />
+            </div>
+            <div class="form-group">
+              <label for="thesisDirection">Hướng *</label>
+              <select id="thesisDirection" required>
+                <option value="">-- Chọn hướng --</option>
+                <option value="LONG">🐂 LONG (Bullish)</option>
+                <option value="SHORT">🐻 SHORT (Bearish)</option>
+                <option value="NEUTRAL">⚖️ NEUTRAL</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="thesisSummary">Tóm tắt Thesis *</label>
+              <textarea id="thesisSummary" required placeholder="Lý do đầu tư, catalyst, rủi ro chính…" rows="4"></textarea>
+            </div>
+            <div class="form-group">
+              <label for="thesisTimeHorizon">Time Horizon</label>
+              <input type="text" id="thesisTimeHorizon" placeholder="3-6 tháng, 1 năm…" />
+            </div>
+            <div class="form-group">
+              <label for="thesisEntryPrice">Entry Price (VND)</label>
+              <input type="number" id="thesisEntryPrice" placeholder="45000" min="0" />
+            </div>
+            <div class="form-group">
+              <label for="thesisTargetPrice">Target Price (VND)</label>
+              <input type="number" id="thesisTargetPrice" placeholder="60000" min="0" />
+            </div>
+            <div class="form-group">
+              <label for="thesisStopLoss">Stop Loss (VND)</label>
+              <input type="number" id="thesisStopLoss" placeholder="40000" min="0" />
+            </div>
+            <div class="form-group">
+              <label for="thesisTags">Tags (cách nhau bằng dấu phẩy)</label>
+              <input type="text" id="thesisTags" placeholder="value, growth, bất động sản…" />
+            </div>
+            <div class="form-actions">
+              <button type="button" class="btn-secondary" id="thesisModalCancelBtn">Hủy</button>
+              <button type="submit" class="btn-primary" id="thesisSubmitBtn">Tạo Thesis</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <script src="/static/dashboard/js/quick-trade.js"></script>
+    <script type="module" src="/static/dashboard/js/app.js?v=19" data-cfasync="false"></script>
+  </body>
+</html>
