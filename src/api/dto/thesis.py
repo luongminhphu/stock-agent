@@ -15,6 +15,28 @@ from pydantic import BaseModel, Field, field_validator
 from src.thesis.models import AssumptionStatus, CatalystStatus, ThesisDirection
 
 # ---------------------------------------------------------------------------
+# Direction alias normalizer
+# Accepts legacy LONG/SHORT and common aliases bullish/bearish (case-insensitive)
+# and maps them to canonical BULLISH/BEARISH/NEUTRAL.
+# ---------------------------------------------------------------------------
+
+_DIRECTION_ALIAS: dict[str, str] = {
+    "bullish": "BULLISH",
+    "long":    "BULLISH",
+    "bearish": "BEARISH",
+    "short":   "BEARISH",
+    "neutral": "NEUTRAL",
+}
+
+
+def _normalize_direction(v: object) -> object:
+    """Normalize direction input → canonical ThesisDirection value."""
+    if isinstance(v, str):
+        return _DIRECTION_ALIAS.get(v.lower(), v.upper())
+    return v
+
+
+# ---------------------------------------------------------------------------
 # Assumption
 # ---------------------------------------------------------------------------
 
@@ -127,7 +149,8 @@ class ThesisCreateRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=256)
     summary: str = Field(default="", max_length=4000)
     direction: ThesisDirection | None = Field(
-        default=None, description="LONG | SHORT — hướng giao dịch kỳ vọng"
+        default=None,
+        description="BULLISH | BEARISH | NEUTRAL — alias: long/short/bullish/bearish accepted",
     )
     entry_price: float | None = Field(default=None, gt=0)
     target_price: float | None = Field(default=None, gt=0)
@@ -135,16 +158,27 @@ class ThesisCreateRequest(BaseModel):
     assumptions: list[str] = Field(default_factory=list)
     catalysts: list[str] = Field(default_factory=list)
 
+    @field_validator("direction", mode="before")
+    @classmethod
+    def normalize_direction(cls, v: object) -> object:
+        return _normalize_direction(v)
+
 
 class ThesisUpdateRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=256)
     summary: str | None = Field(default=None, max_length=4000)
     direction: ThesisDirection | None = Field(
-        default=None, description="LONG | SHORT — cập nhật hướng giao dịch"
+        default=None,
+        description="BULLISH | BEARISH | NEUTRAL — alias: long/short/bullish/bearish accepted",
     )
     entry_price: float | None = Field(default=None, gt=0)
     target_price: float | None = Field(default=None, gt=0)
     stop_loss: float | None = Field(default=None, gt=0)
+
+    @field_validator("direction", mode="before")
+    @classmethod
+    def normalize_direction(cls, v: object) -> object:
+        return _normalize_direction(v)
 
 
 # ---------------------------------------------------------------------------

@@ -50,8 +50,8 @@ class ThesisStatus(enum.StrEnum):
 
 
 class ThesisDirection(enum.StrEnum):
-    LONG = "LONG"
-    SHORT = "SHORT"
+    BULLISH = "BULLISH"
+    BEARISH = "BEARISH"
     NEUTRAL = "NEUTRAL"
 
 
