@@ -124,6 +124,14 @@ class ThesisResponse(BaseModel):
     status: str
     direction: str | None = None
     entry_price: float | None = None
+    actual_entry_price: float | None = Field(
+        default=None,
+        description=(
+            "Giá vào lệnh thực tế (set tự động khi /buy execute). "
+            "Khác với entry_price (giá tham chiếu thesis gốc). "
+            "None nếu chưa có lệnh thực tế."
+        ),
+    )
     target_price: float | None = None
     stop_loss: float | None = None
     score: float | None = None

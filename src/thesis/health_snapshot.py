@@ -28,6 +28,12 @@ urgency_flag priority order (highest → lowest):
                  OR health_score <= AT_RISK_SCORE_THRESHOLD
   REVIEW_DUE   → days_since_review >= REVIEW_DUE_DAYS
   OK           → everything else
+
+Wave (actual_entry_price):
+  - entry_price: giá tham chiếu thesis gốc (immutable, set khi tạo thesis).
+  - actual_entry_price: giá vào lệnh thực tế (set bởi /buy, không overwrite khi avg down).
+  - format_for_prompt() renders P&L thực tế vs thesis reference khi cả hai đều có.
+  - _compute_snapshot() reads actual_entry_price từ ORM object (None nếu chưa có lệnh).
 """
 from __future__ import annotations
 
@@ -66,7 +72,7 @@ class ThesisHealthSnapshot:
         thesis_id            : UUID string from Thesis.id
         ticker               : e.g. "VCB"
         title                : short thesis title
-        direction            : LONG | SHORT | WATCH
+        direction            : BULLISH | BEARISH | NEUTRAL
         health_score         : 0.0–1.0 (1.0 = perfectly healthy)
         days_since_review    : int — days since last AI review; 999 if never reviewed
         distance_to_stop_pct : % distance from current price to stop_loss;
@@ -77,6 +83,8 @@ class ThesisHealthSnapshot:
         urgency_flag         : OK | REVIEW_DUE | AT_RISK | INVALIDATED
         stop_loss            : raw stop_loss value (for display), None if not set
         target_price         : raw target_price value, None if not set
+        entry_price          : giá tham chiếu thesis gốc, None nếu không set
+        actual_entry_price   : giá vào lệnh thực tế (/buy), None nếu chưa có lệnh
     """
 
     thesis_id: str
@@ -92,15 +100,23 @@ class ThesisHealthSnapshot:
     urgency_flag: str
     stop_loss: float | None = None
     target_price: float | None = None
+    entry_price: float | None = None
+    actual_entry_price: float | None = None
 
     def format_for_prompt(self) -> str:
         """
         Compact, structured prompt line for AI injection.
 
-        Example output:
-            [VCB | LONG | AT_RISK] "Tăng trưởng CASA" — health=0.32,
-            review=12d trước, stop_loss=88000 (còn 3.2%), target=110000,
+        Example output (with actual_entry_price):
+            [VCB | BULLISH | AT_RISK] "Tăng trưởng CASA" — health=0.32,
+            review=12d trước, entry=88000 → actual=85000 (mua thấp hơn 3.4%),
+            P&L vs target: +29.4%, stop_loss=80000 (còn 3.2%), target=110000,
             giả định: 2/4 còn valid, verdict: WEAKENING
+
+        Example output (thesis-only, no actual entry):
+            [VCB | BULLISH | OK] "Tăng trưởng CASA" — health=0.72,
+            review=2d trước, entry=88000, stop_loss=80000 (còn 8.2%),
+            target=110000, giả định: 3/4 còn valid, verdict: VALID
         """
         parts: list[str] = []
 
@@ -119,6 +135,31 @@ class ThesisHealthSnapshot:
             f"health={self.health_score:.2f}",
             f"review={review_str}",
         ]
+
+        # Entry price block — thesis reference vs actual execution
+        if self.entry_price is not None and self.actual_entry_price is not None:
+            diff_pct = (self.actual_entry_price - self.entry_price) / self.entry_price * 100
+            if diff_pct < 0:
+                diff_str = f"mua thấp hơn {abs(diff_pct):.1f}%"
+            elif diff_pct > 0:
+                diff_str = f"mua cao hơn {diff_pct:.1f}%"
+            else:
+                diff_str = "đúng giá thesis"
+            details.append(
+                f"entry={self.entry_price:,.0f} → actual={self.actual_entry_price:,.0f} ({diff_str})"
+            )
+            # P&L vs target from actual entry
+            if self.target_price is not None and self.actual_entry_price > 0:
+                pnl_to_target = (self.target_price - self.actual_entry_price) / self.actual_entry_price * 100
+                sign = "+" if pnl_to_target >= 0 else ""
+                details.append(f"P&L vs target: {sign}{pnl_to_target:.1f}%")
+            # P&L vs stop from actual entry
+            if self.stop_loss is not None and self.actual_entry_price > 0:
+                pnl_to_stop = (self.stop_loss - self.actual_entry_price) / self.actual_entry_price * 100
+                details.append(f"P&L vs stop: {pnl_to_stop:.1f}%")
+        elif self.entry_price is not None:
+            # Only thesis reference price — no actual execution yet
+            details.append(f"entry={self.entry_price:,.0f} (chưa vào lệnh)")
 
         # Stop-loss proximity
         if self.stop_loss is not None:
@@ -218,11 +259,13 @@ def _compute_snapshot(thesis: object, health_score: float) -> ThesisHealthSnapsh
     thesis_id = str(getattr(thesis, "id", ""))
     ticker = str(getattr(thesis, "ticker", ""))
     title = str(getattr(thesis, "title", "") or "")
-    direction = str(getattr(thesis, "direction", "LONG") or "LONG").upper()
+    direction = str(getattr(thesis, "direction", "BULLISH") or "BULLISH").upper()
 
-    # Stop-loss + target
+    # Price fields
     stop_loss: float | None = getattr(thesis, "stop_loss", None)
     target_price: float | None = getattr(thesis, "target_price", None)
+    entry_price: float | None = getattr(thesis, "entry_price", None)
+    actual_entry_price: float | None = getattr(thesis, "actual_entry_price", None)
     current_price: float | None = getattr(thesis, "current_price", None)
 
     # Distance to stop as % of current price
@@ -286,4 +329,6 @@ def _compute_snapshot(thesis: object, health_score: float) -> ThesisHealthSnapsh
         urgency_flag=urgency_flag,
         stop_loss=stop_loss,
         target_price=target_price,
+        entry_price=entry_price,
+        actual_entry_price=actual_entry_price,
     )
