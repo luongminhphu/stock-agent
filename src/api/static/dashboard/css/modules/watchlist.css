@@ -1,20 +1,23 @@
-/* ─── Watchlist Panel ─────────────────────────────────────────────────────────────
+/* ─── Watchlist Panel ─────────────────────────────────────────────────────────────────────────
    Owner: modules/watchlist
-   Classes: watchlist-layer, wl-toolbar, wl-grid, wl-card, wl-ticker,
-            wl-price, wl-change, wl-note, wl-actions, wl-scan-btn,
-            wl-card-badges, wl-signal-tag
+   Nguyên lý: cùng chức năng = cùng visual class.
+   Button variants dùng buttons.css tokens:
+     '+ Thêm mã'  → .primary-btn
+     'Scan now'   → .icon-text-btn
+     Edit note    → .icon-btn
+     Remove       → .icon-btn.danger
 
    POSITIONING NOTE: .watchlist-layer outer geometry (max-width, margin-inline,
    padding-inline) is owned exclusively by layout.css. Do NOT set margin or
    padding on .watchlist-layer here — it will override layout.css centering.
-────────────────────────────────────────────────────────────────────────────── */
+──────────────────────────────────────────────────────────────────────────── */
 
 .watchlist-layer > #watchlistSection,
 .watchlist-layer > #catalystList {
   padding: 0 var(--panel-pad, 16px) var(--panel-pad, 16px);
 }
 
-/* ── Toolbar: title + add/scan actions ──────────────────────────────────────── */
+/* ── Toolbar: title + add/scan actions ──────────────────────────────────── */
 .wl-toolbar {
   display: flex;
   justify-content: space-between;
@@ -29,16 +32,12 @@
   align-items: center;
   flex-wrap: wrap;
 }
-.wl-scan-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.82rem;
-}
-.wl-scan-btn svg { flex-shrink: 0; }
-.wl-scan-btn.scanning { opacity: 0.7; pointer-events: none; }
+/* .wl-scan-btn: không cần override — .icon-text-btn từ buttons.css đủ */
 
-/* ── Empty state ──────────────────────────────────────────────────────────────── */
+/* ── Scan loading state ──────────────────────────────────────────────────── */
+#wlScanBtn.scanning { opacity: 0.7; pointer-events: none; }
+
+/* ── Empty state ────────────────────────────────────────────────────────────── */
 .wl-empty {
   padding: 28px 16px;
   text-align: center;
@@ -47,7 +46,7 @@
 }
 .wl-empty strong { display: block; margin-bottom: 4px; color: var(--text); font-size: 0.94rem; }
 
-/* ── Card grid ──────────────────────────────────────────────────────────────────── */
+/* ── Card grid ─────────────────────────────────────────────────────────────────── */
 .wl-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr));
@@ -70,7 +69,7 @@
   border-color: rgba(125, 211, 252, 0.2);
 }
 
-/* ── Card header row ───────────────────────────────────────────────────────── */
+/* ── Card header row ─────────────────────────────────────────────────────────── */
 .wl-card-head {
   display: flex;
   justify-content: space-between;
@@ -80,7 +79,7 @@
 .wl-ticker {
   font-size: 1rem;
   font-weight: 700;
-  color: var(--brand, #7dd3fc);
+  color: var(--brand);
   letter-spacing: 0.04em;
   flex-shrink: 0;
 }
@@ -93,17 +92,16 @@
   justify-content: flex-end;
   align-items: center;
 }
-
 .wl-thesis-badge {
   font-size: 0.63rem;
-  color: var(--brand, #7dd3fc);
+  color: var(--brand);
   background: rgba(125, 211, 252, 0.12);
   border-radius: 99px;
   padding: 2px 7px;
   white-space: nowrap;
 }
 
-/* ── Signal tags — base ────────────────────────────────────────────────────── */
+/* ── Signal tags ───────────────────────────────────────────────────────────────────── */
 .wl-signal-tag {
   font-size: 0.63rem;
   font-weight: 600;
@@ -113,44 +111,12 @@
   letter-spacing: 0.02em;
   cursor: default;
 }
-
-/* ── Per-type color variants ───────────────────────────────────────────────── */
-
-/* BREAKOUT — purple: momentum tích cực */
-.wl-signal-breakout {
-  background: rgba(167, 139, 250, 0.15);
-  color: #a78bfa;
-}
-
-/* RISK_SPIKE — orange: cảnh báo rủi ro */
-.wl-signal-risk-spike {
-  background: rgba(251, 146, 60, 0.15);
-  color: #fb923c;
-}
-
-/* STRONG_MOVE — sky/brand: di chuyển giá mạnh */
-.wl-signal-strong-move {
-  background: rgba(125, 211, 252, 0.12);
-  color: #7dd3fc;
-}
-
-/* THESIS_DIVERGENCE — red: xung đột thesis */
-.wl-signal-thesis-divergence {
-  background: rgba(248, 113, 113, 0.15);
-  color: #f87171;
-}
-
-/* TREND_REVERSAL — amber: đảo chiều */
-.wl-signal-trend-reversal {
-  background: rgba(251, 191, 36, 0.15);
-  color: #fbbf24;
-}
-
-/* STOP_LOSS — red (same as thesis-divergence: urgency) */
-.wl-signal-stop-loss {
-  background: rgba(248, 113, 113, 0.15);
-  color: #f87171;
-}
+.wl-signal-breakout         { background: rgba(167,139,250,0.15); color: #a78bfa; }
+.wl-signal-risk-spike       { background: rgba(251,146, 60,0.15); color: #fb923c; }
+.wl-signal-strong-move      { background: rgba(125,211,252,0.12); color: #7dd3fc; }
+.wl-signal-thesis-divergence{ background: rgba(248,113,113,0.15); color: #f87171; }
+.wl-signal-trend-reversal   { background: rgba(251,191, 36,0.15); color: #fbbf24; }
+.wl-signal-stop-loss        { background: rgba(248,113,113,0.15); color: #f87171; }
 
 /* ── Price block ──────────────────────────────────────────────────────────────────── */
 .wl-price-row {
@@ -165,21 +131,16 @@
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
-.wl-price.loading {
-  color: var(--muted);
-  font-size: 0.82rem;
-  font-weight: 400;
-}
+.wl-price.loading { color: var(--muted); font-size: 0.82rem; font-weight: 400; }
 .wl-change {
   font-size: 0.78rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
-.wl-change.up   { color: #4ade80; }
+.wl-change.up   { color: var(--success); }
 .wl-change.down { color: #fb923c; }
 .wl-change.flat { color: var(--muted); }
 
-/* Ceiling / floor badges */
 .wl-ceil-badge,
 .wl-floor-badge {
   font-size: 0.65rem;
@@ -187,10 +148,10 @@
   border-radius: 99px;
   font-weight: 700;
 }
-.wl-ceil-badge  { background: rgba(251, 146, 60, 0.18); color: #fb923c; }
-.wl-floor-badge { background: rgba(74, 222, 128, 0.15); color: #4ade80; }
+.wl-ceil-badge  { background: rgba(251,146,60,0.18); color: #fb923c; }
+.wl-floor-badge { background: rgba(74,222,128,0.15); color: #4ade80; }
 
-/* ── Note ───────────────────────────────────────────────────────────────────────────── */
+/* ── Note ─────────────────────────────────────────────────────────────────────────── */
 .wl-note {
   color: var(--muted);
   font-size: 0.76rem;
@@ -200,35 +161,37 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
+.wl-note--empty { min-height: 0; }
 
-/* ── Footer: added_at + remove btn ──────────────────────────────────────────── */
+/* ── Footer: added_at + action buttons ──────────────────────────────────────── */
 .wl-card-foot {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 2px;
+  margin-top: 4px;
+  gap: 8px;
 }
 .wl-added-at {
   font-size: 0.68rem;
   color: var(--faint);
+  flex: 1;           /* đẩy action buttons sang phải */
 }
-.wl-remove-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 3px 5px;
-  border-radius: 6px;
-  color: var(--muted);
-  font-size: 0.72rem;
-  line-height: 1;
-  transition: color 0.15s, background 0.15s;
+/* Wrapper 2 icon-btn cạnh nhau */
+.wl-card-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
 }
-.wl-remove-btn:hover {
-  color: #fb923c;
-  background: rgba(251, 146, 60, 0.1);
+/* icon-btn size override — cards nhỏ hơn, dùng 28px thay 36px */
+.wl-card-actions .icon-btn {
+  width:  28px;
+  height: 28px;
+  min-width: 28px;
+  border-radius: 7px;
 }
 
-/* ── Scan result banner ─────────────────────────────────────────────────────────── */
+/* ── Scan result banner ──────────────────────────────────────────────────────────── */
 .wl-scan-result {
   margin-top: 10px;
   padding: 10px 14px;

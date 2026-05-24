@@ -36,16 +36,19 @@ export function renderWatchlist(container, items, { onRemove, onScan, onAdd, onE
   const scanResultId = 'wlScanResult';
 
   // ── Toolbar ──────────────────────────────────────────────────────────────
+  // Nguyên lý: cùng chức năng = cùng visual.
+  // '+ Thêm mã'  → primary-btn   (giống '+ Thesis mới' ở header)
+  // 'Scan now'   → icon-text-btn  (giống 'Reload' ở header)
   const toolbar = document.createElement('div');
   toolbar.className = 'wl-toolbar';
   toolbar.innerHTML = `
     <span class="muted" style="font-size:0.8rem">${items.length} mã theo dõi</span>
     <div class="wl-toolbar-actions">
-      <button type="button" id="wlAddBtn" class="ghost-btn" style="font-size:0.82rem;min-height:34px;padding:0 12px;">
+      <button type="button" id="wlAddBtn" class="primary-btn">
         + Thêm mã
       </button>
-      <button type="button" id="wlScanBtn" class="icon-text-btn wl-scan-btn">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <button type="button" id="wlScanBtn" class="icon-text-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="11" cy="11" r="8"/>
           <path d="m21 21-4.35-4.35"/>
         </svg>
@@ -129,7 +132,7 @@ function buildCard(item, onRemove, onEditNote, signalReports = []) {
   const ceilBadge  = q?.is_ceiling ? '<span class="wl-ceil-badge">TRẦN</span>'  : '';
   const floorBadge = q?.is_floor   ? '<span class="wl-floor-badge">SÀN</span>' : '';
 
-  // #3 FIX: thesis badge — clickable nếu có thesis_id
+  // thesis badge — clickable nếu có thesis_id
   const thesisBadge = item.thesis_id
     ? `<span class="wl-thesis-badge wl-thesis-badge--link"
            role="button"
@@ -170,12 +173,24 @@ function buildCard(item, onRemove, onEditNote, signalReports = []) {
     ${item.note ? `<p class="wl-note" data-note>${esc(item.note)}</p>` : `<p class="wl-note wl-note--empty" data-note></p>`}
     <div class="wl-card-foot">
       <span class="wl-added-at">+${fmtDate(item.added_at)}</span>
-      <button class="wl-edit-note-btn ghost-btn" data-ticker="${esc(item.ticker)}"
-        aria-label="Sửa ghi chú ${esc(item.ticker)}" title="Sửa ghi chú"
-        style="font-size:0.75rem;min-height:28px;padding:0 8px;color:var(--muted);">✎</button>
-      <button class="wl-remove-btn" data-ticker="${esc(item.ticker)}" aria-label="Xóa ${esc(item.ticker)} khỏi watchlist" title="Xóa">
-        ✕
-      </button>
+      <div class="wl-card-actions">
+        <button class="icon-btn wl-edit-note-btn" data-ticker="${esc(item.ticker)}"
+          aria-label="Sửa ghi chú ${esc(item.ticker)}" title="Sửa ghi chú">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+          </svg>
+        </button>
+        <button class="icon-btn danger wl-remove-btn" data-ticker="${esc(item.ticker)}"
+          aria-label="Xóa ${esc(item.ticker)} khỏi watchlist" title="Xóa khỏi watchlist">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+            <path d="M10 11v6M14 11v6"/>
+            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+          </svg>
+        </button>
+      </div>
     </div>
   `;
 
@@ -195,7 +210,7 @@ function buildCard(item, onRemove, onEditNote, signalReports = []) {
     });
   }
 
-  // #3 FIX: wire thesis badge click
+  // Wire thesis badge click
   if (item.thesis_id) {
     const badge = card.querySelector('.wl-thesis-badge--link');
     if (badge) {
