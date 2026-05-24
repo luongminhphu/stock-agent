@@ -1,15 +1,25 @@
 /* quick-trade.css — B/S inline buttons + modal + toast
    Owner: api/dashboard UI
-   Follows dashboard design tokens (var(--color-*), var(--space-*), var(--radius-*))
-   Falls back to sensible values when tokens are absent.
+   Token system: dùng dashboard navy tokens (variables.css)
+   --bg-2:       #0d1728
+   --surface-3:  rgba(20,37,63,0.92)
+   --line:       rgba(148,163,184,0.18)
+   --line-strong:rgba(148,163,184,0.28)
+   --text:       #ecf3ff
+   --muted:      #96a7c6
+   --faint:      #61718f
+   --brand:      #7dd3fc  (sky-blue)
+   --brand-strong:#38bdf8
+   --success:    #4ade80
+   --danger:     #f87171
 */
 
-/* ─── Inline B / S buttons ────────────────────────────────────────────── */
+/* ─── Inline B / S buttons ───────────────────────────────────────────── */
 .qt-inline-actions,
 .action-btns {
   display:     inline-flex;
   align-items: center;
-  gap:         10px;          /* tăng từ 4px → 10px, giảm click nhầm */
+  gap:         10px;
   margin-left: 4px;
   vertical-align: middle;
 }
@@ -18,11 +28,11 @@
   display:          inline-flex;
   align-items:      center;
   justify-content:  center;
-  width:            30px;     /* tăng từ 22px → 30px */
-  height:           28px;     /* tăng từ 22px → 28px */
+  width:            30px;
+  height:           28px;
   border-radius:    5px;
   border:           none;
-  font-size:        12px;     /* tăng từ 11px → 12px */
+  font-size:        12px;
   font-weight:      700;
   line-height:      1;
   cursor:           pointer;
@@ -33,7 +43,7 @@
   letter-spacing:   0.5px;
 }
 
-/* Buy — xanh lá */
+/* Buy — xanh lá (--success tone) */
 .qt-btn-buy {
   background: #16a34a;
   color:      #fff;
@@ -50,7 +60,7 @@
   box-shadow: none;
 }
 
-/* Sell — đỏ */
+/* Sell — đỏ (--danger tone) */
 .qt-btn-sell {
   background: #dc2626;
   color:      #fff;
@@ -67,7 +77,7 @@
   box-shadow: none;
 }
 
-/* ─── Modal backdrop ────────────────────────────────────────────────── */
+/* ─── Modal backdrop ──────────────────────────────────────────────── */
 .qt-backdrop {
   position:         fixed;
   inset:            0;
@@ -75,8 +85,8 @@
   display:          flex;
   align-items:      center;
   justify-content:  center;
-  background:       rgba(0, 0, 0, 0.55);
-  backdrop-filter:  blur(2px);
+  background:       rgba(2, 6, 18, 0.78);
+  backdrop-filter:  blur(6px);
   animation:        qtFadeIn 160ms ease;
 }
 .qt-backdrop[hidden] {
@@ -88,15 +98,20 @@
   to   { opacity: 1; }
 }
 
-/* ─── Modal box ───────────────────────────────────────────────────────── */
+/* ─── Modal box ────────────────────────────────────────────────────────── */
 .qt-modal {
-  background:    var(--color-surface, #1e1e1e);
-  border:        1px solid var(--color-border, #333);
-  border-radius: 10px;
-  width:         min(440px, 92vw);
-  box-shadow:    0 16px 48px rgba(0,0,0,0.45);
+  /* navy gradient đồng bộ với dashboard dialog */
+  background:    linear-gradient(180deg,
+                   var(--surface-3, rgba(20,37,63,0.98)),
+                   var(--bg-2,      #0d1728));
+  border:        1px solid var(--line-strong, rgba(148,163,184,0.28));
+  border-radius: var(--radius-lg, 18px);
+  width:         min(480px, 92vw);
+  box-shadow:    0 24px 70px rgba(2, 6, 23, 0.72),
+                 0 0 0 1px var(--line, rgba(148,163,184,0.18));
   overflow:      hidden;
   animation:     qtSlideUp 180ms cubic-bezier(0.16,1,0.3,1);
+  color-scheme:  dark;
 }
 
 @keyframes qtSlideUp {
@@ -108,138 +123,176 @@
   display:         flex;
   align-items:     center;
   justify-content: space-between;
-  padding:         14px 18px 12px;
-  border-bottom:   1px solid var(--color-border, #333);
+  padding:         16px 20px 14px;
+  border-bottom:   1px solid var(--line, rgba(148,163,184,0.18));
 }
 
 .qt-modal-title {
-  font-size:   14px;
-  font-weight: 600;
-  color:       var(--color-text, #e0e0e0);
+  font-size:      1.05rem;
+  font-weight:    600;
+  color:          var(--text, #ecf3ff);
+  letter-spacing: -0.02em;
 }
 
 .qt-close {
-  background:  none;
-  border:      none;
-  color:       var(--color-text-muted, #888);
-  font-size:   16px;
-  cursor:      pointer;
-  padding:     2px 6px;
-  border-radius: 4px;
-  transition:  background 120ms;
+  background:    none;
+  border:        1px solid var(--line, rgba(148,163,184,0.18));
+  color:         var(--muted, #96a7c6);
+  font-size:     16px;
+  cursor:        pointer;
+  padding:       4px 8px;
+  border-radius: 8px;
+  transition:    border-color 150ms, color 150ms;
+  line-height:   1;
 }
-.qt-close:hover { background: var(--color-surface-offset, #2a2a2a); }
+.qt-close:hover {
+  border-color: var(--danger, #f87171);
+  color:        var(--danger, #f87171);
+}
 
-/* ─── Modal body ───────────────────────────────────────────────────────── */
+/* ─── Modal body ────────────────────────────────────────────────────────── */
 .qt-modal-body {
-  padding: 16px 18px;
+  padding: 18px 20px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .qt-ticker-row {
-  display:     flex;
-  align-items: center;
-  gap:         10px;
+  display:       flex;
+  align-items:   center;
+  gap:           10px;
   margin-bottom: 4px;
 }
 
 .qt-badge {
-  display:       inline-block;
-  padding:       3px 10px;
-  border-radius: 4px;
-  font-size:     11px;
-  font-weight:   700;
-  letter-spacing: 0.5px;
+  display:        inline-block;
+  padding:        4px 12px;
+  border-radius:  6px;
+  font-size:      0.72rem;
+  font-weight:    700;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
-.qt-badge-buy  { background: rgba(22,163,74,0.18);  color: #4ade80; border: 1px solid rgba(22,163,74,0.35); }
-.qt-badge-sell { background: rgba(220,38,38,0.18);  color: #f87171; border: 1px solid rgba(220,38,38,0.35); }
+.qt-badge-buy  {
+  background: rgba(74, 222, 128, 0.12);
+  color:      var(--success, #4ade80);
+  border:     1px solid rgba(74, 222, 128, 0.32);
+}
+.qt-badge-sell {
+  background: rgba(248, 113, 113, 0.12);
+  color:      var(--danger, #f87171);
+  border:     1px solid rgba(248, 113, 113, 0.32);
+}
 
 .qt-ticker-label {
-  font-size:   18px;
-  font-weight: 700;
-  color:       var(--color-text, #e0e0e0);
-  letter-spacing: 1px;
+  font-size:      1.2rem;
+  font-weight:    700;
+  color:          var(--text, #ecf3ff);
+  letter-spacing: 0.04em;
 }
 
 .qt-label {
-  font-size:  11px;
-  color:      var(--color-text-muted, #888);
-  font-weight: 500;
-  margin-top: 4px;
+  font-size:   0.72rem;
+  color:       var(--muted, #96a7c6);
+  font-weight: 600;
+  margin-top:  4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
+/* inputs bên trong quick-trade modal — navy theme */
 .qt-input {
-  background:    var(--color-surface-offset, #252525);
-  border:        1px solid var(--color-border, #3a3a3a);
-  border-radius: 6px;
-  color:         var(--color-text, #e0e0e0);
-  font-size:     14px;
-  padding:       9px 12px;
+  background:    rgba(13, 23, 40, 0.9);
+  border:        1px solid var(--line-strong, rgba(148,163,184,0.28));
+  border-radius: var(--radius-sm, 14px);
+  color:         var(--text, #ecf3ff);
+  font-size:     0.88rem;
+  padding:       9px 13px;
   width:         100%;
-  transition:    border-color 150ms;
+  transition:    border-color 150ms, box-shadow 150ms;
   outline:       none;
+  color-scheme:  dark;
 }
 .qt-input:focus {
-  border-color: var(--color-primary, #4f98a3);
-  box-shadow:   0 0 0 2px rgba(79,152,163,0.18);
+  border-color: var(--brand, #7dd3fc);
+  box-shadow:   0 0 0 3px rgba(125, 211, 252, 0.14);
 }
-.qt-input::placeholder { color: var(--color-text-faint, #555); }
+.qt-input::placeholder {
+  color: var(--faint, #61718f);
+}
+.qt-input:disabled {
+  opacity: 0.45;
+  cursor:  not-allowed;
+}
+
+/* select fallback — option items */
+.qt-input option {
+  background: #0d1728;
+  color:      var(--text, #ecf3ff);
+}
 
 .qt-summary {
-  font-size:  12px;
-  color:      var(--color-text-muted, #aaa);
+  font-size:  0.78rem;
+  color:      var(--muted, #96a7c6);
   min-height: 18px;
   margin-top: 2px;
 }
 
 .qt-error {
-  font-size:     12px;
-  color:         #f87171;
-  background:    rgba(220,38,38,0.1);
-  border:        1px solid rgba(220,38,38,0.3);
-  border-radius: 5px;
-  padding:       7px 10px;
+  font-size:     0.78rem;
+  color:         var(--danger, #f87171);
+  background:    rgba(248, 113, 113, 0.08);
+  border:        1px solid rgba(248, 113, 113, 0.28);
+  border-radius: var(--radius-sm, 10px);
+  padding:       8px 12px;
   margin-top:    2px;
 }
 
-/* ─── Modal footer ───────────────────────────────────────────────────────── */
+/* ─── Modal footer ────────────────────────────────────────────────────────── */
 .qt-modal-footer {
   display:         flex;
   justify-content: flex-end;
   gap:             10px;
-  padding:         12px 18px 14px;
-  border-top:      1px solid var(--color-border, #333);
+  padding:         12px 20px 16px;
+  border-top:      1px solid var(--line, rgba(148,163,184,0.18));
 }
 
 .qt-btn {
   padding:       9px 20px;
-  border-radius: 6px;
-  font-size:     13px;
+  border-radius: var(--radius-sm, 12px);
+  font-size:     0.84rem;
   font-weight:   600;
   border:        none;
   cursor:        pointer;
-  transition:    opacity 150ms, transform 100ms;
+  transition:    opacity 150ms, transform 100ms, background 150ms;
 }
 .qt-btn:active { transform: scale(0.97); }
 .qt-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* Xác nhận — sky-blue brand */
 .qt-btn-primary {
-  background: var(--color-primary, #4f98a3);
-  color:      #fff;
+  background: var(--brand-strong, #38bdf8);
+  color:      #08111f;    /* --bg: đủ tương phản trên nền sáng */
+  font-weight: 700;
 }
-.qt-btn-primary:hover:not(:disabled) { opacity: 0.88; }
+.qt-btn-primary:hover:not(:disabled) {
+  background: var(--brand, #7dd3fc);
+}
 
+/* Hủy — ghost style match dashboard */
 .qt-btn-secondary {
-  background: var(--color-surface-offset, #2a2a2a);
-  color:      var(--color-text-muted, #aaa);
-  border:     1px solid var(--color-border, #444);
+  background:  transparent;
+  color:       var(--muted, #96a7c6);
+  border:      1px solid var(--line-strong, rgba(148,163,184,0.28));
 }
-.qt-btn-secondary:hover:not(:disabled) { background: var(--color-surface-dynamic, #333); }
+.qt-btn-secondary:hover:not(:disabled) {
+  background:   rgba(148, 163, 184, 0.08);
+  border-color: var(--brand, #7dd3fc);
+  color:        var(--text, #ecf3ff);
+}
 
-/* ─── Toast ───────────────────────────────────────────────────────────────────── */
+/* ─── Toast ────────────────────────────────────────────────────────────────────────── */
 #qt-toast-container {
   position:       fixed;
   bottom:         24px;
@@ -252,13 +305,13 @@
 }
 
 .qt-toast {
-  background:    var(--color-surface, #1e1e1e);
-  border:        1px solid var(--color-border, #333);
-  border-radius: 8px;
-  color:         var(--color-text, #e0e0e0);
-  font-size:     13px;
+  background:    linear-gradient(135deg, var(--surface-3, rgba(20,37,63,0.98)), var(--bg-2, #0d1728));
+  border:        1px solid var(--line-strong, rgba(148,163,184,0.28));
+  border-radius: var(--radius-sm, 12px);
+  color:         var(--text, #ecf3ff);
+  font-size:     0.82rem;
   padding:       10px 16px;
-  box-shadow:    0 4px 16px rgba(0,0,0,0.4);
+  box-shadow:    0 8px 24px rgba(2, 6, 23, 0.55);
   max-width:     420px;
   opacity:       0;
   transform:     translateY(8px);
