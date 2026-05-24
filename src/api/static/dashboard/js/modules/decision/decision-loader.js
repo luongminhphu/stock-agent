@@ -16,6 +16,11 @@
  *   CustomEvent('decision:lesson-persisted', { ticker, thesis_id })
  *   so thesis-service.js can mark the relevant thesis row for review
  *   without any direct import dependency between the two modules.
+ *
+ * Events dispatched:
+ *   decision:changed  { thesisId: number|null }
+ *     — after form submit, evaluate, or replay succeeds.
+ *     — thesisId is null when no thesis is linked; listeners should guard.
  */
 
 import { getJson, sendJson, thesisApiBase } from '../../api/client.js';
@@ -28,7 +33,7 @@ import {
 let lessonsLoaded = false;
 
 // ---------------------------------------------------------------------------
-// Private: update Wave B KPI strip (client-side aggregate)
+// Private helpers
 // ---------------------------------------------------------------------------
 
 function setKpi(id, value, sub, alert = false) {
@@ -38,7 +43,7 @@ function setKpi(id, value, sub, alert = false) {
   const subEl = card.querySelector('.dec-kpi-sub');
   if (valEl) {
     valEl.textContent = value ?? '—';
-    valEl.classList.add('updated');          // flash animation
+    valEl.classList.add('updated');
     setTimeout(() => valEl.classList.remove('updated'), 900);
   }
   if (subEl && sub !== undefined) subEl.textContent = sub;
@@ -69,7 +74,6 @@ function updateDecisionKpis(items) {
   setKpi('dkpiBuyCount', `${buyCount} / ${sellCount}`);
   setKpi('dkpiPending',  pending,  'quá hạn review', pending > 0);
 
-  // win-rate colour tier
   const rateEl = document.querySelector('#dkpiWinRate .dec-kpi-value');
   if (rateEl && winRate !== null) {
     rateEl.classList.remove('rate-high', 'rate-mid', 'rate-low');
@@ -79,10 +83,18 @@ function updateDecisionKpis(items) {
   }
 }
 
+/**
+ * Dispatch decision:changed với thesisId (number | null).
+ * Listeners phải guard: chỉ react khi thesisId match.
+ */
+function dispatchDecisionChanged(thesisId) {
+  document.dispatchEvent(new CustomEvent('decision:changed', {
+    detail: { thesisId: thesisId ?? null },
+  }));
+}
+
 // ---------------------------------------------------------------------------
 // Public: load & render decisions + update KPI strip
-// Fetch 20 most-recent decisions (newest first) for the table.
-// KPI strip aggregates the returned slice — enough for a working signal.
 // ---------------------------------------------------------------------------
 
 export async function loadDecisions() {
@@ -104,7 +116,6 @@ export async function loadDecisions() {
 
 // ---------------------------------------------------------------------------
 // Public: load & render lessons (lazy)
-// Fetch 20 most-recent lessons, newest on top.
 // ---------------------------------------------------------------------------
 
 export async function loadLessons(force = false) {
@@ -167,7 +178,6 @@ export function bindLogDecisionModal() {
     submitBtn.textContent = 'Đang lưu…';
 
     try {
-      // Read thesis_id from the populated select — nullable, not required
       const thesisRaw = document.getElementById('decisionThesisSelect')?.value;
       const thesisId  = thesisRaw ? parseInt(thesisRaw, 10) : null;
 
@@ -179,12 +189,11 @@ export function bindLogDecisionModal() {
         review_horizon_days: 30,
       };
 
-      // Optional enrichment fields
-      const price = parseFloat(form.decPriceField?.value);
-      const qty   = parseInt(form.decQtyField?.value, 10);
+      const price   = parseFloat(form.decPriceField?.value);
+      const qty     = parseInt(form.decQtyField?.value, 10);
       const emotion = form.decEmotionField?.value;
-      if (!isNaN(price) && price > 0)   payload.price    = price;
-      if (!isNaN(qty)   && qty   > 0)   payload.quantity = qty;
+      if (!isNaN(price) && price > 0)   payload.price       = price;
+      if (!isNaN(qty)   && qty   > 0)   payload.quantity    = qty;
       if (emotion)                       payload.emotion_tag = emotion;
 
       if (!payload.decision_type || !payload.rationale) {
@@ -195,10 +204,13 @@ export function bindLogDecisionModal() {
       await sendJson('/api/v1/decisions', 'POST', payload);
       modal.close();
       form.reset();
-      // Reset thesis select to placeholder after form.reset()
       const sel = document.getElementById('decisionThesisSelect');
       if (sel) sel.value = '';
       await loadDecisions();
+
+      // Wave 3 wire: decision logged → notify app → loadThesisDetail if selected
+      // thesisId có thể null nếu user không chọn thesis — listeners phải guard.
+      dispatchDecisionChanged(thesisId);
     } catch (err) {
       alert(`Lỗi lưu decision: ${err.message}`);
     } finally {
@@ -208,21 +220,27 @@ export function bindLogDecisionModal() {
   });
 }
 
-/**
- * Alias for bindLogDecisionModal — kept for backward compat with app.js
- * which imports { bindDecisionFormEvents }.
- */
+/** Alias for backward compat with app.js */
 export const bindDecisionFormEvents = bindLogDecisionModal;
 
 // ---------------------------------------------------------------------------
-// Public: evaluate a decision (called from renderer callback)
+// Public: evaluate a decision
+// thesisId đọc từ data-thesis-id trên DOM row được renderer gắn.
 // ---------------------------------------------------------------------------
 
 export async function evaluateDecision(decisionId, btnEl) {
+  // Đọc thesis_id từ DOM row trước khi reload bảng
+  const row      = btnEl?.closest('tr[data-thesis-id]');
+  const rawId    = row?.dataset?.thesisId;
+  const thesisId = rawId ? parseInt(rawId, 10) : null;
+
   if (btnEl) { btnEl.disabled = true; btnEl.textContent = '…'; }
   try {
     await sendJson(`/api/v1/decisions/${decisionId}/evaluate`, 'POST', null);
     await loadDecisions();
+
+    // Wave 3 wire: evaluate xong → notify nếu thesis_id xác định được
+    dispatchDecisionChanged(thesisId);
   } catch (err) {
     alert(`Lỗi evaluate: ${err.message}`);
     if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Evaluate'; }
@@ -230,7 +248,7 @@ export async function evaluateDecision(decisionId, btnEl) {
 }
 
 // ---------------------------------------------------------------------------
-// Public: replay a decision (called from renderer callback)
+// Public: replay a decision
 // ---------------------------------------------------------------------------
 
 export async function replayDecision(decisionId, replayWrap, btnEl) {
@@ -240,14 +258,17 @@ export async function replayDecision(decisionId, replayWrap, btnEl) {
     renderReplayPanel(replayWrap, result);
     lessonsLoaded = false;
 
-    // Close the lesson → thesis review UI loop:
-    // Dispatch a CustomEvent so thesis-service.js can badge the thesis row
-    // and show a toast — without any direct import between the two modules.
+    // Existing loop: close decision → thesis review badge
     if (result.key_lesson && result.thesis_id) {
       document.dispatchEvent(new CustomEvent('decision:lesson-persisted', {
         detail: { ticker: result.ticker, thesis_id: String(result.thesis_id) },
       }));
     }
+
+    // Wave 3 wire: replay xong → notify thesis panel nếu thesis_id có
+    // result.thesis_id là number|null từ backend
+    const thesisId = result.thesis_id ? Number(result.thesis_id) : null;
+    dispatchDecisionChanged(thesisId);
   } catch (err) {
     if (replayWrap) replayWrap.innerHTML = `<p class="error-text">Lỗi replay: ${err.message}</p>`;
   } finally {

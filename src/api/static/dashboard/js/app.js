@@ -1,5 +1,5 @@
 /**
- * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard + Wave D lesson loop + Wave E brief ticker + Wave F brief feedback + Wave G brief generate + Wave 1 UX + Wave 2 memory + AttentionPanel + Wave 1 wire + Wave 2 wire)
+ * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard + Wave D lesson loop + Wave E brief ticker + Wave F brief feedback + Wave G brief generate + Wave 1 UX + Wave 2 memory + AttentionPanel + Wave 1 wire + Wave 2 wire + Wave 3 wire)
  * Responsibility: import tất cả modules, wire events, khởi động dashboard.
  * Rule: KHÔNG chứa business logic. Chỉ bootstrap + wiring.
  */
@@ -60,16 +60,12 @@ function bindBriefTabs() {
 
 // ---------------------------------------------------------------------------
 // Wave 1 UX: Brief auto-open theo giờ trong ngày (GMT+7)
-//   06:00–10:59 → open + active tab morning
-//   14:30–18:30 → open + active tab eod
-//   ngoài giờ   → collapsed (mặc định)
 // ---------------------------------------------------------------------------
 function initBriefAutoOpen() {
   const collapsible = document.getElementById('briefCollapsible');
   if (!collapsible) return;
 
   const now = new Date();
-  // Chuyển sang giờ VN (UTC+7)
   const vnHour = (now.getUTCHours() + 7) % 24;
   const vnMin  = now.getUTCMinutes();
   const vnTime = vnHour + vnMin / 60;
@@ -81,7 +77,6 @@ function initBriefAutoOpen() {
 
   collapsible.open = true;
 
-  // Activate đúng tab theo window
   const targetTab = isMorningWindow ? 'morning' : 'eod';
   const tabBar = collapsible.querySelector('.brief-tab-bar');
   if (!tabBar) return;
@@ -104,8 +99,7 @@ function initBriefAutoOpen() {
 }
 
 // ---------------------------------------------------------------------------
-// Wave 1 UX: KPI cards clickable — scroll + visual feedback
-// Gọi sau khi loadDashboard() render xong để KPI values đã có.
+// Wave 1 UX: KPI cards clickable
 // ---------------------------------------------------------------------------
 export function initKpiClickable() {
   const scrollTo = (targetId, offset = 0) => {
@@ -115,14 +109,12 @@ export function initKpiClickable() {
     window.scrollTo({ top: y, behavior: 'smooth' });
   };
 
-  // Map: [cardId, targetScrollId, optional filter callback]
   const kpiMap = [
     {
       cardId:   'riskyTheses',
       targetId: 'thesisBoardTitle',
       label:    'Xem thesis rủi ro',
       onEnter:  () => {
-        // Set status filter về 'active' để thấy các thesis đang active
         const filter = document.getElementById('statusFilter');
         if (filter && filter.value !== 'active') {
           filter.value = 'active';
@@ -148,12 +140,10 @@ export function initKpiClickable() {
   ];
 
   kpiMap.forEach(({ cardId, targetId, label, onEnter }) => {
-    // Card có thể là article chứa signal-value, hoặc chính signal-card
     const card = document.getElementById(cardId)
       ?? document.querySelector(`[id="${cardId}"]`);
     if (!card) return;
 
-    // Nếu cardId trỏ đến <strong> (signal-value), leo lên <article>
     const article = card.tagName === 'ARTICLE' ? card : card.closest('article') ?? card;
 
     article.classList.add('kpi--clickable');
@@ -163,7 +153,7 @@ export function initKpiClickable() {
 
     const handle = () => {
       onEnter?.();
-      scrollTo(targetId, 72); // 72px offset cho topbar
+      scrollTo(targetId, 72);
     };
 
     article.addEventListener('click', handle);
@@ -175,7 +165,6 @@ export function initKpiClickable() {
 
 // ---------------------------------------------------------------------------
 // Wave E: Brief ticker chip click → loadThesisDetail
-// Delegates from document (chips are re-rendered on each brief refresh).
 // ---------------------------------------------------------------------------
 function bindBriefTickerClick() {
   document.addEventListener('click', e => {
@@ -200,8 +189,7 @@ function bindBriefTickerClick() {
 }
 
 // ---------------------------------------------------------------------------
-// #3 FIX: Watchlist thesis badge click → navigate to thesis detail
-// Listens for 'navigate:thesis' dispatched by watchlist-renderer.js
+// #3 FIX: Watchlist thesis badge → navigate:thesis → loadThesisDetail
 // ---------------------------------------------------------------------------
 function bindWatchlistThesisNavigate() {
   document.addEventListener('navigate:thesis', (e) => {
@@ -284,13 +272,6 @@ function bindLeaderboardSort() {
 
 // ---------------------------------------------------------------------------
 // Loop wire: trade action → Cluster C auto-refresh
-//
-// Listens for 'decision:logged' dispatched by quick-trade.js after a
-// successful buy/sell where backend confirmed decision_logged: true.
-// Calls loadDecisions() so Cluster C updates without any manual input.
-//
-// Design intent: every action in the app feeds the next waiting capability.
-// portfolio (B/S) → decision log (auto) → Cluster C refresh (auto)
 // ---------------------------------------------------------------------------
 function bindQuickTradeDecisionRefresh() {
   document.addEventListener('decision:logged', async () => {
@@ -300,9 +281,6 @@ function bindQuickTradeDecisionRefresh() {
 
 // ---------------------------------------------------------------------------
 // Wave 1 wire: watchlist mutations → AttentionPanel refresh
-//
-// watchlist:changed      — dispatched by watchlist-loader after add/remove
-// watchlist:scan-complete — dispatched by watchlist-loader after scan
 // ---------------------------------------------------------------------------
 function bindWatchlistAttentionRefresh() {
   document.addEventListener('watchlist:changed', () => {
@@ -315,15 +293,6 @@ function bindWatchlistAttentionRefresh() {
 
 // ---------------------------------------------------------------------------
 // Wave 2 wire: AI Review + Briefing generate → AttentionPanel refresh
-//
-// thesis:review-complete  — dispatched by thesis-service after triggerAiReview()
-// briefing:generated      — dispatched by brief-generate after POST succeeds
-//
-// AttentionPanel may hold items like "chưa review thesis X" or derive action
-// items from the latest brief. After either event, the panel must re-fetch
-// to stay accurate without the user reloading manually.
-//
-// Design intent: AI action → AttentionPanel always reflects current state.
 // ---------------------------------------------------------------------------
 function bindReviewAndBriefAttentionRefresh() {
   document.addEventListener('thesis:review-complete', () => {
@@ -335,11 +304,32 @@ function bindReviewAndBriefAttentionRefresh() {
 }
 
 // ---------------------------------------------------------------------------
+// Wave 3 wire: decision:changed { thesisId } → loadThesisDetail if selected
+//
+// decision-loader dispatches decision:changed after:
+//   - form submit (thesisId từ select — có thể null)
+//   - evaluateDecision (thesisId từ DOM data-thesis-id — có thể null)
+//   - replayDecision (thesisId từ result.thesis_id — có thể null)
+//
+// Guard bắt buộc:
+//   1. thesisId phải là number hợp lệ (không null, không NaN)
+//   2. phải match state.selectedThesisId đang mở
+// Nếu không match → skip (không reload nhầm thesis khác đang mở).
+// ---------------------------------------------------------------------------
+function bindDecisionThesisRefresh() {
+  document.addEventListener('decision:changed', (e) => {
+    const { thesisId } = e.detail ?? {};
+    if (!thesisId || isNaN(thesisId)) return;               // guard: null / NaN
+    if (thesisId !== state.selectedThesisId) return;        // guard: chỉ reload nếu đang mở
+    loadThesisDetail(thesisId);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Bootstrap
 // ---------------------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', async () => {
 
-  // ── Error boundary: surface module-load failures visibly ──────────────────────
   window.addEventListener('error', (e) => {
     if (e.filename?.includes('/static/dashboard/')) {
       const banner = document.getElementById('errorBanner');
@@ -372,15 +362,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 1e. #3 FIX: watchlist thesis badge → navigate:thesis → loadThesisDetail
   bindWatchlistThesisNavigate();
 
-  // 2. Bind thesis form + delete confirm (submit handlers)
+  // 2. Bind thesis form + delete confirm
   bindThesisFormEvents({
     onThesisSaved: async (thesisId) => {
       await loadDashboard();
       if (thesisId) await loadThesisDetail(thesisId);
       await loadPortfolio();
-      // Refresh watchlist so thesis badge appears immediately on matching card
       await loadWatchlist();
-      // Refresh attention panel sau khi thesis thay đổi
       loadAttentionPanel();
     },
   });
@@ -412,7 +400,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadAttentionPanel();
   });
 
-  // PERF: debounce statusFilter — tránh trigger full reload khi user click nhanh
   el('statusFilter')?.addEventListener('change', debounce(loadDashboard, 200));
 
   // 5. Form row add buttons
@@ -427,7 +414,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
 
-  // 6. Modal close buttons (data-close attribute pattern)
+  // 6. Modal close buttons
   document.addEventListener('click', e => {
     const btn = e.target.closest('[data-close]');
     if (btn) closeModal(btn.dataset.close);
@@ -448,10 +435,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         { recommendation_ids: state.aiSelectedRecIds },
       );
       closeModal('aiApplyModal');
-      showToast('✅ Đã áp dụng gợi ý AI');
+      const { showToast: toast } = await import('./utils/dom.js');
+      toast('✅ Đã áp dụng gợi ý AI');
       await loadThesisDetail(state.aiApplyThesisId);
     } catch (err) {
-      showToast(`Lỗi áp dụng: ${err.message}`, 'error');
+      const { showToast: toast } = await import('./utils/dom.js');
+      toast(`Lỗi áp dụng: ${err.message}`, 'error');
     } finally {
       btn.disabled = false;
       btn.textContent = 'Xác nhận áp dụng';
@@ -472,7 +461,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 10. Leaderboard wiring
   bindLeaderboardSort();
 
-  // 11. Loop wire: B/S trade → decision:logged event → Cluster C auto-refresh
+  // 11. Loop wire: B/S trade → decision:logged → Cluster C auto-refresh
   bindQuickTradeDecisionRefresh();
 
   // 12. Wave 1 wire: watchlist mutations → AttentionPanel refresh
@@ -481,7 +470,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 12b. Wave 2 wire: AI Review + Briefing generate → AttentionPanel refresh
   bindReviewAndBriefAttentionRefresh();
 
-  // 13. Initial parallel load — initKpiClickable() gọi sau khi data render xong
+  // 12c. Wave 3 wire: decision:changed { thesisId } → loadThesisDetail if selected
+  bindDecisionThesisRefresh();
+
+  // 13. Initial parallel load
   await Promise.all([
     loadDashboard(),
     loadBacktesting(),
@@ -489,8 +481,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadWatchlist(),
     loadDecisions(),
     loadLeaderboard('score'),
-    loadMemory(),           // Wave 2: Cluster D — Investor Memory
-    loadAttentionPanel(),   // AttentionPanel — Việc cần làm hôm nay
+    loadMemory(),
+    loadAttentionPanel(),
   ]);
 
   // 14. Wave 1: KPI clickable — wire sau khi DOM đã render đủ values
