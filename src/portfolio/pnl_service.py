@@ -9,6 +9,8 @@ Outputs:
   PositionPnl       — unrealized P&L for a single open position
   PortfolioPnl      — aggregated view of all open positions
   RealizedSummary   — realized P&L stats from trade history
+  DividendSummary   — dividend totals and records per user/ticker
+  DividendSnapshot  — plain dataclass snapshot of a DividendRecord row
   TradeSnapshot     — plain dataclass snapshot of a Trade row (safe outside session)
 """
 
@@ -21,29 +23,21 @@ from typing import Protocol, runtime_checkable
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.logging import get_logger
-from src.portfolio.models import Position
+from src.portfolio.models import DividendType, Position
 from src.portfolio.repository import PortfolioRepository
 
 logger = get_logger(__name__)
 
-# Threshold đưới đây coi là hòa vốn (tránh float == 0.0 với realized_pnl VND).
-# 1.0 VND là đủ nhỏ để không nhầm với lời/lỗ thực tế.
 _BREAKEVEN_EPSILON = 1.0
-
-# Maximum rows get_trade_history will fetch in a single call.
 _TRADE_HISTORY_MAX_LIMIT = 200
+_DIVIDEND_HISTORY_MAX_LIMIT = 100
 
 
 @runtime_checkable
 class QuoteServiceProtocol(Protocol):
-    """Minimal contract PnlService cần từ market segment.
-
-    Dùng Protocol để giữ loose coupling — market segment không cần
-    import portfolio và portfolio không cần import class cụ thể.
-    """
+    """Minimal contract PnlService cần từ market segment."""
 
     async def get_quote(self, ticker: str) -> object:
-        """Trả về object có thuộc tính .price (float)."""
         ...
 
 
@@ -110,17 +104,40 @@ class RealizedSummary:
 
 
 @dataclass
-class TradeSnapshot:
-    """Plain-data snapshot of a Trade row.
+class DividendSnapshot:
+    """Plain-data snapshot of a DividendRecord row.
 
-    Copied from the ORM object while the session is still open,
-    so callers can safely access all fields after session close
-    without risking DetachedInstanceError or lazy-load failures.
+    Copied from ORM while session is open — safe to access after session close.
     """
 
     id: int
     ticker: str
-    trade_type: str          # "buy" or "sell" (raw string, always lowercase)
+    qty: float
+    dividend_per_share: float
+    total_amount: float
+    dividend_type: str          # "cash" or "stock"
+    ex_date: datetime | None
+    paid_at: datetime
+    note: str | None
+
+
+@dataclass
+class DividendSummary:
+    """Aggregated dividend data for a user (optionally per ticker)."""
+
+    total_cash_received: float
+    record_count: int
+    records: list[DividendSnapshot] = field(default_factory=list)
+    ticker: str | None = None   # None = all tickers
+
+
+@dataclass
+class TradeSnapshot:
+    """Plain-data snapshot of a Trade row."""
+
+    id: int
+    ticker: str
+    trade_type: str
     qty: float
     price: float
     realized_pnl: float | None
@@ -147,10 +164,8 @@ class PnlService:
         self._quote_service = quote_service
 
     async def get_portfolio_pnl(self, user_id: str) -> PortfolioPnl:
-        """Fetch all open positions and calculate unrealized P&L with live prices."""
         positions = await self._repo.list_open_positions(user_id)
         result = PortfolioPnl()
-
         for pos in positions:
             try:
                 pnl = await self._calc_position_pnl(pos)
@@ -158,11 +173,9 @@ class PnlService:
             except Exception as exc:
                 logger.warning("pnl.fetch_error", ticker=pos.ticker, error=str(exc))
                 result.errors[pos.ticker] = str(exc)
-
         return result
 
     async def get_position_pnl(self, user_id: str, ticker: str) -> PositionPnl | None:
-        """Calculate unrealized P&L for a single ticker. Returns None if no open position."""
         position = await self._repo.get_open_position(user_id, ticker.upper())
         if position is None:
             return None
@@ -174,12 +187,9 @@ class PnlService:
         ticker: str | None = None,
         since: datetime | None = None,
     ) -> RealizedSummary:
-        """Aggregate realized P&L from SELL trade history."""
         trades = await self._repo.list_sell_trades(user_id, ticker=ticker, since=since)
-
         total_pnl = 0.0
         wins = losses = breakevens = 0
-
         for trade in trades:
             pnl = trade.realized_pnl or 0.0
             total_pnl += pnl
@@ -189,7 +199,6 @@ class PnlService:
                 losses += 1
             else:
                 breakevens += 1
-
         return RealizedSummary(
             total_realized_pnl=total_pnl,
             win_trades=wins,
@@ -198,20 +207,49 @@ class PnlService:
             since=since,
         )
 
+    async def get_dividend_summary(
+        self,
+        user_id: str,
+        ticker: str | None = None,
+        limit: int = 20,
+    ) -> DividendSummary:
+        """Return dividend history and total cash received for a user.
+
+        limit is clamped to [1, _DIVIDEND_HISTORY_MAX_LIMIT].
+        Only cash dividends count toward total_cash_received.
+        Stock dividends appear in records but are excluded from the cash total.
+        """
+        limit = max(1, min(limit, _DIVIDEND_HISTORY_MAX_LIMIT))
+        records = await self._repo.list_dividends(user_id, ticker=ticker, limit=limit)
+        total_cash = await self._repo.get_dividend_total(user_id, ticker=ticker)
+
+        snapshots = [
+            DividendSnapshot(
+                id=r.id,
+                ticker=r.ticker,
+                qty=r.qty,
+                dividend_per_share=r.dividend_per_share,
+                total_amount=r.total_amount,
+                dividend_type=str(r.dividend_type).lower(),
+                ex_date=r.ex_date,
+                paid_at=r.paid_at,
+                note=r.note,
+            )
+            for r in records
+        ]
+        return DividendSummary(
+            total_cash_received=total_cash,
+            record_count=len(snapshots),
+            records=snapshots,
+            ticker=ticker.upper() if ticker else None,
+        )
+
     async def get_trade_history(
         self,
         user_id: str,
         ticker: str | None = None,
         limit: int = 20,
     ) -> list[TradeSnapshot]:
-        """Return recent trade history as plain TradeSnapshot objects.
-
-        Snapshots all columns eagerly while the session is open so callers
-        can safely iterate after session close without DetachedInstanceError.
-
-        limit is clamped to [1, _TRADE_HISTORY_MAX_LIMIT] to prevent
-        accidental unbounded queries.
-        """
         limit = max(1, min(limit, _TRADE_HISTORY_MAX_LIMIT))
         trades = await self._repo.list_trades(user_id, ticker=ticker, limit=limit)
         return [
@@ -244,7 +282,6 @@ class PnlService:
         unrealized_pnl = (current_price - position.avg_cost) * position.qty
         cost_basis = position.avg_cost * position.qty
         unrealized_pct = (unrealized_pnl / cost_basis * 100) if cost_basis else 0.0
-
         return PositionPnl(
             ticker=position.ticker,
             qty=position.qty,

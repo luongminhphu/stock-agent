@@ -4,11 +4,12 @@ Owner: bot segment (adapter only).
 Domain logic lives in PortfolioService, PnlService, and DashboardService.
 
 Commands:
-  /buy             <ticker> <qty> <price>          — open/add to position
-  /sell            <ticker> <qty> <price>          — reduce/close position
-  /correct_trade   <trade_id> <new_price>          — fix buy price + recalculate avg_cost
-  /portfolio       [ticker] [view]                 — full portfolio or thesis-view
-  /history         [ticker]                        — realized trade history (shows trade_id)
+  /buy             <ticker> <qty> <price>                   — open/add to position
+  /sell            <ticker> <qty> <price>                   — reduce/close position
+  /correct_trade   <trade_id> <new_price>                   — fix buy price + recalculate avg_cost
+  /dividend        <ticker> <qty> <dividend_per_share>      — record dividend received
+  /portfolio       [ticker] [view]                          — full portfolio or thesis-view
+  /history         [ticker]                                 — realized trade history (shows trade_id)
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from discord.ext import commands
 
 from src.bot.commands.base import BaseCog
 from src.platform.bootstrap import get_quote_service
+from src.portfolio.models import DividendType
 from src.portfolio.service import (
     InsufficientQtyError,
     InvalidOperationError,
@@ -220,6 +222,180 @@ class PortfolioCog(BaseCog):
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     # ------------------------------------------------------------------
+    # /dividend
+    # ------------------------------------------------------------------
+
+    @app_commands.command(name="dividend", description="Ghi nhận cổ tức nhận được")
+    @app_commands.describe(
+        ticker="Mã cổ phiếu (VD: VCB)",
+        qty="Số cổ phiếu được hưởng cổ tức",
+        dividend_per_share="Cổ tức mỗi cổ phiếu — tiền mặt: VND/cổ | cổ phiếu: tỷ lệ (VD: 0.10 = 10%)",
+        dividend_type="Loại cổ tức: cash (tiền mặt) hoặc stock (cổ phiếu)",
+        ex_date="Ngày chốt quyền (tuỳ chọn, định dạng YYYY-MM-DD)",
+        note="Ghi chú tùy chọn",
+    )
+    @app_commands.choices(dividend_type=[
+        app_commands.Choice(name="cash — Tiền mặt (VND/cổ)", value="cash"),
+        app_commands.Choice(name="stock — Cổ phiếu (tỷ lệ, VD: 0.10 = 10%)", value="stock"),
+    ])
+    async def dividend(
+        self,
+        interaction: discord.Interaction,
+        ticker: str,
+        qty: float,
+        dividend_per_share: float,
+        dividend_type: str = "cash",
+        ex_date: str | None = None,
+        note: str | None = None,
+    ) -> None:
+        await self.defer(interaction)
+        user_id = self.user_id(interaction)
+
+        if qty <= 0 or dividend_per_share <= 0:
+            await self.send_error(
+                interaction,
+                "Giá trị không hợp lệ",
+                "qty và dividend_per_share phải > 0",
+            )
+            return
+
+        # Parse optional ex_date
+        parsed_ex_date = None
+        if ex_date:
+            try:
+                from datetime import date, timezone
+                d = date.fromisoformat(ex_date)
+                from datetime import datetime as _dt
+                parsed_ex_date = _dt(d.year, d.month, d.day, tzinfo=timezone.utc)
+            except ValueError:
+                await self.send_error(
+                    interaction,
+                    "Ngày không hợp lệ",
+                    f"ex_date phải có định dạng YYYY-MM-DD, nhận được: `{ex_date}`",
+                )
+                return
+
+        div_type = DividendType.CASH if dividend_type == "cash" else DividendType.STOCK
+
+        async with self.db_session() as session:
+            svc = PortfolioService(session)
+            record = await svc.record_dividend(
+                user_id=user_id,
+                ticker=ticker,
+                qty=qty,
+                dividend_per_share=dividend_per_share,
+                dividend_type=div_type,
+                ex_date=parsed_ex_date,
+                note=note,
+            )
+
+        ticker_upper = ticker.upper()
+        is_cash = div_type == DividendType.CASH
+
+        embed = discord.Embed(
+            title=f"💰 Cổ tức {ticker_upper} — {'Tiền mặt' if is_cash else 'Cổ phiếu'}",
+            color=0x6DAA45,
+        )
+        embed.add_field(name="Số cổ hưởng", value=f"{record.qty:,.0f}", inline=True)
+        if is_cash:
+            embed.add_field(
+                name="Cổ tức/cổ",
+                value=self.fmt_vnd(record.dividend_per_share),
+                inline=True,
+            )
+            embed.add_field(
+                name="Tổng nhận",
+                value=self.fmt_vnd(record.total_amount),
+                inline=True,
+            )
+        else:
+            embed.add_field(
+                name="Tỷ lệ",
+                value=f"{record.dividend_per_share:.1%}",
+                inline=True,
+            )
+            embed.add_field(
+                name="Cổ phiếu thưởng (~)",
+                value=f"{record.total_amount:,.0f} cổ",
+                inline=True,
+            )
+        if parsed_ex_date:
+            embed.add_field(
+                name="Ngày chốt quyền",
+                value=parsed_ex_date.strftime("%d/%m/%Y"),
+                inline=True,
+            )
+        if record.position_id:
+            embed.add_field(name="Position ID", value=f"#{record.position_id}", inline=True)
+        if note:
+            embed.add_field(name="Ghi chú", value=note, inline=False)
+        embed.set_footer(
+            text=f"Record ID: #{record.id} — dùng /dividend_history {ticker_upper} để xem lịch sử"
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    # ------------------------------------------------------------------
+    # /dividend_history
+    # ------------------------------------------------------------------
+
+    @app_commands.command(
+        name="dividend_history",
+        description="Xem lịch sử cổ tức đã nhận",
+    )
+    @app_commands.describe(ticker="Để trống để xem tất cả, hoặc nhập mã cổ phiếu cụ thể")
+    async def dividend_history(
+        self,
+        interaction: discord.Interaction,
+        ticker: str | None = None,
+    ) -> None:
+        await self.defer(interaction)
+        user_id = self.user_id(interaction)
+
+        async with self.db_session() as session:
+            svc = PnlService(session=session, quote_service=get_quote_service())
+            summary = await svc.get_dividend_summary(user_id, ticker=ticker, limit=20)
+
+        if not summary.records:
+            label = f" **{ticker.upper()}**" if ticker else ""
+            await self.send_info(
+                interaction,
+                "💰 Chưa có cổ tức",
+                f"Chưa ghi nhận cổ tức nào{label}.\nDùng `/dividend <ticker> <qty> <dps>` để thêm.",
+            )
+            return
+
+        lines: list[str] = []
+        for r in summary.records:
+            date_str = r.paid_at.strftime("%d/%m/%Y") if r.paid_at else "?"
+            ex_str = f" | ex {r.ex_date.strftime('%d/%m/%Y')}" if r.ex_date else ""
+            if r.dividend_type == "cash":
+                amount_str = self.fmt_vnd(r.total_amount)
+                dps_str = f"{self.fmt_vnd(r.dividend_per_share)}/cổ"
+            else:
+                amount_str = f"{r.total_amount:,.0f} cổ"
+                dps_str = f"{r.dividend_per_share:.1%}"
+            lines.append(
+                f"💰 `{date_str}`{ex_str} **{r.ticker}** {r.qty:,.0f} cổ × {dps_str} = **{amount_str}**"
+            )
+
+        body, footer_hint = self.paginate_lines(lines)
+        title_ticker = f" {ticker.upper()}" if ticker else ""
+        embed = discord.Embed(
+            title=f"💰 Lịch sử cổ tức{title_ticker}",
+            description=body,
+            color=0x6DAA45,
+        )
+        embed.add_field(
+            name="Tổng tiền mặt nhận",
+            value=self.fmt_vnd(summary.total_cash_received),
+            inline=True,
+        )
+        embed.add_field(name="Số lần", value=str(summary.record_count), inline=True)
+        footer_parts = list(filter(None, [footer_hint, f"{summary.record_count} bản ghi"]))
+        embed.set_footer(text=" — ".join(footer_parts))
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    # ------------------------------------------------------------------
     # /portfolio
     # ------------------------------------------------------------------
 
@@ -245,7 +421,6 @@ class PortfolioCog(BaseCog):
             await self._send_thesis_portfolio(interaction, user_id)
             return
 
-        # view == "trades" (default)
         async with self.db_session() as session:
             svc = PnlService(session=session, quote_service=get_quote_service())
             if ticker:

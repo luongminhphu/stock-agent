@@ -1,12 +1,13 @@
-"""PortfolioService — write-side lifecycle for Position and Trade.
+"""PortfolioService — write-side lifecycle for Position, Trade, and DividendRecord.
 
 Owner: portfolio segment.
 
 Responsibilities:
-  - buy()            — open new or add to existing position, record Trade(BUY)
-  - sell()           — reduce or close position, record Trade(SELL) with realized P&L
-  - correct_trade()  — fix price of a BUY trade and recalculate position avg_cost (VWAP)
-  - list_open()      — return all open positions for a user
+  - buy()              — open new or add to existing position, record Trade(BUY)
+  - sell()             — reduce or close position, record Trade(SELL) with realized P&L
+  - correct_trade()    — fix price of a BUY trade and recalculate position avg_cost (VWAP)
+  - record_dividend()  — record a cash or stock dividend received for a ticker
+  - list_open()        — return all open positions for a user
 
 Does NOT calculate P&L for display — that is PnlService (read concern).
 Does NOT send Discord notifications — bot/adapter concern.
@@ -19,6 +20,12 @@ Partial sell:
 correct_trade():
   Only BUY trades can be corrected (SELL realized P&L is already settled).
   Recalculates position.avg_cost as VWAP from all BUY trades after correction.
+
+record_dividend():
+  Accepts cash (VND/share) or stock (ratio, e.g. 0.10 = 10%) dividends.
+  Looks up open position to link position_id — position_id is nullable if
+  ticker no longer has an open position (allowed for backdated entries).
+  total_amount = qty * dividend_per_share (meaningful for cash; informational for stock).
 """
 
 from __future__ import annotations
@@ -28,13 +35,12 @@ from datetime import UTC, datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.logging import get_logger
-from src.portfolio.models import Position, Trade, TradeType
+from src.portfolio.models import DividendRecord, DividendType, Position, Trade, TradeType
 from src.portfolio.repository import PortfolioRepository
 
 logger = get_logger(__name__)
 
 # Positions with qty below this threshold are treated as fully closed.
-# Guards against floating-point drift in cumulative partial sells.
 _QTY_ZERO_EPSILON = 1e-9
 
 
@@ -189,7 +195,6 @@ class PortfolioService:
         position.realized_pnl += realized_pnl
         position.qty -= qty
 
-        # Guard against floating-point drift: treat sub-epsilon qty as fully closed
         if position.qty <= _QTY_ZERO_EPSILON:
             position.qty = 0.0
             position.closed_at = datetime.now(UTC)
@@ -275,7 +280,6 @@ class PortfolioService:
         trade.price = new_price
         await self._repo.save_trade(trade)
 
-        # Recalculate avg_cost as VWAP from all BUY trades (including updated one)
         buy_trades = await self._repo.list_buy_trades(position.id)
         total_cost = sum(t.price * t.qty for t in buy_trades)
         total_qty = sum(t.qty for t in buy_trades)
@@ -292,6 +296,71 @@ class PortfolioService:
             new_avg_cost=position.avg_cost,
         )
         return position, trade
+
+    # ------------------------------------------------------------------
+    # Dividend
+    # ------------------------------------------------------------------
+
+    async def record_dividend(
+        self,
+        user_id: str,
+        ticker: str,
+        qty: float,
+        dividend_per_share: float,
+        dividend_type: DividendType = DividendType.CASH,
+        ex_date: datetime | None = None,
+        note: str | None = None,
+    ) -> DividendRecord:
+        """Record a dividend received for a ticker.
+
+        total_amount = qty * dividend_per_share.
+        For cash dividends: dividend_per_share is VND per share.
+        For stock dividends: dividend_per_share is the ratio (e.g. 0.10 = 10%).
+
+        Automatically links to the open position if one exists.
+        position_id is nullable — recording against a closed position is allowed.
+
+        Raises:
+            ValueError: qty or dividend_per_share is not positive.
+
+        Returns:
+            DividendRecord — flushed to DB, caller must commit.
+        """
+        if qty <= 0:
+            raise ValueError(f"qty phải lớn hơn 0, nhận được: {qty}")
+        if dividend_per_share <= 0:
+            raise ValueError(f"dividend_per_share phải lớn hơn 0, nhận được: {dividend_per_share}")
+
+        ticker = ticker.upper()
+        position = await self._repo.get_open_position(user_id, ticker)
+        position_id = position.id if position is not None else None
+        total_amount = qty * dividend_per_share
+
+        record = DividendRecord(
+            user_id=user_id,
+            ticker=ticker,
+            position_id=position_id,
+            qty=qty,
+            dividend_per_share=dividend_per_share,
+            total_amount=total_amount,
+            dividend_type=dividend_type,
+            ex_date=ex_date,
+            note=note,
+            paid_at=datetime.now(UTC),
+        )
+        await self._repo.save_dividend(record)
+
+        logger.info(
+            "portfolio.dividend_recorded",
+            user_id=user_id,
+            ticker=ticker,
+            qty=qty,
+            dividend_per_share=dividend_per_share,
+            dividend_type=dividend_type.value,
+            total_amount=total_amount,
+            position_id=position_id,
+        )
+        return record
 
     # ------------------------------------------------------------------
     # Read

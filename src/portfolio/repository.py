@@ -1,4 +1,4 @@
-"""PortfolioRepository — DB access for Position and Trade models.
+"""PortfolioRepository — DB access for Position, Trade, and DividendRecord models.
 
 Owner: portfolio segment.
 Called only by PortfolioService and PnlService — never by bot/api directly.
@@ -8,10 +8,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.portfolio.models import Position, Trade, TradeType
+from src.portfolio.models import DividendRecord, Position, Trade, TradeType
 
 
 class PortfolioRepository:
@@ -120,3 +120,42 @@ class PortfolioRepository:
         return await self.list_trades(
             user_id, ticker=ticker, trade_type=TradeType.SELL, since=since, limit=10_000
         )
+
+    # ------------------------------------------------------------------
+    # DividendRecord
+    # ------------------------------------------------------------------
+
+    async def save_dividend(self, record: DividendRecord) -> None:
+        self._session.add(record)
+        await self._session.flush()
+
+    async def list_dividends(
+        self,
+        user_id: str,
+        ticker: str | None = None,
+        limit: int = 50,
+    ) -> list[DividendRecord]:
+        """Return dividend records for a user, newest first."""
+        stmt = (
+            select(DividendRecord)
+            .where(DividendRecord.user_id == user_id)
+            .order_by(DividendRecord.paid_at.desc())
+            .limit(limit)
+        )
+        if ticker:
+            stmt = stmt.where(DividendRecord.ticker == ticker.upper())
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_dividend_total(self, user_id: str, ticker: str | None = None) -> float:
+        """Return sum of total_amount across all cash dividends for a user (optionally per ticker)."""
+        from src.portfolio.models import DividendType
+        stmt = (
+            select(func.coalesce(func.sum(DividendRecord.total_amount), 0.0))
+            .where(DividendRecord.user_id == user_id)
+            .where(DividendRecord.dividend_type == DividendType.CASH)
+        )
+        if ticker:
+            stmt = stmt.where(DividendRecord.ticker == ticker.upper())
+        result = await self._session.execute(stmt)
+        return float(result.scalar_one())

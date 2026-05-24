@@ -4,17 +4,19 @@ Owner: portfolio segment only.
 Other segments MUST NOT import these models directly —
 use PortfolioService or PnlService as the public interface.
 
-Two ORM models:
-  Position  — current state of a holding (qty, avg_cost, open/closed)
-  Trade     — immutable record of each BUY/SELL execution
+ORM models:
+  Position        — current state of a holding (qty, avg_cost, open/closed)
+  Trade           — immutable record of each BUY/SELL execution
+  DividendRecord  — immutable record of each dividend received
 
-One read-model dataclass (no DB table):
+Read-model dataclasses (no DB table):
   PortfolioContext  — typed snapshot consumed by ai/context_builder.
                       Built by get_portfolio_context() in __init__.py.
 
 Relationship:
   One Position → many Trades.
-  Position tracks the running state; Trade tracks the audit trail.
+  One Position → many DividendRecords.
+  Position tracks the running state; Trade and DividendRecord track the audit trail.
 
 Partial sell example:
   Position(VCB, qty=200, avg_cost=87_500)
@@ -41,6 +43,11 @@ _values = lambda x: [e.value for e in x]  # noqa: E731
 class TradeType(enum.StrEnum):
     BUY = "buy"
     SELL = "sell"
+
+
+class DividendType(enum.StrEnum):
+    CASH = "cash"
+    STOCK = "stock"
 
 
 class Position(Base):
@@ -73,6 +80,9 @@ class Position(Base):
 
     trades: Mapped[list[Trade]] = relationship(
         back_populates="position", cascade="all, delete-orphan", order_by="Trade.traded_at"
+    )
+    dividends: Mapped[list[DividendRecord]] = relationship(
+        back_populates="position", cascade="all, delete-orphan", order_by="DividendRecord.paid_at"
     )
 
     @property
@@ -117,6 +127,55 @@ class Trade(Base):
         return (
             f"<Trade {self.trade_type} {self.ticker} qty={self.qty} "
             f"price={self.price} pnl={self.realized_pnl}>"
+        )
+
+
+class DividendRecord(Base):
+    """Immutable record of a dividend received for a position.
+
+    Never mutated after creation. Source of truth for dividend history.
+
+    total_amount = qty * dividend_per_share (computed at record time).
+
+    position_id is nullable — allows recording dividend for a ticker
+    that no longer has an open position (e.g. closed before ex_date settles).
+
+    dividend_type:
+      - cash  : tiền mặt (VND per share)
+      - stock : cổ tức bằng cổ phiếu (tỷ lệ %, VD: 0.10 = 10%)
+
+    ex_date: ngày chốt quyền (ex-dividend date). Nullable — user may omit.
+    paid_at: thời điểm ghi nhận thực tế (UTC, set automatically).
+    """
+
+    __tablename__ = "dividend_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    ticker: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    position_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("positions.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    qty: Mapped[float] = mapped_column(Float, nullable=False)
+    dividend_per_share: Mapped[float] = mapped_column(Float, nullable=False)
+    total_amount: Mapped[float] = mapped_column(Float, nullable=False)
+    dividend_type: Mapped[DividendType] = mapped_column(
+        SAEnum(DividendType, name="dividendtype", create_constraint=False, values_callable=_values),
+        nullable=False,
+        default=DividendType.CASH,
+    )
+    ex_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    paid_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+    note: Mapped[str | None] = mapped_column(Text)
+
+    position: Mapped[Position | None] = relationship(back_populates="dividends")
+
+    def __repr__(self) -> str:
+        return (
+            f"<DividendRecord {self.ticker} qty={self.qty} "
+            f"dps={self.dividend_per_share} total={self.total_amount}>"
         )
 
 
