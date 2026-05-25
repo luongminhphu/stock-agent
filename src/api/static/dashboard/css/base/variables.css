@@ -191,3 +191,50 @@
     transition: none;
   }
 }
+
+/* ─── Data table: vertical alignment & column conventions ────────────────────────────
+   SSOT cho alignment của TẤT CẢ data table trong dashboard.
+   Áp dụng cho thesis board, watchlist, portfolio — không cần patch từng module riêng.
+
+   Convention:
+     td mặc định     → vertical-align: middle  (fix health-squares top-align bug)
+     .col-center     → text-align: center       (badge, status, icon columns)
+     .col-right      → text-align: right        (số, tiền, %)
+     .col-left       → text-align: left         (tên, ticker, tiêu đề)
+     td.num / th.num → right-align + tabular-nums (% change, score)
+     td.currency     → right-align + font-mono  (giá tiền VND)
+     td.status       → center                   (verdict badge, active badge)
+───────────────────────────────────────────────────────────────────────────── */
+
+.data-table td,
+.data-table th {
+  vertical-align: middle;
+}
+
+/* Column alignment utilities */
+.col-center { text-align: center; }
+.col-right  { text-align: right; }
+.col-left   { text-align: left; }
+
+/* Numeric columns: score, %, rank */
+td.num,
+th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+/* Currency columns: giá VND — mono để digits thẳng hàng */
+td.currency,
+th.currency {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+/* Status/badge columns: verdict, active badge */
+td.status,
+th.status {
+  text-align: center;
+}
