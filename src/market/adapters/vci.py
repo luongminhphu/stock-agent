@@ -133,7 +133,14 @@ def _parse_item(item: dict[str, Any]) -> Quote:
 
     ticker = listing["symbol"]
     ref_price = float(listing["refPrice"])
-    price = _safe_float(match.get("matchPrice") or match.get("refPrice"), fallback=ref_price)
+
+    # fix: matchPrice=0 means no trade yet (pre-open, halted, low-liquidity).
+    # The old expression `match.get("matchPrice") or match.get("refPrice")` treated
+    # 0 as falsy and fell through to match.get("refPrice") which is None
+    # (refPrice lives in listingInfo, not matchPrice) → _safe_float(None) = 0.0.
+    # Correct fallback is listing["refPrice"] which we already have as ref_price.
+    raw_price = match.get("matchPrice")
+    price = _safe_float(raw_price, fallback=ref_price) if raw_price else ref_price
 
     change = _safe_float(match.get("priceChange"), fallback=price - ref_price)
     change_pct = _safe_float(
