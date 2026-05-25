@@ -3,14 +3,23 @@
 Owner: api segment (thin adapter).
 All business/query logic lives in readmodel.dashboard_service or
 the segment-specific services it delegates to.
+
+Single-user mode:
+- If USER_ID env var is set, alias endpoints without /{user_id}
+  will automatically use that user id.
+
+Route ordering rule (FastAPI matches in declaration order):
+  Static/literal path segments MUST be declared before parameterised ones.
+  e.g. /dashboard/theses/aggregate must come before /dashboard/theses/{thesis_id}
+  otherwise FastAPI casts "aggregate" -> int and returns 422.
 """
 
 from __future__ import annotations
 
 import os
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.db import get_db_session as get_db
@@ -34,25 +43,22 @@ def _default_user_id() -> str:
     return uid
 
 
-async def _get_service(session: AsyncSession) -> DashboardService:
-    from src.market.quote_service import get_quote_service
-    from src.readmodel.dashboard_service import DashboardService
-    return DashboardService(session=session)
-
-
-def _get_quote_service():  # noqa: ANN202
-    from src.market.quote_service import get_quote_service
-    return get_quote_service()
-
-
 def get_quote_service():  # noqa: ANN202
     from src.market.quote_service import get_quote_service as _qs
     return _qs()
 
 
-# ---------------------------------------------------------------------------
-# Utility — open positions map
-# ---------------------------------------------------------------------------
+async def _build_price_map(tickers: list[str]) -> dict[str, float]:
+    """Fetch current prices cho danh sach tickers tu QuoteService."""
+    if not tickers:
+        return {}
+    try:
+        qs = get_quote_service()
+        quotes = await qs.get_quotes(tickers)
+        return {q.ticker: q.close for q in quotes if q.close is not None}
+    except Exception:
+        return {}
+
 
 async def _load_positions_map(session: AsyncSession, user_id: str) -> dict[str, tuple[float, float]]:
     from sqlalchemy import select
@@ -72,6 +78,29 @@ async def _load_positions_map(session: AsyncSession, user_id: str) -> dict[str, 
         if r.ticker not in result:
             result[r.ticker] = (r.qty, r.avg_cost)
     return result
+
+
+async def _resolve_thesis_ticker(session: AsyncSession, thesis_id: int) -> str | None:
+    """Resolve ticker for a thesis_id. Returns None if thesis not found."""
+    from sqlalchemy import select
+    from src.thesis.models import Thesis
+    result = await session.execute(select(Thesis.ticker).where(Thesis.id == thesis_id))
+    return result.scalar_one_or_none()
+
+
+async def _ensure_scan_snapshot(
+    session: AsyncSession,
+    user_id: str,
+) -> dict[str, Any] | None:
+    svc = DashboardService(session)
+    latest = await svc.get_scan_latest(user_id)
+    if latest is not None:
+        return latest
+    from src.watchlist.scan_service import ScanService
+    scan_svc = ScanService(session=session, quote_service=get_quote_service())
+    await scan_svc.scan_user_if_stale(user_id=user_id, max_age_minutes=30)
+    await session.commit()
+    return await svc.get_scan_latest(user_id)
 
 
 # ---------------------------------------------------------------------------
@@ -164,7 +193,6 @@ async def get_thesis_detail(
     svc = DashboardService(session=session)
     result = await svc.get_thesis_detail(user_id=user_id, thesis_id=thesis_id)
     if result is None:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Thesis not found")
     return result
 
@@ -206,6 +234,7 @@ async def get_catalysts_default_user(
 
 # ---------------------------------------------------------------------------
 # 5. Thesis portfolio aggregate
+# IMPORTANT: declared BEFORE /dashboard/{user_id}/portfolio to avoid path clash
 # ---------------------------------------------------------------------------
 
 @router.get("/dashboard/{user_id}/portfolio/thesis-aggregate")
@@ -231,7 +260,7 @@ async def get_thesis_portfolio_aggregate_default_user(
 # ---------------------------------------------------------------------------
 
 @router.get("/dashboard/{user_id}/conviction-timeline")
-async def get_conviction_timeline(
+async def get_conviction_timeline_dashboard(
     user_id: str,
     session: Annotated[AsyncSession, Depends(get_db)],
     limit: int = Query(default=20, ge=1, le=200),
@@ -242,11 +271,11 @@ async def get_conviction_timeline(
 
 
 @router.get("/dashboard/conviction-timeline")
-async def get_conviction_timeline_default_user(
+async def get_conviction_timeline_dashboard_default_user(
     session: Annotated[AsyncSession, Depends(get_db)],
     limit: int = Query(default=20, ge=1, le=200),
 ) -> dict[str, Any]:
-    return await get_conviction_timeline(
+    return await get_conviction_timeline_dashboard(
         user_id=_default_user_id(), session=session, limit=limit
     )
 
@@ -260,9 +289,7 @@ async def get_scan_latest(
     user_id: str,
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict[str, Any]:
-    svc = DashboardService(session=session)
-    result = await svc.get_scan_latest(user_id=user_id)
-    return result or {}
+    return await _ensure_scan_snapshot(session, user_id) or {}
 
 
 @router.get("/dashboard/scan/latest")
@@ -305,19 +332,19 @@ async def get_brief_latest_default_user(
 async def get_brief_feedback_summary(
     user_id: str,
     session: Annotated[AsyncSession, Depends(get_db)],
-    limit: int = Query(default=10, ge=1, le=50),
+    days: Annotated[int, Query(ge=1, le=90, description="Window tính acted_rate (ngày)")] = 30,
 ) -> dict[str, Any]:
     svc = DashboardService(session=session)
-    return await svc.get_brief_feedback_summary(user_id=user_id, limit=limit)
+    return await svc.get_brief_feedback_summary(user_id=user_id, days=days)
 
 
 @router.get("/dashboard/brief/feedback-summary")
 async def get_brief_feedback_summary_default_user(
     session: Annotated[AsyncSession, Depends(get_db)],
-    limit: int = Query(default=10, ge=1, le=50),
+    days: Annotated[int, Query(ge=1, le=90, description="Window tính acted_rate (ngày)")] = 30,
 ) -> dict[str, Any]:
     return await get_brief_feedback_summary(
-        user_id=_default_user_id(), session=session, limit=limit
+        user_id=_default_user_id(), session=session, days=days
     )
 
 
@@ -379,28 +406,35 @@ async def get_triggered_alerts_default_user(
 async def get_recent_signals(
     user_id: str,
     session: Annotated[AsyncSession, Depends(get_db)],
-    limit: int = Query(default=20, ge=1, le=100),
+    ticker: Annotated[
+        str | None,
+        Query(description="Filter theo mã cụ thể (VD: VCB). Bỏ qua để lấy toàn bộ watchlist."),
+    ] = None,
+    days: Annotated[int, Query(ge=1, le=90, description="Window thời gian (ngày)")] = 7,
+    limit: int = Query(default=20, ge=1, le=200),
 ) -> dict[str, Any]:
     svc = DashboardService(session=session)
-    items = await svc.get_recent_signals(user_id=user_id, limit=limit)
+    items = await svc.get_recent_signals(user_id=user_id, ticker=ticker, days=days, limit=limit)
     return {"items": items}
 
 
 @router.get("/dashboard/signals/recent")
 async def get_recent_signals_default_user(
     session: Annotated[AsyncSession, Depends(get_db)],
-    limit: int = Query(default=20, ge=1, le=100),
+    ticker: str | None = Query(default=None),
+    days: int = Query(default=7, ge=1, le=90),
+    limit: int = Query(default=20, ge=1, le=200),
 ) -> dict[str, Any]:
     return await get_recent_signals(
-        user_id=_default_user_id(), session=session, limit=limit
+        user_id=_default_user_id(), session=session, ticker=ticker, days=days, limit=limit
     )
 
 
 # ---------------------------------------------------------------------------
-# 13. Verdict accuracy + thesis performances + price snapshots
+# 13. Verdict accuracy + thesis performances + price snapshots (Backtesting)
 # ---------------------------------------------------------------------------
 
-@router.get("/dashboard/{user_id}/verdict-accuracy")
+@router.get("/dashboard/{user_id}/backtesting/verdict-accuracy")
 async def get_verdict_accuracy(
     user_id: str,
     session: Annotated[AsyncSession, Depends(get_db)],
@@ -410,31 +444,37 @@ async def get_verdict_accuracy(
     return {"items": items}
 
 
-@router.get("/dashboard/verdict-accuracy")
+@router.get("/dashboard/backtesting/verdict-accuracy")
 async def get_verdict_accuracy_default_user(
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict[str, Any]:
     return await get_verdict_accuracy(user_id=_default_user_id(), session=session)
 
 
-@router.get("/dashboard/{user_id}/thesis-performances")
+@router.get("/dashboard/{user_id}/backtesting/thesis-performances")
 async def get_thesis_performances(
     user_id: str,
     session: Annotated[AsyncSession, Depends(get_db)],
+    ticker: Annotated[str | None, Query(description="Filter theo ticker")] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> dict[str, Any]:
     svc = DashboardService(session=session)
-    items = await svc.get_thesis_performances(user_id=user_id)
+    items = await svc.get_thesis_performances(user_id=user_id, ticker=ticker, limit=limit)
     return {"items": items}
 
 
-@router.get("/dashboard/thesis-performances")
+@router.get("/dashboard/backtesting/thesis-performances")
 async def get_thesis_performances_default_user(
     session: Annotated[AsyncSession, Depends(get_db)],
+    ticker: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
 ) -> dict[str, Any]:
-    return await get_thesis_performances(user_id=_default_user_id(), session=session)
+    return await get_thesis_performances(
+        user_id=_default_user_id(), session=session, ticker=ticker, limit=limit
+    )
 
 
-@router.get("/dashboard/{user_id}/thesis/{thesis_id}/price-snapshots")
+@router.get("/dashboard/{user_id}/backtesting/price-snapshots/{thesis_id}")
 async def get_price_snapshots(
     user_id: str,
     thesis_id: int,
@@ -443,12 +483,11 @@ async def get_price_snapshots(
     svc = DashboardService(session=session)
     result = await svc.get_price_snapshots(user_id=user_id, thesis_id=thesis_id)
     if result is None:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="Thesis not found")
+        raise HTTPException(status_code=404, detail=f"Thesis {thesis_id} not found")
     return result
 
 
-@router.get("/dashboard/thesis/{thesis_id}/price-snapshots")
+@router.get("/dashboard/backtesting/price-snapshots/{thesis_id}")
 async def get_price_snapshots_default_user(
     thesis_id: int,
     session: Annotated[AsyncSession, Depends(get_db)],
@@ -460,7 +499,7 @@ async def get_price_snapshots_default_user(
 
 # ---------------------------------------------------------------------------
 # 14. Portfolio — /dashboard/portfolio/trades  (position-centric, PnlService)
-#               + /dashboard/portfolio         (thesis-centric, PortfolioQueryService)
+#               + /dashboard/portfolio         (thesis-centric, DashboardService)
 # ---------------------------------------------------------------------------
 
 from src.portfolio.pnl_service import PnlService  # noqa: E402
@@ -487,8 +526,8 @@ async def get_portfolio_trades(
                 # thesis_id: forward to frontend so QuickTrade can pre-select the linked
                 # thesis in the dropdown (Trades tab only — Thesis tab uses p.id directly).
                 "thesis_id": p.thesis_id,
-                # thesis_status: enables portfolio-renderer.js to render a warning badge
-                # on rows where the linked thesis has been invalidated or closed.
+                # thesis_status (Gap 3 B2): enables portfolio-renderer.js to render a
+                # warning badge on rows where the linked thesis has been invalidated/closed.
                 "thesis_status": p.thesis_status,
             }
             for p in pnl.positions
@@ -538,17 +577,133 @@ async def get_portfolio_default_user(
 async def get_attention_needed(
     user_id: str,
     session: Annotated[AsyncSession, Depends(get_db)],
-    limit: int = Query(default=10, ge=1, le=50),
+    enrich_prices: Annotated[
+        bool,
+        Query(description="Fetch live prices để kiểm tra stop_loss proximity."),
+    ] = True,
+    limit: Annotated[int, Query(ge=1, le=50, description="Số attention items tối đa")] = 20,
 ) -> dict[str, Any]:
+    price_map: dict[str, float] = {}
+    if enrich_prices:
+        svc_pre = DashboardService(session)
+        active_theses = await svc_pre.get_theses_list(user_id, status="active", limit=500)
+        tickers = list({t["ticker"] for t in active_theses if t.get("ticker")})
+        price_map = await _build_price_map(tickers)
     svc = DashboardService(session=session)
-    return await svc.get_attention_needed(user_id=user_id, limit=limit)
+    return await svc.get_attention_needed(user_id=user_id, price_map=price_map, limit=limit)
 
 
 @router.get("/dashboard/attention")
 async def get_attention_needed_default_user(
     session: Annotated[AsyncSession, Depends(get_db)],
-    limit: int = Query(default=10, ge=1, le=50),
+    enrich_prices: bool = Query(default=True),
+    limit: int = Query(default=20, ge=1, le=50),
 ) -> dict[str, Any]:
     return await get_attention_needed(
-        user_id=_default_user_id(), session=session, limit=limit
+        user_id=_default_user_id(), session=session, enrich_prices=enrich_prices, limit=limit
     )
+
+
+# ---------------------------------------------------------------------------
+# 16. Leaderboard
+# ---------------------------------------------------------------------------
+
+@router.get("/leaderboard/{user_id}")
+async def get_leaderboard(
+    user_id: str,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    sort_by: Annotated[Literal["score", "pnl"], Query()] = "score",
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> dict[str, Any]:
+    from src.readmodel.leaderboard_service import LeaderboardService
+    svc = LeaderboardService(session)
+    return await svc.get_leaderboard(user_id, sort_by=sort_by, limit=limit)
+
+
+@router.get("/leaderboard")
+async def get_leaderboard_default_user(
+    session: Annotated[AsyncSession, Depends(get_db)],
+    sort_by: Annotated[Literal["score", "pnl"], Query()] = "score",
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> dict[str, Any]:
+    return await get_leaderboard(
+        user_id=_default_user_id(), session=session, sort_by=sort_by, limit=limit
+    )
+
+
+# ---------------------------------------------------------------------------
+# 17. Thesis timeline — general event log
+# ---------------------------------------------------------------------------
+
+@router.get("/thesis/{thesis_id}/timeline")
+async def get_thesis_timeline(
+    thesis_id: int,
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> dict[str, Any]:
+    from src.readmodel.timeline_service import ThesisTimelineService
+    svc = ThesisTimelineService(session)
+    result = await svc.get_timeline(thesis_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Thesis {thesis_id} not found")
+    return result
+
+
+# ---------------------------------------------------------------------------
+# 18. Review Timeline — N AI reviews gần nhất của một thesis
+# ---------------------------------------------------------------------------
+
+@router.get("/thesis/{thesis_id}/review-timeline")
+async def get_review_timeline(
+    thesis_id: int,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    limit: Annotated[
+        int,
+        Query(ge=1, le=20, description="Số AI reviews gần nhất trả về (mới nhất trước)"),
+    ] = 5,
+) -> dict[str, Any]:
+    from src.readmodel.timeline_service import ThesisTimelineService
+    svc = ThesisTimelineService(session)
+    result = await svc.get_review_timeline(thesis_id, limit=limit)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Thesis {thesis_id} not found")
+    return result
+
+
+# ---------------------------------------------------------------------------
+# 19. Conviction Score Timeline — with live price injection (Option C fix)
+# ---------------------------------------------------------------------------
+
+@router.get("/thesis/{thesis_id}/conviction-timeline")
+async def get_conviction_timeline(
+    thesis_id: int,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=100, description="Số data-point tối đa trả về")] = 20,
+    enrich_price: Annotated[
+        bool,
+        Query(
+            description=(
+                "Fetch live price từ QuoteService để inject vào điểm cuối cùng "
+                "(Option C — fallback khi AI review chạy trước market snapshot job). "
+                "Tắt nếu muốn dùng dữ liệu snapshot thuần túy."
+            )
+        ),
+    ] = True,
+) -> dict[str, Any]:
+    """Conviction score timeline cho một thesis."""
+    current_price: float | None = None
+    if enrich_price:
+        ticker = await _resolve_thesis_ticker(session, thesis_id)
+        if ticker:
+            price_map = await _build_price_map([ticker])
+            current_price = price_map.get(ticker)
+
+    from src.readmodel.timeline_service import ThesisTimelineService
+    svc = ThesisTimelineService(session)
+    result = await svc.get_conviction_timeline(
+        thesis_id,
+        limit=limit,
+        current_price=current_price,
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Thesis {thesis_id} not found")
+    return result
