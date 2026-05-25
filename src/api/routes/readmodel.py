@@ -13,7 +13,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.platform.db import get_db
+from src.platform.db import get_db_session as get_db
 from src.platform.logging import get_logger
 from src.readmodel.dashboard_service import DashboardService
 
