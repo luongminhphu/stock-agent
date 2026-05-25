@@ -39,6 +39,7 @@ class ThesisSummaryRow(BaseModel):
     ticker: str
     title: str
     status: str
+    direction: str | None = None
     score: float | None
 
     # Score context — populated by dashboard_service, sourced from thesis.scoring_service

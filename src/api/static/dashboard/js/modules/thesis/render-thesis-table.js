@@ -304,7 +304,7 @@ export function renderThesesTable(list, callbacks = {}) {
           return `
           <tr data-id="${t.id}" data-ticker="${esc(t.ticker)}" data-thesis-id="${t.id}" class="${rowClass}">
             <td class="ticker-cell"><strong>${esc(t.ticker)}</strong></td>
-            <td style="text-align:center;white-space:nowrap;">
+            <td style="text-align:center;white-space:nowrap;vertical-align:middle;">
               ${t.direction ? badge(t.direction) : '<span style="color:var(--muted);">\u2014</span>'}
             </td>
             <td>${esc(t.title ?? '\u2014')}</td>
@@ -326,8 +326,8 @@ export function renderThesesTable(list, callbacks = {}) {
             </td>
             <td>${badge(t.status)}</td>
             <td style="color:var(--muted);font-size:.82rem;">${fmtDate(t.updated_at)}</td>
-            <td style="width:1%;white-space:nowrap;">
-              <div style="display:flex;gap:6px;">
+            <td style="width:1%;white-space:nowrap;text-align:center;vertical-align:middle;">
+              <div style="display:flex;gap:6px;align-items:center;justify-content:center;">
                 <button class="icon-btn edit-thesis-btn" data-id="${t.id}" title="S\u1eeda thesis">\u270f\ufe0f</button>
                 <button class="icon-btn danger delete-thesis-btn" data-id="${t.id}" title="X\u00f3a thesis">\uD83D\uDDD1</button>
               </div>

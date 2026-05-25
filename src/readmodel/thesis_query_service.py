@@ -238,12 +238,18 @@ class ThesisQueryService:
                 )
                 score_breakdown = None
 
+            # --- direction: map StrEnum → plain string safely ---
+            direction: str | None = None
+            if t.direction is not None:
+                direction = t.direction.value if hasattr(t.direction, "value") else str(t.direction)
+
             result.append(
                 {
                     "id": t.id,
                     "ticker": t.ticker,
                     "title": t.title,
                     "status": str(t.status.value),
+                    "direction": direction,
                     "score": t.score,
                     "score_tier": tier_label,
                     "score_tier_icon": tier_icon,
