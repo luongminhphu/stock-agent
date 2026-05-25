@@ -479,7 +479,7 @@ class ScanService:
                         strength=report.strength,
                         confidence=report.confidence,
                         source=report.source,
-                        metadata=report.metadata,
+                        metadata_json=report.metadata,  # fix: was metadata= (wrong column name)
                         event_id=event.event_id,
                         occurred_at=event.occurred_at,
                     )
