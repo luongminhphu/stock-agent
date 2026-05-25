@@ -95,7 +95,7 @@ export function applySuggestToThesisForm(data, fallbackTicker) {
     makeAssumptionRow({ description: item.assumption_text, rationale: item.rationale })
   ));
   (data.catalysts ?? []).forEach(item => cWrap?.appendChild(
-    makeCatalystRow({ description: item.catalyst_text, rationale: item.rationale, expected_timeline: item.expected_timeline })
+    makeCatalystRow({ description: item.catalyst_text, rationale: item.rationale, expected_date: item.expected_date ?? null })
   ));
   seedBlankFormRows();
   showToast('✨ Đã điền thesis form, assumptions và catalysts từ AI suggest');
