@@ -1,8 +1,8 @@
-/* ─── Thesis Detail, Reviews & Score ─────────────────────────────────────────
+/* ─── Thesis Detail, Reviews & Score ─────────────────────────────────────────────
    Owner: modules/thesis
    detail-shell, detail-head, detail-grid, detail-item, review-timeline,
    review-card, review-box. Score breakdown delegated to render-score.js.
-───────────────────────────────────────────────────────────────────────────── */
+───────────────────────────────────────────────────────────────────────────────────── */
 
 .detail-shell {
   padding: 16px;
@@ -106,9 +106,9 @@
   line-height: 1.5;
 }
 
-/* ── Score tier row highlights ─────────────────────────────────────────────
+/* ── Score tier row highlights ──────────────────────────────────────────────
    Applied to <tr> in renderThesesTable when score_tier is AT_RISK/CRITICAL.
-──────────────────────────────────────────────────────────────────────────── */
+───────────────────────────────────────────────────────────────────────────────────── */
 tr.row--at-risk {
   border-left: 2px solid var(--warning);
   background: rgba(251, 191, 36, 0.04);
@@ -120,7 +120,7 @@ tr.row--critical {
 tr.row--at-risk:hover  { background: rgba(251, 191, 36, 0.08); }
 tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
 
-/* ── Review timeline ────────────────────────────────────────────── */
+/* ── Review timeline ─────────────────────────────────────────── */
 .review-timeline {
   display: grid;
   gap: 10px;
@@ -179,12 +179,12 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
 /* ── Form stack (inline rows inside thesis modal) ─────────────────────── */
 .form-stack { display: grid; gap: 8px; }
 
-/* ────────────────────────────────────────────────────────────────────────────
+/* ───────────────────────────────────────────────────────────────────────────────────
    WAVE 2d — SKELETON LOADER
    Owner: modules/thesis
    Classes: .skel, .skel-text, .skel-heading, .skel-badge, .skel-stat,
             .skel-row, .skel-item, .skel-detail-wrap, .skel-table-wrap
-──────────────────────────────────────────────────────────────────────────── */
+─────────────────────────────────────────────────────────────────────────────────── */
 
 @keyframes shimmer {
   0%   { background-position: -200% 0; }
@@ -262,10 +262,10 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
   gap: 14px;
 }
 
-/* ────────────────────────────────────────────────────────────────────────────
+/* ───────────────────────────────────────────────────────────────────────────────────
    Wave C+ — PRICE MINI CHART
    Owner: modules/thesis (market segment data)
-──────────────────────────────────────────────────────────────────────────── */
+─────────────────────────────────────────────────────────────────────────────────── */
 
 .price-mini-chart-slot { margin-bottom: 14px; }
 .price-mini-chart-skeleton { padding: 0; }
@@ -320,7 +320,7 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
             .item-card, .overview-meta-grid, .meta-stat, .conviction-slot
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* ── Sticky command bar ─────────────────────────────────────────────────── */
+/* ── Sticky command bar ─────────────────────────────────────────────────────── */
 .detail-sticky-bar {
   position: sticky;
   top: 0;
@@ -350,7 +350,7 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
   .dsb-actions { margin-left: auto; }
 }
 
-/* ── Tab navigation ─────────────────────────────────────────────────────── */
+/* ── Tab navigation ─────────────────────────────────────────────────────────── */
 .detail-tab-nav {
   display: flex;
   gap: 2px;
@@ -396,7 +396,7 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
 .dtab-count--warn   { background: rgba(251,191,36,.18); color: #fbbf24; }
 .dtab-count--danger { background: rgba(248,113,113,.18); color: #f87171; }
 
-/* ── Tab panels ─────────────────────────────────────────────────────────── */
+/* ── Tab panels ───────────────────────────────────────────────────────────────── */
 .detail-tab-panels { padding: 16px 14px; }
 .dtab-panel        { display: none; animation: tabFadeIn 180ms ease; }
 .dtab-panel.active { display: block; }
@@ -405,7 +405,7 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* ── Tab toolbar ────────────────────────────────────────────────────────── */
+/* ── Tab toolbar ─────────────────────────────────────────────────────────────── */
 .tab-panel-toolbar {
   display: flex;
   justify-content: space-between;
@@ -425,7 +425,7 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
   gap: 7px;
 }
 
-/* ── Item cards ─────────────────────────────────────────────────────────── */
+/* ── Item cards ─────────────────────────────────────────────────────────────────── */
 .item-list { display: grid; gap: 8px; }
 .item-card {
   display: flex;
@@ -452,7 +452,7 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
 .item-card--invalid         { border-left: 2px solid #dd6974; opacity: .75; }
 .item-card--needs_monitoring { border-left: 2px solid #fdab43; }
 
-/* ── Overview meta grid ─────────────────────────────────────────────────── */
+/* ── Overview meta grid ────────────────────────────────────────────────────────── */
 .overview-meta-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -472,7 +472,7 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
 .meta-stat-label { font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--faint, #5a5957); }
 .meta-stat-value { font-size: 0.86rem; font-weight: 600; color: var(--text, #cdccca); }
 
-/* ── Conviction slot ────────────────────────────────────────────────────── */
+/* ── Conviction slot ────────────────────────────────────────────────────────────── */
 .conviction-slot {
   margin-top: 14px;
   padding: 14px;
@@ -481,7 +481,7 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
   border: 1px solid rgba(148,163,184,.08);
 }
 
-/* ── col-header (legacy compat) ─────────────────────────────────────────── */
+/* ── col-header (legacy compat) ─────────────────────────────────────────────────────── */
 @media (max-width: 640px) { .detail-columns { grid-template-columns: 1fr; } }
 .col-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 
@@ -526,18 +526,24 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
 /* ── Column widths
    All non-Tiêu đề columns get min-width (nowrap).
    Tiêu đề (col 3) gets width:100% — in auto layout this means
-   "absorb all leftover space after other columns are sized".
-─────────────────────────────────────────────────────────────────────────── */
-#thesesTableWrap th:nth-child(1) { white-space: nowrap; }          /* Mã */
-#thesesTableWrap th:nth-child(2) { white-space: nowrap; width: 72px; }  /* Hướng */
-#thesesTableWrap th:nth-child(3) { width: 100%; }                  /* Tiêu đề — absorbs leftover space */
-#thesesTableWrap th:nth-child(4) { white-space: nowrap; width: 130px; } /* Score */
-#thesesTableWrap th:nth-child(5) { white-space: nowrap; width: 88px; }  /* Trend */
-#thesesTableWrap th:nth-child(6) { white-space: nowrap; width: 90px; }  /* Status */
-#thesesTableWrap th:nth-child(7) { white-space: nowrap; width: 105px; } /* Cập nhật */
-#thesesTableWrap th:nth-child(8) { white-space: nowrap; width: 76px; }  /* Actions */
+   “absorb all leftover space after other columns are sized”.
+───────────────────────────────────────────────────────────────────────────────────── */
+#thesesTableWrap th:nth-child(1) { white-space: nowrap; }                     /* Mã */
+#thesesTableWrap th:nth-child(2) { white-space: nowrap; width: 72px; text-align: center; }  /* Hướng */
+#thesesTableWrap th:nth-child(3) { width: 100%; }                              /* Tiêu đề — absorbs leftover space */
+#thesesTableWrap th:nth-child(4) { white-space: nowrap; width: 130px; }        /* Score */
+#thesesTableWrap th:nth-child(5) { white-space: nowrap; width: 88px; }         /* Trend */
+#thesesTableWrap th:nth-child(6) { white-space: nowrap; width: 90px; }         /* Status */
+#thesesTableWrap th:nth-child(7) { white-space: nowrap; width: 105px; }        /* Cập nhật */
+#thesesTableWrap th:nth-child(8) { white-space: nowrap; width: 76px; text-align: center; }  /* Actions */
 
-/* ── Tiêu đề cell: truncate long text ───────────────────────────────────── */
+/* ── Hướng cell: center badge ─────────────────────────────────────────────────────────────── */
+#thesesTableWrap td:nth-child(2) {
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* ── Tiêu đề cell: truncate long text ───────────────────────────────────────────────── */
 #thesesTableWrap td:nth-child(3) {
   max-width: 0;              /* forces ellipsis to kick in at column boundary */
   overflow: hidden;
@@ -545,7 +551,7 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
   white-space: nowrap;
 }
 
-/* ── Score cell: score number + tier badge on one line ────────────────── */
+/* ── Score cell: score number + tier badge on one line ──────────────────────── */
 #thesesTableWrap td:nth-child(4) > div {
   display: flex;
   flex-direction: row;
@@ -558,7 +564,14 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
   white-space: nowrap;
 }
 
-/* ── Actions cell ───────────────────────────────────────────────────────── */
+/* ── Actions cell: center buttons ─────────────────────────────────────────────────────────── */
 #thesesTableWrap td:nth-child(8) {
   white-space: nowrap;
+  text-align: center;
+}
+#thesesTableWrap td:nth-child(8) > div {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
 }
