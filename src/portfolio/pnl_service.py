@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.logging import get_logger
@@ -54,6 +55,7 @@ class PositionPnl:
     market_value: float
     cost_basis: float
     thesis_id: int | None
+    thesis_status: str | None = None  # 'active' | 'invalidated' | 'closed' — enriched from Thesis table
 
 
 @dataclass
@@ -282,6 +284,16 @@ class PnlService:
         unrealized_pnl = (current_price - position.avg_cost) * position.qty
         cost_basis = position.avg_cost * position.qty
         unrealized_pct = (unrealized_pnl / cost_basis * 100) if cost_basis else 0.0
+
+        # Enrich thesis_status — single point lookup, acceptable for current scale.
+        # If N+1 becomes a concern, batch in get_portfolio_pnl() instead.
+        thesis_status: str | None = None
+        if position.thesis_id is not None:
+            from src.thesis.models import Thesis
+            thesis_row = await self._session.get(Thesis, position.thesis_id)
+            if thesis_row is not None:
+                thesis_status = str(thesis_row.status.value)
+
         return PositionPnl(
             ticker=position.ticker,
             qty=position.qty,
@@ -292,4 +304,5 @@ class PnlService:
             market_value=current_price * position.qty,
             cost_basis=cost_basis,
             thesis_id=position.thesis_id,
+            thesis_status=thesis_status,
         )
