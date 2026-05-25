@@ -11,7 +11,7 @@
  *   - cell-error marker cho missing critical data trong row
  *
  * Wave 2 — QuickTrade modal integration:
- *   - <tr> rows mang data-thesis-id để QuickTrade.injectTradeButtons() pick up
+ *   - <tr> rows mang data-ticker và data-thesis-id để QuickTrade.injectTradeButtons() pick up
  *   - renderPortfolio() gọi QuickTrade.injectTradeButtons(tbody, opts) sau khi inject HTML
  *
  * Wave 3 — Active tab preservation on refresh:
@@ -170,7 +170,7 @@ function renderTradesTab(data, errors) {
       : '';
 
     return `
-      <tr class="col-ticker${hasError ? ' row-data-error' : ''}${thesisWarning ? ' row-thesis-warning' : ''}"${thesisAttr}>
+      <tr class="${hasError ? 'row-data-error' : ''}${thesisWarning ? ' row-thesis-warning' : ''}" data-ticker="${p.ticker}"${thesisAttr}>
         <td class="col-ticker col-center">
           <strong>${p.ticker}</strong>${hasError ? ' <span class="cell-error-dot" title="Thiếu dữ liệu giá">●</span>' : ''}${thesisWarning ? ` <span class="thesis-warn-badge" title="${thesisWarnTitle}" aria-label="${thesisWarnTitle}">⚠️</span>` : ''}
         </td>
@@ -250,7 +250,7 @@ function renderThesisTab(data, errors) {
     const thesisAttr   = p.id ? ` data-thesis-id="${p.id}"` : '';
 
     return `
-      <tr${hasError ? ' class="row-data-error"' : ''}${thesisAttr}>
+      <tr class="${hasError ? 'row-data-error' : ''}" data-ticker="${p.ticker}"${thesisAttr}>
         <td class="col-ticker col-center">
           <strong>${p.ticker}</strong>${hasError ? ' <span class="cell-error-dot" title="Thiếu entry & avg_cost">●</span>' : ''}
         </td>
