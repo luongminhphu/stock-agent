@@ -10,6 +10,10 @@
  *   bindDecisionFormEvents()    — alias for bindLogDecisionModal (app.js compat)
  *   evaluateDecision(id, row)   — POST evaluate, reload table
  *   replayDecision(id, row)     — GET replay, show inline panel
+ *   openDecisionModal(opts?)    — mở modal, populate thesis select, pre-fill từ opts
+ *
+ * opts shape (tất cả optional):
+ *   { thesisId?: number, ticker?: string, action?: string, price?: number }
  *
  * Loop closure:
  *   After a successful replay that produces key_lesson, dispatches
@@ -278,33 +282,73 @@ export async function replayDecision(decisionId, replayWrap, btnEl) {
 
 // ---------------------------------------------------------------------------
 // Private: populate thesis <select> inside the modal
+// Trả về danh sách thesis đã load để caller có thể pre-select.
 // ---------------------------------------------------------------------------
 
 async function populateThesisSelect() {
   const sel = document.getElementById('decisionThesisSelect');
-  if (!sel) return;
+  if (!sel) return [];
   sel.innerHTML = '<option value="">Đang tải…</option>';
   try {
     const theses = await getJson(`${thesisApiBase()}?status=active&limit=50`);
     const list = Array.isArray(theses) ? theses : (theses.items ?? []);
     if (!list.length) {
       sel.innerHTML = '<option value="">Không có thesis active</option>';
-      return;
+      return [];
     }
     sel.innerHTML = '<option value="">— Chọn thesis (không bắt buộc) —</option>' +
       list.map(t =>
         `<option value="${t.id}">[${t.ticker}] ${t.title ?? t.ticker}</option>`
       ).join('');
+    return list;
   } catch {
     sel.innerHTML = '<option value="">Lỗi tải thesis</option>';
+    return [];
   }
 }
 
 // ---------------------------------------------------------------------------
-// Public: open modal + populate thesis select
+// Public: open modal + populate thesis select + pre-fill từ opts
+//
+// opts (tất cả optional):
+//   thesisId?: number  — pre-select thesis trong dropdown
+//   ticker?:   string  — điền vào field decTickerField
+//   action?:   string  — set decActionField  (BUY | SELL | HOLD | SKIP | WATCH)
+//   price?:    number  — điền vào field decPriceField
 // ---------------------------------------------------------------------------
 
-export async function openDecisionModal() {
+export async function openDecisionModal(opts = {}) {
+  const { thesisId, ticker, action, price } = opts ?? {};
+
+  // Populate thesis dropdown trước, nhận lại list để có thể pre-select
   await populateThesisSelect();
+
+  // Pre-select thesis nếu có
+  if (thesisId) {
+    const sel = document.getElementById('decisionThesisSelect');
+    if (sel) sel.value = String(thesisId);
+  }
+
+  // Pre-fill ticker
+  if (ticker) {
+    const tickerField = document.getElementById('decTickerField')
+      ?? document.querySelector('[name="decTickerField"]');
+    if (tickerField) tickerField.value = ticker.toUpperCase();
+  }
+
+  // Pre-fill action (BUY / SELL / HOLD / …)
+  if (action) {
+    const actionField = document.getElementById('decActionField')
+      ?? document.querySelector('[name="decActionField"]');
+    if (actionField) actionField.value = action.toUpperCase();
+  }
+
+  // Pre-fill price
+  if (price != null && !isNaN(price)) {
+    const priceField = document.getElementById('decPriceField')
+      ?? document.querySelector('[name="decPriceField"]');
+    if (priceField) priceField.value = price;
+  }
+
   document.getElementById('decisionModal')?.showModal();
 }
