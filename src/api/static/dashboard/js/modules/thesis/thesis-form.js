@@ -265,24 +265,32 @@ export function wireDetailActions(thesisId, wrap) {
 // ---------------------------------------------------------------------------
 // bindThesisFormEvents — đăng ký form submit + global delete confirm
 // Gọi 1 lần từ app.js khi DOMContentLoaded
-// FIX: thêm default = {} để tránh crash khi caller bị cache cũ hoặc truyền thiếu arg
 // ---------------------------------------------------------------------------
+let _thesisFormBound = false;  // guard: chống double-bind nếu hàm bị gọi lại
+
 export function bindThesisFormEvents({ onThesisSaved } = {}) {
+  if (_thesisFormBound) return;
+  _thesisFormBound = true;
+
   // Thesis form submit
   el('thesisForm')?.addEventListener('submit', async e => {
     e.preventDefault();
     const btn = el('thesisSubmitBtn');
 
-    // Guard: title bắt buộc — dùng el() nhất quán với applySuggestToThesisForm
+    // Guard: title bắt buộc
     const title = el('thesisTitleField')?.value?.trim() ?? '';
     if (!title) {
       showToast('Vui lòng nhập tên thesis', 'error');
       return;
     }
 
+    // Guard: disable ngay lập tức (sync) trước mọi await — chặn double-click / Enter liên tiếp
+    if (btn.disabled) return;
+    btn.disabled = true;
     btn.classList.add('btn-loading');
     btn.textContent = 'Đang lưu…';
-    const id   = el('thesisIdField').value;
+
+    const id = el('thesisIdField').value;
     const payload = {
       ticker:       el('thesisTickerField').value.trim().toUpperCase(),
       title,
@@ -291,7 +299,7 @@ export function bindThesisFormEvents({ onThesisSaved } = {}) {
       target_price: el('thesisTargetField').value ? Number(el('thesisTargetField').value) : null,
       stop_loss:    el('thesisStopField').value   ? Number(el('thesisStopField').value)   : null,
       status:       el('thesisStatusField').value,
-      direction:    el('thesisDirectionField').value || null,  // fix: omit if empty to avoid invalid enum
+      direction:    el('thesisDirectionField').value || null,
     };
     const assumptions = collectFormAssumptions();
     const catalysts   = collectFormCatalysts();
@@ -313,6 +321,7 @@ export function bindThesisFormEvents({ onThesisSaved } = {}) {
     } catch (err) {
       showToast(`Lưu thesis thất bại: ${err.message}`, 'error');
     } finally {
+      btn.disabled = false;
       btn.classList.remove('btn-loading');
       btn.textContent = 'Lưu';
     }
