@@ -122,6 +122,7 @@ class ThesisService:
             ticker=inp.ticker.upper(),
             title=inp.title,
             summary=inp.summary,
+            direction=inp.direction,
             status=ThesisStatus.ACTIVE,
             entry_price=inp.entry_price,
             target_price=inp.target_price,
@@ -152,6 +153,8 @@ class ThesisService:
             thesis.title = inp.title
         if inp.summary is not None:
             thesis.summary = inp.summary
+        if inp.direction is not None:
+            thesis.direction = inp.direction
         if inp.entry_price is not None:
             thesis.entry_price = inp.entry_price
         if inp.target_price is not None:
