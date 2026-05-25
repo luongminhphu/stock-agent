@@ -87,10 +87,12 @@ function renderScanDigest(scan) {
       ? scan.items
       : null;
 
-  const signalCount  = scan.signal_count  ?? scan.signals_count  ?? null;
-  const alertCount   = scan.alert_count   ?? scan.alerts_count   ?? null;
-  const tickerCount  = scan.ticker_count  ?? scan.tickers_scanned ?? null;
-  const headline     = scan.headline      ?? scan.summary_text   ?? null;
+  // Fix: backend build_summary_json() returns triggered_count (not alert_count),
+  // signal_count (not ticker_count), and text (not headline/summary_text).
+  const signalCount  = scan.signal_count   ?? scan.signals_count  ?? null;
+  const alertCount   = scan.alert_count    ?? scan.triggered_count ?? scan.alerts_count ?? null;
+  const tickerCount  = scan.ticker_count   ?? scan.tickers_scanned ?? null;
+  const headline     = scan.headline       ?? scan.summary_text   ?? scan.text ?? null;
 
   const hasStructured = topPicks !== null || signalCount !== null || alertCount !== null;
 
