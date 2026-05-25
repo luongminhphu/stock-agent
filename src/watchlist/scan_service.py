@@ -479,7 +479,7 @@ class ScanService:
                         strength=report.strength,
                         confidence=report.confidence,
                         source=report.source,
-                        metadata_json=report.metadata,  # fix: was metadata= (wrong column name)
+                        metadata_json=json.dumps(report.metadata or {}),
                         event_id=event.event_id,
                         occurred_at=event.occurred_at,
                     )
@@ -497,6 +497,9 @@ class ScanService:
                         signal_type=report.signal_type,
                         error=str(exc),
                     )
+                    # Rollback tainted transaction so subsequent queries in this
+                    # session (get_latest_scan, _persist_snapshot) remain usable.
+                    await self._session.rollback()
 
                 # ── Step 2: Publish to EventBus ───────────────────────────
                 try:
