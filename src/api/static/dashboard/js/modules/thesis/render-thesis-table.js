@@ -27,7 +27,7 @@ export function thesisTableSkeletonHTML(rows = 5) {
   }).join('');
   return `
     <div class="skel-table-wrap" aria-busy="true" aria-label="Đang tải danh sách thesis…">
-      <table>
+      <table class="data-table">
         <thead><tr>${headerCells}</tr></thead>
         <tbody>${bodyRows}</tbody>
       </table>
@@ -38,7 +38,7 @@ function thesisTimelineSlotHTML(thesisId) {
   return `
     <div id="thesisTimelineSlot-${thesisId}" class="tl-slot" aria-live="polite">
       <div class="tl-section">
-        <div class="tl-section-title">\uD83D\uDCC5 Lịch sử thesis</div>
+        <div class="tl-section-title">📅 Lịch sử thesis</div>
         <div class="tl-skeleton">
           <div class="skel skel-text" style="width:55%;"></div>
           <div class="skel skel-text" style="width:40%;"></div>
@@ -106,33 +106,33 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
         </div>
         ${t.entry_price ? `<div class="dsb-kpi">
           <span class="dsb-kpi-label">Entry</span>
-          <strong class="dsb-kpi-value">${fmt(t.entry_price)}\u20ab</strong>
+          <strong class="dsb-kpi-value">${fmt(t.entry_price)}₫</strong>
         </div>` : ''}
         ${t.target_price ? `<div class="dsb-kpi dsb-kpi--upside">
           <span class="dsb-kpi-label">Target</span>
-          <strong class="dsb-kpi-value">${fmt(t.target_price)}\u20ab ${upside ? `<span class="dsb-upside">+${upside}%</span>` : ''}</strong>
+          <strong class="dsb-kpi-value">${fmt(t.target_price)}₫ ${upside ? `<span class="dsb-upside">+${upside}%</span>` : ''}</strong>
         </div>` : ''}
         ${t.stop_loss ? `<div class="dsb-kpi dsb-kpi--risk">
           <span class="dsb-kpi-label">Stop</span>
-          <strong class="dsb-kpi-value">${fmt(t.stop_loss)}\u20ab ${downsideRisk ? `<span class="dsb-downside">${downsideRisk}%</span>` : ''}</strong>
+          <strong class="dsb-kpi-value">${fmt(t.stop_loss)}₫ ${downsideRisk ? `<span class="dsb-downside">${downsideRisk}%</span>` : ''}</strong>
         </div>` : ''}
       </div>
       <div class="dsb-actions">
-        <button class="ghost-btn" id="detailEditBtn">\u270f\ufe0f S\u1eeda</button>
-        <button class="danger-btn" id="detailDeleteBtn">\uD83D\uDDD1 X\u00f3a</button>
+        <button class="ghost-btn" id="detailEditBtn">✏️ Sửa</button>
+        <button class="danger-btn" id="detailDeleteBtn">🗑 Xóa</button>
       </div>
     </div>
 
     <nav class="detail-tab-nav" role="tablist" aria-label="Thesis sections">
-      <button class="dtab active" role="tab" aria-selected="true"  data-tab="overview"     aria-controls="dtab-overview">\uD83D\uDCCA Overview</button>
+      <button class="dtab active" role="tab" aria-selected="true"  data-tab="overview"     aria-controls="dtab-overview">📊 Overview</button>
       <button class="dtab"        role="tab" aria-selected="false" data-tab="assumptions"  aria-controls="dtab-assumptions">
         Assumptions <span class="dtab-count ${assumInvalid > 0 ? 'dtab-count--warn' : ''}">${assumList.length}</span>
       </button>
       <button class="dtab"        role="tab" aria-selected="false" data-tab="catalysts"    aria-controls="dtab-catalysts">
         Catalysts <span class="dtab-count ${catExpired > 0 ? 'dtab-count--danger' : catPending > 0 ? 'dtab-count--warn' : ''}">${catList.length}</span>
       </button>
-      <button class="dtab"        role="tab" aria-selected="false" data-tab="reviews"      aria-controls="dtab-reviews">\uD83D\uDD0D Reviews</button>
-      <button class="dtab"        role="tab" aria-selected="false" data-tab="history"      aria-controls="dtab-history">\uD83D\uDCC5 History</button>
+      <button class="dtab"        role="tab" aria-selected="false" data-tab="reviews"      aria-controls="dtab-reviews">🔍 Reviews</button>
+      <button class="dtab"        role="tab" aria-selected="false" data-tab="history"      aria-controls="dtab-history">📅 History</button>
     </nav>
 
     <div class="detail-tab-panels">
@@ -146,16 +146,16 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
         ${t.summary ? `<p class="detail-summary">${esc(t.summary)}</p>` : ''}
         <div class="overview-meta-grid">
           <div class="meta-stat">
-            <span class="meta-stat-label">T\u1ea1o l\u00fac</span>
+            <span class="meta-stat-label">Tạo lúc</span>
             <span class="meta-stat-value">${fmtDate(t.created_at)}</span>
           </div>
           <div class="meta-stat">
-            <span class="meta-stat-label">C\u1eadp nh\u1eadt</span>
+            <span class="meta-stat-label">Cập nhật</span>
             <span class="meta-stat-value">${fmtDate(t.updated_at)}</span>
           </div>
           <div class="meta-stat">
             <span class="meta-stat-label">Assumptions</span>
-            <span class="meta-stat-value">${assumList.length} <span style="color:var(--muted);font-size:.8rem;">(${assumInvalid} c\u1ea7n xem)</span></span>
+            <span class="meta-stat-value">${assumList.length} <span style="color:var(--muted);font-size:.8rem;">(${assumInvalid} cần xem)</span></span>
           </div>
           <div class="meta-stat">
             <span class="meta-stat-label">Catalysts</span>
@@ -175,16 +175,16 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
           ${assumList.length ? assumList.map(a => `
             <div class="item-card item-card--${a.status?.toLowerCase() ?? 'unknown'}" data-assum-id="${a.id}">
               <div class="item-card-body">
-                <span class="item-card-text">${esc(a.description ?? '\u2014')}</span>
+                <span class="item-card-text">${esc(a.description ?? '—')}</span>
                 <div class="item-card-meta">
-                  <span class="badge badge--${a.status?.toLowerCase() ?? 'unknown'}">${esc(a.status ?? '\u2014')}</span>
+                  <span class="badge badge--${a.status?.toLowerCase() ?? 'unknown'}">${esc(a.status ?? '—')}</span>
                 </div>
               </div>
               <div class="item-card-actions">
-                <button class="icon-btn edit-assum-btn" data-id="${a.id}" title="S\u1eeda">\u270f\ufe0f</button>
-                <button class="icon-btn danger delete-assum-btn" data-id="${a.id}" title="X\u00f3a">\uD83D\uDDD1</button>
+                <button class="icon-btn edit-assum-btn" data-id="${a.id}" title="Sửa">✏️</button>
+                <button class="icon-btn danger delete-assum-btn" data-id="${a.id}" title="Xóa">🗑</button>
               </div>
-            </div>`).join('') : '<p class="empty-state">Ch\u01b0a c\u00f3 assumption n\u00e0o.</p>'}
+            </div>`).join('') : '<p class="empty-state">Chưa có assumption nào.</p>'}
         </div>
       </div>
 
@@ -198,17 +198,17 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
           ${catList.length ? catList.map(c => `
             <div class="item-card item-card--${c.status?.toLowerCase() ?? 'unknown'}" data-cat-id="${c.id}">
               <div class="item-card-body">
-                <span class="item-card-text">${esc(c.description ?? '\u2014')}</span>
+                <span class="item-card-text">${esc(c.description ?? '—')}</span>
                 <div class="item-card-meta">
-                  <span class="badge badge--${c.status?.toLowerCase() ?? 'unknown'}">${esc(c.status ?? '\u2014')}</span>
-                  ${c.expected_date ? `<span class="item-card-date">\uD83D\uDCC5 ${fmtDate(c.expected_date)}</span>` : ''}
+                  <span class="badge badge--${c.status?.toLowerCase() ?? 'unknown'}">${esc(c.status ?? '—')}</span>
+                  ${c.expected_date ? `<span class="item-card-date">📅 ${fmtDate(c.expected_date)}</span>` : ''}
                 </div>
               </div>
               <div class="item-card-actions">
-                <button class="icon-btn edit-cat-btn" data-id="${c.id}" title="S\u1eeda">\u270f\ufe0f</button>
-                <button class="icon-btn danger delete-cat-btn" data-id="${c.id}" title="X\u00f3a">\uD83D\uDDD1</button>
+                <button class="icon-btn edit-cat-btn" data-id="${c.id}" title="Sửa">✏️</button>
+                <button class="icon-btn danger delete-cat-btn" data-id="${c.id}" title="Xóa">🗑</button>
               </div>
-            </div>`).join('') : '<p class="empty-state">Ch\u01b0a c\u00f3 catalyst n\u00e0o.</p>'}
+            </div>`).join('') : '<p class="empty-state">Chưa có catalyst nào.</p>'}
         </div>
       </div>
 
@@ -231,7 +231,7 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
 
 export function detailSkeletonHTML() {
   return `
-    <div class="skel-detail-wrap" aria-busy="true" aria-label="\u0110ang t\u1ea3i thesis...">
+    <div class="skel-detail-wrap" aria-busy="true" aria-label="Đang tải thesis...">
       <div class="detail-sticky-bar" style="opacity:.5;">
         <div class="dsb-left">
           <div class="skel" style="width:60px;height:24px;border-radius:8px;"></div>
@@ -263,23 +263,23 @@ export function renderThesesTable(list, callbacks = {}) {
     return;
   }
   if (!list.length) {
-    wrap.innerHTML = '<p class="empty-state">Ch\u01b0a c\u00f3 thesis n\u00e0o. Nh\u1ea5n <strong>+ Thesis m\u1edbi</strong> \u0111\u1ec3 t\u1ea1o.</p>';
+    wrap.innerHTML = '<p class="empty-state">Chưa có thesis nào. Nhấn <strong>+ Thesis mới</strong> để tạo.</p>';
     return;
   }
 
   list.forEach(t => destroySpark(t.id));
 
   wrap.innerHTML = `
-    <table>
+    <table class="data-table">
       <thead>
         <tr>
-          <th>M\u00e3</th>
-          <th>H\u01b0\u1edbng</th>
-          <th>Ti\u00eau \u0111\u1ec1</th>
+          <th>Mã</th>
+          <th>Hướng</th>
+          <th>Tiêu đề</th>
           <th style="min-width:110px;white-space:nowrap;">Score</th>
           <th>Trend</th>
           <th>Status</th>
-          <th>C\u1eadp nh\u1eadt</th>
+          <th>Cập nhật</th>
           <th></th>
         </tr>
       </thead>
@@ -294,9 +294,9 @@ export function renderThesesTable(list, callbacks = {}) {
 
           let tierBadge = '';
           if (tier === 'CRITICAL') {
-            tierBadge = `<span class="badge score-low" style="font-size:.72rem;">\uD83D\uDD34 CRITICAL</span>`;
+            tierBadge = `<span class="badge score-low" style="font-size:.72rem;">🔴 CRITICAL</span>`;
           } else if (tier === 'AT_RISK') {
-            tierBadge = `<span class="badge score-mid" style="font-size:.72rem;">\u26a0 AT_RISK</span>`;
+            tierBadge = `<span class="badge score-mid" style="font-size:.72rem;">⚠ AT_RISK</span>`;
           } else if (tier || t.score_tier_icon) {
             tierBadge = `<span style="font-size:.78rem;color:var(--muted);">${esc(t.score_tier_icon ?? '')} ${esc(tier)}</span>`;
           }
@@ -304,17 +304,17 @@ export function renderThesesTable(list, callbacks = {}) {
           return `
           <tr data-id="${t.id}" data-ticker="${esc(t.ticker)}" data-thesis-id="${t.id}" class="${rowClass}">
             <td class="ticker-cell"><strong>${esc(t.ticker)}</strong></td>
-            <td style="text-align:center;white-space:nowrap;vertical-align:middle;">
-              ${t.direction ? badge(t.direction) : '<span style="color:var(--muted);">\u2014</span>'}
+            <td class="col-center" style="white-space:nowrap;">
+              ${t.direction ? badge(t.direction) : '<span style="color:var(--muted);">—</span>'}
             </td>
-            <td>${esc(t.title ?? '\u2014')}</td>
+            <td>${esc(t.title ?? '—')}</td>
             <td class="${scoreClass(t.score)}">
               <div style="display:flex;flex-direction:row;align-items:center;gap:6px;flex-wrap:wrap;">
                 <strong>${fmtScore(t.score)}</strong>
                 ${tierBadge}
               </div>
             </td>
-            <td style="padding:4px 8px;vertical-align:middle;">
+            <td style="padding:4px 8px;">
               <canvas
                 id="spark-${t.id}"
                 width="80"
@@ -324,12 +324,12 @@ export function renderThesesTable(list, callbacks = {}) {
                 style="display:block;"
               ></canvas>
             </td>
-            <td>${badge(t.status)}</td>
+            <td class="col-center">${badge(t.status)}</td>
             <td style="color:var(--muted);font-size:.82rem;">${fmtDate(t.updated_at)}</td>
             <td class="col-actions">
               <div class="thesis-row-actions">
-                <button class="icon-btn edit-thesis-btn" data-id="${t.id}" title="S\u1eeda thesis">\u270f\ufe0f</button>
-                <button class="icon-btn danger delete-thesis-btn" data-id="${t.id}" title="X\u00f3a thesis">\uD83D\uDDD1</button>
+                <button class="icon-btn edit-thesis-btn" data-id="${t.id}" title="Sửa thesis">✏️</button>
+                <button class="icon-btn danger delete-thesis-btn" data-id="${t.id}" title="Xóa thesis">🗑</button>
               </div>
             </td>
           </tr>`;
