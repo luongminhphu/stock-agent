@@ -19,6 +19,10 @@
  *   - Sau render, restore tab active state → user không bị nhảy về Trades tab
  *     khi refresh từ Thesis tab (e.g. sau QuickTrade B/S)
  *
+ * Gap 3 B3 — Thesis status warning badge:
+ *   - renderTradesTab() đọc thesis_status từ position
+ *   - Rows có thesis_status !== 'active' hiển thị ⚠️ badge + row-thesis-warning class
+ *
  * Thesis wiring per tab:
  *   Trades tab:
  *     - data-thesis-id từ position.thesis_id (có thể null)
@@ -158,10 +162,17 @@ function renderTradesTab(data, errors) {
     const pct      = p.unrealized_pct ?? null;
     const hasError = missingPriceTickers.has(p.ticker);
     const thesisAttr = p.thesis_id ? ` data-thesis-id="${p.thesis_id}"` : '';
+
+    // Gap 3 B3: warn when linked thesis is no longer active
+    const thesisWarning   = p.thesis_id && p.thesis_status && p.thesis_status !== 'active';
+    const thesisWarnTitle = thesisWarning
+      ? `Thesis #${p.thesis_id} đã ${p.thesis_status} — cần review vị thế`
+      : '';
+
     return `
-      <tr class="col-ticker${hasError ? ' row-data-error' : ''}"${thesisAttr}>
+      <tr class="col-ticker${hasError ? ' row-data-error' : ''}${thesisWarning ? ' row-thesis-warning' : ''}"${thesisAttr}>
         <td class="col-ticker col-center">
-          <strong>${p.ticker}</strong>${hasError ? ' <span class="cell-error-dot" title="Thiếu dữ liệu giá">●</span>' : ''}
+          <strong>${p.ticker}</strong>${hasError ? ' <span class="cell-error-dot" title="Thiếu dữ liệu giá">●</span>' : ''}${thesisWarning ? ` <span class="thesis-warn-badge" title="${thesisWarnTitle}" aria-label="${thesisWarnTitle}">⚠️</span>` : ''}
         </td>
         <td class="col-action col-center"></td>
         <td class="num">${p.qty != null ? p.qty.toLocaleString('vi-VN') : '—'}</td>
