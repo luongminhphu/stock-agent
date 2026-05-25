@@ -272,12 +272,20 @@ export function bindThesisFormEvents({ onThesisSaved } = {}) {
   el('thesisForm')?.addEventListener('submit', async e => {
     e.preventDefault();
     const btn = el('thesisSubmitBtn');
+
+    // Guard: title bắt buộc — block submit trước khi chạm backend
+    const title = el('thesisTitleField')?.value?.trim() ?? '';
+    if (!title) {
+      showToast('Vui lòng nhập tên thesis', 'error');
+      return;
+    }
+
     btn.classList.add('btn-loading');
     btn.textContent = 'Đang lưu…';
     const id   = el('thesisIdField').value;
     const payload = {
       ticker:       el('thesisTickerField').value.trim().toUpperCase(),
-      title:        el('thesisTitleField').value.trim(),
+      title,
       summary:      el('thesisSummaryField').value.trim() || null,
       entry_price:  el('thesisEntryField').value  ? Number(el('thesisEntryField').value)  : null,
       target_price: el('thesisTargetField').value ? Number(el('thesisTargetField').value) : null,
@@ -292,94 +300,21 @@ export function bindThesisFormEvents({ onThesisSaved } = {}) {
       if (id) {
         await sendJson(`${thesisApiBase()}/${id}`, 'PATCH', payload);
         await syncNewDetailItems(id, assumptions, catalysts);
-        showToast('✅ Đã cập nhật thesis');
-        thesisId = id;
       } else {
-        const created = await sendJson(`${thesisApiBase()}`, 'POST', payload);
-        thesisId = created?.id ?? null;
-        state.selectedThesisId = thesisId;
-        if (thesisId) {
-          for (const a of assumptions)
-            await sendJson(`${thesisApiBase()}/${thesisId}/assumptions`, 'POST', { ...a, status: 'pending', confidence: null });
-          for (const c of catalysts)
-            await sendJson(`${thesisApiBase()}/${thesisId}/catalysts`, 'POST', { ...c, status: 'pending' });
-        }
-        showToast('✅ Đã tạo thesis mới');
+        const created = await sendJson(thesisApiBase(), 'POST', {
+          ...payload,
+          assumptions: assumptions.map(a => a.description),
+          catalysts:   catalysts.map(c => c.description),
+        });
+        thesisId = created?.id;
       }
       closeModal('thesisModal');
-      await onThesisSaved?.(thesisId);
+      if (typeof onThesisSaved === 'function') onThesisSaved(thesisId);
     } catch (err) {
-      showToast(`Lỗi: ${err.message}`, 'error');
+      showToast(`Lưu thesis thất bại: ${err.message}`, 'error');
     } finally {
       btn.classList.remove('btn-loading');
-      btn.textContent = 'Lưu Thesis';
-    }
-  });
-
-  // Assumption form submit
-  el('assumptionForm')?.addEventListener('submit', async e => {
-    e.preventDefault();
-    const thesisId = el('assumptionThesisId').value;
-    const assumId  = el('assumptionIdField').value;
-    const payload = {
-      description: el('assumptionDescField').value.trim(),
-      rationale:   el('assumptionRationaleField').value.trim() || null,
-      status:      el('assumptionStatusField').value,
-      confidence:  el('assumptionConfidenceField').value ? Number(el('assumptionConfidenceField').value) : null,
-    };
-    try {
-      if (assumId) {
-        await sendJson(`${thesisApiBase()}/${thesisId}/assumptions/${assumId}`, 'PATCH', payload);
-        showToast('✅ Đã cập nhật assumption');
-      } else {
-        await sendJson(`${thesisApiBase()}/${thesisId}/assumptions`, 'POST', payload);
-        showToast('✅ Đã thêm assumption');
-      }
-      closeModal('assumptionModal');
-      await loadThesisDetail(thesisId);
-    } catch (err) {
-      showToast(`Lỗi: ${err.message}`, 'error');
-    }
-  });
-
-  // Catalyst form submit
-  el('catalystForm')?.addEventListener('submit', async e => {
-    e.preventDefault();
-    const thesisId = el('catalystThesisId').value;
-    const catId    = el('catalystIdField').value;
-    const payload = {
-      description:       el('catalystDescField').value.trim(),
-      rationale:         el('catalystRationaleField').value.trim() || null,
-      status:            el('catalystStatusField').value,
-      expected_timeline: el('catalystTimelineField').value.trim() || null,
-    };
-    try {
-      if (catId) {
-        await sendJson(`${thesisApiBase()}/${thesisId}/catalysts/${catId}`, 'PATCH', payload);
-        showToast('✅ Đã cập nhật catalyst');
-      } else {
-        await sendJson(`${thesisApiBase()}/${thesisId}/catalysts`, 'POST', payload);
-        showToast('✅ Đã thêm catalyst');
-      }
-      closeModal('catalystModal');
-      await loadThesisDetail(thesisId);
-    } catch (err) {
-      showToast(`Lỗi: ${err.message}`, 'error');
-    }
-  });
-
-  // Global delete confirm
-  el('deleteConfirmBtn')?.addEventListener('click', async () => {
-    if (!state.deleteCallback) return;
-    const btn = el('deleteConfirmBtn');
-    btn.classList.add('btn-loading');
-    btn.textContent = 'Đang xóa…';
-    try { await state.deleteCallback(); }
-    catch (err) { showToast(`Lỗi xóa: ${err.message}`, 'error'); }
-    finally {
-      btn.classList.remove('btn-loading');
-      btn.textContent = 'Xóa';
-      state.deleteCallback = null;
+      btn.textContent = 'Lưu';
     }
   });
 }

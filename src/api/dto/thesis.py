@@ -155,7 +155,7 @@ class ThesisListResponse(BaseModel):
 class ThesisCreateRequest(BaseModel):
     ticker: str = Field(..., min_length=1, max_length=10)
     title: str = Field(..., min_length=1, max_length=256)
-    summary: str = Field(default="", max_length=4000)
+    summary: str | None = Field(default=None, max_length=4000)
     direction: ThesisDirection | None = Field(
         default=None,
         description="BULLISH | BEARISH | NEUTRAL — alias: long/short/bullish/bearish accepted",
@@ -165,6 +165,14 @@ class ThesisCreateRequest(BaseModel):
     stop_loss: float | None = Field(default=None, gt=0)
     assumptions: list[str] = Field(default_factory=list)
     catalysts: list[str] = Field(default_factory=list)
+
+    @field_validator("summary", mode="before")
+    @classmethod
+    def coerce_summary(cls, v: object) -> str:
+        """Coerce null/empty → empty string so service layer never receives None."""
+        if v is None:
+            return ""
+        return str(v).strip()
 
     @field_validator("direction", mode="before")
     @classmethod
@@ -265,8 +273,8 @@ class RecommendationResponse(BaseModel):
     id: int
     review_id: int
     target_type: str
-    target_id: int
     target_description: str
+    target_id: int
     recommended_status: str
     reason: str
     status: str
