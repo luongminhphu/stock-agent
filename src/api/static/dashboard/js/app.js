@@ -1,180 +1,309 @@
 /**
- * app.js — Bootstrap & wiring only. No domain logic.
+ * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard + Wave D lesson loop + Wave E brief ticker + Wave F brief feedback + Wave G brief generate + Wave 1 UX + Wave 2 memory + AttentionPanel + Wave 1 wire + Wave 2 wire + Wave 3 wire + Wave 4 wire)
+ * Responsibility: import tất cả modules, wire events, khởi động dashboard.
  * Rule: KHÔNG chứa business logic. Chỉ bootstrap + wiring.
  */
 
-import { el, showToast, openModal, closeModal } from './utils/dom.js';
+import { el, openModal, closeModal } from './utils/dom.js';
 import { loadDashboard, loadBacktesting } from './modules/dashboard/dashboard-loader.js';
 import { loadThesisDetail }     from './modules/thesis/thesis-service.js';
-import { loadPortfolio }        from './modules/portfolio/portfolio-loader.js';
-import { loadWatchlist }        from './modules/watchlist/watchlist-loader.js';
+import { bindLessonPersistedEvent } from './modules/thesis/thesis-service.js';
 import {
-  bindThesisFormEvents,
   openNewThesisModal,
   openEditThesisModal,
-  makeAssumptionRow,
-  makeCatalystRow,
+  bindThesisFormEvents,
 } from './modules/thesis/thesis-form.js';
 import { bindSuggestEvents }    from './modules/thesis/thesis-suggest.js';
-import { loadDecisions }        from './modules/decision/decision-loader.js';
-import { bindFeedbackEvents }   from './modules/decision/feedback-handler.js';
-import { loadLeaderboard }      from './modules/leaderboard/leaderboard-loader.js';
+import { loadPortfolio }        from './modules/portfolio/portfolio-loader.js';
+import { loadWatchlist, handleAddTicker } from './modules/watchlist/watchlist-loader.js';
+import {
+  loadDecisions,
+  loadLessons,
+  bindDecisionFormEvents,
+  openDecisionModal,
+} from './modules/decision/decision-loader.js';
+import { loadLeaderboard }      from './modules/leaderboard/leaderboard-service.js';
+import { bindFeedbackEvents }   from './modules/briefing/brief-feedback.js';
+import { bindGenerateBriefButtons } from './modules/briefing/brief-generate.js';
 import { loadMemory }           from './modules/memory/memory-loader.js';
 import { loadAttentionPanel, startAttentionAutoRefresh } from './modules/attention/attention-loader.js';
-import { bindGenerateBriefButtons } from './modules/brief/brief-loader.js';
-import { bindWatchlistThesisNavigate } from './modules/watchlist/watchlist-navigate.js';
-import { bindLessonPersistedEvent } from './modules/thesis/thesis-service.js';
-import { state } from './state/dashboard-state.js';
+import { debounce }             from './utils/debounce.js';
+import { state }                from './state/dashboard-state.js';
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Brief tab switching
 // ---------------------------------------------------------------------------
-function debounce(fn, ms) {
-  let t;
-  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+function bindBriefTabs() {
+  const tabBar = document.querySelector('.brief-tab-bar');
+  if (!tabBar) return;
+
+  tabBar.addEventListener('click', e => {
+    const btn = e.target.closest('.brief-tab');
+    if (!btn) return;
+
+    const targetId = btn.getAttribute('aria-controls');
+    if (!targetId) return;
+
+    tabBar.querySelectorAll('.brief-tab').forEach(t => {
+      t.classList.remove('active');
+      t.setAttribute('aria-selected', 'false');
+    });
+    document.querySelectorAll('.brief-tab-pane').forEach(p => {
+      p.classList.add('hidden');
+    });
+
+    btn.classList.add('active');
+    btn.setAttribute('aria-selected', 'true');
+    document.getElementById(targetId)?.classList.remove('hidden');
+  });
 }
 
 // ---------------------------------------------------------------------------
-// initBriefAutoOpen — open morning brief tab if URL hash matches
+// Wave 1 UX: Brief auto-open theo giờ trong ngày (GMT+7)
 // ---------------------------------------------------------------------------
 function initBriefAutoOpen() {
-  const hash = location.hash;
-  if (hash === '#morning-brief' || hash === '#brief') {
-    const tab = document.querySelector('[data-tab="brief"]');
-    if (tab) tab.click();
+  const collapsible = document.getElementById('briefCollapsible');
+  if (!collapsible) return;
+
+  const now = new Date();
+  const vnHour = (now.getUTCHours() + 7) % 24;
+  const vnMin  = now.getUTCMinutes();
+  const vnTime = vnHour + vnMin / 60;
+
+  const isMorningWindow = vnTime >= 6 && vnTime < 11;
+  const isEodWindow     = vnTime >= 14.5 && vnTime <= 18.5;
+
+  if (!isMorningWindow && !isEodWindow) return;
+
+  collapsible.open = true;
+
+  const targetTab = isMorningWindow ? 'morning' : 'eod';
+  const tabBar = collapsible.querySelector('.brief-tab-bar');
+  if (!tabBar) return;
+
+  tabBar.querySelectorAll('.brief-tab').forEach(t => {
+    const isTarget = t.dataset.tab === targetTab;
+    t.classList.toggle('active', isTarget);
+    t.setAttribute('aria-selected', String(isTarget));
+  });
+
+  const morningPane = document.getElementById('morningBriefWrap');
+  const eodPane     = document.getElementById('eodBriefWrap');
+  if (isMorningWindow) {
+    morningPane?.classList.remove('hidden');
+    eodPane?.classList.add('hidden');
+  } else {
+    eodPane?.classList.remove('hidden');
+    morningPane?.classList.add('hidden');
   }
 }
 
 // ---------------------------------------------------------------------------
-// KPI cells clickable → scroll to thesis board
+// Wave 1 UX: KPI cards clickable
 // ---------------------------------------------------------------------------
 export function initKpiClickable() {
-  document.querySelectorAll('[data-kpi-scroll]').forEach(cell => {
-    cell.style.cursor = 'pointer';
-    cell.addEventListener('click', () => {
-      document.querySelector('#thesisBoard')
-        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const scrollTo = (targetId, offset = 0) => {
+    const el = document.getElementById(targetId);
+    if (!el) return;
+    const y = el.getBoundingClientRect().top + window.scrollY - offset;
+    window.scrollTo({ top: y, behavior: 'smooth' });
+  };
+
+  const kpiMap = [
+    {
+      cardId:   'riskyTheses',
+      targetId: 'thesisBoardTitle',
+      label:    'Xem thesis rủi ro',
+      onEnter:  () => {
+        const filter = document.getElementById('statusFilter');
+        if (filter && filter.value !== 'active') {
+          filter.value = 'active';
+          filter.dispatchEvent(new Event('change'));
+        }
+      },
+    },
+    {
+      cardId:   'staleReviewCard',
+      targetId: 'thesesTableWrap',
+      label:    'Xem thesis cần review',
+    },
+    {
+      cardId:   'upcoming7d',
+      targetId: 'catalystList',
+      label:    'Xem catalyst calendar',
+    },
+    {
+      cardId:   'openTheses',
+      targetId: 'thesisBoardTitle',
+      label:    'Xem thesis board',
+    },
+  ];
+
+  kpiMap.forEach(({ cardId, targetId, label, onEnter }) => {
+    const card = document.getElementById(cardId)
+      ?? document.querySelector(`[id="${cardId}"]`);
+    if (!card) return;
+
+    const article = card.tagName === 'ARTICLE' ? card : card.closest('article') ?? card;
+
+    article.classList.add('kpi--clickable');
+    article.setAttribute('role', 'button');
+    article.setAttribute('tabindex', '0');
+    article.setAttribute('aria-label', label);
+
+    const handle = () => {
+      onEnter?.();
+      scrollTo(targetId, 72);
+    };
+
+    article.addEventListener('click', handle);
+    article.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handle(); }
     });
   });
 }
 
 // ---------------------------------------------------------------------------
-// Tab navigation
+// Wave E: Brief ticker chip click → loadThesisDetail
 // ---------------------------------------------------------------------------
-function initTabNav() {
-  const tabs  = document.querySelectorAll('[data-tab]');
-  const panes = document.querySelectorAll('[data-pane]');
-  tabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      tabs.forEach(t  => t.classList.remove('active'));
-      panes.forEach(p => p.classList.add('hidden'));
-      tab.classList.add('active');
-      const pane = document.querySelector(`[data-pane="${tab.dataset.tab}"]`);
-      if (pane) pane.classList.remove('hidden');
-    });
+function bindBriefTickerClick() {
+  document.addEventListener('click', e => {
+    const chip = e.target.closest('[data-brief-ticker]');
+    if (!chip) return;
+    const ticker = chip.dataset.briefTicker?.toUpperCase();
+    if (!ticker) return;
+    const thesis = state.theses.find(t => t.ticker?.toUpperCase() === ticker);
+    if (!thesis) return;
+    loadThesisDetail(thesis.id);
+    document.getElementById('thesesTableWrap')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const chip = e.target.closest('[data-brief-ticker]');
+    if (!chip) return;
+    e.preventDefault();
+    chip.click();
   });
 }
 
 // ---------------------------------------------------------------------------
-// Attention Panel helper
+// #3 FIX: Watchlist thesis badge → navigate:thesis → loadThesisDetail
 // ---------------------------------------------------------------------------
-function bindAttentionActions() {
-  document.addEventListener('click', async e => {
-    const chip = e.target.closest('.brief-ticker-chip[data-thesis-id]');
-    if (chip) {
-      const thesisId = Number(chip.dataset.thesisId);
-      if (thesisId) await loadThesisDetail(thesisId);
+function bindWatchlistThesisNavigate() {
+  document.addEventListener('navigate:thesis', (e) => {
+    const { thesisId } = e.detail ?? {};
+    if (!thesisId) return;
+    loadThesisDetail(thesisId);
+    document.getElementById('thesesTableWrap')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Watchlist add modal: wire form submit
+// ---------------------------------------------------------------------------
+function bindWatchlistAddModal() {
+  const form = document.getElementById('watchlistAddForm');
+  if (!form) return;
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const ticker = form.querySelector('#watchlistTickerInput')?.value?.trim();
+    const note   = form.querySelector('#watchlistNoteInput')?.value?.trim() ?? '';
+    if (!ticker) return;
+    closeModal('watchlistAddModal');
+    form.reset();
+    await handleAddTicker(ticker, note);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Decision tab switching (Decisions | Lessons)
+// ---------------------------------------------------------------------------
+function bindDecisionTabs() {
+  const tabBar = document.querySelector('.dec-tab-bar');
+  if (!tabBar) return;
+
+  tabBar.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.dec-tab');
+    if (!btn) return;
+
+    const target = btn.dataset.tab;
+
+    tabBar.querySelectorAll('.dec-tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+
+    const decisionsPane = el('decisionsPane');
+    const lessonsPane   = el('lessonsPane');
+
+    if (target === 'decisions') {
+      decisionsPane?.classList.remove('hidden');
+      lessonsPane?.classList.add('hidden');
+    } else {
+      decisionsPane?.classList.add('hidden');
+      lessonsPane?.classList.remove('hidden');
+      const wrap = el('lessonsListWrap');
+      if (wrap && (wrap.innerHTML.includes('Đang tải') || wrap.children.length === 0)) {
+        await loadLessons();
+      }
     }
   });
 }
 
-// Wave E: Brief ticker chip click → loadThesisDetail
-function bindBriefThesisNavigation() {
-  document.addEventListener('click', async e => {
-    const chip = e.target.closest('[data-navigate-thesis]');
-    if (!chip) return;
-    const id = Number(chip.dataset.navigateThesis);
-    if (!id) return;
-    const tab = document.querySelector('[data-tab="thesis"]');
-    if (tab) tab.click();
-    await loadThesisDetail(id);
-    document.querySelector('#thesisBoard')
-      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+// ---------------------------------------------------------------------------
+// Leaderboard sort wiring
+// ---------------------------------------------------------------------------
+function bindLeaderboardSort() {
+  const sortBar = document.querySelector('.lb-sort-bar');
+  if (!sortBar) return;
+
+  sortBar.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-lb-sort]');
+    if (!btn) return;
+
+    sortBar.querySelectorAll('[data-lb-sort]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    loadLeaderboard(btn.dataset.lbSort);
   });
 }
 
 // ---------------------------------------------------------------------------
-// navigate:thesis event (from watchlist badges, brief chips, etc.)
+// Loop wire: trade action → Cluster C aut
 // ---------------------------------------------------------------------------
-function bindThesisNavigateEvent() {
-  document.addEventListener('navigate:thesis', async e => {
-    const thesisId = e.detail?.thesisId;
-    if (!thesisId) return;
-    // Switch to thesis tab
-    const tab = document.querySelector('[data-tab="thesis"]');
-    if (tab) tab.click();
-    await loadThesisDetail(thesisId);
-    document.querySelector('#thesisBoard')
-      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  });
-}
-
-// #3 FIX: Watchlist thesis badge → navigate:thesis → loadThesisDetail
-function bindWatchlistNavigate() {
-  document.addEventListener('navigate:thesis', async e => {
-    const thesisId = e.detail?.thesisId;
+function bindDecisionLoopWire() {
+  document.addEventListener('decision:created', async (e) => {
+    const { thesisId } = e.detail ?? {};
     if (!thesisId) return;
     await loadThesisDetail(thesisId);
+    await loadDecisions();
   });
 }
 
 // ---------------------------------------------------------------------------
-// Conviction timeline tab wiring (detail panel tabs)
-// ---------------------------------------------------------------------------
-function bindDetailTabNav() {
-  document.addEventListener('click', e => {
-    const tab = e.target.closest('[data-detail-tab]');
-    if (!tab) return;
-    const group = tab.closest('[data-detail-tab-group]');
-    if (!group) return;
-    const name = tab.dataset.detailTab;
-    group.querySelectorAll('[data-detail-tab]').forEach(t => t.classList.toggle('active', t === tab));
-    group.querySelectorAll('[data-detail-pane]').forEach(p => p.classList.toggle('hidden', p.dataset.detailPane !== name));
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Decision replay actions (quick-trade from review panel)
-// ---------------------------------------------------------------------------
-function bindDecisionQuickTradeEvent() {
-  document.addEventListener('decision:quick-trade', async e => {
-    const { thesisId, ticker, action, price } = e.detail ?? {};
-    if (!thesisId || !ticker) return;
-    const tab = document.querySelector('[data-tab="decisions"]');
-    if (tab) tab.click();
-    // Pre-fill decision form if available
-    const tickerField = el('decisionTickerField');
-    const actionField = el('decisionActionField');
-    const priceField  = el('decisionPriceField');
-    if (tickerField) tickerField.value = ticker;
-    if (actionField && action) actionField.value = action;
-    if (priceField  && price)  priceField.value  = price;
-    el('decisionForm')?.scrollIntoView({ behavior: 'smooth' });
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Wave 3 wire: decision:changed { thesisId } → loadThesisDetail if selected
+// Wave 3 wire: decision:changed { thesisId } → loadThesisDetail + loadDashboard
 // ---------------------------------------------------------------------------
 function bindDecisionChangedEvent() {
-  document.addEventListener('decision:changed', async e => {
+  document.addEventListener('decision:changed', async (e) => {
     const { thesisId } = e.detail ?? {};
     if (!thesisId) return;
     if (state.selectedThesisId === thesisId) {
       await loadThesisDetail(thesisId);
     }
-    // Also refresh dashboard to update conviction scores
     await loadDashboard();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Wave 4 wire: decision quick-trade → open decision modal
+// ---------------------------------------------------------------------------
+function bindDecisionQuickTradeEvent() {
+  document.addEventListener('decision:quick-trade', async (e) => {
+    const { thesisId, ticker, action, price } = e.detail ?? {};
+    if (!thesisId || !ticker) return;
+    openDecisionModal({ thesisId, ticker, action, price });
   });
 }
 
@@ -182,21 +311,32 @@ function bindDecisionChangedEvent() {
 // Main bootstrap
 // ---------------------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', async () => {
-  initTabNav();
+  // UI helpers
   initBriefAutoOpen();
-  bindDetailTabNav();
-  bindBriefThesisNavigation();
-  bindThesisNavigateEvent();
-  bindDecisionQuickTradeEvent();
+  bindBriefTabs();
+  bindBriefTickerClick();
+  bindWatchlistThesisNavigate();
+  bindWatchlistAddModal();
+  bindDecisionTabs();
+  bindLeaderboardSort();
+  bindDecisionLoopWire();
   bindDecisionChangedEvent();
-  bindAttentionActions();
+  bindDecisionQuickTradeEvent();
   bindLessonPersistedEvent();
 
-  // 1d. Wave G: generate brief buttons → POST /briefing/{phase}/generate
+  // 1a. Wave F: feedback buttons
+  bindFeedbackEvents();
+
+  // 1b. Wave G: generate brief buttons → POST /briefing/{phase}/generate
   bindGenerateBriefButtons();
 
-  // 1e. #3 FIX: watchlist thesis badge → navigate:thesis → loadThesisDetail
-  bindWatchlistThesisNavigate();
+  // 1c. Decision form events
+  bindDecisionFormEvents({
+    onDecisionSaved: async (thesisId) => {
+      await loadDecisions();
+      if (thesisId) await loadThesisDetail(thesisId);
+    },
+  });
 
   // 2. Bind thesis form + delete confirm
   bindThesisFormEvents({
@@ -225,6 +365,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }
   });
+  el('newDecisionBtn')?.addEventListener('click', () => openDecisionModal({}));
   el('reloadBtn')?.addEventListener('click', async () => {
     await loadDashboard();
     await loadBacktesting();
@@ -235,6 +376,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadMemory();
     loadAttentionPanel();
   });
+  el('addWatchlistBtn')?.addEventListener('click', () => openModal('watchlistAddModal'));
 
   el('statusFilter')?.addEventListener('change', debounce(loadDashboard, 200));
 
@@ -257,8 +399,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // 7. Delete confirm modal — wire state.deleteCallback
-  // confirmDeleteThesis/Assumption/Catalyst (thesis-service) sets state.deleteCallback
-  // then opens deleteModal. This handler executes the callback on confirm click.
+  // confirmDeleteThesis/Assumption/Catalyst sets state.deleteCallback then opens deleteModal.
+  // This handler executes the callback on confirm click.
   el('deleteConfirmBtn')?.addEventListener('click', async () => {
     if (typeof state.deleteCallback !== 'function') return;
     const btn = el('deleteConfirmBtn');
@@ -267,6 +409,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       await state.deleteCallback();
     } catch (err) {
+      const { showToast } = await import('./utils/dom.js');
       showToast(`Xóa thất bại: ${err.message}`, 'error');
     } finally {
       btn.disabled = false;
@@ -327,5 +470,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   loadAttentionPanel();
   initKpiClickable();
 
+  // Wave 2 wire: attention panel auto-refresh mỗi 5 phút
   startAttentionAutoRefresh();
 });
