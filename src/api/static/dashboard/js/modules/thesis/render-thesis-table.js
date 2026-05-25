@@ -276,7 +276,7 @@ export function renderThesesTable(list, callbacks = {}) {
           <th>M\u00e3</th>
           <th style="width:72px;text-align:center;">H\u01b0\u1edbng</th>
           <th>Ti\u00eau \u0111\u1ec1</th>
-          <th>Score</th>
+          <th style="min-width:110px;white-space:nowrap;">Score</th>
           <th style="width:80px;text-align:center;">Trend</th>
           <th>Status</th>
           <th>C\u1eadp nh\u1eadt</th>
@@ -309,7 +309,7 @@ export function renderThesesTable(list, callbacks = {}) {
             </td>
             <td>${esc(t.title ?? '\u2014')}</td>
             <td class="${scoreClass(t.score)}">
-              <div style="display:flex;flex-direction:column;gap:2px;">
+              <div style="display:flex;flex-direction:row;align-items:center;gap:6px;flex-wrap:wrap;">
                 <strong>${fmtScore(t.score)}</strong>
                 ${tierBadge}
               </div>
