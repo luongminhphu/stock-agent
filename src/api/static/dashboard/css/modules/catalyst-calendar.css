@@ -1,41 +1,48 @@
-/* ─── Catalyst Calendar — timeline view ────────────────────────────────────
+/* ─── Catalyst Calendar — timeline view ──────────────────────────────────────────────
    Owner  : modules/briefing
    Tokens : uses only variables from base/variables.css
    Rule   : ZERO hardcoded hex — all colour via token or rgba() from token RGB
-────────────────────────────────────────────────────────────────────────── */
 
-/* ── Legend strip ──────────────────────────────────────────────────────────── */
+   ALIGNMENT CONVENTION:
+   Catalyst Calendar là danh sách sự kiện / prose — canh trái toàn bộ.
+   Khác Cluster A (KPI tile canh giữa): ở đây user đọc hết một dòng đến
+   cuối, canh trái giúp mắt cố định tại làn kế (reading rhythm).
+─────────────────────────────────────────────────────────────────────────────── */
 
+/* ── Legend strip ─────────────────────────────────────────────────────────────────── */
 .cal-timeline {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
+  /* Catalyst: canh trái toàn bộ cấu trúc */
+  align-items: stretch;
 }
 
 .cal-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
-  padding: 0 0 6px;
+  gap: var(--space-1);
+  padding: 0 0 var(--space-2);
   border-bottom: 1px solid var(--line);
+  /* Legend cũng canh trái — đọc như key */
+  justify-content: flex-start;
 }
 
-/* ── Urgency pills (shared by legend + day header) ──────────────────────── */
-
+/* ── Urgency pills (shared by legend + day header) ───────────────────────── */
 .cal-urgency-pill {
   display: inline-flex;
   align-items: center;
-  padding: 2px 9px;
-  border-radius: 9999px;
-  font-size: .65rem;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
   font-weight: 700;
-  letter-spacing: .05em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   line-height: 1.6;
   white-space: nowrap;
 }
 
-/* today  → danger red (most urgent) */
+/* today  → danger red */
 .cal-urgency--today    { background: rgba(248,113,113,.15); color: var(--danger);  border: 1px solid rgba(248,113,113,.30); }
 /* tomorrow → warning amber */
 .cal-urgency--tomorrow { background: rgba(251,191,36,.13);  color: var(--warning); border: 1px solid rgba(251,191,36,.30); }
@@ -44,36 +51,36 @@
 /* later → muted grey */
 .cal-urgency--later    { background: rgba(148,163,184,.09); color: var(--muted);   border: 1px solid rgba(148,163,184,.18); }
 
-/* ── Day-track container ────────────────────────────────────────────────── */
-
+/* ── Day-track container ───────────────────────────────────────────────────────── */
 .cal-day-track {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 10px 12px;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-3);
   border-radius: var(--radius-sm);
   border: 1px solid var(--line);
   background: var(--surface);
-  transition: border-color .15s;
+  transition: border-color var(--transition-fast);
 }
 
-/* urgency-tinted left border accent */
+/* urgency-tinted left border accent — giữ nguyên như thiết kế gốc */
 .cal-day-track--today    { border-left: 3px solid var(--danger);  }
 .cal-day-track--tomorrow { border-left: 3px solid var(--warning); }
 .cal-day-track--week     { border-left: 3px solid var(--brand);   }
 .cal-day-track--later    { border-left: 3px solid var(--faint);   }
 
-/* ── Day header ─────────────────────────────────────────────────────────── */
-
+/* ── Day header ─────────────────────────────────────────────────────────────────── */
 .cal-day-header {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--space-2);
   flex-wrap: wrap;
+  /* Dàng tiêu đề ngày canh trái — reading axis */
+  justify-content: flex-start;
 }
 
 .cal-day-label {
-  font-size: .78rem;
+  font-size: var(--text-base);
   font-weight: 700;
   color: var(--text);
   flex: 1;
@@ -81,39 +88,39 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* Canh trái rõ ý định */
+  text-align: left;
 }
 
 .cal-day-count {
-  font-size: .65rem;
+  font-size: var(--text-xs);
   font-weight: 700;
   color: var(--faint);
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: 9999px;
-  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  padding: 1px var(--space-2);
   line-height: 1.6;
   flex-shrink: 0;
 }
 
-/* ── Pills container ────────────────────────────────────────────────────── */
-
+/* ── Pills container ─────────────────────────────────────────────────────────────────── */
 .cal-pills {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: var(--space-1);
 }
 
-/* ── Single catalyst pill ───────────────────────────────────────────────── */
-
+/* ── Single catalyst pill ─────────────────────────────────────────────────────────── */
 .cal-pill {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 7px 10px;
-  border-radius: 8px;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-xs);
   background: var(--surface-2);
   border: 1px solid var(--line);
-  transition: border-color .12s, background .12s;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
 }
 
 .cal-pill:hover {
@@ -123,43 +130,46 @@
 
 /* confirmed state → subtle success tint */
 .cal-pill--confirmed {
-  border-color: rgba(74,222,128,.25);
-  background: rgba(74,222,128,.05);
+  border-color: rgba(74, 222, 128, .25);
+  background: rgba(74, 222, 128, .05);
 }
 .cal-pill--confirmed:hover {
-  border-color: rgba(74,222,128,.40);
+  border-color: rgba(74, 222, 128, .40);
 }
 
-/* ── Pill top row (ticker + type badge + confirmed dot) ─────────────────── */
-
+/* ── Pill top row (ticker + type badge + confirmed dot) ──────────────────────── */
 .cal-pill-top {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1);
   flex-wrap: wrap;
+  /* Pill top: ticker/badge căng trái */
+  justify-content: flex-start;
 }
 
 .cal-ticker {
-  font-size: .72rem;
+  font-size: var(--text-sm);
   font-weight: 800;
-  letter-spacing: .06em;
+  letter-spacing: 0.06em;
   color: var(--brand);
   text-transform: uppercase;
   line-height: 1.3;
+  /* Canh trái — ticker là label định danh */
+  text-align: left;
 }
 
 .cal-type-badge {
   display: inline-flex;
   align-items: center;
-  padding: 1px 7px;
-  border-radius: 9999px;
-  font-size: .60rem;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: 0.60rem;
   font-weight: 700;
-  letter-spacing: .04em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  background: rgba(167,139,250,.10); /* --violet tint */
+  background: var(--violet-bg);
   color: var(--violet);
-  border: 1px solid rgba(167,139,250,.20);
+  border: 1px solid rgba(167, 139, 250, .20);
   line-height: 1.5;
   white-space: nowrap;
 }
@@ -175,32 +185,35 @@
   flex-shrink: 0;
 }
 
-/* ── Pill body ──────────────────────────────────────────────────────────── */
-
+/* ── Pill body — prose canh trái ───────────────────────────────────────────────────── */
 .cal-pill-desc {
-  font-size: .78rem;
+  font-size: var(--text-base);
   color: var(--text);
   line-height: 1.45;
   font-weight: 500;
+  /* Prose canh trái: mắt cố định tại lề, reading rhythm rõ hơn */
+  text-align: left;
 }
 
 .cal-pill-thesis {
-  font-size: .68rem;
+  font-size: var(--text-sm);
   color: var(--muted);
   font-style: italic;
   line-height: 1.3;
+  /* Italic prose cũng canh trái */
+  text-align: left;
 }
 
-/* ── Empty state ────────────────────────────────────────────────────────── */
-
+/* ── Empty state ─────────────────────────────────────────────────────────────────────── */
 .cal-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 24px 0;
+  gap: var(--space-2);
+  padding: var(--space-6) 0;
   color: var(--muted);
-  font-size: .82rem;
+  font-size: var(--text-base);
+  /* Empty state giữ center — đây là trạng thái placeholder, không phải content */
   text-align: center;
 }
 
@@ -209,13 +222,8 @@
   line-height: 1;
 }
 
-/* ── Responsive: on narrow panels collapse pills tighter ────────────────── */
-
+/* ── Responsive ─────────────────────────────────────────────────────────────────────── */
 @media (max-width: 540px) {
-  .cal-day-track {
-    padding: 8px 9px;
-  }
-  .cal-pill {
-    padding: 6px 8px;
-  }
+  .cal-day-track { padding: var(--space-2) var(--space-2); }
+  .cal-pill      { padding: var(--space-2) var(--space-2); }
 }
