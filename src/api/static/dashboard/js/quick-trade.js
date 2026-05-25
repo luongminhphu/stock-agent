@@ -19,6 +19,12 @@
  *     - Modal shows a read-only thesis badge instead of a dropdown.
  *     - thesis_id is always forwarded to the backend.
  *
+ * Decision log hint:
+ *   When thesis is selected, the rationale label updates in realtime to signal
+ *   that a DecisionLog will be created if the user fills in the rationale.
+ *   Rationale remains optional — thesis + rationale → decision logged;
+ *   thesis without rationale → trade succeeds, decision silently skipped.
+ *
  * On success:
  *   - Dismisses modal, refreshes holdings data, shows inline toast.
  *   - If backend confirms decision_logged: true, dispatches CustomEvent
@@ -35,7 +41,7 @@
 (function (global) {
   'use strict';
 
-  // ─── Modal HTML (injected once into <body>) ────────────────────────────────
+  // ─── Modal HTML (injected once into <body>) ─────────────────────────────────────────────
   const MODAL_ID = 'qt-modal';
 
   function ensureModal() {
@@ -65,7 +71,7 @@
               <!-- Trades tab: dropdown -->
               <div id="qt-thesis-dropdown-wrap">
                 <label class="qt-label" for="qt-thesis-select">
-                  Thesis liên kết <span class="qt-optional">(để log decision)</span>
+                  Thesis liên kết <span class="qt-optional">(tùy chọn — để log decision)</span>
                 </label>
                 <select class="qt-input qt-select" id="qt-thesis-select">
                   <option value="">— Không liên kết thesis —</option>
@@ -78,9 +84,9 @@
               </div>
             </div>
 
-            <label class="qt-label" for="qt-rationale">Lý do quyết định <span class="qt-optional">(tuỳ chọn)</span></label>
+            <label class="qt-label" id="qt-rationale-label" for="qt-rationale">Lý do quyết định <span class="qt-optional" id="qt-rationale-hint">(tuỳ chọn)</span></label>
             <textarea class="qt-input qt-textarea" id="qt-rationale" maxlength="500"
-              placeholder="VD: Breakout khỏi vùng tích luỹ, volume tăng mạnh" rows="3"></textarea>
+              placeholder="VD: Breakout khỏi vùng tích luĩ, volume tăng mạnh" rows="3"></textarea>
 
             <label class="qt-label" for="qt-note">Ghi chú (tuỳ chọn)</label>
             <input class="qt-input" id="qt-note" type="text" maxlength="200" placeholder="" />
@@ -99,13 +105,32 @@
     _bindModalEvents();
   }
 
-  // ─── State ─────────────────────────────────────────────────────────────────
+  // ─── State ────────────────────────────────────────────────────────────────────────────
   let _currentTicker      = '';
   let _currentType        = 'buy';
   let _currentThesisId    = null;   // resolved thesis_id to send to backend
   let _fromThesisTab      = false;  // true → suppress dropdown, show badge
 
-  // ─── Modal lifecycle ───────────────────────────────────────────────────────
+  // ─── Rationale hint ─────────────────────────────────────────────────────────────────
+  /**
+   * Cập nhật hint label của rationale dựa trên trạng thái thesis.
+   * Được gọi mỗi khi: modal mở, user thay đổi thesis dropdown.
+   */
+  function _updateRationaleHint(thesisSelected) {
+    const hintEl = document.getElementById('qt-rationale-hint');
+    if (!hintEl) return;
+    if (thesisSelected) {
+      hintEl.textContent = '— điền để log decision ✓';
+      hintEl.style.color = 'var(--color-primary, #01696f)';
+      hintEl.style.fontWeight = '500';
+    } else {
+      hintEl.textContent = '(tuỳ chọn)';
+      hintEl.style.color = '';
+      hintEl.style.fontWeight = '';
+    }
+  }
+
+  // ─── Modal lifecycle ──────────────────────────────────────────────────────────────
   /**
    * @param {string} ticker
    * @param {'buy'|'sell'} type
@@ -144,10 +169,14 @@
       badgeLabel.textContent = _currentThesisId
         ? `Thesis #${_currentThesisId}`
         : '—';
+      // Thesis tab: thesis_id is always set → hint active immediately
+      _updateRationaleHint(!!_currentThesisId);
     } else {
       // Trades tab — show dropdown, populate async
       dropdownWrap.hidden = false;
       badgeWrap.hidden    = true;
+      // Hint will be updated after dropdown loads (via change listener + initial state)
+      _updateRationaleHint(!!_currentThesisId);
       _loadThesisOptions(_currentTicker, _currentThesisId);
     }
 
@@ -159,7 +188,7 @@
     document.getElementById(MODAL_ID).setAttribute('hidden', '');
   }
 
-  // ─── Thesis dropdown population (Trades tab only) ─────────────────────────
+  // ─── Thesis dropdown population (Trades tab only) ───────────────────────────────────
   async function _loadThesisOptions(ticker, preselectedId) {
     const select = document.getElementById('qt-thesis-select');
     if (!select) return;
@@ -191,15 +220,19 @@
       if (items.length === 1 && !preselectedId) {
         select.value = String(items[0].id);
       }
+
+      // Update hint after options loaded (auto-select may have set a value)
+      _updateRationaleHint(!!select.value);
     } catch (_err) {
       // Fail silently — user can still trade without thesis link
       select.innerHTML = '<option value="">— Không tải được thesis —</option>';
+      _updateRationaleHint(false);
     } finally {
       select.disabled = false;
     }
   }
 
-  // ─── Events ────────────────────────────────────────────────────────────────
+  // ─── Events ────────────────────────────────────────────────────────────────────────────
   function _bindModalEvents() {
     document.getElementById('qt-close-btn').addEventListener('click', closeModal);
     document.getElementById('qt-cancel-btn').addEventListener('click', closeModal);
@@ -212,6 +245,12 @@
     ['qt-qty', 'qt-price'].forEach(function (id) {
       document.getElementById(id).addEventListener('input', _updateSummary);
     });
+
+    // Realtime rationale hint: update when thesis dropdown changes
+    document.getElementById('qt-thesis-select').addEventListener('change', function () {
+      _updateRationaleHint(!!this.value);
+    });
+
     document.getElementById('qt-confirm-btn').addEventListener('click', _handleConfirm);
   }
 
@@ -240,7 +279,7 @@
     document.getElementById('qt-error').setAttribute('hidden', '');
   }
 
-  // ─── Resolve final thesis_id before submit ─────────────────────────────────
+  // ─── Resolve final thesis_id before submit ──────────────────────────────────────────
   function _resolveThesisId() {
     if (_fromThesisTab) {
       // Thesis tab: always use the row's thesis_id
@@ -252,7 +291,7 @@
     return _currentThesisId;
   }
 
-  // ─── API call ──────────────────────────────────────────────────────────────
+  // ─── API call ────────────────────────────────────────────────────────────────────────────
   async function _handleConfirm() {
     _hideError();
     const qty       = parseFloat(document.getElementById('qt-qty').value);
@@ -297,7 +336,7 @@
         global.__qtRefreshHoldings();
       }
 
-      // ─── Loop wire: trade action → Cluster C auto-refresh ─────────────
+      // ─── Loop wire: trade action → Cluster C auto-refresh ───────────────────
       // If backend confirmed decision was logged (thesis_id + rationale
       // were provided), notify the app so Cluster C refreshes automatically
       // without any manual input. Loose coupling via CustomEvent — this
@@ -333,7 +372,7 @@
     return msg;
   }
 
-  // ─── Toast ─────────────────────────────────────────────────────────────────
+  // ─── Toast ────────────────────────────────────────────────────────────────────────────
   function _showToast(msg) {
     let container = document.getElementById('qt-toast-container');
     if (!container) {
@@ -352,7 +391,7 @@
     }, 4000);
   }
 
-  // ─── Button injection ──────────────────────────────────────────────────────
+  // ─── Button injection ──────────────────────────────────────────────────────────────
   /**
    * Inject [B] [S] buttons vào ô .col-action của mỗi row trong tbody.
    *
@@ -409,7 +448,7 @@
     });
   }
 
-  // ─── Init ──────────────────────────────────────────────────────────────────
+  // ─── Init ────────────────────────────────────────────────────────────────────────────
   function initQuickTrade() {
     ensureModal();
     document.querySelectorAll('[data-holdings-tbody]').forEach(function (tbody) {
@@ -419,7 +458,7 @@
     });
   }
 
-  // ─── Public API ────────────────────────────────────────────────────────────
+  // ─── Public API ──────────────────────────────────────────────────────────────────────
   global.QuickTrade = {
     init:               initQuickTrade,
     injectTradeButtons: injectTradeButtons,
