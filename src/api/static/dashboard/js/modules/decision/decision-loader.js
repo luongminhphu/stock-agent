@@ -98,6 +98,39 @@ function dispatchDecisionChanged(thesisId) {
 }
 
 // ---------------------------------------------------------------------------
+// Private: thesis select validation helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Hiển thị inline error trên thesis select.
+ * Inject <p id="decisionThesisError"> ngay sau select nếu chưa có.
+ */
+function showThesisError(msg) {
+  const sel = document.getElementById('decisionThesisSelect');
+  if (!sel) return;
+  sel.style.borderColor = 'var(--color-error, #c0392b)';
+  sel.style.outlineColor = 'var(--color-error, #c0392b)';
+  let errEl = document.getElementById('decisionThesisError');
+  if (!errEl) {
+    errEl = document.createElement('p');
+    errEl.id = 'decisionThesisError';
+    errEl.style.cssText = 'color:var(--color-error,#c0392b);font-size:var(--text-xs,0.75rem);margin-top:4px;';
+    sel.parentNode.insertBefore(errEl, sel.nextSibling);
+  }
+  errEl.textContent = msg;
+}
+
+function clearThesisError() {
+  const sel = document.getElementById('decisionThesisSelect');
+  if (sel) {
+    sel.style.borderColor = '';
+    sel.style.outlineColor = '';
+  }
+  const errEl = document.getElementById('decisionThesisError');
+  if (errEl) errEl.remove();
+}
+
+// ---------------------------------------------------------------------------
 // Public: load & render decisions + update KPI strip
 // ---------------------------------------------------------------------------
 
@@ -172,21 +205,42 @@ export function bindLogDecisionModal() {
 
   if (!modal || !form) return;
 
-  closeBtn?.addEventListener('click', () => modal.close());
-  modal.addEventListener('click', e => { if (e.target === modal) modal.close(); });
+  // Clear thesis error khi user thay đổi selection
+  document.getElementById('decisionThesisSelect')
+    ?.addEventListener('change', clearThesisError);
+
+  const resetAndClose = () => {
+    clearThesisError();
+    form.reset();
+    const sel = document.getElementById('decisionThesisSelect');
+    if (sel) sel.value = '';
+    modal.close();
+  };
+
+  closeBtn?.addEventListener('click', resetAndClose);
+  modal.addEventListener('click', e => { if (e.target === modal) resetAndClose(); });
 
   form.addEventListener('submit', async e => {
     e.preventDefault();
+
+    const thesisRaw = document.getElementById('decisionThesisSelect')?.value;
+    const thesisId  = thesisRaw ? parseInt(thesisRaw, 10) : null;
+
+    // Validate: thesis_id là bắt buộc (API contract: int NOT NULL)
+    if (!thesisId) {
+      showThesisError('Vui lòng chọn thesis liên quan.');
+      document.getElementById('decisionThesisSelect')?.focus();
+      return;
+    }
+
+    clearThesisError();
+
     const submitBtn = form.querySelector('[type="submit"]');
     submitBtn.disabled = true;
     submitBtn.textContent = 'Đang lưu…';
 
     try {
-      const thesisRaw = document.getElementById('decisionThesisSelect')?.value;
-      const thesisId  = thesisRaw ? parseInt(thesisRaw, 10) : null;
-
       const payload = {
-        ticker:              form.decTickerField?.value?.trim().toUpperCase() || null,
         thesis_id:           thesisId,
         decision_type:       form.decActionField.value,
         rationale:           form.decReasonField.value.trim(),
@@ -206,14 +260,10 @@ export function bindLogDecisionModal() {
       }
 
       await sendJson('/api/v1/decisions', 'POST', payload);
-      modal.close();
-      form.reset();
-      const sel = document.getElementById('decisionThesisSelect');
-      if (sel) sel.value = '';
+      resetAndClose();
       await loadDecisions();
 
       // Wave 3 wire: decision logged → notify app → loadThesisDetail if selected
-      // thesisId có thể null nếu user không chọn thesis — listeners phải guard.
       dispatchDecisionChanged(thesisId);
     } catch (err) {
       alert(`Lỗi lưu decision: ${err.message}`);
@@ -296,7 +346,7 @@ async function populateThesisSelect() {
       sel.innerHTML = '<option value="">Không có thesis active</option>';
       return [];
     }
-    sel.innerHTML = '<option value="">— Chọn thesis (không bắt buộc) —</option>' +
+    sel.innerHTML = '<option value="">— Chọn thesis *</option>' +
       list.map(t =>
         `<option value="${t.id}">[${t.ticker}] ${t.title ?? t.ticker}</option>`
       ).join('');
@@ -319,6 +369,9 @@ async function populateThesisSelect() {
 
 export async function openDecisionModal(opts = {}) {
   const { thesisId, ticker, action, price } = opts ?? {};
+
+  // Clear error state từ lần mở trước
+  clearThesisError();
 
   // Populate thesis dropdown trước, nhận lại list để có thể pre-select
   await populateThesisSelect();
