@@ -95,7 +95,12 @@ export function applySuggestToThesisForm(data, fallbackTicker) {
     makeAssumptionRow({ description: item.assumption_text, rationale: item.rationale })
   ));
   (data.catalysts ?? []).forEach(item => cWrap?.appendChild(
-    makeCatalystRow({ description: item.catalyst_text, rationale: item.rationale, expected_date: item.expected_date ?? null })
+    // fix: normalize expected_date → YYYY-MM-DD so <input type="date"> accepts it
+    makeCatalystRow({
+      description: item.catalyst_text,
+      rationale: item.rationale,
+      expected_date: item.expected_date ? item.expected_date.slice(0, 10) : null,
+    })
   ));
   seedBlankFormRows();
   showToast('✨ Đã điền thesis form, assumptions và catalysts từ AI suggest');
