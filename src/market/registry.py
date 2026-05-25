@@ -152,6 +152,8 @@ _REGISTRY: dict[str, SymbolInfo] = {
         key_metrics="backlog hợp đồng xây dựng, biên lợi nhuận, tiến độ giải ngân đầu tư công"),
     "HHV": SymbolInfo("HHV", "Highway HHV", Exchange.HOSE, Sector.INDUSTRIALS,
         key_metrics="lưu lượng xe, phí BOT, tiến độ dự án cao tốc"),
+    "CII": SymbolInfo("CII", "CII Urban Infrastructure", Exchange.HOSE, Sector.INDUSTRIALS,
+        key_metrics="tiến độ giải ngân đầu tư công, lưu lượng xe BOT, lãi suất trái phiếu hạ tầng"),
     # Năng lượng / Dầu khí
     "PVD": SymbolInfo("PVD", "PetroVietnam Drilling", Exchange.HOSE, Sector.ENERGY,
         key_metrics="giá dầu Brent, rig day rate, capex E&P khu vực"),
@@ -163,6 +165,8 @@ _REGISTRY: dict[str, SymbolInfo] = {
     "CMG": SymbolInfo("CMG", "CMC Technology Group", Exchange.HOSE, Sector.TECHNOLOGY,
         key_metrics="tăng trưởng IT services, cloud adoption, tỷ giá"),
     # Tiêu dùng / Bán lẻ
+    "HPA": SymbolInfo("HPA", "Hoa Phat Agriculture Development", Exchange.HOSE, Sector.CONSUMER_GOODS,
+        key_metrics="giá heo hơi, giá bò/gia cầm, chi phí thức ăn chăn nuôi, sức mua tiêu dùng"),
     "MCH": SymbolInfo("MCH", "Masan Consumer Holdings", Exchange.UPCOM, Sector.CONSUMER_GOODS,
         key_metrics="sức mua tiêu dùng, giá nguyên liệu, thị phần FMCG"),
     "MML": SymbolInfo("MML", "Masan MEATLife", Exchange.HOSE, Sector.CONSUMER_GOODS,
