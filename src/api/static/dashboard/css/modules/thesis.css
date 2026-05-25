@@ -484,3 +484,79 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
 /* ── col-header (legacy compat) ─────────────────────────────────────────── */
 @media (max-width: 640px) { .detail-columns { grid-template-columns: 1fr; } }
 .col-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   THESIS BOARD TABLE LAYOUT
+   Owner: modules/thesis
+   Fix: Score column wrapping, row height misalignment, column widths
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+#thesesTableWrap table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+#thesesTableWrap th,
+#thesesTableWrap td {
+  padding: 9px 12px;
+  vertical-align: middle;
+  text-align: left;
+  font-size: 0.84rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#thesesTableWrap th {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint, #5a5957);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.10);
+  white-space: nowrap;
+}
+
+#thesesTableWrap tbody tr {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.06);
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+#thesesTableWrap tbody tr:hover { background: rgba(255, 255, 255, 0.04); }
+#thesesTableWrap tbody tr.is-selected { background: rgba(79, 152, 163, 0.10); }
+
+/* ── Column widths (fixed layout) ───────────────────────────────────────── */
+#thesesTableWrap th:nth-child(1) { width: 60px; }   /* Mã */
+#thesesTableWrap th:nth-child(2) { width: 72px; }   /* Hướng */
+#thesesTableWrap th:nth-child(3) { }               /* Tiêu đề — flex */
+#thesesTableWrap th:nth-child(4) { width: 120px; }  /* Score */
+#thesesTableWrap th:nth-child(5) { width: 88px; }   /* Trend */
+#thesesTableWrap th:nth-child(6) { width: 90px; }   /* Status */
+#thesesTableWrap th:nth-child(7) { width: 100px; }  /* Cập nhật */
+#thesesTableWrap th:nth-child(8) { width: 80px; }   /* Actions */
+
+/* ── Score cell: score number + tier badge inline ───────────────────────── */
+#thesesTableWrap td:nth-child(4) > div {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+#thesesTableWrap td:nth-child(4) > div .badge {
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+/* ── Tiêu đề cell: prevent overflow ────────────────────────────────────── */
+#thesesTableWrap td:nth-child(3) {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 0; /* required for text-overflow with table-layout:fixed */
+}
+
+/* ── Actions cell ───────────────────────────────────────────────────────── */
+#thesesTableWrap td:nth-child(8) {
+  white-space: nowrap;
+}
