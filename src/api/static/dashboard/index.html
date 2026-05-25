@@ -1280,5 +1280,20 @@
 
     <script src="/static/dashboard/js/quick-trade.js"></script>
     <script type="module" src="/static/dashboard/js/app.js?v=19" data-cfasync="false"></script>
+    <dialog id="deleteModal" aria-labelledby="deleteModalTitle">
+      <div class="modal-inner">
+        <div class="modal-header">
+          <h2 id="deleteModalTitle">Xác nhận xóa</h2>
+          <button class="modal-close" data-close="deleteModal" aria-label="Đóng">&#x2715;</button>
+        </div>
+        <div class="modal-body">
+          <p id="deleteModalMsg">Bạn chắc chắn muốn xóa?</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="ghost-btn" data-close="deleteModal">Hủy</button>
+          <button type="button" id="deleteConfirmBtn" class="danger-btn">Xóa</button>
+        </div>
+      </div>
+    </dialog>
   </body>
 </html>
