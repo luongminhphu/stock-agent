@@ -326,4 +326,68 @@ export function bindThesisFormEvents({ onThesisSaved } = {}) {
       btn.textContent = 'Lưu';
     }
   });
+
+  // ---------------------------------------------------------------------------
+  // Catalyst modal form submit (create + edit)
+  // ---------------------------------------------------------------------------
+  el('catalystForm')?.addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = e.submitter ?? el('catalystSubmitBtn');
+    const thesisId = el('catalystThesisId').value;
+    const catId    = el('catalystIdField').value;
+    const payload  = {
+      description:   el('catalystDescField').value.trim(),
+      rationale:     el('catalystRationaleField').value.trim() || null,
+      status:        el('catalystStatusField').value,
+      expected_date: el('catalystDateField').value || null,
+    };
+    if (!payload.description) { showToast('Nhập mô tả catalyst', 'error'); return; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Đang lưu…'; }
+    try {
+      if (catId) {
+        await sendJson(`${thesisApiBase()}/${thesisId}/catalysts/${catId}`, 'PATCH', payload);
+      } else {
+        await sendJson(`${thesisApiBase()}/${thesisId}/catalysts`, 'POST', payload);
+      }
+      closeModal('catalystModal');
+      showToast('✅ Đã lưu catalyst');
+      await loadThesisDetail(Number(thesisId));
+    } catch (err) {
+      showToast(`Lưu catalyst thất bại: ${err.message}`, 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Lưu Catalyst'; }
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Assumption modal form submit (create + edit)
+  // ---------------------------------------------------------------------------
+  el('assumptionForm')?.addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = e.submitter ?? el('assumptionSubmitBtn');
+    const thesisId = el('assumptionThesisId').value;
+    const assumId  = el('assumptionIdField').value;
+    const payload  = {
+      description: el('assumptionDescField').value.trim(),
+      rationale:   el('assumptionRationaleField').value.trim() || null,
+      status:      el('assumptionStatusField').value,
+      confidence:  el('assumptionConfidenceField').value ? Number(el('assumptionConfidenceField').value) : null,
+    };
+    if (!payload.description) { showToast('Nhập nội dung assumption', 'error'); return; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Đang lưu…'; }
+    try {
+      if (assumId) {
+        await sendJson(`${thesisApiBase()}/${thesisId}/assumptions/${assumId}`, 'PATCH', payload);
+      } else {
+        await sendJson(`${thesisApiBase()}/${thesisId}/assumptions`, 'POST', payload);
+      }
+      closeModal('assumptionModal');
+      showToast('✅ Đã lưu assumption');
+      await loadThesisDetail(Number(thesisId));
+    } catch (err) {
+      showToast(`Lưu assumption thất bại: ${err.message}`, 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Lưu Assumption'; }
+    }
+  });
 }
