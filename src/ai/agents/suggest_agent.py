@@ -156,6 +156,13 @@ def _conviction_to_confidence(level: str) -> float:
     return {"HIGH": 0.85, "MEDIUM": 0.60, "LOW": 0.35}.get(level.upper(), 0.50)
 
 
+_TIME_HORIZON_MAP: dict[str, str] = {
+    "SHORT_TERM": "SHORT",
+    "MEDIUM_TERM": "MEDIUM",
+    "LONG_TERM": "LONG",
+}
+
+
 class ThesisSuggestAgent:
     """Generates a draft investment thesis for a given ticker.
 
@@ -229,31 +236,37 @@ class ThesisSuggestAgent:
             conviction=draft.conviction_level,
         )
 
+        confidence = _conviction_to_confidence(draft.conviction_level)
+
         # --- Map ThesisDraft (internal) → ThesisSuggestionResult (public contract) ---
         result = ThesisSuggestionResult(
             ticker=draft.ticker,
-            thesis_title=draft.title,
-            thesis_summary=draft.summary,
-            entry_price_hint=draft.entry_price_suggestion,
-            target_price_hint=draft.target_price_suggestion,
-            stop_loss_hint=draft.stop_loss_suggestion,
+            title=draft.title,
+            summary=draft.summary,
+            target_horizon=_TIME_HORIZON_MAP.get(draft.time_horizon.upper(), draft.time_horizon),
             assumptions=[
                 SuggestedAssumption(
-                    description=a.description,
+                    assumption_text=a.description,
+                    confidence=confidence,
                     rationale=a.rationale,
                 )
                 for a in draft.assumptions
             ],
             catalysts=[
                 SuggestedCatalyst(
-                    description=c.description,
+                    catalyst_text=c.description,
                     expected_timeline=c.expected_timeline,
+                    confidence=confidence,
                     rationale=c.rationale,
                 )
                 for c in draft.catalysts
             ],
-            confidence=_conviction_to_confidence(draft.conviction_level),
-            reasoning=draft.reasoning,
+            invalidation_conditions=[
+                a.invalidation_signal
+                for a in draft.assumptions
+                if a.invalidation_signal
+            ],
+            confidence=confidence,
         )
 
         # --- Memory: log interaction (Layer 2) ---
