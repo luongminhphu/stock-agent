@@ -181,10 +181,12 @@ export async function openEditThesisModal(thesisId) {
 
 export async function openAssumptionModal(thesisId, assumId) {
   const ticker = state.theses.find(t => String(t.id) === String(thesisId))?.ticker ?? '';
+  // fix: reset() BEFORE setting hidden fields — both inputs are inside <form>,
+  // calling reset() after would wipe thesisId/assumId and break the submit URL.
+  el('assumptionForm').reset();
   el('assumptionThesisId').value = thesisId;
   el('assumptionIdField').value  = assumId ?? '';
   el('assumptionModalTitle').textContent = assumId ? 'Chỉnh sửa Assumption' : 'Thêm Assumption';
-  el('assumptionForm').reset();
   el('assumptionSuggestTicker').value = ticker;
   if (el('assumptionTickerDisplay')) el('assumptionTickerDisplay').textContent = ticker || '—';
   el('assumptionSuggestResult').classList.add('hidden');
@@ -206,10 +208,12 @@ export async function openAssumptionModal(thesisId, assumId) {
 
 export async function openCatalystModal(thesisId, catId) {
   const ticker = state.theses.find(t => String(t.id) === String(thesisId))?.ticker ?? '';
+  // fix: reset() BEFORE setting hidden fields — both inputs are inside <form>,
+  // calling reset() after would wipe thesisId/catId and break the submit URL.
+  el('catalystForm').reset();
   el('catalystThesisId').value = thesisId;
   el('catalystIdField').value  = catId ?? '';
   el('catalystModalTitle').textContent = catId ? 'Chỉnh sửa Catalyst' : 'Thêm Catalyst';
-  el('catalystForm').reset();
   el('catalystSuggestTicker').value = ticker;
   if (el('catalystTickerDisplay')) el('catalystTickerDisplay').textContent = ticker || '—';
   el('catalystSuggestResult').classList.add('hidden');
