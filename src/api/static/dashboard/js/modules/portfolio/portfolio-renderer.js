@@ -14,6 +14,11 @@
  *   - <tr> rows mang data-thesis-id để QuickTrade.injectTradeButtons() pick up
  *   - renderPortfolio() gọi QuickTrade.injectTradeButtons(tbody, opts) sau khi inject HTML
  *
+ * Wave 3 — Active tab preservation on refresh:
+ *   - renderPortfolio() snapshots active pane id trước khi overwrite innerHTML
+ *   - Sau render, restore tab active state → user không bị nhảy về Trades tab
+ *     khi refresh từ Thesis tab (e.g. sau QuickTrade B/S)
+ *
  * Thesis wiring per tab:
  *   Trades tab:
  *     - data-thesis-id từ position.thesis_id (có thể null)
@@ -152,7 +157,6 @@ function renderTradesTab(data, errors) {
   const rows = positions.map(p => {
     const pct      = p.unrealized_pct ?? null;
     const hasError = missingPriceTickers.has(p.ticker);
-    // thesis_id từ backend (PositionPnl.thesis_id) — cho phép QuickTrade pre-select dropdown
     const thesisAttr = p.thesis_id ? ` data-thesis-id="${p.thesis_id}"` : '';
     return `
       <tr class="col-ticker${hasError ? ' row-data-error' : ''}"${thesisAttr}>
@@ -232,7 +236,6 @@ function renderThesisTab(data, errors) {
     const entryDisplay = p.avg_cost ?? p.entry_price;
     const entryLabel   = p.avg_cost != null ? 'avg_cost' : 'entry';
     const hasError     = missingEntryTickers.has(p.ticker);
-    // p.id là thesis_id — luôn có — modal sẽ dùng làm read-only (fromThesisTab = true)
     const thesisAttr   = p.id ? ` data-thesis-id="${p.id}"` : '';
 
     return `
@@ -284,6 +287,12 @@ function renderThesisTab(data, errors) {
 // Main render — 2-tab layout
 // ---------------------------------------------------------------------------
 export function renderPortfolio(wrap, { trades, thesis }) {
+  // ── Snapshot active tab TRƯỚC khi overwrite innerHTML ─────────────────────
+  // Khi loadPortfolio() được gọi lại sau QuickTrade B/S, user có thể đang ở
+  // Thesis tab. Nếu không snapshot, innerHTML reset sẽ luôn activate Trades tab.
+  const prevActivePane = wrap.querySelector('.portfolio-tab.active')
+    ?.getAttribute('aria-controls') ?? 'portfolioTradesPane';
+
   const errors       = collectErrors(trades, thesis);
   const tradesErrors = errors.filter(e => e.scope === 'trades');
   const thesisErrors = errors.filter(e => e.scope === 'thesis');
@@ -306,9 +315,23 @@ export function renderPortfolio(wrap, { trades, thesis }) {
     <div id="portfolioThesisPane" class="portfolio-pane hidden">${renderThesisTab(thesis, errors)}</div>
   `;
 
+  // ── Restore active tab nếu user không ở Trades tab ────────────────────────
+  if (prevActivePane !== 'portfolioTradesPane') {
+    wrap.querySelectorAll('.portfolio-tab').forEach(t => {
+      const isTarget = t.getAttribute('aria-controls') === prevActivePane;
+      t.classList.toggle('active', isTarget);
+      t.setAttribute('aria-selected', String(isTarget));
+    });
+    wrap.querySelectorAll('.portfolio-pane').forEach(p => {
+      p.classList.toggle('hidden', p.id !== prevActivePane);
+    });
+  }
+
   wrap.querySelectorAll('.perr-banner').forEach(banner => wireBannerToggle(banner));
 
   // Inject trade buttons — per-tab opts
+  // _injectAllTradeButtons inject cho TẤT CẢ tbody kể cả pane đang hidden
+  // → không cần re-inject thủ công sau restore tab
   _injectAllTradeButtons(wrap);
 
   // Wire tab switching
