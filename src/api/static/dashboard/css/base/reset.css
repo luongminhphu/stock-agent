@@ -84,6 +84,38 @@ h3 {
   font-size: 0.82em;
 }
 
+/* ── Table column alignment utilities (SSOT) ──────────────────────────────────
+   Dùng trực tiếp trên <th> / <td> thay vì hardcode text-align trong từng module.
+
+   Convention:
+     .col-left    → labels, tên, ticker, prose (default)
+     .col-center  → badge, verdict, status, icon-only
+     .col-right   → số, %, giá — không cần mono
+     .currency    → tiền VND/USD — right-align + tabular-nums + mono font
+                    để các chữ số thẳng hàng theo decimal point
+
+   Áp dụng trực tiếp lên th/td:
+     <th class="col-right">Giá</th>
+     <td class="currency">125,400</td>
+     <th class="col-center">Verdict</th>
+──────────────────────────────────────────────────────────────────────────── */
+
+th.col-left,   td.col-left   { text-align: left; }
+th.col-center, td.col-center { text-align: center; }
+th.col-right,  td.col-right  { text-align: right; }
+
+/* .currency: tiền — right + tabular + mono */
+th.currency,
+td.currency {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+  font-family: var(--font-mono);
+}
+
+/* Backward-compat alias — .num đã dùng ở portfolio.css, giữ nguyên */
+th.num, td.num { text-align: right; }
+
 /* ── Form controls ────────────────────────────────────────────────────────── */
 input, select, textarea {
   min-height: 40px;

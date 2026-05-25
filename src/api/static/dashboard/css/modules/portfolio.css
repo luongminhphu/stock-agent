@@ -15,11 +15,17 @@
      .cell-missing      — <td> chứa '—' do data thiếu
      .cell-error-dot    — dot đỏ nhỏ inline với ticker
      .row-data-error    — <tr> có ít nhất 1 cell critical missing
+
+   ALIGNMENT CONVENTION (dùng utility classes từ reset.css):
+     .col-left    → Ticker, tên cổ phiếu, label prose
+     .col-center  → Verdict badge, trạng thái
+     .col-right   → %, score, số lượng
+     .currency    → Giá, P&L, giá trị VND — right + tabular-nums + mono
 ──────────────────────────────────────────────────────────────────────────── */
 
 /* ── Banner container ───────────────────────────────────────────────────── */
 .perr-banner {
-  margin-bottom: 12px;
+  margin-bottom: var(--space-3);             /* 12px via token */
   border-radius: var(--radius-sm);
   border: 1px solid rgba(251, 191, 36, 0.22);   /* --warning tint */
   background: rgba(251, 191, 36, 0.04);
@@ -38,16 +44,16 @@
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: 9px 13px;
-  gap: 8px;
+  padding: var(--space-2) var(--space-3);    /* 8px 12px via token */
+  gap: var(--space-2);
   background: none;
   border: none;
   cursor: pointer;
   text-align: left;
   color: var(--warning);
-  font-size: 0.78rem;
+  font-size: var(--text-sm);                 /* 12px via token */
   font-family: var(--font-body);
-  transition: background 0.15s ease;
+  transition: background var(--transition-fast);
 }
 
 .perr-banner:has(.perr-critical) .perr-toggle {
@@ -64,10 +70,10 @@
 }
 
 .perr-chevron {
-  font-size: 0.7rem;
+  font-size: var(--text-xs);                 /* ~11px via token */
   flex-shrink: 0;
   color: var(--muted);
-  transition: transform 0.15s ease;
+  transition: transform var(--transition-fast);
 }
 
 .perr-toggle[aria-expanded="true"] .perr-chevron {
@@ -78,10 +84,10 @@
 .perr-list {
   list-style: none;
   margin: 0;
-  padding: 0 13px 10px;
+  padding: 0 var(--space-3) var(--space-2);  /* 0 12px 8px via token */
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: var(--space-1);
   border-top: 1px solid rgba(148, 163, 184, 0.08);
 }
 
@@ -90,9 +96,9 @@
 }
 
 .perr-item {
-  font-size: 0.76rem;
+  font-size: var(--text-sm);                 /* 12px via token */
   line-height: 1.5;
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   color: var(--muted);
 }
 
@@ -107,12 +113,12 @@
   justify-content: center;
   min-width: 16px;
   height: 16px;
-  padding: 0 4px;
-  margin-left: 5px;
-  border-radius: 9999px;
+  padding: 0 var(--space-1);
+  margin-left: var(--space-1);
+  border-radius: var(--radius-pill);
   background: var(--danger);
   color: #fff;
-  font-size: 0.62rem;
+  font-size: var(--text-2xs);                /* 10px via token */
   font-weight: 700;
   line-height: 1;
   vertical-align: middle;
@@ -135,8 +141,8 @@ td.cell-missing {
 /* Dot đỏ nhỏ inline kế ticker — size nhỏ, không lấn át */
 .cell-error-dot {
   display: inline-block;
-  margin-left: 4px;
-  font-size: 0.5rem;
+  margin-left: var(--space-1);
+  font-size: var(--text-2xs);                /* 10px via token */
   color: var(--danger);
   opacity: 0.75;
   vertical-align: middle;
@@ -164,23 +170,28 @@ td.cell-missing {
   table-layout: auto;
 }
 
-/* ── Table cell alignment ───────────────────────────────────────────────── */
+/* ── Table cell alignment ───────────────────────────────────────────────────
+   Dùng utility classes từ reset.css (.col-left, .col-center, .col-right,
+   .currency, .num) thay vì hardcode text-align ở đây.
+   Chỉ khai báo base padding + vertical-align cho table này.
 
-/* Base: padding đều, vertical-align giữa, text trái (Ticker, label) */
+   Áp dụng trên HTML:
+     <th class="col-left">Ticker</th>
+     <th class="col-center">Verdict</th>
+     <th class="currency">Giá</th>
+     <th class="currency">P&L</th>
+     <th class="col-right">Score</th>
+──────────────────────────────────────────────────────────────────────────── */
+
+/* Base: padding đều, vertical-align giữa */
 .portfolio-pane .data-table th,
 .portfolio-pane .data-table td {
-  padding: 8px 12px;
-  text-align: left;
+  padding: var(--space-2) var(--space-3);    /* 8px 12px via token */
   vertical-align: middle;
 }
 
-/* Cột số (giá, P&L, %, score) — right-align theo convention tài chính */
-.portfolio-pane .data-table th.num,
-.portfolio-pane .data-table td.num {
-  text-align: right;
-}
-
-/* Cột Verdict (badge ngắn) — center */
-.portfolio-pane .data-table td:nth-child(2):has(.verdict-badge) {
-  text-align: center;
+/* Fallback: cột không có class → canh trái (safe default) */
+.portfolio-pane .data-table th:not([class]),
+.portfolio-pane .data-table td:not([class]) {
+  text-align: left;
 }
