@@ -240,7 +240,7 @@ async def get_catalysts_upcoming(
 
 # ---------------------------------------------------------------------------
 # 5. Thesis portfolio aggregate
-# IMPORTANT: /dashboard/portfolio/thesis-aggregate before /dashboard/{user_id}/...
+# IMPORTANT: /dashboard/theses/aggregate before /dashboard/{user_id}/...
 # ---------------------------------------------------------------------------
 
 @router.get("/dashboard/theses/aggregate")
@@ -513,10 +513,11 @@ async def get_price_snapshots(
 # 14. Portfolio — /dashboard/portfolio/trades  (PnlService)
 #               + /dashboard/portfolio         (DashboardService)
 # IMPORTANT: /portfolio/trades before /portfolio to avoid path ambiguity.
+# PnlService is lazy-imported inside handlers to avoid module-load crash:
+# portfolio/__init__.py imports market.quote_service at top-level;
+# if QuoteService singleton not ready at startup -> entire readmodel.py
+# fails to import -> all routes 500. Lazy import defers until first request.
 # ---------------------------------------------------------------------------
-
-from src.portfolio.pnl_service import PnlService  # noqa: E402
-
 
 @router.get("/dashboard/portfolio/trades")
 async def get_portfolio_trades_default_user(
@@ -530,6 +531,7 @@ async def get_portfolio_trades(
     user_id: str,
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict[str, Any]:
+    from src.portfolio.pnl_service import PnlService  # lazy — avoid startup circular import
     svc = PnlService(session=session, quote_service=get_quote_service())
     pnl = await svc.get_portfolio_pnl(user_id)
     return {
@@ -543,11 +545,7 @@ async def get_portfolio_trades(
                 "market_value": p.market_value,
                 "unrealized_pnl": p.unrealized_pnl,
                 "unrealized_pct": p.unrealized_pct,
-                # thesis_id: forward to frontend so QuickTrade can pre-select the linked
-                # thesis in the dropdown (Trades tab only — Thesis tab uses p.id directly).
                 "thesis_id": p.thesis_id,
-                # thesis_status (Gap 3 B2): enables portfolio-renderer.js to render a
-                # warning badge on rows where the linked thesis has been invalidated/closed.
                 "thesis_status": p.thesis_status,
             }
             for p in pnl.positions
