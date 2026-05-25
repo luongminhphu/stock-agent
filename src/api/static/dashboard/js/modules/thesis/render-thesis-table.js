@@ -274,13 +274,13 @@ export function renderThesesTable(list, callbacks = {}) {
       <thead>
         <tr>
           <th>M\u00e3</th>
-          <th style="width:72px;text-align:center;">H\u01b0\u1edbng</th>
+          <th>H\u01b0\u1edbng</th>
           <th>Ti\u00eau \u0111\u1ec1</th>
           <th style="min-width:110px;white-space:nowrap;">Score</th>
-          <th style="width:80px;text-align:center;">Trend</th>
+          <th>Trend</th>
           <th>Status</th>
           <th>C\u1eadp nh\u1eadt</th>
-          <th style="width:1%;white-space:nowrap;"></th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
@@ -326,8 +326,8 @@ export function renderThesesTable(list, callbacks = {}) {
             </td>
             <td>${badge(t.status)}</td>
             <td style="color:var(--muted);font-size:.82rem;">${fmtDate(t.updated_at)}</td>
-            <td style="width:1%;white-space:nowrap;text-align:center;vertical-align:middle;">
-              <div style="display:flex;gap:6px;align-items:center;justify-content:center;">
+            <td class="col-actions">
+              <div class="thesis-row-actions">
                 <button class="icon-btn edit-thesis-btn" data-id="${t.id}" title="S\u1eeda thesis">\u270f\ufe0f</button>
                 <button class="icon-btn danger delete-thesis-btn" data-id="${t.id}" title="X\u00f3a thesis">\uD83D\uDDD1</button>
               </div>
