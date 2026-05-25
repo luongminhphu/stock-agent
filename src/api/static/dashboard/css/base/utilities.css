@@ -1,17 +1,25 @@
-/* ─── Utilities ────────────────────────────────────────────────────────────────────────
+/* ─── Utilities ────────────────────────────────────────────────────────────────
    Owner: base
    Pure utility classes không phụ thuộc module nào.
    Đặt sau reset.css, trước components để component có thể override nếu cần.
-─────────────────────────────────────────────────────────────────────────────────────── */
 
-/* Visibility */
-.hidden { display: none !important; }
+   SECTIONS:
+   1. Visibility / loading states
+   2. Spinner
+   3. Semantic color utilities
+   4. Text alignment (generic + column + table-cell)
+   5. Currency / numeric display
+   6. Feedback states (empty, error, footer)
+──────────────────────────────────────────────────────────────────────────────── */
+
+/* ── 1. Visibility / loading ──────────────────────────────────────────────── */
+.hidden     { display: none !important; }
 .btn-loading { opacity: 0.7; pointer-events: none; }
 
-/* Spinner */
+/* ── 2. Spinner ───────────────────────────────────────────────────────────── */
 @keyframes spin { to { transform: rotate(360deg); } }
 .spinner {
-  width: 18px;
+  width:  18px;
   height: 18px;
   border: 2px solid rgba(125, 211, 252, 0.2);
   border-top-color: var(--brand);
@@ -20,45 +28,98 @@
   flex-shrink: 0;
 }
 
-/* ─── Semantic color utilities ───────────────────────────────────────────────────────
-   Dùng bởi JS (renderSummary, renderBriefCard, ...) để set màu
-   theo trạng thái: lợi nhuận, rủi ro, cảnh báo.
-   Dùng !important để override inline color nếu cần.
-─────────────────────────────────────────────────────────────────────────────────── */
-
+/* ── 3. Semantic color utilities ──────────────────────────────────────────────
+   Dùng bởi JS (renderSummary, renderBriefCard, ...) để set màu động.
+   Fallback hex giữ nguyên để tránh regressions khi token chưa load.
+─────────────────────────────────────────────────────────────────────────────── */
 .text-success { color: var(--success, #4ade80) !important; }
 .text-danger  { color: var(--danger,  #f87171) !important; }
 .text-warning { color: var(--warning, #fbbf24) !important; }
-.text-muted   { color: var(--muted,   #94a3b8) !important; }
+.text-orange  { color: var(--orange,  #fb923c) !important; }
+.text-brand   { color: var(--brand,   #7dd3fc) !important; }
+.text-violet  { color: var(--violet,  #a78bfa) !important; }
+.text-muted   { color: var(--muted,   #96a7c6) !important; }
+.text-faint   { color: var(--faint,   #61718f) !important; }
+/* Aliases cho JS changeDirection pattern */
 .text-up      { color: var(--success, #4ade80) !important; }
 .text-down    { color: var(--danger,  #f87171) !important; }
 
-/* Feedback states */
+/* ── 4. Text alignment ────────────────────────────────────────────────────────
+   Generic helpers
+─────────────────────────────────────────────────────────────────────────────── */
+.text-left   { text-align: left   !important; }
+.text-center { text-align: center !important; }
+.text-right  { text-align: right  !important; }
+
+/* Column alignment — dùng trên <th> và <td> để khai báo ý định rõ ràng
+   theo content type. Không dùng !important để component có thể override. */
+.col-left   { text-align: left;   }
+.col-center { text-align: center; }
+.col-right  { text-align: right;  }
+
+/* Semantic table-cell alignment — content-type driven:
+   .num    → số, %, điểm số          → canh phải
+   .label  → tên, ticker, mô tả      → canh trái
+   .status → badge, verdict, trạng thái → canh giữa
+   .currency → tiền tệ (VNĐ, %)     → canh phải + mono + tabular
+
+   Áp dụng trực tiếp lên <td> / <th>:
+     <th class="currency">Giá</th>
+     <td class="currency">125,300</td>
+*/
+td.num,      th.num      { text-align: right;  font-variant-numeric: tabular-nums; }
+td.label,    th.label    { text-align: left;   }
+td.status,   th.status   { text-align: center; }
+td.currency, th.currency {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+/* ── 5. Currency / numeric display ───────────────────────────────────────────
+   .currency — standalone class cho bất kỳ element nào hiển thị tiền tệ.
+   Dùng được trên <span>, <div>, <td> đều nhất quán.
+
+   Convention:
+   - Số tiền VNĐ / giá CP → text-align: right
+   - Font mono để digits thẳng hàng dù font body proportional
+   - tabular-nums đảm bảo width cố định cho mỗi chữ số
+─────────────────────────────────────────────────────────────────────────────── */
+.currency {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+/* ── 6. Feedback states ───────────────────────────────────────────────────── */
 .empty-state {
   color: var(--muted);
-  padding: 18px 0;
-  font-size: 0.82rem;
+  padding: var(--space-5) 0;    /* 20px → token */
+  font-size: var(--text-base);
+  text-align: center;
 }
+
 .error-banner {
-  margin-bottom: 14px;
-  padding: 12px 14px;
-  border-radius: 14px;
+  margin-bottom: var(--space-4);   /* 16px */
+  padding: var(--space-3) var(--space-4);  /* 12px 16px */
+  border-radius: var(--radius-sm);
   border: 1px solid rgba(248, 113, 113, 0.28);
   background: rgba(248, 113, 113, 0.14);
   color: #fecaca;
-  font-size: 0.82rem;
+  font-size: var(--text-base);
 }
 
-/* Footer note */
 .footer-note {
-  margin-top: 14px;
+  margin-top: var(--space-4);     /* 16px */
   color: var(--muted);
-  font-size: 0.76rem;
+  font-size: var(--text-sm);
 }
 .footer-note code {
   color: #dff5ff;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(148, 163, 184, 0.12);
-  padding: 2px 7px;
-  border-radius: 8px;
+  padding: 2px var(--space-2);    /* 2px 8px */
+  border-radius: var(--radius-xs);
 }

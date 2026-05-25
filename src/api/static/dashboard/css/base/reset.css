@@ -5,10 +5,10 @@
    Utilities (.hidden, .spinner, .empty-state, …) → utilities.css
 ──────────────────────────────────────────────────────────────────────────── */
 
-/* ── Google Fonts: Roboto ───────────────────────────────────────────────────── */
+/* ── Google Fonts: Roboto ─────────────────────────────────────────────────── */
 @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap');
 
-/* ── Font token override ────────────────────────────────────────────────────── */
+/* ── Font tokens (single source of truth cho font-family) ────────────────── */
 :root {
   --font-body: 'Roboto', 'Inter', 'Helvetica Neue', sans-serif;
   --font-mono: 'Roboto Mono', 'Fira Code', 'Cascadia Code', monospace;
@@ -20,13 +20,14 @@ body {
   margin: 0;
   min-height: 100dvh;
   font-family: var(--font-body);
-  font-size: 14px;
+  /* body font-size dùng token — tương đương 14px dashboard density */
+  font-size: var(--text-base);
   line-height: 1.6;
   color: var(--text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background:
-    radial-gradient(circle at top left, rgba(56, 189, 248, 0.16), transparent 30%),
+    radial-gradient(circle at top left,  rgba(56,  189, 248, 0.16), transparent 30%),
     radial-gradient(circle at top right, rgba(167, 139, 250, 0.14), transparent 24%),
     linear-gradient(180deg, #08111f 0%, #0a1322 48%, #0b1220 100%);
 }
@@ -35,32 +36,36 @@ a { color: inherit; }
 button, input, select { font: inherit; }
 
 h1, h2, h3, p { margin: 0; }
+
+/* Heading scale — dùng var(--text-*) từ variables.css */
 h1 {
-  font-size: clamp(1.65rem, 1.3rem + 0.8vw, 2.2rem);
+  font-size: var(--text-2xl);   /* ~26px dashboard, fluid via token */
   font-weight: 700;
   letter-spacing: -0.04em;
   line-height: 1.15;
 }
 h2 {
-  font-size: 1rem;
+  font-size: var(--text-md);    /* 16px */
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.3;
 }
 h3 {
-  font-size: 0.875rem;
+  font-size: var(--text-base);  /* 14px */
   font-weight: 600;
   letter-spacing: -0.01em;
   line-height: 1.35;
 }
 
+/* Eyebrow label — canh giữa theo content, uppercase tracked */
 .eyebrow {
   color: var(--brand);
-  font-size: 0.68rem;
+  font-size: var(--text-xs);    /* ~11px */
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.14em;
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
+  text-align: center;           /* eyebrow thường nằm trên KPI, canh giữa */
 }
 .subhead, .muted { color: var(--muted); }
 
@@ -79,24 +84,24 @@ h3 {
   font-size: 0.82em;
 }
 
-/* Form controls */
+/* ── Form controls ────────────────────────────────────────────────────────── */
 input, select, textarea {
   min-height: 40px;
-  border-radius: 12px;
+  border-radius: var(--radius-sm);           /* 14px via token */
   border: 1px solid var(--line);
   background: rgba(7, 15, 28, 0.72);
   color: var(--text);
-  padding: 0 12px;
+  padding: 0 var(--space-3);                 /* 12px via token */
   min-width: 138px;
   outline: none;
 }
 textarea {
   min-height: 78px;
-  padding: 10px 12px;
+  padding: var(--space-3) var(--space-3);    /* 12px 12px */
   resize: vertical;
   line-height: 1.5;
 }
 input:focus, select:focus, textarea:focus {
   border-color: rgba(125, 211, 252, 0.48);
-  box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.12);
+  box-shadow: 0 0 0 var(--space-1) rgba(56, 189, 248, 0.12);
 }
