@@ -121,11 +121,17 @@ function renderSkeleton() {
 
 function renderEmpty() {
   return `
-    <div class="attn-empty">
-      <div class="attn-empty__icon">✅</div>
-      <div class="attn-empty__text">Không có việc cần làm hôm nay.</div>
-      <div class="attn-empty__hint">Hệ thống sẽ cảnh báo khi có alert, stop-loss gần, thesis overdue hoặc catalyst sắp tới.</div>
-    </div>`;
+    <table class="attn-empty-table" role="presentation">
+      <tbody>
+        <tr>
+          <td class="attn-empty-table__cell">
+            <div class="attn-empty__icon" aria-hidden="true">✅</div>
+            <div class="attn-empty__text">Không có việc cần làm hôm nay.</div>
+            <div class="attn-empty__hint">Hệ thống sẽ cảnh báo khi có alert, stop-loss gần, thesis overdue hoặc catalyst sắp tới.</div>
+          </td>
+        </tr>
+      </tbody>
+    </table>`;
 }
 
 // ---------------------------------------------------------------------------
