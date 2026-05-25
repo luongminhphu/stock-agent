@@ -273,9 +273,8 @@ export function bindThesisFormEvents({ onThesisSaved } = {}) {
     e.preventDefault();
     const btn = el('thesisSubmitBtn');
 
-    // Guard: title bắt buộc — block submit trước khi chạm backend
-    const form = e.target;
-    const title = form.querySelector('[name="title"]')?.value?.trim() ?? '';
+    // Guard: title bắt buộc — dùng el() nhất quán với applySuggestToThesisForm
+    const title = el('thesisTitleField')?.value?.trim() ?? '';
     if (!title) {
       showToast('Vui lòng nhập tên thesis', 'error');
       return;
