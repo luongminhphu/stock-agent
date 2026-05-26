@@ -53,6 +53,7 @@ _memory_injection_listener: object | None = None  # Wave E: MemoryInjectionListe
 _intelligence_engine_listener: object | None = None  # core: IntelligenceEngine Wave 2
 _engine_feedback_listener: object | None = None      # core: FeedbackStore bridge
 _recent_reviews_store: object | None = None          # W1: RecentReviewsStore readmodel singleton
+_portfolio_query_adapter: object | None = None       # W3: PortfolioQueryAdapter singleton
 
 _pnl_service_class: type | None = None
 
@@ -81,6 +82,7 @@ async def bootstrap() -> None:
     global _intelligence_engine_listener, _engine_feedback_listener
     global _session_factory
     global _recent_reviews_store
+    global _portfolio_query_adapter
 
     if _quote_service is None:
         from src.market.adapters.factory import build_adapter
@@ -285,6 +287,16 @@ async def bootstrap() -> None:
         )
         logger.info("platform.bootstrap.recent_reviews_store_ready")
 
+    # ── W3: PortfolioQueryAdapter (readmodel) ─────────────────────────────────
+    if _portfolio_query_adapter is None:
+        from src.readmodel.portfolio_query_service import PortfolioQueryAdapter
+        from src.platform.db import AsyncSessionLocal
+
+        _portfolio_query_adapter = PortfolioQueryAdapter(
+            session_factory=AsyncSessionLocal,
+        )
+        logger.info("platform.bootstrap.portfolio_query_adapter_ready")
+
     # ── Event Bus + subscribers (start bus FIRST) ────────────────────────────
     from src.platform.event_bus import get_event_bus
     bus = get_event_bus()
@@ -385,7 +397,7 @@ async def bootstrap() -> None:
         _opportunity_screen_subscriber.register()
         logger.info("platform.bootstrap.opportunity_screen_subscriber_ready")
 
-    # ── Wave B2: SignalEngineListener ─────────────────────────────────────────
+    # ── Wave B2: SignalEngineListener — fully wired with portfolio context ─────
     if _signal_engine_listener is None:
         from src.ai.signal_engine_listener import SignalEngineListener
         from src.thesis.watchlist_query_service import WatchlistQueryService
@@ -398,7 +410,7 @@ async def bootstrap() -> None:
             watchdog_service=WatchlistQueryService(session_factory=AsyncSessionLocal),
             stress_test_service=StressTestQueryService(session_factory=AsyncSessionLocal),
             thesis_query=ThesisQueryService(session_factory=AsyncSessionLocal),
-            portfolio_query=None,
+            portfolio_query=_portfolio_query_adapter,  # W3: portfolio context wired
             feedback_service=None,
         )
         _signal_engine_listener.register()
@@ -661,3 +673,13 @@ def get_recent_reviews_store():
     if _recent_reviews_store is None:
         raise RuntimeError("bootstrap() has not been called")
     return _recent_reviews_store
+
+
+def get_portfolio_query_adapter():
+    """Return the PortfolioQueryAdapter singleton.
+
+    Used when callers outside bootstrap need direct access to portfolio
+    query (e.g. API routes, future readmodel projections).
+    Returns None if bootstrap() has not been called yet.
+    """
+    return _portfolio_query_adapter

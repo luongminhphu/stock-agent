@@ -202,3 +202,29 @@ class PortfolioQueryService:
             "has_quantity_data": has_quantity_data,
             "positions": positions,
         }
+
+
+class PortfolioQueryAdapter:
+    """Session-factory–aware adapter for SignalEngineListener.
+
+    PortfolioQueryService nhận một AsyncSession cụ thể tại __init__,
+    không phù hợp cho long-running listener (session bị stale sau lần đầu).
+    Adapter này tạo session mới cho mỗi lần gọi get_portfolio() để đảm bảo
+    connection pool được dùng đúng cách.
+
+    Owner: readmodel segment.
+    Used by: platform/bootstrap → SignalEngineListener(portfolio_query=...)
+    """
+
+    def __init__(self, session_factory: Any) -> None:
+        self._session_factory = session_factory
+
+    async def get_portfolio(
+        self,
+        user_id: str,
+        price_map: dict[str, float] | None = None,
+    ) -> dict[str, Any]:
+        """Open a fresh session, delegate to PortfolioQueryService, close session."""
+        async with self._session_factory() as session:
+            svc = PortfolioQueryService(session=session)
+            return await svc.get_portfolio(user_id=user_id, price_map=price_map)
