@@ -5,6 +5,7 @@ Purpose: After the AI judge produces a ThesisReview, this reactor:
   1. Escalates / de-escalates WatchlistItem.priority based on verdict + risk signals
   2. Updates WatchlistItem.note with a short AI verdict summary
   3. Creates a THESIS_TRIGGER Alert from next_watch_items (deduped per review)
+  4. Mutates Thesis.status when verdict signals invalidation or weakening
 
 Entry point::
 
@@ -20,6 +21,11 @@ Priority rules:
   NEUTRAL/WATCHLIST
     + >=2 risk signals  → priority = PRIORITY_RISKY     (30)  elevated watch
   otherwise             → no priority change
+
+Thesis status mutation rules (only when current status == ACTIVE):
+  INVALIDATED                    → ThesisStatus.INVALIDATED  (sets closed_at)
+  WEAKENING  + confidence >= 0.6 → ThesisStatus.WEAKENING
+  BEARISH    + confidence >= 0.75 → ThesisStatus.WEAKENING
 
 Alert dedup key: 'review_outcome:{review_id}' — idempotent across retries.
 """
@@ -49,6 +55,13 @@ logger = get_logger(__name__)
 PRIORITY_BEARISH: int = 10   # urgent — needs immediate attention
 PRIORITY_RISKY: int = 30     # elevated — monitor closely
 PRIORITY_BULLISH: int = 90   # de-prioritised — thesis looking strong
+
+# ---------------------------------------------------------------------------
+# Thresholds for thesis status mutation
+# ---------------------------------------------------------------------------
+
+_CONFIDENCE_WEAKENING: float = 0.6   # WEAKENING verdict threshold
+_CONFIDENCE_BEARISH_WEAK: float = 0.75  # BEARISH → WEAKENING threshold
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -200,6 +213,9 @@ class ReviewOutcomeReactor:
             note_preview=new_note[:60],
         )
 
+        # 4b. Thesis status mutation
+        await self._maybe_update_thesis_status(session, thesis, review, verdict)
+
         # 5. THESIS_TRIGGER alert (deduped)
         if next_watch_items:
             await self._ensure_alert(
@@ -211,6 +227,58 @@ class ReviewOutcomeReactor:
                 item=item,
                 verdict=verdict,
             )
+
+    async def _maybe_update_thesis_status(
+        self,
+        session: AsyncSession,
+        thesis: Any,
+        review: Any,
+        verdict: str,
+    ) -> None:
+        """Mutate Thesis.status based on AI verdict.
+
+        Rules (only when current status == ACTIVE):
+          INVALIDATED                    → ThesisStatus.INVALIDATED (sets closed_at)
+          WEAKENING  + confidence >= 0.6 → ThesisStatus.WEAKENING
+          BEARISH    + confidence >= 0.75 → ThesisStatus.WEAKENING
+        """
+        from src.thesis.models import ThesisStatus  # noqa: PLC0415
+
+        current_status = (
+            thesis.status.value if hasattr(thesis.status, "value") else str(thesis.status)
+        )
+        if current_status != ThesisStatus.ACTIVE:
+            # Idempotent — never overwrite CLOSED, PAUSED, WEAKENING, INVALIDATED
+            return
+
+        v = verdict.upper()
+        confidence: float = review.confidence
+
+        new_status: ThesisStatus | None = None
+        if v == "INVALIDATED":
+            new_status = ThesisStatus.INVALIDATED
+        elif v == "WEAKENING" and confidence >= _CONFIDENCE_WEAKENING:
+            new_status = ThesisStatus.WEAKENING
+        elif v == "BEARISH" and confidence >= _CONFIDENCE_BEARISH_WEAK:
+            new_status = ThesisStatus.WEAKENING
+
+        if new_status is None:
+            return
+
+        thesis.status = new_status
+        if new_status == ThesisStatus.INVALIDATED:
+            thesis.closed_at = datetime.now(tz=UTC)
+
+        logger.info(
+            "review_outcome_reactor.thesis_status_updated",
+            review_id=review.id,
+            thesis_id=thesis.id,
+            ticker=thesis.ticker,
+            old_status=current_status,
+            new_status=new_status.value,
+            verdict=verdict,
+            confidence=round(confidence, 3),
+        )
 
     async def _ensure_alert(
         self,
