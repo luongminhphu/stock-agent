@@ -4,7 +4,7 @@ Owner: bot segment.
 Commands:
     /watchlist add     — add ticker
     /watchlist remove  — remove ticker
-    /watchlist list    — show watchlist with live prices
+    /watchlist list    — show watchlist with live prices + latest AI verdict
     /watchlist scan    — run signal scan across watchlist
     /watchlist alert   — set price/change alert for a ticker
 
@@ -19,7 +19,7 @@ import discord
 from discord import app_commands
 
 from src.bot.commands.base import BaseCog
-from src.platform.bootstrap import get_quote_service
+from src.platform.bootstrap import get_quote_service, get_session_factory
 from src.platform.logging import get_logger
 from src.watchlist.models import AlertConditionType
 from src.watchlist.service import (
@@ -41,6 +41,44 @@ _CONDITION_LABEL = {
     AlertConditionType.CHANGE_PCT_DOWN: "Change ≤ -",
     AlertConditionType.VOLUME_SPIKE: "Volume ≥",
 }
+
+_VERDICT_ICON: dict[str, str] = {
+    "BULLISH": "📈",
+    "HOLD": "⏸️",
+    "NEUTRAL": "⏸️",
+    "WEAKENING": "⚠️",
+    "BEARISH": "📉",
+    "INVALIDATED": "❌",
+}
+
+
+def _verdict_suffix(verdict: str, confidence_pct: int) -> str:
+    """Return a compact verdict label for inline display, e.g. '📈 BULLISH 82%'."""
+    icon = _VERDICT_ICON.get(verdict.upper(), "🔍")
+    return f" · {icon} {verdict} {confidence_pct}%"
+
+
+async def _fetch_verdict_map(user_id: str) -> dict[str, tuple[str, int]]:
+    """Return {ticker: (verdict, confidence_pct)} for latest review per ticker.
+
+    Uses RecentReviewsStore with a 7-day window — newest-first, so first hit
+    per ticker is always the latest review.
+    Silent: returns {} on any error so /watchlist list never crashes.
+    """
+    try:
+        from src.readmodel.recent_reviews_store import RecentReviewsStore
+
+        store = RecentReviewsStore(session_factory=get_session_factory())
+        response = await store.get_recent(user_id=user_id, since_hours=168, limit=50)
+        verdict_map: dict[str, tuple[str, int]] = {}
+        for row in response.rows:
+            ticker = row.ticker.upper()
+            if ticker not in verdict_map:
+                verdict_map[ticker] = (row.verdict, row.confidence_pct)
+        return verdict_map
+    except Exception as exc:
+        logger.warning("watchlist_list.verdict_fetch_failed", user_id=user_id, error=str(exc))
+        return {}
 
 
 class WatchlistCog(BaseCog):
@@ -159,17 +197,27 @@ class WatchlistCog(BaseCog):
             )
             return
 
+        # Fetch latest AI verdict per ticker — silent fallback to {} on error
+        verdict_map = await _fetch_verdict_map(user_id)
+
         lines = []
         for item in items:
+            ticker = item.ticker.upper()
             note_part = f" · {item.note[:30]}" if item.note else ""
-            lines.append(f"• **{item.ticker}** {item.price_str}{note_part}")
+            verdict_part = ""
+            if ticker in verdict_map:
+                v, c = verdict_map[ticker]
+                verdict_part = _verdict_suffix(v, c)
+            lines.append(f"• **{ticker}** {item.price_str}{verdict_part}{note_part}")
 
         embed = discord.Embed(
             title="📋 Your Watchlist",
             description="\n".join(lines),
             color=discord.Color.blue(),
         )
-        embed.set_footer(text=f"{len(items)} ticker(s) · prices may be delayed")
+        has_verdict = any(item.ticker.upper() in verdict_map for item in items)
+        footer_suffix = " · verdict = last 7d AI review" if has_verdict else " · no AI review yet — use /thesis review"
+        embed.set_footer(text=f"{len(items)} ticker(s) · prices may be delayed{footer_suffix}")
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     # ------------------------------------------------------------------
