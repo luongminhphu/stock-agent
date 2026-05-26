@@ -7,16 +7,18 @@ Bot and API call this; they never call the agent directly.
 Flow:
     1. Load thesis + assumptions + catalysts from DB (via ThesisRepository)
     2. Optionally fetch current price (injected, not fetched internally)
-    3. Call ThesisReviewAgent.review() → ThesisReviewOutput
-    4. Persist ThesisReview ORM record
-    5. React: ReviewOutcomeReactor mutates WatchlistItem + creates alerts
+    3. Load previous review verdict for verdict_flip detection (W5C)
+    4. Call ThesisReviewAgent.review() → ThesisReviewOutput
+    5. Persist ThesisReview ORM record
+    6. Log verdict_flip event to memory if verdict changed (W5C)
+    7. React: ReviewOutcomeReactor mutates WatchlistItem + creates alerts
        (same session — committed together with review)
-    6. Auto-apply AI recommendations (ACCEPTED) → update assumption/catalyst status
+    8. Auto-apply AI recommendations (ACCEPTED) → update assumption/catalyst status
        Guard: assumptions already INVALID are skipped — only manual override can restore.
-    7. Reload thesis (fresh) → recompute full score with breakdown → persist
-    8. Clamp score delta to MAX_SCORE_DELTA_PER_REVIEW to avoid single-event score spikes
-    9. Persist ThesisSnapshot with score_breakdown (JSON) for conviction timeline
-   10. Return ThesisReview
+    9. Reload thesis (fresh) → recompute full score with breakdown → persist
+   10. Clamp score delta to MAX_SCORE_DELTA_PER_REVIEW to avoid single-event score spikes
+   11. Persist ThesisSnapshot with score_breakdown (JSON) for conviction timeline
+   12. Return ThesisReview
 """
 
 from __future__ import annotations
@@ -146,6 +148,11 @@ class ReviewService:
                     error=str(exc),
                 )
 
+        # W5C: capture previous verdict BEFORE calling the agent so we can
+        # detect a direction change after the new review is persisted.
+        prev_review = await self._repo.get_latest_review(thesis_id)
+        prev_verdict: ReviewVerdict | None = prev_review.verdict if prev_review else None
+
         assumptions_ctx = [
             {"id": a.id, "description": a.description}
             for a in thesis.assumptions
@@ -169,6 +176,7 @@ class ReviewService:
             assumptions_count=len(assumptions_ctx),
             pending_catalysts_count=len(pending_catalysts_ctx),
             triggered_catalysts_count=len(triggered_catalysts_ctx),
+            prev_verdict=prev_verdict.value if prev_verdict else None,
         )
 
         output: ThesisReviewOutput = await self._agent.review(
@@ -188,12 +196,21 @@ class ReviewService:
             trigger="thesis_review",
         )
 
-        review = await self._persist_review(thesis, output, current_price, user_id=str(user_id))
+        review = await self._persist_review(
+            thesis,
+            output,
+            current_price,
+            user_id=str(user_id),
+            prev_verdict=prev_verdict,
+        )
         logger.info(
             "review_service.done",
             thesis_id=thesis_id,
             verdict=review.verdict,
             confidence=review.confidence,
+            verdict_flipped=(
+                prev_verdict is not None and review.verdict != prev_verdict
+            ),
             recommendation_count=(
                 len(output.assumption_recommendations) + len(output.catalyst_recommendations)
             ),
@@ -303,6 +320,7 @@ class ReviewService:
         output: ThesisReviewOutput,
         reviewed_price: float | None,
         user_id: str = "",
+        prev_verdict: ReviewVerdict | None = None,
     ) -> ThesisReview:
         """Map ThesisReviewOutput → ThesisReview ORM, auto-apply recommendations,
         reload thesis fresh, recompute full score with breakdown, persist snapshot.
@@ -319,6 +337,11 @@ class ReviewService:
         W5A: user_id forwarded to _auto_apply_recommendations() so invalidation
         events can be written to episodic memory (non-fatal).
 
+        W5C: prev_verdict compared to new verdict immediately after save_review().
+        A flip (e.g. BULLISH → BEARISH) writes a verdict_flip memory event so
+        the agent can reason about direction changes on the next review.
+        First-ever review (prev_verdict=None) is skipped — no flip to record.
+
         Schema note: ThesisReviewOutput uses `overall_verdict` (not `verdict`)
         and `key_risks` (not `risk_signals`) and `summary` (not `reasoning`).
         `next_watch_items` is not a schema field — default to empty list.
@@ -334,6 +357,27 @@ class ReviewService:
             reviewed_price=reviewed_price,
         )
         await self._repo.save_review(review)
+
+        # W5C: log verdict_flip event if direction changed from previous review.
+        # Skipped on first-ever review (prev_verdict is None).
+        if prev_verdict is not None and review.verdict != prev_verdict:
+            await self._log_invalidation_event(
+                user_id=user_id,
+                ticker=thesis.ticker,
+                thesis_id=thesis.id,
+                agent_type="verdict_flip",
+                description=f"{prev_verdict.value.upper()} → {review.verdict.value.upper()}",
+                evidence=output.summary or "",
+                target_id=review.id,
+            )
+            logger.info(
+                "review_service.verdict_flip",
+                thesis_id=thesis.id,
+                ticker=thesis.ticker,
+                from_verdict=prev_verdict.value,
+                to_verdict=review.verdict.value,
+                confidence=review.confidence,
+            )
 
         # Wave 3: react to review outcome — mutate watchlist in same session.
         await self._run_watchlist_reactor(review.id)
@@ -577,12 +621,14 @@ class ReviewService:
         evidence: str,
         target_id: int,
     ) -> None:
-        """Write an invalidation/cancellation event to episodic memory.
+        """Write an invalidation/cancellation/flip event to episodic memory.
 
         W5A: Called after an assumption is INVALIDATED or a catalyst is CANCELLED.
+        W5C: Called after a verdict_flip is detected (prev_verdict != new verdict).
+
         Gives ThesisReviewAgent access to WHY an assumption/catalyst disappeared
-        from the active list on subsequent reviews — preventing the agent from
-        treating a previously-invalidated assumption as fresh context.
+        from the active list, or WHY the overall verdict changed direction, on
+        subsequent reviews.
 
         Non-fatal: exceptions are swallowed. Memory writes must never block the
         review transaction.
@@ -591,10 +637,10 @@ class ReviewService:
             user_id:     Owner of the thesis.
             ticker:      Stock ticker for episode scoping.
             thesis_id:   FK for thesis-scoped memory queries.
-            agent_type:  "assumption_invalidated" or "catalyst_cancelled".
-            description: Text of the assumption/catalyst that was changed.
-            evidence:    AI-provided reason for the status change.
-            target_id:   Numeric ID of the assumption/catalyst (for traceability).
+            agent_type:  "assumption_invalidated", "catalyst_cancelled", or "verdict_flip".
+            description: Human-readable summary of WHAT changed.
+            evidence:    AI-provided reason / output.summary for the change.
+            target_id:   Numeric ID of the subject (assumption, catalyst, or review).
         """
         if not user_id:
             return
