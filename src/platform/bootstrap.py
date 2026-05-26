@@ -52,6 +52,7 @@ _post_mortem_service: object | None = None     # Wave E: PostMortemService singl
 _memory_injection_listener: object | None = None  # Wave E: MemoryInjectionListener singleton
 _intelligence_engine_listener: object | None = None  # core: IntelligenceEngine Wave 2
 _engine_feedback_listener: object | None = None      # core: FeedbackStore bridge
+_recent_reviews_store: object | None = None          # W1: RecentReviewsStore readmodel singleton
 
 _pnl_service_class: type | None = None
 
@@ -79,6 +80,7 @@ async def bootstrap() -> None:
     global _post_mortem_service, _memory_injection_listener
     global _intelligence_engine_listener, _engine_feedback_listener
     global _session_factory
+    global _recent_reviews_store
 
     if _quote_service is None:
         from src.market.adapters.factory import build_adapter
@@ -272,6 +274,16 @@ async def bootstrap() -> None:
             session_factory=AsyncSessionLocal,
         )
         logger.info("platform.bootstrap.trend_prediction_store_ready")
+
+    # ── W1: RecentReviewsStore (readmodel) ───────────────────────────────────
+    if _recent_reviews_store is None:
+        from src.readmodel.recent_reviews_store import RecentReviewsStore
+        from src.platform.db import AsyncSessionLocal
+
+        _recent_reviews_store = RecentReviewsStore(
+            session_factory=AsyncSessionLocal,
+        )
+        logger.info("platform.bootstrap.recent_reviews_store_ready")
 
     # ── Event Bus + subscribers (start bus FIRST) ────────────────────────────
     from src.platform.event_bus import get_event_bus
@@ -638,3 +650,14 @@ def get_session_factory():
     will skip the reactor step silently in that case.
     """
     return _session_factory
+
+
+def get_recent_reviews_store():
+    """Return the RecentReviewsStore singleton.
+
+    Used by /reviews bot command and any API route that surfaces recent
+    AI judge output. Raises RuntimeError if bootstrap() was not called.
+    """
+    if _recent_reviews_store is None:
+        raise RuntimeError("bootstrap() has not been called")
+    return _recent_reviews_store
