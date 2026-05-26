@@ -142,6 +142,17 @@ Wave 1 — judge verdicts forward:
   BriefingAgent.signal proxy when a structured verdict is available.
   Falls back to signal proxy when no judge verdict exists for a ticker.
   Fully backward compatible — no interface changes outside this file.
+
+W4 — thesis context review enrichment:
+  _build_thesis_context() (individual_builders fallback path) now reuses
+  _fetch_reviews_batch_for_judge to inject a compact 1-liner annotation
+  "[last_review: verdict, conf=X.XX]" per thesis when a ThesisReview row
+  exists in DB. This ensures BriefingAgent is never blind to persisted
+  ReviewService verdicts even when thesis_judge_agent is not injected
+  (scheduler, simple bootstrap, tests with session).
+  Fully non-blocking: _fetch_reviews_batch_for_judge returns {} when
+  session=None or any DB error — fallback degrades to original behavior.
+  No new DB queries — reuses the batch fetcher already present (B3).
 """
 
 from __future__ import annotations
@@ -1327,6 +1338,12 @@ class BriefingService:
         B4: accepts optional pre-fetched theses list to avoid calling
         list_for_user(active) twice per brief cycle.
 
+        W4: reuses _fetch_reviews_batch_for_judge to inject a compact
+        "[last_review: verdict, conf=X.XX]" annotation per thesis when a
+        ThesisReview row exists. Ensures BriefingAgent is not blind to
+        persisted ReviewService verdicts when thesis_judge_agent is absent.
+        Non-blocking — degrades to original behavior when session=None.
+
         Returns "" when thesis_service is not injected or any error occurs.
         Non-blocking.
         """
@@ -1340,6 +1357,11 @@ class BriefingService:
                 )
             if not active_theses:
                 return ""
+
+            # W4: batch-fetch latest reviews for all active theses (reuses B3 fetcher).
+            thesis_ids = [int(t.id) for t in active_theses if getattr(t, "id", None) is not None]
+            reviews_batch = await self._fetch_reviews_batch_for_judge(thesis_ids)
+
             lines = ["Active Theses:"]
             for t in active_theses:
                 ticker = getattr(t, "ticker", "?")
@@ -1348,6 +1370,18 @@ class BriefingService:
                 parts = [f"  {ticker}: {title}"]
                 if stop_loss is not None:
                     parts.append(f"[stop={stop_loss:,.0f}]")
+
+                # W4: append latest verdict as 1-liner when a review exists.
+                tid = getattr(t, "id", None)
+                if tid is not None:
+                    rows = reviews_batch.get(int(tid), [])
+                    if rows:
+                        r = rows[0]
+                        verdict = getattr(r, "verdict", "?")
+                        confidence = getattr(r, "confidence", None)
+                        conf_str = f"{confidence:.2f}" if confidence is not None else "?"
+                        parts.append(f"[last_review: {verdict}, conf={conf_str}]")
+
                 lines.append(" ".join(parts))
             return "\n".join(lines)
         except Exception as exc:
