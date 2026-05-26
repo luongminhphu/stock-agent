@@ -9,19 +9,21 @@ Flow:
     2. Optionally fetch current price (injected, not fetched internally)
     3. Call ThesisReviewAgent.review() → ThesisReviewOutput
     4. Persist ThesisReview ORM record
-    5. Auto-apply AI recommendations (ACCEPTED) → update assumption/catalyst status
+    5. React: ReviewOutcomeReactor mutates WatchlistItem + creates alerts
+       (same session — committed together with review)
+    6. Auto-apply AI recommendations (ACCEPTED) → update assumption/catalyst status
        Guard: assumptions already INVALID are skipped — only manual override can restore.
-    6. Reload thesis (fresh) → recompute full score with breakdown → persist
-    7. Clamp score delta to MAX_SCORE_DELTA_PER_REVIEW to avoid single-event score spikes
-    8. Persist ThesisSnapshot with score_breakdown (JSON) for conviction timeline
-    9. Return ThesisReview
+    7. Reload thesis (fresh) → recompute full score with breakdown → persist
+    8. Clamp score delta to MAX_SCORE_DELTA_PER_REVIEW to avoid single-event score spikes
+    9. Persist ThesisSnapshot with score_breakdown (JSON) for conviction timeline
+   10. Return ThesisReview
 """
 
 from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Any, Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -69,9 +71,12 @@ class ReviewService:
     """Orchestrates AI-powered thesis reviews.
 
     Dependencies injected at construction:
-        session        — AsyncSession (per-request)
-        agent          — ThesisReviewAgent (singleton from bootstrap)
-        quote_service  — optional QuoteReader for live price enrichment
+        session         — AsyncSession (per-request)
+        agent           — ThesisReviewAgent (singleton from bootstrap)
+        quote_service   — optional QuoteReader for live price enrichment
+        session_factory — optional async session factory; when provided,
+                          ReviewOutcomeReactor runs after each review to
+                          mutate watchlist priority/note and create alerts.
     """
 
     def __init__(
@@ -79,11 +84,13 @@ class ReviewService:
         session: AsyncSession,
         agent: ThesisReviewAgent,
         quote_service: QuoteReader | None = None,
+        session_factory: Any | None = None,
     ) -> None:
-        self._session = session  # stored for memory log pass-through
+        self._session = session
         self._repo = ThesisRepository(session)
         self._agent = agent
         self._quote_service = quote_service
+        self._session_factory = session_factory
         self._scoring = ScoringService()
 
     # ------------------------------------------------------------------
@@ -298,6 +305,10 @@ class ReviewService:
         conviction chart. The raw computed score is still stored in score_breakdown
         for auditability — only thesis.score (persisted) is clamped.
 
+        Wave 3: ReviewOutcomeReactor runs in the same session after save_review()
+        to mutate WatchlistItem priority/note and create THESIS_TRIGGER alerts.
+        Reactor failure is non-fatal — logged and skipped, review is still returned.
+
         Schema note: ThesisReviewOutput uses `overall_verdict` (not `verdict`)
         and `key_risks` (not `risk_signals`) and `summary` (not `reasoning`).
         `next_watch_items` is not a schema field — default to empty list.
@@ -313,6 +324,9 @@ class ReviewService:
             reviewed_price=reviewed_price,
         )
         await self._repo.save_review(review)
+
+        # Wave 3: react to review outcome — mutate watchlist in same session.
+        await self._run_watchlist_reactor(review.id)
 
         await self._auto_apply_recommendations(thesis, review.id, output)
 
@@ -371,6 +385,38 @@ class ReviewService:
             )
 
         return review
+
+    async def _run_watchlist_reactor(self, review_id: int) -> None:
+        """Run ReviewOutcomeReactor in the current session (non-fatal).
+
+        Skipped silently when session_factory was not injected — backward
+        compat for callers that construct ReviewService without it.
+        """
+        if self._session_factory is None:
+            logger.debug(
+                "review_service.reactor_skipped.no_session_factory",
+                review_id=review_id,
+            )
+            return
+
+        try:
+            # Local import — keeps thesis segment boundary clean
+            # (watchlist must not be imported at module level from thesis)
+            from src.watchlist.review_outcome_reactor import ReviewOutcomeReactor  # noqa: PLC0415
+
+            reactor = ReviewOutcomeReactor(session_factory=self._session_factory)
+            await reactor.react_in_session(self._session, review_id)
+            logger.info(
+                "review_service.reactor_done",
+                review_id=review_id,
+            )
+        except Exception as exc:
+            # Non-fatal: watchlist mutation failure must not roll back the review.
+            logger.warning(
+                "review_service.reactor_failed",
+                review_id=review_id,
+                error=str(exc),
+            )
 
     async def _auto_apply_recommendations(
         self,
