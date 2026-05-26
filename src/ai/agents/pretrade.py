@@ -85,10 +85,13 @@ class PreTradeAgent:
             has_lessons=bool(past_lessons),
             has_investor_profile=bool(investor_profile),
         )
+        # PreTradeCheckOutput has many long-form fields; use COMPLEX_MAX_TOKENS
+        # (8192) to avoid mid-JSON truncation on verbose tickers.
         result: PreTradeCheckOutput = await self._client.chat(
             system_prompt=SYSTEM_PROMPT,
             user_prompt=prompt,
             response_schema=PreTradeCheckOutput,
+            max_tokens=AIClient.COMPLEX_MAX_TOKENS,
         )
         logger.info(
             "pretrade_agent.check.done",
