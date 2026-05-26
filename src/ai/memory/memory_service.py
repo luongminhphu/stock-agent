@@ -38,6 +38,11 @@ _PROMPT_EPISODE_CAP = 10
 # Valid user_signal values — mirrors UserBehaviorLog.signal
 VALID_USER_SIGNALS = frozenset({"bought", "sold", "watched", "ignored", "flagged"})
 
+# W5B: agent_types written by W5A that represent invalidation events.
+# These are rendered in a dedicated [Invalidation History] section so the
+# agent sees WHY assumptions/catalysts disappeared, not just that they did.
+_INVALIDATION_AGENT_TYPES = frozenset({"assumption_invalidated", "catalyst_cancelled"})
+
 
 @dataclass
 class InteractionEntry:
@@ -67,7 +72,19 @@ class MemoryContext:
         return not self.recent_episodes and self.latest_snapshot is None
 
     def render(self) -> str:
-        """Render full memory context for injection into AI prompts."""
+        """Render full memory context for injection into AI prompts.
+
+        W5B: Invalidation episodes (assumption_invalidated, catalyst_cancelled)
+        are extracted from recent_episodes and rendered in a dedicated
+        [Invalidation History] section BEFORE the general activity section.
+        This ensures the agent sees WHY assumptions/catalysts were removed
+        even when the invalidation event has been pushed down by newer episodes.
+
+        Section order (each optional — omitted when empty):
+          1. Semantic snapshot (latest_snapshot)
+          2. [Invalidation History] — assumption/catalyst invalidation events
+          3. [Recent AI interactions] — all other episodic events
+        """
         parts: list[str] = []
 
         if self.latest_snapshot:
@@ -75,9 +92,35 @@ class MemoryContext:
             if block:
                 parts.append(block)
 
-        if self.recent_episodes:
+        # W5B: split episodes into invalidation vs general
+        invalidation_eps = [
+            ep for ep in self.recent_episodes
+            if ep.agent_type in _INVALIDATION_AGENT_TYPES
+        ]
+        general_eps = [
+            ep for ep in self.recent_episodes
+            if ep.agent_type not in _INVALIDATION_AGENT_TYPES
+        ]
+
+        # W5B: render invalidation history section
+        if invalidation_eps:
+            inv_lines = ["[Invalidation History — assumptions/catalysts removed by AI]"]
+            for ep in invalidation_eps:
+                ticker_str = ",".join(ep.tickers) if ep.tickers else "?"
+                label = "ASSUMPTION" if ep.agent_type == "assumption_invalidated" else "CATALYST"
+                date_str = ep.created_at.strftime("%Y-%m-%d")
+                header = f"{date_str} | {label} INVALIDATED | {ticker_str}"
+                inv_lines.append(header)
+                if ep.ai_key_points:
+                    inv_lines.append(f"  what: {ep.ai_key_points.strip()}")
+                if ep.ai_risk_signals:
+                    inv_lines.append(f"  why:  {ep.ai_risk_signals.strip()}")
+            parts.append("\n".join(inv_lines))
+
+        # General episodic activity (excludes invalidation events)
+        if general_eps:
             episode_lines = ["[Recent AI interactions — newest first]"]
-            for ep in self.recent_episodes[:_PROMPT_EPISODE_CAP]:
+            for ep in general_eps[:_PROMPT_EPISODE_CAP]:
                 line_parts = [
                     ep.created_at.strftime("%Y-%m-%d %H:%M"),
                     ep.agent_type,
