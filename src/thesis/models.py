@@ -47,6 +47,7 @@ class ThesisStatus(enum.StrEnum):
     INVALIDATED = "invalidated"
     CLOSED = "closed"
     PAUSED = "paused"
+    WEAKENING = "weakening"  # thesis đang suy yếu nhưng chưa invalidated
 
 
 class ThesisDirection(enum.StrEnum):
@@ -75,6 +76,9 @@ class ReviewVerdict(enum.StrEnum):
     BEARISH = "BEARISH"
     NEUTRAL = "NEUTRAL"
     WATCHLIST = "WATCHLIST"
+    WEAKENING = "WEAKENING"          # thesis còn valid nhưng momentum suy yếu
+    INVALIDATED = "INVALIDATED"      # AI judge kết luận thesis đã bị invalidated
+    INSUFFICIENT_DATA = "INSUFFICIENT_DATA"  # không đủ data để ra verdict
 
 
 class DecisionType(enum.StrEnum):
