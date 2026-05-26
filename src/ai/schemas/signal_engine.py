@@ -23,6 +23,7 @@ __all__ = [
     "PortfolioRiskNote",
     "RiskAlert",
     "OpportunityHint",
+    "ThesisReviewTrigger",
     "SignalEngineOutput",
 ]
 
@@ -133,6 +134,53 @@ class OpportunityHint(BaseModel):
         return _coerce_confidence(v)
 
 
+class ThesisReviewTrigger(BaseModel):
+    """Structured trigger: một thesis cần review ngay do signal conflict.
+
+    Replaces the previous list[str] approach which could not carry reason
+    or urgency alongside thesis_id. Backward compat: Pydantic will coerce
+    a plain str item into ThesisReviewTrigger(thesis_id=str_value) if the
+    AI returns the old format during a transition period.
+
+    Fields:
+        thesis_id:  DB id của thesis. Empty string khi không xác định được
+                    (fallback mode — chỉ biết ticker).
+        ticker:     Ticker liên quan (VD: "VCB", "HPG").
+        reason:     Lý do cụ thể tại sao cần review — phải actionable.
+        urgency:    CRITICAL hoặc HIGH. MEDIUM/LOW không đủ để trigger review.
+    """
+
+    thesis_id: str = Field(
+        default="",
+        description="DB id của thesis. Empty string khi fallback mode không xác định được.",
+    )
+    ticker: str = Field(
+        default="",
+        description="Ticker liên quan (VD: VCB, HPG).",
+    )
+    reason: str = Field(
+        default="",
+        description="Lý do cụ thể tại sao cần review ngay — watchdog conflict, invalidated assumption, v.v.",
+    )
+    urgency: Literal["CRITICAL", "HIGH"] = Field(
+        default="HIGH",
+        description="Mức độ khẩn cấp của trigger. Chỉ CRITICAL hoặc HIGH.",
+    )
+
+    @classmethod
+    def __get_validators__(cls):
+        """Allow Pydantic v1-style coercion from plain str (legacy AI output)."""
+        yield cls._coerce
+
+    @classmethod
+    def _coerce(cls, v: object) -> "ThesisReviewTrigger":
+        if isinstance(v, str):
+            return cls(thesis_id=v)
+        if isinstance(v, dict):
+            return cls(**{k: val for k, val in v.items() if k in cls.model_fields})
+        return v  # type: ignore[return-value]
+
+
 class SignalEngineOutput(BaseModel):
     """Structured output from SignalEngineAgent."""
 
@@ -141,7 +189,13 @@ class SignalEngineOutput(BaseModel):
     signal_summary: str = Field(default="", description="1-line summary cho bot header.")
     portfolio_context: PortfolioRiskNote = Field(default_factory=PortfolioRiskNote)
     ranked_signals: list[RankedSignal] = Field(default_factory=list)
-    thesis_review_triggers: list[str] = Field(default_factory=list)
+    thesis_review_triggers: list[ThesisReviewTrigger] = Field(
+        default_factory=list,
+        description=(
+            "List các thesis cần review ngay do signal conflict hoặc assumption bị invalidate. "
+            "Mỗi item là ThesisReviewTrigger với thesis_id, ticker, reason, urgency."
+        ),
+    )
     risk_alerts: list[RiskAlert] = Field(default_factory=list)
     opportunity_windows: list[OpportunityHint] = Field(default_factory=list)
     portfolio_concentration_note: str = Field(default="")
@@ -154,7 +208,7 @@ class SignalEngineOutput(BaseModel):
         return _coerce_confidence(v)
 
     @field_validator(
-        "ranked_signals", "risk_alerts", "opportunity_windows", "thesis_review_triggers",
+        "ranked_signals", "risk_alerts", "opportunity_windows",
         mode="before",
     )
     @classmethod
@@ -162,3 +216,19 @@ class SignalEngineOutput(BaseModel):
         if not isinstance(v, list):
             return []
         return v  # type: ignore[return-value]
+
+    @field_validator("thesis_review_triggers", mode="before")
+    @classmethod
+    def coerce_triggers(cls, v: object) -> list[object]:
+        """Coerce list[str] (legacy AI output) or list[dict] (fallback) to list[ThesisReviewTrigger]."""
+        if not isinstance(v, list):
+            return []
+        result = []
+        for item in v:
+            if isinstance(item, ThesisReviewTrigger):
+                result.append(item)
+            elif isinstance(item, str):
+                result.append(ThesisReviewTrigger(thesis_id=item))
+            elif isinstance(item, dict):
+                result.append(ThesisReviewTrigger(**{k: val for k, val in item.items() if k in ThesisReviewTrigger.model_fields}))
+        return result

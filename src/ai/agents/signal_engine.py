@@ -22,6 +22,8 @@ Changelog:
     invalidation_conditions in active_theses for deep cross-check.
   - _fallback() now derives thesis_review_triggers from HIGH/CRITICAL ranked
     signals so ThesisJudgeAgent still runs when AI call fails (Gap 1 fix).
+  - _fallback() upgraded to emit ThesisReviewTrigger instances instead of
+    raw dicts — fixes silent Pydantic coercion bug from list[str] schema.
 """
 
 from __future__ import annotations
@@ -38,6 +40,7 @@ from src.ai.schemas import (
     SignalUrgency,
     Verdict,
 )
+from src.ai.schemas.signal_engine import ThesisReviewTrigger
 from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
@@ -204,6 +207,9 @@ class SignalEngineAgent:
         ThesisJudgeAgent still runs even when SignalEngine AI is unavailable.
         BriefingService._build_thesis_judge_block() will enrich each trigger
         with thesis metadata + last_review_summary before calling the Judge.
+
+        Emits ThesisReviewTrigger instances (not raw dicts) — consistent with
+        the Pydantic schema and downstream consumers.
         """
         signals: list[RankedSignal] = []
 
@@ -245,17 +251,15 @@ class SignalEngineAgent:
         capped_signals = signals[:10]
 
         # Derive thesis_review_triggers from HIGH/CRITICAL signals.
-        # Shape matches what BriefingService._build_thesis_judge_block() expects:
-        # ticker + trigger_reason + urgency + watchdog_verdict.
-        # thesis_id, assumptions, catalysts will be enriched by BriefingService
-        # when it loads active theses from the DB.
+        # thesis_id is empty string in fallback mode — BriefingService will enrich
+        # with thesis metadata when it loads active theses from DB by ticker.
         fallback_triggers = [
-            {
-                "ticker": s.ticker,
-                "trigger_reason": s.trigger_reason,
-                "urgency": s.urgency.value,
-                "watchdog_verdict": s.verdict.value,
-            }
+            ThesisReviewTrigger(
+                ticker=s.ticker,
+                thesis_id="",
+                reason=s.trigger_reason,
+                urgency=s.urgency.value,
+            )
             for s in capped_signals
             if s.urgency in _TRIGGER_URGENCIES
         ]

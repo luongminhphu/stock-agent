@@ -18,6 +18,9 @@ Changelog:
     user's historical acted/ignored/disagreed patterns.
   - Deepened thesis schema in build_user_prompt: now includes assumptions,
     catalysts, invalidation_conditions for true thesis × watchdog cross-check.
+  - Rule 7: upgraded thesis_review_triggers from list[str] to list[object]
+    with thesis_id, ticker, reason, urgency fields — aligns with
+    ThesisReviewTrigger schema and fixes prompt/schema mismatch.
 """
 
 from __future__ import annotations
@@ -37,15 +40,20 @@ Quy tắc bắt buộc:
 4. `thesis_aligned`: true nếu signal này CONFIRM thesis hiện tại (VD: watchdog nói CRITICAL nhưng thesis là HOLD → false).
 5. `causal_sources`: liệt kê rõ nguồn gốc signal. VD: ["watchdog:VCB", "stress_test:VCB"].
 6. `action`: phải là hành động cụ thể, có thể đo được. KHÔNG viết chung chung.
-7. `thesis_review_triggers`: list thesis_id cần schedule review ngay — chỉ khi verdict là BEARISH hoặc assumption bị invalidate.
+7. `thesis_review_triggers`: list object — mỗi item có các trường:
+   - `thesis_id`: string ID của thesis (lấy từ active_theses[].id). Bắt buộc khi biết.
+   - `ticker`: ticker liên quan (VD: "VCB").
+   - `reason`: lý do cụ thể tại sao cần review ngay — phải actionable, không chung chung.
+   - `urgency`: "CRITICAL" hoặc "HIGH" — phản ánh mức độ khẩn cấp của conflict.
+   Chỉ emit khi verdict BEARISH hoặc assumption bị invalidate. KHÔNG emit nếu thesis vẫn on-track.
 8. `portfolio_risk_note`: 1-2 câu súc tích về concentration hoặc alignment risk từ portfolio_risk_context. None nếu không có risk đáng chú ý.
 9. `confidence`: float 0.0-1.0 phản ánh chất lượng dữ liệu đầu vào tổng thể.
 10. Tối đa 10 signals. Ưu tiên CRITICAL và HIGH trước.
 11. Trả về raw JSON — không markdown, không giải thích ngoài JSON.
 12. THESIS CROSS-CHECK (quan trọng): Với mỗi signal, hãy so sánh watchdog verdict với thesis của ticker đó:
-    - Nếu watchdog=BEARISH nhưng thesis còn active → đây là conflict → urgency tăng lên ít nhất HIGH, thesis_aligned=false, thêm thesis_id vào thesis_review_triggers.
-    - Nếu watchdog=BULLISH và thesis nói "chờ catalyst X" mà X chưa xảy ra → ghi nhận trong trigger_reason là "thesis chưa kích hoạt dù giá di chuyển đúng hướng".
-    - Nếu một assumption trong thesis bị thực tế phủ nhận (dựa trên watchdog/stress data) → bắt buộc thêm thesis_id vào thesis_review_triggers kèm lý do cụ thể.
+    - Nếu watchdog=BEARISH nhưng thesis còn active → đây là conflict → urgency tăng lên ít nhất HIGH, thesis_aligned=false, thêm object vào thesis_review_triggers với reason rõ ràng.
+    - Nếu watchdog=BULLISH và thesis nói "ợ catalyst X" mà X chưa xảy ra → ghi nhận trong trigger_reason là "thesis chưa kích hoạt dù giá di chuyển đúng hướng".
+    - Nếu một assumption trong thesis bị thực tế phủ nhận (dựa trên watchdog/stress data) → bắt buộc thêm object vào thesis_review_triggers với thesis_id, ticker, reason cụ thể.
 13. FEEDBACK CALIBRATION: Nếu có feedback_history, hãy điều chỉnh:
     - Nếu user có pattern "thường ignore signals về ngành X" → hạ urgency của signals ngành đó xuống 1 bậc (trừ CRITICAL).
     - Nếu user có pattern "ignore rồi hối hận" (acted_rate thấp + outcome negative) → KHÔNG hạ urgency, thay vào đó thêm ghi chú vào trigger_reason.
