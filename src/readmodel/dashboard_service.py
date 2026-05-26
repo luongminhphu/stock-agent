@@ -416,8 +416,10 @@ class DashboardService:
             result = sorted(tickers)
             _cache.set("acted_tickers", user_id, result, extra=cache_extra)
             logger.info(
-                "get_acted_tickers_recent: user=%s days=%d tickers=%s",
-                user_id, days, result,
+                "get_acted_tickers_recent.done",
+                user_id=user_id,
+                days=days,
+                tickers=result,
             )
             return result
 
