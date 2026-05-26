@@ -36,6 +36,7 @@ _investor_profile_service: tuple | None = None
 _memory_consolidator: object | None = None
 _proactive_alert_agent: object | None = None
 _thesis_review_listener: object | None = None
+_signal_review_trigger_listener: object | None = None  # Wave C: SignalEngine → ThesisReview bridge
 _briefing_listener: object | None = None
 _stress_test_subscriber: object | None = None  # G4: StressTest → Watchlist bridge
 _opportunity_screen_scheduler: object | None = None  # Wave 3
@@ -65,6 +66,7 @@ async def bootstrap() -> None:
     global _stress_test_agent, _replay_agent, _snapshot_scheduler
     global _sector_rotation_agent, _investor_profile_service, _pnl_service_class
     global _memory_consolidator, _proactive_alert_agent, _thesis_review_listener
+    global _signal_review_trigger_listener
     global _briefing_listener, _stress_test_subscriber
     global _opportunity_screen_scheduler, _opportunity_screen_subscriber
     global _signal_engine_agent, _signal_engine_listener
@@ -288,6 +290,19 @@ async def bootstrap() -> None:
         )
         _thesis_review_listener.register()
         logger.info("platform.bootstrap.thesis_review_listener_ready")
+
+    # ── Wave C: SignalEngine → ThesisReview bridge ─────────────────────────────
+    if _signal_review_trigger_listener is None:
+        from src.thesis.signal_review_trigger_listener import SignalReviewTriggerListener
+        from src.platform.db import AsyncSessionLocal
+
+        _signal_review_trigger_listener = SignalReviewTriggerListener(
+            session_factory=AsyncSessionLocal,
+            review_agent=_thesis_review_agent,
+            quote_service=_quote_service,
+        )
+        _signal_review_trigger_listener.register()  # type: ignore[union-attr]
+        logger.info("platform.bootstrap.signal_review_trigger_listener_ready")
 
     if _briefing_listener is None:
         from src.briefing.briefing_listener import BriefingListener
