@@ -18,7 +18,11 @@ from discord import app_commands
 
 from src.bot.commands.base import BaseCog
 from src.bot.commands.thesis_embeds import TARGET_ICON, build_review_embed
-from src.platform.bootstrap import get_quote_service, get_thesis_review_agent
+from src.platform.bootstrap import (
+    get_quote_service,
+    get_session_factory,
+    get_thesis_review_agent,
+)
 from src.platform.logging import get_logger
 from src.thesis.models import ThesisStatus
 from src.thesis.review_service import ReviewNotAllowedError, ReviewService
@@ -53,6 +57,9 @@ class ThesisReviewCog(BaseCog):
                     session=session,
                     agent=get_thesis_review_agent(),
                     quote_service=get_quote_service(),
+                    # Wave 3: pass session_factory so ReviewOutcomeReactor runs
+                    # after the review — mutates WatchlistItem + creates alerts.
+                    session_factory=get_session_factory(),
                 )
                 review = await svc.review_thesis(thesis_id=thesis_id, user_id=user_id)
         except ThesisNotFoundError:
@@ -130,7 +137,7 @@ class ThesisReviewCog(BaseCog):
         if not recs:
             await self.send_ok(
                 interaction,
-                title=f"📭 No pending recommendations — Thesis #{thesis_id}",
+                title=f"💭 No pending recommendations — Thesis #{thesis_id}",
                 description=(
                     "All AI recommendations have been acted on, or no review has been run yet.\n"
                     "Use `/review_thesis` to generate new recommendations."
