@@ -12,6 +12,9 @@ Public API:
 
     --- Blueprint V2: Signal Engine ---
     SignalEngine, SignalReport, SignalType
+
+    --- Wave 2: Review Outcome Reactor ---
+    ReviewOutcomeReactor
 """
 
 from src.watchlist.models import (
@@ -23,6 +26,7 @@ from src.watchlist.models import (
     WatchlistItem,
 )
 from src.watchlist.repository import WatchlistRepository
+from src.watchlist.review_outcome_reactor import ReviewOutcomeReactor
 from src.watchlist.scan_service import (
     ScanResult,
     ScanService,
@@ -68,4 +72,6 @@ __all__ = [
     "SignalEngine",
     "SignalReport",
     "SignalType",
+    # Wave 2: Review Outcome Reactor
+    "ReviewOutcomeReactor",
 ]
