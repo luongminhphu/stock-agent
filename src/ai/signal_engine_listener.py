@@ -6,6 +6,10 @@ Runs SignalEngineAgent to cross-check watchlist × thesis × portfolio.
 Emits SignalEngineCompletedEvent so BriefingListener can inject the
 resulting narrative into morning/eod brief context.
 
+Emits ThesisReviewTriggeredEvent per ThesisReviewTrigger in agent output
+so thesis.SignalReviewTriggerListener can enqueue ThesisJudgeAgent runs
+without any direct coupling between ai and thesis segments.
+
 Owner: ai segment. Adapter only — no domain logic here.
 Domain logic lives in ai/agents/signal_engine.py.
 
@@ -17,8 +21,10 @@ Event flow:
         → SignalEngineRequestedEvent
         → [this listener]
         → SignalEngineAgent.run()
-        → SignalEngineCompletedEvent
+        → SignalEngineCompletedEvent          (1 event, summary + counts)
+        → ThesisReviewTriggeredEvent × N      (1 per trigger, thesis segment)
         → briefing.BriefingListener (injects summary into brief context)
+        → thesis.SignalReviewTriggerListener  (enqueues ThesisJudgeAgent)
 """
 from __future__ import annotations
 
@@ -26,7 +32,11 @@ from typing import TYPE_CHECKING, Any
 
 from src.ai.agents.signal_engine import SignalEngineAgent
 from src.platform.event_bus import get_event_bus
-from src.platform.events import SignalEngineCompletedEvent, SignalEngineRequestedEvent
+from src.platform.events import (
+    SignalEngineCompletedEvent,
+    SignalEngineRequestedEvent,
+    ThesisReviewTriggeredEvent,
+)
 from src.platform.logging import get_logger
 
 if TYPE_CHECKING:
@@ -92,6 +102,7 @@ class SignalEngineListener:
         1. Fetch inputs from watchdog, stress_test, thesis, portfolio.
         2. Run SignalEngineAgent.
         3. Emit SignalEngineCompletedEvent with counts + AI narrative summary.
+        4. Emit ThesisReviewTriggeredEvent per trigger → thesis segment reacts.
 
         Failures are caught and logged — a failed engine run must never
         crash the event bus or block the briefing scheduler.
@@ -121,6 +132,15 @@ class SignalEngineListener:
             )
 
             # -- 3. Emit completed event ------------------------------------
+            trigger_dicts: tuple[dict[str, str], ...] = tuple(
+                {
+                    "thesis_id": t.thesis_id,
+                    "ticker": t.ticker,
+                    "reason": t.reason,
+                    "urgency": t.urgency,
+                }
+                for t in output.thesis_review_triggers
+            )
             completed = SignalEngineCompletedEvent(
                 phase=event.phase,
                 ranked_signal_count=len(output.ranked_signals),
@@ -128,8 +148,21 @@ class SignalEngineListener:
                 risk_alert_count=len(output.risk_alerts),
                 opportunity_count=len(output.opportunity_windows),
                 summary=output.reasoning_summary or output.signal_summary,
+                triggers=trigger_dicts,
             )
             await get_event_bus().publish(completed)
+
+            # -- 4. Emit per-trigger events → thesis segment ---------------
+            for trigger in output.thesis_review_triggers:
+                review_event = ThesisReviewTriggeredEvent(
+                    thesis_id=trigger.thesis_id,
+                    ticker=trigger.ticker,
+                    reason=trigger.reason,
+                    urgency=trigger.urgency,
+                    phase=event.phase,
+                    user_id=event.user_id,
+                )
+                await get_event_bus().publish(review_event)
 
             logger.info(
                 "signal_engine_listener.completed",

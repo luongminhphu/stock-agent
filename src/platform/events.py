@@ -97,6 +97,28 @@ class ThesisReviewRequestedEvent(DomainEvent):
 
 
 @dataclass(frozen=True)
+class ThesisReviewTriggeredEvent(DomainEvent):
+    """Emitted per ThesisReviewTrigger from SignalEngineAgent output.
+
+    Produced by: ai.SignalEngineListener (after agent run completes)
+    Consumed by: thesis.SignalReviewTriggerListener
+                 → loads thesis from DB → enqueues ThesisJudgeAgent
+
+    thesis_id may be empty string in fallback mode (AI unavailable).
+    In that case, listener resolves thesis by ticker from active theses.
+
+    urgency: "CRITICAL" | "HIGH" — matches ThesisReviewTrigger.urgency.
+    phase:   propagated from the originating SignalEngineRequestedEvent.
+    """
+    thesis_id: str = ""
+    ticker: str = ""
+    reason: str = ""
+    urgency: str = "HIGH"
+    phase: str = "morning"
+    user_id: str = ""
+
+
+@dataclass(frozen=True)
 class ThesisClosedEvent(DomainEvent):
     thesis_id: int = 0
     user_id: str = ""
@@ -163,12 +185,21 @@ class SignalEngineRequestedEvent(DomainEvent):
 
 @dataclass(frozen=True)
 class SignalEngineCompletedEvent(DomainEvent):
+    """Emitted after SignalEngineAgent finishes a run.
+
+    triggers: structured ThesisReviewTrigger payloads forwarded from
+    SignalEngineOutput.thesis_review_triggers. Each item is a dict with
+    keys: thesis_id, ticker, reason, urgency. Defaults to empty tuple
+    for backward compatibility with existing consumers that only read
+    the count fields.
+    """
     phase: str = "morning"
     ranked_signal_count: int = 0
     thesis_review_trigger_count: int = 0
     risk_alert_count: int = 0
     opportunity_count: int = 0
     summary: str = ""
+    triggers: tuple[dict[str, str], ...] = field(default_factory=tuple)
 
 
 # ─── briefing ────────────────────────────────────────────────────────────────────────
