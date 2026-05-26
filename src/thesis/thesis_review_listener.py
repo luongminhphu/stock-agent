@@ -138,11 +138,12 @@ class ThesisReviewListener:
         """
         Open a fresh session, build ReviewService, call review_thesis().
 
+        session_factory is forwarded into ReviewService so ReviewOutcomeReactor
+        runs in the same session after every review (Wave 3 activation).
+
         Returns ThesisReview ORM instance on success, None on any failure.
         Session is always closed after this call — no leak across events.
         """
-        # Lazy import — keeps thesis segment boundary; avoids circular import at
-        # module load time since ReviewService imports ThesisRepository etc.
         from src.thesis.review_service import ReviewService, ReviewNotAllowedError
         from src.thesis.service import ThesisNotFoundError
 
@@ -160,13 +161,11 @@ class ThesisReviewListener:
                 session=session,
                 agent=self._review_agent,
                 quote_service=self._quote_service,
+                # Wave 3: forward session_factory so ReviewOutcomeReactor activates
+                # after each review — mutates WatchlistItem + creates THESIS_TRIGGER alerts.
+                session_factory=self._session_factory,
             )
             try:
-                # user_id is stored on the thesis; we pass a sentinel that
-                # ReviewService resolves via ThesisRepository.get_by_id.
-                # To bypass the ownership check we need the real user_id —
-                # ThesisReviewRequestedEvent carries symbol but not user_id.
-                # We fetch it from the DB before calling review_thesis.
                 from src.thesis.repository import ThesisRepository
                 repo = ThesisRepository(session)
                 thesis = await repo.get_by_id(thesis_id_int)
@@ -193,7 +192,6 @@ class ThesisReviewListener:
                 return review
 
             except ReviewNotAllowedError as exc:
-                # Non-ACTIVE thesis — not an error, just skip silently.
                 logger.info(
                     "thesis_review_listener.review_skipped",
                     extra={
@@ -251,7 +249,6 @@ class ThesisReviewListener:
         if invalidation_score < INVALIDATION_THRESHOLD:
             return
 
-        # Build trigger description from review reasoning (first 200 chars)
         trigger_description = (
             (review.reasoning or "")[:200].strip()
             or f"AI verdict: {verdict_str} (score={invalidation_score})"

@@ -57,7 +57,9 @@ class SignalReviewTriggerListener:
         listener.register()  # call once in on_ready / app bootstrap
 
     Dependencies:
-        session_factory — async context manager producing AsyncSession
+        session_factory — async context manager producing AsyncSession;
+                          also forwarded into ReviewService to activate
+                          ReviewOutcomeReactor (Wave 3).
         review_agent    — ThesisReviewAgent singleton
         quote_service   — optional QuoteReader for live price enrichment
     """
@@ -92,12 +94,7 @@ class SignalReviewTriggerListener:
     # ── internal ───────────────────────────────────────────────────────────
 
     async def _reset_dedup(self, _event: SignalEngineCompletedEvent) -> None:
-        """Clear per-run dedup set at the start of each new signal engine run.
-
-        SignalEngineCompletedEvent fires *after* all ThesisReviewTriggeredEvents
-        from the same run — dedup is effective within a single run, then cleared
-        so subsequent runs can re-trigger reviews correctly.
-        """
+        """Clear per-run dedup set at the start of each new signal engine run."""
         self._seen_this_run.clear()
 
     async def _handle_trigger(self, event: ThesisReviewTriggeredEvent) -> None:
@@ -107,6 +104,7 @@ class SignalReviewTriggerListener:
            else by ticker + user_id via ThesisRepository ticker fallback.
         2. Dedup guard: skip if (thesis_id, phase) already seen this run.
         3. Call ReviewService.review_thesis() — handles load, AI, persist.
+           session_factory is forwarded so ReviewOutcomeReactor activates (Wave 3).
         """
         logger.info(
             "signal_review_trigger_listener.received",
@@ -150,6 +148,9 @@ class SignalReviewTriggerListener:
                     session=session,
                     agent=self._review_agent,
                     quote_service=self._quote_service,
+                    # Wave 3: forward session_factory so ReviewOutcomeReactor
+                    # runs after the review — mutates WatchlistItem + creates alerts.
+                    session_factory=self._session_factory,
                 )
                 await svc.review_thesis(
                     thesis_id=thesis_id_int,
@@ -192,7 +193,6 @@ class SignalReviewTriggerListener:
 
         Returns None if neither path yields a valid result.
         """
-        # Primary: thesis_id already known from signal output
         if event.thesis_id:
             try:
                 return int(event.thesis_id), event.user_id
@@ -202,11 +202,9 @@ class SignalReviewTriggerListener:
                     thesis_id=event.thesis_id,
                 )
 
-        # Fallback: resolve by ticker + user_id via DB
         if event.ticker and event.user_id:
             try:
                 from src.thesis.repository import ThesisRepository
-                from src.thesis.models import ThesisStatus
 
                 async with self._session_factory() as session:
                     repo = ThesisRepository(session)

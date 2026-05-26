@@ -159,7 +159,7 @@ async def bootstrap() -> None:
         from src.market.snapshot_scheduler import SnapshotScheduler
         from src.platform.db import AsyncSessionLocal
 
-        # Cache the session factory for use across all services
+        # Cache session factory once — reused by all callers via get_session_factory()
         if _session_factory is None:
             _session_factory = AsyncSessionLocal
             logger.info("platform.bootstrap.session_factory_cached")
@@ -170,7 +170,7 @@ async def bootstrap() -> None:
         )
         logger.info("platform.bootstrap.snapshot_scheduler_ready")
 
-    # Ensure session_factory is cached even if snapshot_scheduler was already set
+    # Ensure session_factory is cached even if snapshot_scheduler was already initialised
     if _session_factory is None:
         from src.platform.db import AsyncSessionLocal
         _session_factory = AsyncSessionLocal
@@ -249,21 +249,21 @@ async def bootstrap() -> None:
                 reason="scheduler_user_id not configured",
             )
 
-    # ── Wave 2 (market): TrendReasoningAgent ───────────────────────────────────────────────────────────────────────────────────────
+    # ── Wave 2 (market): TrendReasoningAgent ─────────────────────────────────
     if _trend_reasoning_agent is None:
         from src.ai.agents.trend_reasoning import TrendReasoningAgent
 
         _trend_reasoning_agent = TrendReasoningAgent(client=_ai_client)  # type: ignore[arg-type]
         logger.info("platform.bootstrap.trend_reasoning_agent_ready")
 
-    # ── Wave 2b: SignalEngineAgent ───────────────────────────────────────────
+    # ── Wave 2b: SignalEngineAgent ────────────────────────────────────────────
     if _signal_engine_agent is None:
         from src.ai.agents.signal_engine import SignalEngineAgent
 
         _signal_engine_agent = SignalEngineAgent(ai_client=_ai_client)  # type: ignore[arg-type]
         logger.info("platform.bootstrap.signal_engine_agent_ready")
 
-    # ── Trend Prediction: TrendPredictionStore (readmodel) ──────────────────────────────────────────────
+    # ── Trend Prediction: TrendPredictionStore (readmodel) ───────────────────
     if _trend_prediction_store is None:
         from src.readmodel.trend_prediction_store import TrendPredictionStore
         from src.platform.db import AsyncSessionLocal
@@ -273,13 +273,13 @@ async def bootstrap() -> None:
         )
         logger.info("platform.bootstrap.trend_prediction_store_ready")
 
-    # ── Event Bus + subscribers (start bus FIRST) ───────────────────────────────────────────────────────────────
+    # ── Event Bus + subscribers (start bus FIRST) ────────────────────────────
     from src.platform.event_bus import get_event_bus
     bus = get_event_bus()
     await bus.start()
     logger.info("platform.bootstrap.event_bus_ready")
 
-    # ── Wave 3 (readmodel): cache invalidation hooks ─────────────────────────────────────────────────
+    # ── Wave 3 (readmodel): cache invalidation hooks ──────────────────────────
     from src.readmodel import CacheSubscriber
     CacheSubscriber.register()
     logger.info("platform.bootstrap.cache_subscriber_ready")
@@ -299,28 +299,27 @@ async def bootstrap() -> None:
         from src.thesis.thesis_review_listener import ThesisReviewListener
         from src.platform.db import AsyncSessionLocal
 
+        # session_factory is forwarded inside ThesisReviewListener._run_review()
+        # into ReviewService(session_factory=...) — activates ReviewOutcomeReactor.
         _thesis_review_listener = ThesisReviewListener(
             session_factory=AsyncSessionLocal,
             review_agent=_thesis_review_agent,
             quote_service=_quote_service,
-            # Wave 3: activate ReviewOutcomeReactor — mutates WatchlistItem +
-            # creates THESIS_TRIGGER alerts in the same session as the review.
-            reactor_session_factory=AsyncSessionLocal,
         )
         _thesis_review_listener.register()
         logger.info("platform.bootstrap.thesis_review_listener_ready")
 
-    # ── Wave C: SignalEngine → ThesisReview bridge ───────────────────────────────
+    # ── Wave C: SignalEngine → ThesisReview bridge ───────────────────────────
     if _signal_review_trigger_listener is None:
         from src.thesis.signal_review_trigger_listener import SignalReviewTriggerListener
         from src.platform.db import AsyncSessionLocal
 
+        # session_factory is forwarded inside SignalReviewTriggerListener._handle_trigger()
+        # into ReviewService(session_factory=...) — activates ReviewOutcomeReactor.
         _signal_review_trigger_listener = SignalReviewTriggerListener(
             session_factory=AsyncSessionLocal,
             review_agent=_thesis_review_agent,
             quote_service=_quote_service,
-            # Wave 3: same session_factory so reactor runs after every signal-triggered review
-            reactor_session_factory=AsyncSessionLocal,
         )
         _signal_review_trigger_listener.register()  # type: ignore[union-attr]
         logger.info("platform.bootstrap.signal_review_trigger_listener_ready")
@@ -349,7 +348,7 @@ async def bootstrap() -> None:
                 reason="scheduler_user_id not configured",
             )
 
-    # ── G4: StressTest → Watchlist trigger bridge ─────────────────────────────────────────────
+    # ── G4: StressTest → Watchlist trigger bridge ─────────────────────────────
     if _stress_test_subscriber is None:
         from src.watchlist.stress_test_subscriber import StressTestSubscriber
         from src.platform.db import AsyncSessionLocal
@@ -358,7 +357,7 @@ async def bootstrap() -> None:
         _stress_test_subscriber.register()
         logger.info("platform.bootstrap.stress_test_subscriber_ready")
 
-    # ── Wave 3: OpportunityScreenScheduler + subscriber ────────────────────────────────────────────────
+    # ── Wave 3: OpportunityScreenScheduler + subscriber ──────────────────────
     if _opportunity_screen_scheduler is None:
         from src.market.opportunity_screen_scheduler import OpportunityScreenScheduler
 
@@ -374,7 +373,7 @@ async def bootstrap() -> None:
         _opportunity_screen_subscriber.register()
         logger.info("platform.bootstrap.opportunity_screen_subscriber_ready")
 
-    # ── Wave B2: SignalEngineListener ───────────────────────────────────────────────────────────────────────────────────────
+    # ── Wave B2: SignalEngineListener ─────────────────────────────────────────
     if _signal_engine_listener is None:
         from src.ai.signal_engine_listener import SignalEngineListener
         from src.thesis.watchlist_query_service import WatchlistQueryService
@@ -393,7 +392,7 @@ async def bootstrap() -> None:
         _signal_engine_listener.register()
         logger.info("platform.bootstrap.signal_engine_listener_ready")
 
-    # ── Trend Prediction: TrendEngineListener ────────────────────────────────────────────────────────────────────────────────
+    # ── Trend Prediction: TrendEngineListener ─────────────────────────────────
     if _trend_engine_listener is None:
         from src.ai.trend_engine_listener import TrendEngineListener
         from src.market.trend_engine import TrendEngine
@@ -414,7 +413,7 @@ async def bootstrap() -> None:
         _trend_engine_listener.register()
         logger.info("platform.bootstrap.trend_engine_listener_ready")
 
-    # ── Wave E: PostMortemService + MemoryInjectionListener ───────────────────────────────────────────────
+    # ── Wave E: PostMortemService + MemoryInjectionListener ───────────────────
     if _post_mortem_service is None:
         from src.thesis.post_mortem_service import PostMortemService
         from src.platform.db import AsyncSessionLocal
@@ -436,7 +435,7 @@ async def bootstrap() -> None:
         _memory_injection_listener.register()  # type: ignore[union-attr]
         logger.info("platform.bootstrap.memory_injection_listener_ready")
 
-    # ── core: IntelligenceEngineListener (Wave 2 AI active) ───────────────────────────────────
+    # ── core: IntelligenceEngineListener (Wave 2 AI active) ───────────────────
     if _intelligence_engine_listener is None:
         from src.core.intelligence_listener import IntelligenceEngineListener
         from src.ai.agents.intelligence_verdict import IntelligenceVerdictAgent
@@ -445,7 +444,6 @@ async def bootstrap() -> None:
         _intelligence_verdict_agent = IntelligenceVerdictAgent(
             ai_client=_ai_client  # type: ignore[arg-type]
         )
-        # Resolve alert channel at bootstrap time so it's available before set_client()
         raw_channel = settings.alert_channel_id
         channel_id = int(raw_channel) if raw_channel else None
 
@@ -459,7 +457,7 @@ async def bootstrap() -> None:
             discord_channel_id=channel_id,
         )
 
-    # ── core: EngineFeedbackListener ────────────────────────────────────────────────────────────────────────────────────
+    # ── core: EngineFeedbackListener ──────────────────────────────────────────
     if _engine_feedback_listener is None:
         from src.core.feedback_listener import EngineFeedbackListener
 
