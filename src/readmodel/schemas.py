@@ -276,7 +276,7 @@ class PortfolioSummary(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Attention Panel — "Việc cần làm hôm nay"
+# Attention Panel — “Việc cần làm hôm nay”
 # ---------------------------------------------------------------------------
 
 
@@ -323,4 +323,44 @@ class AttentionPanelResponse(BaseModel):
     user_id: str
     generated_at: datetime
     items: list[AttentionItem]
+    total: int
+
+
+# ---------------------------------------------------------------------------
+# Recent AI Reviews — cross-thesis surface of SignalEngine loop output
+# ---------------------------------------------------------------------------
+
+
+class RecentReviewRow(BaseModel):
+    """One AI review record, joined with thesis metadata.
+
+    Produced by RecentReviewsStore.get_recent().
+    Consumed by: bot /reviews command, API /readmodel/reviews,
+    briefing context injection.
+    """
+
+    review_id: int
+    thesis_id: int
+    ticker: str
+    thesis_title: str
+    thesis_status: str          # ThesisStatus value: active / invalidated / closed / paused
+    verdict: str                # ReviewVerdict value: BULLISH / BEARISH / NEUTRAL / WATCHLIST
+    confidence: float           # 0.0–1.0
+    confidence_pct: int         # round(confidence * 100)
+    reasoning: str | None = None
+    summary: str | None = None
+    risk_signals: list[str] = []
+    next_watch_items: list[str] = []
+    reviewed_at: datetime
+    reviewed_price: float | None = None
+
+
+class RecentReviewsResponse(BaseModel):
+    """Response envelope for RecentReviewsStore.get_recent()."""
+
+    user_id: str
+    since_hours: int
+    ticker_filter: str | None
+    generated_at: datetime
+    rows: list[RecentReviewRow]
     total: int
