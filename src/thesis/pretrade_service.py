@@ -82,7 +82,7 @@ class PreTradeService:
         logger.info(
             "pretrade_service.done",
             ticker=ticker,
-            decision=result.decision,
+            decision=result.intended_action,
             confidence=result.confidence,
             has_lessons=bool(past_lessons),
         )
