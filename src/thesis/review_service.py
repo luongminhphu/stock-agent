@@ -52,6 +52,12 @@ logger = get_logger(__name__)
 # Tune upward only if thesis with many assumptions shows unnaturally flat curves.
 MAX_SCORE_DELTA_PER_REVIEW: float = 20.0
 
+# W5A: assumption statuses that warrant an invalidation memory event.
+_INVALIDATED_ASSUMPTION_STATUSES = frozenset({"invalidated", "invalid"})
+
+# W5A: catalyst statuses that warrant a cancellation memory event.
+_CANCELLED_CATALYST_STATUSES = frozenset({"cancelled", "canceled"})
+
 
 class QuoteReader(Protocol):
     """Minimal quote interface required by ReviewService.
@@ -182,7 +188,7 @@ class ReviewService:
             trigger="thesis_review",
         )
 
-        review = await self._persist_review(thesis, output, current_price)
+        review = await self._persist_review(thesis, output, current_price, user_id=str(user_id))
         logger.info(
             "review_service.done",
             thesis_id=thesis_id,
@@ -296,6 +302,7 @@ class ReviewService:
         thesis: Thesis,
         output: ThesisReviewOutput,
         reviewed_price: float | None,
+        user_id: str = "",
     ) -> ThesisReview:
         """Map ThesisReviewOutput → ThesisReview ORM, auto-apply recommendations,
         reload thesis fresh, recompute full score with breakdown, persist snapshot.
@@ -308,6 +315,9 @@ class ReviewService:
         Wave 3: ReviewOutcomeReactor runs in the same session after save_review()
         to mutate WatchlistItem priority/note and create THESIS_TRIGGER alerts.
         Reactor failure is non-fatal — logged and skipped, review is still returned.
+
+        W5A: user_id forwarded to _auto_apply_recommendations() so invalidation
+        events can be written to episodic memory (non-fatal).
 
         Schema note: ThesisReviewOutput uses `overall_verdict` (not `verdict`)
         and `key_risks` (not `risk_signals`) and `summary` (not `reasoning`).
@@ -328,7 +338,7 @@ class ReviewService:
         # Wave 3: react to review outcome — mutate watchlist in same session.
         await self._run_watchlist_reactor(review.id)
 
-        await self._auto_apply_recommendations(thesis, review.id, output)
+        await self._auto_apply_recommendations(thesis, review.id, output, user_id=user_id)
 
         fresh_thesis = await self._repo.get_by_id(thesis.id)
         if fresh_thesis is not None:
@@ -423,12 +433,18 @@ class ReviewService:
         thesis: Thesis,
         review_id: int,
         output: ThesisReviewOutput,
+        user_id: str = "",
     ) -> None:
         """Auto-apply toàn bộ AI recommendations ngay tại thời điểm Verify.
 
         Guard (Issue A): Assumptions đang ở trạng thái INVALID bị skip —
         chỉ manual override mới được phép restore về VALID/NEEDS_MONITORING.
         Điều này ngăn AI inconsistency tạo ra vòng flip INVALID ↔ VALID.
+
+        W5A: Khi assumption bị INVALIDATED hoặc catalyst bị CANCELLED, ghi một
+        AIInteractionLog event riêng vào episodic memory (non-fatal, isolated
+        session). Lần review sau ThesisReviewAgent sẽ đọc được lý do invalidation
+        từ ai_risk_signals thay vì chỉ thấy assumption đã biến mất khỏi danh sách.
 
         Schema alignment (ThesisReviewOutput current contract):
           AssumptionRecommendation: assumption_id, status, evidence, updated_text
@@ -454,8 +470,22 @@ class ReviewService:
                     )
                 else:
                     try:
-                        target.status = AssumptionStatus(rec.status.lower())
+                        new_status = AssumptionStatus(rec.status.lower())
+                        target.status = new_status
                         await self._repo.save_assumption(target)
+
+                        # W5A: log invalidation event to episodic memory so the
+                        # agent has context on WHY this assumption was removed next time.
+                        if rec.status.lower() in _INVALIDATED_ASSUMPTION_STATUSES:
+                            await self._log_invalidation_event(
+                                user_id=user_id,
+                                ticker=thesis.ticker,
+                                thesis_id=thesis.id,
+                                agent_type="assumption_invalidated",
+                                description=target.description,
+                                evidence=rec.evidence or "",
+                                target_id=target_id,
+                            )
                     except ValueError:
                         logger.warning(
                             "review_service.auto_apply.invalid_assumption_status",
@@ -487,8 +517,22 @@ class ReviewService:
             target = catalysts_by_id.get(target_id)
             if target:
                 try:
-                    target.status = CatalystStatus(rec.status.lower())
+                    new_status = CatalystStatus(rec.status.lower())
+                    target.status = new_status
                     await self._repo.save_catalyst(target)
+
+                    # W5A: log cancellation event to episodic memory so the
+                    # agent knows this catalyst failed and why.
+                    if rec.status.lower() in _CANCELLED_CATALYST_STATUSES:
+                        await self._log_invalidation_event(
+                            user_id=user_id,
+                            ticker=thesis.ticker,
+                            thesis_id=thesis.id,
+                            agent_type="catalyst_cancelled",
+                            description=target.description,
+                            evidence=rec.notes or "",
+                            target_id=target_id,
+                        )
                 except ValueError:
                     logger.warning(
                         "review_service.auto_apply.invalid_catalyst_status",
@@ -521,4 +565,68 @@ class ReviewService:
                 "review_service.auto_apply.done",
                 review_id=review_id,
                 count=len(recs),
+            )
+
+    async def _log_invalidation_event(
+        self,
+        user_id: str,
+        ticker: str,
+        thesis_id: int,
+        agent_type: str,
+        description: str,
+        evidence: str,
+        target_id: int,
+    ) -> None:
+        """Write an invalidation/cancellation event to episodic memory.
+
+        W5A: Called after an assumption is INVALIDATED or a catalyst is CANCELLED.
+        Gives ThesisReviewAgent access to WHY an assumption/catalyst disappeared
+        from the active list on subsequent reviews — preventing the agent from
+        treating a previously-invalidated assumption as fresh context.
+
+        Non-fatal: exceptions are swallowed. Memory writes must never block the
+        review transaction.
+
+        Args:
+            user_id:     Owner of the thesis.
+            ticker:      Stock ticker for episode scoping.
+            thesis_id:   FK for thesis-scoped memory queries.
+            agent_type:  "assumption_invalidated" or "catalyst_cancelled".
+            description: Text of the assumption/catalyst that was changed.
+            evidence:    AI-provided reason for the status change.
+            target_id:   Numeric ID of the assumption/catalyst (for traceability).
+        """
+        if not user_id:
+            return
+        try:
+            from src.ai.memory.memory_service import InteractionEntry, MemoryService  # noqa: PLC0415
+
+            await MemoryService.log_interaction(
+                session=self._session,
+                entry=InteractionEntry(
+                    user_id=user_id,
+                    agent_type=agent_type,
+                    trigger="auto_apply",
+                    tickers=[ticker],
+                    thesis_id=thesis_id,
+                    ai_verdict=agent_type.upper(),
+                    ai_key_points=f"[ID {target_id}] {description}",
+                    ai_risk_signals=evidence,
+                ),
+            )
+            logger.debug(
+                "review_service.invalidation_event_logged",
+                agent_type=agent_type,
+                ticker=ticker,
+                thesis_id=thesis_id,
+                target_id=target_id,
+            )
+        except Exception as exc:
+            logger.warning(
+                "review_service.invalidation_event_log_failed",
+                agent_type=agent_type,
+                ticker=ticker,
+                thesis_id=thesis_id,
+                target_id=target_id,
+                error=str(exc),
             )
