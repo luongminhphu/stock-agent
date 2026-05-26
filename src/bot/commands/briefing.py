@@ -127,7 +127,10 @@ class BriefingCog(BaseCog):
                     watchlist_service=WatchlistService(session=session),
                     quote_service=get_quote_service(),
                     briefing_agent=get_briefing_agent(),
-                    pnl_service=get_pnl_service_class()(session),
+                    pnl_service=get_pnl_service_class()(
+                        session=session,
+                        quote_service=get_quote_service(),
+                    ),
                     session=session,
                 )
                 if phase == "morning":
