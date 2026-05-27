@@ -19,6 +19,12 @@ Flow:
    10. Clamp score delta to MAX_SCORE_DELTA_PER_REVIEW to avoid single-event score spikes
    11. Persist ThesisSnapshot with score_breakdown (JSON) for conviction timeline
    12. Return ThesisReview
+
+Wave C (portfolio-priority sort):
+    review_stale_theses() sorts the stale list so that tickers with high portfolio
+    exposure (weight_pct > 10%) are reviewed first. This ensures that if the AI
+    rate-limit or time budget is hit, the most risk-relevant theses are covered.
+    Falls back to original DB order on any error — non-fatal, no schema change.
 """
 
 from __future__ import annotations
@@ -59,6 +65,10 @@ _INVALIDATED_ASSUMPTION_STATUSES = frozenset({"invalidated", "invalid"})
 
 # W5A: catalyst statuses that warrant a cancellation memory event.
 _CANCELLED_CATALYST_STATUSES = frozenset({"cancelled", "canceled"})
+
+# Wave C: portfolio exposure threshold — tickers above this weight are
+# reviewed first in review_stale_theses() to prioritise risk-weighted review.
+_HIGH_EXPOSURE_THRESHOLD_PCT: float = 10.0
 
 
 class QuoteReader(Protocol):
@@ -229,6 +239,10 @@ class ReviewService:
         tránh rate limit AI. Lỗi từng thesis được log và skip — không block các
         thesis còn lại.
 
+        Wave C: sorts stale theses so that tickers with portfolio exposure
+        weight_pct > 10% are reviewed first. Falls back to original DB order
+        on any error — non-fatal, no schema migration needed.
+
         Args:
             user_id:    User sở hữu các thesis cần review.
             stale_days: Số ngày không có review trước khi cói là stale. Default: 3.
@@ -244,6 +258,11 @@ class ReviewService:
                 stale_days=stale_days,
             )
             return []
+
+        # Wave C: sort by portfolio exposure — high-exposure tickers reviewed first.
+        # This ensures that if AI rate-limit or time budget is exhausted, the
+        # most risk-relevant theses have already been covered.
+        stale = await self._sort_by_portfolio_exposure(stale, user_id)
 
         logger.info(
             "review_service.stale_review.start",
@@ -313,6 +332,61 @@ class ReviewService:
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
+
+    async def _sort_by_portfolio_exposure(
+        self,
+        theses: list[Thesis],
+        user_id: str,
+    ) -> list[Thesis]:
+        """Sort theses so high-exposure tickers come first.
+
+        Wave C: uses PortfolioQueryAdapter singleton from bootstrap.
+        Tickers with weight_pct > _HIGH_EXPOSURE_THRESHOLD_PCT get priority=0
+        (sorted first); others get priority=1.
+
+        Falls back to original order on any error so ThesisMaintenanceScheduler
+        is never blocked by a portfolio read failure.
+        """
+        try:
+            from src.platform.bootstrap import get_portfolio_query_adapter  # noqa: PLC0415
+
+            adapter = get_portfolio_query_adapter()
+            if adapter is None:
+                return theses
+
+            holdings = await adapter.get_holdings(user_id=user_id)  # type: ignore[union-attr]
+            high_exposure: set[str] = {
+                h.ticker
+                for h in holdings
+                if getattr(h, "weight_pct", 0) > _HIGH_EXPOSURE_THRESHOLD_PCT
+            }
+
+            if not high_exposure:
+                return theses
+
+            sorted_theses = sorted(
+                theses,
+                key=lambda t: (0 if t.ticker in high_exposure else 1),
+            )
+
+            logger.info(
+                "review_service.stale_review.portfolio_sort_applied",
+                user_id=user_id,
+                high_exposure_tickers=sorted(high_exposure),
+                prioritised=[
+                    t.ticker for t in sorted_theses if t.ticker in high_exposure
+                ],
+            )
+            return sorted_theses
+
+        except Exception as exc:
+            logger.warning(
+                "review_service.stale_review.portfolio_sort_failed",
+                user_id=user_id,
+                error=str(exc),
+                fallback="original_db_order",
+            )
+            return theses
 
     async def _persist_review(
         self,

@@ -11,6 +11,12 @@ Boundary:
   concern (ai gửi gì, ở đâu) chứ không phải bot timing concern.
 - discord.Client được inject sau khi bot login (set_client) để tránh coupling
   bootstrap với discord runtime.
+
+Wave B activation:
+- agenda_service_factory injected at construction time (from bootstrap).
+- Passed into BriefingService so morning/eod briefs include today's agenda context
+  (decide/watch/defer) built by AgendaBuilderScheduler at 07:30 ICT.
+- Fully backward-compatible: agenda_service_factory=None → no agenda context, no error.
 """
 from __future__ import annotations
 
@@ -35,11 +41,15 @@ class BriefingListener:
         eod_channel_id: int | None,
         user_id: str,
         discord_client: "discord.Client | None" = None,
+        agenda_service_factory: object | None = None,
     ) -> None:
         self._client = discord_client
         self._morning_channel_id = morning_channel_id
         self._eod_channel_id = eod_channel_id
         self._user_id = user_id
+        # Wave B: callable(session) -> AgendaService | None
+        # Injected from bootstrap so BriefingService can include agenda context.
+        self._agenda_service_factory = agenda_service_factory
 
     def set_client(self, client: "discord.Client") -> None:
         """Inject discord.Client after bot login (called from bot on_ready)."""
@@ -50,7 +60,10 @@ class BriefingListener:
         """Subscribe BriefingRequestedEvent on the global event bus."""
         bus = get_event_bus()
         bus.subscribe_handler(BriefingRequestedEvent, self._handle)
-        logger.info("briefing_listener.registered")
+        logger.info(
+            "briefing_listener.registered",
+            agenda_service_wired=self._agenda_service_factory is not None,
+        )
 
     async def _handle(self, event: BriefingRequestedEvent) -> None:
         from src.bot.commands.briefing import build_brief_embed
@@ -96,6 +109,13 @@ class BriefingListener:
 
         try:
             async with AsyncSessionLocal() as session:
+                # Wave B: build AgendaService instance for this session if factory is wired.
+                agenda_svc = (
+                    self._agenda_service_factory(session)  # type: ignore[operator]
+                    if self._agenda_service_factory is not None
+                    else None
+                )
+
                 svc = BriefingService(
                     watchlist_service=WatchlistService(session=session),
                     quote_service=get_quote_service(),
@@ -103,12 +123,19 @@ class BriefingListener:
                     pnl_service=get_pnl_service()(session),
                     session=session,
                     sector_rotation_agent=get_sector_rotation_agent(),
+                    agenda_service=agenda_svc,  # Wave B: inject agenda context
                 )
                 if phase == "morning":
                     brief_result = await svc.generate_morning_brief(user_id=self._user_id)
                 else:
                     brief_result = await svc.generate_eod_brief(user_id=self._user_id)
                 await session.commit()
+
+            logger.info(
+                "briefing_listener.brief_generated",
+                phase=phase,
+                has_agenda=agenda_svc is not None,
+            )
 
             embed = build_brief_embed(brief_result.output, phase=phase)
             await channel.send(embed=embed)  # type: ignore[union-attr]

@@ -360,11 +360,17 @@ async def bootstrap() -> None:
                 morning_channel_id=int(morning_id) if morning_id else None,
                 eod_channel_id=int(eod_id) if eod_id else None,
                 user_id=str(user_id),
+                # Wave B: pass agenda_service_factory so BriefingService can
+                # include today's decide/watch/defer agenda in morning/eod briefs.
+                # Built by AgendaBuilderScheduler at 07:30 ICT — always persisted
+                # before BriefingScheduler fires at 08:45 ICT.
+                agenda_service_factory=_agenda_service_factory,
             )
             _briefing_listener.register()
             logger.info(
                 "platform.bootstrap.briefing_listener_ready",
                 user_id=str(user_id),
+                agenda_service_wired=_agenda_service_factory is not None,
             )
         else:
             logger.warning(
@@ -598,6 +604,11 @@ def get_pnl_service_class():
     if _pnl_service_class is None:
         raise RuntimeError("bootstrap() has not been called")
     return _pnl_service_class
+
+
+def get_pnl_service():
+    """Alias for get_pnl_service_class() — returns the PnlService class."""
+    return get_pnl_service_class()
 
 
 def get_investor_profile_service():
