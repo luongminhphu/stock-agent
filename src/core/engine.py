@@ -4,7 +4,11 @@ Owner: core segment.
 
 Wave 1: signals-based synthesis (rule-based, no AI call).
 Wave 2: replace _synthesize() with AIClient.generate_verdict(signals).
-Wave 3: _dispatch() sends to briefing + bot.
+Wave 3: dispatch is event-based via _EngineRunner.run_cycle() publishing
+        IntelligenceEngineCompletedEvent, consumed by IntelligenceEngineListener
+        for Discord delivery. _dispatch() is kept minimal and should not be
+        extended with direct bot/briefing calls — new integrations must listen
+        on the completed event instead.
 
 Design principles:
 - run_cycle() is the single entry point — snapshot → signals → synthesize → dispatch.
@@ -48,7 +52,13 @@ class IntelligenceEngine:
         self.user_id = user_id
 
     async def run_cycle(self) -> EngineOutput:
-        """Full cycle: build snapshot → rank signals → synthesize verdict → dispatch."""
+        """Full cycle: build snapshot → rank signals → synthesize verdict → dispatch.
+
+        Note: external integrations (Discord, briefing, APIs) SHOULD NOT
+        hook into _dispatch() directly. They must subscribe to
+        IntelligenceEngineCompletedEvent, which is published by the
+        module-level _EngineRunner.run_cycle().
+        """
         snapshot = await SystemSnapshotBuilder(self.session, self.user_id).build()
         signals = rank_signals(snapshot)
         verdict = await self._synthesize(snapshot, signals)
@@ -144,20 +154,23 @@ class IntelligenceEngine:
         return "Không có action ưu tiên. Hệ thống ổn định."
 
     # ------------------------------------------------------------------
-    # Wave 1: dispatch chỉ log
-    # Wave 3: gọi briefing.push() + bot.notify()
+    # Wave 1: dispatch only records local routing decisions.
+    #
+    # External side-effects (Discord, briefing, API notifications) are
+    # handled by listeners of IntelligenceEngineCompletedEvent emitted
+    # by the module-level _EngineRunner. Do NOT add cross-segment calls
+    # here — that would break core's read-only contract.
     # ------------------------------------------------------------------
 
     async def _dispatch(self, verdict: EngineVerdict) -> list[str]:
-        """Route verdict to downstream segments.
+        """Record internal dispatch decision for observability.
 
-        Wave 1: log only.
-        Wave 3: dispatch to briefing + bot when confidence >= DISPATCH_THRESHOLD.
+        Currently returns ["log"] when confidence passes the threshold.
+        Kept for backward compatibility with EngineOutput.dispatched_to
+        but does not perform any external side-effects.
         """
         dispatched: list[str] = []
         if verdict.confidence >= self.DISPATCH_THRESHOLD:
-            # TODO Wave 3: await briefing_service.push(verdict)
-            # TODO Wave 3: await bot_notifier.notify(verdict)
             dispatched.append("log")
         return dispatched
 
