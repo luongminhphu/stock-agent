@@ -4,6 +4,7 @@ Owner: watchlist segment.
 Consumes QuoteService (market segment) via injection.
 Consumes SignalCredibilityAgent (ai segment) via optional injection.
 Consumes TickerDirectionQuery (thesis segment) via optional injection.
+Consumes ThesisScoreQuery (watchlist segment) via optional injection.
 
 Responsibility boundary:
   ScanService            → detect triggered alerts + build ScanSignal/ScanResult
@@ -12,6 +13,7 @@ Responsibility boundary:
   ReminderService        → owns cooldown logic for ON_SIGNAL reminders
   SignalCredibilityAgent → score signal credibility (optional enrichment)
   TickerDirectionQuery   → read active thesis direction per ticker (optional enrichment)
+  ThesisScoreQuery       → read thesis health score per ticker (optional enrichment)
   EventBus               → emit SignalDetectedEvent / WatchlistScanCompletedEvent
                            (ScanService emits; handlers live in other segments)
   SignalEventRepository  → persist SignalEvent rows to signal_events table
@@ -37,6 +39,12 @@ Enrichment fields injected into ScanSignal before SignalEngine.evaluate():
   thesis_direction   — str|None: "bull" | "bear" from active thesis.
                        Source: TickerDirectionQuery (thesis segment, optional).
                        Enables THESIS_DIVERGENCE signal in SignalEngine.
+
+Wave E — thesis score sensitivity:
+  thesis_score       — float|None: health score 0-100 from ScoringService.
+                       Source: ThesisScoreQuery (watchlist segment, optional).
+  Effect: tickers with score < 50 (Weak/Critical) fire on 2% move instead
+  of the default 3% threshold — AI gets earlier signal when thesis is struggling.
 """
 
 from __future__ import annotations
@@ -59,6 +67,11 @@ from src.watchlist.signal_engine import SignalEngine, SignalReport
 
 logger = get_logger(__name__)
 
+# Wave E: default strong_move threshold and sensitivity thresholds
+_DEFAULT_STRONG_MOVE_PCT = 3.0
+_WEAK_SCORE_THRESHOLD = 50.0   # score < 50 → lower threshold to 2%
+_SENSITIVE_STRONG_MOVE_PCT = 2.0
+
 
 @dataclass
 class ScanSignal:
@@ -78,6 +91,8 @@ class ScanSignal:
     # Wave 2 enrichment fields — injected by ScanService before engine eval
     prior_risk_spike: bool = field(default=False, repr=False)
     thesis_direction: str | None = field(default=None, repr=False)
+    # Wave E enrichment — thesis health score (0-100), None if no active thesis
+    thesis_score: float | None = field(default=None, repr=False)
 
     @property
     def has_alerts(self) -> bool:
@@ -153,6 +168,7 @@ class ScanResult:
                 has_alerts       — bool
                 alert_count      — int
                 description      — human-readable description
+                thesis_score     — float|null (Wave E: 0-100 health score)
                 signal_reports[] — typed SignalEngine output, sorted by
                                    (actionable, strength, confidence) desc:
                     signal_type  — "BREAKOUT"|"RISK_SPIKE"|"STRONG_MOVE"|...
@@ -177,6 +193,7 @@ class ScanResult:
                     "has_alerts": s.has_alerts,
                     "alert_count": len(s.triggered_alerts),
                     "description": s.description,
+                    "thesis_score": s.thesis_score,
                     "signal_reports": sorted(
                         [
                             {
@@ -209,12 +226,17 @@ class ScanService:
     and reminder cooldown logic to ReminderService.
     Optionally enriches signals with credibility scores via SignalCredibilityAgent.
     Optionally enriches signals with thesis direction via TickerDirectionQuery.
+    Optionally enriches signals with thesis health scores via ThesisScoreQuery.
 
     V2: After each scan, runs SignalEngine on each ScanSignal and emits
     SignalDetectedEvent / WatchlistScanCompletedEvent via EventBus.
     Each actionable SignalReport is also persisted to signal_events table
     via SignalEventRepository before bus publish.
     Existing ScanResult contract is unchanged.
+
+    Wave E: ThesisScoreQuery injection lowers the strong_move detection
+    threshold from 3% to 2% for tickers whose thesis health score is < 50
+    (Weak or Critical tier). No schema change, fully backward-compatible.
     """
 
     def __init__(
@@ -224,6 +246,7 @@ class ScanService:
         credibility_agent: object | None = None,
         signal_engine: SignalEngine | None = None,
         ticker_direction_query: object | None = None,
+        thesis_score_query: object | None = None,
     ) -> None:
         self._session = session
         self._repo = WatchlistRepository(session)
@@ -233,6 +256,7 @@ class ScanService:
         self._quote_service = quote_service
         self._credibility_agent = credibility_agent
         self._ticker_direction_query = ticker_direction_query
+        self._thesis_score_query = thesis_score_query
         # Default engine with HOSE/HNX-appropriate thresholds
         self._signal_engine = signal_engine or SignalEngine()
 
@@ -280,18 +304,50 @@ class ScanService:
             except Exception as exc:
                 logger.warning("scan.thesis_direction_prefetch_failed", error=str(exc))
 
+        # ─ Wave E: thesis score map — lowers signal threshold for weak theses ─
+        thesis_score_map: dict[str, float] = {}
+        if self._thesis_score_query is not None:
+            try:
+                thesis_score_map = await self._thesis_score_query.get_score_map(  # type: ignore[union-attr]
+                    user_id, tickers
+                )
+                weak_tickers = [
+                    t for t, s in thesis_score_map.items()
+                    if s < _WEAK_SCORE_THRESHOLD
+                ]
+                if weak_tickers:
+                    logger.info(
+                        "scan.thesis_score_sensitive_tickers",
+                        count=len(weak_tickers),
+                        tickers=weak_tickers,
+                        threshold_pct=_SENSITIVE_STRONG_MOVE_PCT,
+                    )
+            except Exception as exc:
+                logger.warning("scan.thesis_score_prefetch_failed", error=str(exc))
+
         price_map: dict[str, float] = {}
 
         for ticker in tickers:
             try:
                 signal = await self._scan_ticker(ticker, items, bulk_quote_map)
                 price_map[ticker] = signal.current_price
-                if signal.has_alerts or abs(signal.change_pct) >= 3:
+
+                # Wave E: determine effective strong_move threshold for this ticker
+                thesis_score = thesis_score_map.get(ticker)
+                strong_move_threshold = (
+                    _SENSITIVE_STRONG_MOVE_PCT
+                    if thesis_score is not None and thesis_score < _WEAK_SCORE_THRESHOLD
+                    else _DEFAULT_STRONG_MOVE_PCT
+                )
+
+                if signal.has_alerts or abs(signal.change_pct) >= strong_move_threshold:
                     if self._credibility_agent is not None:
                         signal = await self._enrich_credibility(signal)
                     # ── Wave 2: inject enrichment fields before engine eval ───────
                     signal.prior_risk_spike = prior_risk_map.get(ticker, False)
                     signal.thesis_direction = thesis_direction_map.get(ticker)
+                    # ── Wave E: inject thesis score ──────────────────────────────
+                    signal.thesis_score = thesis_score
                     # ── V2: classify via SignalEngine ──────────────────────────
                     signal.signal_reports = self._signal_engine.evaluate(signal)
                     result.signals.append(signal)
@@ -320,6 +376,7 @@ class ScanService:
             triggered=result.triggered_count,
             credibility_enriched=sum(1 for s in result.signals if s.credibility is not None),
             thesis_enriched=sum(1 for s in result.signals if s.thesis_direction is not None),
+            thesis_score_enriched=sum(1 for s in result.signals if s.thesis_score is not None),
             reversal_candidates=sum(1 for s in result.signals if s.prior_risk_spike),
             on_signal_reminders=len(result.on_signal_reminders),
             signal_reports=sum(len(s.signal_reports) for s in result.signals),
