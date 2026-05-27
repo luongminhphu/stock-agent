@@ -1336,16 +1336,16 @@ class IntelligenceEngineScheduler:
         1. get_intelligence_engine() — module-level singleton from src.core.engine.
         2. engine.run_cycle(user_id, phase, triggered_by="scheduler")
            — builds SystemSnapshot (cross-segment DB reads, all non-fatal)
-           — emits IntelligenceEngineRequestedEvent with snapshot context
-        3. Record success/failure in SchedulerMonitor.
+           — publishes IntelligenceEngineCompletedEvent via event bus
+        3. IntelligenceEngineListener (bootstrap) handles Discord delivery.
+        4. Record success/failure in SchedulerMonitor.
 
-    No Discord output from this scheduler.
-    Wave 2: ai.IntelligenceEngineListener produces IntelligenceEngineCompletedEvent
-    → bot.IntelligenceEngineSubscriber (to be added) → Discord embed.
+    No Discord output from this scheduler — delivery via IntelligenceEngineListener.
 
     Graceful skip:
         - Weekends (weekday >= 5).
         - scheduler_user_id not configured → warning log, no cycle run.
+        - verdict is None (snapshot build failure) → logged, success recorded.
         - All exceptions caught and recorded; never blocks other schedulers.
     """
 
@@ -1395,7 +1395,16 @@ class IntelligenceEngineScheduler:
     # ── shared cycle runner ───────────────────────────────────────────────────────────
 
     async def _run_cycle(self, phase: str, task_name: str) -> None:
-        """Call IntelligenceEngine.run_cycle() — bot delegates all logic to core segment."""
+        """Call IntelligenceEngine.run_cycle() — bot delegates all logic to core segment.
+
+        Flow:
+            1. get_intelligence_engine() — module-level singleton from src.core.engine.
+            2. engine.run_cycle(user_id, phase, triggered_by="scheduler")
+               — snapshot → signals → heuristic verdict → publish IntelligenceEngineCompletedEvent
+            3. IntelligenceEngineListener (subscribed at bootstrap) handles Discord push.
+
+        Returns EngineVerdict | None. None means snapshot build failed (non-fatal).
+        """
         from src.core.engine import get_intelligence_engine
 
         user_id = getattr(settings, "scheduler_user_id", None)
@@ -1409,17 +1418,27 @@ class IntelligenceEngineScheduler:
 
         try:
             engine = get_intelligence_engine()
-            snapshot = await engine.run_cycle(
+            verdict = await engine.run_cycle(
                 user_id=str(user_id),
                 phase=phase,
                 triggered_by="scheduler",
             )
+
+            if verdict is None:
+                logger.warning(
+                    "scheduler.intelligence_engine.no_verdict",
+                    phase=phase,
+                    reason="snapshot build failed — verdict is None",
+                )
+                await self._monitor.record_success(task_name)
+                return
+
             logger.info(
                 "scheduler.intelligence_engine.cycle_done",
                 phase=phase,
-                active_alerts=snapshot.active_alert_count,
-                stale_theses=snapshot.stale_thesis_count,
-                high_risk_positions=snapshot.high_risk_position_count,
+                verdict=verdict.verdict,
+                confidence=round(verdict.confidence, 3),
+                action_required=verdict.verdict not in ("NO_ACTION", "HOLD"),
             )
             await self._monitor.record_success(task_name)
 
