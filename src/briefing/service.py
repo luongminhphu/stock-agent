@@ -12,6 +12,7 @@ Responsibilities:
 - collect sector rotation signal from ai segment (optional, via SectorRotationAgent)
 - collect thesis judge verdicts from ai segment (optional, via ThesisJudgeAgent)
 - collect brief feedback summary from readmodel segment (optional, via DashboardService)
+- collect daily agenda context from briefing segment (optional, via AgendaService)
 - call BriefingAgent for morning/EOD narrative
 - attach PortfolioRiskNarrativeOutput via PortfolioRiskNarratorAgent (optional)
 - attach NextActionPlan via NextActionSuggester (optional)
@@ -153,6 +154,18 @@ W4 — thesis context review enrichment:
   Fully non-blocking: _fetch_reviews_batch_for_judge returns {} when
   session=None or any DB error — fallback degrades to original behavior.
   No new DB queries — reuses the batch fetcher already present (B3).
+
+Wave B — Agenda context injection:
+  _build_agenda_context() calls AgendaService.build_agenda(user_id) and
+  formats the DailyAgendaResult (decide/watch/defer) into a compact string
+  that is passed to BriefingAgent so the morning/EOD brief is structured
+  around today's prioritised action list rather than raw watchlist data.
+  Non-blocking: returns "" when agenda_service is None, session is None,
+  build_agenda() returns None, or any error occurs.
+  Injected as an independent step in _collect_contexts() — not affected by
+  the ContextBuilder dedup rule and always attempted when session is set.
+  Exposed as ctx["agenda_context"] key; logged as has_agenda_context in
+  both generate_morning_brief and generate_eod_brief entry points.
 """
 
 from __future__ import annotations
@@ -242,6 +255,13 @@ class BriefingService:
                                  BriefOutput.trend_predictions. Fully non-blocking.
                                  Store phải implement: async get_for_tickers(tickers) -> list.
                                  Pass None (default) to skip — preserves existing behavior.
+        agenda_service:          optional — AgendaService instance. When provided,
+                                 _build_agenda_context() calls build_agenda(user_id) and
+                                 formats DailyAgendaResult (decide/watch/defer) into a
+                                 compact string injected into BriefingAgent context.
+                                 Requires session to be set — skipped silently when
+                                 session is None. Non-blocking.
+                                 Pass None (default) to skip — preserves existing behavior.
     """
 
     def __init__(
@@ -257,6 +277,7 @@ class BriefingService:
         portfolio_risk_narrator: object | None = None,
         next_action_suggester: object | None = None,
         trend_prediction_store: object | None = None,
+        agenda_service: object | None = None,
     ) -> None:
         self._watchlist_service = watchlist_service
         self._quote_service = quote_service
@@ -270,6 +291,7 @@ class BriefingService:
         self._portfolio_risk_narrator = portfolio_risk_narrator
         self._next_action_suggester = next_action_suggester
         self._trend_prediction_store = trend_prediction_store
+        self._agenda_service = agenda_service
 
     async def generate_morning_brief(self, user_id: str) -> BriefResult:
         ctx = await self._collect_contexts(user_id, phase="morning")
@@ -283,6 +305,7 @@ class BriefingService:
             has_investor_profile=bool(ctx["investor_profile"]),
             has_sector_rotation=bool(ctx["sector_rotation_injected"]),
             has_feedback_summary=bool(ctx["feedback_summary"]),
+            has_agenda_context=bool(ctx["agenda_context"]),
             thesis_judge_ran=ctx["thesis_judge_ran"],
             judge_verdict_count=len(ctx["judge_verdicts"]),
             context_source=ctx["context_source"],
@@ -295,6 +318,7 @@ class BriefingService:
             past_lessons=ctx["past_lessons"],
             investor_profile=ctx["investor_profile"],
             feedback_summary=ctx["feedback_summary"],
+            agenda_context=ctx["agenda_context"],
         )
         # Wire PortfolioRiskNarratorAgent — attaches to result.portfolio_narrative
         result = await self._run_portfolio_risk_narrator(user_id=user_id, result=result, ctx=ctx)
@@ -331,6 +355,7 @@ class BriefingService:
             has_investor_profile=bool(ctx["investor_profile"]),
             has_sector_rotation=bool(ctx["sector_rotation_injected"]),
             has_feedback_summary=bool(ctx["feedback_summary"]),
+            has_agenda_context=bool(ctx["agenda_context"]),
             thesis_judge_ran=ctx["thesis_judge_ran"],
             judge_verdict_count=len(ctx["judge_verdicts"]),
             context_source=ctx["context_source"],
@@ -343,6 +368,7 @@ class BriefingService:
             past_lessons=ctx["past_lessons"],
             investor_profile=ctx["investor_profile"],
             feedback_summary=ctx["feedback_summary"],
+            agenda_context=ctx["agenda_context"],
         )
         # Wire PortfolioRiskNarratorAgent — attaches to result.portfolio_narrative
         result = await self._run_portfolio_risk_narrator(user_id=user_id, result=result, ctx=ctx)
@@ -453,6 +479,13 @@ class BriefingService:
           session is set. Returns "" when sample < 10 and no acted tickers found,
           or any error occurs.
 
+        Agenda (Wave B):
+          _build_agenda_context() is independent of the dedup rule — it reads
+          DailyAgendaResult from AgendaService and formats decide/watch/defer
+          items into a compact block. Always attempted when agenda_service and
+          session are both set. Returns "" when agenda_service is None, session
+          is None, build_agenda() returns None, or any error occurs.
+
         Thesis Judge (Wave 2):
           When thesis_judge_agent is injected, market_context is built via
           _build_market_context_with_judge() which appends structured ThesisJudge
@@ -478,7 +511,7 @@ class BriefingService:
 
         Returns a dict with keys:
           tickers, market_context, portfolio_context, thesis_context,
-          past_lessons, investor_profile, feedback_summary,
+          past_lessons, investor_profile, feedback_summary, agenda_context,
           context_source, sector_rotation_injected, thesis_judge_ran,
           judge_verdicts, quotes (pre-fetched dict, may be {} when judge not injected).
         """
@@ -557,6 +590,12 @@ class BriefingService:
         feedback_summary = await self._build_feedback_context(user_id)
         feedback_ms = round((time.monotonic() - t0) * 1000)
 
+        # Agenda context — independent of dedup rule, always attempted when
+        # agenda_service and session are both set.
+        t0 = time.monotonic()
+        agenda_context = await self._build_agenda_context(user_id)
+        agenda_ms = round((time.monotonic() - t0) * 1000)
+
         total_ms = round((time.monotonic() - t_total) * 1000)
 
         log_kwargs: dict = dict(
@@ -568,6 +607,7 @@ class BriefingService:
             market_context_ms=market_context_ms,
             context_builder_ms=context_builder_ms,
             feedback_ms=feedback_ms,
+            agenda_ms=agenda_ms,
             total_ms=total_ms,
         )
         if individual_builders_ms is not None:
@@ -590,12 +630,79 @@ class BriefingService:
             "past_lessons": past_lessons,
             "investor_profile": investor_profile,
             "feedback_summary": feedback_summary,
+            "agenda_context": agenda_context,
             "context_source": context_source,
             "sector_rotation_injected": sector_rotation_injected,
             "thesis_judge_ran": thesis_judge_ran,
             "judge_verdicts": judge_verdicts,
             "quotes": _quotes_by_ticker,
         }
+
+    async def _build_agenda_context(self, user_id: str) -> str:
+        """Build daily agenda context from AgendaService.
+
+        Calls AgendaService.build_agenda(user_id) and formats the returned
+        DailyAgendaResult into a compact string:
+
+          Daily Agenda:
+          DECIDE (2): VHM [deadline: 2026-05-29], TCB
+          WATCH (3): HPG, MWG, FPT
+          DEFER (1): VIC
+
+        Only the ticker (and deadline when present) is included per item to
+        keep token count minimal. BriefingAgent should use this block to
+        structure its narrative around today's prioritised actions rather
+        than treating all watchlist tickers equally.
+
+        Returns "" when:
+          - agenda_service is None (not injected)
+          - session is None (scheduler / test path without DB)
+          - build_agenda() returns None (AI failure or no data)
+          - any error occurs
+        Non-blocking.
+        """
+        if self._agenda_service is None or self._session is None:
+            return ""
+        try:
+            agenda = await self._agenda_service.build_agenda(user_id)  # type: ignore[attr-defined]
+            if agenda is None:
+                return ""
+
+            def _format_items(items: list) -> str:
+                parts = []
+                for item in items:
+                    ticker = getattr(item, "ticker", "?")
+                    deadline = getattr(item, "deadline", None)
+                    if deadline:
+                        parts.append(f"{ticker} [deadline: {deadline}]")
+                    else:
+                        parts.append(ticker)
+                return ", ".join(parts)
+
+            decide = getattr(agenda, "decide", []) or []
+            watch = getattr(agenda, "watch", []) or []
+            defer = getattr(agenda, "defer", []) or []
+
+            if not decide and not watch and not defer:
+                return ""
+
+            lines = ["Daily Agenda:"]
+            if decide:
+                lines.append(f"DECIDE ({len(decide)}): {_format_items(decide)}")
+            if watch:
+                lines.append(f"WATCH ({len(watch)}): {_format_items(watch)}")
+            if defer:
+                lines.append(f"DEFER ({len(defer)}): {_format_items(defer)}")
+
+            return "\n".join(lines)
+
+        except Exception as exc:
+            logger.warning(
+                "briefing.agenda_context_failed",
+                user_id=user_id,
+                error=str(exc),
+            )
+            return ""
 
     async def _run_portfolio_risk_narrator(
         self,
