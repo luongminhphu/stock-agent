@@ -75,7 +75,14 @@ _SENSITIVE_STRONG_MOVE_PCT = 2.0
 
 @dataclass
 class ScanSignal:
-    """A signal produced by ScanService for a single ticker."""
+    """A signal produced by ScanService for a single ticker.
+
+    Note: strong-move classification is now driven by the per-ticker
+    strong_move_threshold computed in ScanService.scan_user(). The
+    legacy signal_type property below is kept only for backward
+    compatibility with older adapters and should not be used for
+    new logic.
+    """
 
     ticker: str
     current_price: float
@@ -93,6 +100,10 @@ class ScanSignal:
     thesis_direction: str | None = field(default=None, repr=False)
     # Wave E enrichment — thesis health score (0-100), None if no active thesis
     thesis_score: float | None = field(default=None, repr=False)
+    # Legacy strong-move classification field — set by ScanService using
+    # the same per-ticker threshold used to decide whether a signal is
+    # emitted at all. New code should prefer SignalEngine output instead.
+    _legacy_signal_type: str = field(default="watch", repr=False)
 
     @property
     def has_alerts(self) -> bool:
@@ -100,12 +111,13 @@ class ScanSignal:
 
     @property
     def signal_type(self) -> str:
-        """Legacy property — kept for backward compat with bot/briefing adapters."""
-        if self.triggered_alerts:
-            return "alert_triggered"
-        if abs(self.change_pct) >= 3:
-            return "strong_move"
-        return "watch"
+        """Legacy property — read from _legacy_signal_type.
+
+        Kept for backward compatibility with older bot/briefing
+        adapters. New logic should rely on SignalEngine reports
+        instead of this coarse classification.
+        """
+        return self._legacy_signal_type
 
     @property
     def description(self) -> str:
@@ -341,6 +353,15 @@ class ScanService:
                 )
 
                 if signal.has_alerts or abs(signal.change_pct) >= strong_move_threshold:
+                    # Legacy classification field for adapters that still rely on
+                    # signal_type. New code should prefer SignalEngine output.
+                    if signal.has_alerts:
+                        signal._legacy_signal_type = "alert_triggered"
+                    elif abs(signal.change_pct) >= strong_move_threshold:
+                        signal._legacy_signal_type = "strong_move"
+                    else:
+                        signal._legacy_signal_type = "watch"
+
                     if self._credibility_agent is not None:
                         signal = await self._enrich_credibility(signal)
                     # ── Wave 2: inject enrichment fields before engine eval ───────
