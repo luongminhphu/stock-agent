@@ -34,6 +34,27 @@ def _dominant_color(signals: list) -> int:
     return COLORS.ORANGE
 
 
+def _thesis_badge(thesis_score: float | None) -> str:
+    """Return a short thesis health badge for display in scan lines.
+
+    Mapping (aligned with ScoringService tiers):
+      score < 30  → "(thesis Critical)"
+      30 ≤ score < 50 → "(thesis Weak)"
+      otherwise  → "" (no badge)
+    """
+    if thesis_score is None:
+        return ""
+    try:
+        score = float(thesis_score)
+    except (TypeError, ValueError):  # defensive: ignore bad input
+        return ""
+    if score < 30:
+        return " (thesis Critical)"
+    if score < 50:
+        return " (thesis Weak)"
+    return ""
+
+
 def build_scan_embed(
     result: object,
     now_utc: datetime.datetime,
@@ -45,7 +66,10 @@ def build_scan_embed(
     lines: list[str] = []
     for s in signals:
         icon = _price_icon(s.change_pct, s.has_alerts)
-        lines.append(f"{icon} **{s.ticker}** {s.change_pct:+.1f}% \u2014 {s.description}")
+        thesis_badge = _thesis_badge(getattr(s, "thesis_score", None))
+        lines.append(
+            f"{icon} **{s.ticker}** {s.change_pct:+.1f}% — {s.description}{thesis_badge}"
+        )
 
     for r in on_signal_reminders:
         ticker = (
