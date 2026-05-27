@@ -62,6 +62,11 @@ Core Engine (Wave 1):
     → publishes IntelligenceEngineRequestedEvent with snapshot context
     Wave 2: ai.IntelligenceEngineListener subscribes → produces verdict
     → emits IntelligenceEngineCompletedEvent → bot subscriber → Discord.
+
+Wave E (Thesis Score Sensitivity):
+    WatchlistScanScheduler injects ThesisScoreQuery(session) into ScanService.
+    Tickers with thesis health score < 50 (Weak/Critical) fire on 2% moves
+    instead of the default 3% threshold — earlier signal when thesis is struggling.
 """
 
 from __future__ import annotations
@@ -298,6 +303,11 @@ class WatchlistScanScheduler:
     Wave 2 enrichment:
     - TickerDirectionQuery injected into ScanService to enable THESIS_DIVERGENCE signals.
       Created per-tick with the same session as ScanService (session-scoped, not singleton).
+
+    Wave E enrichment:
+    - ThesisScoreQuery injected into ScanService to lower the strong_move threshold
+      from 3% → 2% for tickers whose thesis health score is Weak/Critical (< 50).
+      Created per-tick alongside TickerDirectionQuery — same session, zero extra cost.
     """
 
     def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
@@ -353,12 +363,14 @@ class WatchlistScanScheduler:
         try:
             from src.thesis.ticker_direction_query import TickerDirectionQuery
             from src.watchlist.scan_service import ScanService
+            from src.watchlist.thesis_score_query import ThesisScoreQuery
 
             async with AsyncSessionLocal() as session:
                 svc = ScanService(
                     session=session,
                     quote_service=get_quote_service(),
                     ticker_direction_query=TickerDirectionQuery(session),
+                    thesis_score_query=ThesisScoreQuery(session),
                 )
                 result = await svc.scan_user(str(user_id))
                 await session.commit()
