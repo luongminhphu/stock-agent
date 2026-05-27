@@ -10,17 +10,26 @@ Design principles:
 - run_cycle() is the single entry point — snapshot → signals → synthesize → dispatch.
 - Each step is replaceable without touching the others.
 - All errors are caught per-step; partial output is always returned.
+
+Module-level API (used by IntelligenceEngineScheduler):
+- get_intelligence_engine(): returns a _EngineRunner singleton.
+- run_cycle(user_id, phase, ...): opens its own session, runs full cycle,
+  publishes IntelligenceEngineCompletedEvent, returns EngineVerdict | None.
 """
 from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.schemas import EngineOutput, EngineVerdict, RankedSignal, SystemSnapshot, VerdictType
 from src.core.signals import rank_signals
 from src.core.snapshot import SystemSnapshotBuilder
+from src.platform.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class IntelligenceEngine:
@@ -151,3 +160,147 @@ class IntelligenceEngine:
             # TODO Wave 3: await bot_notifier.notify(verdict)
             dispatched.append("log")
         return dispatched
+
+
+# ---------------------------------------------------------------------------
+# Module-level API — used by IntelligenceEngineScheduler (bot segment)
+# ---------------------------------------------------------------------------
+# Pattern: scheduler calls run_cycle(user_id, phase, ...) which:
+#   1. Opens its own DB session (stateless — no session stored on module).
+#   2. Runs full engine cycle (snapshot → signals → heuristic/AI verdict).
+#   3. Publishes IntelligenceEngineCompletedEvent via event bus so
+#      IntelligenceEngineListener can push the Discord embed.
+#   4. Returns the EngineVerdict for caller logging/monitoring.
+# ---------------------------------------------------------------------------
+
+class _EngineRunner:
+    """Stateless runner — holds no session, safe as a module singleton.
+
+    Exposes run_cycle() with the signature expected by IntelligenceEngineScheduler:
+        run_cycle(user_id, phase, triggered_by, signal_engine_summary?, verdict_agent?)
+    """
+
+    async def run_cycle(
+        self,
+        user_id: str,
+        phase: str = "morning",
+        triggered_by: str = "scheduler",
+        signal_engine_summary: str = "",
+        verdict_agent: Any | None = None,
+        context_hint: str | None = None,
+        trigger_source: str = "",
+        priority: str = "normal",
+    ) -> EngineVerdict | None:
+        """Run full IE cycle and publish IntelligenceEngineCompletedEvent.
+
+        Returns the EngineVerdict produced, or None on snapshot failure.
+        The IntelligenceEngineCompletedEvent is always published so that
+        IntelligenceEngineListener can handle Discord delivery.
+
+        Args:
+            user_id:                Investor user ID.
+            phase:                  'morning' | 'eod'.
+            triggered_by:           Label for logging ('scheduler' | 'api' | ...).
+            signal_engine_summary:  Optional pre-computed signal summary string
+                                    injected into AI verdict prompt (Wave 2).
+            verdict_agent:          Optional IntelligenceVerdictAgent for AI synthesis.
+                                    When None, heuristic Wave 1 rules apply.
+            context_hint:           Optional free-text hint passed into snapshot.
+            trigger_source:         Forwarded onto the completed event (for feedback).
+            priority:               'normal' | 'high' — logged only.
+        """
+        from src.platform.db import AsyncSessionLocal
+
+        logger.info(
+            "engine.run_cycle.start",
+            user_id=user_id,
+            phase=phase,
+            triggered_by=triggered_by,
+            has_signal_summary=bool(signal_engine_summary),
+            has_verdict_agent=verdict_agent is not None,
+        )
+
+        try:
+            async with AsyncSessionLocal() as session:
+                engine = IntelligenceEngine(session=session, user_id=user_id)
+                output = await engine.run_cycle()
+
+            verdict = output.verdict
+        except Exception as exc:
+            logger.error(
+                "engine.run_cycle.snapshot_failed",
+                user_id=user_id,
+                phase=phase,
+                error=str(exc),
+            )
+            return None
+
+        # Wave 2: override heuristic verdict with AI synthesis when agent present
+        if verdict_agent is not None:
+            try:
+                ai_verdict = await verdict_agent.run(
+                    snapshot=output.snapshot,
+                    signals_summary=signal_engine_summary or verdict.reasoning_summary,
+                    phase=phase,
+                )
+                if ai_verdict is not None:
+                    verdict = ai_verdict
+                    logger.info(
+                        "engine.run_cycle.ai_verdict_applied",
+                        verdict=verdict.verdict,
+                        confidence=verdict.confidence,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "engine.run_cycle.ai_verdict_failed",
+                    error=str(exc),
+                    fallback="using_heuristic_verdict",
+                )
+
+        # Publish completed event — IntelligenceEngineListener handles Discord push
+        try:
+            from src.platform.event_bus import get_event_bus
+            from src.platform.events import IntelligenceEngineCompletedEvent
+
+            completed = IntelligenceEngineCompletedEvent(
+                verdict=verdict.verdict,
+                confidence=verdict.confidence,
+                action_required=verdict.verdict not in ("NO_ACTION", "HOLD"),
+                summary=verdict.action,
+                trigger_source=trigger_source or triggered_by,
+            )
+            bus = get_event_bus()
+            await bus.publish(completed)
+
+            logger.info(
+                "engine.run_cycle.completed_event_published",
+                verdict=verdict.verdict,
+                confidence=verdict.confidence,
+                phase=phase,
+                action_required=completed.action_required,
+            )
+        except Exception as exc:
+            logger.error(
+                "engine.run_cycle.event_publish_failed",
+                error=str(exc),
+                verdict=verdict.verdict,
+            )
+
+        return verdict
+
+
+# Module-level singleton — scheduler imports and calls .run_cycle()
+_engine_runner: _EngineRunner | None = None
+
+
+def get_intelligence_engine() -> _EngineRunner:
+    """Return the module-level _EngineRunner singleton.
+
+    Called by IntelligenceEngineScheduler (bot segment).
+    Idempotent — safe to call multiple times.
+    """
+    global _engine_runner
+    if _engine_runner is None:
+        _engine_runner = _EngineRunner()
+        logger.info("engine.runner_singleton_created")
+    return _engine_runner
