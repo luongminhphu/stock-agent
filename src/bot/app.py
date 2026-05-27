@@ -64,6 +64,7 @@ def create_bot() -> commands.Bot:
             _start_proactive_watch_scheduler(bot)
             _start_proactive_watch_subscriber(bot)
             _start_post_mortem_subscriber(bot)          # Wave E: thesis post-mortem → Discord
+            _start_intelligence_engine_scheduler(bot)   # Wave A: IE verdict → Discord (2×/day)
             _start_signal_reaction_listener(bot)        # Wave B: emoji reaction → user_signal
             logger.info(
                 "bot.ready",
@@ -330,6 +331,27 @@ def _start_post_mortem_subscriber(bot: commands.Bot) -> None:
     subscriber.set_client(bot)
     subscriber.register()
     logger.info("bot.post_mortem_subscriber.registered", channel_id=channel_id)
+
+
+def _start_intelligence_engine_scheduler(bot: commands.Bot) -> None:
+    """Wave A: start IntelligenceEngineScheduler — fires engine 2x/day.
+
+    Timing:
+        morning — 08:35 ICT  (after ThesisMaintenance 08:30, before SignalEngine 08:40)
+        eod     — 15:12 ICT  (after SignalEngine.eod 15:10, before DecisionReplay 15:15)
+
+    Delivery chain (no Discord logic here):
+        IntelligenceEngineScheduler._run_cycle()
+          → engine.run_cycle()                          [core]
+            → IntelligenceEngineCompletedEvent          [platform/event_bus]
+              → IntelligenceEngineListener._push_discord()  [core, client injected above]
+                → build_engine_verdict_embed()          [bot/discord_helper]
+                → safe_send(alert_channel)              [bot/discord_helper]
+    """
+    from src.bot.scheduler import IntelligenceEngineScheduler
+    scheduler = IntelligenceEngineScheduler(bot)
+    scheduler.start()
+    logger.info("bot.intelligence_engine_scheduler.started")
 
 
 def _start_signal_reaction_listener(bot: commands.Bot) -> None:
