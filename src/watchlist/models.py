@@ -144,6 +144,24 @@ class Alert(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    # --- Wave D: reaction feedback loop ---
+    # reaction_count: total number of any emoji reactions received on this alert.
+    # dismiss_count:  number of deliberate "ignored" / "dismissed" reactions.
+    #                 When dismiss_count >= DISMISS_ESCALATION_THRESHOLD (3),
+    #                 AlertService.record_reaction() doubles effective_cooldown_hours.
+    # effective_cooldown_hours: per-alert cooldown override (hours).
+    #   None  → use _REACTIVATE_COOLDOWN_HOURS default for the condition type.
+    #   Set   → reactivate_cooled_down() uses this value instead of the default.
+    #   Capped at MAX_EFFECTIVE_COOLDOWN_HOURS (48h) by record_reaction().
+    reaction_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    dismiss_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    effective_cooldown_hours: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
 
     watchlist_item: Mapped[WatchlistItem | None] = relationship(back_populates="alerts")
 
