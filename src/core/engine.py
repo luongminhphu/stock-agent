@@ -51,15 +51,30 @@ class IntelligenceEngine:
         self.session = session
         self.user_id = user_id
 
-    async def run_cycle(self) -> EngineOutput:
+    async def run_cycle(
+        self,
+        trigger_source: str = "",
+        signal_engine_summary: str | None = None,
+    ) -> EngineOutput:
         """Full cycle: build snapshot → rank signals → synthesize verdict → dispatch.
+
+        Args:
+            trigger_source: caller identity forwarded into the snapshot
+                (e.g. "scheduler", "discord_command", "manual").
+            signal_engine_summary: free-text summary from upstream callers
+                attached to the snapshot for the AI prompt.
 
         Note: external integrations (Discord, briefing, APIs) SHOULD NOT
         hook into _dispatch() directly. They must subscribe to
         IntelligenceEngineCompletedEvent, which is published by the
         module-level _EngineRunner.run_cycle().
         """
-        snapshot = await SystemSnapshotBuilder(self.session, self.user_id).build()
+        snapshot = await SystemSnapshotBuilder(
+            self.session,
+            self.user_id,
+            trigger_source=trigger_source,
+            signal_engine_summary=signal_engine_summary,
+        ).build()
         signals = rank_signals(snapshot)
         verdict = await self._synthesize(snapshot, signals)
         dispatched = await self._dispatch(verdict)
@@ -195,11 +210,15 @@ class _EngineRunner:
     ) -> EngineVerdict | None:
         from src.platform.db import AsyncSessionLocal
 
+        # Resolve effective trigger_source: prefer explicit arg, fall back to triggered_by
+        effective_trigger = trigger_source or triggered_by
+
         logger.info(
             "engine.run_cycle.start",
             user_id=user_id,
             phase=phase,
             triggered_by=triggered_by,
+            trigger_source=effective_trigger,
             has_signal_summary=bool(signal_engine_summary),
             has_verdict_agent=verdict_agent is not None,
         )
@@ -207,7 +226,10 @@ class _EngineRunner:
         try:
             async with AsyncSessionLocal() as session:
                 engine = IntelligenceEngine(session=session, user_id=user_id)
-                output = await engine.run_cycle()
+                output = await engine.run_cycle(
+                    trigger_source=effective_trigger,
+                    signal_engine_summary=signal_engine_summary or None,
+                )
             verdict = output.verdict
         except Exception as exc:
             logger.error(
@@ -255,7 +277,7 @@ class _EngineRunner:
                 confidence=verdict.confidence,
                 action_required=verdict.verdict not in ("NO_ACTION", "HOLD"),
                 summary=verdict.action,
-                trigger_source=trigger_source or triggered_by,
+                trigger_source=effective_trigger,
                 flagged_tickers=flagged_tickers,
             )
             bus = get_event_bus()

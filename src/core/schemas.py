@@ -33,6 +33,7 @@ class MarketContext(BaseModel):
     trend_shift_count: int = 0
     opportunity_count: int = 0
     top_opportunity_tickers: list[str] = Field(default_factory=list)
+    market_phase: str = "unknown"  # e.g. "morning", "midday", "closing", "after-hours"
 
 
 class PortfolioContext(BaseModel):
@@ -40,6 +41,7 @@ class PortfolioContext(BaseModel):
     risk_breach_count: int = 0
     total_market_value: float | None = None
     top_exposed_tickers: list[str] = Field(default_factory=list)
+    unrealized_pnl_pct: float | None = None  # aggregate unrealized PnL %
 
 
 # ---------------------------------------------------------------------------
@@ -82,7 +84,20 @@ class SystemSnapshot(BaseModel):
     market_anomalies: list[MarketSignal] = Field(default_factory=list)
     portfolio_context: PortfolioContext = Field(default_factory=PortfolioContext)
     pending_briefings: list[str] = Field(default_factory=list)
-    timestamp: datetime
+
+    # Primary timestamp (replaces legacy `timestamp` as the canonical field)
+    captured_at: datetime
+    # Legacy alias — kept for backward compat with any code reading .timestamp
+    timestamp: datetime | None = None
+
+    # Context forwarded from scheduler / event caller
+    trigger_source: str = ""   # e.g. "scheduler", "discord_command", "manual"
+    signal_engine_summary: str | None = None  # free-text summary from upstream
+
+    def model_post_init(self, __context: object) -> None:  # noqa: ANN001
+        """Keep timestamp in sync with captured_at for backward compat."""
+        if self.timestamp is None:
+            object.__setattr__(self, "timestamp", self.captured_at)
 
 
 # ---------------------------------------------------------------------------

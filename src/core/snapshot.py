@@ -37,15 +37,27 @@ class SystemSnapshotBuilder:
 
     Usage::
 
-        snapshot = await SystemSnapshotBuilder(session, user_id).build()
+        snapshot = await SystemSnapshotBuilder(
+            session, user_id,
+            trigger_source="scheduler",
+            signal_engine_summary="...",
+        ).build()
     """
 
     OVERDUE_DAYS = 14  # thesis older than N days without AI review = overdue
     STALE_DAYS = 3    # thesis without any review in N days = stale
 
-    def __init__(self, session: AsyncSession, user_id: str) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        user_id: str,
+        trigger_source: str = "",
+        signal_engine_summary: str | None = None,
+    ) -> None:
         self.session = session
         self.user_id = user_id
+        self.trigger_source = trigger_source
+        self.signal_engine_summary = signal_engine_summary
 
     async def build(self) -> SystemSnapshot:
         alerts_flat, thesis_flat, market_flat, portfolio_ctx = await asyncio.gather(
@@ -103,8 +115,10 @@ class SystemSnapshotBuilder:
             trend_shift_count=len(trend_sigs),
             opportunity_count=len(opportunity_sigs),
             top_opportunity_tickers=[s.ticker for s in opportunity_sigs[:5]],
+            market_phase=self.trigger_source or "unknown",
         )
 
+        now = datetime.now(timezone.utc)
         return SystemSnapshot(
             # nested
             watchlist=watchlist_ctx,
@@ -116,7 +130,12 @@ class SystemSnapshotBuilder:
             thesis_due_review=thesis_flat,
             market_anomalies=market_flat,
             portfolio_context=portfolio_ctx,
-            timestamp=datetime.now(timezone.utc),
+            # timestamps
+            captured_at=now,
+            timestamp=now,
+            # forwarded caller context
+            trigger_source=self.trigger_source,
+            signal_engine_summary=self.signal_engine_summary,
         )
 
     # ------------------------------------------------------------------
