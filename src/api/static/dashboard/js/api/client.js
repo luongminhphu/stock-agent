@@ -1,5 +1,5 @@
 // api/client.js — HTTP client wrapper cho stock-agent API
-// Owner: api segment (không chứa business/render logic)
+// Owner: api segment (đượng không chứa business/render logic)
 
 const DEFAULT_HEADERS = Object.freeze({ 'Content-Type': 'application/json' });
 const inflightGetRequests = new Map();
@@ -34,14 +34,6 @@ export function briefingApiBase() {
  */
 export function memoryApiBase() {
   return '/api/v1/memory';
-}
-
-/**
- * Base URL cho market endpoints
- * @returns {string}
- */
-export function marketApiBase() {
-  return '/api/v1/market';
 }
 
 /**
