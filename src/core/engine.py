@@ -178,20 +178,9 @@ class IntelligenceEngine:
 # ---------------------------------------------------------------------------
 # Module-level API — used by IntelligenceEngineScheduler (bot segment)
 # ---------------------------------------------------------------------------
-# Pattern: scheduler calls run_cycle(user_id, phase, ...) which:
-#   1. Opens its own DB session (stateless — no session stored on module).
-#   2. Runs full engine cycle (snapshot → signals → heuristic/AI verdict).
-#   3. Publishes IntelligenceEngineCompletedEvent via event bus so
-#      IntelligenceEngineListener can push the Discord embed.
-#   4. Returns the EngineVerdict for caller logging/monitoring.
-# ---------------------------------------------------------------------------
 
 class _EngineRunner:
-    """Stateless runner — holds no session, safe as a module singleton.
-
-    Exposes run_cycle() with the signature expected by IntelligenceEngineScheduler:
-        run_cycle(user_id, phase, triggered_by, signal_engine_summary?, verdict_agent?)
-    """
+    """Stateless runner — holds no session, safe as a module singleton."""
 
     async def run_cycle(
         self,
@@ -204,24 +193,6 @@ class _EngineRunner:
         trigger_source: str = "",
         priority: str = "normal",
     ) -> EngineVerdict | None:
-        """Run full IE cycle and publish IntelligenceEngineCompletedEvent.
-
-        Returns the EngineVerdict produced, or None on snapshot failure.
-        The IntelligenceEngineCompletedEvent is always published so that
-        IntelligenceEngineListener can handle Discord delivery.
-
-        Args:
-            user_id:                Investor user ID.
-            phase:                  'morning' | 'eod'.
-            triggered_by:           Label for logging ('scheduler' | 'api' | ...).
-            signal_engine_summary:  Optional pre-computed signal summary string
-                                    injected into AI verdict prompt (Wave 2).
-            verdict_agent:          Optional IntelligenceVerdictAgent for AI synthesis.
-                                    When None, heuristic Wave 1 rules apply.
-            context_hint:           Optional free-text hint passed into snapshot.
-            trigger_source:         Forwarded onto the completed event (for feedback).
-            priority:               'normal' | 'high' — logged only.
-        """
         from src.platform.db import AsyncSessionLocal
 
         logger.info(
@@ -237,7 +208,6 @@ class _EngineRunner:
             async with AsyncSessionLocal() as session:
                 engine = IntelligenceEngine(session=session, user_id=user_id)
                 output = await engine.run_cycle()
-
             verdict = output.verdict
         except Exception as exc:
             logger.error(
@@ -270,8 +240,11 @@ class _EngineRunner:
                     fallback="using_heuristic_verdict",
                 )
 
-        # Publish completed event — IntelligenceEngineListener handles Discord push
-        # GlobalRiskSubscriber handles readmodel store update
+        # Extract tickers from snapshot for GlobalRiskStore + downstream consumers
+        flagged_tickers = _extract_snapshot_tickers(output.snapshot)
+
+        # Publish completed event
+        # Consumers: IntelligenceEngineListener (Discord), GlobalRiskSubscriber (readmodel)
         try:
             from src.platform.event_bus import get_event_bus
             from src.platform.events import IntelligenceEngineCompletedEvent
@@ -283,6 +256,7 @@ class _EngineRunner:
                 action_required=verdict.verdict not in ("NO_ACTION", "HOLD"),
                 summary=verdict.action,
                 trigger_source=trigger_source or triggered_by,
+                flagged_tickers=flagged_tickers,
             )
             bus = get_event_bus()
             await bus.publish(completed)
@@ -294,6 +268,7 @@ class _EngineRunner:
                 confidence=verdict.confidence,
                 phase=phase,
                 action_required=completed.action_required,
+                flagged_ticker_count=len(flagged_tickers),
             )
         except Exception as exc:
             logger.error(
@@ -305,16 +280,44 @@ class _EngineRunner:
         return verdict
 
 
-# Module-level singleton — scheduler imports and calls .run_cycle()
+def _extract_snapshot_tickers(snapshot: SystemSnapshot) -> tuple[str, ...]:
+    """Extract all flagged tickers from a SystemSnapshot.
+
+    Sources (in priority order):
+    1. watchlist_alerts — tickers with active triggered alerts
+    2. thesis_due_review — tickers with stale/overdue thesis
+    3. portfolio.top_exposed_tickers — high-exposure positions
+    4. watchlist.top_tickers — top watchlist signals
+
+    Deduplicates and uppercases all tickers.
+    """
+    seen: set[str] = set()
+    result: list[str] = []
+
+    def _add(ticker: str) -> None:
+        t = ticker.upper().strip()
+        if t and t not in seen:
+            seen.add(t)
+            result.append(t)
+
+    for alert in snapshot.watchlist_alerts:
+        _add(alert.ticker)
+    for thesis_ref in snapshot.thesis_due_review:
+        _add(thesis_ref.ticker)
+    for ticker in snapshot.portfolio.top_exposed_tickers:
+        _add(ticker)
+    for ticker in snapshot.watchlist.top_tickers:
+        _add(ticker)
+
+    return tuple(result)
+
+
+# Module-level singleton
 _engine_runner: _EngineRunner | None = None
 
 
 def get_intelligence_engine() -> _EngineRunner:
-    """Return the module-level _EngineRunner singleton.
-
-    Called by IntelligenceEngineScheduler (bot segment).
-    Idempotent — safe to call multiple times.
-    """
+    """Return the module-level _EngineRunner singleton."""
     global _engine_runner
     if _engine_runner is None:
         _engine_runner = _EngineRunner()

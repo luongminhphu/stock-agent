@@ -14,7 +14,7 @@ Design:
   standard asyncio event loop).
 
 Interface consumed by:
-  GlobalRiskSubscriber   → update(user_id, verdict)
+  GlobalRiskSubscriber   → update(user_id, event)
   BriefingService        → get_flagged_tickers(user_id)   (Commit 3)
   ScanService            → get_flagged_tickers(user_id)   (Commit 4)
   ThesisReviewService    → get_flagged_tickers(user_id)   (Commit 5)
@@ -36,7 +36,7 @@ _TTL = timedelta(hours=_TTL_HOURS)
 
 @dataclass
 class _RiskEntry:
-    verdict: Any  # EngineVerdict — kept as Any to avoid circular import
+    verdict: Any  # EngineVerdict or IntelligenceEngineCompletedEvent — kept as Any to avoid circular import
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def is_fresh(self) -> bool:
@@ -44,12 +44,12 @@ class _RiskEntry:
 
 
 class GlobalRiskStore:
-    """In-memory store for the latest EngineVerdict per user.
+    """In-memory store for the latest verdict/event per user.
 
     Usage::
 
         store = get_global_risk_store()
-        store.update(user_id, verdict)
+        store.update(user_id, event_or_verdict)
         flagged = store.get_flagged_tickers(user_id)  # set[str]
     """
 
@@ -57,7 +57,7 @@ class GlobalRiskStore:
         self._entries: dict[str, _RiskEntry] = {}
 
     def update(self, user_id: str, verdict: Any) -> None:
-        """Persist a new EngineVerdict for user_id, replacing any prior entry."""
+        """Persist a new verdict or IntelligenceEngineCompletedEvent for user_id."""
         self._entries[user_id] = _RiskEntry(verdict=verdict)
         flagged = self._extract_flagged(verdict)
         logger.info(
@@ -73,7 +73,7 @@ class GlobalRiskStore:
         Returns empty set when:
         - No verdict stored for user_id.
         - Verdict is stale (older than TTL of 4h).
-        - Verdict has no risk_tickers / flagged_tickers field.
+        - Verdict has no recognised ticker field.
         """
         entry = self._entries.get(user_id)
         if entry is None or not entry.is_fresh():
@@ -81,7 +81,7 @@ class GlobalRiskStore:
         return self._extract_flagged(entry.verdict)
 
     def get_verdict(self, user_id: str) -> Any | None:
-        """Return raw EngineVerdict if fresh, else None."""
+        """Return raw stored object if fresh, else None."""
         entry = self._entries.get(user_id)
         if entry is None or not entry.is_fresh():
             return None
@@ -93,29 +93,34 @@ class GlobalRiskStore:
 
     @staticmethod
     def _extract_flagged(verdict: Any) -> set[str]:
-        """Extract flagged ticker set from an EngineVerdict.
+        """Extract flagged ticker set from an EngineVerdict or IntelligenceEngineCompletedEvent.
 
-        Supports two common field names used by EngineVerdict:
-        - risk_tickers: list[str]  (primary)
-        - flagged_tickers: list[str]  (fallback)
-        - top_signals: list with .ticker attr  (fallback)
+        Resolution order:
+        1. flagged_tickers: tuple[str, ...]  — set by engine.py from snapshot (primary, Option C)
+        2. risk_tickers: list[str]           — legacy EngineVerdict field name
+        3. flagged_tickers: list[str]        — legacy fallback
+        4. top_signals: list with .ticker    — legacy fallback
 
         Returns empty set when none found or verdict is None.
         """
         if verdict is None:
             return set()
-        # Primary: explicit risk_tickers field
-        risk = getattr(verdict, "risk_tickers", None)
-        if risk:
-            return {t.upper() for t in risk if t}
-        # Fallback: flagged_tickers
+
+        # Primary: flagged_tickers tuple (IntelligenceEngineCompletedEvent, Option C)
         flagged = getattr(verdict, "flagged_tickers", None)
         if flagged:
             return {t.upper() for t in flagged if t}
-        # Fallback: top_signals with ticker attr
+
+        # Legacy: risk_tickers list (EngineVerdict direct)
+        risk = getattr(verdict, "risk_tickers", None)
+        if risk:
+            return {t.upper() for t in risk if t}
+
+        # Legacy: top_signals with ticker attr
         signals = getattr(verdict, "top_signals", None)
         if signals:
             return {s.ticker.upper() for s in signals if getattr(s, "ticker", None)}
+
         return set()
 
 

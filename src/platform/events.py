@@ -280,15 +280,15 @@ class IntelligenceEngineCompletedEvent(DomainEvent):
       - downstream event bus consumers (EngineFeedbackListener, GlobalRiskSubscriber, future subscribers)
       - Discord embed builder (build_engine_verdict_embed)
 
-    All rich fields (risk_signals, next_watch_items, reasoning_summary, sources)
-    default to empty — backward-compatible with existing consumers that only
-    read verdict / confidence / action_required / summary.
-
-    verdict_event_id: echoed from EngineVerdict.verdict_event_id so
-    EngineFeedbackSubmittedEvent can cross-reference the originating verdict.
+    All rich fields default to empty — backward-compatible with existing
+    consumers that only read verdict / confidence / action_required / summary.
 
     user_id: investor user ID propagated from the originating run_cycle() call.
     Required by GlobalRiskSubscriber to scope store updates per-user.
+
+    flagged_tickers: tickers extracted from the engine snapshot
+    (watchlist_alerts + thesis_due_review + portfolio.top_exposed_tickers).
+    Consumed by GlobalRiskStore, BriefingService, ScanService, ThesisMaintenanceService.
     """
     user_id: str = ""
     verdict: str = "NO_ACTION"
@@ -297,11 +297,12 @@ class IntelligenceEngineCompletedEvent(DomainEvent):
     summary: str = ""                          # EngineVerdict.action
     trigger_source: str = ""
     verdict_event_id: str = field(default_factory=lambda: str(uuid4()))
-    # Rich verdict fields — populated from EngineVerdict by IntelligenceEngineListener
-    reasoning_summary: str = ""               # EngineVerdict.reasoning_summary
+    reasoning_summary: str = ""
     risk_signals: tuple[str, ...] = field(default_factory=tuple)
     next_watch_items: tuple[str, ...] = field(default_factory=tuple)
     sources: tuple[str, ...] = field(default_factory=tuple)
+    # Ticker-level signals extracted from SystemSnapshot — used by readmodel store
+    flagged_tickers: tuple[str, ...] = field(default_factory=tuple)
 
 
 # ─── core intelligence feedback ───────────────────────────────────────────
@@ -324,22 +325,6 @@ class EvolutionSuggestionReadyEvent(DomainEvent):
 
     Produced by: core.evolution_scheduler (bot scheduled job, weekly)
     Consumed by: bot.EvolutionSubscriber → Discord embed for owner review
-
-    suggestion_count:
-        Number of ImprovementSuggestion rows saved this run.
-        0 = no patterns found (system is performing well).
-
-    overall_accuracy:
-        Rounded float from PatternReport.overall_accuracy.
-        Helps owner gauge health at a glance without opening DB.
-
-    run_id:
-        UUID linking this event to all evolution_log rows from this run.
-        Use with EvolutionStore.get_history() to fetch full suggestion list.
-
-    has_high_risk:
-        True if any suggestion in this run has risk_level='high'.
-        Bot subscriber uses this to elevate notification priority.
     """
     run_id: str = ""
     suggestion_count: int = 0
