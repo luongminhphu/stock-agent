@@ -5,8 +5,8 @@ No business logic — calls domain services on schedule.
 
 Registered tasks:
     InvestorProfileScheduler.snapshot_task     — weekdays 08:20 ICT (before maintenance + brief)
-    BriefingScheduler.morning_brief_task       — weekdays 08:45 ICT
-    BriefingScheduler.eod_brief_task           — weekdays 15:05 ICT
+    BriefingScheduler.morning_brief_task       — weekdays 08:30 ICT
+    BriefingScheduler.eod_brief_task           — weekdays 15:00 ICT
     WatchlistScanScheduler.scan_task           — every 5 min, weekdays 09:00–15:00 ICT
     ThesisMaintenanceScheduler.maintenance     — weekdays 08:30 ICT (before morning brief)
     ThesisDriftScheduler.drift_task            — every 15 min, weekdays 09:00–15:00 ICT
@@ -125,7 +125,7 @@ class InvestorProfileScheduler:
     """Build daily InvestorProfileSnapshot at 08:20 ICT (weekdays).
 
     Runs 10 min before ThesisMaintenanceScheduler (08:30) and
-    25 min before BriefingScheduler (08:45) so the morning brief
+    10 min before BriefingScheduler (08:30) so the morning brief
     always has fresh behavioral patterns, win_rate, and lessons.
 
     Flow:
@@ -198,8 +198,8 @@ class InvestorProfileScheduler:
 # BriefingScheduler
 # ---------------------------------------------------------------------------
 
-_MORNING_TIME = datetime.time(hour=1, minute=45, tzinfo=datetime.UTC)  # 08:45 ICT
-_EOD_TIME     = datetime.time(hour=8, minute=5,  tzinfo=datetime.UTC)  # 15:05 ICT
+_MORNING_TIME = datetime.time(hour=1, minute=30, tzinfo=datetime.UTC)  # 08:30 ICT
+_EOD_TIME     = datetime.time(hour=8, minute=0,  tzinfo=datetime.UTC)  # 15:00 ICT
 
 
 class BriefingScheduler:
@@ -416,7 +416,7 @@ _CATALYST_LOOKAHEAD_DAYS = 30  # fetch catalysts within this window
 
 
 class ThesisMaintenanceScheduler:
-    """Chạy lúc 08:30 ICT mỗi ngày làm việc — 15 phút trước morning brief.
+    """Chạy lúc 08:30 ICT mỗi ngày làm việc — cùng slot với morning brief.
 
     Flow:
         1.  auto_expire_overdue_catalysts()  — không tốn token, chạy đầu tiên.
@@ -1119,7 +1119,7 @@ _AGENDA_TIME = datetime.time(hour=0, minute=30, tzinfo=datetime.UTC)  # 07:30 IC
 class AgendaBuilderScheduler:
     """Build daily investor agenda at 07:30 ICT (weekdays).
 
-    Runs before InvestorProfileScheduler (08:20) and BriefingScheduler (08:45)
+    Runs before InvestorProfileScheduler (08:20) and BriefingScheduler (08:30)
     so the agenda result is persisted before the morning brief fires.
 
     Flow:
