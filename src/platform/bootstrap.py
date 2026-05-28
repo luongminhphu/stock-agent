@@ -50,7 +50,8 @@ _trend_prediction_store: object | None = None  # TrendPredictionStore singleton
 _trend_engine_listener: object | None = None   # TrendEngineListener singleton
 _post_mortem_service: object | None = None     # Wave E: PostMortemService singleton
 _memory_injection_listener: object | None = None  # Wave E: MemoryInjectionListener singleton
-_intelligence_engine_listener: object | None = None  # core: IntelligenceEngine Wave 2
+_intelligence_engine_listener: object | None = None  # core: IntelligenceEngineListener
+_intelligence_engine_subscriber: object | None = None  # bot: IntelligenceEngineSubscriber (Discord delivery)
 _engine_feedback_listener: object | None = None      # core: FeedbackStore bridge
 _recent_reviews_store: object | None = None          # W1: RecentReviewsStore readmodel singleton
 _portfolio_query_adapter: object | None = None       # W3: PortfolioQueryAdapter singleton
@@ -80,7 +81,7 @@ async def bootstrap() -> None:
     global _agenda_builder_agent, _agenda_service_factory
     global _trend_reasoning_agent, _trend_prediction_store, _trend_engine_listener
     global _post_mortem_service, _memory_injection_listener
-    global _intelligence_engine_listener, _engine_feedback_listener
+    global _intelligence_engine_listener, _intelligence_engine_subscriber, _engine_feedback_listener
     global _session_factory
     global _recent_reviews_store
     global _portfolio_query_adapter
@@ -165,7 +166,6 @@ async def bootstrap() -> None:
         from src.market.snapshot_scheduler import SnapshotScheduler
         from src.platform.db import AsyncSessionLocal
 
-        # Cache session factory once — reused by all callers via get_session_factory()
         if _session_factory is None:
             _session_factory = AsyncSessionLocal
             logger.info("platform.bootstrap.session_factory_cached")
@@ -176,7 +176,6 @@ async def bootstrap() -> None:
         )
         logger.info("platform.bootstrap.snapshot_scheduler_ready")
 
-    # Ensure session_factory is cached even if snapshot_scheduler was already initialised
     if _session_factory is None:
         from src.platform.db import AsyncSessionLocal
         _session_factory = AsyncSessionLocal
@@ -333,8 +332,6 @@ async def bootstrap() -> None:
         from src.thesis.thesis_review_listener import ThesisReviewListener
         from src.platform.db import AsyncSessionLocal
 
-        # session_factory is forwarded inside ThesisReviewListener._run_review()
-        # into ReviewService(session_factory=...) — activates ReviewOutcomeReactor.
         _thesis_review_listener = ThesisReviewListener(
             session_factory=AsyncSessionLocal,
             review_agent=_thesis_review_agent,
@@ -348,8 +345,6 @@ async def bootstrap() -> None:
         from src.thesis.signal_review_trigger_listener import SignalReviewTriggerListener
         from src.platform.db import AsyncSessionLocal
 
-        # session_factory is forwarded inside SignalReviewTriggerListener._handle_trigger()
-        # into ReviewService(session_factory=...) — activates ReviewOutcomeReactor.
         _signal_review_trigger_listener = SignalReviewTriggerListener(
             session_factory=AsyncSessionLocal,
             review_agent=_thesis_review_agent,
@@ -370,10 +365,6 @@ async def bootstrap() -> None:
                 morning_channel_id=int(morning_id) if morning_id else None,
                 eod_channel_id=int(eod_id) if eod_id else None,
                 user_id=str(user_id),
-                # Wave B: pass agenda_service_factory so BriefingService can
-                # include today's decide/watch/defer agenda in morning/eod briefs.
-                # Built by AgendaBuilderScheduler at 07:30 ICT — always persisted
-                # before BriefingScheduler fires at 08:30 ICT.
                 agenda_service_factory=_agenda_service_factory,
             )
             _briefing_listener.register()
@@ -426,7 +417,7 @@ async def bootstrap() -> None:
             watchdog_service=WatchlistQueryService(session_factory=AsyncSessionLocal),
             stress_test_service=StressTestQueryService(session_factory=AsyncSessionLocal),
             thesis_query=ThesisQueryService(session_factory=AsyncSessionLocal),
-            portfolio_query=_portfolio_query_adapter,  # W3: portfolio context wired
+            portfolio_query=_portfolio_query_adapter,
             feedback_service=None,
         )
         _signal_engine_listener.register()
@@ -476,24 +467,35 @@ async def bootstrap() -> None:
         logger.info("platform.bootstrap.memory_injection_listener_ready")
 
     # ── core: IntelligenceEngineListener (Wave 2 AI active) ───────────────────
+    # Note: channel_id and Discord client are NOT wired here.
+    # Discord delivery is owned by IntelligenceEngineSubscriber (bot segment),
+    # registered via _inject_intelligence_engine_subscriber() in app.py.
     if _intelligence_engine_listener is None:
         from src.core.intelligence_listener import IntelligenceEngineListener
         from src.ai.agents.intelligence_verdict import IntelligenceVerdictAgent
-        from src.platform.config import settings
 
         _intelligence_verdict_agent = IntelligenceVerdictAgent(
             ai_client=_ai_client  # type: ignore[arg-type]
         )
-        raw_channel = settings.alert_channel_id
-        channel_id = int(raw_channel) if raw_channel else None
-
         _intelligence_engine_listener = IntelligenceEngineListener(
             verdict_agent=_intelligence_verdict_agent,
-            channel_id=channel_id,
         )
         _intelligence_engine_listener.register()
+        logger.info("platform.bootstrap.intelligence_engine_listener_ready")
+
+    # ── bot: IntelligenceEngineSubscriber (Discord delivery) ──────────────────
+    # Singleton created here so app.py can inject the Discord client via
+    # get_intelligence_engine_subscriber().set_client(bot).
+    if _intelligence_engine_subscriber is None:
+        from src.bot.intelligence_engine_subscriber import IntelligenceEngineSubscriber
+        from src.platform.config import settings
+
+        raw_channel = settings.alert_channel_id
+        channel_id = int(raw_channel) if raw_channel else None
+        _intelligence_engine_subscriber = IntelligenceEngineSubscriber(channel_id=channel_id)
+        _intelligence_engine_subscriber.register()
         logger.info(
-            "platform.bootstrap.intelligence_engine_listener_ready",
+            "platform.bootstrap.intelligence_engine_subscriber_ready",
             discord_channel_id=channel_id,
         )
 
@@ -670,8 +672,13 @@ def get_opportunity_screen_subscriber():
 
 
 def get_intelligence_engine_listener():
-    """Return the IntelligenceEngineListener singleton (may be None before bootstrap)."""
+    """Return the IntelligenceEngineListener singleton (core segment, no Discord)."""
     return _intelligence_engine_listener
+
+
+def get_intelligence_engine_subscriber():
+    """Return the IntelligenceEngineSubscriber singleton (bot segment, Discord delivery)."""
+    return _intelligence_engine_subscriber
 
 
 def get_session_factory():

@@ -46,7 +46,7 @@ def create_bot() -> commands.Bot:
         try:
             await bootstrap()
             _inject_briefing_listener(bot)
-            _inject_intelligence_listener(bot)
+            _inject_intelligence_engine_subscriber(bot)
             await _register_cogs(bot)
             await _sync_tree(bot)
 
@@ -177,17 +177,17 @@ def _inject_briefing_listener(bot: commands.Bot) -> None:
         )
 
 
-def _inject_intelligence_listener(bot: commands.Bot) -> None:
-    """Inject Discord client into IntelligenceEngineListener for verdict pushes."""
-    from src.platform.bootstrap import get_intelligence_engine_listener
-    listener = get_intelligence_engine_listener()
-    if listener is not None:
-        listener.set_client(bot)
-        logger.info("bot.intelligence_listener.client_injected")
+def _inject_intelligence_engine_subscriber(bot: commands.Bot) -> None:
+    """Inject Discord client into IntelligenceEngineSubscriber for verdict pushes."""
+    from src.platform.bootstrap import get_intelligence_engine_subscriber
+    subscriber = get_intelligence_engine_subscriber()
+    if subscriber is not None:
+        subscriber.set_client(bot)
+        logger.info("bot.intelligence_engine_subscriber.client_injected")
     else:
         logger.warning(
-            "bot.intelligence_listener.not_available",
-            reason="IntelligenceEngineListener not initialised at bootstrap — verdict Discord push disabled.",
+            "bot.intelligence_engine_subscriber.not_available",
+            reason="IntelligenceEngineSubscriber not initialised at bootstrap — verdict Discord push disabled.",
         )
 
 
@@ -340,13 +340,13 @@ def _start_intelligence_engine_scheduler(bot: commands.Bot) -> None:
         morning — 08:35 ICT  (after ThesisMaintenance 08:30, before SignalEngine 08:40)
         eod     — 15:12 ICT  (after SignalEngine.eod 15:10, before DecisionReplay 15:15)
 
-    Delivery chain (no Discord logic here):
-        IntelligenceEngineScheduler._run_cycle()
-          → engine.run_cycle()                          [core]
-            → IntelligenceEngineCompletedEvent          [platform/event_bus]
-              → IntelligenceEngineListener._push_discord()  [core, client injected above]
-                → build_engine_verdict_embed()          [bot/discord_helper]
-                → safe_send(alert_channel)              [bot/discord_helper]
+    Delivery chain:
+        IntelligenceEngineScheduler._run_cycle()          [bot/scheduler]
+          → engine.run_cycle()                            [core]
+            → IntelligenceEngineCompletedEvent            [platform/event_bus]
+              → IntelligenceEngineSubscriber._handle()   [bot — Discord delivery]
+                → build_engine_verdict_embed()            [bot/discord_helper]
+                → safe_send(alert_channel)                [bot/discord_helper]
     """
     from src.bot.scheduler import IntelligenceEngineScheduler
     scheduler = IntelligenceEngineScheduler(bot)
