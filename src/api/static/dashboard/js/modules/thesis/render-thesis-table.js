@@ -2,6 +2,7 @@ import { esc, fmtDate, fmtScore, badge, fmt, scoreClass } from '../../utils/form
 import { renderScoreBreakdown } from './render-score.js';
 import { renderReviewRecommendSection } from './render-ai-review.js';
 import { convictionTimelineSlotHTML, loadSparkChart, destroySpark } from './conviction-timeline/index.js';
+import { reviewTimelineSlotHTML } from './review-timeline.js';
 import { quoteStripSkeletonHTML } from './market-quote.js';
 import { priceMiniChartSlotHTML } from './render-price-chart.js';
 import { state } from '../../state/dashboard-state.js';
@@ -215,6 +216,7 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
       <!-- REVIEWS -->
       <div id="dtab-reviews" class="dtab-panel" role="tabpanel">
         ${renderReviewRecommendSection(t.id)}
+        ${reviewTimelineSlotHTML(t.id)}
         <div id="convictionTimelineSlot-${t.id}" class="conviction-slot">
           <div class="skel skel-text" style="width:40%;margin-bottom:6px;"></div>
           <div class="skel skel-text" style="width:60%;"></div>

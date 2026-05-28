@@ -21,6 +21,7 @@ import { wireDetailActions } from './thesis-form.js';
 import { renderReviewRecommendResult, wireReviewQuickTrade } from './render-ai-review.js';
 import { fetchQuote, renderQuoteStrip } from './market-quote.js';
 import { loadConvictionTimeline } from './conviction-timeline/index.js';
+import { loadReviewTimeline } from './review-timeline.js';
 import { loadPriceMiniChart, destroyPriceChart } from './render-price-chart.js';
 
 // ---------------------------------------------------------------------------
@@ -221,6 +222,12 @@ export async function loadThesisDetail(thesisId) {
     });
 
     scheduleIdle(async () => {
+      const slot = wrap.querySelector(`#reviewTimelineSlot-${thesisId}`);
+      if (!slot) return;
+      await loadReviewTimeline(thesisId);
+    });
+
+    scheduleIdle(async () => {
       const slot = wrap.querySelector(`#convictionTimelineSlot-${thesisId}`);
       if (!slot) return;
       await loadConvictionTimeline(thesisId);
@@ -261,6 +268,8 @@ export async function triggerAiReview(thesisId) {
     // Wire B/S quick-trade buttons sau khi inject HTML vào DOM
     wireReviewQuickTrade(result);
 
+    // Refresh cả review list lẫn conviction chart sau khi AI review xong
+    await loadReviewTimeline(thesisId);
     await loadConvictionTimeline(thesisId);
 
     // Wave 2 wire: AI review xong → notify app → AttentionPanel refresh
