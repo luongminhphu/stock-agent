@@ -20,7 +20,7 @@
       .kpi-strip {
         display: grid;
         grid-template-columns: repeat(5, 1fr);
-        gap: var(--space-3);
+        gap: var(--gap, 12px);
       }
       .kpi-strip .kpi-row-divider {
         grid-column: 1 / -1;
@@ -54,7 +54,7 @@
       .panel-duo {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: var(--space-3);
+        gap: var(--gap, 12px);
         align-items: start;
       }
       @media (max-width: 860px) {
@@ -83,7 +83,7 @@
         list-style: none;
         user-select: none;
         border-bottom: 1px solid transparent;
-        transition: background var(--transition-fast);
+        transition: background .15s;
       }
       .brief-collapsible summary::-webkit-details-marker { display: none; }
       .brief-collapsible summary::after {
@@ -110,8 +110,10 @@
         gap: 2px;
         padding: 0;
         border-bottom: none;
+        /* prevent summary click stealing */
         pointer-events: auto;
       }
+      /* Stop the tab clicks from toggling <details> */
       .brief-tab-bar--inline .brief-tab {
         padding: 4px 11px;
         font-size: .72rem;
@@ -119,19 +121,19 @@
         color: var(--muted);
         background: none;
         border: 1px solid transparent;
-        border-radius: var(--radius-xs);
+        border-radius: 6px;
         cursor: pointer;
         white-space: nowrap;
-        transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
+        transition: color .15s, background .15s, border-color .15s;
         line-height: 1.4;
       }
       .brief-tab-bar--inline .brief-tab:hover {
         color: var(--text);
-        background: var(--brand-bg);
+        background: rgba(125,211,252,.06);
       }
       .brief-tab-bar--inline .brief-tab.active {
         color: var(--brand);
-        background: var(--brand-bg);
+        background: rgba(125,211,252,.12);
         border-color: rgba(125,211,252,.22);
       }
 
@@ -156,7 +158,7 @@
       .memory-grid {
         display: grid;
         grid-template-columns: 1.6fr 1fr 1fr;
-        gap: var(--space-3);
+        gap: var(--gap, 12px);
         align-items: start;
       }
       @media (max-width: 1024px) {
@@ -170,7 +172,7 @@
       /* Memory KPI strip (confidence + episode count) */
       .memory-kpi-strip {
         display: flex;
-        gap: var(--space-3);
+        gap: var(--gap, 12px);
         flex-wrap: wrap;
         margin-bottom: 12px;
       }
@@ -245,8 +247,8 @@
         grid-row: 1 / 3;
         align-self: center;
       }
-      .mem-episode-outcome.pos { color: var(--success); }
-      .mem-episode-outcome.neg { color: var(--danger); }
+      .mem-episode-outcome.pos { color: var(--green, #4ade80); }
+      .mem-episode-outcome.neg { color: var(--red, #f87171); }
       .mem-episode-outcome.pending { color: var(--muted); }
 
       /* Signal chip on episode */
@@ -255,16 +257,16 @@
         align-items: center;
         gap: 4px;
         padding: 2px 7px;
-        border-radius: var(--radius-pill);
+        border-radius: 20px;
         font-size: .67rem;
         font-weight: 700;
         letter-spacing: .03em;
         text-transform: uppercase;
       }
-      .mem-signal-chip.bought  { background: var(--success-bg); color: var(--success); }
-      .mem-signal-chip.sold    { background: var(--danger-bg);  color: var(--danger); }
+      .mem-signal-chip.bought  { background: rgba(74,222,128,.12); color: #4ade80; }
+      .mem-signal-chip.sold    { background: rgba(248,113,113,.12); color: #f87171; }
       .mem-signal-chip.ignored { background: rgba(148,163,184,.10); color: var(--muted); }
-      .mem-signal-chip.flagged { background: var(--warning-bg); color: var(--warning); }
+      .mem-signal-chip.flagged { background: rgba(251,191,36,.12); color: #fbbf24; }
 
       /* Semantic patterns list */
       .mem-pattern-list {
@@ -303,7 +305,7 @@
       .mem-confidence-bar {
         flex: 1;
         height: 4px;
-        background: var(--surface-3);
+        background: var(--surface-3, rgba(255,255,255,.06));
         border-radius: 2px;
         overflow: hidden;
       }
@@ -335,12 +337,12 @@
       .mem-bias-item {
         background: var(--surface-2);
         border: 1px solid var(--line);
-        border-left: 3px solid var(--warning);
+        border-left: 3px solid var(--yellow, #fbbf24);
         border-radius: var(--radius-sm);
         padding: 9px 12px;
       }
       .mem-bias-item.high {
-        border-left-color: var(--danger);
+        border-left-color: var(--red, #f87171);
       }
       .mem-bias-item.low {
         border-left-color: var(--muted);
@@ -369,12 +371,12 @@
         border: 1px solid var(--line);
         border-radius: var(--radius-sm);
         cursor: pointer;
-        transition: color var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
+        transition: color .15s, border-color .15s, background .15s;
       }
       .mem-refresh-btn:hover {
         color: var(--text);
         border-color: var(--brand);
-        background: var(--brand-bg);
+        background: rgba(125,211,252,.06);
       }
 
       /* Memory empty state */
@@ -398,7 +400,7 @@
 
       /* Skeleton shimmer reuse */
       .mem-skel {
-        background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%);
+        background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3, rgba(255,255,255,.08)) 50%, var(--surface-2) 75%);
         background-size: 200% 100%;
         animation: shimmer 1.5s ease-in-out infinite;
         border-radius: 4px;
@@ -421,9 +423,9 @@
       .mem-ep-divider  { color: var(--faint); }
       .mem-ep-verdict  { font-size: .72rem; font-weight: 700; }
       /* ── Verdict color by signal type ── */
-      .mem-ep-verdict--buy     { color: var(--success); }
-      .mem-ep-verdict--sell    { color: var(--danger); }
-      .mem-ep-verdict--hold    { color: var(--warning); }
+      .mem-ep-verdict--buy     { color: var(--green, #4ade80); }
+      .mem-ep-verdict--sell    { color: var(--red,   #f87171); }
+      .mem-ep-verdict--hold    { color: var(--gold,  #fbbf24); }
       .mem-ep-verdict--skip    { color: var(--muted); }
       .mem-ep-verdict--neutral { color: var(--muted); }
       .mem-ep-conf-tag { font-size: .68rem; color: var(--muted); }
@@ -436,8 +438,8 @@
         max-width: 180px;
       }
       .mem-ep-outcome  { font-size: .75rem; font-weight: 700; font-variant-numeric: tabular-nums; }
-      .mem-ep-outcome.pos { color: var(--success); }
-      .mem-ep-outcome.neg { color: var(--danger); }
+      .mem-ep-outcome.pos { color: var(--green, #4ade80); }
+      .mem-ep-outcome.neg { color: var(--red, #f87171); }
       .mem-ep-date     { font-size: .68rem; color: var(--muted); white-space: nowrap; margin-left: 2px; }
       .mem-ep-icon     { font-size: .9rem; flex-shrink: 0; }
     </style>
@@ -551,9 +553,6 @@
             class="tier-bar hidden"
             aria-label="Phân bổ tier thesis"
           ></div>
-
-          <!-- ── 3b. MARKET BREADTH BAR ──────────────────────────────────────── -->
-          <div id="marketBreadthBar" class="market-breadth-bar hidden" aria-label="Market breadth HOSE"></div>
 
           <!-- ── 4. SIGNALS FEED ─────────────────────────────────────────────── -->
           <div
@@ -1037,38 +1036,181 @@
                 <option value="active">active</option>
                 <option value="paused">paused</option>
                 <option value="invalidated">invalidated</option>
+                <option value="closed">closed</option>
               </select>
             </div>
           </div>
           <div class="form-field">
-            <label for="thesisSummaryField">Summary *</label>
-            <textarea id="thesisSummaryField" name="summary" rows="3" placeholder="Lý do đầu tư ngắn gọn…" required></textarea>
+            <label for="thesisTitleField">Tiêu đề *</label>
+            <input id="thesisTitleField" name="title" placeholder="VD: VNM hưởng lợi chu kỳ tiêu dùng phục hồi" required />
           </div>
           <div class="form-field">
-            <label for="thesisAssumptionsField">Key assumptions</label>
-            <textarea id="thesisAssumptionsField" name="assumptions" rows="3" placeholder="Các giả định quan trọng…"></textarea>
-          </div>
-          <div class="form-field">
-            <label for="thesisCatalystsField">Catalysts</label>
-            <textarea id="thesisCatalystsField" name="catalysts" rows="2" placeholder="Sự kiện kỳ vọng…"></textarea>
-          </div>
-          <div class="form-field">
-            <label for="thesisInvalidationField">Invalidation conditions</label>
-            <textarea id="thesisInvalidationField" name="invalidation_conditions" rows="2" placeholder="Khi nào thesis này sai?"></textarea>
+            <label for="thesisSummaryField">Mô tả</label>
+            <textarea id="thesisSummaryField" name="summary" placeholder="Mô tả ngắn về luận điểm đầu tư…"></textarea>
           </div>
           <div class="form-row">
             <div class="form-field">
-              <label for="thesisConvictionField">Conviction (1–10)</label>
-              <input id="thesisConvictionField" name="conviction_score" type="number" min="1" max="10" placeholder="7" />
+              <label for="thesisEntryField">Giá vào (VNĐ)</label>
+              <input id="thesisEntryField" name="entry_price" type="number" placeholder="85000" />
             </div>
             <div class="form-field">
-              <label for="thesisHorizonField">Horizon</label>
-              <input id="thesisHorizonField" name="time_horizon" type="text" placeholder="3–6 tháng" />
+              <label for="thesisTargetField">Giá mục tiêu (VNĐ)</label>
+              <input id="thesisTargetField" name="target_price" type="number" placeholder="105000" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-field">
+              <label for="thesisStopField">Stop loss (VNĐ)</label>
+              <input id="thesisStopField" name="stop_loss" type="number" placeholder="76000" />
+            </div>
+            <div class="form-field">
+              <label for="thesisDirectionField">Hướng</label>
+              <select id="thesisDirectionField" name="direction">
+                <option value="">— không chọn —</option>
+                <option value="BULLISH">BULLISH (Tăng)</option>
+                <option value="BEARISH">BEARISH (Giảm)</option>
+                <option value="NEUTRAL">NEUTRAL</option>
+              </select>
+            </div>
+          </div>
+          <section class="detail-section form-section--tight">
+            <div class="detail-section-header">
+              <h3>Assumptions trong form</h3>
+              <button type="button" class="ghost-btn ghost-btn--compact" id="addFormAssumptionBtn">+ Thêm dòng</button>
+            </div>
+            <div id="thesisFormAssumptionRows" class="form-stack"></div>
+          </section>
+          <section class="detail-section form-section--tight">
+            <div class="detail-section-header">
+              <h3>Catalysts trong form</h3>
+              <button type="button" class="ghost-btn ghost-btn--compact" id="addFormCatalystBtn">+ Thêm dòng</button>
+            </div>
+            <div id="thesisFormCatalystRows" class="form-stack"></div>
+          </section>
+          <div class="modal-footer">
+            <button type="button" class="ghost-btn" data-close="thesisModal">Hủy</button>
+            <button type="submit" class="primary-btn" id="thesisSubmitBtn">Lưu Thesis</button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+
+    <dialog id="assumptionModal" aria-labelledby="assumptionModalTitle">
+      <div class="modal-inner">
+        <div class="modal-header">
+          <h2 id="assumptionModalTitle">Thêm Assumption</h2>
+          <button class="modal-close" data-close="assumptionModal" aria-label="Đóng">&#x2715;</button>
+        </div>
+        <div class="suggest-bar">
+          <div class="form-field">
+            <label>✨ AI gợi ý assumption cho <strong id="assumptionTickerDisplay">—</strong></label>
+            <input id="assumptionSuggestTicker" type="hidden" />
+          </div>
+          <button type="button" id="assumptionAiSuggestBtn" class="suggest-btn">AI gợi ý</button>
+        </div>
+        <div id="assumptionSuggestLoading" class="suggest-loading hidden"><div class="spinner"></div>AI đang gợi ý assumptions…</div>
+        <div id="assumptionSuggestResult" class="suggest-result hidden"></div>
+        <form id="assumptionForm" class="form-grid" novalidate>
+          <input type="hidden" id="assumptionThesisId" />
+          <input type="hidden" id="assumptionIdField" />
+          <div class="form-field">
+            <label for="assumptionDescField">Nội dung giả định *</label>
+            <textarea id="assumptionDescField" name="description" placeholder="VD: Biên lợi nhuận gộp duy trì >30% trong 4Q tới" required></textarea>
+          </div>
+          <div class="form-field">
+            <label for="assumptionRationaleField">Lý do / Cơ sở</label>
+            <textarea id="assumptionRationaleField" name="rationale" placeholder="Tại sao giả định này quan trọng?"></textarea>
+          </div>
+          <div class="form-row">
+            <div class="form-field">
+              <label for="assumptionStatusField">Status</label>
+              <select id="assumptionStatusField" name="status">
+                <option value="valid">valid</option>
+                <option value="invalid">invalid</option>
+                <option value="pending">pending</option>
+                <option value="uncertain">uncertain</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="assumptionConfidenceField">Confidence (0–1)</label>
+              <input id="assumptionConfidenceField" name="confidence" type="number" min="0" max="1" step="0.05" placeholder="0.75" />
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="ghost-btn" data-close="thesisModal">Hủy</button>
-            <button type="submit" class="primary-btn" id="thesisSubmitBtn">Lưu thesis</button>
+            <button type="button" class="ghost-btn" data-close="assumptionModal">Hủy</button>
+            <button type="submit" class="primary-btn">Lưu Assumption</button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+
+    <dialog id="catalystModal" aria-labelledby="catalystModalTitle">
+      <div class="modal-inner">
+        <div class="modal-header">
+          <h2 id="catalystModalTitle">Thêm Catalyst</h2>
+          <button class="modal-close" data-close="catalystModal" aria-label="Đóng">&#x2715;</button>
+        </div>
+        <div class="suggest-bar">
+          <div class="form-field">
+            <label>✨ AI gợi ý catalyst cho <strong id="catalystTickerDisplay">—</strong></label>
+            <input id="catalystSuggestTicker" type="hidden" />
+          </div>
+          <button type="button" id="catalystAiSuggestBtn" class="suggest-btn">AI gợi ý</button>
+        </div>
+        <div id="catalystSuggestLoading" class="suggest-loading hidden"><div class="spinner"></div>AI đang gợi ý catalysts…</div>
+        <div id="catalystSuggestResult" class="suggest-result hidden"></div>
+        <form id="catalystForm" class="form-grid" novalidate>
+          <input type="hidden" id="catalystThesisId" />
+          <input type="hidden" id="catalystIdField" />
+          <div class="form-field">
+            <label for="catalystDescField">Mô tả catalyst *</label>
+            <textarea id="catalystDescField" name="description" placeholder="VD: KQKD Q2/2025 vượt kỳ vọng, EPS tăng 18% YoY" required></textarea>
+          </div>
+          <div class="form-field">
+            <label for="catalystRationaleField">Tác động kỳ vọng</label>
+            <textarea id="catalystRationaleField" name="rationale" placeholder="Catalyst này ảnh hưởng thế nào đến thesis?"></textarea>
+          </div>
+          <div class="form-row">
+            <div class="form-field">
+              <label for="catalystStatusField">Status</label>
+              <select id="catalystStatusField" name="status">
+                <option value="pending">pending</option>
+                <option value="triggered">triggered</option>
+                <option value="expired">expired</option>
+                <option value="cancelled">cancelled</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="catalystDateField">Ngày kỳ vọng</label>
+              <input id="catalystDateField" name="expected_date" type="date" />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="ghost-btn" data-close="catalystModal">Hủy</button>
+            <button type="submit" class="primary-btn">Lưu Catalyst</button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+
+    <dialog id="watchlistAddModal" aria-labelledby="watchlistAddModalTitle">
+      <div class="modal-inner">
+        <div class="modal-header">
+          <h2 id="watchlistAddModalTitle">Thêm mã vào Watchlist</h2>
+          <button class="modal-close" data-close="watchlistAddModal" aria-label="Đóng">&#x2715;</button>
+        </div>
+        <form id="watchlistAddForm" class="form-grid" novalidate>
+          <div class="form-field">
+            <label for="watchlistTickerInput">Mã CK *</label>
+            <input id="watchlistTickerInput" name="ticker" class="ticker-input" placeholder="VNM, HPG, VIC…" required />
+          </div>
+          <div class="form-field">
+            <label for="watchlistNoteInput">Ghi chú</label>
+            <input id="watchlistNoteInput" name="note" placeholder="Lý do theo dõi…" />
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="ghost-btn" data-close="watchlistAddModal">Hủy</button>
+            <button type="submit" class="primary-btn">Thêm vào Watchlist</button>
           </div>
         </form>
       </div>
@@ -1081,64 +1223,77 @@
           <button class="modal-close" data-close="decisionModal" aria-label="Đóng">&#x2715;</button>
         </div>
         <form id="decisionForm" class="form-grid" novalidate>
-          <input type="hidden" id="decisionIdField" />
           <div class="form-row">
             <div class="form-field">
-              <label for="decisionTickerField">Mã CK *</label>
-              <input id="decisionTickerField" name="ticker" class="ticker-input" placeholder="VNM" required />
+              <label for="decTickerField">Mã CK *</label>
+              <input id="decTickerField" name="ticker" class="ticker-input" placeholder="VNM" required />
             </div>
             <div class="form-field">
-              <label for="decisionActionField">Action *</label>
-              <select id="decisionActionField" name="action" required>
-                <option value="buy">MUA</option>
-                <option value="sell">BÁN</option>
-                <option value="hold">GIỮ</option>
-                <option value="skip">BỎ QUA</option>
+              <label for="decActionField">Hành động *</label>
+              <select id="decActionField" name="decision_type">
+                <option value="BUY">MUA</option>
+                <option value="SELL">BÁN</option>
+                <option value="HOLD">GIỮ</option>
+                <option value="SKIP">BẾ QUA</option>
               </select>
             </div>
           </div>
-          <div class="form-field">
-            <label for="decisionReasonField">Lý do *</label>
-            <textarea id="decisionReasonField" name="reason" rows="3" placeholder="Tại sao bạn quyết định như vậy?" required></textarea>
-          </div>
           <div class="form-row">
             <div class="form-field">
-              <label for="decisionPriceField">Giá thực hiện</label>
-              <input id="decisionPriceField" name="price" type="number" step="0.01" placeholder="0.00" />
+              <label for="decPriceField">Giá thực hiện</label>
+              <input id="decPriceField" name="price" type="number" placeholder="85000" step="100" />
             </div>
             <div class="form-field">
-              <label for="decisionQtyField">Khối lượng</label>
-              <input id="decisionQtyField" name="quantity" type="number" placeholder="1000" />
+              <label for="decQtyField">Khối lượng</label>
+              <input id="decQtyField" name="quantity" type="number" placeholder="1000" step="100" />
             </div>
           </div>
           <div class="form-field">
-            <label for="decisionThesisField">Thesis liên quan</label>
-            <input id="decisionThesisField" name="thesis_id" type="text" placeholder="ID thesis (nếu có)" />
+            <label for="decisionThesisSelect">Thesis liên quan</label>
+            <select id="decisionThesisSelect" name="thesis_id">
+              <option value="">— Chọn thesis (không bắt buộc) —</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="decReasonField">Lý do quyết định *</label>
+            <textarea id="decReasonField" name="reasoning" placeholder="Tại sao quyết định này? Thesis nào dẫn đến hành động này?" rows="3"></textarea>
+          </div>
+          <div class="form-field">
+            <label for="decEmotionField">Cảm xúc lúc ra quyết định</label>
+            <select id="decEmotionField" name="emotion_tag">
+              <option value="">— chọn —</option>
+              <option value="confident">Tự tin</option>
+              <option value="uncertain">Không chắc</option>
+              <option value="fearful">Lo sợ</option>
+              <option value="greedy">Tham lam</option>
+              <option value="fomo">FOMO</option>
+              <option value="disciplined">Kỷ luật</option>
+            </select>
           </div>
           <div class="modal-footer">
             <button type="button" class="ghost-btn" data-close="decisionModal">Hủy</button>
-            <button type="submit" class="primary-btn" id="decisionSubmitBtn">Lưu decision</button>
+            <button type="submit" class="primary-btn">Lưu Decision</button>
           </div>
         </form>
       </div>
     </dialog>
 
+    <script src="/static/dashboard/js/quick-trade.js"></script>
+    <script type="module" src="/static/dashboard/js/app.js?v=19" data-cfasync="false"></script>
     <dialog id="deleteModal" aria-labelledby="deleteModalTitle">
-      <div class="modal-inner modal-inner--sm">
+      <div class="modal-inner">
         <div class="modal-header">
-          <h2 id="deleteModalTitle">Xác nhận xoá</h2>
+          <h2 id="deleteModalTitle">Xác nhận xóa</h2>
           <button class="modal-close" data-close="deleteModal" aria-label="Đóng">&#x2715;</button>
         </div>
-        <p id="deleteModalMsg" class="modal-body-text">Bạn có chắc muốn xoá?</p>
+        <div class="modal-body">
+          <p id="deleteModalMsg">Bạn chắc chắn muốn xóa?</p>
+        </div>
         <div class="modal-footer">
           <button type="button" class="ghost-btn" data-close="deleteModal">Hủy</button>
-          <button type="button" class="danger-btn" id="deleteConfirmBtn">Xoá</button>
+          <button type="button" id="deleteConfirmBtn" class="danger-btn">Xóa</button>
         </div>
       </div>
     </dialog>
-
-    <!-- ── SCRIPTS — after ALL dialogs so DOM is complete before any script runs ── -->
-    <script src="/static/dashboard/js/quick-trade.js"></script>
-    <script type="module" src="/static/dashboard/js/app.js?v=19"></script>
   </body>
 </html>
