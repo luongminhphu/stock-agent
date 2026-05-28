@@ -19,12 +19,15 @@ Wave B activation:
 - Fully backward-compatible: agenda_service_factory=None → no agenda context, no error.
 
 P1 (Agenda → Morning Brief):
-- Subscribes DailyAgendaCompletedEvent and caches a compact agenda summary per user.
-- When generating a brief, if a cached agenda exists for that user, it is
-  prepended to the brief embed description so Morning Brief is visibly
-  anchored around today's DECIDE/WATCH/DEFER list.
-- This is a UI-level join and does NOT change BriefingService or BriefingAgent
-  contracts — safe first step to increase perceived cohesion.
+- Subscribes DailyAgendaCompletedEvent và cache một agenda summary compact per user.
+- Khi generate brief, nếu có cached agenda cho user đó, block này được
+  prepend vào embed description để Morning Brief bám sát DECIDE/WATCH/DEFER.
+
+P1.5 (Unify scheduler + slash command experience):
+- Cache được đưa ra shared module agenda_cache để BriefingCog có thể
+  đọc cùng một Daily Agenda block cho /morning_brief và /eod_brief.
+- Đây vẫn là join ở tầng trình bày; contract của BriefingService và
+  BriefingAgent không thay đổi.
 """
 from __future__ import annotations
 
@@ -33,6 +36,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import discord
 
+from src.briefing.agenda_cache import get_agenda, set_agenda
 from src.platform.event_bus import get_event_bus
 from src.platform.events import (
     BriefingReadyEvent,
@@ -62,9 +66,6 @@ class BriefingListener:
         # Wave B: callable(session) -> AgendaService | None
         # Injected from bootstrap so BriefingService can include agenda context.
         self._agenda_service_factory = agenda_service_factory
-        # P1: in-memory cache of last DailyAgendaCompletedEvent per user_id → compact summary string.
-        # Single-user app today, but keyed by user_id for future multi-user safety.
-        self._agenda_cache: dict[str, str] = {}
 
     def set_client(self, client: "discord.Client") -> None:
         """Inject discord.Client after bot login (called from bot on_ready)."""
@@ -96,7 +97,7 @@ class BriefingListener:
                 and event.watch_count <= 0
                 and event.defer_count <= 0
             ):
-                self._agenda_cache.pop(event.user_id, None)
+                set_agenda(event.user_id, None)
                 logger.info(
                     "briefing_listener.agenda_cleared",
                     user_id=event.user_id,
@@ -125,7 +126,7 @@ class BriefingListener:
                 lines.append(f"Summary: {event.opening_line}")
 
             summary = "\n".join(lines)
-            self._agenda_cache[event.user_id] = summary
+            set_agenda(event.user_id, summary)
 
             logger.info(
                 "briefing_listener.agenda_cached",
@@ -215,8 +216,8 @@ class BriefingListener:
 
             embed = build_brief_embed(brief_result.output, phase=phase)
 
-            # P1: prepend cached agenda summary to embed description when available.
-            agenda_block = self._agenda_cache.get(self._user_id)
+            # P1/P1.5: prepend cached agenda summary to embed description when available.
+            agenda_block = get_agenda(self._user_id)
             if agenda_block:
                 original_desc = embed.description or ""
                 # Avoid duplicate blank lines when original_desc is empty.

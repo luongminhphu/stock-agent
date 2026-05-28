@@ -14,6 +14,7 @@ from discord import app_commands
 
 from src.ai.schemas import BriefOutput, MarketSentiment
 from src.bot.commands.base import BaseCog
+from src.briefing.agenda_cache import get_agenda
 from src.briefing.formatter import build_brief_pages, format_eod_brief, format_morning_brief
 from src.briefing.service import BriefingService
 from src.platform.bootstrap import get_briefing_agent, get_pnl_service_class, get_quote_service
@@ -148,6 +149,18 @@ class BriefingCog(BaseCog):
             return
 
         embeds = build_brief_embeds(brief_result.output, phase=phase)
+
+        # P1.5: prepend cached Daily Agenda block to first embed when available
+        # so manual /morning_brief and scheduler-based Morning Brief share
+        # the same visual anchor around DECIDE/WATCH/DEFER.
+        agenda_block = get_agenda(user_id)
+        if agenda_block and embeds:
+            first = embeds[0]
+            original_desc = first.description or ""
+            if original_desc:
+                first.description = f"{agenda_block}\n\n{original_desc}"
+            else:
+                first.description = agenda_block
 
         # Discord enforces a 6000-char *total* limit per message across all embeds.
         # Send each embed as its own message to avoid the limit entirely.
