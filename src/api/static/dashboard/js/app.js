@@ -1,5 +1,5 @@
 /**
- * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard + Wave D lesson loop + Wave E brief ticker + Wave F brief feedback + Wave G brief generate + Wave 1 UX + Wave 2 memory + AttentionPanel + Wave 1 wire + Wave 2 wire + Wave 3 wire + Wave 4 wire + Wave A gap-wire)
+ * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard + Wave D lesson loop + Wave E brief ticker + Wave F brief feedback + Wave G brief generate + Wave 1 UX + Wave 2 memory + AttentionPanel + Wave 1 wire + Wave 2 wire + Wave 3 wire + Wave 4 wire + Wave A gap-wire + market-breadth)
  * Responsibility: import tất cả modules, wire events, khởi động dashboard.
  * Rule: KHÔNG chứa business logic. Chỉ bootstrap + wiring.
  */
@@ -28,6 +28,7 @@ import { bindGenerateBriefButtons } from './modules/briefing/brief-generate.js';
 import { loadMemory }           from './modules/memory/memory-loader.js';
 import { loadAttentionPanel, startAttentionAutoRefresh } from './modules/attention/attention-loader.js';
 import { debounce }             from './utils/debounce.js';
+import { loadMarketBreadth }   from './modules/market/breadth.js';
 import { state }                from './state/dashboard-state.js';
 
 // ---------------------------------------------------------------------------
@@ -411,6 +412,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadLeaderboard();
     loadMemory();
     loadAttentionPanel();
+    loadMarketBreadth();
   });
   el('addWatchlistBtn')?.addEventListener('click', () => openModal('watchlistAddModal'));
 
@@ -500,6 +502,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadPortfolio(),
     loadWatchlist(),
     loadDecisions(),
+    loadMarketBreadth(),
   ]);
   loadLeaderboard();
   loadMemory();
