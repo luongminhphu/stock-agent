@@ -352,7 +352,7 @@ export async function loadDashboard() {
       getJson(`${base}/signals/recent?days=7&limit=30`).catch(() => null),
     ]);
 
-    renderSummary(stats, portfolioTrades);
+    renderSummary(stats, portfolioTrades, briefFeedback);
     renderTierBreakdown(thesisAggregate);
     renderAlertsStrip(alertsTriggered);
     renderSignalsFeed(recentSignals);
@@ -458,7 +458,7 @@ export async function loadBacktesting() {
 /**
  * renderSummary — populate KPI strip từ stats API response.
  */
-export function renderSummary(s, portfolio) {
+export function renderSummary(s, portfolio, briefFeedback) {
   if (!s) return;
 
   const kpis = [
@@ -522,6 +522,34 @@ export function renderSummary(s, portfolio) {
   if (pnlPctEl && pnlPct != null) {
     pnlPctEl.textContent = (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%';
     pnlPctEl.className = pnlPct >= 0 ? 'signal-sub text-success' : 'signal-sub text-danger';
+  }
+
+  // Brief feedback KPI
+  const rateEl  = el('briefActedRate');
+  const subEl   = el('briefActedSub');
+  const card    = el('briefFeedbackCard');
+  if (rateEl && briefFeedback) {
+    const acted = briefFeedback.acted_count  ?? briefFeedback.acted  ?? null;
+    const total = briefFeedback.total_count  ?? briefFeedback.total  ?? null;
+    const rate  = briefFeedback.acted_rate   ?? briefFeedback.rate   ?? null;
+
+    if (rate != null) {
+      const pct = (rate * 100).toFixed(0);
+      rateEl.textContent = `${pct}%`;
+      rateEl.className = `signal-value ${Number(pct) >= 50 ? 'text-success' : 'text-danger'}`;
+      flashValue(rateEl);
+    }
+    if (subEl) {
+      subEl.textContent = acted != null && total != null
+        ? `${acted}/${total} briefs`
+        : 'acted rate';
+    }
+    if (card) {
+      card.classList.toggle('signal-card--ok',   Number((rate * 100).toFixed(0)) >= 50);
+      card.classList.toggle('signal-card--risk',  Number((rate * 100).toFixed(0)) < 50);
+    }
+  } else if (card) {
+    card.classList.add('hidden');
   }
 }
 
