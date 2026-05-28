@@ -1,4 +1,4 @@
-/* ─── dashboard.css — Aggregator Only ────────────────────────────────────────────────────────────────────────
+/* ─── dashboard.css — Aggregator Only ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
    Không chứa CSS rules trực tiếp.
    Chỉ @import các module theo đúng thứ tự cascade:
      1. base/variables  — :root tokens (phải đứng đầu tiên)
@@ -8,7 +8,7 @@
      5. modules/*       — feature-specific styles (dùng tokens + components)
 
    index.html load /static/dashboard/dashboard.css — không thay đổi.
-─────────────────────────────────────────────────────────────────────────────────────── */
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────── */
 
 /* 1. Tokens */
 @import url('./css/base/variables.css');
@@ -26,6 +26,7 @@
 @import url('./css/components/toast.css');
 
 /* 5. Modules */
+@import url('./css/modules/topbar.css');
 @import url('./css/modules/layout.css');
 @import url('./css/modules/layout-duo.css');
 @import url('./css/modules/thesis.css');
