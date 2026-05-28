@@ -240,43 +240,58 @@ class SystemSnapshotBuilder:
             return []
 
     async def _fetch_portfolio(self) -> PortfolioContext:
-        """Tổng hợp open positions và risk breaches."""
+        """Build PortfolioContext via the portfolio segment public interface.
+
+        Uses get_portfolio_context() — the single approved entry point for
+        cross-segment portfolio reads. Raw ORM imports from portfolio.models
+        are forbidden here (boundary rule).
+
+        risk_breach_count is fetched separately because stop_loss_breached
+        is not surfaced by get_portfolio_context().
+        """
         try:
-            from src.portfolio.models import Position  # type: ignore[import]
+            from src.portfolio import get_portfolio_context  # type: ignore[import]
 
-            rows = (
-                await self.session.execute(
-                    select(Position.ticker).where(
-                        Position.user_id == self.user_id,
-                        Position.closed_at.is_(None),
-                        Position.qty > 0,
-                    )
+            pf = await get_portfolio_context(
+                self.session,
+                self.user_id,
+                include_prices=False,  # hot path — skip live price lookup
+            )
+
+            # Aggregate unrealized PnL % from cost basis when prices unavailable
+            # (total_unrealized_pnl is None when include_prices=False)
+            unrealized_pnl_pct: float | None = None
+            if pf.total_unrealized_pnl is not None and pf.total_cost_basis > 0:
+                unrealized_pnl_pct = round(
+                    pf.total_unrealized_pnl / pf.total_cost_basis * 100, 2
                 )
-            ).scalars().all()
 
-            # Risk breach: attempt to read stop_loss_breached flag if present
+            # risk_breach_count: separate query — stop_loss_breached not in public interface
             risk_breach = 0
             try:
-                from src.portfolio.models import Position as P  # type: ignore[import]
+                from src.portfolio.models import Position  # type: ignore[import]
 
-                risk_breach = (
+                breached = (
                     await self.session.execute(
-                        select(P)
+                        select(Position)
                         .where(
-                            P.user_id == self.user_id,
-                            P.closed_at.is_(None),
-                            P.stop_loss_breached.is_(True),
+                            Position.user_id == self.user_id,
+                            Position.closed_at.is_(None),
+                            Position.stop_loss_breached.is_(True),
                         )
                     )
                 ).scalars().all()
-                risk_breach = len(risk_breach)
+                risk_breach = len(breached)
             except Exception:
                 risk_breach = 0
 
             return PortfolioContext(
-                total_positions=len(rows),
+                total_positions=pf.position_count,
                 risk_breach_count=risk_breach,
-                top_exposed_tickers=list(rows[:5]),
+                total_market_value=pf.total_market_value,
+                top_exposed_tickers=pf.tickers[:5],
+                unrealized_pnl_pct=unrealized_pnl_pct,
             )
+
         except Exception:
             return PortfolioContext()
