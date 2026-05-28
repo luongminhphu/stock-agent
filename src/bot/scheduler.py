@@ -38,7 +38,7 @@ Channel routing:
     OutcomeFillerScheduler persists only — no Discord message (silent data enrichment job).
     ProactiveWatchScheduler emits events only — Discord delivery via ProactiveWatchSubscriber.
     IntelligenceEngineScheduler emits events only — no channel routing, no Discord message.
-        Wave 2: IntelligenceEngineListener (ai segment) handles verdict + delivery.
+        Wave 2: IntelligenceEngineListener (core segment) handles run_cycle + verdict + delivery.
 
 Wave 8:
     BriefingScheduler no longer calls BriefingService directly.
@@ -58,10 +58,9 @@ Wave D (ProactiveWatch):
 
 Core Engine (Wave 1):
     IntelligenceEngineScheduler emits IntelligenceEngineRequestedEvent (2×/day)
-    → core.IntelligenceEngine.run_cycle() builds SystemSnapshot
-    → publishes IntelligenceEngineRequestedEvent with snapshot context
-    Wave 2: ai.IntelligenceEngineListener subscribes → produces verdict
-    → emits IntelligenceEngineCompletedEvent → bot subscriber → Discord.
+    → core.IntelligenceEngineListener.run_cycle() builds SystemSnapshot
+    → publishes IntelligenceEngineCompletedEvent
+    → bot subscriber → Discord.
 
 Wave E (Thesis Score Sensitivity):
     WatchlistScanScheduler injects ThesisScoreQuery(session) into ScanService.
@@ -1334,30 +1333,27 @@ _IE_EOD_TIME     = datetime.time(hour=8, minute=12, tzinfo=datetime.UTC)  # 15:1
 
 
 class IntelligenceEngineScheduler:
-    """Trigger IntelligenceEngine.run_cycle() twice per trading day.
+    """Emit IntelligenceEngineRequestedEvent twice per trading day.
 
     Owner: bot segment — thin timing adapter only.
-    All engine logic lives in src/core/engine.py.
-    AI verdict synthesis in Wave 2: ai.IntelligenceEngineListener.
+    All engine logic lives in src/core/intelligence_listener.py → src/core/engine.py.
 
     Timing:
         morning — 08:35 ICT  after ThesisMaintenance (08:30), before SignalEngine (08:40)
         eod     — 15:12 ICT  after SignalEngine.eod (15:10), before DecisionReplay (15:15)
 
     Flow:
-        1. get_intelligence_engine() — module-level singleton from src.core.engine.
-        2. engine.run_cycle(user_id, phase, triggered_by="scheduler")
-           — builds SystemSnapshot (cross-segment DB reads, all non-fatal)
-           — publishes IntelligenceEngineCompletedEvent via event bus
-        3. IntelligenceEngineListener (bootstrap) handles Discord delivery.
+        1. bus.publish(IntelligenceEngineRequestedEvent(user_id, phase, triggered_by))
+        2. IntelligenceEngineListener (subscribed at bootstrap) calls engine.run_cycle()
+           — builds SystemSnapshot → heuristic verdict → publishes IntelligenceEngineCompletedEvent
+        3. bot subscriber handles Discord delivery.
         4. Record success/failure in SchedulerMonitor.
 
     No Discord output from this scheduler — delivery via IntelligenceEngineListener.
 
     Graceful skip:
         - Weekends (weekday >= 5).
-        - scheduler_user_id not configured → warning log, no cycle run.
-        - verdict is None (snapshot build failure) → logged, success recorded.
+        - scheduler_user_id not configured → warning log, no event emitted.
         - All exceptions caught and recorded; never blocks other schedulers.
     """
 
@@ -1404,20 +1400,16 @@ class IntelligenceEngineScheduler:
     async def _before_eod(self) -> None:
         await self._client.wait_until_ready()
 
-    # ── shared cycle runner ───────────────────────────────────────────────────────────
+    # ── shared emit ───────────────────────────────────────────────────────────────────
 
     async def _run_cycle(self, phase: str, task_name: str) -> None:
-        """Call IntelligenceEngine.run_cycle() — bot delegates all logic to core segment.
+        """Emit IntelligenceEngineRequestedEvent — bot's only responsibility here.
 
-        Flow:
-            1. get_intelligence_engine() — module-level singleton from src.core.engine.
-            2. engine.run_cycle(user_id, phase, triggered_by="scheduler")
-               — snapshot → signals → heuristic verdict → publish IntelligenceEngineCompletedEvent
-            3. IntelligenceEngineListener (subscribed at bootstrap) handles Discord push.
-
-        Returns EngineVerdict | None. None means snapshot build failed (non-fatal).
+        IntelligenceEngineListener (subscribed at bootstrap) handles the rest:
+        engine.run_cycle() → SystemSnapshot → verdict → IntelligenceEngineCompletedEvent → Discord.
         """
-        from src.core.engine import get_intelligence_engine
+        from src.platform.event_bus import get_event_bus
+        from src.platform.events import IntelligenceEngineRequestedEvent
 
         user_id = getattr(settings, "scheduler_user_id", None)
         if not user_id:
@@ -1429,34 +1421,20 @@ class IntelligenceEngineScheduler:
             return
 
         try:
-            engine = get_intelligence_engine()
-            verdict = await engine.run_cycle(
-                user_id=str(user_id),
-                phase=phase,
-                triggered_by="scheduler",
-            )
-
-            if verdict is None:
-                logger.warning(
-                    "scheduler.intelligence_engine.no_verdict",
-                    phase=phase,
-                    reason="snapshot build failed — verdict is None",
+            bus = get_event_bus()
+            await bus.publish(
+                IntelligenceEngineRequestedEvent(
+                    user_id=str(user_id),
+                    trigger_type="scheduled",
+                    trigger_source=f"scheduler.{phase}",
                 )
-                await self._monitor.record_success(task_name)
-                return
-
-            logger.info(
-                "scheduler.intelligence_engine.cycle_done",
-                phase=phase,
-                verdict=verdict.verdict,
-                confidence=round(verdict.confidence, 3),
-                action_required=verdict.verdict not in ("NO_ACTION", "HOLD"),
             )
+            logger.info("scheduler.intelligence_engine.event_emitted", phase=phase)
             await self._monitor.record_success(task_name)
 
         except Exception as exc:
             logger.error(
-                "scheduler.intelligence_engine.error",
+                "scheduler.intelligence_engine.emit_error",
                 phase=phase,
                 error=str(exc),
             )
