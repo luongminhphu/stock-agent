@@ -18,7 +18,6 @@ import {
 } from '../backtesting/render-backtesting.js';
 import { renderCatalystCalendar, renderSnapshots } from '../briefing/render-brief.js';
 import { loadLeaderboard } from './leaderboard-loader.js';
-import { loadMarketBreadth } from '../market/breadth.js';
 import { renderHealthHeatmap, refreshHeatmapCell } from './render-heatmap.js';
 import { countUp, flashValue } from '../../utils/animate.js';
 
@@ -355,7 +354,6 @@ export async function loadDashboard() {
 
     renderSummary(stats, portfolioTrades);
     renderTierBreakdown(thesisAggregate);
-    loadMarketBreadth('HOSE').catch(() => null);
     renderAlertsStrip(alertsTriggered);
     renderSignalsFeed(recentSignals);
     renderActionSurface(stats, catalysts?.items ?? catalysts ?? []);
