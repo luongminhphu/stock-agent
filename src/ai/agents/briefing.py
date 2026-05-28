@@ -70,6 +70,7 @@ class BriefingAgent:
         past_lessons: str = "",
         investor_profile: str = "",
         feedback_summary: str = "",
+        agenda_context: str = "",
         # Portfolio risk narrator params (optional, backward-compat)
         portfolio_note: PortfolioRiskNote | None = None,
         ranked_signals: list[RankedSignal] | None = None,
@@ -99,6 +100,10 @@ class BriefingAgent:
                                provided, the AI adjusts action count and specificity
                                based on the user's historical acted_rate. Does not
                                override risk_appetite from investor_profile.
+            agenda_context:    Optional pre-built daily agenda string from
+                               AgendaBuilderScheduler (decide/watch/defer buckets).
+                               When provided, the AI uses agenda priority to
+                               personalise prioritized_actions ordering.
             portfolio_note:    Optional PortfolioRiskNote (rule-based pre-computed
                                portfolio context). When provided and narrator is
                                injected, triggers PortfolioRiskNarratorAgent and
@@ -120,6 +125,7 @@ class BriefingAgent:
             past_lessons=past_lessons,
             investor_profile=investor_profile,
             feedback_summary=feedback_summary,
+            agenda_context=agenda_context,
         )
         logger.debug(
             "briefing_agent.morning_brief.calling_ai",
@@ -129,6 +135,7 @@ class BriefingAgent:
             has_lessons=bool(past_lessons),
             has_investor_profile=bool(investor_profile),
             has_feedback_summary=bool(feedback_summary),
+            has_agenda_context=bool(agenda_context),
             has_portfolio_note=bool(portfolio_note),
         )
         result: BriefOutput = await self._client.chat(
