@@ -1,5 +1,5 @@
 /**
- * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard + Wave D lesson loop + Wave E brief ticker + Wave F brief feedback + Wave G brief generate + Wave 1 UX + Wave 2 memory + AttentionPanel + Wave 1 wire + Wave 2 wire + Wave 3 wire + Wave 4 wire + Wave A gap-wire + market breadth)
+ * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard + Wave D lesson loop + Wave E brief ticker + Wave F brief feedback + Wave G brief generate + Wave 1 UX + Wave 2 memory + AttentionPanel + Wave 1 wire + Wave 2 wire + Wave 3 wire + Wave 4 wire + Wave A gap-wire + market breadth + engine heartbeat)
  * Responsibility: import tất cả modules, wire events, khởi động dashboard.
  * Rule: KHÔNG chứa business logic. Chỉ bootstrap + wiring.
  */
@@ -342,6 +342,75 @@ function bindDecisionLeaderboardWire() {
 }
 
 // ---------------------------------------------------------------------------
+// Engine Heartbeat — poll GET /api/v1/core/snapshot every 90s
+//
+// Segment owner: api (thin adapter, no business logic).
+// State is derived from SystemSnapshot.captured_at:
+//   < 5 min  → ok    🟢  engine chạy bình thường
+//   5–30 min → stale 🟡  engine có thể bị trễ
+//   > 30 min → error 🔴  engine không hoạt động
+// Fetch fail → error 🔴
+//
+// NOTE: GET /snapshot builds a fresh snapshot on each call.
+// Poll interval 90s to avoid unnecessary DB load.
+// ---------------------------------------------------------------------------
+function startEngineHeartbeat() {
+  const badge  = document.getElementById('engineHeartbeat');
+  const textEl = badge?.querySelector('.heartbeat-text');
+  if (!badge) return;
+
+  async function poll() {
+    try {
+      const res  = await fetch('/api/v1/core/snapshot');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      // captured_at is the canonical timestamp (ISO 8601 string)
+      const capturedAt = data?.captured_at ? new Date(data.captured_at) : null;
+      const ageMinutes = capturedAt
+        ? (Date.now() - capturedAt.getTime()) / 60_000
+        : Infinity;
+
+      const triggerSource = data?.trigger_source || '';
+      const summary       = data?.signal_engine_summary || null;
+
+      let stateClass, labelText;
+
+      if (ageMinutes < 5) {
+        stateClass = 'heartbeat-ok';
+        labelText  = summary
+          ? `Engine OK · ${summary.slice(0, 40)}`
+          : `Engine OK · ${Math.floor(ageMinutes)}m ago`;
+      } else if (ageMinutes < 30) {
+        stateClass = 'heartbeat-stale';
+        labelText  = `Engine STALE · ${Math.floor(ageMinutes)}m ago`;
+      } else {
+        stateClass = 'heartbeat-error';
+        labelText  = capturedAt
+          ? `Engine DOWN · ${Math.floor(ageMinutes)}m ago`
+          : 'Engine DOWN';
+      }
+
+      if (triggerSource) labelText += ` (${triggerSource})`;
+
+      badge.className = `engine-heartbeat ${stateClass}`;
+      badge.setAttribute('title', capturedAt
+        ? `Last snapshot: ${capturedAt.toLocaleString('vi-VN')}`
+        : 'Snapshot timestamp unavailable');
+      if (textEl) textEl.textContent = labelText;
+
+    } catch {
+      badge.className = 'engine-heartbeat heartbeat-error';
+      if (textEl) textEl.textContent = 'Engine ERROR';
+      badge.setAttribute('title', 'Không thể kết nối tới /api/v1/core/snapshot');
+    }
+  }
+
+  poll(); // immediate on load
+  setInterval(poll, 90_000);
+}
+
+// ---------------------------------------------------------------------------
 // Main bootstrap
 // ---------------------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', async () => {
@@ -360,6 +429,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   bindWatchlistChangedWire();
   bindTradeConfirmedWire();
   bindDecisionLeaderboardWire();
+
+  // Engine status badge
+  startEngineHeartbeat();
 
   // 1a. Wave F: feedback buttons
   bindFeedbackEvents();
