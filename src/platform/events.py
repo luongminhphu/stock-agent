@@ -277,7 +277,7 @@ class IntelligenceEngineCompletedEvent(DomainEvent):
     """Emitted by IntelligenceEngineListener after a successful engine cycle.
 
     Carries the full verdict payload needed by both:
-      - downstream event bus consumers (EngineFeedbackListener, future subscribers)
+      - downstream event bus consumers (EngineFeedbackListener, GlobalRiskSubscriber, future subscribers)
       - Discord embed builder (build_engine_verdict_embed)
 
     All rich fields (risk_signals, next_watch_items, reasoning_summary, sources)
@@ -286,7 +286,11 @@ class IntelligenceEngineCompletedEvent(DomainEvent):
 
     verdict_event_id: echoed from EngineVerdict.verdict_event_id so
     EngineFeedbackSubmittedEvent can cross-reference the originating verdict.
+
+    user_id: investor user ID propagated from the originating run_cycle() call.
+    Required by GlobalRiskSubscriber to scope store updates per-user.
     """
+    user_id: str = ""
     verdict: str = "NO_ACTION"
     confidence: float = 0.0
     action_required: bool = False

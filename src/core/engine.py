@@ -271,11 +271,13 @@ class _EngineRunner:
                 )
 
         # Publish completed event — IntelligenceEngineListener handles Discord push
+        # GlobalRiskSubscriber handles readmodel store update
         try:
             from src.platform.event_bus import get_event_bus
             from src.platform.events import IntelligenceEngineCompletedEvent
 
             completed = IntelligenceEngineCompletedEvent(
+                user_id=user_id,
                 verdict=verdict.verdict,
                 confidence=verdict.confidence,
                 action_required=verdict.verdict not in ("NO_ACTION", "HOLD"),
@@ -287,6 +289,7 @@ class _EngineRunner:
 
             logger.info(
                 "engine.run_cycle.completed_event_published",
+                user_id=user_id,
                 verdict=verdict.verdict,
                 confidence=verdict.confidence,
                 phase=phase,
