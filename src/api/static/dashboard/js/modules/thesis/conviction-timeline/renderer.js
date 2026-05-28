@@ -11,7 +11,7 @@
  */
 
 import { esc, fmtDate } from '../../../utils/format.js';
-import { thesisApiBase, getJson } from '../../../api/client.js';
+import { readmodelApiBase, getJson } from '../../../api/client.js';
 import {
   TIER, TREND_META, BD_META, VERDICT_CLS, EVENT_KIND_ICON, tierColor,
 } from './constants.js';
@@ -237,7 +237,7 @@ export async function loadConvictionTimeline(thesisId) {
 
   try {
     await ensureChartJs();
-    const data = await getJson(`${thesisApiBase()}/${thesisId}/conviction-timeline`);
+    const data = await getJson(`${readmodelApiBase()}/thesis/${thesisId}/conviction-timeline`);
 
     if (!data || !Array.isArray(data.points) || !data.points.length) {
       slot.innerHTML = `

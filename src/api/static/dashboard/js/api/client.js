@@ -21,6 +21,15 @@ export function thesisApiBase() {
 }
 
 /**
+ * Base URL cho readmodel endpoints (non-dashboard)
+ * e.g. /thesis/{id}/conviction-timeline, /thesis/{id}/review-timeline
+ * @returns {string}
+ */
+export function readmodelApiBase() {
+  return '/api/v1/readmodel';
+}
+
+/**
  * Base URL cho briefing endpoints
  * @returns {string}
  */
