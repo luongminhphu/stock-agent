@@ -8,17 +8,19 @@ Endpoints:
     GET /market/symbols/{ticker}        — registry metadata only
     GET /market/quote/{ticker}          — live quote via QuoteService (VCI → VNDirect)
     GET /market/ohlcv/{ticker}          — OHLCV candle history (default: last 30 trading days)
+    GET /market/breadth                 — advance/decline/unchanged breadth snapshot
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from src.api.deps import get_ohlcv_service, get_quote_service
-from src.api.dto.market import CandleResponse, QuoteResponse, SymbolInfoResponse
+from src.api.deps import get_breadth_service, get_ohlcv_service, get_quote_service
+from src.api.dto.market import BreadthResponse, CandleResponse, QuoteResponse, SymbolInfoResponse
+from src.market.breadth_service import BreadthService
 from src.market.ohlcv_service import OHLCVService, OHLCVServiceNotConfiguredError
-from src.market.quote_service import QuoteService
-from src.market.registry import SymbolNotFoundError, registry
+from src.market.quote_service import QuoteService, QuoteServiceNotConfiguredError
+from src.market.registry import Exchange, SymbolNotFoundError, registry
 
 router = APIRouter(prefix="/market", tags=["market"])
 
@@ -134,3 +136,57 @@ async def get_ohlcv(
         )
         for c in candles
     ]
+
+
+@router.get("/breadth", response_model=BreadthResponse)
+async def get_market_breadth(
+    exchange: str | None = Query(
+        default=None,
+        description="Exchange scope: HOSE | HNX | UPCOM | ALL (default: ALL)",
+    ),
+    breadth_svc: BreadthService = Depends(get_breadth_service),
+) -> BreadthResponse:
+    """Return advance/decline/unchanged breadth snapshot for the given exchange.
+
+    Uses the symbol registry as the universe — covers VN30 + top liquidity tickers.
+    Label on UI should read \"in registry\" not \"full market\".
+
+    Raises 400 for invalid exchange string.
+    Raises 503 if QuoteService adapter is not configured.
+    Raises 502 on upstream market data error.
+    """
+    ex: Exchange | None = None
+    if exchange:
+        try:
+            ex = Exchange(exchange.upper())
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid exchange '{exchange}'. Valid values: HOSE, HNX, UPCOM.",
+            ) from exc
+
+    try:
+        result = await breadth_svc.get_breadth(ex)
+    except QuoteServiceNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Market data adapter not configured.",
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Market breadth unavailable: {exc}",
+        ) from exc
+
+    return BreadthResponse(
+        exchange=result.exchange,
+        advance=result.advance,
+        decline=result.decline,
+        unchanged=result.unchanged,
+        ceiling=result.ceiling,
+        floor=result.floor,
+        total=result.total,
+        advance_pct=result.advance_pct,
+        decline_pct=result.decline_pct,
+        unchanged_pct=result.unchanged_pct,
+    )

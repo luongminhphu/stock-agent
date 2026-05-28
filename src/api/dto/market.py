@@ -53,3 +53,21 @@ class CandleResponse(BaseModel):
     low: float
     close: float
     volume: int
+
+
+class BreadthResponse(BaseModel):
+    """Market breadth snapshot for a given exchange scope.
+
+    Returned by GET /market/breadth.
+    """
+
+    exchange: str           # "HOSE" | "HNX" | "UPCOM" | "ALL"
+    advance: int            # number of tickers with change > 0
+    decline: int            # number of tickers with change < 0
+    unchanged: int          # number of tickers with change == 0
+    ceiling: int            # tickers at ceiling price (trần)
+    floor: int              # tickers at floor price (sàn)
+    total: int              # total tickers with valid quotes
+    advance_pct: float      # advance / total * 100
+    decline_pct: float      # decline / total * 100
+    unchanged_pct: float    # unchanged / total * 100
