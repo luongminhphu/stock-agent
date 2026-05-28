@@ -124,18 +124,30 @@ class IntelligenceEngineListener:
         # ── Emit IntelligenceEngineCompletedEvent ──────────────────────────
         # P0-A: echo verdict_event_id from EngineVerdict so EngineFeedbackListener
         # can cross-reference feedback submissions back to the originating verdict.
-        # Falls back to a fresh UUID if EngineVerdict does not carry the field.
         echoed_verdict_event_id: str = (
             getattr(verdict, "verdict_event_id", None) or str(uuid.uuid4())
         )
+
+        # P0-C (Option B): populate rich fields from EngineVerdict so
+        # IntelligenceEngineCompletedEvent is self-contained for both
+        # event bus consumers and Discord embed builder.
+        def _to_tuple(val: Any) -> tuple[str, ...]:
+            """Coerce list/tuple/None from EngineVerdict to tuple[str, ...]."""
+            if not val:
+                return ()
+            return tuple(str(v) for v in val)
 
         completed = IntelligenceEngineCompletedEvent(
             verdict=verdict.verdict,
             confidence=verdict.confidence,
             action_required=verdict.verdict not in ("NO_ACTION", "HOLD"),
-            summary=verdict.action,
+            summary=getattr(verdict, "action", "") or "",
             trigger_source=event.trigger_source,
             verdict_event_id=echoed_verdict_event_id,
+            reasoning_summary=getattr(verdict, "reasoning_summary", "") or "",
+            risk_signals=_to_tuple(getattr(verdict, "risk_signals", None)),
+            next_watch_items=_to_tuple(getattr(verdict, "next_watch_items", None)),
+            sources=_to_tuple(getattr(verdict, "sources", None)),
         )
         await self._bus.publish(completed)
 
@@ -145,11 +157,12 @@ class IntelligenceEngineListener:
             confidence=completed.confidence,
             action_required=completed.action_required,
             verdict_event_id=completed.verdict_event_id,
+            risk_signal_count=len(completed.risk_signals),
+            next_watch_count=len(completed.next_watch_items),
         )
 
         # ── Push Discord embed ─────────────────────────────────────────────
-        # P0-C: pass the structured `completed` event so _push_discord has
-        # access to verdict_event_id and correct types for embed builder.
+        # P0-C: pass completed event — fully self-contained, no raw verdict needed.
         await self._push_discord(completed)
 
     async def _push_discord(self, completed: IntelligenceEngineCompletedEvent) -> None:
@@ -164,7 +177,6 @@ class IntelligenceEngineListener:
         verdict_type = completed.verdict.upper()
         confidence = completed.confidence
 
-        # Determine if we should push
         if verdict_type in _SILENT_VERDICTS:
             logger.debug(
                 "intelligence_listener.discord_skip",

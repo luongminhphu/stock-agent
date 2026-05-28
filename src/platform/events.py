@@ -274,12 +274,30 @@ class IntelligenceEngineRequestedEvent(DomainEvent):
 
 @dataclass(frozen=True)
 class IntelligenceEngineCompletedEvent(DomainEvent):
+    """Emitted by IntelligenceEngineListener after a successful engine cycle.
+
+    Carries the full verdict payload needed by both:
+      - downstream event bus consumers (EngineFeedbackListener, future subscribers)
+      - Discord embed builder (build_engine_verdict_embed)
+
+    All rich fields (risk_signals, next_watch_items, reasoning_summary, sources)
+    default to empty — backward-compatible with existing consumers that only
+    read verdict / confidence / action_required / summary.
+
+    verdict_event_id: echoed from EngineVerdict.verdict_event_id so
+    EngineFeedbackSubmittedEvent can cross-reference the originating verdict.
+    """
     verdict: str = "NO_ACTION"
     confidence: float = 0.0
     action_required: bool = False
-    summary: str = ""
+    summary: str = ""                          # EngineVerdict.action
     trigger_source: str = ""
     verdict_event_id: str = field(default_factory=lambda: str(uuid4()))
+    # Rich verdict fields — populated from EngineVerdict by IntelligenceEngineListener
+    reasoning_summary: str = ""               # EngineVerdict.reasoning_summary
+    risk_signals: tuple[str, ...] = field(default_factory=tuple)
+    next_watch_items: tuple[str, ...] = field(default_factory=tuple)
+    sources: tuple[str, ...] = field(default_factory=tuple)
 
 
 # ─── core intelligence feedback ───────────────────────────────────────────
