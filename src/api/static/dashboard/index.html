@@ -20,7 +20,7 @@
       .kpi-strip {
         display: grid;
         grid-template-columns: repeat(5, 1fr);
-        gap: var(--gap, 12px);
+        gap: var(--space-3);
       }
       .kpi-strip .kpi-row-divider {
         grid-column: 1 / -1;
@@ -54,7 +54,7 @@
       .panel-duo {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: var(--gap, 12px);
+        gap: var(--space-3);
         align-items: start;
       }
       @media (max-width: 860px) {
@@ -83,7 +83,7 @@
         list-style: none;
         user-select: none;
         border-bottom: 1px solid transparent;
-        transition: background .15s;
+        transition: background var(--transition-fast);
       }
       .brief-collapsible summary::-webkit-details-marker { display: none; }
       .brief-collapsible summary::after {
@@ -110,10 +110,8 @@
         gap: 2px;
         padding: 0;
         border-bottom: none;
-        /* prevent summary click stealing */
         pointer-events: auto;
       }
-      /* Stop the tab clicks from toggling <details> */
       .brief-tab-bar--inline .brief-tab {
         padding: 4px 11px;
         font-size: .72rem;
@@ -121,19 +119,19 @@
         color: var(--muted);
         background: none;
         border: 1px solid transparent;
-        border-radius: 6px;
+        border-radius: var(--radius-xs);
         cursor: pointer;
         white-space: nowrap;
-        transition: color .15s, background .15s, border-color .15s;
+        transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
         line-height: 1.4;
       }
       .brief-tab-bar--inline .brief-tab:hover {
         color: var(--text);
-        background: rgba(125,211,252,.06);
+        background: var(--brand-bg);
       }
       .brief-tab-bar--inline .brief-tab.active {
         color: var(--brand);
-        background: rgba(125,211,252,.12);
+        background: var(--brand-bg);
         border-color: rgba(125,211,252,.22);
       }
 
@@ -158,7 +156,7 @@
       .memory-grid {
         display: grid;
         grid-template-columns: 1.6fr 1fr 1fr;
-        gap: var(--gap, 12px);
+        gap: var(--space-3);
         align-items: start;
       }
       @media (max-width: 1024px) {
@@ -172,7 +170,7 @@
       /* Memory KPI strip (confidence + episode count) */
       .memory-kpi-strip {
         display: flex;
-        gap: var(--gap, 12px);
+        gap: var(--space-3);
         flex-wrap: wrap;
         margin-bottom: 12px;
       }
@@ -247,8 +245,8 @@
         grid-row: 1 / 3;
         align-self: center;
       }
-      .mem-episode-outcome.pos { color: var(--green, #4ade80); }
-      .mem-episode-outcome.neg { color: var(--red, #f87171); }
+      .mem-episode-outcome.pos { color: var(--success); }
+      .mem-episode-outcome.neg { color: var(--danger); }
       .mem-episode-outcome.pending { color: var(--muted); }
 
       /* Signal chip on episode */
@@ -257,16 +255,16 @@
         align-items: center;
         gap: 4px;
         padding: 2px 7px;
-        border-radius: 20px;
+        border-radius: var(--radius-pill);
         font-size: .67rem;
         font-weight: 700;
         letter-spacing: .03em;
         text-transform: uppercase;
       }
-      .mem-signal-chip.bought  { background: rgba(74,222,128,.12); color: #4ade80; }
-      .mem-signal-chip.sold    { background: rgba(248,113,113,.12); color: #f87171; }
+      .mem-signal-chip.bought  { background: var(--success-bg); color: var(--success); }
+      .mem-signal-chip.sold    { background: var(--danger-bg);  color: var(--danger); }
       .mem-signal-chip.ignored { background: rgba(148,163,184,.10); color: var(--muted); }
-      .mem-signal-chip.flagged { background: rgba(251,191,36,.12); color: #fbbf24; }
+      .mem-signal-chip.flagged { background: var(--warning-bg); color: var(--warning); }
 
       /* Semantic patterns list */
       .mem-pattern-list {
@@ -305,7 +303,7 @@
       .mem-confidence-bar {
         flex: 1;
         height: 4px;
-        background: var(--surface-3, rgba(255,255,255,.06));
+        background: var(--surface-3);
         border-radius: 2px;
         overflow: hidden;
       }
@@ -337,12 +335,12 @@
       .mem-bias-item {
         background: var(--surface-2);
         border: 1px solid var(--line);
-        border-left: 3px solid var(--yellow, #fbbf24);
+        border-left: 3px solid var(--warning);
         border-radius: var(--radius-sm);
         padding: 9px 12px;
       }
       .mem-bias-item.high {
-        border-left-color: var(--red, #f87171);
+        border-left-color: var(--danger);
       }
       .mem-bias-item.low {
         border-left-color: var(--muted);
@@ -371,12 +369,12 @@
         border: 1px solid var(--line);
         border-radius: var(--radius-sm);
         cursor: pointer;
-        transition: color .15s, border-color .15s, background .15s;
+        transition: color var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
       }
       .mem-refresh-btn:hover {
         color: var(--text);
         border-color: var(--brand);
-        background: rgba(125,211,252,.06);
+        background: var(--brand-bg);
       }
 
       /* Memory empty state */
@@ -400,7 +398,7 @@
 
       /* Skeleton shimmer reuse */
       .mem-skel {
-        background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3, rgba(255,255,255,.08)) 50%, var(--surface-2) 75%);
+        background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%);
         background-size: 200% 100%;
         animation: shimmer 1.5s ease-in-out infinite;
         border-radius: 4px;
@@ -423,9 +421,9 @@
       .mem-ep-divider  { color: var(--faint); }
       .mem-ep-verdict  { font-size: .72rem; font-weight: 700; }
       /* ── Verdict color by signal type ── */
-      .mem-ep-verdict--buy     { color: var(--green, #4ade80); }
-      .mem-ep-verdict--sell    { color: var(--red,   #f87171); }
-      .mem-ep-verdict--hold    { color: var(--gold,  #fbbf24); }
+      .mem-ep-verdict--buy     { color: var(--success); }
+      .mem-ep-verdict--sell    { color: var(--danger); }
+      .mem-ep-verdict--hold    { color: var(--warning); }
       .mem-ep-verdict--skip    { color: var(--muted); }
       .mem-ep-verdict--neutral { color: var(--muted); }
       .mem-ep-conf-tag { font-size: .68rem; color: var(--muted); }
@@ -438,8 +436,8 @@
         max-width: 180px;
       }
       .mem-ep-outcome  { font-size: .75rem; font-weight: 700; font-variant-numeric: tabular-nums; }
-      .mem-ep-outcome.pos { color: var(--green, #4ade80); }
-      .mem-ep-outcome.neg { color: var(--red, #f87171); }
+      .mem-ep-outcome.pos { color: var(--success); }
+      .mem-ep-outcome.neg { color: var(--danger); }
       .mem-ep-date     { font-size: .68rem; color: var(--muted); white-space: nowrap; margin-left: 2px; }
       .mem-ep-icon     { font-size: .9rem; flex-shrink: 0; }
     </style>
@@ -554,8 +552,9 @@
             aria-label="Phân bổ tier thesis"
           ></div>
 
-          <div id="marketBreadthBar" class="hidden" aria-label="Market breadth HOSE"></div>
-          
+          <!-- ── 3b. MARKET BREADTH BAR ──────────────────────────────────────── -->
+          <div id="marketBreadthBar" class="market-breadth-bar hidden" aria-label="Market breadth HOSE"></div>
+
           <!-- ── 4. SIGNALS FEED ─────────────────────────────────────────────── -->
           <div
             id="signalsFeed"
@@ -693,7 +692,7 @@
                   <select id="statusFilter" aria-label="Lọc thesis theo trạng thái">
                     <option value="active">active</option>
                     <option value="all">all</option>
-                    <option value="invalidated">invalidated</option>
+                    name<option value="invalidated">invalidated</option>
                     <option value="closed">closed</option>
                     <option value="paused">paused</option>
                   </select>
