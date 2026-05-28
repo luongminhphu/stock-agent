@@ -26,7 +26,7 @@ Quy tắc chung:
 - ĐÚNG: "NVL tăng 5.4%, MSR giảm 5.9%, HCM và TCX cùng tăng nhẹ."
 - SAI: viết tên mã trên một dòng riêng rồi mới tiếp tục câu văn ở dòng tiếp theo.
 
-⚡ QUY TẮC prioritized_actions (bắt buộc điền khi có watchlist):
+⚡ QUY TẮc prioritized_actions (bắt buộc điền khi có watchlist):
 - ACT_TODAY: ticker đang approach stop_loss trong thesis, catalyst sắp triggered 1-3 ngày,
   signal conflict với thesis hiện tại, hoặc market sentiment đảo chiều mạnh.
 - WATCH_MORE: thesis còn valid nhưng cần 1-2 phiên xác nhận, volume chưa đủ,
@@ -96,6 +96,7 @@ def build_morning_prompt(
     past_lessons: str = "",
     investor_profile: str = "",
     feedback_summary: str = "",
+    agenda_context: str = "",
 ) -> str:
     """Build morning brief prompt.
 
@@ -113,6 +114,9 @@ def build_morning_prompt(
         feedback_summary:  Optional feedback calibration string from
             BriefingService._build_feedback_context(). When provided, AI
             adjusts action count and specificity based on acted_rate.
+        agenda_context:    Optional pre-built daily agenda string from
+            AgendaBuilderScheduler (decide/watch/defer buckets). When
+            provided, AI uses agenda priority to order prioritized_actions.
     """
     ticker_str = ", ".join(watchlist_tickers) if watchlist_tickers else "(không có watchlist)"
     prompt = f"""[MORNING BRIEF — Phiên hôm nay]
@@ -122,6 +126,9 @@ Dữ liệu thị trường:
 
 Watchlist cần theo dõi: {ticker_str}
 """
+    if agenda_context:
+        prompt += f"\nDaily Agenda (AI đã phân loại trước):\n{agenda_context}\n"
+
     if investor_profile:
         prompt += f"\n{investor_profile}\n"
 
@@ -146,6 +153,13 @@ Watchlist cần theo dõi: {ticker_str}
         " Với mỗi ticker, dùng dữ liệu giá từ phần 'Dữ liệu thị trường' ở trên."
         " Nếu không có giá, đặt price=0, change_pct=0 và ghi rõ trong one_line là thiếu dữ liệu."
     )
+    if agenda_context:
+        prompt += (
+            " Ưu tiên thứ tự prioritized_actions theo Daily Agenda:"
+            " ticker trong bucket 'decide' → ưu tiên ACT_TODAY;"
+            " ticker trong 'watch' → WATCH_MORE trừ khi có dấu hiệu đảo chiều mạnh;"
+            " ticker trong 'defer' → SKIP_TODAY."
+        )
     if investor_profile:
         prompt += (
             " Dùng INVESTOR PROFILE để lọc và cá nhân hóa prioritized_actions:"
