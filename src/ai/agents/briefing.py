@@ -183,6 +183,7 @@ class BriefingAgent:
         past_lessons: str = "",
         investor_profile: str = "",
         feedback_summary: str = "",
+        agenda_context: str = "",
         # Portfolio risk narrator params (optional, backward-compat)
         portfolio_note: PortfolioRiskNote | None = None,
         ranked_signals: list[RankedSignal] | None = None,
@@ -211,6 +212,10 @@ class BriefingAgent:
             feedback_summary:  Optional feedback calibration string. Same semantics
                                as morning_brief — adjusts action specificity only,
                                never overrides investor_profile constraints.
+            agenda_context:    Optional pre-built daily agenda string from
+                               AgendaBuilderScheduler (decide/watch/defer buckets).
+                               When provided, the AI uses agenda outcome to
+                               personalise EOD review against what was planned.
             portfolio_note:    Optional PortfolioRiskNote. Same semantics as
                                morning_brief — triggers narrator when provided.
             ranked_signals:    Optional top signals for narrator context.
@@ -229,6 +234,7 @@ class BriefingAgent:
             past_lessons=past_lessons,
             investor_profile=investor_profile,
             feedback_summary=feedback_summary,
+            agenda_context=agenda_context,
         )
         logger.debug(
             "briefing_agent.eod_brief.calling_ai",
@@ -238,6 +244,7 @@ class BriefingAgent:
             has_lessons=bool(past_lessons),
             has_investor_profile=bool(investor_profile),
             has_feedback_summary=bool(feedback_summary),
+            has_agenda_context=bool(agenda_context),
             has_portfolio_note=bool(portfolio_note),
         )
         result: BriefOutput = await self._client.chat(
