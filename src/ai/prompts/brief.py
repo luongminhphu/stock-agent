@@ -26,7 +26,7 @@ Quy tắc chung:
 - ĐÚNG: "NVL tăng 5.4%, MSR giảm 5.9%, HCM và TCX cùng tăng nhẹ."
 - SAI: viết tên mã trên một dòng riêng rồi mới tiếp tục câu văn ở dòng tiếp theo.
 
-⚡ QUY TẮc prioritized_actions (bắt buộc điền khi có watchlist):
+⚡ QUY TẮC prioritized_actions (bắt buộc điền khi có watchlist):
 - ACT_TODAY: ticker đang approach stop_loss trong thesis, catalyst sắp triggered 1-3 ngày,
   signal conflict với thesis hiện tại, hoặc market sentiment đảo chiều mạnh.
 - WATCH_MORE: thesis còn valid nhưng cần 1-2 phiên xác nhận, volume chưa đủ,
@@ -156,9 +156,10 @@ Watchlist cần theo dõi: {ticker_str}
     if agenda_context:
         prompt += (
             " Ưu tiên thứ tự prioritized_actions theo Daily Agenda:"
-            " ticker trong bucket 'decide' → ưu tiên ACT_TODAY;"
+            " ticker trong bucket 'decide' → ưu tiên ACT_TODAY và bắt buộc có ít nhất 1 prioritized_actions entry riêng cho MỖI ticker trong bucket này;"
             " ticker trong 'watch' → WATCH_MORE trừ khi có dấu hiệu đảo chiều mạnh;"
-            " ticker trong 'defer' → SKIP_TODAY."
+            " ticker trong 'defer' → SKIP_TODAY trừ khi có thông tin mới cực kỳ quan trọng."
+            " Câu đầu tiên của summary phải tóm tắt trọng tâm xoay quanh các ticker trong bucket 'decide'."
         )
     if investor_profile:
         prompt += (
@@ -263,6 +264,7 @@ Watchlist cần review: {ticker_str}
             " ticker trong bucket 'decide' — quyết định đã được thực hiện chưa, kết quả thế nào;"
             " ticker trong 'watch' — tín hiệu đã xuất hiện chưa;"
             " ticker trong 'defer' — có gì thay đổi không. Dùng để cá nhân hóa watch_reason."
+            " Nếu bất kỳ ticker trong bucket 'decide' nào chưa được hành động, nêu rõ trong summary và đề xuất hành động cụ thể cho phiên tới."
         )
     if investor_profile:
         prompt += (
