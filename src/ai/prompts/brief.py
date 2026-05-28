@@ -200,6 +200,7 @@ def build_eod_prompt(
     past_lessons: str = "",
     investor_profile: str = "",
     feedback_summary: str = "",
+    agenda_context: str = "",
 ) -> str:
     """Build EOD brief prompt.
 
@@ -216,6 +217,10 @@ def build_eod_prompt(
         investor_profile:  Optional pre-rendered investor profile block.
         feedback_summary:  Optional feedback calibration string. Same semantics
                            as morning prompt — adjusts action specificity only.
+        agenda_context:    Optional pre-built daily agenda string from
+                           AgendaBuilderScheduler (decide/watch/defer buckets).
+                           When provided, AI uses agenda outcome to review
+                           what was planned vs what happened in the session.
     """
     ticker_str = ", ".join(watchlist_tickers) if watchlist_tickers else "(không có watchlist)"
     prompt = f"""[EOD BRIEF — Tổng kết phiên]
@@ -225,6 +230,9 @@ Diễn biến phiên hôm nay:
 
 Watchlist cần review: {ticker_str}
 """
+    if agenda_context:
+        prompt += f"\nDaily Agenda sáng nay (so sánh kế hoạch vs thực tế):\n{agenda_context}\n"
+
     if investor_profile:
         prompt += f"\n{investor_profile}\n"
 
@@ -249,6 +257,13 @@ Watchlist cần review: {ticker_str}
         " Tổng kết hiệu suất từng mã trong phiên: giá đóng cửa, % thay đổi, tín hiệu kỹ thuật."
         " watch_reason là điểm cần chú ý cho phiên TIẾP THEO."
     )
+    if agenda_context:
+        prompt += (
+            " So sánh kết quả phiên với Daily Agenda sáng nay:"
+            " ticker trong bucket 'decide' — quyết định đã được thực hiện chưa, kết quả thế nào;"
+            " ticker trong 'watch' — tín hiệu đã xuất hiện chưa;"
+            " ticker trong 'defer' — có gì thay đổi không. Dùng để cá nhân hóa watch_reason."
+        )
     if investor_profile:
         prompt += (
             " Dùng INVESTOR PROFILE để lọc và cá nhân hóa prioritized_actions:"
