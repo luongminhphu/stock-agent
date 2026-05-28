@@ -1,108 +1,131 @@
-"""GlobalRiskStore — in-memory read store for latest IntelligenceEngine verdict.
+"""GlobalRiskStore — in-memory read model for latest EngineVerdict per user.
 
 Owner: readmodel segment.
-Purpose: provide zero-latency access to the most recent IE verdict so that
-         BriefingService and WatchlistScanService can inject engine context
-         without issuing a DB query at call time.
+
+Stores the most-recent IntelligenceEngine verdict per user_id so that
+downstream capabilities (briefing, thesis, watchlist) can read flagged
+tickers without a DB round-trip.
 
 Design:
-  - Pure in-memory singleton; no DB, no async I/O.
-  - Updated exactly once per IE run by GlobalRiskSubscriber.
-  - Thread/task-safe for reads: replaces the entire snapshot atomically.
-  - TTL: if last update is older than STALE_HOURS the store self-reports as
-    stale so callers can decide whether to trust the cached data.
+- Singleton via module-level _store dict — no external dependency.
+- TTL: 4h. Entries older than TTL are treated as absent (safe default).
+- get_flagged_tickers() returns set[str] — empty set when no fresh verdict.
+- Thread-safe via asyncio single-threaded assumption (no lock needed for
+  standard asyncio event loop).
 
-Usage::
-
-    store = GlobalRiskStore.instance()
-    snap  = store.latest()          # GlobalRiskSnapshot | None
-    if snap and not store.is_stale():
-        flagged = snap.flagged_tickers
+Interface consumed by:
+  GlobalRiskSubscriber   → update(user_id, verdict)
+  BriefingService        → get_flagged_tickers(user_id)   (Commit 3)
+  ScanService            → get_flagged_tickers(user_id)   (Commit 4)
+  ThesisReviewService    → get_flagged_tickers(user_id)   (Commit 5)
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Snapshots older than this are considered stale by is_stale().
-_STALE_HOURS = 10
+_TTL_HOURS = 4
+_TTL = timedelta(hours=_TTL_HOURS)
 
 
-@dataclass(frozen=True)
-class GlobalRiskSnapshot:
-    """Immutable projection of the last IntelligenceEngine verdict."""
+@dataclass
+class _RiskEntry:
+    verdict: Any  # EngineVerdict — kept as Any to avoid circular import
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
-    flagged_tickers: list[str]          # tickers IE flagged as high-attention
-    risk_level: str                     # e.g. "high" | "medium" | "low"
-    market_bias: str                    # e.g. "bearish" | "neutral" | "bullish"
-    confidence: float                   # 0.0 – 1.0
-    summary: str                        # short narrative from verdict
-    action_items: list[str]             # IE-suggested actions
-    captured_at: datetime = field(default_factory=lambda: datetime.now(tz=timezone.utc))
-
-    # Optional passthrough fields from EngineVerdict for downstream use
-    raw_verdict: dict[str, Any] = field(default_factory=dict)
+    def is_fresh(self) -> bool:
+        return (datetime.now(UTC) - self.updated_at) < _TTL
 
 
 class GlobalRiskStore:
-    """Singleton in-memory store for the latest GlobalRiskSnapshot.
+    """In-memory store for the latest EngineVerdict per user.
 
-    Call GlobalRiskStore.instance() to obtain the singleton.
+    Usage::
+
+        store = get_global_risk_store()
+        store.update(user_id, verdict)
+        flagged = store.get_flagged_tickers(user_id)  # set[str]
     """
 
-    _instance: GlobalRiskStore | None = None
-
     def __init__(self) -> None:
-        self._snapshot: GlobalRiskSnapshot | None = None
+        self._entries: dict[str, _RiskEntry] = {}
 
-    # ── singleton ─────────────────────────────────────────────────────────
-
-    @classmethod
-    def instance(cls) -> "GlobalRiskStore":
-        if cls._instance is None:
-            cls._instance = cls()
-        return cls._instance
-
-    # ── write ─────────────────────────────────────────────────────────────
-
-    def update(self, snapshot: GlobalRiskSnapshot) -> None:
-        """Replace the current snapshot.  Called by GlobalRiskSubscriber."""
-        self._snapshot = snapshot
+    def update(self, user_id: str, verdict: Any) -> None:
+        """Persist a new EngineVerdict for user_id, replacing any prior entry."""
+        self._entries[user_id] = _RiskEntry(verdict=verdict)
+        flagged = self._extract_flagged(verdict)
         logger.info(
             "global_risk_store.updated",
-            risk_level=snapshot.risk_level,
-            market_bias=snapshot.market_bias,
-            confidence=round(snapshot.confidence, 2),
-            flagged_count=len(snapshot.flagged_tickers),
-            flagged_tickers=snapshot.flagged_tickers[:10],
+            user_id=user_id,
+            flagged_count=len(flagged),
+            flagged_tickers=sorted(flagged),
         )
 
-    # ── read ──────────────────────────────────────────────────────────────
+    def get_flagged_tickers(self, user_id: str) -> set[str]:
+        """Return set of tickers flagged as high-risk in the latest fresh verdict.
 
-    def latest(self) -> GlobalRiskSnapshot | None:
-        """Return the latest snapshot, or None if never populated."""
-        return self._snapshot
+        Returns empty set when:
+        - No verdict stored for user_id.
+        - Verdict is stale (older than TTL of 4h).
+        - Verdict has no risk_tickers / flagged_tickers field.
+        """
+        entry = self._entries.get(user_id)
+        if entry is None or not entry.is_fresh():
+            return set()
+        return self._extract_flagged(entry.verdict)
 
-    def is_stale(self, stale_hours: int = _STALE_HOURS) -> bool:
-        """Return True if the snapshot is absent or older than *stale_hours*."""
-        if self._snapshot is None:
-            return True
-        age = datetime.now(tz=timezone.utc) - self._snapshot.captured_at
-        return age > timedelta(hours=stale_hours)
+    def get_verdict(self, user_id: str) -> Any | None:
+        """Return raw EngineVerdict if fresh, else None."""
+        entry = self._entries.get(user_id)
+        if entry is None or not entry.is_fresh():
+            return None
+        return entry.verdict
 
-    def flagged_tickers(self) -> list[str]:
-        """Convenience: return flagged tickers, or empty list when stale/absent."""
-        if self._snapshot is None or self.is_stale():
-            return []
-        return list(self._snapshot.flagged_tickers)
+    def clear(self, user_id: str) -> None:
+        """Remove stored entry for user_id (useful in tests)."""
+        self._entries.pop(user_id, None)
 
-    def risk_level(self) -> str:
-        """Convenience: return risk level string, default 'unknown' when absent."""
-        if self._snapshot is None:
-            return "unknown"
-        return self._snapshot.risk_level
+    @staticmethod
+    def _extract_flagged(verdict: Any) -> set[str]:
+        """Extract flagged ticker set from an EngineVerdict.
+
+        Supports two common field names used by EngineVerdict:
+        - risk_tickers: list[str]  (primary)
+        - flagged_tickers: list[str]  (fallback)
+        - top_signals: list with .ticker attr  (fallback)
+
+        Returns empty set when none found or verdict is None.
+        """
+        if verdict is None:
+            return set()
+        # Primary: explicit risk_tickers field
+        risk = getattr(verdict, "risk_tickers", None)
+        if risk:
+            return {t.upper() for t in risk if t}
+        # Fallback: flagged_tickers
+        flagged = getattr(verdict, "flagged_tickers", None)
+        if flagged:
+            return {t.upper() for t in flagged if t}
+        # Fallback: top_signals with ticker attr
+        signals = getattr(verdict, "top_signals", None)
+        if signals:
+            return {s.ticker.upper() for s in signals if getattr(s, "ticker", None)}
+        return set()
+
+
+# Module-level singleton
+_instance: GlobalRiskStore | None = None
+
+
+def get_global_risk_store() -> GlobalRiskStore:
+    """Return the module-level GlobalRiskStore singleton."""
+    global _instance
+    if _instance is None:
+        _instance = GlobalRiskStore()
+    return _instance
