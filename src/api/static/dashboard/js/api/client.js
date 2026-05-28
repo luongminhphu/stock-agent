@@ -37,6 +37,14 @@ export function memoryApiBase() {
 }
 
 /**
+ * Base URL cho market endpoints
+ * @returns {string}
+ */
+export function marketApiBase() {
+  return '/api/v1/market';
+}
+
+/**
  * Headers mặc định cho mọi request
  * @returns {Record<string, string>}
  */
