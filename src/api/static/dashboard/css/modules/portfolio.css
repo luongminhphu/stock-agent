@@ -195,3 +195,128 @@ td.cell-missing {
 .portfolio-pane .data-table td:not([class]) {
   text-align: left;
 }
+
+/* ─── Exposure Bar — Ticker Concentration (Gap 2, Option A) ──────────────
+   Owner: modules/portfolio
+   Classes:
+     .exposure-bar-block      — wrapper toàn bộ block
+     .exposure-bar-header     — row label + warn chip
+     .exposure-label          — "Concentration" text label
+     .exposure-warn-chip      — cảnh báo over-concentrated
+     .exposure-bar-track      — thanh ngang chứa các segments
+     .exposure-segment        — 1 ticker segment, width = % market value
+     .exposure-legend         — row các legend items
+     .exposure-legend-item    — 1 item (dot + ticker + %)
+     .exposure-legend-warn    — item bị over-concentrated (bold + màu cảnh báo)
+     .exposure-dot            — màu tròn nhỏ trước ticker
+     .exposure-ticker         — tên ticker
+     .exposure-pct            — % giá trị
+──────────────────────────────────────────────────────────────────────────── */
+
+.exposure-bar-block {
+  margin-bottom: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2, rgba(255,255,255,0.03));
+  border: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.exposure-bar-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.exposure-label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.exposure-warn-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.28);
+  color: var(--warning);
+  font-size: var(--text-2xs, 10px);
+  font-weight: 600;
+  cursor: help;
+  white-space: nowrap;
+}
+
+.exposure-bar-track {
+  display: flex;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  gap: 2px;
+  background: rgba(148, 163, 184, 0.08);
+  margin-bottom: var(--space-2);
+}
+
+.exposure-segment {
+  height: 100%;
+  border-radius: 2px;
+  flex-shrink: 0;
+  min-width: 4px;
+  transition: opacity 150ms ease;
+  cursor: pointer;
+}
+
+.exposure-segment:hover {
+  opacity: 0.75;
+}
+
+.exposure-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+}
+
+.exposure-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.exposure-legend-warn .exposure-ticker,
+.exposure-legend-warn .exposure-pct {
+  color: var(--warning);
+  font-weight: 700;
+}
+
+.exposure-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.exposure-ticker {
+  font-weight: 600;
+  color: var(--text);
+  font-size: var(--text-xs);
+}
+
+.exposure-pct {
+  font-size: var(--text-2xs, 10px);
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .exposure-segment {
+    transition: none;
+  }
+}
