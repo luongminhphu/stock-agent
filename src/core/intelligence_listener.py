@@ -6,7 +6,7 @@ Owner: core segment.
 Consumed event : IntelligenceEngineRequestedEvent
 Emitted event  : IntelligenceEngineCompletedEvent
 Side-effect    : Pushes Discord embed to alert_channel when verdict is
-                 actionable (confidence >= threshold and verdict != NO_ACTION).
+                 actionable (confidence >= threshold and verdict != NO_ACTION/HOLD).
 
 Wave 3 change:
     Passes event.signal_engine_summary into engine.run_cycle() so the
@@ -23,6 +23,7 @@ Boot: call IntelligenceEngineListener(...).register() in platform bootstrap.
 """
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 from src.core import engine
@@ -39,8 +40,9 @@ logger = get_logger(__name__)
 _ALWAYS_NOTIFY = {"RISK_ALERT", "SELL_SIGNAL"}
 # Verdicts that are pushed only when confidence >= threshold
 _NOTIFY_THRESHOLD = 0.65
-# Verdicts that are silently skipped (no Discord push)
-_SILENT_VERDICTS = {"NO_ACTION"}
+# Verdicts that are silently skipped (no Discord push).
+# HOLD is included: action_required=False makes a HOLD embed misleading.
+_SILENT_VERDICTS = {"NO_ACTION", "HOLD"}
 
 
 class IntelligenceEngineListener:
@@ -120,37 +122,47 @@ class IntelligenceEngineListener:
             return
 
         # ── Emit IntelligenceEngineCompletedEvent ──────────────────────────
+        # P0-A: echo verdict_event_id from EngineVerdict so EngineFeedbackListener
+        # can cross-reference feedback submissions back to the originating verdict.
+        # Falls back to a fresh UUID if EngineVerdict does not carry the field.
+        echoed_verdict_event_id: str = (
+            getattr(verdict, "verdict_event_id", None) or str(uuid.uuid4())
+        )
+
         completed = IntelligenceEngineCompletedEvent(
             verdict=verdict.verdict,
             confidence=verdict.confidence,
             action_required=verdict.verdict not in ("NO_ACTION", "HOLD"),
             summary=verdict.action,
             trigger_source=event.trigger_source,
+            verdict_event_id=echoed_verdict_event_id,
         )
         await self._bus.publish(completed)
 
         logger.info(
             "intelligence_listener.completed_emitted",
-            verdict=verdict.verdict,
-            confidence=verdict.confidence,
+            verdict=completed.verdict,
+            confidence=completed.confidence,
             action_required=completed.action_required,
             verdict_event_id=completed.verdict_event_id,
         )
 
         # ── Push Discord embed ─────────────────────────────────────────────
-        await self._push_discord(verdict)
+        # P0-C: pass the structured `completed` event so _push_discord has
+        # access to verdict_event_id and correct types for embed builder.
+        await self._push_discord(completed)
 
-    async def _push_discord(self, verdict: Any) -> None:
+    async def _push_discord(self, completed: IntelligenceEngineCompletedEvent) -> None:
         """Push engine verdict embed to Discord alert channel.
 
         Skipped when:
         - No Discord client injected (.set_client not called)
         - No channel_id configured
-        - Verdict is NO_ACTION
+        - Verdict is in _SILENT_VERDICTS (NO_ACTION, HOLD)
         - Verdict is not RISK_ALERT/SELL_SIGNAL and confidence < threshold
         """
-        verdict_type = str(getattr(verdict, "verdict", "NO_ACTION")).upper()
-        confidence = float(getattr(verdict, "confidence", 0.0))
+        verdict_type = completed.verdict.upper()
+        confidence = completed.confidence
 
         # Determine if we should push
         if verdict_type in _SILENT_VERDICTS:
@@ -199,13 +211,14 @@ class IntelligenceEngineListener:
 
         try:
             from src.bot.discord_helper import build_engine_verdict_embed, safe_send
-            embed = build_engine_verdict_embed(verdict)
+            embed = build_engine_verdict_embed(completed)
             await safe_send(channel, embed=embed)
             logger.info(
                 "intelligence_listener.discord_sent",
                 verdict=verdict_type,
                 confidence=confidence,
                 channel_id=channel_id,
+                verdict_event_id=completed.verdict_event_id,
             )
         except Exception as exc:  # noqa: BLE001
             logger.error(
