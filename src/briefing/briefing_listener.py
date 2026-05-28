@@ -28,6 +28,12 @@ P1.5 (Unify scheduler + slash command experience):
   đọc cùng một Daily Agenda block cho /morning_brief và /eod_brief.
 - Đây vẫn là join ở tầng trình bày; contract của BriefingService và
   BriefingAgent không thay đổi.
+
+Wave B.1 (AgendaBuckets → BriefingService):
+- DailyAgendaCompletedEvent được map thành AgendaBuckets(decide/watch/defer)
+  và lưu kèm summary trong CachedAgenda.
+- BriefingService có thể đọc lại buckets để enforce mapping DECIDE → ACT_TODAY
+  ở tầng domain-level, độc lập với LLM prompt.
 """
 from __future__ import annotations
 
@@ -36,7 +42,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import discord
 
-from src.briefing.agenda_cache import get_agenda, set_agenda
+from src.briefing.agenda_cache import AgendaBuckets, get_agenda, set_agenda
 from src.platform.event_bus import get_event_bus
 from src.platform.events import (
     BriefingReadyEvent,
@@ -84,11 +90,12 @@ class BriefingListener:
         )
 
     async def _handle_agenda(self, event: DailyAgendaCompletedEvent) -> None:
-        """Cache a compact agenda summary string for the given user.
+        """Cache a compact agenda summary string + structured buckets for the user.
 
         Uses only the event payload (no DB/AI calls) so this handler is cheap
         and safe to run before Morning Brief. The cached block is later
-        prepended to the brief embed description for visual cohesion.
+        prepended to the brief embed description for visual cohesion, while
+        buckets are consumed by BriefingService for domain-level DECIDE mapping.
         """
         try:
             # Basic guard: if there is literally nothing, clear cache and return.
@@ -126,7 +133,15 @@ class BriefingListener:
                 lines.append(f"Summary: {event.opening_line}")
 
             summary = "\n".join(lines)
-            set_agenda(event.user_id, summary)
+
+            # Wave B.1: build AgendaBuckets best-effort from event payload.
+            buckets = AgendaBuckets(
+                decide=list(event.decide_tickers or []),
+                watch=list(event.watch_tickers or []),
+                defer=[],  # defer tickers chưa có trong event schema P1
+            )
+
+            set_agenda(event.user_id, summary, buckets=buckets)
 
             logger.info(
                 "briefing_listener.agenda_cached",
@@ -217,14 +232,14 @@ class BriefingListener:
             embed = build_brief_embed(brief_result.output, phase=phase)
 
             # P1/P1.5: prepend cached agenda summary to embed description when available.
-            agenda_block = get_agenda(self._user_id)
-            if agenda_block:
+            cached = get_agenda(self._user_id)
+            if cached is not None and cached.summary:
                 original_desc = embed.description or ""
                 # Avoid duplicate blank lines when original_desc is empty.
                 if original_desc:
-                    embed.description = f"{agenda_block}\n\n{original_desc}"
+                    embed.description = f"{cached.summary}\n\n{original_desc}"
                 else:
-                    embed.description = agenda_block
+                    embed.description = cached.summary
 
             await channel.send(embed=embed)  # type: ignore[union-attr]
             logger.info(

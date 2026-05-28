@@ -92,13 +92,6 @@ B2 fix:
   no early-exit occurred). _build_market_context_with_judge propagates the
   tuple; _collect_contexts unpacks it into thesis_judge_ran.
 
-Wave 1 fixes:
-  - record_feedback(): outcome validated against BriefFeedbackOutcome.VALID_OUTCOMES
-    before DB insert; invalid values are rejected with a warning log (non-raising).
-  - _build_market_context(): q.close accessed via getattr with .price fallback
-    to guard against quote struct mismatch between B1 pre-fetched path and
-    get_bulk_quotes() path. change_pct and volume also use getattr consistently.
-
 PortfolioRiskNarrator (Wave 3):
   When portfolio_risk_narrator is injected, _run_portfolio_risk_narrator() is
   called after BriefingAgent returns. It builds PortfolioRiskNarratorContext
@@ -166,6 +159,13 @@ Wave B — Agenda context injection:
   the ContextBuilder dedup rule and always attempted when session is set.
   Exposed as ctx["agenda_context"] key; logged as has_agenda_context in
   both generate_morning_brief and generate_eod_brief entry points.
+
+Wave B.1 — AgendaBuckets domain enforcement:
+  When AgendaBuckets are available (cached by BriefingListener from
+  DailyAgendaCompletedEvent), BriefingService enforces a minimal mapping
+  DECIDE → ACT_TODAY on BriefOutput.prioritized_actions at domain level.
+  This ensures mỗi mã trong DECIDE đều có ít nhất một action ACT_TODAY hoặc
+  được nâng cấp từ WATCH_MORE → ACT_TODAY, độc lập với LLM prompt.
 """
 
 from __future__ import annotations
@@ -181,6 +181,7 @@ from src.ai.agents.briefing import BriefingAgent
 from src.ai.agents.thesis_judge import ThesisJudgeAgent
 from src.ai.context_builder import ContextBuilder, render_for_agent
 from src.ai.schemas import BriefOutput
+from src.briefing.agenda_cache import AgendaBuckets, get_agenda
 from src.briefing.models import BriefFeedback, BriefFeedbackOutcome, BriefSnapshot
 from src.briefing.repository import BriefSnapshotRepository
 from src.market.registry import registry as symbol_registry
@@ -320,6 +321,8 @@ class BriefingService:
             feedback_summary=ctx["feedback_summary"],
             agenda_context=ctx["agenda_context"],
         )
+        # Wave B.1: enforce DECIDE bucket → ACT_TODAY mapping when AgendaBuckets are available.
+        result = self._enforce_agenda_mapping(user_id=user_id, result=result)
         # Wire PortfolioRiskNarratorAgent — attaches to result.portfolio_narrative
         result = await self._run_portfolio_risk_narrator(user_id=user_id, result=result, ctx=ctx)
         # Wire NextActionSuggester — attaches to result.next_action_plan
@@ -370,6 +373,8 @@ class BriefingService:
             feedback_summary=ctx["feedback_summary"],
             agenda_context=ctx["agenda_context"],
         )
+        # Wave B.1: enforce DECIDE bucket → ACT_TODAY mapping when AgendaBuckets are available.
+        result = self._enforce_agenda_mapping(user_id=user_id, result=result)
         # Wire PortfolioRiskNarratorAgent — attaches to result.portfolio_narrative
         result = await self._run_portfolio_risk_narrator(user_id=user_id, result=result, ctx=ctx)
         # Wire NextActionSuggester — attaches to result.next_action_plan
@@ -393,69 +398,90 @@ class BriefingService:
         )
         return BriefResult(output=result, snapshot_id=snapshot_id)
 
-    async def record_feedback(
-        self,
-        brief_snapshot_id: int,
-        user_id: str,
-        outcome: str,
-    ) -> None:
-        """Persist a user feedback row for a brief snapshot.
+    def _enforce_agenda_mapping(self, user_id: str, result: BriefOutput) -> BriefOutput:
+        """Domain-level enforcement of DECIDE → ACT_TODAY mapping.
 
-        outcome must be one of BriefFeedbackOutcome.VALID_OUTCOMES:
-        "acted" | "watching" | "skipped".
-        Invalid values are rejected with a warning log and early return —
-        non-raising so Discord interaction handlers are never blocked.
-        Append-only — does not overwrite previous feedback rows.
-        DB errors are logged and swallowed.
+        When AgendaBuckets are available for the user (cached by
+        BriefingListener from DailyAgendaCompletedEvent), enforce that every
+        DECIDE ticker has at least one ACT_TODAY prioritized_action.
+
+        Strategy:
+          1) Resolve AgendaBuckets for user_id from agenda_cache.
+          2) For each DECIDE ticker:
+             - If đã có ACT_TODAY action → giữ nguyên.
+             - Else nếu có WATCH_MORE / SKIP_TODAY → nâng priority lên ACT_TODAY
+               và bổ sung rationale nếu còn trống.
+             - Else (không có action nào cho ticker đó) → append action mới
+               ACT_TODAY với rationale generic, confidence=0.7.
+
+        Non-blocking: on any error or missing cache, returns result unchanged.
+        BriefOutput.action_queue will be rebuilt by Pydantic model_validator on
+        next instantiation; callers that rely on the existing instance will
+        still see a consistent prioritized_actions list.
         """
-        if self._session is None:
-            logger.warning(
-                "briefing.record_feedback.no_session",
-                brief_snapshot_id=brief_snapshot_id,
-                user_id=user_id,
-                outcome=outcome,
-            )
-            return
-
-        # Wave 1: validate outcome before touching the DB.
-        if outcome not in BriefFeedbackOutcome.VALID_OUTCOMES:
-            logger.warning(
-                "briefing.record_feedback.invalid_outcome",
-                brief_snapshot_id=brief_snapshot_id,
-                user_id=user_id,
-                outcome=outcome,
-                valid_outcomes=sorted(BriefFeedbackOutcome.VALID_OUTCOMES),
-            )
-            return
-
         try:
-            feedback = BriefFeedback(
-                brief_snapshot_id=brief_snapshot_id,
+            cached = get_agenda(user_id)
+            if cached is None or cached.buckets is None:
+                return result
+
+            buckets: AgendaBuckets = cached.buckets
+            if not buckets.decide:
+                return result
+
+            from src.ai.schemas.briefing import ActionPriority, PrioritizedAction
+
+            actions = list(result.prioritized_actions or [])
+            if not actions:
+                actions = []
+
+            decide_set = {t.strip().upper() for t in buckets.decide if t}
+            if not decide_set:
+                return result
+
+            covered: set[str] = set()
+            for a in actions:
+                if not a.ticker:
+                    continue
+                t = a.ticker.upper()
+                if t in decide_set and a.priority == ActionPriority.ACT_TODAY:
+                    covered.add(t)
+
+            for ticker in decide_set - covered:
+                # Prefer upgrading an existing action for this ticker.
+                candidate = next(
+                    (a for a in actions if a.ticker and a.ticker.upper() == ticker),
+                    None,
+                )
+                if candidate is not None:
+                    if candidate.priority != ActionPriority.ACT_TODAY:
+                        candidate.priority = ActionPriority.ACT_TODAY
+                    if not candidate.rationale:
+                        candidate.rationale = (
+                            "Trong bucket DECIDE của Daily Agenda — cần quyết định trong phiên hôm nay."
+                        )
+                    candidate.confidence = max(candidate.confidence or 0.6, 0.7)
+                    continue
+
+                # No existing action → append a new ACT_TODAY action.
+                actions.append(
+                    PrioritizedAction(
+                        ticker=ticker,
+                        priority=ActionPriority.ACT_TODAY,
+                        action="Xem lại thesis và quyết định hành động trong phiên hôm nay.",
+                        rationale="Trong bucket DECIDE của Daily Agenda — cần ưu tiên xử lý hôm nay.",
+                        confidence=0.7,
+                    )
+                )
+
+            result.prioritized_actions = actions
+            return result
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "briefing.enforce_agenda_mapping_failed",
                 user_id=user_id,
-                outcome=outcome,
-            )
-            self._session.add(feedback)
-            await self._session.flush()
-            # Do NOT call self._session.commit() here — session is injected
-            # by the caller (FastAPI dependency / bot handler) which owns the
-            # transaction lifecycle. Calling commit() on an injected session
-            # would prematurely commit unrelated pending work from the outer
-            # request scope. Callers must commit after this method returns.
-            logger.info(
-                "briefing.feedback_saved",
-                feedback_id=feedback.id,
-                brief_snapshot_id=brief_snapshot_id,
-                user_id=user_id,
-                outcome=outcome,
-            )
-        except Exception as exc:
-            logger.error(
-                "briefing.feedback_save_failed",
-                brief_snapshot_id=brief_snapshot_id,
-                user_id=user_id,
-                outcome=outcome,
                 error=str(exc),
             )
+            return result
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -469,9 +495,6 @@ class BriefingService:
           thesis health, portfolio bias, and recent lessons into investor_profile.
           When investor_profile is non-empty we zero out the three overlapping
           individual context strings so the AI receives each fact exactly once.
-
-          When session is None (scheduler, tests), investor_profile is always ""
-          and the individual builders run as normal fallback.
 
         Feedback (Wave 3):
           _build_feedback_context() is independent of the dedup rule — it reads
