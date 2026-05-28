@@ -54,6 +54,7 @@ _intelligence_engine_listener: object | None = None  # core: IntelligenceEngine 
 _engine_feedback_listener: object | None = None      # core: FeedbackStore bridge
 _recent_reviews_store: object | None = None          # W1: RecentReviewsStore readmodel singleton
 _portfolio_query_adapter: object | None = None       # W3: PortfolioQueryAdapter singleton
+_global_risk_subscriber: object | None = None        # readmodel: GlobalRiskSubscriber singleton
 
 _pnl_service_class: type | None = None
 
@@ -83,6 +84,7 @@ async def bootstrap() -> None:
     global _session_factory
     global _recent_reviews_store
     global _portfolio_query_adapter
+    global _global_risk_subscriber
 
     if _quote_service is None:
         from src.market.adapters.factory import build_adapter
@@ -308,6 +310,14 @@ async def bootstrap() -> None:
     CacheSubscriber.register()
     logger.info("platform.bootstrap.cache_subscriber_ready")
 
+    # ── readmodel: GlobalRiskSubscriber — project IE verdict into memory store ─
+    if _global_risk_subscriber is None:
+        from src.readmodel.global_risk_subscriber import GlobalRiskSubscriber
+
+        GlobalRiskSubscriber.register()
+        _global_risk_subscriber = GlobalRiskSubscriber
+        logger.info("platform.bootstrap.global_risk_subscriber_ready")
+
     if _proactive_alert_agent is None:
         from src.ai.agents.proactive_alert_agent import get_proactive_alert_agent
         from src.platform.db import AsyncSessionLocal
@@ -363,7 +373,7 @@ async def bootstrap() -> None:
                 # Wave B: pass agenda_service_factory so BriefingService can
                 # include today's decide/watch/defer agenda in morning/eod briefs.
                 # Built by AgendaBuilderScheduler at 07:30 ICT — always persisted
-                # before BriefingScheduler fires at 08:45 ICT.
+                # before BriefingScheduler fires at 08:30 ICT.
                 agenda_service_factory=_agenda_service_factory,
             )
             _briefing_listener.register()
