@@ -43,6 +43,7 @@ class ThesisRepository:
                 selectinload(Thesis.assumptions),
                 selectinload(Thesis.catalysts),
                 selectinload(Thesis.reviews).selectinload(ThesisReview.recommendations),
+                selectinload(Thesis.snapshots),
             )
             .execution_options(populate_existing=True)
         )
