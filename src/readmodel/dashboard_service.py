@@ -29,7 +29,6 @@ Design rules:
 
 from __future__ import annotations
 
-import asyncio
 import json
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
@@ -276,29 +275,24 @@ class DashboardService:
             if not row:
                 return None
 
-            async def _fetch_feedback() -> str | None:
-                return (
-                    await self._session.execute(
-                        select(BriefFeedback.outcome)
-                        .where(BriefFeedback.brief_snapshot_id == row.id)
-                        .order_by(BriefFeedback.created_at.desc())
-                        .limit(1)
-                    )
-                ).scalar_one_or_none()
+            # Fetch feedback outcome sequentially — AsyncSession does not support
+            # concurrent operations (asyncio.gather on the same session raises ISCE).
+            feedback_outcome = (
+                await self._session.execute(
+                    select(BriefFeedback.outcome)
+                    .where(BriefFeedback.brief_snapshot_id == row.id)
+                    .order_by(BriefFeedback.created_at.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
 
-            async def _parse_content() -> dict:
-                try:
-                    parsed = json.loads(row.content)
-                    if not isinstance(parsed, dict):
-                        return {"summary": row.content, "content": row.content}
-                    return parsed
-                except (json.JSONDecodeError, TypeError):
-                    return {"summary": row.content, "content": row.content}
-
-            feedback_outcome, parsed_content = await asyncio.gather(
-                _fetch_feedback(),
-                _parse_content(),
-            )
+            # Pure CPU work — no DB call needed, no async required.
+            try:
+                parsed_content = json.loads(row.content)
+                if not isinstance(parsed_content, dict):
+                    parsed_content = {"summary": row.content, "content": row.content}
+            except (json.JSONDecodeError, TypeError):
+                parsed_content = {"summary": row.content, "content": row.content}
 
             result = {
                 **parsed_content,
