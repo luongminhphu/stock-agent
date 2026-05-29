@@ -12,15 +12,19 @@ Endpoints:
 Both endpoints are scoped to the authenticated owner via get_current_user_id.
 
 Decision log (fire-and-forget):
-    If thesis_id + rationale are provided, a DecisionLog entry is created
-    automatically after the trade is persisted. Failure to log the decision
-    never blocks the trade response — the trade is the source of truth.
+    If thesis_id is provided, a DecisionLog entry is created automatically
+    after the trade is persisted.
+
+    - If rationale is also provided → it is used as-is.
+    - If rationale is missing → auto-filled as "Quick trade: {type} via dashboard"
+      so that every trade linked to a thesis is captured in the decision log
+      without requiring the user to type a rationale in the modal.
+
+    Failure to log the decision never blocks the trade response — the trade
+    is the source of truth.
 
     execution_price (the actual fill price) is forwarded to DecisionService
     so that price_at_decision reflects the real trade price, not a live quote.
-
-    If thesis_id is present but rationale is missing, a WARNING is emitted
-    so the gap is visible in logs rather than silently swallowed.
 
 Error mapping:
     ValueError              → 400 Bad Request
@@ -63,7 +67,10 @@ class BuyRequest(BaseModel):
     rationale: str | None = Field(
         None,
         max_length=500,
-        description="Lý do quyết định mua — nếu cung cấp cùng thesis_id, sẽ tự động tạo DecisionLog",
+        description=(
+            "Lý do quyết định mua — nếu cung cấp cùng thesis_id, sẽ tự động tạo DecisionLog. "
+            "Nếu để trống nhưng thesis_id có giá trị, backend tự điền rationale mặc định."
+        ),
     )
 
 
@@ -80,7 +87,10 @@ class SellRequest(BaseModel):
     rationale: str | None = Field(
         None,
         max_length=500,
-        description="Lý do quyết định bán — nếu cung cấp cùng thesis_id, sẽ tự động tạo DecisionLog",
+        description=(
+            "Lý do quyết định bán — nếu cung cấp cùng thesis_id, sẽ tự động tạo DecisionLog. "
+            "Nếu để trống nhưng thesis_id có giá trị, backend tự điền rationale mặc định."
+        ),
     )
 
 
@@ -105,6 +115,9 @@ class TradeResponse(BaseModel):
 # Helpers
 # ---------------------------------------------------------------------------
 
+_AUTO_RATIONALE_TEMPLATE = "Quick trade: {decision_type} via dashboard"
+
+
 async def _try_log_decision(
     session: AsyncSession,
     user_id: str,
@@ -121,9 +134,10 @@ async def _try_log_decision(
     Failure is always soft — logged as WARNING, never re-raised.
 
     Contract:
-      - Only logs when both thesis_id AND rationale are provided.
-      - Emits a WARNING when thesis_id is present but rationale is missing,
-        so the gap is observable in structured logs rather than silently dropped.
+      - Only logs when thesis_id is provided.
+      - If rationale is supplied → used as-is (user intent preserved).
+      - If rationale is missing → auto-filled as "Quick trade: {type} via dashboard"
+        so that every thesis-linked trade generates a DecisionLog automatically.
       - execution_price (actual fill price) is forwarded to DecisionService so
         that price_at_decision reflects the real trade price, not a live quote.
       - Uses the same session; DecisionService commits internally.
@@ -131,16 +145,21 @@ async def _try_log_decision(
     if not thesis_id:
         return False
 
+    # Auto-fill rationale so every thesis-linked trade is captured in decision log.
+    # User-provided rationale always takes priority.
+    effective_rationale = rationale or _AUTO_RATIONALE_TEMPLATE.format(
+        decision_type=decision_type
+    )
+
     if not rationale:
-        logger.warning(
-            "portfolio.decision_log_skipped_missing_rationale",
+        logger.info(
+            "portfolio.decision_log_auto_rationale",
             user_id=user_id,
             ticker=ticker,
             thesis_id=thesis_id,
             decision_type=decision_type,
-            hint="Provide 'rationale' alongside 'thesis_id' to auto-create a DecisionLog",
+            auto_rationale=effective_rationale,
         )
-        return False
 
     try:
         from src.thesis.decision_service import DecisionService  # noqa: PLC0415
@@ -150,7 +169,7 @@ async def _try_log_decision(
             user_id=user_id,
             thesis_id=thesis_id,
             decision_type=decision_type,
-            rationale=rationale,
+            rationale=effective_rationale,
             execution_price=execution_price,
         )
         return True
@@ -187,7 +206,8 @@ async def buy_stock(
     Nếu chưa có position → tạo mới.
     Nếu đã có position → cộng dồn, cập nhật avg_cost.
 
-    Nếu thesis_id + rationale được cung cấp → tạo DecisionLog(BUY) tự động.
+    Nếu thesis_id được cung cấp → tạo DecisionLog(BUY) tự động.
+    Rationale do user điền được ưu tiên; nếu không có, backend tự điền mặc định.
     execution_price = body.price (giá fill thực tế) được forward vào DecisionLog.
     Failure của decision log không ảnh hưởng đến response trade.
     """
@@ -250,7 +270,8 @@ async def sell_stock(
     Partial sell → position vẫn open, qty giảm.
     Full sell → position.closed_at được set.
 
-    Nếu thesis_id + rationale được cung cấp → tạo DecisionLog(SELL) tự động.
+    Nếu thesis_id được cung cấp → tạo DecisionLog(SELL) tự động.
+    Rationale do user điền được ưu tiên; nếu không có, backend tự điền mặc định.
     execution_price = body.price (giá fill thực tế) được forward vào DecisionLog.
     Failure của decision log không ảnh hưởng đến response trade.
 
