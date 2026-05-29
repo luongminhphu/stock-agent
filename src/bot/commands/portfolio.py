@@ -1,15 +1,19 @@
 """Portfolio commands — bot adapter for portfolio segment.
 
 Owner: bot segment (adapter only).
-Domain logic lives in PortfolioService, PnlService, and DashboardService.
+No orchestration logic — delegates buy/sell to TradeUseCase.
+Other domain logic lives in PnlService and DashboardService.
 
 Commands:
-  /buy             <ticker> <qty> <price>                   — open/add to position
-  /sell            <ticker> <qty> <price>                   — reduce/close position
-  /correct_trade   <trade_id> <new_price>                   — fix buy price + recalculate avg_cost
-  /dividend        <ticker> <qty> <dividend_per_share>      — record dividend received
-  /portfolio       [ticker] [view]                          — full portfolio or thesis-view
-  /history         [ticker]                                 — realized trade history (shows trade_id)
+  /buy             <ticker> <qty> <price> [thesis_id] [rationale]  — open/add to position
+  /sell            <ticker> <qty> <price> [thesis_id] [rationale]  — reduce/close position
+  /correct_trade   <trade_id> <new_price>                          — fix buy price + recalculate avg_cost
+  /dividend        <ticker> <qty> <dividend_per_share>             — record dividend received
+  /portfolio       [ticker] [view]                                 — full portfolio or thesis-view
+  /history         [ticker]                                        — realized trade history (shows trade_id)
+
+Buy/sell orchestration (DecisionLog, auto-rationale) lives in:
+    src/portfolio/trade_usecase.py  ←  single source of truth
 """
 
 from __future__ import annotations
@@ -29,6 +33,7 @@ from src.portfolio.service import (
     TradeNotFoundError,
 )
 from src.portfolio.pnl_service import PnlService
+from src.portfolio.trade_usecase import TradeUseCase
 from src.readmodel.dashboard_service import DashboardService
 
 
@@ -49,6 +54,8 @@ class PortfolioCog(BaseCog):
         ticker="Mã cổ phiếu (VD: VCB)",
         qty="Số cổ phiếu",
         price="Giá mua (VND)",
+        thesis_id="ID thesis liên kết (tuỳ chọn) — tự động tạo DecisionLog",
+        rationale="Lý do mua (tuỳ chọn) — để trống sẽ dùng rationale mặc định nếu có thesis_id",
         note="Ghi chú tùy chọn",
     )
     async def buy(
@@ -57,60 +64,8 @@ class PortfolioCog(BaseCog):
         ticker: str,
         qty: float,
         price: float,
-        note: str | None = None,
-    ) -> None:
-        await self.defer(interaction)
-        user_id = self.user_id(interaction)
-
-        if qty <= 0 or price <= 0:
-            await self.send_error(interaction, "Giá trị không hợp lệ", "qty và price phải > 0")
-            return
-
-        async with self.db_session() as session:
-            svc = PortfolioService(session)
-            position, trade = await svc.buy(
-                user_id=user_id,
-                ticker=ticker,
-                qty=qty,
-                price=price,
-                note=note,
-            )
-
-        embed = discord.Embed(
-            title=f"✅ Mua {position.ticker}",
-            color=discord.Color.green(),
-        )
-        embed.add_field(name="Số cổ", value=f"{trade.qty:,.0f}", inline=True)
-        embed.add_field(name="Giá mua", value=self.fmt_vnd(trade.price), inline=True)
-        embed.add_field(name="Giá vốn TB mới", value=self.fmt_vnd(position.avg_cost), inline=True)
-        embed.add_field(name="Tổng đang giữ", value=f"{position.qty:,.0f} cổ", inline=True)
-        embed.add_field(
-            name="Chi phí vốn",
-            value=self.fmt_vnd(position.avg_cost * position.qty),
-            inline=True,
-        )
-        embed.set_footer(text=f"Trade ID: #{trade.id} — dùng /correct_trade {trade.id} <new_price> nếu nhập sai giá")
-        if note:
-            embed.add_field(name="Ghi chú", value=note, inline=False)
-        await interaction.followup.send(embed=embed, ephemeral=True)
-
-    # ------------------------------------------------------------------
-    # /sell
-    # ------------------------------------------------------------------
-
-    @app_commands.command(name="sell", description="Ghi nhận lệnh bán khỏi portfolio")
-    @app_commands.describe(
-        ticker="Mã cổ phiếu (VD: VCB)",
-        qty="Số cổ phiếu bán",
-        price="Giá bán (VND)",
-        note="Ghi chú tùy chọn",
-    )
-    async def sell(
-        self,
-        interaction: discord.Interaction,
-        ticker: str,
-        qty: float,
-        price: float,
+        thesis_id: int | None = None,
+        rationale: str | None = None,
         note: str | None = None,
     ) -> None:
         await self.defer(interaction)
@@ -122,13 +77,89 @@ class PortfolioCog(BaseCog):
 
         try:
             async with self.db_session() as session:
-                svc = PortfolioService(session)
-                position, trade = await svc.sell(
+                uc = TradeUseCase(session=session, quote_service=get_quote_service())
+                result = await uc.execute_buy(
                     user_id=user_id,
                     ticker=ticker,
                     qty=qty,
                     price=price,
+                    thesis_id=thesis_id,
+                    rationale=rationale,
                     note=note,
+                    source="discord",
+                )
+        except ValueError as exc:
+            await self.send_error(interaction, "Giá trị không hợp lệ", str(exc))
+            return
+        except Exception as exc:
+            await self.send_error(interaction, "Lỗi hệ thống", str(exc))
+            return
+
+        embed = discord.Embed(
+            title=f"✅ Mua {result.ticker}",
+            color=discord.Color.green(),
+        )
+        embed.add_field(name="Số cổ", value=f"{result.qty:,.0f}", inline=True)
+        embed.add_field(name="Giá mua", value=self.fmt_vnd(result.price), inline=True)
+        embed.add_field(name="Giá vốn TB mới", value=self.fmt_vnd(result.avg_cost), inline=True)
+        embed.add_field(name="Tổng đang giữ", value=f"{result.position_qty:,.0f} cổ", inline=True)
+        embed.add_field(
+            name="Chi phí vốn",
+            value=self.fmt_vnd(result.avg_cost * result.position_qty),
+            inline=True,
+        )
+        if thesis_id:
+            decision_hint = "✅ DecisionLog đã ghi" if result.decision_logged else "⚠️ DecisionLog thất bại"
+            embed.add_field(name="Decision Log", value=decision_hint, inline=True)
+        if note:
+            embed.add_field(name="Ghi chú", value=note, inline=False)
+        embed.set_footer(
+            text=f"Trade ID: #{result.trade_id} — dùng /correct_trade {result.trade_id} <new_price> nếu nhập sai giá"
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    # ------------------------------------------------------------------
+    # /sell
+    # ------------------------------------------------------------------
+
+    @app_commands.command(name="sell", description="Ghi nhận lệnh bán khỏi portfolio")
+    @app_commands.describe(
+        ticker="Mã cổ phiếu (VD: VCB)",
+        qty="Số cổ phiếu bán",
+        price="Giá bán (VND)",
+        thesis_id="ID thesis liên kết (tuỳ chọn) — tự động tạo DecisionLog",
+        rationale="Lý do bán (tuỳ chọn) — để trống sẽ dùng rationale mặc định nếu có thesis_id",
+        note="Ghi chú tùy chọn",
+    )
+    async def sell(
+        self,
+        interaction: discord.Interaction,
+        ticker: str,
+        qty: float,
+        price: float,
+        thesis_id: int | None = None,
+        rationale: str | None = None,
+        note: str | None = None,
+    ) -> None:
+        await self.defer(interaction)
+        user_id = self.user_id(interaction)
+
+        if qty <= 0 or price <= 0:
+            await self.send_error(interaction, "Giá trị không hợp lệ", "qty và price phải > 0")
+            return
+
+        try:
+            async with self.db_session() as session:
+                uc = TradeUseCase(session=session, quote_service=get_quote_service())
+                result = await uc.execute_sell(
+                    user_id=user_id,
+                    ticker=ticker,
+                    qty=qty,
+                    price=price,
+                    thesis_id=thesis_id,
+                    rationale=rationale,
+                    note=note,
+                    source="discord",
                 )
         except PositionNotFoundError:
             await self.send_error(
@@ -140,27 +171,32 @@ class PortfolioCog(BaseCog):
         except InsufficientQtyError as exc:
             await self.send_error(interaction, "Số cổ không đủ", str(exc))
             return
+        except Exception as exc:
+            await self.send_error(interaction, "Lỗi hệ thống", str(exc))
+            return
 
-        pnl = trade.realized_pnl or 0.0
+        pnl = result.realized_pnl or 0.0
         pnl_icon = "🟢" if pnl >= 0 else "🔴"
-        is_closed = position.closed_at is not None
 
         embed = discord.Embed(
-            title=f"{pnl_icon} Bán {position.ticker}{' — Vị thế đóng' if is_closed else ''}",
+            title=f"{pnl_icon} Bán {result.ticker}{' — Vị thế đóng' if result.position_closed else ''}",
             color=discord.Color.green() if pnl >= 0 else discord.Color.red(),
         )
-        embed.add_field(name="Số cổ bán", value=f"{trade.qty:,.0f}", inline=True)
-        embed.add_field(name="Giá bán", value=self.fmt_vnd(trade.price), inline=True)
-        embed.add_field(name="Giá vốn TB", value=self.fmt_vnd(position.avg_cost), inline=True)
+        embed.add_field(name="Số cổ bán", value=f"{result.qty:,.0f}", inline=True)
+        embed.add_field(name="Giá bán", value=self.fmt_vnd(result.price), inline=True)
+        embed.add_field(name="Giá vốn TB", value=self.fmt_vnd(result.avg_cost), inline=True)
         embed.add_field(
             name="Lời/Lỗ thực hiện",
             value=f"{pnl_icon} {self.fmt_vnd(abs(pnl))} ({'lời' if pnl >= 0 else 'lỗ'})",
             inline=True,
         )
-        if not is_closed:
+        if not result.position_closed:
             embed.add_field(
-                name="Còn giữ", value=f"{position.qty:,.0f} cổ", inline=True
+                name="Còn giữ", value=f"{result.position_qty:,.0f} cổ", inline=True
             )
+        if thesis_id:
+            decision_hint = "✅ DecisionLog đã ghi" if result.decision_logged else "⚠️ DecisionLog thất bại"
+            embed.add_field(name="Decision Log", value=decision_hint, inline=True)
         if note:
             embed.add_field(name="Ghi chú", value=note, inline=False)
         await interaction.followup.send(embed=embed, ephemeral=True)
@@ -230,7 +266,7 @@ class PortfolioCog(BaseCog):
         ticker="Mã cổ phiếu (VD: VCB)",
         qty="Số cổ phiếu được hưởng cổ tức",
         dividend_per_share="Cổ tức mỗi cổ phiếu — tiền mặt: VND/cổ | cổ phiếu: tỷ lệ (VD: 0.10 = 10%)",
-        dividend_type="Loại cổ tức: cash (tiền mặt) hoặc stock (cổ phiếu)",
+        dividend_type="Loại cổ tức: cash (tiền mặt) hoặc cổ phiếu (stock)",
         ex_date="Ngày chốt quyền (tuỳ chọn, định dạng YYYY-MM-DD)",
         note="Ghi chú tùy chọn",
     )
@@ -259,7 +295,6 @@ class PortfolioCog(BaseCog):
             )
             return
 
-        # Parse optional ex_date
         parsed_ex_date = None
         if ex_date:
             try:

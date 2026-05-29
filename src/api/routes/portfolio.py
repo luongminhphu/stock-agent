@@ -1,7 +1,7 @@
 """Portfolio trade routes — Buy / Sell quick actions.
 
 Owner: api segment (thin adapter).
-No business logic — delegates entirely to PortfolioService.
+No orchestration logic — delegates entirely to TradeUseCase.
 
 Route group: /api/v1/portfolio
 
@@ -11,20 +11,14 @@ Endpoints:
 
 Both endpoints are scoped to the authenticated owner via get_current_user_id.
 
-Decision log (fire-and-forget):
-    If thesis_id is provided, a DecisionLog entry is created automatically
-    after the trade is persisted.
+Orchestration (buy/sell + decision log) lives in:
+    src/portfolio/trade_usecase.py  ←  single source of truth
 
-    - If rationale is also provided → it is used as-is.
-    - If rationale is missing → auto-filled as "Quick trade: {type} via dashboard"
-      so that every trade linked to a thesis is captured in the decision log
-      without requiring the user to type a rationale in the modal.
-
-    Failure to log the decision never blocks the trade response — the trade
-    is the source of truth.
-
-    execution_price (the actual fill price) is forwarded to DecisionService
-    so that price_at_decision reflects the real trade price, not a live quote.
+This adapter only:
+  - Validates the HTTP request via Pydantic DTOs.
+  - Calls TradeUseCase.
+  - Maps TradeResult → TradeResponse.
+  - Maps domain exceptions → HTTP status codes.
 
 Error mapping:
     ValueError              → 400 Bad Request
@@ -41,14 +35,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_current_user_id, get_db, get_quote_service
-from src.platform.logging import get_logger
 from src.portfolio.service import (
     InsufficientQtyError,
-    PortfolioService,
     PositionNotFoundError,
 )
+from src.portfolio.trade_usecase import TradeUseCase
 
-logger = get_logger(__name__)
 router = APIRouter(tags=["portfolio"])
 
 
@@ -63,7 +55,6 @@ class BuyRequest(BaseModel):
     thesis_id: int | None = Field(None, description="ID thesis liên kết (tuỳ chọn)")
     sector: str | None = Field(None, max_length=64, description="Ngành (tuỳ chọn)")
     note: str | None = Field(None, max_length=500)
-    # Wave 1: optional decision log fields
     rationale: str | None = Field(
         None,
         max_length=500,
@@ -79,7 +70,6 @@ class SellRequest(BaseModel):
     qty: float = Field(..., gt=0, description="Số lượng bán (cp)")
     price: float = Field(..., gt=0, description="Giá bán (VND/cp)")
     note: str | None = Field(None, max_length=500)
-    # Wave 1: optional decision log fields
     thesis_id: int | None = Field(
         None,
         description="ID thesis liên kết — cần thiết để tạo DecisionLog khi bán",
@@ -112,80 +102,6 @@ class TradeResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-_AUTO_RATIONALE_TEMPLATE = "Quick trade: {decision_type} via dashboard"
-
-
-async def _try_log_decision(
-    session: AsyncSession,
-    user_id: str,
-    ticker: str,
-    thesis_id: int | None,
-    decision_type: str,
-    rationale: str | None,
-    execution_price: float | None,
-    quote_svc: object,
-) -> bool:
-    """Fire-and-forget decision log after a trade is persisted.
-
-    Returns True if the DecisionLog was created successfully, False otherwise.
-    Failure is always soft — logged as WARNING, never re-raised.
-
-    Contract:
-      - Only logs when thesis_id is provided.
-      - If rationale is supplied → used as-is (user intent preserved).
-      - If rationale is missing → auto-filled as "Quick trade: {type} via dashboard"
-        so that every thesis-linked trade generates a DecisionLog automatically.
-      - execution_price (actual fill price) is forwarded to DecisionService so
-        that price_at_decision reflects the real trade price, not a live quote.
-      - Uses the same session; DecisionService commits internally.
-    """
-    if not thesis_id:
-        return False
-
-    # Auto-fill rationale so every thesis-linked trade is captured in decision log.
-    # User-provided rationale always takes priority.
-    effective_rationale = rationale or _AUTO_RATIONALE_TEMPLATE.format(
-        decision_type=decision_type
-    )
-
-    if not rationale:
-        logger.info(
-            "portfolio.decision_log_auto_rationale",
-            user_id=user_id,
-            ticker=ticker,
-            thesis_id=thesis_id,
-            decision_type=decision_type,
-            auto_rationale=effective_rationale,
-        )
-
-    try:
-        from src.thesis.decision_service import DecisionService  # noqa: PLC0415
-
-        svc = DecisionService(session=session, quote_service=quote_svc)
-        await svc.log_decision(
-            user_id=user_id,
-            thesis_id=thesis_id,
-            decision_type=decision_type,
-            rationale=effective_rationale,
-            execution_price=execution_price,
-        )
-        return True
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "portfolio.decision_log_failed",
-            user_id=user_id,
-            ticker=ticker,
-            thesis_id=thesis_id,
-            decision_type=decision_type,
-            error=str(exc),
-        )
-        return False
-
-
-# ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
 
@@ -208,48 +124,38 @@ async def buy_stock(
 
     Nếu thesis_id được cung cấp → tạo DecisionLog(BUY) tự động.
     Rationale do user điền được ưu tiên; nếu không có, backend tự điền mặc định.
-    execution_price = body.price (giá fill thực tế) được forward vào DecisionLog.
     Failure của decision log không ảnh hưởng đến response trade.
     """
-    svc = PortfolioService(session)
+    uc = TradeUseCase(session=session, quote_service=quote_svc)
     try:
-        position, trade = await svc.buy(
+        result = await uc.execute_buy(
             user_id=user_id,
-            ticker=body.ticker.upper().strip(),
+            ticker=body.ticker,
             qty=body.qty,
             price=body.price,
             thesis_id=body.thesis_id,
+            rationale=body.rationale,
             sector=body.sector,
             note=body.note,
+            source="dashboard",
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
 
-    decision_logged = await _try_log_decision(
-        session=session,
-        user_id=user_id,
-        ticker=trade.ticker,
-        thesis_id=body.thesis_id,
-        decision_type="BUY",
-        rationale=body.rationale,
-        execution_price=body.price,
-        quote_svc=quote_svc,
-    )
-
     return TradeResponse(
-        trade_id=trade.id,
-        position_id=position.id,
-        ticker=trade.ticker,
-        trade_type="buy",
-        qty=trade.qty,
-        price=trade.price,
-        avg_cost=position.avg_cost,
-        position_qty=position.qty,
-        realized_pnl=None,
-        position_closed=False,
-        decision_logged=decision_logged,
+        trade_id=result.trade_id,
+        position_id=result.position_id,
+        ticker=result.ticker,
+        trade_type=result.trade_type,
+        qty=result.qty,
+        price=result.price,
+        avg_cost=result.avg_cost,
+        position_qty=result.position_qty,
+        realized_pnl=result.realized_pnl,
+        position_closed=result.position_closed,
+        decision_logged=result.decision_logged,
     )
 
 
@@ -272,20 +178,22 @@ async def sell_stock(
 
     Nếu thesis_id được cung cấp → tạo DecisionLog(SELL) tự động.
     Rationale do user điền được ưu tiên; nếu không có, backend tự điền mặc định.
-    execution_price = body.price (giá fill thực tế) được forward vào DecisionLog.
     Failure của decision log không ảnh hưởng đến response trade.
 
     Raises 404 khi không có position mở cho ticker.
     Raises 422 khi qty bán > qty đang giữ.
     """
-    svc = PortfolioService(session)
+    uc = TradeUseCase(session=session, quote_service=quote_svc)
     try:
-        position, trade = await svc.sell(
+        result = await uc.execute_sell(
             user_id=user_id,
-            ticker=body.ticker.upper().strip(),
+            ticker=body.ticker,
             qty=body.qty,
             price=body.price,
+            thesis_id=body.thesis_id,
+            rationale=body.rationale,
             note=body.note,
+            source="dashboard",
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -296,27 +204,16 @@ async def sell_stock(
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
 
-    decision_logged = await _try_log_decision(
-        session=session,
-        user_id=user_id,
-        ticker=trade.ticker,
-        thesis_id=body.thesis_id,
-        decision_type="SELL",
-        rationale=body.rationale,
-        execution_price=body.price,
-        quote_svc=quote_svc,
-    )
-
     return TradeResponse(
-        trade_id=trade.id,
-        position_id=position.id,
-        ticker=trade.ticker,
-        trade_type="sell",
-        qty=trade.qty,
-        price=trade.price,
-        avg_cost=position.avg_cost,
-        position_qty=position.qty,
-        realized_pnl=trade.realized_pnl,
-        position_closed=position.closed_at is not None,
-        decision_logged=decision_logged,
+        trade_id=result.trade_id,
+        position_id=result.position_id,
+        ticker=result.ticker,
+        trade_type=result.trade_type,
+        qty=result.qty,
+        price=result.price,
+        avg_cost=result.avg_cost,
+        position_qty=result.position_qty,
+        realized_pnl=result.realized_pnl,
+        position_closed=result.position_closed,
+        decision_logged=result.decision_logged,
     )
