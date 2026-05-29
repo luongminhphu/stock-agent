@@ -25,7 +25,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.bootstrap import get_quote_service
 from src.platform.config import settings
-from src.api.deps import get_db, AsyncSessionLocal
+from src.platform.db import AsyncSessionLocal
+from src.api.deps import get_db
 from src.readmodel.dashboard_service import DashboardService
 from src.readmodel.leaderboard_service import LeaderboardService
 from src.readmodel.schemas import (
