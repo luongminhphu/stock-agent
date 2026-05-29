@@ -668,7 +668,19 @@ class DashboardService:
         return await self._portfolio_query.get_portfolio(user_id, price_map=price_map)
 
     # ------------------------------------------------------------------
-    # 15. Attention Panel — "Вiệc cần làm hôm nay" (Wave B)
+    # 15. Attention Panel — "Việc cần làm hôm nay" (Wave B)
+    #
+    # Uses an isolated AsyncSessionLocal() session — NOT self._session.
+    #
+    # Root cause: AsyncSession does not support concurrent or interleaved
+    # operations. When the route layer calls get_attention_needed alongside
+    # other DashboardService methods that share self._session, the session
+    # may still be mid-connection-provisioning, causing SQLAlchemy
+    # InvalidRequestError (ISCE) — same root cause as get_scan_latest.
+    #
+    # Fix: all 4 attention sources run inside a single dedicated session
+    # that is opened and closed within this method. The result is cached
+    # for 30s so the extra connection overhead is negligible in practice.
     # ------------------------------------------------------------------
 
     async def get_attention_needed(
@@ -704,220 +716,224 @@ class DashboardService:
                 seen.add(key)
                 items.append(item)
 
-        # ---- Source 1: Triggered alerts --------------------------------
-        if _WATCHLIST_MODELS_AVAILABLE:
-            try:
-                alert_rows = (
-                    await self._session.execute(
-                        select(Alert)
-                        .where(
-                            Alert.user_id == user_id,
-                            Alert.status == AlertStatus.TRIGGERED,
+        # Open a dedicated session for all 4 sources — never reuse self._session.
+        # See method docstring for root cause explanation.
+        async with AsyncSessionLocal() as session:
+
+            # ---- Source 1: Triggered alerts --------------------------------
+            if _WATCHLIST_MODELS_AVAILABLE:
+                try:
+                    alert_rows = (
+                        await session.execute(
+                            select(Alert)
+                            .where(
+                                Alert.user_id == user_id,
+                                Alert.status == AlertStatus.TRIGGERED,
+                            )
+                            .order_by(Alert.triggered_at.desc())
+                            .limit(50)
                         )
-                        .order_by(Alert.triggered_at.desc())
-                        .limit(50)
-                    )
-                ).scalars().all()
+                    ).scalars().all()
 
-                for r in alert_rows:
-                    priority = getattr(r, "priority", "medium") or "medium"
-                    urgency = (
-                        AttentionUrgency.CRITICAL
-                        if priority == "critical"
-                        else AttentionUrgency.HIGH
-                        if priority == "high"
-                        else AttentionUrgency.MEDIUM
-                    )
-                    triggered_at = r.triggered_at or now
-                    if triggered_at.tzinfo is None:
-                        triggered_at = triggered_at.replace(tzinfo=UTC)
-                    label = getattr(r, "label", None) or str(getattr(r, "condition_type", "alert"))
-                    _add(AttentionItem(
-                        kind="triggered_alert",
-                        ticker=r.ticker,
-                        thesis_id=getattr(r, "thesis_id", None),
-                        message=f"Alert: {label} @ {r.ticker}",
-                        urgency=urgency,
-                        ts=triggered_at,
-                        metadata={
-                            "alert_id": r.id,
-                            "condition_type": str(getattr(r, "condition_type", "")),
-                            "triggered_price": getattr(r, "triggered_price", None),
-                            "threshold": getattr(r, "threshold", None),
-                        },
-                    ))
-            except Exception as exc:
-                logger.warning("attention.source1_alerts.error", error=str(exc), exc_info=True)
+                    for r in alert_rows:
+                        priority = getattr(r, "priority", "medium") or "medium"
+                        urgency = (
+                            AttentionUrgency.CRITICAL
+                            if priority == "critical"
+                            else AttentionUrgency.HIGH
+                            if priority == "high"
+                            else AttentionUrgency.MEDIUM
+                        )
+                        triggered_at = r.triggered_at or now
+                        if triggered_at.tzinfo is None:
+                            triggered_at = triggered_at.replace(tzinfo=UTC)
+                        label = getattr(r, "label", None) or str(getattr(r, "condition_type", "alert"))
+                        _add(AttentionItem(
+                            kind="triggered_alert",
+                            ticker=r.ticker,
+                            thesis_id=getattr(r, "thesis_id", None),
+                            message=f"Alert: {label} @ {r.ticker}",
+                            urgency=urgency,
+                            ts=triggered_at,
+                            metadata={
+                                "alert_id": r.id,
+                                "condition_type": str(getattr(r, "condition_type", "")),
+                                "triggered_price": getattr(r, "triggered_price", None),
+                                "threshold": getattr(r, "threshold", None),
+                            },
+                        ))
+                except Exception as exc:
+                    logger.warning("attention.source1_alerts.error", error=str(exc), exc_info=True)
 
-        # ---- Source 2: Overdue reviews ---------------------------------
-        if _THESIS_MODELS_AVAILABLE:
-            try:
-                overdue_cutoff = now - timedelta(days=_OVERDUE_REVIEW_DAYS)
+            # ---- Source 2: Overdue reviews ---------------------------------
+            if _THESIS_MODELS_AVAILABLE:
+                try:
+                    overdue_cutoff = now - timedelta(days=_OVERDUE_REVIEW_DAYS)
 
-                # Subquery: last reviewed_at per thesis
-                last_review_sq = (
-                    select(
-                        ThesisReview.thesis_id,
-                        func.max(ThesisReview.reviewed_at).label("last_reviewed_at"),
-                    )
-                    .group_by(ThesisReview.thesis_id)
-                    .subquery()
-                )
-
-                # Active theses where last review is older than cutoff OR has no review
-                stmt = (
-                    select(
-                        Thesis.id,
-                        Thesis.ticker,
-                        Thesis.title,
-                        Thesis.created_at,
-                        last_review_sq.c.last_reviewed_at,
-                    )
-                    .outerjoin(last_review_sq, last_review_sq.c.thesis_id == Thesis.id)
-                    .where(
-                        Thesis.user_id == user_id,
-                        Thesis.status == ThesisStatus.ACTIVE,
-                    )
-                    .where(
-                        (last_review_sq.c.last_reviewed_at == None)  # noqa: E711
-                        | (last_review_sq.c.last_reviewed_at < overdue_cutoff)
-                    )
-                    .order_by(
-                        last_review_sq.c.last_reviewed_at.asc().nulls_first()
-                    )
-                    .limit(20)
-                )
-
-                overdue_rows = (await self._session.execute(stmt)).all()
-
-                for row in overdue_rows:
-                    last_reviewed = row.last_reviewed_at
-                    if last_reviewed is not None:
-                        # Use _ensure_utc: aware → astimezone(UTC), naive → attach UTC
-                        last_reviewed = _ensure_utc(last_reviewed)
-
-                    created_at_utc = _ensure_utc(row.created_at)
-
-                    if last_reviewed is None:
-                        days_overdue = (now - created_at_utc).days
-                        msg = f"{row.ticker}: chưa từng được review AI"
-                    else:
-                        days_overdue = (now - last_reviewed).days
-                        msg = f"{row.ticker}: review AI cách đây {days_overdue} ngày"
-
-                    _add(AttentionItem(
-                        kind="overdue_review",
-                        ticker=row.ticker,
-                        thesis_id=row.id,
-                        message=msg,
-                        urgency=AttentionUrgency.HIGH,
-                        ts=last_reviewed or created_at_utc,
-                        metadata={"days_overdue": days_overdue},
-                    ))
-            except Exception as exc:
-                logger.warning("attention.source2_overdue.error", error=str(exc), exc_info=True)
-
-        # ---- Source 3: Upcoming catalysts within 72h -------------------
-        if _THESIS_MODELS_AVAILABLE:
-            try:
-                cutoff_near = now + timedelta(hours=_UPCOMING_CATALYST_HOURS)
-
-                upcoming_rows = (
-                    await self._session.execute(
+                    # Subquery: last reviewed_at per thesis
+                    last_review_sq = (
                         select(
-                            Catalyst.id,
-                            Catalyst.thesis_id,
-                            Catalyst.description,
-                            Catalyst.expected_date,
-                            Thesis.ticker,
-                            Thesis.title,
+                            ThesisReview.thesis_id,
+                            func.max(ThesisReview.reviewed_at).label("last_reviewed_at"),
                         )
-                        .join(Thesis, Thesis.id == Catalyst.thesis_id)
-                        .where(
-                            Thesis.user_id == user_id,
-                            Thesis.status == ThesisStatus.ACTIVE,
-                            Catalyst.status == CatalystStatus.PENDING,
-                            Catalyst.expected_date >= now,
-                            Catalyst.expected_date <= cutoff_near,
-                        )
-                        .order_by(Catalyst.expected_date.asc())
-                        .limit(20)
+                        .group_by(ThesisReview.thesis_id)
+                        .subquery()
                     )
-                ).all()
 
-                for row in upcoming_rows:
-                    expected = row.expected_date
-                    if expected is not None:
-                        expected = _ensure_utc(expected)
-                    hours_left = round((expected - now).total_seconds() / 3600, 1) if expected else None
-                    desc = (row.description or "")[:80]
-                    msg = (
-                        f"{row.ticker}: catalyst '{desc}' trong {hours_left}h"
-                        if hours_left is not None
-                        else f"{row.ticker}: catalyst sắp đến hạn"
-                    )
-                    _add(AttentionItem(
-                        kind="upcoming_catalyst",
-                        ticker=row.ticker,
-                        thesis_id=row.thesis_id,
-                        message=msg,
-                        urgency=AttentionUrgency.HIGH,
-                        ts=expected or now,
-                        metadata={
-                            "catalyst_id": row.id,
-                            "hours_left": hours_left,
-                            "description": row.description,
-                        },
-                    ))
-            except Exception as exc:
-                logger.warning("attention.source3_catalysts.error", error=str(exc), exc_info=True)
-
-        # ---- Source 4: Stop-loss proximity (requires price_map) --------
-        if price_map and _THESIS_MODELS_AVAILABLE:
-            try:
-                sl_rows = (
-                    await self._session.execute(
+                    # Active theses where last review is older than cutoff OR has no review
+                    stmt = (
                         select(
                             Thesis.id,
                             Thesis.ticker,
                             Thesis.title,
-                            Thesis.stop_loss,
                             Thesis.created_at,
+                            last_review_sq.c.last_reviewed_at,
                         )
+                        .outerjoin(last_review_sq, last_review_sq.c.thesis_id == Thesis.id)
                         .where(
                             Thesis.user_id == user_id,
                             Thesis.status == ThesisStatus.ACTIVE,
-                            Thesis.stop_loss != None,  # noqa: E711
                         )
+                        .where(
+                            (last_review_sq.c.last_reviewed_at == None)  # noqa: E711
+                            | (last_review_sq.c.last_reviewed_at < overdue_cutoff)
+                        )
+                        .order_by(
+                            last_review_sq.c.last_reviewed_at.asc().nulls_first()
+                        )
+                        .limit(20)
                     )
-                ).all()
 
-                for row in sl_rows:
-                    current = price_map.get(row.ticker)
-                    if current is None or row.stop_loss is None or row.stop_loss <= 0:
-                        continue
-                    distance_pct = abs(current - row.stop_loss) / row.stop_loss * 100
-                    if distance_pct <= _STOP_LOSS_PROXIMITY_PCT:
+                    overdue_rows = (await session.execute(stmt)).all()
+
+                    for row in overdue_rows:
+                        last_reviewed = row.last_reviewed_at
+                        if last_reviewed is not None:
+                            # Use _ensure_utc: aware → astimezone(UTC), naive → attach UTC
+                            last_reviewed = _ensure_utc(last_reviewed)
+
                         created_at_utc = _ensure_utc(row.created_at)
+
+                        if last_reviewed is None:
+                            days_overdue = (now - created_at_utc).days
+                            msg = f"{row.ticker}: chưa từng được review AI"
+                        else:
+                            days_overdue = (now - last_reviewed).days
+                            msg = f"{row.ticker}: review AI cách đây {days_overdue} ngày"
+
                         _add(AttentionItem(
-                            kind="stop_loss_proximity",
+                            kind="overdue_review",
                             ticker=row.ticker,
                             thesis_id=row.id,
-                            message=(
-                                f"{row.ticker}: giá hiện tại cách stop_loss "
-                                f"{distance_pct:.1f}% "
-                                f"(giá: {current:,.0f} | SL: {row.stop_loss:,.0f})"
-                            ),
-                            urgency=AttentionUrgency.CRITICAL,
-                            ts=now,
+                            message=msg,
+                            urgency=AttentionUrgency.HIGH,
+                            ts=last_reviewed or created_at_utc,
+                            metadata={"days_overdue": days_overdue},
+                        ))
+                except Exception as exc:
+                    logger.warning("attention.source2_overdue.error", error=str(exc), exc_info=True)
+
+            # ---- Source 3: Upcoming catalysts within 72h -------------------
+            if _THESIS_MODELS_AVAILABLE:
+                try:
+                    cutoff_near = now + timedelta(hours=_UPCOMING_CATALYST_HOURS)
+
+                    upcoming_rows = (
+                        await session.execute(
+                            select(
+                                Catalyst.id,
+                                Catalyst.thesis_id,
+                                Catalyst.description,
+                                Catalyst.expected_date,
+                                Thesis.ticker,
+                                Thesis.title,
+                            )
+                            .join(Thesis, Thesis.id == Catalyst.thesis_id)
+                            .where(
+                                Thesis.user_id == user_id,
+                                Thesis.status == ThesisStatus.ACTIVE,
+                                Catalyst.status == CatalystStatus.PENDING,
+                                Catalyst.expected_date >= now,
+                                Catalyst.expected_date <= cutoff_near,
+                            )
+                            .order_by(Catalyst.expected_date.asc())
+                            .limit(20)
+                        )
+                    ).all()
+
+                    for row in upcoming_rows:
+                        expected = row.expected_date
+                        if expected is not None:
+                            expected = _ensure_utc(expected)
+                        hours_left = round((expected - now).total_seconds() / 3600, 1) if expected else None
+                        desc = (row.description or "")[:80]
+                        msg = (
+                            f"{row.ticker}: catalyst '{desc}' trong {hours_left}h"
+                            if hours_left is not None
+                            else f"{row.ticker}: catalyst sắp đến hạn"
+                        )
+                        _add(AttentionItem(
+                            kind="upcoming_catalyst",
+                            ticker=row.ticker,
+                            thesis_id=row.thesis_id,
+                            message=msg,
+                            urgency=AttentionUrgency.HIGH,
+                            ts=expected or now,
                             metadata={
-                                "current_price": current,
-                                "stop_loss": row.stop_loss,
-                                "distance_pct": round(distance_pct, 2),
+                                "catalyst_id": row.id,
+                                "hours_left": hours_left,
+                                "description": row.description,
                             },
                         ))
-            except Exception as exc:
-                logger.warning("attention.source4_stoploss.error", error=str(exc), exc_info=True)
+                except Exception as exc:
+                    logger.warning("attention.source3_catalysts.error", error=str(exc), exc_info=True)
+
+            # ---- Source 4: Stop-loss proximity (requires price_map) --------
+            if price_map and _THESIS_MODELS_AVAILABLE:
+                try:
+                    sl_rows = (
+                        await session.execute(
+                            select(
+                                Thesis.id,
+                                Thesis.ticker,
+                                Thesis.title,
+                                Thesis.stop_loss,
+                                Thesis.created_at,
+                            )
+                            .where(
+                                Thesis.user_id == user_id,
+                                Thesis.status == ThesisStatus.ACTIVE,
+                                Thesis.stop_loss != None,  # noqa: E711
+                            )
+                        )
+                    ).all()
+
+                    for row in sl_rows:
+                        current = price_map.get(row.ticker)
+                        if current is None or row.stop_loss is None or row.stop_loss <= 0:
+                            continue
+                        distance_pct = abs(current - row.stop_loss) / row.stop_loss * 100
+                        if distance_pct <= _STOP_LOSS_PROXIMITY_PCT:
+                            created_at_utc = _ensure_utc(row.created_at)
+                            _add(AttentionItem(
+                                kind="stop_loss_proximity",
+                                ticker=row.ticker,
+                                thesis_id=row.id,
+                                message=(
+                                    f"{row.ticker}: giá hiện tại cách stop_loss "
+                                    f"{distance_pct:.1f}% "
+                                    f"(giá: {current:,.0f} | SL: {row.stop_loss:,.0f})"
+                                ),
+                                urgency=AttentionUrgency.CRITICAL,
+                                ts=now,
+                                metadata={
+                                    "current_price": current,
+                                    "stop_loss": row.stop_loss,
+                                    "distance_pct": round(distance_pct, 2),
+                                },
+                            ))
+                except Exception as exc:
+                    logger.warning("attention.source4_stoploss.error", error=str(exc), exc_info=True)
 
         # ---- Sort: critical → high → medium, stable ts desc within tier ---
         items.sort(key=lambda x: (_URGENCY_ORDER.get(x.urgency, 99), -(x.ts.timestamp())))
