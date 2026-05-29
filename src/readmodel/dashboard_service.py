@@ -33,7 +33,7 @@ import json
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, literal_column, over, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.db import AsyncSessionLocal
@@ -327,6 +327,21 @@ class DashboardService:
     async def get_brief_feedback_summary(
         self, user_id: str, days: int = 30
     ) -> dict[str, Any]:
+        """Return feedback summary using a single DB-level aggregation query.
+
+        Previous implementation: 2 round-trips — one full-object fetch for
+        latest feedback, one full outcome column scan returned to Python for
+        len() + sum(). O(N) Python loop on potentially large result sets.
+
+        Current implementation: 1 query using:
+          - ROW_NUMBER() OVER (ORDER BY created_at DESC) to identify latest row
+          - COUNT(*) FILTER (WHERE created_at >= since) for total_feedbacks_30d
+          - COUNT(*) FILTER (WHERE created_at >= since AND outcome = 'acted')
+            for acted_count used to compute acted_rate_30d
+          - MAX(CASE WHEN rank=1 THEN ...) to extract latest outcome/created_at
+
+        All aggregation happens in PostgreSQL. Zero Python counting loops.
+        """
         if not _BRIEFING_MODELS_AVAILABLE:
             logger.warning(
                 "get_brief_feedback_summary.import_error",
@@ -340,33 +355,65 @@ class DashboardService:
             }
 
         try:
-            latest = (
-                await self._session.execute(
-                    select(BriefFeedback)
-                    .where(BriefFeedback.user_id == user_id)
-                    .order_by(BriefFeedback.created_at.desc())
-                    .limit(1)
-                )
-            ).scalar_one_or_none()
-
             since = datetime.now(UTC) - timedelta(days=days)
-            rows_30d = (
-                await self._session.execute(
-                    select(BriefFeedback.outcome)
-                    .where(
-                        BriefFeedback.user_id == user_id,
-                        BriefFeedback.created_at >= since,
-                    )
-                )
-            ).scalars().all()
 
-            total = len(rows_30d)
-            acted_count = sum(1 for o in rows_30d if o == "acted")
-            acted_rate = round(acted_count / total, 3) if total > 0 else None
+            # Subquery: annotate each row with row_number (latest first).
+            # Using literal_column for the window function label so SQLAlchemy
+            # doesn't need to know the column type at compile time.
+            ranked_sq = (
+                select(
+                    BriefFeedback.outcome,
+                    BriefFeedback.created_at,
+                    over(
+                        func.row_number(),
+                        order_by=BriefFeedback.created_at.desc(),
+                    ).label("rn"),
+                )
+                .where(BriefFeedback.user_id == user_id)
+                .subquery()
+            )
+
+            # Single aggregation pass over the ranked subquery.
+            # COUNT FILTER: standard SQL:2003, supported by PostgreSQL 9.4+.
+            stmt = select(
+                # latest feedback fields (rank = 1)
+                func.max(
+                    case((ranked_sq.c.rn == 1, ranked_sq.c.outcome), else_=None)
+                ).label("last_outcome"),
+                func.max(
+                    case((ranked_sq.c.rn == 1, ranked_sq.c.created_at), else_=None)
+                ).label("last_created_at"),
+                # 30-day window counts
+                func.count(literal_column("1")).filter(
+                    ranked_sq.c.created_at >= since
+                ).label("total_30d"),
+                func.count(literal_column("1")).filter(
+                    ranked_sq.c.created_at >= since,
+                    ranked_sq.c.outcome == "acted",
+                ).label("acted_30d"),
+            )
+
+            row = (await self._session.execute(stmt)).one_or_none()
+
+            if row is None:
+                return {
+                    "last_feedback_outcome": None,
+                    "last_feedback_at": None,
+                    "acted_rate_30d": None,
+                    "total_feedbacks_30d": 0,
+                }
+
+            total = row.total_30d or 0
+            acted = row.acted_30d or 0
+            acted_rate = round(acted / total, 3) if total > 0 else None
+
+            last_at = row.last_created_at
+            if last_at is not None:
+                last_at = _ensure_utc(last_at)
 
             return {
-                "last_feedback_outcome": latest.outcome if latest else None,
-                "last_feedback_at": latest.created_at.isoformat() if latest else None,
+                "last_feedback_outcome": row.last_outcome,
+                "last_feedback_at": last_at.isoformat() if last_at else None,
                 "acted_rate_30d": acted_rate,
                 "total_feedbacks_30d": total,
             }
