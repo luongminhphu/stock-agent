@@ -176,6 +176,34 @@ class DecisionService:
         rows = (await self._session.execute(stmt)).scalars().all()
         return list(rows)
 
+    async def list_pending_outcome_evaluations(self) -> list[DecisionLog]:
+        """Return DecisionLog rows that have reached their review horizon
+        but have not yet been outcome-evaluated.
+
+        A decision is considered pending when:
+          - outcome_evaluated_at IS NULL (never evaluated), AND
+          - decision_at + review_horizon_days <= now (horizon has elapsed).
+
+        Ordered oldest-first so the scheduler processes in chronological order.
+        No user_id filter — the scheduler runs across all users.
+        """
+        now = datetime.now(UTC)
+        # Fetch all unevaluated rows first, then filter in Python using the
+        # per-row review_horizon_days value. This avoids DB-specific interval
+        # arithmetic and keeps the query portable across SQLite (tests) and
+        # PostgreSQL (production).
+        stmt = (
+            select(DecisionLog)
+            .where(DecisionLog.outcome_evaluated_at.is_(None))
+            .order_by(DecisionLog.decision_at.asc())
+        )
+        rows = (await self._session.execute(stmt)).scalars().all()
+        return [
+            row for row in rows
+            if row.decision_at is not None
+            and row.decision_at + timedelta(days=row.review_horizon_days) <= now
+        ]
+
     async def evaluate_outcome(self, decision_id: int) -> DecisionLog:
         """Fill realized outcome fields for one decision."""
         row = await self._get_decision_or_raise(decision_id)
