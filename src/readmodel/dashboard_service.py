@@ -490,6 +490,14 @@ class DashboardService:
 
     # ------------------------------------------------------------------
     # 10. Recent signal events — grouped by ticker at DB level, cached 30s
+    #
+    # group_by_ticker=True path (default): single query using
+    # array_agg(DISTINCT signal_type ORDER BY signal_type) — PostgreSQL.
+    # Eliminates the previous second round-trip that fetched distinct
+    # signal_types per ticker in a separate SELECT.
+    #
+    # The aggregated array is returned by PostgreSQL as a native Python list;
+    # we sort and deduplicate defensively on the Python side as well.
     # ------------------------------------------------------------------
 
     async def get_recent_signals(
@@ -546,6 +554,9 @@ class DashboardService:
             if cached is not None:
                 return cached
 
+            # Single query: aggregate metrics + collect distinct signal_types
+            # via array_agg(DISTINCT ...) in one GROUP BY pass.
+            # PostgreSQL returns the aggregated column as a native Python list.
             agg_stmt = (
                 select(
                     SignalEvent.ticker,
@@ -555,6 +566,9 @@ class DashboardService:
                     func.min(SignalEvent.occurred_at).label("first_seen"),
                     func.max(SignalEvent.occurred_at).label("last_seen"),
                     func.max(SignalEvent.source).label("source"),
+                    func.array_agg(
+                        SignalEvent.signal_type.distinct()
+                    ).label("signal_types_agg"),
                 )
                 .where(
                     SignalEvent.user_id == user_id,
@@ -575,23 +589,6 @@ class DashboardService:
             if not agg_rows:
                 return []
 
-            tickers_in_result = [r.ticker for r in agg_rows]
-            type_rows = (
-                await self._session.execute(
-                    select(SignalEvent.ticker, SignalEvent.signal_type)
-                    .where(
-                        SignalEvent.user_id == user_id,
-                        SignalEvent.occurred_at >= since,
-                        SignalEvent.ticker.in_(tickers_in_result),
-                    )
-                    .distinct()
-                )
-            ).all()
-
-            types_by_ticker: dict[str, set[str]] = {}
-            for t, st in type_rows:
-                types_by_ticker.setdefault(t, set()).add(st)
-
             result = []
             for r in agg_rows:
                 first_seen = r.first_seen
@@ -602,9 +599,13 @@ class DashboardService:
                 if last_seen is not None and last_seen.tzinfo is None:
                     last_seen = last_seen.replace(tzinfo=UTC)
 
+                # array_agg returns a list or None; sort + deduplicate defensively.
+                raw_types = r.signal_types_agg or []
+                signal_types = sorted({st for st in raw_types if st is not None})
+
                 result.append({
                     "ticker": r.ticker,
-                    "signal_types": sorted(types_by_ticker.get(r.ticker, set())),
+                    "signal_types": signal_types,
                     "max_strength": round(r.max_strength or 0.0, 3),
                     "max_confidence": round(r.max_confidence or 0.0, 3),
                     "count": r.count,
