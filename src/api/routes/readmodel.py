@@ -121,13 +121,19 @@ async def _fetch_price_and_position(
     user_id: str,
     tickers: list[str],
 ) -> tuple[dict[str, float], dict[str, tuple[float, float]]]:
-    """Parallel-ish fetch: price_map + position_map."""
-    import asyncio
+    """Sequential fetch: price_map then position_map.
 
-    price_map, position_map = await asyncio.gather(
-        _build_price_map(tickers),
-        _build_position_map(session, user_id),
-    )
+    AsyncSession does not support concurrent operations — running
+    _build_price_map (QuoteService/network) and _build_position_map
+    (DB session) concurrently via asyncio.gather caused ISCE when the
+    session was already provisioning a connection from the caller's
+    prior query (get_theses_list, get_thesis_aggregate).
+
+    Both awaits are run sequentially. Latency impact is negligible:
+    _build_price_map is a network I/O call, not a second DB query.
+    """
+    price_map = await _build_price_map(tickers)
+    position_map = await _build_position_map(session, user_id)
     return price_map, position_map
 
 
