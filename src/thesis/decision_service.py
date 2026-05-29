@@ -376,13 +376,13 @@ class DecisionService:
     def _infer_current_thesis_score(self, thesis: Thesis) -> float | None:
         if not thesis.snapshots:
             return None
-        latest = max(thesis.snapshots, key=lambda s: s.created_at)
+        latest = max(thesis.snapshots, key=lambda s: s.snapshotted_at)
         return float(latest.score) if latest.score is not None else None
 
     def _infer_current_health_score(self, thesis: Thesis) -> int | None:
         if not thesis.snapshots:
             return None
-        latest = max(thesis.snapshots, key=lambda s: s.created_at)
+        latest = max(thesis.snapshots, key=lambda s: s.snapshotted_at)
         return int(latest.score) if latest.score is not None else None
 
     def _infer_outcome_verdict(self, decision_type: str, pnl_pct: float) -> str:
