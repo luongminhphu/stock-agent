@@ -16,6 +16,12 @@ Decision log (fire-and-forget):
     automatically after the trade is persisted. Failure to log the decision
     never blocks the trade response — the trade is the source of truth.
 
+    execution_price (the actual fill price) is forwarded to DecisionService
+    so that price_at_decision reflects the real trade price, not a live quote.
+
+    If thesis_id is present but rationale is missing, a WARNING is emitted
+    so the gap is visible in logs rather than silently swallowed.
+
 Error mapping:
     ValueError              → 400 Bad Request
     PositionNotFoundError   → 404 Not Found
@@ -106,6 +112,7 @@ async def _try_log_decision(
     thesis_id: int | None,
     decision_type: str,
     rationale: str | None,
+    execution_price: float | None,
     quote_svc: object,
 ) -> bool:
     """Fire-and-forget decision log after a trade is persisted.
@@ -115,9 +122,24 @@ async def _try_log_decision(
 
     Contract:
       - Only logs when both thesis_id AND rationale are provided.
+      - Emits a WARNING when thesis_id is present but rationale is missing,
+        so the gap is observable in structured logs rather than silently dropped.
+      - execution_price (actual fill price) is forwarded to DecisionService so
+        that price_at_decision reflects the real trade price, not a live quote.
       - Uses the same session; DecisionService commits internally.
     """
-    if not thesis_id or not rationale:
+    if not thesis_id:
+        return False
+
+    if not rationale:
+        logger.warning(
+            "portfolio.decision_log_skipped_missing_rationale",
+            user_id=user_id,
+            ticker=ticker,
+            thesis_id=thesis_id,
+            decision_type=decision_type,
+            hint="Provide 'rationale' alongside 'thesis_id' to auto-create a DecisionLog",
+        )
         return False
 
     try:
@@ -129,6 +151,7 @@ async def _try_log_decision(
             thesis_id=thesis_id,
             decision_type=decision_type,
             rationale=rationale,
+            execution_price=execution_price,
         )
         return True
     except Exception as exc:  # noqa: BLE001
@@ -165,6 +188,7 @@ async def buy_stock(
     Nếu đã có position → cộng dồn, cập nhật avg_cost.
 
     Nếu thesis_id + rationale được cung cấp → tạo DecisionLog(BUY) tự động.
+    execution_price = body.price (giá fill thực tế) được forward vào DecisionLog.
     Failure của decision log không ảnh hưởng đến response trade.
     """
     svc = PortfolioService(session)
@@ -190,6 +214,7 @@ async def buy_stock(
         thesis_id=body.thesis_id,
         decision_type="BUY",
         rationale=body.rationale,
+        execution_price=body.price,
         quote_svc=quote_svc,
     )
 
@@ -226,6 +251,7 @@ async def sell_stock(
     Full sell → position.closed_at được set.
 
     Nếu thesis_id + rationale được cung cấp → tạo DecisionLog(SELL) tự động.
+    execution_price = body.price (giá fill thực tế) được forward vào DecisionLog.
     Failure của decision log không ảnh hưởng đến response trade.
 
     Raises 404 khi không có position mở cho ticker.
@@ -256,6 +282,7 @@ async def sell_stock(
         thesis_id=body.thesis_id,
         decision_type="SELL",
         rationale=body.rationale,
+        execution_price=body.price,
         quote_svc=quote_svc,
     )
 
