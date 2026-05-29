@@ -78,7 +78,11 @@ class DecisionService:
         if decision_type not in _VALID_DECISION_TYPES:
             raise ValueError(f"Unsupported decision_type={decision_type}")
 
-        thesis = await self._repo.get_or_raise(thesis_id, user_id)
+        thesis = await self._repo.get_by_id(thesis_id)
+        if thesis is None:
+            raise ValueError(f"Thesis #{thesis_id} not found")
+        if str(thesis.user_id) != str(user_id):
+            raise PermissionError(f"Thesis #{thesis_id} does not belong to this user")
         current_price = await self._safe_get_current_price(thesis.ticker)
         thesis_score = self._infer_current_thesis_score(thesis)
         thesis_health_score = self._infer_current_health_score(thesis)
