@@ -475,17 +475,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
   el('newDecisionBtn')?.addEventListener('click', () => openDecisionModal({}));
+
+  // reloadBtn: run independent loaders in parallel, then fire-and-forget
+  // loaders that don't block UI rendering (leaderboard, memory,
+  // attention, breadth). Pattern mirrors the initial DOMContentLoaded load.
   el('reloadBtn')?.addEventListener('click', async () => {
-    await loadDashboard();
-    await loadBacktesting();
-    await loadPortfolio();
-    await loadWatchlist();
-    await loadDecisions();
+    await Promise.allSettled([
+      loadDashboard(),
+      loadBacktesting(),
+      loadPortfolio(),
+      loadWatchlist(),
+      loadDecisions(),
+      loadMarketBreadth(),
+    ]);
+    // loadAttentionPanel after watchlist so scan data is fresh
     loadLeaderboard();
     loadMemory();
     loadAttentionPanel();
-    loadMarketBreadth();
   });
+
   el('addWatchlistBtn')?.addEventListener('click', () => openModal('watchlistAddModal'));
 
   el('statusFilter')?.addEventListener('change', debounce(loadDashboard, 200));
