@@ -37,6 +37,11 @@ _VALID_DECISION_TYPES = {"BUY", "SELL", "HOLD", "ADD", "REDUCE"}
 _VALID_OUTCOME_VERDICTS = {"CORRECT", "INCORRECT", "MIXED"}
 _DEFAULT_REVIEW_HORIZON_DAYS = 30
 
+# Threshold for verdict classification (percentage points).
+# price movement >= +_VERDICT_THRESHOLD_PCT → CORRECT for bullish decisions.
+# price movement <= -_VERDICT_THRESHOLD_PCT → INCORRECT for bullish decisions.
+_VERDICT_THRESHOLD_PCT = 5.0
+
 
 class DecisionNotFoundError(Exception):
     """Raised when a decision is not found or not owned by the requesting user."""
@@ -205,11 +210,40 @@ class DecisionService:
         ]
 
     async def evaluate_outcome(self, decision_id: int) -> DecisionLog:
-        """Fill realized outcome fields for one decision."""
+        """Fill realized outcome fields for one decision.
+
+        outcome_pnl_pct represents price movement % from price_at_decision
+        to outcome_price over the review horizon. Verdict semantics differ
+        per decision_type — see _infer_outcome_verdict().
+
+        Raises ValueError if:
+          - Current price cannot be fetched (quote_service unavailable).
+          - price_at_decision is None (quote_service was None at log time
+            and execution_price was not provided by the user).
+          - price_at_decision is zero (corrupt row).
+        """
         row = await self._get_decision_or_raise(decision_id)
         outcome_price = await self._safe_get_current_price(row.ticker)
-        if outcome_price is None or row.price_at_decision in (None, 0):
-            raise ValueError("Cannot evaluate outcome without current price and price_at_decision")
+
+        if outcome_price is None:
+            raise ValueError(
+                f"Cannot evaluate outcome for decision #{decision_id} "
+                f"(ticker={row.ticker}, type={row.decision_type}): "
+                "failed to fetch current price from quote_service."
+            )
+        if row.price_at_decision is None:
+            raise ValueError(
+                f"Cannot evaluate outcome for decision #{decision_id} "
+                f"(ticker={row.ticker}, type={row.decision_type}): "
+                "price_at_decision is NULL — execution_price was not provided "
+                "and quote_service was unavailable at log time."
+            )
+        if row.price_at_decision == 0:
+            raise ValueError(
+                f"Cannot evaluate outcome for decision #{decision_id} "
+                f"(ticker={row.ticker}, type={row.decision_type}): "
+                "price_at_decision=0 is invalid (corrupt row)."
+            )
 
         pnl_pct = (outcome_price - row.price_at_decision) / row.price_at_decision * 100
         verdict = self._infer_outcome_verdict(row.decision_type, pnl_pct)
@@ -224,6 +258,9 @@ class DecisionService:
             "decision.outcome_evaluated",
             decision_id=row.id,
             ticker=row.ticker,
+            decision_type=row.decision_type,
+            price_at_decision=row.price_at_decision,
+            outcome_price=outcome_price,
             pnl_pct=pnl_pct,
             verdict=verdict,
         )
@@ -407,16 +444,38 @@ class DecisionService:
         return int(latest.score) if latest.score is not None else None
 
     def _infer_outcome_verdict(self, decision_type: str, pnl_pct: float) -> str:
-        if decision_type in {"BUY", "ADD"}:
-            if pnl_pct >= 5:
+        """Map price movement % to an outcome verdict given the decision type.
+
+        Semantics per type:
+          BUY / ADD / HOLD: bullish bias — price rising confirms the call.
+            >= +_VERDICT_THRESHOLD_PCT  → CORRECT
+            <= -_VERDICT_THRESHOLD_PCT  → INCORRECT
+            in between              → MIXED
+
+          SELL / REDUCE: bearish/exit bias — price falling confirms the call.
+            <= -_VERDICT_THRESHOLD_PCT  → CORRECT
+            >= +_VERDICT_THRESHOLD_PCT  → INCORRECT
+            in between              → MIXED
+
+        HOLD is treated identically to BUY: holding a position implies the
+        investor expected the price to hold or rise. A significant decline
+        means the hold decision was wrong.
+        """
+        t = _VERDICT_THRESHOLD_PCT
+
+        if decision_type in {"BUY", "ADD", "HOLD"}:
+            if pnl_pct >= t:
                 return "CORRECT"
-            if pnl_pct <= -5:
+            if pnl_pct <= -t:
                 return "INCORRECT"
             return "MIXED"
+
         if decision_type in {"SELL", "REDUCE"}:
-            if pnl_pct <= -5:
+            if pnl_pct <= -t:
                 return "CORRECT"
-            if pnl_pct >= 5:
+            if pnl_pct >= t:
                 return "INCORRECT"
             return "MIXED"
+
+        # Safety fallback for any future decision_type extension.
         return "MIXED"
