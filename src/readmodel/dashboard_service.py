@@ -36,6 +36,7 @@ from typing import Any, Protocol
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.platform.db import AsyncSessionLocal
 from src.platform.logging import get_logger
 from src.readmodel.backtesting_service import BacktestingService
 from src.readmodel.cache import DashboardTTLCache
@@ -200,7 +201,18 @@ class DashboardService:
         )
 
     # ------------------------------------------------------------------
-    # 7. Latest scan snapshot — cross-segment (watchlist), cached 30s
+    # 7. Latest scan snapshot — uses isolated session to prevent ISCE.
+    #
+    # Root cause: AsyncSession does not support concurrent operations.
+    # DashboardService methods (get_attention_needed, get_theses_list, etc.)
+    # execute multiple sequential queries on self._session. If get_scan_latest
+    # is called while self._session is mid-connection-provisioning (e.g. the
+    # first query in a request that hasn't resolved its greenlet yet), SQLAlchemy
+    # raises InvalidRequestError (ISCE).
+    #
+    # Fix: open a short-lived dedicated session for this read, independent of
+    # the shared request session. The result is cached for 30s so the extra
+    # connection overhead is negligible in practice.
     # ------------------------------------------------------------------
 
     async def get_scan_latest(self, user_id: str) -> dict[str, Any] | None:
@@ -213,14 +225,17 @@ class DashboardService:
             return None
 
         try:
-            row = (
-                await self._session.execute(
-                    select(WatchlistScan)
-                    .where(WatchlistScan.user_id == user_id)
-                    .order_by(WatchlistScan.scanned_at.desc())
-                    .limit(1)
-                )
-            ).scalar_one_or_none()
+            # Use an isolated session — never reuse self._session here.
+            # See module docstring for root cause explanation.
+            async with AsyncSessionLocal() as session:
+                row = (
+                    await session.execute(
+                        select(WatchlistScan)
+                        .where(WatchlistScan.user_id == user_id)
+                        .order_by(WatchlistScan.scanned_at.desc())
+                        .limit(1)
+                    )
+                ).scalar_one_or_none()
 
             if not row:
                 return None
@@ -653,7 +668,7 @@ class DashboardService:
         return await self._portfolio_query.get_portfolio(user_id, price_map=price_map)
 
     # ------------------------------------------------------------------
-    # 15. Attention Panel — "Việc cần làm hôm nay" (Wave B)
+    # 15. Attention Panel — "Вiệc cần làm hôm nay" (Wave B)
     # ------------------------------------------------------------------
 
     async def get_attention_needed(
