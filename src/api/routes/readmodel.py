@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.bootstrap import get_quote_service
 from src.platform.config import settings
-from src.api.deps import get_db
+from src.api.deps import get_db, AsyncSessionLocal
 from src.readmodel.dashboard_service import DashboardService
 from src.readmodel.leaderboard_service import LeaderboardService
 from src.readmodel.schemas import (
@@ -70,12 +70,20 @@ async def _ensure_scan_snapshot(
     if latest is not None:
         return latest
 
-    scan_svc = ScanService(
-        session=session,
-        quote_service=get_quote_service(),
-    )
-    await scan_svc.scan_user_if_stale(user_id=user_id, max_age_minutes=30)
-    await session.commit()
+    # Use a dedicated session for ScanService to prevent ISCE.
+    # DashboardService.get_scan_latest() above leaves the shared session in a
+    # "provisioning" state; running ScanService queries (has_recent_signal et al.)
+    # on the same session triggers InvalidRequestError: concurrent operations not
+    # permitted. A separate AsyncSession isolates the scan write path entirely.
+    async with AsyncSessionLocal() as scan_session:
+        scan_svc = ScanService(
+            session=scan_session,
+            quote_service=get_quote_service(),
+        )
+        await scan_svc.scan_user_if_stale(user_id=user_id, max_age_minutes=30)
+        await scan_session.commit()
+
+    # Re-read the freshly written snapshot through the request session.
     return await svc.get_scan_latest(user_id)
 
 
