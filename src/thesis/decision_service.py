@@ -69,11 +69,19 @@ class DecisionService:
         user_id: str,
         decision_type: str,
         rationale: str,
+        execution_price: float | None = None,
+        quantity: int | None = None,
         brief_summary: str | None = None,
         active_signal: str | None = None,
         review_horizon_days: int = _DEFAULT_REVIEW_HORIZON_DAYS,
     ) -> DecisionLog:
-        """Persist one immutable decision with frozen context at decision time."""
+        """Persist one immutable decision with frozen context at decision time.
+
+        execution_price: actual fill price supplied by the user ("Giá thực hiện").
+            If provided, stored as price_at_decision directly.
+            If omitted, live quote from quote_service is used as fallback.
+        quantity: number of shares traded — stored as context, not used in PnL calc.
+        """
         decision_type = decision_type.upper().strip()
         if decision_type not in _VALID_DECISION_TYPES:
             raise ValueError(f"Unsupported decision_type={decision_type}")
@@ -83,7 +91,13 @@ class DecisionService:
             raise ValueError(f"Thesis #{thesis_id} not found")
         if str(thesis.user_id) != str(user_id):
             raise PermissionError(f"Thesis #{thesis_id} does not belong to this user")
-        current_price = await self._safe_get_current_price(thesis.ticker)
+
+        # execution_price takes priority; fall back to live quote
+        if execution_price is not None:
+            current_price = float(execution_price)
+        else:
+            current_price = await self._safe_get_current_price(thesis.ticker)
+
         thesis_score = self._infer_current_thesis_score(thesis)
         thesis_health_score = self._infer_current_health_score(thesis)
 
@@ -94,6 +108,7 @@ class DecisionService:
             decision_type=decision_type,
             decision_at=datetime.now(UTC),
             price_at_decision=current_price,
+            quantity=quantity,
             thesis_score_at_decision=thesis_score,
             thesis_health_score_at_decision=thesis_health_score,
             active_signal=active_signal,
@@ -110,6 +125,8 @@ class DecisionService:
             thesis_id=thesis.id,
             ticker=thesis.ticker,
             decision_type=decision_type,
+            price_at_decision=current_price,
+            quantity=quantity,
         )
         return row
 
@@ -121,17 +138,7 @@ class DecisionService:
         ticker: str | None = None,
         limit: int = 50,
     ) -> list[DecisionLog]:
-        """List decision logs for a user, newest first.
-
-        Args:
-            user_id:        Filter to this user's decisions only.
-            evaluated_only: When True, return only decisions with a realized outcome.
-            ticker:         Optional — narrow to one ticker symbol (uppercased).
-            limit:          Max rows (1-200, default 50).
-
-        Returns:
-            List of DecisionLog rows ordered by decision_at DESC.
-        """
+        """List decision logs for a user, newest first."""
         limit = min(max(limit, 1), 200)
         stmt = (
             select(DecisionLog)
@@ -281,12 +288,7 @@ class DecisionService:
         decision_id: int,
         user_id: str,
     ) -> DecisionReplayEnvelope:
-        """Load, ownership-check, evaluate if needed, analyze, persist lesson.
-
-        After persisting a key_lesson, publishes ThesisReviewRequestedEvent so
-        the thesis review listener can run an AI review on the linked thesis.
-        Fire-and-forget: thesis review failure never blocks the replay response.
-        """
+        """Load, ownership-check, evaluate if needed, analyze, persist lesson."""
         row = await self._get_decision_or_raise(decision_id)
         if str(row.user_id) != str(user_id):
             raise DecisionNotFoundError(
@@ -304,9 +306,6 @@ class DecisionService:
                 key_lesson=getattr(envelope.replay, "key_lesson", None),
                 pattern_detected=getattr(envelope.replay, "pattern_detected", None),
             )
-            # Close the lesson → thesis review loop: if a key_lesson was produced,
-            # request an AI review of the linked thesis so it can incorporate the
-            # new evidence. Guard: only ACTIVE theses qualify.
             if getattr(envelope.replay, "key_lesson", None) and row.thesis_id:
                 await self._maybe_request_thesis_review(row.thesis_id, row.ticker)
 
@@ -317,13 +316,7 @@ class DecisionService:
         thesis_id: int,
         ticker: str,
     ) -> None:
-        """Publish ThesisReviewRequestedEvent after a lesson is persisted.
-
-        Guard: thesis must be ACTIVE — non-active theses are silently skipped.
-        Fire-and-forget: any exception is logged as WARNING, never re-raised.
-
-        Owner: thesis segment (decision → thesis review loop).
-        """
+        """Publish ThesisReviewRequestedEvent after a lesson is persisted."""
         try:
             thesis = await self._repo.get_by_id(thesis_id)
             if thesis is None or thesis.status != "active":

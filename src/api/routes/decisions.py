@@ -17,8 +17,8 @@ No business logic here — thin adapter delegating to domain services.
 
 Contract notes:
 - POST /decisions requires thesis_id (NOT NULL FK on DecisionLog).
-  ticker and price_at_decision are derived by DecisionService from the linked thesis
-  and quote_service — callers must NOT send them in the request body.
+  ticker is derived from the linked thesis automatically.
+  execution_price overrides quote_service price when provided.
 - GET /decisions delegates filtering to DecisionService.list_decisions().
 """
 
@@ -42,12 +42,23 @@ router = APIRouter(tags=["decisions"])
 class LogDecisionRequest(BaseModel):
     """Request body for POST /decisions.
 
-    thesis_id is required — DecisionService derives ticker and current price
-    from the linked Thesis + quote_service automatically.
+    thesis_id is required — DecisionService derives ticker automatically.
+    execution_price: actual fill price ("Giá thực hiện"); if omitted, live quote is used.
+    quantity: number of shares traded ("Khối lượng"); optional, stored for context.
     """
     thesis_id: int = Field(..., description="ID of the linked Thesis (required — NOT NULL FK)")
     decision_type: str = Field(..., description="BUY | SELL | HOLD | ADD | REDUCE")
     rationale: str = Field(..., min_length=1, max_length=2000)
+    execution_price: float | None = Field(
+        None,
+        gt=0,
+        description="Actual fill price (Giá thực hiện). Overrides live quote when provided.",
+    )
+    quantity: int | None = Field(
+        None,
+        gt=0,
+        description="Number of shares traded (Khối lượng).",
+    )
     brief_summary: str | None = Field(None, max_length=500)
     active_signal: str | None = Field(None, max_length=100)
     review_horizon_days: int = Field(30, ge=1, le=365)
@@ -60,6 +71,7 @@ class DecisionResponse(BaseModel):
     ticker: str
     decision_type: str
     price_at_decision: float | None
+    quantity: int | None
     thesis_score_at_decision: float | None
     rationale: str
     review_horizon_days: int
@@ -79,6 +91,7 @@ class DecisionResponse(BaseModel):
             ticker=d.ticker,  # type: ignore[attr-defined]
             decision_type=str(d.decision_type),  # type: ignore[attr-defined]
             price_at_decision=d.price_at_decision,  # type: ignore[attr-defined]
+            quantity=getattr(d, "quantity", None),
             thesis_score_at_decision=d.thesis_score_at_decision,  # type: ignore[attr-defined]
             rationale=d.rationale,  # type: ignore[attr-defined]
             review_horizon_days=d.review_horizon_days,  # type: ignore[attr-defined]
@@ -134,8 +147,8 @@ async def log_decision(
 ) -> DecisionResponse:
     """Log a trade decision for future outcome evaluation and replay.
 
-    ticker and price_at_decision are derived automatically from the linked
-    thesis and quote_service — do not pass them in the request body.
+    execution_price (Giá thực hiện) overrides live quote when provided.
+    quantity (Khối lượng) is stored as context for the trade.
     """
     try:
         decision = await svc.log_decision(
@@ -143,6 +156,8 @@ async def log_decision(
             thesis_id=body.thesis_id,
             decision_type=body.decision_type.upper().strip(),
             rationale=body.rationale,
+            execution_price=body.execution_price,
+            quantity=body.quantity,
             brief_summary=body.brief_summary,
             active_signal=body.active_signal,
             review_horizon_days=body.review_horizon_days,
@@ -220,7 +235,6 @@ async def replay_decision(
 
     r = envelope.replay
     d_id = envelope.decision_id
-    # Reload row for up-to-date fields after analysis
     rows = await svc.list_decisions(user_id, limit=200)
     matched = next((row for row in rows if row.id == d_id), None)
 
