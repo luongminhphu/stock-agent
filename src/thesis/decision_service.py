@@ -432,16 +432,38 @@ class DecisionService:
             return None
 
     def _infer_current_thesis_score(self, thesis: Thesis) -> float | None:
+        """Freeze latest thesis score (composite AI score) at decision time.
+
+        Reads ThesisSnapshot.score — the overall thesis quality score
+        written by review_service after each ThesisReview.
+        """
         if not thesis.snapshots:
             return None
         latest = max(thesis.snapshots, key=lambda s: s.snapshotted_at)
         return float(latest.score) if latest.score is not None else None
 
     def _infer_current_health_score(self, thesis: Thesis) -> int | None:
+        """Freeze latest thesis health (conviction) at decision time as int 0–100.
+
+        Reads ThesisSnapshot.conviction_score (float 0.0–1.0) — the AI’s
+        confidence that the thesis is still valid, written by review_service
+        after each ThesisReview. Scaled x100 to int to match the Integer
+        column contract of thesis_health_score_at_decision.
+
+        Fallback chain:
+          1. Latest snapshot with conviction_score not None → int(v * 100), clamped 0–100.
+          2. No snapshots or conviction_score is None → None (stored as NULL).
+
+        This is intentionally different from _infer_current_thesis_score(),
+        which reads .score (composite quality). Together they give ReplayAgent
+        two independent signals: raw thesis quality vs AI conviction.
+        """
         if not thesis.snapshots:
             return None
         latest = max(thesis.snapshots, key=lambda s: s.snapshotted_at)
-        return int(latest.score) if latest.score is not None else None
+        if latest.conviction_score is None:
+            return None
+        return max(0, min(100, int(round(latest.conviction_score * 100))))
 
     def _infer_outcome_verdict(self, decision_type: str, pnl_pct: float) -> str:
         """Map price movement % to an outcome verdict given the decision type.
