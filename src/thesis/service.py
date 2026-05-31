@@ -39,7 +39,7 @@ from src.thesis.models import (
     ThesisStatus,
 )
 from src.thesis.repository import ThesisRepository
-from src.thesis.timeline_parser import parse_time_horizon
+from src.thesis.timeline_parser import parse_timeline_to_date
 
 logger = get_logger(__name__)
 
@@ -62,7 +62,7 @@ class ThesisService:
 
     async def create(self, user_id: str, inp: CreateThesisInput) -> Thesis:
         ticker = inp.ticker.upper().strip()
-        time_horizon = parse_time_horizon(inp.time_horizon) if inp.time_horizon else None
+        time_horizon = parse_timeline_to_date(inp.time_horizon) if inp.time_horizon else None
         thesis = Thesis(
             user_id=user_id,
             ticker=ticker,
@@ -89,7 +89,7 @@ class ThesisService:
         _assert_mutable(thesis)
         data = inp.model_dump(exclude_unset=True)
         if "time_horizon" in data and data["time_horizon"] is not None:
-            data["time_horizon"] = parse_time_horizon(data["time_horizon"])
+            data["time_horizon"] = parse_timeline_to_date(data["time_horizon"])
         for field, value in data.items():
             setattr(thesis, field, value)
         logger.info("thesis.updated", thesis_id=thesis_id, fields=list(data))
