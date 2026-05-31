@@ -4,55 +4,89 @@ Owner: briefing segment.
 
 This file has TWO responsibilities that must stay separate:
 
-1. BriefingService — the high-level orchestrator.
+1. BriefingService — the high-level orchestration layer:
    - generate_morning_brief(user_id) → BriefResult
    - generate_eod_brief(user_id) → BriefResult
+   - record_feedback(brief_snapshot_id, user_id, outcome) → None
    It coordinates watchlist, quote, AI, thesis, and portfolio services.
    It does NOT contain AI prompting logic — that lives in BriefingAgent.
 
-2. BriefingAgentService — thin wrapper that owns the BriefingAgent instance.
-   Registered in dependency injection so callers can inject it without knowing
-   the underlying AI agent.
+2. BriefResult — the return value of both generate_* methods.
+   It is a simple dataclass, not a domain model.
 
-Data flow:
-  BriefingService._collect_contexts(user_id)
-    ├─ watchlist   — WatchlistService.get_tickers(user_id) → tickers
-    ├─ quote       — QuoteService.get_quotes(tickers) → price context
-    ├─ thesis      — ThesisService.get_thesis_health(user_id) → thesis context
-    ├─ thesis_judge— ThesisJudgeAgent.judge(theses) → AI-scored thesis context
-    ├─ sector      — SectorAnalysisAgent.analyse(tickers) → sector context
-    └─ pnl         — PnLService.get_portfolio_pnl(user_id) → unrealised P&L
+Design notes
+------------
+- BriefingService is stateless across calls — it holds no mutable state
+  other than the injected collaborators.
+- The session is injected from outside (bot command, scheduler) so that
+  the caller owns the transaction boundary.
+- Each generate_* method is a single logical unit: collect context →
+  call agent → persist snapshot → return BriefResult.
+- The _collect_contexts() helper is shared between morning and eod flows.
+  It calls each context-builder in parallel (asyncio.gather) to minimise
+  latency.
+- Context-builders are fail-safe: each catches its own errors and returns
+  a degraded value (empty string / empty list) rather than aborting the
+  brief.
 
-All context strings are compact single-strings injected into BriefingAgent.
+Dependency graph (inbound)
+--------------------------
+  bot/commands/briefing.py   → BriefingService (generate_* + record_feedback)
+  bot/commands/briefing.py   → BriefResult (snapshot_id)
+  readmodel/dashboard_service.py → BriefSnapshot (direct ORM read, no repo)
 
-Design notes:
-  - BriefingService does not own an AsyncSession; it delegates DB work to
-    injected service objects.
-  - Each context builder method catches exceptions independently so that a
-    failure in one data source (e.g. quote API) does not abort the entire brief.
-  - ThesisBriefContext is the rich structured output from ThesisJudgeAgent.
-    It is stored on BriefResult for downstream consumers (bot formatter).
-  - portfolio_service is intentionally NOT injected here. Portfolio data is
-    accessed via PnLService only, keeping portfolio segment boundary intact.
-  - SectorAnalysisAgent and ThesisJudgeAgent are optional; if not injected
-    their context strings are empty and the brief degrades gracefully.
-  - Context sources injected into BriefingAgent
-    are compact string injected into BriefingAgent context.
+Context sources injected into BriefingAgent
+--------------------------------------------
+  watchlist   — WatchlistService.get_tickers(user_id) → tickers
+  quotes      — QuoteService.batch_get_quotes(tickers) → price/volume
+  pnl         — PnLService.get_portfolio_pnl(user_id) → unrealised P&L
+  thesis      — ThesisService.get_thesis_health(user_id) → thesis status
+  sector      — SectorRotationAgent.analyse(tickers) → sector flow
+  judge       — ThesisJudgeAgent.judge(theses) → thesis scores
+  risk        — PortfolioRiskNarrator.narrate(user_id) → risk summary
+  next_action — NextActionSuggester.suggest(user_id) → next actions
+  trend_pred  — TrendPredictionStore.get_recent(user_id) → predictions
+  feedback    — DashboardService.get_brief_feedback_summary() → calibration
+  agenda      — AgendaService.build_agenda(user_id) → decide/watch/defer
+
+Wave B.1 (AgendaService integration):
+  - AgendaService.build_agenda(user_id) → DailyAgendaResult
+    (decide / watch / defer buckets).  Result is formatted by
+    _build_agenda_context() and injected as "Daily agenda" block.
+  - Passed into BriefingService so morning/eod briefs include today's agenda context
+    for smarter action mapping (DECIDE → ACT_TODAY, WATCH → MONITOR).
+  - AgendaService requires session — skipped silently when session is None.
+
+Wave B.1.1 (recently-acted tickers connector):
+  - BriefingService._build_feedback_context() now injects acted_tickers from
+    recent DashboardService.get_brief_feedback_summary() into the brief context.
+  - This allows BriefingAgent to skip recently-acted tickers from DECIDE bucket
+    and focus on fresh signals.
+  - Requires session to be set — skipped silently when session is None.
+    Non-blocking.
 """
 
 from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.briefing.repository import BriefSnapshotRepository
 from src.platform.logging import get_logger
 
 if TYPE_CHECKING:
     from src.ai.agents.briefing import BriefingAgent
-    from src.ai.agents.sector_analysis import SectorAnalysisAgent
+    from src.ai.agents.next_action_suggester import NextActionSuggester
+    from src.ai.agents.portfolio_risk_narrator import PortfolioRiskNarrator
+    from src.ai.agents.sector_rotation import SectorRotationAgent
     from src.ai.agents.thesis_judge import ThesisJudgeAgent
+    from src.briefing.agenda_service import AgendaService
+    from src.briefing.trend_prediction_store import TrendPredictionStore
     from src.portfolio.pnl_service import PnlService
+    from src.readmodel.dashboard_service import DashboardService
     from src.thesis.service import ThesisService
     from src.watchlist.service import WatchlistService
 
@@ -61,40 +95,54 @@ logger = get_logger(__name__)
 
 @dataclass
 class BriefResult:
-    """Output of generate_morning_brief / generate_eod_brief."""
+    """Return value of generate_morning_brief / generate_eod_brief."""
 
     snapshot_id: int | None
     text: str
     tickers: list[str] = field(default_factory=list)
-    thesis_brief_context: object | None = None  # ThesisBriefContext if available
 
 
 class BriefingService:
-    """Orchestrates context collection and delegates to BriefingAgent.
+    """Orchestrates context collection and delegates generation to BriefingAgent.
 
     Constructor arguments
     ---------------------
+    session            — AsyncSession (transaction owner is the caller).
     briefing_agent     — BriefingAgent (AI prompting).
     watchlist_service  — WatchlistService (get tickers).
-    pnl_service        — PnlService (unrealised P&L context). Optional.
+    pnl_service        — PnLService (unrealised P&L context). Optional.
     thesis_service     — ThesisService (thesis health context). Optional.
-    quote_service      — Any object with get_quotes(tickers) -> dict. Optional.
+    quote_service      — Any object with batch_get_quotes(tickers) → dict. Optional.
     thesis_judge_agent — ThesisJudgeAgent. Optional.
-    sector_agent       — SectorAnalysisAgent. Optional.
-    repo               — BriefingRepository for persisting snapshots. Optional.
+    sector_agent       — SectorRotationAgent. Optional.
+    risk_narrator      — PortfolioRiskNarrator. Optional.
+    next_action_agent  — NextActionSuggester. Optional.
+    trend_store        — TrendPredictionStore. Optional.
+    dashboard_service  — DashboardService (feedback calibration). Optional.
+                         Requires session to be set — skipped silently when
+                         session is None. Non-blocking.
+    agenda_service     — AgendaService (daily agenda buckets). Optional.
+                         Requires session to be set — skipped silently when
+                         session is None. Non-blocking.
     """
 
     def __init__(
         self,
+        session: AsyncSession,
         briefing_agent: "BriefingAgent",
         watchlist_service: "WatchlistService",
-        pnl_service: "PnlService | None" = None,
-        thesis_service: "ThesisService | None" = None,
-        quote_service: object | None = None,
-        thesis_judge_agent: "ThesisJudgeAgent | None" = None,
-        sector_agent: "SectorAnalysisAgent | None" = None,
-        repo: object | None = None,
+        pnl_service: Any = None,
+        thesis_service: Any = None,
+        quote_service: Any = None,
+        thesis_judge_agent: Any = None,
+        sector_agent: Any = None,
+        risk_narrator: Any = None,
+        next_action_agent: Any = None,
+        trend_store: Any = None,
+        dashboard_service: Any = None,
+        agenda_service: Any = None,
     ) -> None:
+        self._session = session
         self._agent = briefing_agent
         self._watchlist_service = watchlist_service
         self._pnl_service = pnl_service
@@ -102,7 +150,12 @@ class BriefingService:
         self._quote_service = quote_service
         self._thesis_judge_agent = thesis_judge_agent
         self._sector_agent = sector_agent
-        self._repo = repo
+        self._risk_narrator = risk_narrator
+        self._next_action_agent = next_action_agent
+        self._trend_store = trend_store
+        self._dashboard_service = dashboard_service
+        self._agenda_service = agenda_service
+        self._repo = BriefSnapshotRepository(session)
 
     # ------------------------------------------------------------------
     # Public API
@@ -140,6 +193,39 @@ class BriefingService:
         )
         return BriefResult(snapshot_id=snapshot_id, text=brief_text, tickers=tickers)
 
+    async def record_feedback(
+        self,
+        brief_snapshot_id: int,
+        user_id: str,
+        outcome: str,
+    ) -> None:
+        """Persist user feedback on a brief snapshot.
+
+        Called by bot/commands/briefing.py BriefFeedbackView._record().
+        outcome: 'acted' | 'skipped' | 'noted'
+        """
+        try:
+            from src.briefing.models import BriefFeedback
+            feedback = BriefFeedback(
+                brief_snapshot_id=brief_snapshot_id,
+                user_id=user_id,
+                outcome=outcome,
+            )
+            self._session.add(feedback)
+            await self._session.flush()
+            logger.info(
+                "briefing.feedback.recorded",
+                snapshot_id=brief_snapshot_id,
+                outcome=outcome,
+            )
+        except Exception as exc:
+            logger.warning(
+                "briefing.feedback.failed",
+                snapshot_id=brief_snapshot_id,
+                outcome=outcome,
+                error=str(exc),
+            )
+
     # ------------------------------------------------------------------
     # Context collection
     # ------------------------------------------------------------------
@@ -159,11 +245,21 @@ class BriefingService:
             pnl_context,
             thesis_context,
             sector_context,
+            risk_context,
+            next_action_context,
+            trend_context,
+            feedback_context,
+            agenda_context,
         ) = await asyncio.gather(
             self._build_quote_context(tickers),
             self._build_pnl_context(user_id),
             self._build_thesis_context(user_id),
             self._build_sector_context(tickers),
+            self._build_risk_context(user_id),
+            self._build_next_action_context(user_id),
+            self._build_trend_context(user_id),
+            self._build_feedback_context(user_id),
+            self._build_agenda_context(user_id),
         )
 
         contexts = {
@@ -171,6 +267,11 @@ class BriefingService:
             "pnl_context": pnl_context,
             "thesis_context": thesis_context,
             "sector_context": sector_context,
+            "risk_context": risk_context,
+            "next_action_context": next_action_context,
+            "trend_context": trend_context,
+            "feedback_context": feedback_context,
+            "agenda_context": agenda_context,
         }
         return tickers, contexts
 
@@ -185,7 +286,7 @@ class BriefingService:
         if not self._quote_service or not tickers:
             return ""
         try:
-            quotes = await self._quote_service.get_quotes(tickers)
+            quotes = await self._quote_service.batch_get_quotes(tickers)
             if not quotes:
                 return ""
             lines = []
@@ -218,11 +319,7 @@ class BriefingService:
             return ""
 
     async def _build_thesis_context(self, user_id: str) -> str:
-        """Build thesis health context string.
-
-        Uses ThesisService.get_thesis_health() which returns a list of dicts.
-        Also injects the latest review verdict for each thesis if available.
-        """
+        """Build thesis health context string from ThesisService.get_thesis_health()."""
         if not self._thesis_service:
             return ""
         try:
@@ -237,33 +334,14 @@ class BriefingService:
                 line = f"{ticker}: {assumption_count} assumptions"
                 if days is not None:
                     line += f", last review {days}d ago"
+                # inject latest review verdict if available
+                verdict = t.get("latest_verdict")
+                if verdict:
+                    line += f" | verdict: {verdict}"
                 lines.append(line)
             return "Thesis:\n" + "\n".join(lines)
         except Exception as exc:
             logger.warning("briefing.thesis_context.failed", error=str(exc))
-            return ""
-
-    async def _build_thesis_judge_context(self, user_id: str) -> str:
-        """Build thesis judge context string injected into BriefingAgent context.
-
-        Calls ThesisJudgeAgent.judge() with the active theses for user_id.
-        Returns a compact string or empty string on failure/no-op.
-        """
-        if not self._thesis_judge_agent or not self._thesis_service:
-            return ""
-        try:
-            theses = await self._thesis_service.list_active(user_id)
-            if not theses:
-                return ""
-            result = await self._thesis_judge_agent.judge(theses)
-            if not result:
-                return ""
-            lines = []
-            for ticker, score in result.items():
-                lines.append(f"{ticker}: score={score}")
-            return "Thesis Judge:\n" + "\n".join(lines)
-        except Exception as exc:
-            logger.warning("briefing.thesis_judge_context.failed", error=str(exc))
             return ""
 
     async def _build_sector_context(self, tickers: list[str]) -> str:
@@ -279,6 +357,100 @@ class BriefingService:
             logger.warning("briefing.sector_context.failed", error=str(exc))
             return ""
 
+    async def _build_risk_context(self, user_id: str) -> str:
+        if not self._risk_narrator:
+            return ""
+        try:
+            result = await self._risk_narrator.narrate(user_id)
+            return result or ""
+        except Exception as exc:
+            logger.warning("briefing.risk_context.failed", error=str(exc))
+            return ""
+
+    async def _build_next_action_context(self, user_id: str) -> str:
+        if not self._next_action_agent:
+            return ""
+        try:
+            result = await self._next_action_agent.suggest(user_id)
+            return result or ""
+        except Exception as exc:
+            logger.warning("briefing.next_action_context.failed", error=str(exc))
+            return ""
+
+    async def _build_trend_context(self, user_id: str) -> str:
+        if not self._trend_store:
+            return ""
+        try:
+            predictions = await self._trend_store.get_recent(user_id)
+            if not predictions:
+                return ""
+            lines = []
+            for p in predictions:
+                ticker = getattr(p, "ticker", "?")
+                direction = getattr(p, "direction", "?")
+                confidence = getattr(p, "confidence", None)
+                line = f"{ticker}: {direction}"
+                if confidence is not None:
+                    line += f" ({confidence:.0%})"
+                lines.append(line)
+            return "Trend predictions:\n" + "\n".join(lines)
+        except Exception as exc:
+            logger.warning("briefing.trend_context.failed", error=str(exc))
+            return ""
+
+    async def _build_feedback_context(self, user_id: str) -> str:
+        """Inject acted_tickers from recent brief feedback for calibration.
+
+        Requires self._dashboard_service and self._session to be set.
+        Skipped silently when either is None.
+        """
+        if not self._dashboard_service or not self._session:
+            return ""
+        try:
+            summary = await self._dashboard_service.get_brief_feedback_summary(user_id)
+            if not summary:
+                return ""
+            acted = getattr(summary, "acted_tickers", None) or []
+            if not acted:
+                return ""
+            return "Recently acted: " + ", ".join(acted)
+        except Exception as exc:
+            logger.warning("briefing.feedback_context.failed", error=str(exc))
+            return ""
+
+    async def _build_agenda_context(self, user_id: str) -> str:
+        """Build daily agenda context (decide/watch/defer buckets).
+
+        Requires self._agenda_service and self._session to be set.
+        Skipped silently when either is None.
+        """
+        if not self._agenda_service or not self._session:
+            return ""
+        try:
+            result = await self._agenda_service.build_agenda(user_id)
+            if not result:
+                return ""
+            lines = []
+            decide = getattr(result, "decide", []) or []
+            watch = getattr(result, "watch", []) or []
+            defer = getattr(result, "defer", []) or []
+            if decide:
+                lines.append("DECIDE: " + ", ".join(
+                    getattr(item, "ticker", str(item)) for item in decide
+                ))
+            if watch:
+                lines.append("WATCH: " + ", ".join(
+                    getattr(item, "ticker", str(item)) for item in watch
+                ))
+            if defer:
+                lines.append("DEFER: " + ", ".join(
+                    getattr(item, "ticker", str(item)) for item in defer
+                ))
+            return "Daily agenda:\n" + "\n".join(lines) if lines else ""
+        except Exception as exc:
+            logger.warning("briefing.agenda_context.failed", error=str(exc))
+            return ""
+
     # ------------------------------------------------------------------
     # Persistence
     # ------------------------------------------------------------------
@@ -290,8 +462,6 @@ class BriefingService:
         brief_text: str,
         tickers: list[str],
     ) -> int | None:
-        if not self._repo:
-            return None
         try:
             from src.briefing.models import BriefingSnapshot
             snapshot = BriefingSnapshot(
@@ -300,7 +470,9 @@ class BriefingService:
                 content=brief_text,
                 tickers=tickers,
             )
-            return await self._repo.save(snapshot)
+            self._session.add(snapshot)
+            await self._session.flush()
+            return snapshot.id
         except Exception as exc:
             logger.warning("briefing.persist_snapshot.failed", error=str(exc))
             return None
