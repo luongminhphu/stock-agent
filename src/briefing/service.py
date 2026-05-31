@@ -32,7 +32,7 @@ Design notes
 Dependency graph (inbound)
 --------------------------
   bot/commands/briefing.py   → BriefingService (generate_* + record_feedback)
-  bot/commands/briefing.py   → BriefResult (snapshot_id)
+  bot/commands/briefing.py   → BriefResult (snapshot_id, output)
   readmodel/dashboard_service.py → BriefSnapshot (direct ORM read, no repo)
 
 Context sources injected into BriefingAgent
@@ -100,6 +100,7 @@ class BriefResult:
     snapshot_id: int | None
     text: str
     tickers: list[str] = field(default_factory=list)
+    output: Any | None = field(default=None)  # BriefOutput from BriefingAgent
 
 
 class BriefingService:
@@ -182,7 +183,7 @@ class BriefingService:
             brief_text=brief_str,
             tickers=tickers,
         )
-        return BriefResult(snapshot_id=snapshot_id, text=brief_str, tickers=tickers)
+        return BriefResult(snapshot_id=snapshot_id, text=brief_str, tickers=tickers, output=brief_output)
 
     async def generate_eod_brief(self, user_id: str) -> BriefResult:
         """Generate end-of-day brief for user_id."""
@@ -205,7 +206,7 @@ class BriefingService:
             brief_text=brief_str,
             tickers=tickers,
         )
-        return BriefResult(snapshot_id=snapshot_id, text=brief_str, tickers=tickers)
+        return BriefResult(snapshot_id=snapshot_id, text=brief_str, tickers=tickers, output=brief_output)
 
     async def record_feedback(
         self,
@@ -478,8 +479,8 @@ class BriefingService:
         tickers: list[str],
     ) -> int | None:
         try:
-            from src.briefing.models import BriefingSnapshot
-            snapshot = BriefingSnapshot(
+            from src.briefing.models import BriefSnapshot
+            snapshot = BriefSnapshot(
                 user_id=user_id,
                 brief_type=brief_type,
                 content=brief_text,
