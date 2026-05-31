@@ -11,6 +11,7 @@ Builds an InvestorContext from:
   - market.registry (sector key_metrics per position ticker)  ← V2-3
   - ai.memory (MemoryContext — episodic + semantic memory)    ← V2
   - ai.memory (PatternSynthesisOutput — synthesized patterns) ← Wave 8
+  - ai.agents.replay_agent (LessonService pattern summary)    ← Wave 9
 
 Boundary rule:
   ContextBuilder knows ABOUT domain segments but does NOT own their logic.
@@ -23,6 +24,8 @@ Backward compatibility:
   sector context injection is additive — if registry fails, context is still built.
   thesis health injection replaces the old flat summary — same slot in
   InvestorContext.active_thesis_summary; zero signature change for agents.
+  replay_pattern_block is additive — if LessonService fails, context is
+  still built (empty string, block skipped in render_for_agent).
 
 Wave 3 fix:
   _fetch_investor_profile() now calls svc.get_profile(user_id=user_id) which
@@ -44,6 +47,13 @@ Wave 8 (PatternSynthesisOutput injection):
     pattern_synthesis_block   ← new synthesized patterns + bias_warnings
   render_for_agent() renders both blocks; pattern block auto-skips when
   PatternSynthesisOutput.confidence < 0.5 (handled inside to_prompt_block()).
+
+Wave 9 (ReplayAgent exit pattern injection):
+  _fetch_replay_pattern(user_id) → LessonService.get_pattern_summary()
+  Returns a structured exit pattern warning block surfaced in AI context.
+  replay_pattern_block slot added to InvestorContext.
+  Rendered as [Exit pattern warnings] in render_for_agent().
+  Additive — silently skipped when LessonService not available or no data.
 
 Session safety:
   build() runs each _fetch_* inside session.begin_nested() (SAVEPOINT).
@@ -98,6 +108,9 @@ class InvestorContext:
     # From ai.memory — synthesized patterns + bias_warnings (Wave 8)
     pattern_synthesis_block: str = ""
 
+    # From ai.agents.replay_agent via LessonService — exit pattern warnings (Wave 9)
+    replay_pattern_block: str = ""
+
 
 class ContextBuilder:
     """Assembles InvestorContext by querying domain segment read-APIs.
@@ -131,6 +144,7 @@ class ContextBuilder:
             (self._fetch_recent_lessons,   _apply_lessons),
             (self._fetch_portfolio_bias,   _apply_portfolio),
             (self._fetch_memory_context,   _apply_memory),
+            (self._fetch_replay_pattern,   _apply_replay_pattern),  # Wave 9
         ]
         for fetch_fn, apply_fn in fetch_apply_pairs:
             try:
@@ -397,6 +411,43 @@ class ContextBuilder:
 
         return episodic_block, pattern_block
 
+    async def _fetch_replay_pattern(self, user_id: str | None) -> str:
+        """Fetch exit pattern summary from LessonService (Wave 9).
+
+        Calls LessonService.get_pattern_summary() which aggregates
+        ReplayOutcomeRecord data written by ReplayAgent post-SELL.
+
+        Returns a formatted warning block when pattern data exists,
+        empty string otherwise. Never raises.
+
+        Format example (rendered by LessonService.get_pattern_summary):
+
+            Exit patterns (last 30 trades):
+              - early_exit: 8 lần (40%) — hay thoát trước khi thesis hoàn thành
+              - stop_loss_ignored: 3 lần (15%) — cần kỷ luật hơn
+            ⚠ Bias cảnh báo: bạn có xu hướng thoát sớm khi thị trường biến động.
+        """
+        if not user_id:
+            return ""
+        try:
+            from src.thesis.lesson_service import LessonService  # noqa: PLC0415
+
+            svc = LessonService(self._session)
+            summary = await svc.get_pattern_summary(user_id=user_id)
+            if not summary:
+                return ""
+            # get_pattern_summary returns PatternCounter or str — handle both
+            if hasattr(summary, "format_for_prompt"):
+                return summary.format_for_prompt()
+            return str(summary) if summary else ""
+        except Exception as exc:
+            logger.warning(
+                "context_builder.replay_pattern_failed",
+                user_id=user_id,
+                error=str(exc),
+            )
+            return ""
+
 
 # ---------------------------------------------------------------------------
 # Apply helpers — each applies one result slot into InvestorContext
@@ -444,6 +495,12 @@ def _apply_memory(ctx: InvestorContext, result: object) -> None:
         ctx.memory_context_block = result
 
 
+def _apply_replay_pattern(ctx: InvestorContext, result: object) -> None:
+    """Apply replay exit pattern block into InvestorContext (Wave 9)."""
+    if isinstance(result, str) and result:
+        ctx.replay_pattern_block = result
+
+
 # ---------------------------------------------------------------------------
 # render_for_agent — formats InvestorContext for prompt injection
 # ---------------------------------------------------------------------------
@@ -457,6 +514,10 @@ def render_for_agent(ctx: InvestorContext) -> str:
     Wave 8: renders [Investor patterns] block after [Memory context]
     when pattern_synthesis_block is non-empty. The block is pre-guarded
     by PatternSynthesisOutput.to_prompt_block() (confidence < 0.5 → "").
+
+    Wave 9: renders [Exit pattern warnings] block at the end when
+    replay_pattern_block is non-empty — positioned last so it is the
+    freshest signal an agent reads before generating a verdict.
     """
     parts: list[str] = []
 
@@ -494,5 +555,10 @@ def render_for_agent(ctx: InvestorContext) -> str:
     # Patterns — synthesized patterns + bias_warnings (Wave 8)
     if ctx.pattern_synthesis_block:
         parts.append(ctx.pattern_synthesis_block)
+
+    # Exit pattern warnings — from ReplayAgent post-trade feedback (Wave 9)
+    # Positioned last: freshest behavioral signal, read immediately before verdict.
+    if ctx.replay_pattern_block:
+        parts.append(f"[Exit pattern warnings]\n{ctx.replay_pattern_block}")
 
     return "\n\n".join(parts)

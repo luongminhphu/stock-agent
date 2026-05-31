@@ -14,11 +14,14 @@ Responsibilities:
   - Auto-fill rationale when thesis_id is present but rationale is empty,
     so that every thesis-linked trade is always captured in the decision log
     regardless of whether the caller supplied a rationale string.
+  - Fire-and-forget a ReplayAgent review after a SELL trade is committed
+    (Wave: post-trade feedback loop). Never blocks the SELL response.
   - Return a structured TradeResult consumed by all adapters.
 
 Failure contract:
   - Trade is always the source of truth. DecisionLog failure is soft —
     logged as WARNING, never re-raised, never blocks the trade response.
+  - ReplayAgent dispatch failure is soft — logged as WARNING, never re-raised.
 
 Adding a new channel (mobile app, webhook, scheduled rebalancer …):
   Import TradeUseCase and call execute_buy() / execute_sell().
@@ -27,6 +30,7 @@ Adding a new channel (mobile app, webhook, scheduled rebalancer …):
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -182,7 +186,7 @@ class TradeUseCase:
         note: str | None = None,
         source: str = "dashboard",
     ) -> TradeResult:
-        """Execute a SELL trade and optionally log a decision.
+        """Execute a SELL trade, log a decision, and fire ReplayAgent review.
 
         Args:
             user_id:   Authenticated user identifier.
@@ -223,6 +227,15 @@ class TradeUseCase:
             source=source,
         )
 
+        # Fire-and-forget ReplayAgent review — never blocks SELL response.
+        # Runs as a background task; any failure is logged as WARNING only.
+        self._dispatch_replay(
+            user_id=user_id,
+            trade=trade,
+            position=position,
+            thesis_id=thesis_id,
+        )
+
         return TradeResult(
             trade_id=trade.id,
             position_id=position.id,
@@ -240,6 +253,83 @@ class TradeUseCase:
     # ------------------------------------------------------------------
     # Internal orchestration
     # ------------------------------------------------------------------
+
+    def _dispatch_replay(
+        self,
+        user_id: str,
+        trade: object,
+        position: object,
+        thesis_id: int | None,
+    ) -> None:
+        """Schedule a ReplayAgent review as a fire-and-forget asyncio task.
+
+        Contract:
+          - Uses asyncio.create_task() — non-blocking, runs in the current
+            event loop after execute_sell() returns to caller.
+          - Session is passed directly into ReplayAgent; the task must NOT
+            attempt to open a new session (it does not own the lifecycle).
+          - Failure is logged as WARNING, never re-raised.
+          - Only dispatched when event loop is running (guard via
+            asyncio.get_event_loop().is_running()). Silent no-op otherwise
+            (e.g. during sync tests).
+        """
+        try:
+            trade_snapshot = {
+                "id": getattr(trade, "id", None),
+                "ticker": getattr(trade, "ticker", ""),
+                "traded_at": str(getattr(trade, "traded_at", "")),
+                "realized_pnl": getattr(trade, "realized_pnl", None),
+                "price": getattr(trade, "price", None),
+                "exit_reason": (
+                    getattr(trade, "exit_reason").value
+                    if getattr(trade, "exit_reason", None) is not None
+                    else None
+                ),
+                "entry_signal_ref": getattr(trade, "entry_signal_ref", None),
+                "thesis_id": thesis_id,
+                "position_closed": getattr(position, "closed_at", None) is not None,
+            }
+
+            async def _run() -> None:
+                try:
+                    from src.ai.agents.replay_agent import ReplayAgent  # noqa: PLC0415
+                    from src.ai.client import AIClient  # noqa: PLC0415
+
+                    await ReplayAgent(AIClient()).run_for_trade(
+                        session=self._session,
+                        user_id=user_id,
+                        trade_snapshot=trade_snapshot,
+                        thesis_snapshot=None,  # enriched inside run_for_trade if thesis_id set
+                    )
+                    logger.info(
+                        "portfolio.replay_agent_triggered",
+                        user_id=user_id,
+                        ticker=trade_snapshot["ticker"],
+                        trade_id=trade_snapshot["id"],
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "portfolio.replay_agent_task_failed",
+                        user_id=user_id,
+                        ticker=trade_snapshot.get("ticker"),
+                        error=str(exc),
+                    )
+
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(_run())
+            else:
+                logger.debug(
+                    "portfolio.replay_agent_skipped_no_loop",
+                    user_id=user_id,
+                )
+
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "portfolio.replay_agent_dispatch_failed",
+                user_id=user_id,
+                error=str(exc),
+            )
 
     async def _log_decision(
         self,
