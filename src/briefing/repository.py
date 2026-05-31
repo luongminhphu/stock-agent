@@ -13,7 +13,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.briefing.models import BriefSnapshot
+from src.briefing.models import BriefFeedback, BriefSnapshot
 from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
@@ -82,3 +82,16 @@ class BriefSnapshotRepository:
             stmt = stmt.where(BriefSnapshot.phase == phase)
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
+
+    async def save_feedback(self, feedback: BriefFeedback) -> BriefFeedback:
+        """Persist a BriefFeedback row. Caller manages session commit."""
+        self._session.add(feedback)
+        await self._session.flush()
+        logger.debug(
+            "brief_feedback.saved",
+            feedback_id=feedback.id,
+            snapshot_id=feedback.brief_snapshot_id,
+            user_id=feedback.user_id,
+            outcome=feedback.outcome,
+        )
+        return feedback
