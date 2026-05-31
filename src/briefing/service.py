@@ -23,10 +23,14 @@ Design notes
 - Each generate_* method is a single logical unit: collect context →
   call agent → persist snapshot → return BriefResult.
 - The _collect_contexts() helper is shared between morning and eod flows.
-  It calls each context-builder in parallel (asyncio.gather) to minimise
-  latency — EXCEPT _build_agenda_context which is awaited sequentially
-  to avoid nested greenlet_spawn conflicts (AgendaService.build_agenda
-  itself calls asyncio.gather with the same session).
+  All context-builders run in parallel via asyncio.gather.
+- _build_agenda_context() reads from agenda_cache (populated by
+  DailyAgendaCompletedEvent at 07:30) — no DB access, no session conflict.
+  AgendaService.build_agenda() was the previous approach but caused
+  greenlet_spawn errors because it runs DB queries + asyncio.gather on
+  the same AsyncSession that BriefingService already holds. The cache
+  approach is faster and architecturally correct: the agenda is computed
+  once before the brief, not re-computed during it.
 - Context-builders are fail-safe: each catches its own errors and returns
   a degraded value (empty string / empty list) rather than aborting the
   brief.
@@ -54,8 +58,8 @@ Context sources injected into BriefingAgent
   next_action       — NextActionSuggester.suggest(user_id) → rendered into market_context
   trend_pred        — TrendPredictionStore.get_recent(user_id) → rendered into market_context
   feedback          — DashboardService.get_brief_feedback_summary() → calibration
-  agenda            — AgendaService.build_agenda(user_id) → decide/watch/defer
-                       (awaited sequentially — see design notes)
+  agenda            — agenda_cache.get_agenda(user_id) → cached CachedAgenda (no DB call)
+                       populated by BriefingListener._handle_agenda via DailyAgendaCompletedEvent
   lessons           — LessonService.get_pattern_summary(session, user_id) → patterns
   investor_profile  — InvestorProfileService.get_investor_context() → profile block
 """
@@ -68,6 +72,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.briefing.agenda_cache import get_agenda
 from src.briefing.repository import BriefSnapshotRepository
 from src.platform.logging import get_logger
 
@@ -105,19 +110,10 @@ class BriefingService:
     next_action_agent            — NextActionSuggester. Optional.
     trend_store                  — TrendPredictionStore. Optional.
     dashboard_service            — DashboardService (feedback calibration). Optional.
-                                   Requires session to be set — skipped silently when
-                                   session is None. Non-blocking.
-    agenda_service               — AgendaService (daily agenda buckets). Optional.
-                                   Requires session to be set — skipped silently when
-                                   session is None. Non-blocking.
-                                   Awaited sequentially (not in gather) to avoid
-                                   nested greenlet_spawn conflicts.
+    agenda_service               — Kept for backward compat. Ignored — agenda context
+                                   is now read from agenda_cache (no DB call needed).
     lesson_service               — LessonService (behavioral pattern summary). Optional.
-                                   Calls LessonService.get_pattern_summary(session, user_id).
-                                   Non-blocking.
-    investor_profile_service     — InvestorProfileService (risk appetite + profile).
-                                   Optional. Calls get_investor_context().to_prompt_block().
-                                   Non-blocking.
+    investor_profile_service     — InvestorProfileService (risk appetite + profile). Optional.
     """
 
     def __init__(
@@ -134,9 +130,12 @@ class BriefingService:
         next_action_agent: Any = None,
         trend_store: Any = None,
         dashboard_service: Any = None,
-        agenda_service: Any = None,
+        agenda_service: Any = None,  # kept for backward compat, not used
         lesson_service: Any = None,
         investor_profile_service: Any = None,
+        # Accept any extra kwargs from callers that pass unknown params
+        # (e.g. sector_rotation_agent) without raising TypeError.
+        **_extra: Any,
     ) -> None:
         self._session = session
         self._agent = briefing_agent
@@ -150,7 +149,7 @@ class BriefingService:
         self._next_action_agent = next_action_agent
         self._trend_store = trend_store
         self._dashboard_service = dashboard_service
-        self._agenda_service = agenda_service
+        # agenda_service intentionally not stored — we read from cache instead
         self._lesson_service = lesson_service
         self._investor_profile_service = investor_profile_service
         self._repo = BriefSnapshotRepository(session)
@@ -160,15 +159,7 @@ class BriefingService:
     # ------------------------------------------------------------------
 
     async def generate_morning_brief(self, user_id: str) -> BriefResult:
-        """Generate the morning brief for a user.
-
-        1. Fetch tickers from watchlist.
-        2. Collect context (quotes, PnL, thesis, sector, lessons, profile).
-        3. Build market_context string from quotes + enrichment blocks.
-        4. Delegate to BriefingAgent with correct param names.
-        5. Persist snapshot.
-        6. Return BriefResult.
-        """
+        """Generate the morning brief for a user."""
         tickers = await self._get_tickers(user_id)
         contexts = await self._collect_contexts(user_id, tickers)
         market_context = self._build_market_context(
@@ -264,20 +255,7 @@ class BriefingService:
         next_action_context: str = "",
         trend_pred_context: str = "",
     ) -> str:
-        """Render quotes + enrichment blocks into a single market_context string.
-
-        BriefingAgent.morning_brief / eod_brief only accept pre-rendered strings.
-        All raw data (Quote objects, per-service strings) must be serialised here
-        before crossing the service → agent boundary.
-
-        Layout:
-          [Giá hiện tại]        — one line per quote
-          [Thesis scores]       — judge_context when available
-          [Risk summary]        — risk_context when available
-          [Next actions]        — next_action_context when available
-          [Trend predictions]   — trend_pred_context when available
-          [Sector]              — sector_context when available (currently stubbed)
-        """
+        """Render quotes + enrichment blocks into a single market_context string."""
         parts: list[str] = []
 
         if quotes:
@@ -324,12 +302,10 @@ class BriefingService:
         user_id: str,
         tickers: list[str],
     ) -> dict[str, Any]:
-        """Collect all context blocks in parallel, then agenda sequentially.
+        """Collect all context blocks. All builders run in parallel via asyncio.gather.
 
-        Each builder is wrapped to be fail-safe (returns empty on error).
-        _build_agenda_context is awaited after the gather to avoid nested
-        greenlet_spawn conflicts from AgendaService.build_agenda's internal
-        asyncio.gather on the same session.
+        _build_agenda_context reads from in-memory cache — no DB access —
+        so it is safe to include in the gather without greenlet_spawn risk.
         """
         (
             pnl_context,
@@ -344,6 +320,7 @@ class BriefingService:
             lessons_context,
             investor_profile_context,
             portfolio_note,
+            agenda_context,
         ) = await asyncio.gather(
             self._build_pnl_context(user_id),
             self._build_thesis_context(user_id),
@@ -357,11 +334,8 @@ class BriefingService:
             self._build_lessons_context(user_id),
             self._build_investor_profile_context(user_id),
             self._build_portfolio_note(user_id),
+            self._build_agenda_context(user_id),
         )
-
-        # Awaited sequentially — AgendaService.build_agenda itself calls
-        # asyncio.gather on the same session; nesting would cause greenlet_spawn.
-        agenda_context = await self._build_agenda_context(user_id)
 
         debug_flags = {
             "ticker_count": len(tickers),
@@ -437,8 +411,7 @@ class BriefingService:
 
     async def _build_sector_context(self, user_id: str) -> str:  # noqa: ARG002
         """Stubbed — SectorRotationAgent.analyze requires sector_performance data
-        (list of per-sector dicts) that is not yet available in the briefing flow.
-        Returns empty string silently until the market segment exposes that feed.
+        not yet available. Returns empty string silently.
         """
         return ""
 
@@ -495,48 +468,44 @@ class BriefingService:
             return ""
 
     async def _build_agenda_context(self, user_id: str) -> str:
-        """Build agenda context block from AgendaService.
+        """Read agenda context from in-memory cache — zero DB access.
 
-        Awaited sequentially outside asyncio.gather — AgendaService.build_agenda
-        calls asyncio.gather internally on the same AsyncSession, which would cause
-        nested greenlet_spawn errors if called from within an outer gather.
+        The agenda is populated by BriefingListener._handle_agenda() when
+        DailyAgendaCompletedEvent fires at 07:30 ICT (AgendaBuilderScheduler).
 
-        DailyAgendaResult is a Pydantic model — access via attributes (.decide,
-        .watch, .defer, .opening_line), not via .get() dict access.
+        Why cache instead of AgendaService.build_agenda():
+          - AgendaService queries the DB and calls asyncio.gather internally
+            on the same AsyncSession that BriefingService holds, causing
+            greenlet_spawn / await_only errors at runtime.
+          - The agenda is already computed before morning brief runs — reading
+            it from cache is both faster and architecturally correct.
+          - If the cache is cold (no agenda built yet today), returns "" silently
+            and the brief runs without agenda context.
         """
-        if not self._agenda_service or not self._session:
-            return ""
         try:
-            agenda = await self._agenda_service.build_agenda(user_id)
-            if not agenda:
+            cached = get_agenda(user_id)
+            if cached is None:
                 return ""
-            parts = []
-            if agenda.opening_line:
-                parts.append(agenda.opening_line)
-            for item in (agenda.decide or []):
-                ticker = getattr(item, "ticker", "")
-                reason = getattr(item, "reason", "")
-                hint = getattr(item, "action_hint", "")
-                parts.append(f"DECIDE {ticker}: {reason} → {hint}")
-            for item in (agenda.watch or []):
-                ticker = getattr(item, "ticker", "")
-                reason = getattr(item, "reason", "")
-                parts.append(f"WATCH {ticker}: {reason}")
-            for item in (agenda.defer or []):
-                ticker = getattr(item, "ticker", "")
-                parts.append(f"DEFER {ticker}")
-            return "\n".join(parts)
+            # Use structured buckets when available for richer context
+            buckets = getattr(cached, "buckets", None)
+            if buckets is not None:
+                parts = []
+                if cached.summary:
+                    parts.append(cached.summary)
+                for ticker in (buckets.decide or []):
+                    parts.append(f"DECIDE {ticker}")
+                for ticker in (buckets.watch or []):
+                    parts.append(f"WATCH {ticker}")
+                for ticker in (buckets.defer or []):
+                    parts.append(f"DEFER {ticker}")
+                return "\n".join(parts) if parts else ""
+            # Fallback: plain summary string
+            return cached.summary or ""
         except Exception as exc:
             logger.warning("briefing.agenda_context.failed", error=str(exc))
             return ""
 
     async def _build_lessons_context(self, user_id: str) -> str:
-        """Build behavioral pattern summary from LessonService.
-
-        Calls LessonService.get_pattern_summary(session, user_id) — the session
-        argument is required by the LessonService API.
-        Returns empty string on any failure.
-        """
         if not self._lesson_service:
             return ""
         try:
@@ -547,13 +516,6 @@ class BriefingService:
             return ""
 
     async def _build_investor_profile_context(self, user_id: str) -> str:
-        """Build investor profile block from InvestorProfileService.
-
-        Calls get_investor_context().to_prompt_block() for a compact
-        plain-text block covering risk appetite, style, horizon, and
-        latest behavioral snapshot notes.
-        Returns empty string on any failure.
-        """
         if not self._investor_profile_service:
             return ""
         try:
@@ -566,15 +528,7 @@ class BriefingService:
             logger.warning("briefing.investor_profile_context.failed", error=str(exc))
             return ""
 
-    async def _build_portfolio_note(
-        self,
-        user_id: str,  # noqa: ARG002
-    ) -> Any:
-        """Build PortfolioRiskNote for the narrator.
-
-        Returns None if no portfolio service is available or on any error.
-        The narrator inside BriefingAgent handles None gracefully.
-        """
+    async def _build_portfolio_note(self, user_id: str) -> Any:  # noqa: ARG002
         if not self._pnl_service:
             return None
         try:
@@ -594,10 +548,6 @@ class BriefingService:
         brief_text: str,
         tickers: list[str],
     ) -> int | None:
-        """Persist BriefSnapshot and return its id.
-
-        Non-blocking — failure logs a warning and returns None.
-        """
         try:
             from src.briefing.models import BriefSnapshot
             snapshot = BriefSnapshot(
