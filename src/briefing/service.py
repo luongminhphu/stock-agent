@@ -168,7 +168,7 @@ class BriefingService:
         contexts = await self._collect_contexts(user_id, tickers)
         output = await self._agent.morning_brief(
             user_id=user_id,
-            tickers=tickers,
+            watchlist_tickers=tickers,
             portfolio_context=contexts.get("pnl_context", ""),
             thesis_context=contexts.get("thesis_context", ""),
             sector_context=contexts.get("sector_context", ""),
@@ -179,8 +179,8 @@ class BriefingService:
             quotes=contexts.get("quotes", []),
             feedback_summary=contexts.get("feedback_summary", ""),
             investor_profile=contexts.get("investor_profile_context", ""),
-            lessons=contexts.get("lessons_context", ""),
-            agenda=contexts.get("agenda_context", ""),
+            past_lessons=contexts.get("lessons_context", ""),
+            agenda_context=contexts.get("agenda_context", ""),
             portfolio_note=contexts.get("portfolio_note", ""),
         )
         text = output.text if hasattr(output, "text") else str(output)
@@ -198,7 +198,7 @@ class BriefingService:
         contexts = await self._collect_contexts(user_id, tickers)
         output = await self._agent.eod_brief(
             user_id=user_id,
-            tickers=tickers,
+            watchlist_tickers=tickers,
             portfolio_context=contexts.get("pnl_context", ""),
             thesis_context=contexts.get("thesis_context", ""),
             sector_context=contexts.get("sector_context", ""),
@@ -209,8 +209,8 @@ class BriefingService:
             quotes=contexts.get("quotes", []),
             feedback_summary=contexts.get("feedback_summary", ""),
             investor_profile=contexts.get("investor_profile_context", ""),
-            lessons=contexts.get("lessons_context", ""),
-            agenda=contexts.get("agenda_context", ""),
+            past_lessons=contexts.get("lessons_context", ""),
+            agenda_context=contexts.get("agenda_context", ""),
             portfolio_note=contexts.get("portfolio_note", ""),
         )
         text = output.text if hasattr(output, "text") else str(output)
@@ -426,6 +426,9 @@ class BriefingService:
         Awaited sequentially outside asyncio.gather — AgendaService.build_agenda
         calls asyncio.gather internally on the same AsyncSession, which would cause
         nested greenlet_spawn errors if called from within an outer gather.
+
+        DailyAgendaResult is a Pydantic model — access via attributes (.decide,
+        .watch, .defer, .opening_line), not via .get() dict access.
         """
         if not self._agenda_service or not self._session:
             return ""
@@ -434,12 +437,20 @@ class BriefingService:
             if not agenda:
                 return ""
             parts = []
-            if agenda.get("decide"):
-                parts.append("DECIDE: " + ", ".join(agenda["decide"]))
-            if agenda.get("watch"):
-                parts.append("WATCH: " + ", ".join(agenda["watch"]))
-            if agenda.get("defer"):
-                parts.append("DEFER: " + ", ".join(agenda["defer"]))
+            if agenda.opening_line:
+                parts.append(agenda.opening_line)
+            for item in (agenda.decide or []):
+                ticker = getattr(item, "ticker", "")
+                reason = getattr(item, "reason", "")
+                hint = getattr(item, "action_hint", "")
+                parts.append(f"DECIDE {ticker}: {reason} → {hint}")
+            for item in (agenda.watch or []):
+                ticker = getattr(item, "ticker", "")
+                reason = getattr(item, "reason", "")
+                parts.append(f"WATCH {ticker}: {reason}")
+            for item in (agenda.defer or []):
+                ticker = getattr(item, "ticker", "")
+                parts.append(f"DEFER {ticker}")
             return "\n".join(parts)
         except Exception as exc:
             logger.warning("briefing.agenda_context.failed", error=str(exc))
@@ -475,21 +486,28 @@ class BriefingService:
             ctx = await self._investor_profile_service.get_investor_context()
             if ctx is None:
                 return ""
-            block = ctx.to_prompt_block() if hasattr(ctx, "to_prompt_block") else str(ctx)
-            return block or ""
+            block = getattr(ctx, "to_prompt_block", None)
+            return block() if callable(block) else str(ctx)
         except Exception as exc:
             logger.warning("briefing.investor_profile_context.failed", error=str(exc))
             return ""
 
-    async def _build_portfolio_note(self, user_id: str) -> str:
-        """Build a free-text portfolio note from PnLService if available."""
+    async def _build_portfolio_note(
+        self,
+        user_id: str,  # noqa: ARG002
+    ) -> Any:
+        """Build PortfolioRiskNote for the narrator.
+
+        Returns None if no portfolio service is available or on any error.
+        The narrator inside BriefingAgent handles None gracefully.
+        """
         if not self._pnl_service:
-            return ""
+            return None
         try:
-            note = await self._pnl_service.get_portfolio_note(user_id)
-            return note or ""
+            note = await self._pnl_service.get_portfolio_risk_note()
+            return note or None
         except Exception:
-            return ""
+            return None
 
     # ------------------------------------------------------------------
     # Persistence
