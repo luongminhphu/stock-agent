@@ -30,6 +30,10 @@ Design notes
 - Context-builders are fail-safe: each catches its own errors and returns
   a degraded value (empty string / empty list) rather than aborting the
   brief.
+- _build_market_context() renders quotes + sector/risk/judge/next_action/
+  trend_pred into a single market_context string that BriefingAgent expects.
+  BriefingAgent only accepts pre-rendered strings — never raw lists or
+  unknown kwargs.
 
 Dependency graph (inbound)
 --------------------------
@@ -40,15 +44,15 @@ Dependency graph (inbound)
 Context sources injected into BriefingAgent
 -------------------------------------------
   watchlist         — WatchlistService.get_tickers(user_id) → tickers
-  quotes            — QuoteService.get_bulk_quotes(tickers) → price/volume
+  quotes            — QuoteService.get_bulk_quotes(tickers) → rendered into market_context
   pnl               — PnLService.get_portfolio_pnl(user_id) → unrealised P&L
   thesis            — ThesisService.get_thesis_health(user_id) → thesis status
   sector            — stubbed (SectorRotationAgent.analyze needs sector_performance
                        data not yet available in this flow)
-  judge             — ThesisJudgeAgent.judge(theses) → thesis scores
-  risk              — PortfolioRiskNarrator.narrate(user_id) → risk summary
-  next_action       — NextActionSuggester.suggest(user_id) → next actions
-  trend_pred        — TrendPredictionStore.get_recent(user_id) → predictions
+  judge             — ThesisJudgeAgent.judge(theses) → rendered into market_context
+  risk              — PortfolioRiskNarrator.narrate(user_id) → rendered into market_context
+  next_action       — NextActionSuggester.suggest(user_id) → rendered into market_context
+  trend_pred        — TrendPredictionStore.get_recent(user_id) → rendered into market_context
   feedback          — DashboardService.get_brief_feedback_summary() → calibration
   agenda            — AgendaService.build_agenda(user_id) → decide/watch/defer
                        (awaited sequentially — see design notes)
@@ -160,28 +164,33 @@ class BriefingService:
 
         1. Fetch tickers from watchlist.
         2. Collect context (quotes, PnL, thesis, sector, lessons, profile).
-        3. Delegate to BriefingAgent.
-        4. Persist snapshot.
-        5. Return BriefResult.
+        3. Build market_context string from quotes + enrichment blocks.
+        4. Delegate to BriefingAgent with correct param names.
+        5. Persist snapshot.
+        6. Return BriefResult.
         """
         tickers = await self._get_tickers(user_id)
         contexts = await self._collect_contexts(user_id, tickers)
-        output = await self._agent.morning_brief(
-            user_id=user_id,
-            watchlist_tickers=tickers,
-            portfolio_context=contexts.get("pnl_context", ""),
-            thesis_context=contexts.get("thesis_context", ""),
+        market_context = self._build_market_context(
+            quotes=contexts.get("quotes", []),
             sector_context=contexts.get("sector_context", ""),
             judge_context=contexts.get("judge_context", ""),
             risk_context=contexts.get("risk_context", ""),
             next_action_context=contexts.get("next_action_context", ""),
             trend_pred_context=contexts.get("trend_pred_context", ""),
-            quotes=contexts.get("quotes", []),
-            feedback_summary=contexts.get("feedback_summary", ""),
-            investor_profile=contexts.get("investor_profile_context", ""),
+        )
+        output = await self._agent.morning_brief(
+            market_context=market_context,
+            watchlist_tickers=tickers,
+            portfolio_context=contexts.get("pnl_context", ""),
+            thesis_context=contexts.get("thesis_context", ""),
             past_lessons=contexts.get("lessons_context", ""),
+            investor_profile=contexts.get("investor_profile_context", ""),
+            feedback_summary=contexts.get("feedback_summary", ""),
             agenda_context=contexts.get("agenda_context", ""),
-            portfolio_note=contexts.get("portfolio_note", ""),
+            portfolio_note=contexts.get("portfolio_note"),
+            session=self._session,
+            user_id=user_id,
         )
         text = output.text if hasattr(output, "text") else str(output)
         snapshot_id = await self._persist_snapshot(
@@ -196,22 +205,26 @@ class BriefingService:
         """Generate the end-of-day brief for a user."""
         tickers = await self._get_tickers(user_id)
         contexts = await self._collect_contexts(user_id, tickers)
-        output = await self._agent.eod_brief(
-            user_id=user_id,
-            watchlist_tickers=tickers,
-            portfolio_context=contexts.get("pnl_context", ""),
-            thesis_context=contexts.get("thesis_context", ""),
+        market_context = self._build_market_context(
+            quotes=contexts.get("quotes", []),
             sector_context=contexts.get("sector_context", ""),
             judge_context=contexts.get("judge_context", ""),
             risk_context=contexts.get("risk_context", ""),
             next_action_context=contexts.get("next_action_context", ""),
             trend_pred_context=contexts.get("trend_pred_context", ""),
-            quotes=contexts.get("quotes", []),
-            feedback_summary=contexts.get("feedback_summary", ""),
-            investor_profile=contexts.get("investor_profile_context", ""),
+        )
+        output = await self._agent.eod_brief(
+            market_context=market_context,
+            watchlist_tickers=tickers,
+            portfolio_context=contexts.get("pnl_context", ""),
+            thesis_context=contexts.get("thesis_context", ""),
             past_lessons=contexts.get("lessons_context", ""),
+            investor_profile=contexts.get("investor_profile_context", ""),
+            feedback_summary=contexts.get("feedback_summary", ""),
             agenda_context=contexts.get("agenda_context", ""),
-            portfolio_note=contexts.get("portfolio_note", ""),
+            portfolio_note=contexts.get("portfolio_note"),
+            session=self._session,
+            user_id=user_id,
         )
         text = output.text if hasattr(output, "text") else str(output)
         snapshot_id = await self._persist_snapshot(
@@ -237,6 +250,63 @@ class BriefingService:
             outcome=outcome,
         )
         await self._repo.save_feedback(feedback)
+
+    # ------------------------------------------------------------------
+    # Market context renderer
+    # ------------------------------------------------------------------
+
+    def _build_market_context(
+        self,
+        quotes: list,
+        sector_context: str = "",
+        judge_context: str = "",
+        risk_context: str = "",
+        next_action_context: str = "",
+        trend_pred_context: str = "",
+    ) -> str:
+        """Render quotes + enrichment blocks into a single market_context string.
+
+        BriefingAgent.morning_brief / eod_brief only accept pre-rendered strings.
+        All raw data (Quote objects, per-service strings) must be serialised here
+        before crossing the service → agent boundary.
+
+        Layout:
+          [Giá hiện tại]        — one line per quote
+          [Thesis scores]       — judge_context when available
+          [Risk summary]        — risk_context when available
+          [Next actions]        — next_action_context when available
+          [Trend predictions]   — trend_pred_context when available
+          [Sector]              — sector_context when available (currently stubbed)
+        """
+        parts: list[str] = []
+
+        if quotes:
+            lines = []
+            for q in quotes:
+                ticker = getattr(q, "ticker", None) or getattr(q, "symbol", "?")
+                price = getattr(q, "price", None) or getattr(q, "close", None) or 0
+                change_pct = getattr(q, "change_pct", None) or getattr(q, "pct_change", None) or 0
+                volume = getattr(q, "volume", None)
+                vol_str = f" vol={volume:,}" if volume else ""
+                lines.append(f"{ticker}: {price:,.0f} ({change_pct:+.2f}%){vol_str}")
+            parts.append("Giá hiện tại:\n" + "\n".join(lines))
+
+        if judge_context:
+            parts.append(f"Thesis scores:\n{judge_context}")
+
+        if risk_context:
+            parts.append(f"Risk summary:\n{risk_context}")
+
+        if next_action_context:
+            parts.append(f"Next actions:\n{next_action_context}")
+
+        if trend_pred_context:
+            parts.append(f"Trend predictions:\n{trend_pred_context}")
+
+        if sector_context:
+            parts.append(f"Sector:\n{sector_context}")
+
+        return "\n\n".join(parts) if parts else ""
 
     # ------------------------------------------------------------------
     # Context collection
@@ -295,6 +365,7 @@ class BriefingService:
 
         debug_flags = {
             "ticker_count": len(tickers),
+            "has_quotes": bool(quotes),
             "has_portfolio": bool(pnl_context),
             "has_thesis": bool(thesis_context),
             "has_lessons": bool(lessons_context),
@@ -302,8 +373,11 @@ class BriefingService:
             "has_feedback_summary": bool(feedback_summary),
             "has_agenda_context": bool(agenda_context),
             "has_portfolio_note": bool(portfolio_note),
+            "has_risk_context": bool(risk_context),
+            "has_judge_context": bool(judge_context),
+            "has_next_action_context": bool(next_action_context),
         }
-        logger.debug("briefing_agent.morning_brief.calling_ai", **debug_flags)
+        logger.debug("briefing_service.collect_contexts.done", **debug_flags)
 
         return {
             "pnl_context": pnl_context,
