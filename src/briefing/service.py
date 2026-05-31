@@ -38,7 +38,7 @@ Dependency graph (inbound)
 Context sources injected into BriefingAgent
 --------------------------------------------
   watchlist   — WatchlistService.get_tickers(user_id) → tickers
-  quotes      — QuoteService.batch_get_quotes(tickers) → price/volume
+  quotes      — QuoteService.get_bulk_quotes(tickers) → price/volume
   pnl         — PnLService.get_portfolio_pnl(user_id) → unrealised P&L
   thesis      — ThesisService.get_thesis_health(user_id) → thesis status
   sector      — SectorRotationAgent.analyse(tickers) → sector flow
@@ -112,7 +112,7 @@ class BriefingService:
     watchlist_service  — WatchlistService (get tickers).
     pnl_service        — PnLService (unrealised P&L context). Optional.
     thesis_service     — ThesisService (thesis health context). Optional.
-    quote_service      — Any object with batch_get_quotes(tickers) → dict. Optional.
+    quote_service      — Any object with get_bulk_quotes(tickers) → list[Quote]. Optional.
     thesis_judge_agent — ThesisJudgeAgent. Optional.
     sector_agent       — SectorRotationAgent. Optional.
     risk_narrator      — PortfolioRiskNarrator. Optional.
@@ -164,34 +164,48 @@ class BriefingService:
     async def generate_morning_brief(self, user_id: str) -> BriefResult:
         """Generate morning brief for user_id."""
         tickers, contexts = await self._collect_contexts(user_id)
-        brief_text = await self._agent.morning_brief(
+        brief_output = await self._agent.morning_brief(
+            market_context=contexts.get("quote_context", ""),
+            watchlist_tickers=tickers,
+            portfolio_context=contexts.get("pnl_context", ""),
+            thesis_context=contexts.get("thesis_context", ""),
+            extra_context=contexts.get("sector_context", ""),
+            feedback_summary=contexts.get("feedback_context", ""),
+            agenda_context=contexts.get("agenda_context", ""),
+            session=self._session,
             user_id=user_id,
-            tickers=tickers,
-            **contexts,
         )
+        brief_str = brief_output.text if hasattr(brief_output, "text") else str(brief_output)
         snapshot_id = await self._persist_snapshot(
             user_id=user_id,
             brief_type="morning",
-            brief_text=brief_text,
+            brief_text=brief_str,
             tickers=tickers,
         )
-        return BriefResult(snapshot_id=snapshot_id, text=brief_text, tickers=tickers)
+        return BriefResult(snapshot_id=snapshot_id, text=brief_str, tickers=tickers)
 
     async def generate_eod_brief(self, user_id: str) -> BriefResult:
         """Generate end-of-day brief for user_id."""
         tickers, contexts = await self._collect_contexts(user_id)
-        brief_text = await self._agent.eod_brief(
+        brief_output = await self._agent.eod_brief(
+            market_context=contexts.get("quote_context", ""),
+            watchlist_tickers=tickers,
+            portfolio_context=contexts.get("pnl_context", ""),
+            thesis_context=contexts.get("thesis_context", ""),
+            extra_context=contexts.get("sector_context", ""),
+            feedback_summary=contexts.get("feedback_context", ""),
+            agenda_context=contexts.get("agenda_context", ""),
+            session=self._session,
             user_id=user_id,
-            tickers=tickers,
-            **contexts,
         )
+        brief_str = brief_output.text if hasattr(brief_output, "text") else str(brief_output)
         snapshot_id = await self._persist_snapshot(
             user_id=user_id,
             brief_type="eod",
-            brief_text=brief_text,
+            brief_text=brief_str,
             tickers=tickers,
         )
-        return BriefResult(snapshot_id=snapshot_id, text=brief_text, tickers=tickers)
+        return BriefResult(snapshot_id=snapshot_id, text=brief_str, tickers=tickers)
 
     async def record_feedback(
         self,
@@ -286,11 +300,12 @@ class BriefingService:
         if not self._quote_service or not tickers:
             return ""
         try:
-            quotes = await self._quote_service.batch_get_quotes(tickers)
+            quotes = await self._quote_service.get_bulk_quotes(tickers)
             if not quotes:
                 return ""
             lines = []
-            for ticker, q in quotes.items():
+            for q in quotes:
+                ticker = getattr(q, "ticker", "?")
                 price = getattr(q, "close", None) or getattr(q, "price", None)
                 change = getattr(q, "change_pct", None)
                 if price is not None:
@@ -298,7 +313,7 @@ class BriefingService:
                     if change is not None:
                         line += f" ({change:+.1f}%)"
                     lines.append(line)
-            return "Gi\u00e1:\n" + "\n".join(lines) if lines else ""
+            return "Giá:\n" + "\n".join(lines) if lines else ""
         except Exception as exc:
             logger.warning("briefing.quote_context.failed", error=str(exc))
             return ""
