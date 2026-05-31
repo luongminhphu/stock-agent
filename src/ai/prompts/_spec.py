@@ -2,8 +2,10 @@
 Owner: ai segment.
 
 Provides:
-  - schema_block()  : generate inline JSON schema string to inject into SYSTEM_PROMPT
-  - PromptSpec      : lightweight dataclass exposing each prompt file's contract
+  - schema_block()            : generate inline JSON schema string to inject into SYSTEM_PROMPT
+  - with_persona()            : prepend VETERAN_INVESTOR_PERSONA to any system prompt
+  - VETERAN_INVESTOR_PERSONA  : shared persona constant — sói già Phố Wall
+  - PromptSpec                : lightweight dataclass exposing each prompt file's contract
 
 Convention (enforced by code review, not ABC):
   1. Every prompt file MUST define SYSTEM_PROMPT: str at module level.
@@ -11,6 +13,8 @@ Convention (enforced by code review, not ABC):
   3. Every prompt file MUST expose SPEC: PromptSpec at module level.
   4. build_*_prompt() functions return ONLY the user message string.
   5. Confidence MUST be float 0.0-1.0 in all Pydantic output schemas.
+  6. High-stakes prompts (verdict, pretrade, thesis_review, stress_test) SHOULD use
+     with_persona() to prepend VETERAN_INVESTOR_PERSONA before domain-specific rules.
 """
 
 from __future__ import annotations
@@ -22,6 +26,51 @@ from typing import Any
 from pydantic import BaseModel
 
 
+# ---------------------------------------------------------------------------
+# Veteran Investor Persona
+# ---------------------------------------------------------------------------
+
+VETERAN_INVESTOR_PERSONA = """\
+Bạn là một nhà đầu tư chứng khoán kỳ cựu với hơn 25 năm kinh nghiệm thực chiến \
+tại thị trường Việt Nam (HOSE/HNX/UPCoM) và các thị trường quốc tế. \
+Bạn đã sống sót và kiếm lợi qua khủng hoảng 2008, COVID-2020, và nhiều chu kỳ \
+bong bóng-vỡ của VN-Index. Bạn quản lý danh mục cho chính mình — không phải \
+viết báo cáo cho khách hàng.
+
+Phong cách tư duy và giao tiếp:
+- Nói thẳng, không hedge mọi câu bằng "có thể", "nên cân nhắc", "tham khảo thêm".
+- Khi setup xấu → nói xấu, chỉ rõ lý do, không xã giao.
+- Khi cơ hội tốt → nói tốt, đặt conviction rõ ràng, không viết "khả quan".
+- Luôn phân biệt "noise" và "signal" — không mọi biến động đều cần phản ứng.
+- Ưu tiên an toàn vốn tuyệt đối: sai một lần to hơn đúng mười lần nhỏ.
+- Mọi nhận định phải đi kèm điều kiện invalidation: "Tôi sai khi nào?"
+- Không bao giờ đưa ra verdict mà không có lý do cụ thể từ dữ liệu thực tế.
+- Ngôn ngữ: tiếng Việt, súc tích, dùng thuật ngữ chứng khoán chuẩn xác.
+"""
+
+
+def with_persona(domain_rules: str) -> str:
+    """Prepend VETERAN_INVESTOR_PERSONA to a domain-specific system prompt.
+
+    Use for high-stakes agents: verdict, pretrade, thesis_review, stress_test,
+    thesis_debate, signal_engine, proactive_alert.
+
+    Usage::
+
+        _SYSTEM = with_persona(\"\"\"
+        Nhiệm vụ cụ thể của agent này...
+        Quy tắc 1: ...
+        {schema_block(MyOutput)}
+        \"\"\")
+    """
+    return f"{VETERAN_INVESTOR_PERSONA}\n---\n{domain_rules}"
+
+
+# ---------------------------------------------------------------------------
+# Schema block
+# ---------------------------------------------------------------------------
+
+
 def schema_block(model: type[BaseModel]) -> str:
     """Generate an inline JSON schema block to embed at the end of SYSTEM_PROMPT.
 
@@ -31,10 +80,10 @@ def schema_block(model: type[BaseModel]) -> str:
 
     Usage::
 
-        SYSTEM_PROMPT = f\"""
+        SYSTEM_PROMPT = f\"\"\"
         Bạn là ... (persona + rules)
         {schema_block(MyOutput)}
-        \"""
+        \"\"\"
     """
     schema = model.model_json_schema()
     schema_str = json.dumps(schema, ensure_ascii=False, indent=2)
@@ -45,6 +94,11 @@ Schema bắt buộc:
 ```json
 {schema_str}
 ```"""
+
+
+# ---------------------------------------------------------------------------
+# PromptSpec
+# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
