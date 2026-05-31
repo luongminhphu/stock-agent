@@ -17,7 +17,13 @@ from src.bot.commands.base import BaseCog
 from src.briefing.agenda_cache import get_agenda
 from src.briefing.formatter import build_brief_pages, format_eod_brief, format_morning_brief
 from src.briefing.service import BriefingService
-from src.platform.bootstrap import get_briefing_agent, get_pnl_service_class, get_quote_service
+from src.platform.bootstrap import (
+    get_agenda_service_factory,
+    get_briefing_agent,
+    get_pnl_service_class,
+    get_quote_service,
+    get_sector_rotation_agent,
+)
 from src.platform.db import get_session
 from src.platform.logging import get_logger
 from src.watchlist.service import WatchlistService
@@ -36,9 +42,9 @@ _SENTIMENT_COLOUR = {
 }
 
 _OUTCOME_LABEL = {
-    "acted": "✅ Đã thực hiện",
-    "watching": "👀 Đang theo dõi",
-    "skipped": "⏭ Skip hôm nay",
+    "acted": "\u2705 \u0110\u00e3 th\u1ef1c hi\u1ec7n",
+    "watching": "\U0001f440 \u0110ang theo d\u00f5i",
+    "skipped": "\u23ed Skip h\u00f4m nay",
 }
 
 
@@ -55,19 +61,19 @@ class BriefFeedbackView(discord.ui.View):
         self._snapshot_id = snapshot_id
         self._user_id = user_id
 
-    @discord.ui.button(label="✅ Đã thực hiện", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="\u2705 \u0110\u00e3 th\u1ef1c hi\u1ec7n", style=discord.ButtonStyle.success)
     async def btn_acted(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         await self._record(interaction, outcome="acted")
 
-    @discord.ui.button(label="👀 Đang theo dõi", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="\U0001f440 \u0110ang theo d\u00f5i", style=discord.ButtonStyle.secondary)
     async def btn_watching(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         await self._record(interaction, outcome="watching")
 
-    @discord.ui.button(label="⏭ Skip hôm nay", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="\u23ed Skip h\u00f4m nay", style=discord.ButtonStyle.danger)
     async def btn_skipped(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -98,7 +104,7 @@ class BriefFeedbackView(discord.ui.View):
 
         label = _OUTCOME_LABEL.get(outcome, outcome)
         await interaction.response.send_message(
-            f"Ghi nhận: **{label}**", ephemeral=True
+            f"Ghi nh\u1eadn: **{label}**", ephemeral=True
         )
         for child in self.children:
             if isinstance(child, discord.ui.Button):
@@ -124,6 +130,18 @@ class BriefingCog(BaseCog):
 
         try:
             async with self.db_session() as session:
+                # Lazy imports — these are session-scoped services, not singletons
+                from src.thesis.service import ThesisService
+                from src.readmodel.dashboard_service import DashboardService
+
+                agenda_service = None
+                agenda_factory = get_agenda_service_factory()
+                if agenda_factory is not None:
+                    try:
+                        agenda_service = agenda_factory(session)
+                    except Exception as _e:
+                        logger.warning("briefing.command.agenda_service_init_failed", error=str(_e))
+
                 svc = BriefingService(
                     watchlist_service=WatchlistService(session=session),
                     quote_service=get_quote_service(),
@@ -132,6 +150,10 @@ class BriefingCog(BaseCog):
                         session=session,
                         quote_service=get_quote_service(),
                     ),
+                    thesis_service=ThesisService(session=session),
+                    dashboard_service=DashboardService(session=session),
+                    agenda_service=agenda_service,
+                    sector_agent=get_sector_rotation_agent(),
                     session=session,
                 )
                 if phase == "morning":
@@ -178,13 +200,13 @@ class BriefingCog(BaseCog):
 
 
 def build_brief_embeds(brief: BriefOutput, phase: str) -> list[discord.Embed]:
-    """Convert BriefOutput → list[discord.Embed], one embed per page.
+    """Convert BriefOutput \u2192 list[discord.Embed], one embed per page.
 
     Page 1 gets the title and accent colour.
     Continuation pages get a minimal footer-only embed so Discord renders
     them as a clean continuation rather than identical headers.
 
-    Public — importable by scheduler and other bot adapters.
+    Public \u2014 importable by scheduler and other bot adapters.
     """
     title = "\U0001f305 Morning Brief" if phase == "morning" else "\U0001f307 End-of-Day Brief"
     colour = _SENTIMENT_COLOUR.get(brief.sentiment, discord.Color.blurple())
@@ -218,7 +240,7 @@ def build_brief_embeds(brief: BriefOutput, phase: str) -> list[discord.Embed]:
 # ---------------------------------------------------------------------------
 
 def build_brief_embed(brief: BriefOutput, phase: str) -> discord.Embed:
-    """Single-embed builder — kept for backward compatibility with scheduler.
+    """Single-embed builder \u2014 kept for backward compatibility with scheduler.
 
     Prefer build_brief_embeds() for new callers.
     """
