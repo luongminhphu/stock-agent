@@ -43,81 +43,152 @@ from src.thesis.timeline_parser import parse_timeline_to_date
 
 logger = get_logger(__name__)
 
-_DEFAULT_USER_ID = "default_user"
+# Re-export tất cả public symbols cũ để backward compat
+__all__ = [
+    "ThesisService",
+    "CreateThesisInput",
+    "UpdateThesisInput",
+    "AddAssumptionInput",
+    "UpdateAssumptionInput",
+    "AddCatalystInput",
+    "UpdateCatalystInput",
+    "ThesisNotFoundError",
+    "ThesisAlreadyClosedError",
+    "AssumptionNotFoundError",
+    "CatalystNotFoundError",
+    "parse_timeline_to_date",
+]
 
 
 def _resolve_user_id(user_id: str | None) -> str:
-    return user_id if user_id is not None else _DEFAULT_USER_ID
+    resolved = user_id or settings.owner_user_id
+    if not resolved:
+        raise ValueError(
+            "user_id is required. Set owner_user_id in settings/.env for single-user mode."
+        )
+    return resolved
+
+
+async def _emit_thesis_closed(thesis: Thesis, close_reason: str) -> None:
+    """Fire-and-forget: emit ThesisClosedEvent after DB commit.
+
+    Non-blocking — any failure in the event bus does not affect the caller.
+    outcome_pnl_pct is intentionally None here; DecisionLog may not be
+    populated yet. PostMortemService can query LessonService if needed.
+    """
+    try:
+        from src.platform.event_bus import get_event_bus
+        from src.platform.events import ThesisClosedEvent
+        event = ThesisClosedEvent(
+            thesis_id=thesis.id,
+            user_id=thesis.user_id,
+            ticker=thesis.ticker,
+            close_reason=close_reason,
+            thesis_title=thesis.title or "",
+            thesis_summary=thesis.summary or "",
+            outcome_pnl_pct=None,
+        )
+        await get_event_bus().publish(event)
+    except Exception as exc:
+        logger.warning(
+            "thesis.close.event_emit_failed",
+            thesis_id=thesis.id,
+            close_reason=close_reason,
+            error=str(exc),
+        )
 
 
 class ThesisService:
+    """Thesis lifecycle: create, update, close, invalidate, delete.
+
+    Assumption/Catalyst/Recommendation CRUD được delegate sang ComponentService
+    thông qua các proxy methods để giữ interface không thay đổi với callers.
+
+    Caller cung cấp AsyncSession per-request (từ get_db_session()).
+    """
+
     def __init__(self, session: AsyncSession) -> None:
-        self._session = session
         self._repo = ThesisRepository(session)
         self._components = ComponentService(session)
 
     # ------------------------------------------------------------------
-    # Thesis CRUD
+    # Thesis lifecycle
     # ------------------------------------------------------------------
 
-    async def create(self, user_id: str, inp: CreateThesisInput) -> Thesis:
-        ticker = inp.ticker.upper().strip()
-        time_horizon = parse_timeline_to_date(inp.time_horizon) if inp.time_horizon else None
+    async def create(self, inp: CreateThesisInput) -> Thesis:
+        from src.thesis.models import Assumption, AssumptionStatus, Catalyst
         thesis = Thesis(
-            user_id=user_id,
-            ticker=ticker,
-            entry_thesis=inp.entry_thesis,
+            user_id=_resolve_user_id(inp.user_id),
+            ticker=inp.ticker.upper(),
+            title=inp.title,
+            summary=inp.summary,
+            direction=inp.direction,
+            status=ThesisStatus.ACTIVE,
+            entry_price=inp.entry_price,
             target_price=inp.target_price,
             stop_loss=inp.stop_loss,
-            time_horizon=time_horizon,
-            direction=getattr(inp, "direction", None),
         )
-        self._session.add(thesis)
-        await self._session.flush()
-        logger.info(
-            "thesis.created",
-            thesis_id=thesis.id,
-            ticker=thesis.ticker,
-            user_id=user_id,
-        )
+        for desc in inp.assumptions or []:
+            thesis.assumptions.append(
+                Assumption(description=desc, status=AssumptionStatus.PENDING)
+            )
+        for cat_inp in inp.catalysts or []:
+            resolved_date = cat_inp.expected_date or parse_timeline_to_date(cat_inp.timeline)
+            thesis.catalysts.append(
+                Catalyst(
+                    description=cat_inp.description,
+                    status=cat_inp.status,
+                    expected_date=resolved_date,
+                    note=cat_inp.note,
+                )
+            )
+        await self._repo.save(thesis)
+        logger.info("thesis.created", thesis_id=thesis.id, ticker=thesis.ticker)
         return thesis
 
-    async def update(
-        self, thesis_id: int, user_id: str, inp: UpdateThesisInput
-    ) -> Thesis:
+    async def update(self, thesis_id: int, user_id: str, inp: UpdateThesisInput) -> Thesis:
         thesis = await self._get_owned(thesis_id, user_id)
-        _assert_mutable(thesis)
-        data = inp.model_dump(exclude_unset=True)
-        if "time_horizon" in data and data["time_horizon"] is not None:
-            data["time_horizon"] = parse_timeline_to_date(data["time_horizon"])
-        for field, value in data.items():
-            setattr(thesis, field, value)
-        logger.info("thesis.updated", thesis_id=thesis_id, fields=list(data))
+        self._assert_mutable(thesis)
+        if inp.title is not None:
+            thesis.title = inp.title
+        if inp.summary is not None:
+            thesis.summary = inp.summary
+        if inp.direction is not None:
+            thesis.direction = inp.direction
+        if inp.entry_price is not None:
+            thesis.entry_price = inp.entry_price
+        if inp.target_price is not None:
+            thesis.target_price = inp.target_price
+        if inp.stop_loss is not None:
+            thesis.stop_loss = inp.stop_loss
+        await self._repo.save(thesis)
+        logger.info("thesis.updated", thesis_id=thesis_id)
         return thesis
 
-    async def close(
-        self,
-        thesis_id: int,
-        user_id: str,
-        outcome: str = "completed",
-    ) -> Thesis:
+    async def close(self, thesis_id: int, user_id: str) -> Thesis:
         thesis = await self._get_owned(thesis_id, user_id)
-        if thesis.status == ThesisStatus.CLOSED:
-            raise ThesisAlreadyClosedError(thesis_id)
+        self._assert_mutable(thesis)
         thesis.status = ThesisStatus.CLOSED
         thesis.closed_at = datetime.now(UTC)
-        thesis.close_outcome = outcome
-        logger.info("thesis.closed", thesis_id=thesis_id, outcome=outcome)
+        await self._repo.save(thesis)
+        logger.info("thesis.closed", thesis_id=thesis_id)
+        await _emit_thesis_closed(thesis, close_reason="closed")
+        return thesis
+
+    async def invalidate(self, thesis_id: int, user_id: str) -> Thesis:
+        thesis = await self._get_owned(thesis_id, user_id)
+        self._assert_mutable(thesis)
+        thesis.status = ThesisStatus.INVALIDATED
+        thesis.closed_at = datetime.now(UTC)
+        await self._repo.save(thesis)
+        logger.info("thesis.invalidated", thesis_id=thesis_id)
+        await _emit_thesis_closed(thesis, close_reason="invalidated")
         return thesis
 
     async def delete(self, thesis_id: int, user_id: str) -> None:
         thesis = await self._get_owned(thesis_id, user_id)
-        await self._session.delete(thesis)
+        await self._repo.delete(thesis)
         logger.info("thesis.deleted", thesis_id=thesis_id)
-
-    # ------------------------------------------------------------------
-    # Queries
-    # ------------------------------------------------------------------
 
     async def get(self, thesis_id: int, user_id: str) -> Thesis:
         return await self._get_owned(thesis_id, user_id)
@@ -129,14 +200,6 @@ class ThesisService:
     ) -> list[Thesis]:
         user_id = _resolve_user_id(user_id)
         return await self._repo.list_by_user(user_id, status)
-
-    async def list_active(self, user_id: str) -> list[Thesis]:
-        """Return all ACTIVE theses for a user.
-
-        Alias for list_for_user(user_id, status=ThesisStatus.ACTIVE).
-        Called by briefing context_builder for thesis health context.
-        """
-        return await self.list_for_user(user_id=user_id, status=ThesisStatus.ACTIVE)
 
     async def get_active_thesis_id_for_ticker(
         self,
@@ -151,43 +214,103 @@ class ThesisService:
             return None
         return str(user_theses[0].id)
 
-    async def get_thesis_context_for_ticker(
-        self,
-        ticker: str,
-        user_id: str | None = None,
-    ) -> str:
-        """Return a compact text context block for the active thesis on ticker."""
-        resolved = _resolve_user_id(user_id)
-        theses = await self._repo.list_active_by_ticker(ticker)
-        user_theses = [t for t in theses if t.user_id == resolved]
-        if not user_theses:
-            return ""
-        thesis = user_theses[0]
-        parts = [f"Thesis [{thesis.id}] {thesis.ticker}: {thesis.entry_thesis}"]
-        if thesis.target_price:
-            parts.append(f"Target: {thesis.target_price}")
-        if thesis.stop_loss:
-            parts.append(f"Stop: {thesis.stop_loss}")
-        if thesis.time_horizon:
-            parts.append(f"Horizon: {thesis.time_horizon}")
-        return " | ".join(parts)
+    # ------------------------------------------------------------------
+    # Assumption proxy
+    # ------------------------------------------------------------------
 
-    async def get_thesis_health(
-        self,
-        user_id: str | None = None,
-    ) -> list[dict]:
-        """Return health snapshot of all active theses for the user."""
-        resolved = _resolve_user_id(user_id)
-        try:
-            theses = await self.list_active(user_id=resolved)
-        except Exception as exc:
-            logger.warning(
-                "thesis_health.list_active_failed",
-                user_id=resolved,
-                error=str(exc),
-            )
-            return []
+    async def add_assumption(
+        self, thesis_id: int, user_id: str, inp: AddAssumptionInput
+    ) -> Assumption:
+        thesis = await self._get_owned(thesis_id, user_id)
+        self._assert_mutable(thesis)
+        return await self._components.add_assumption(thesis_id, inp)
 
+    async def update_assumption(
+        self, thesis_id: int, assumption_id: int, user_id: str, inp: UpdateAssumptionInput
+    ) -> Assumption:
+        await self._get_owned(thesis_id, user_id)
+        return await self._components.update_assumption(thesis_id, assumption_id, inp)
+
+    async def delete_assumption(
+        self, thesis_id: int, assumption_id: int, user_id: str
+    ) -> None:
+        await self._get_owned(thesis_id, user_id)
+        await self._components.delete_assumption(thesis_id, assumption_id)
+
+    # ------------------------------------------------------------------
+    # Catalyst proxy
+    # ------------------------------------------------------------------
+
+    async def add_catalyst(
+        self, thesis_id: int, user_id: str, inp: AddCatalystInput
+    ) -> Catalyst:
+        thesis = await self._get_owned(thesis_id, user_id)
+        self._assert_mutable(thesis)
+        return await self._components.add_catalyst(thesis_id, inp)
+
+    async def add_catalyst_from_timeline(
+        self,
+        thesis_id: int,
+        user_id: str | None,
+        description: str,
+        timeline: str | None,
+        note: str | None = None,
+    ) -> Catalyst:
+        thesis = await self._get_owned(thesis_id, user_id)
+        self._assert_mutable(thesis)
+        return await self._components.add_catalyst_from_timeline(
+            thesis_id=thesis_id,
+            user_id=user_id,
+            description=description,
+            timeline=timeline,
+            note=note,
+        )
+
+    async def update_catalyst(
+        self, thesis_id: int, catalyst_id: int, user_id: str, inp: UpdateCatalystInput
+    ) -> Catalyst:
+        await self._get_owned(thesis_id, user_id)
+        return await self._components.update_catalyst(thesis_id, catalyst_id, inp)
+
+    async def delete_catalyst(
+        self, thesis_id: int, catalyst_id: int, user_id: str
+    ) -> None:
+        await self._get_owned(thesis_id, user_id)
+        await self._components.delete_catalyst(thesis_id, catalyst_id)
+
+    # ------------------------------------------------------------------
+    # Recommendation proxy
+    # ------------------------------------------------------------------
+
+    async def apply_recommendation(
+        self,
+        thesis_id: int,
+        recommendation_id: int,
+        user_id: str,
+        accept: bool,
+    ) -> None:
+        await self._get_owned(thesis_id, user_id)
+        await self._components.apply_recommendation(thesis_id, recommendation_id, accept)
+
+    # ------------------------------------------------------------------
+    # Briefing context helpers (added for briefing segment integration)
+    # ------------------------------------------------------------------
+
+    async def list_active(self, user_id: str | None = None) -> list[Thesis]:
+        """Return all ACTIVE theses for a user.
+
+        Called by BriefingService._build_judge_context() and _build_thesis_context().
+        """
+        return await self.list_for_user(user_id=user_id, status=ThesisStatus.ACTIVE)
+
+    async def get_thesis_health(self, user_id: str | None = None) -> list[dict]:
+        """Return health snapshot of all active theses.
+
+        Called by BriefingService._build_thesis_context().
+        Returns list of dicts with keys: id, ticker, entry_thesis, target_price,
+        stop_loss, time_horizon, assumption_count, last_review_at, days_since_review.
+        """
+        theses = await self.list_active(user_id=user_id)
         results = []
         for thesis in theses:
             try:
@@ -215,108 +338,35 @@ class ThesisService:
                     last_review_at = last_review_at.replace(tzinfo=UTC)
                 days_since_review = (now - last_review_at).days
 
-            results.append(
-                {
-                    "id": thesis.id,
-                    "ticker": thesis.ticker,
-                    "status": thesis.status,
-                    "entry_thesis": thesis.entry_thesis,
-                    "target_price": thesis.target_price,
-                    "stop_loss": thesis.stop_loss,
-                    "time_horizon": thesis.time_horizon,
-                    "assumption_count": len(assumptions),
-                    "last_review_at": last_review_at,
-                    "days_since_review": days_since_review,
-                }
-            )
+            results.append({
+                "id": thesis.id,
+                "ticker": thesis.ticker,
+                "entry_thesis": getattr(thesis, "entry_thesis", None) or getattr(thesis, "summary", ""),
+                "target_price": thesis.target_price,
+                "stop_loss": thesis.stop_loss,
+                "time_horizon": thesis.time_horizon,
+                "assumption_count": len(assumptions),
+                "last_review_at": last_review_at,
+                "days_since_review": days_since_review,
+            })
         return results
 
     # ------------------------------------------------------------------
-    # Assumption proxy
+    # Private helpers
     # ------------------------------------------------------------------
 
-    async def add_assumption(
-        self, thesis_id: int, user_id: str, inp: AddAssumptionInput
-    ) -> Assumption:
-        thesis = await self._get_owned(thesis_id, user_id)
-        _assert_mutable(thesis)
-        return await self._components.add_assumption(thesis_id, inp)
-
-    async def update_assumption(
-        self,
-        thesis_id: int,
-        assumption_id: int,
-        user_id: str,
-        inp: UpdateAssumptionInput,
-    ) -> Assumption:
-        thesis = await self._get_owned(thesis_id, user_id)
-        _assert_mutable(thesis)
-        return await self._components.update_assumption(assumption_id, inp)
-
-    async def delete_assumption(
-        self, thesis_id: int, assumption_id: int, user_id: str
-    ) -> None:
-        thesis = await self._get_owned(thesis_id, user_id)
-        _assert_mutable(thesis)
-        await self._components.delete_assumption(assumption_id)
-
-    async def list_assumptions(
-        self, thesis_id: int, user_id: str
-    ) -> list[Assumption]:
-        await self._get_owned(thesis_id, user_id)
-        return await self._components.list_assumptions(thesis_id)
-
-    # ------------------------------------------------------------------
-    # Catalyst proxy
-    # ------------------------------------------------------------------
-
-    async def add_catalyst(
-        self, thesis_id: int, user_id: str, inp: AddCatalystInput
-    ) -> Catalyst:
-        thesis = await self._get_owned(thesis_id, user_id)
-        _assert_mutable(thesis)
-        return await self._components.add_catalyst(thesis_id, inp)
-
-    async def update_catalyst(
-        self,
-        thesis_id: int,
-        catalyst_id: int,
-        user_id: str,
-        inp: UpdateCatalystInput,
-    ) -> Catalyst:
-        thesis = await self._get_owned(thesis_id, user_id)
-        _assert_mutable(thesis)
-        return await self._components.update_catalyst(catalyst_id, inp)
-
-    async def delete_catalyst(
-        self, thesis_id: int, catalyst_id: int, user_id: str
-    ) -> None:
-        thesis = await self._get_owned(thesis_id, user_id)
-        _assert_mutable(thesis)
-        await self._components.delete_catalyst(catalyst_id)
-
-    async def list_catalysts(
-        self, thesis_id: int, user_id: str
-    ) -> list[Catalyst]:
-        await self._get_owned(thesis_id, user_id)
-        return await self._components.list_catalysts(thesis_id)
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
-    async def _get_owned(self, thesis_id: int, user_id: str) -> Thesis:
+    async def _get_owned(self, thesis_id: int, user_id: str | None) -> Thesis:
+        resolved = _resolve_user_id(user_id)
         thesis = await self._repo.get_by_id(thesis_id)
-        if thesis is None:
-            raise ThesisNotFoundError(thesis_id)
-        if thesis.user_id != user_id:
-            if not settings.is_development:
-                raise PermissionError(
-                    f"User {user_id!r} does not own thesis {thesis_id}"
-                )
+        if thesis is None or thesis.user_id != resolved:
+            raise ThesisNotFoundError(
+                f"Thesis {thesis_id} not found for user {resolved}"
+            )
         return thesis
 
-
-def _assert_mutable(thesis: Thesis) -> None:
-    if thesis.status == ThesisStatus.CLOSED:
-        raise ThesisAlreadyClosedError(thesis.id)
+    @staticmethod
+    def _assert_mutable(thesis: Thesis) -> None:
+        if thesis.status in (ThesisStatus.CLOSED, ThesisStatus.INVALIDATED):
+            raise ThesisAlreadyClosedError(
+                f"Thesis {thesis.id} is already {thesis.status} and cannot be modified."
+            )
