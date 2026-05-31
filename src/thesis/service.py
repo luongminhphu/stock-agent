@@ -56,55 +56,35 @@ __all__ = [
     "ThesisAlreadyClosedError",
     "AssumptionNotFoundError",
     "CatalystNotFoundError",
-    "parse_timeline_to_date",
 ]
 
 
 def _resolve_user_id(user_id: str | None) -> str:
-    resolved = user_id or settings.owner_user_id
-    if not resolved:
-        raise ValueError(
-            "user_id is required. Set owner_user_id in settings/.env for single-user mode."
-        )
-    return resolved
+    if user_id is not None:
+        return user_id
+    default = getattr(settings, "DEFAULT_USER_ID", None)
+    if default:
+        return default
+    raise ValueError("user_id is required")
 
 
 async def _emit_thesis_closed(thesis: Thesis, close_reason: str) -> None:
-    """Fire-and-forget: emit ThesisClosedEvent after DB commit.
-
-    Non-blocking — any failure in the event bus does not affect the caller.
-    outcome_pnl_pct is intentionally None here; DecisionLog may not be
-    populated yet. PostMortemService can query LessonService if needed.
-    """
+    """Fire-and-forget event emission. Failure is silent."""
     try:
-        from src.platform.event_bus import get_event_bus
-        from src.platform.events import ThesisClosedEvent
-        event = ThesisClosedEvent(
-            thesis_id=thesis.id,
-            user_id=thesis.user_id,
-            ticker=thesis.ticker,
-            close_reason=close_reason,
-            thesis_title=thesis.title or "",
-            thesis_summary=thesis.summary or "",
-            outcome_pnl_pct=None,
-        )
-        await get_event_bus().publish(event)
-    except Exception as exc:
-        logger.warning(
-            "thesis.close.event_emit_failed",
-            thesis_id=thesis.id,
-            close_reason=close_reason,
-            error=str(exc),
-        )
+        from src.platform.events import emit
+        await emit("thesis.closed", {"thesis_id": thesis.id, "reason": close_reason})
+    except Exception:
+        pass
 
 
 class ThesisService:
-    """Thesis lifecycle: create, update, close, invalidate, delete.
+    """Public API for the thesis domain.
 
-    Assumption/Catalyst/Recommendation CRUD được delegate sang ComponentService
-    thông qua các proxy methods để giữ interface không thay đổi với callers.
+    All business logic lives here or is delegated to specialised helpers:
+      ComponentService  — assumption/catalyst/recommendation CRUD
+      ThesisRepository  — DB persistence
 
-    Caller cung cấp AsyncSession per-request (từ get_db_session()).
+    Caller is responsible for session lifecycle (commit/rollback).
     """
 
     def __init__(self, session: AsyncSession) -> None:
@@ -112,55 +92,57 @@ class ThesisService:
         self._components = ComponentService(session)
 
     # ------------------------------------------------------------------
-    # Thesis lifecycle
+    # Core CRUD
     # ------------------------------------------------------------------
 
-    async def create(self, inp: CreateThesisInput) -> Thesis:
-        from src.thesis.models import Assumption, AssumptionStatus, Catalyst
+    async def create(
+        self, user_id: str, inp: CreateThesisInput
+    ) -> Thesis:
+        resolved = _resolve_user_id(user_id)
+        target_date = None
+        if inp.time_horizon:
+            target_date = parse_timeline_to_date(inp.time_horizon)
+
         thesis = Thesis(
-            user_id=_resolve_user_id(inp.user_id),
+            user_id=resolved,
             ticker=inp.ticker.upper(),
             title=inp.title,
             summary=inp.summary,
             direction=inp.direction,
-            status=ThesisStatus.ACTIVE,
-            entry_price=inp.entry_price,
             target_price=inp.target_price,
             stop_loss=inp.stop_loss,
+            entry_price=inp.entry_price,
+            status=ThesisStatus.ACTIVE,
         )
-        for desc in inp.assumptions or []:
-            thesis.assumptions.append(
-                Assumption(description=desc, status=AssumptionStatus.PENDING)
-            )
-        for cat_inp in inp.catalysts or []:
-            resolved_date = cat_inp.expected_date or parse_timeline_to_date(cat_inp.timeline)
-            thesis.catalysts.append(
-                Catalyst(
-                    description=cat_inp.description,
-                    status=cat_inp.status,
-                    expected_date=resolved_date,
-                    note=cat_inp.note,
-                )
-            )
+        if target_date is not None:
+            thesis.target_date = target_date  # type: ignore[attr-defined]
+
         await self._repo.save(thesis)
         logger.info("thesis.created", thesis_id=thesis.id, ticker=thesis.ticker)
         return thesis
 
-    async def update(self, thesis_id: int, user_id: str, inp: UpdateThesisInput) -> Thesis:
+    async def update(
+        self, thesis_id: int, user_id: str, inp: UpdateThesisInput
+    ) -> Thesis:
         thesis = await self._get_owned(thesis_id, user_id)
         self._assert_mutable(thesis)
+
         if inp.title is not None:
             thesis.title = inp.title
         if inp.summary is not None:
             thesis.summary = inp.summary
-        if inp.direction is not None:
-            thesis.direction = inp.direction
-        if inp.entry_price is not None:
-            thesis.entry_price = inp.entry_price
         if inp.target_price is not None:
             thesis.target_price = inp.target_price
         if inp.stop_loss is not None:
             thesis.stop_loss = inp.stop_loss
+        if inp.entry_price is not None:
+            thesis.entry_price = inp.entry_price
+        if inp.direction is not None:
+            thesis.direction = inp.direction
+        if inp.time_horizon is not None:
+            target_date = parse_timeline_to_date(inp.time_horizon)
+            thesis.target_date = target_date  # type: ignore[attr-defined]
+
         await self._repo.save(thesis)
         logger.info("thesis.updated", thesis_id=thesis_id)
         return thesis
@@ -293,13 +275,13 @@ class ThesisService:
         await self._components.apply_recommendation(thesis_id, recommendation_id, accept)
 
     # ------------------------------------------------------------------
-    # Briefing context helpers (added for briefing segment integration)
+    # Briefing context helpers
     # ------------------------------------------------------------------
 
     async def list_active(self, user_id: str | None = None) -> list[Thesis]:
         """Return all ACTIVE theses for a user.
 
-        Called by BriefingService._build_judge_context() and _build_thesis_context().
+        Called by BriefingService._build_thesis_context().
         """
         return await self.list_for_user(user_id=user_id, status=ThesisStatus.ACTIVE)
 
@@ -307,22 +289,24 @@ class ThesisService:
         """Return health snapshot of all active theses.
 
         Called by BriefingService._build_thesis_context().
-        Returns list of dicts with keys: id, ticker, entry_thesis, target_price,
-        stop_loss, time_horizon, assumption_count, last_review_at, days_since_review.
+        Returns list of dicts with keys:
+          id, ticker, entry_thesis, target_price, stop_loss,
+          assumption_count, days_since_review.
+
+        Reads assumptions and reviews from ORM relationships
+        (thesis.assumptions, thesis.reviews) — NOT from ComponentService
+        which only exposes write/mutation methods.
+        Theses must be loaded with selectinload for relationships to be
+        available; ThesisRepository.list_by_user uses selectinload by default.
         """
         theses = await self.list_active(user_id=user_id)
         results = []
         for thesis in theses:
-            try:
-                assumptions = await self._components.list_assumptions(thesis.id)
-                reviews = await self._components.list_reviews(thesis.id)
-            except Exception as exc:
-                logger.warning(
-                    "thesis_health.detail_failed",
-                    thesis_id=thesis.id,
-                    error=str(exc),
-                )
-                assumptions, reviews = [], []
+            # assumptions: read from ORM relationship
+            assumptions = getattr(thesis, "assumptions", None) or []
+
+            # reviews: read from ORM relationship
+            reviews = getattr(thesis, "reviews", None) or []
 
             last_review_at = None
             if reviews:
@@ -341,10 +325,16 @@ class ThesisService:
             results.append({
                 "id": thesis.id,
                 "ticker": thesis.ticker,
-                "entry_thesis": getattr(thesis, "entry_thesis", None) or getattr(thesis, "summary", ""),
+                "entry_thesis": (
+                    getattr(thesis, "entry_thesis", None)
+                    or getattr(thesis, "summary", "")
+                    or ""
+                ),
                 "target_price": thesis.target_price,
                 "stop_loss": thesis.stop_loss,
-                "time_horizon": thesis.time_horizon,
+                # time_horizon is not a DB column — omitted.
+                # Use target_date if callers need a deadline reference.
+                "target_date": getattr(thesis, "target_date", None),
                 "assumption_count": len(assumptions),
                 "last_review_at": last_review_at,
                 "days_since_review": days_since_review,

@@ -24,7 +24,9 @@ Design notes
   call agent → persist snapshot → return BriefResult.
 - The _collect_contexts() helper is shared between morning and eod flows.
   It calls each context-builder in parallel (asyncio.gather) to minimise
-  latency.
+  latency — EXCEPT _build_agenda_context which is awaited sequentially
+  to avoid nested greenlet_spawn conflicts (AgendaService.build_agenda
+  itself calls asyncio.gather with the same session).
 - Context-builders are fail-safe: each catches its own errors and returns
   a degraded value (empty string / empty list) rather than aborting the
   brief.
@@ -41,13 +43,15 @@ Context sources injected into BriefingAgent
   quotes           — QuoteService.get_bulk_quotes(tickers) → price/volume
   pnl              — PnLService.get_portfolio_pnl(user_id) → unrealised P&L
   thesis           — ThesisService.get_thesis_health(user_id) → thesis status
-  sector           — SectorRotationAgent.analyse(tickers) → sector flow
+  sector           — stubbed (SectorRotationAgent.analyze needs sector_performance
+                     data not yet available in this flow)
   judge            — ThesisJudgeAgent.judge(theses) → thesis scores
   risk             — PortfolioRiskNarrator.narrate(user_id) → risk summary
   next_action      — NextActionSuggester.suggest(user_id) → next actions
   trend_pred       — TrendPredictionStore.get_recent(user_id) → predictions
   feedback         — DashboardService.get_brief_feedback_summary() → calibration
   agenda           — AgendaService.build_agenda(user_id) → decide/watch/defer
+                     (awaited sequentially — see design notes)
   lessons          — LessonService.get_pattern_summary(session, user_id) → patterns
   investor_profile — InvestorProfileService.get_investor_context() → profile block
 """
@@ -90,7 +94,9 @@ class BriefingService:
     thesis_service           — ThesisService (thesis health context). Optional.
     quote_service            — Any object with get_bulk_quotes(tickers) → list[Quote]. Optional.
     thesis_judge_agent       — ThesisJudgeAgent. Optional.
-    sector_agent             — SectorRotationAgent. Optional.
+    sector_agent             — SectorRotationAgent. Optional. Currently stubbed —
+                               sector context requires sector_performance data
+                               not yet available in the briefing flow.
     risk_narrator            — PortfolioRiskNarrator. Optional.
     next_action_agent        — NextActionSuggester. Optional.
     trend_store              — TrendPredictionStore. Optional.
@@ -100,6 +106,8 @@ class BriefingService:
     agenda_service           — AgendaService (daily agenda buckets). Optional.
                                Requires session to be set — skipped silently when
                                session is None. Non-blocking.
+                               Awaited sequentially (not in gather) to avoid
+                               nested greenlet_spawn conflicts.
     lesson_service           — LessonService (behavioral pattern summary). Optional.
                                Calls LessonService.get_pattern_summary(session, user_id).
                                Non-blocking.
@@ -237,7 +245,13 @@ class BriefingService:
     async def _collect_contexts(
         self, user_id: str
     ) -> tuple[list[str], dict[str, str]]:
-        """Gather all context strings concurrently.
+        """Gather all context strings.
+
+        Most builders run concurrently via asyncio.gather.
+        _build_agenda_context is awaited SEQUENTIALLY after the gather
+        because AgendaService.build_agenda() internally calls asyncio.gather
+        on the same AsyncSession — nesting two gather trees on a single session
+        triggers greenlet_spawn conflicts in SQLAlchemy async.
 
         Returns (tickers, context_kwargs) where context_kwargs maps keyword
         argument names expected by BriefingAgent.morning_brief / eod_brief.
@@ -253,7 +267,6 @@ class BriefingService:
             next_action_context,
             trend_context,
             feedback_context,
-            agenda_context,
             lessons_context,
             investor_profile_context,
         ) = await asyncio.gather(
@@ -265,10 +278,12 @@ class BriefingService:
             self._build_next_action_context(user_id),
             self._build_trend_context(user_id),
             self._build_feedback_context(user_id),
-            self._build_agenda_context(user_id),
             self._build_lessons_context(user_id),
             self._build_investor_profile_context(user_id),
         )
+
+        # Awaited sequentially — see docstring above.
+        agenda_context = await self._build_agenda_context(user_id)
 
         contexts = {
             "quote_context": quote_context,
@@ -354,18 +369,20 @@ class BriefingService:
             logger.warning("briefing.thesis_context.failed", error=str(exc))
             return ""
 
-    async def _build_sector_context(self, tickers: list[str]) -> str:
-        if not self._sector_agent or not tickers:
-            return ""
-        try:
-            result = await self._sector_agent.analyse(tickers)
-            if not result:
-                return ""
-            lines = [f"{ticker}: {sector}" for ticker, sector in result.items()]
-            return "Sector:\n" + "\n".join(lines)
-        except Exception as exc:
-            logger.warning("briefing.sector_context.failed", error=str(exc))
-            return ""
+    async def _build_sector_context(self, tickers: list[str]) -> str:  # noqa: ARG002
+        """Sector context — stubbed.
+
+        SectorRotationAgent.analyze() requires sector_performance (list of
+        {sector, return_1d, return_5d, return_1m, volume_vs_avg}) and
+        macro_context strings that are not available in the briefing flow yet.
+
+        This stub returns empty string until the market segment exposes a
+        sector-level data source that briefing can consume.
+
+        self._sector_agent is intentionally unused here — kept as a dependency
+        injection point for future wiring.
+        """
+        return ""
 
     async def _build_risk_context(self, user_id: str) -> str:
         if not self._risk_narrator:
@@ -431,8 +448,12 @@ class BriefingService:
     async def _build_agenda_context(self, user_id: str) -> str:
         """Build daily agenda context (decide/watch/defer buckets).
 
-        Requires self._agenda_service and self._session to be set.
-        Skipped silently when either is None.
+        Awaited sequentially in _collect_contexts (NOT inside asyncio.gather).
+        AgendaService.build_agenda() calls asyncio.gather internally on the
+        same AsyncSession. Nesting that inside an outer gather causes
+        SQLAlchemy greenlet_spawn conflicts.
+
+        Skipped silently when agenda_service or session is None.
         """
         if not self._agenda_service or not self._session:
             return ""
@@ -489,11 +510,14 @@ class BriefingService:
         latest behavioral snapshot notes.
         Returns empty string on any failure.
         """
-        if not self._investor_profile_service or not self._session:
+        if not self._investor_profile_service:
             return ""
         try:
-            ctx = await self._investor_profile_service.get_investor_context()
-            return ctx.to_prompt_block()
+            ctx = await self._investor_profile_service.get_investor_context(user_id)
+            if ctx is None:
+                return ""
+            block = ctx.to_prompt_block() if hasattr(ctx, "to_prompt_block") else str(ctx)
+            return block or ""
         except Exception as exc:
             logger.warning("briefing.investor_profile_context.failed", error=str(exc))
             return ""
@@ -509,17 +533,23 @@ class BriefingService:
         brief_text: str,
         tickers: list[str],
     ) -> int | None:
+        """Persist BriefSnapshot and return its id.
+
+        Non-blocking — failure logs a warning and returns None.
+        """
         try:
-            from src.briefing.models import BriefSnapshot
-            snapshot = BriefSnapshot(
+            snapshot_id = await self._repo.save_snapshot(
                 user_id=user_id,
-                phase=brief_type,
-                content=brief_text,
-                tickers=",".join(tickers) if tickers else None,
+                brief_type=brief_type,
+                brief_text=brief_text,
+                tickers=tickers,
             )
-            self._session.add(snapshot)
-            await self._session.flush()
-            return snapshot.id
+            return snapshot_id
         except Exception as exc:
-            logger.warning("briefing.persist_snapshot.failed", error=str(exc))
+            logger.warning(
+                "briefing.snapshot.failed",
+                user_id=user_id,
+                brief_type=brief_type,
+                error=str(exc),
+            )
             return None
