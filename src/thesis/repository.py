@@ -61,6 +61,7 @@ class ThesisRepository:
             .options(
                 selectinload(Thesis.assumptions),
                 selectinload(Thesis.catalysts),
+                selectinload(Thesis.reviews),
             )
             .order_by(Thesis.created_at.desc())
         )
@@ -276,74 +277,95 @@ class ThesisRepository:
         result = await self._session.execute(stmt)
         rows = list(result.scalars().all())
 
-        # Group by thesis_id, preserving newest-first order, capped per thesis.
+        # Group by thesis_id, preserving newest-first order
         grouped: dict[int, list[ThesisReview]] = defaultdict(list)
-        counts: dict[int, int] = defaultdict(int)
         for row in rows:
-            tid = row.thesis_id
-            if counts[tid] < limit_per_thesis:
-                grouped[tid].append(row)
-                counts[tid] += 1
+            grouped[row.thesis_id].append(row)
 
-        return dict(grouped)
-
-    # ------------------------------------------------------------------
-    # Recommendation queries  (Wave 2)
-    # ------------------------------------------------------------------
-
-    async def save_recommendations(self, recs: list[ReviewRecommendation]) -> None:
-        """Bulk-insert một batch ReviewRecommendation records.
-
-        Dùng add_all + flush thay vì loop save_recommendation để giảm
-        round-trips. Caller đảm bảo list không rỗng trước khi gọi.
-        """
-        self._session.add_all(recs)
-        await self._session.flush()
-        for rec in recs:
-            await self._session.refresh(rec)
-
-    async def get_recommendation_by_id(self, recommendation_id: int) -> ReviewRecommendation | None:
-        """Fetch a single recommendation by PK, eager-load review để validate
-        thesis ownership trong ThesisService.apply_recommendation."""
-        stmt = (
-            select(ReviewRecommendation)
-            .where(ReviewRecommendation.id == recommendation_id)
-            .options(selectinload(ReviewRecommendation.review))
-        )
-        result = await self._session.execute(stmt)
-        return result.scalar_one_or_none()
-
-    async def list_pending_recommendations(self, thesis_id: int) -> list[ReviewRecommendation]:
-        """Trả tất cả recommendations PENDING thuộc các reviews của thesis_id.
-
-        JOIN qua ThesisReview để scoped đúng thesis mà không cần subquery phức tạp.
-        Sắp xếp theo review mới nhất trước, rồi theo id để stable sort.
-        """
-        stmt = (
-            select(ReviewRecommendation)
-            .join(ReviewRecommendation.review)
-            .where(ThesisReview.thesis_id == thesis_id)
-            .where(ReviewRecommendation.status == RecommendationStatus.PENDING)
-            .order_by(ThesisReview.reviewed_at.desc(), ReviewRecommendation.id.asc())
-            .execution_options(populate_existing=True)
-        )
-        result = await self._session.execute(stmt)
-        return list(result.scalars().all())
-
-    async def save_recommendation(self, rec: ReviewRecommendation) -> ReviewRecommendation:
-        """Persist (update) một recommendation — dùng khi accept/reject."""
-        self._session.add(rec)
-        await self._session.flush()
-        await self._session.refresh(rec)
-        return rec
+        return {
+            tid: reviews[:limit_per_thesis]
+            for tid, reviews in grouped.items()
+        }
 
     # ------------------------------------------------------------------
     # Snapshot queries
     # ------------------------------------------------------------------
 
     async def save_snapshot(self, snapshot: ThesisSnapshot) -> ThesisSnapshot:
-        """Persist a ThesisSnapshot record (insert only — snapshots are immutable)."""
+        """Persist a ThesisSnapshot record."""
         self._session.add(snapshot)
         await self._session.flush()
         await self._session.refresh(snapshot)
         return snapshot
+
+    async def list_snapshots(
+        self,
+        thesis_id: int,
+        limit: int = 30,
+    ) -> list[ThesisSnapshot]:
+        """Return recent snapshots for a thesis, newest first."""
+        stmt = (
+            select(ThesisSnapshot)
+            .where(ThesisSnapshot.thesis_id == thesis_id)
+            .order_by(ThesisSnapshot.snapped_at.desc())
+            .limit(limit)
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
+    # ------------------------------------------------------------------
+    # ReviewRecommendation helpers
+    # ------------------------------------------------------------------
+
+    async def update_recommendation_status(
+        self,
+        recommendation_id: int,
+        status: RecommendationStatus,
+    ) -> ReviewRecommendation | None:
+        """Update a ReviewRecommendation status in-place. Returns the updated object."""
+        stmt = select(ReviewRecommendation).where(ReviewRecommendation.id == recommendation_id)
+        result = await self._session.execute(stmt)
+        rec = result.scalar_one_or_none()
+        if rec is None:
+            return None
+        rec.status = status
+        await self._session.flush()
+        return rec
+
+    async def list_pending_recommendations(
+        self,
+        thesis_id: int,
+    ) -> list[ReviewRecommendation]:
+        """Return all PENDING recommendations for a thesis."""
+        stmt = (
+            select(ReviewRecommendation)
+            .join(ThesisReview, ReviewRecommendation.review_id == ThesisReview.id)
+            .where(ThesisReview.thesis_id == thesis_id)
+            .where(ReviewRecommendation.status == RecommendationStatus.PENDING)
+            .order_by(ReviewRecommendation.id)
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_catalyst_status_summary(self, thesis_id: int) -> dict[CatalystStatus, int]:
+        """Return count of catalysts grouped by status for a thesis.
+
+        Used by ThesisService.get_thesis_health to report catalyst breakdown
+        without loading full Catalyst objects.
+
+        Returns a dict mapping CatalystStatus → count. Missing statuses have
+        count 0 (defaultdict behaviour).
+        """
+        from sqlalchemy import func
+
+        stmt = (
+            select(Catalyst.status, func.count(Catalyst.id).label("cnt"))
+            .where(Catalyst.thesis_id == thesis_id)
+            .group_by(Catalyst.status)
+        )
+        result = await self._session.execute(stmt)
+        rows = result.all()
+        summary: dict[CatalystStatus, int] = defaultdict(int)
+        for row in rows:
+            summary[row.status] = row.cnt
+        return dict(summary)
