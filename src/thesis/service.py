@@ -310,10 +310,12 @@ class ThesisService:
 
             last_review_at = None
             if reviews:
-                last_review_at = max(
-                    (getattr(r, "created_at", None) for r in reviews),
-                    default=None,
-                )
+                valid_dates = [
+                    getattr(r, "created_at", None)
+                    for r in reviews
+                    if getattr(r, "created_at", None) is not None
+                ]
+                last_review_at = max(valid_dates) if valid_dates else None
 
             days_since_review = None
             if last_review_at is not None:
@@ -348,15 +350,13 @@ class ThesisService:
     async def _get_owned(self, thesis_id: int, user_id: str | None) -> Thesis:
         resolved = _resolve_user_id(user_id)
         thesis = await self._repo.get_by_id(thesis_id)
-        if thesis is None or thesis.user_id != resolved:
-            raise ThesisNotFoundError(
-                f"Thesis {thesis_id} not found for user {resolved}"
-            )
+        if thesis is None:
+            raise ThesisNotFoundError(thesis_id)
+        if thesis.user_id != resolved:
+            raise ThesisNotFoundError(thesis_id)
         return thesis
 
     @staticmethod
     def _assert_mutable(thesis: Thesis) -> None:
-        if thesis.status in (ThesisStatus.CLOSED, ThesisStatus.INVALIDATED):
-            raise ThesisAlreadyClosedError(
-                f"Thesis {thesis.id} is already {thesis.status} and cannot be modified."
-            )
+        if thesis.status not in (ThesisStatus.ACTIVE, ThesisStatus.UNDER_REVIEW):
+            raise ThesisAlreadyClosedError(thesis.id)

@@ -10,11 +10,11 @@ Responsibilities:
 """
 from __future__ import annotations
 
-import asyncio
 from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from src.ai.agents.agenda_builder import AgendaBuilderAgent
 from src.ai.prompts.agenda import (
@@ -56,14 +56,12 @@ class AgendaService:
         """Main entry point. Loads context, calls agent, returns result."""
         today = date.today()
 
-        pending_decisions, active_theses, memory_signals, unreviewed_count = (
-            await asyncio.gather(
-                self._load_pending_decisions(user_id, today),
-                self._load_active_theses(user_id, today),
-                self._load_memory_signals(user_id),
-                self._count_unreviewed_lessons(user_id),
-            )
-        )
+        # Run loaders sequentially — all share the same AsyncSession.
+        # asyncpg does not allow concurrent queries on a single connection.
+        pending_decisions = await self._load_pending_decisions(user_id, today)
+        active_theses = await self._load_active_theses(user_id, today)
+        memory_signals = await self._load_memory_signals(user_id)
+        unreviewed_count = await self._count_unreviewed_lessons(user_id)
 
         ctx = AgendaContext(
             today=today.isoformat(),
@@ -126,6 +124,7 @@ class AgendaService:
         stmt = (
             select(Thesis)
             .where(Thesis.user_id == user_id, Thesis.status == "active")
+            .options(selectinload(Thesis.reviews))
             .order_by(Thesis.created_at.desc())
             .limit(15)
         )
@@ -138,8 +137,13 @@ class AgendaService:
 
             last_reviewed_days_ago = None
             if getattr(t, "reviews", None):
-                latest_review = max(t.reviews, key=lambda r: r.created_at)
-                last_reviewed_days_ago = (today - latest_review.created_at.date()).days
+                valid_reviews = [
+                    r for r in t.reviews
+                    if getattr(r, "created_at", None) is not None
+                ]
+                if valid_reviews:
+                    latest_review = max(valid_reviews, key=lambda r: r.created_at)
+                    last_reviewed_days_ago = (today - latest_review.created_at.date()).days
 
             next_check = self._find_next_assumption_check(t, today)
 
