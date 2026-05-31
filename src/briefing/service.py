@@ -38,6 +38,10 @@ Design notes
   trend_pred into a single market_context string that BriefingAgent expects.
   BriefingAgent only accepts pre-rendered strings — never raw lists or
   unknown kwargs.
+- _persist_snapshot() stores output.model_dump_json() as BriefSnapshot.content
+  so that readmodel.dashboard_service.get_brief_latest() can json.loads() it
+  and populate BriefResponse fields (headline, sentiment, key_movers, etc.).
+  brief_text (Discord markdown) is kept separately for bot formatting only.
 
 Dependency graph (inbound)
 --------------------------
@@ -189,6 +193,7 @@ class BriefingService:
             brief_type="morning",
             brief_text=text,
             tickers=tickers,
+            output=output,
         )
         return BriefResult(snapshot_id=snapshot_id, text=text, tickers=tickers, output=output)
 
@@ -223,6 +228,7 @@ class BriefingService:
             brief_type="eod",
             brief_text=text,
             tickers=tickers,
+            output=output,
         )
         return BriefResult(snapshot_id=snapshot_id, text=text, tickers=tickers, output=output)
 
@@ -547,13 +553,40 @@ class BriefingService:
         brief_type: str,
         brief_text: str,
         tickers: list[str],
+        output: Any = None,
     ) -> int | None:
+        """Persist a BriefSnapshot to the database.
+
+        content is stored as JSON (output.model_dump_json()) so that
+        readmodel.dashboard_service.get_brief_latest() can deserialize it
+        into a dict and populate BriefResponse fields correctly.
+
+        brief_text (Discord markdown) is NOT stored here — it is used
+        only by the bot formatter after this method returns.
+
+        Fallback chain for content serialization:
+          1. output.model_dump_json()  — Pydantic v2 (preferred)
+          2. output.json()             — Pydantic v1 compat
+          3. str(output)               — last resort (may not be valid JSON)
+        """
         try:
             from src.briefing.models import BriefSnapshot
+
+            if output is not None:
+                model_dump_json = getattr(output, "model_dump_json", None)
+                if callable(model_dump_json):
+                    content = model_dump_json()
+                else:
+                    # Pydantic v1 fallback
+                    json_method = getattr(output, "json", None)
+                    content = json_method() if callable(json_method) else str(output)
+            else:
+                content = brief_text
+
             snapshot = BriefSnapshot(
                 user_id=user_id,
                 phase=brief_type,
-                content=brief_text,
+                content=content,
                 tickers=",".join(tickers) if tickers else None,
             )
             saved = await self._repo.save(snapshot)
