@@ -35,11 +35,16 @@ logger = get_logger(__name__)
 
 _FALLBACK = VerdictOutput(
     verdict="NO_ACTION",
+    conviction="low",
+    time_horizon="intraday",
+    thesis_alignment=0.5,
+    key_risk="Không thể đánh giá rủi ro — AI call thất bại hoặc timeout",
+    invalidation_trigger="Verdict này sai khi AI khôi phục và trả về kết quả khác",
+    action="AI verdict unavailable — heuristic fallback active",
+    reasoning_summary="AI call failed or timed out",
     confidence=0.0,
     risk_signals=[],
     next_watch_items=[],
-    action="AI verdict unavailable — heuristic fallback active",
-    reasoning_summary="AI call failed or timed out",
 )
 
 
