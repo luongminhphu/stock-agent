@@ -6,10 +6,17 @@ Called by OutcomeFillerScheduler after market close (15:05 ICT).
 Flow:
     - Find DecisionLogs where outcome_pnl_pct IS NULL
       AND (now - decision_at).days >= review_horizon_days  (due for evaluation)
-    - Fetch current price via QuoteService
-    - Compute outcome_pnl_pct = (current_price - price_at_decision) / price_at_decision * 100
+    - Fetch closing price via QuoteService (quote.close preferred over quote.price
+      to avoid intra-day noise; falls back to quote.price when close is absent)
+    - Compute outcome_pnl_pct = (close_price - price_at_decision) / price_at_decision * 100
     - Set outcome_price, outcome_evaluated_at, outcome_verdict
     - Persist, return count of records filled
+
+Verdict thresholds (Wave 3):
+    _VERDICT_THRESHOLD_PCT = 2.5  (was 5.0)
+    Rationale: VN market typical daily range is 1–2%. A 5% threshold caused
+    almost every decision to land as MIXED. 2.5% better reflects meaningful
+    price movement on HOSE/HNX/UPCoM within the review horizon.
 
 No AI calls — pure data enrichment.
 Segment boundary: imports only thesis.models and market.quote_service (via DI).
@@ -27,8 +34,9 @@ from src.thesis.models import DecisionLog, DecisionType, OutcomeVerdict
 
 logger = get_logger(__name__)
 
-# Threshold (%) to classify CORRECT / INCORRECT vs MIXED
-_VERDICT_THRESHOLD_PCT = 5.0
+# Threshold (%) to classify CORRECT / INCORRECT vs MIXED.
+# Lowered from 5.0 → 2.5 to better match VN market typical range (1–2% daily).
+_VERDICT_THRESHOLD_PCT = 2.5
 
 
 class OutcomeFillerService:
@@ -80,12 +88,23 @@ class OutcomeFillerService:
         for log in due:
             try:
                 quote = await self._quote_service.get_quote(log.ticker)
-                current_price: float = quote.price
+
+                # Wave 2: prefer close price to avoid intra-day noise.
+                # quote.close is the official end-of-session price.
+                # Fall back to quote.price when close is not available.
+                close_price: float = getattr(quote, "close", None) or getattr(quote, "price", None)
+                if close_price is None:
+                    logger.warning(
+                        "outcome_filler.no_price",
+                        ticker=log.ticker,
+                        decision_log_id=log.id,
+                    )
+                    continue
 
                 pnl_pct = round(
-                    (current_price - log.price_at_decision) / log.price_at_decision * 100, 2
+                    (close_price - log.price_at_decision) / log.price_at_decision * 100, 2
                 )
-                log.outcome_price = current_price
+                log.outcome_price = close_price
                 log.outcome_pnl_pct = pnl_pct
                 log.outcome_evaluated_at = now
                 log.outcome_verdict = _classify_verdict(pnl_pct, log.decision_type)
@@ -97,7 +116,7 @@ class OutcomeFillerService:
                     decision_log_id=log.id,
                     decision_type=log.decision_type,
                     price_at_decision=log.price_at_decision,
-                    current_price=current_price,
+                    outcome_price=close_price,
                     pnl_pct=pnl_pct,
                     verdict=log.outcome_verdict,
                 )
@@ -119,7 +138,7 @@ def _classify_verdict(pnl_pct: float, decision_type: DecisionType) -> OutcomeVer
     BUY / ADD  — long side: positive pnl = CORRECT, negative = INCORRECT.
     SELL / REDUCE — short side: negative pnl = CORRECT, positive = INCORRECT.
     HOLD       — direction-neutral: use absolute magnitude.
-    Within ±THRESHOLD → MIXED.
+    Within ±_VERDICT_THRESHOLD_PCT → MIXED.
     """
     buy_side = decision_type in (DecisionType.BUY, DecisionType.ADD)
     sell_side = decision_type in (DecisionType.SELL, DecisionType.REDUCE)
