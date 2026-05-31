@@ -130,10 +130,12 @@ class BriefingCog(BaseCog):
 
         try:
             async with self.db_session() as session:
-                # Lazy imports — these are session-scoped services, not singletons
+                # Lazy imports — session-scoped services, not singletons
                 from src.thesis.service import ThesisService
                 from src.readmodel.dashboard_service import DashboardService
+                from src.platform.investor_profile import InvestorProfileService
 
+                # agenda_service: init via factory, fail-safe
                 agenda_service = None
                 agenda_factory = get_agenda_service_factory()
                 if agenda_factory is not None:
@@ -141,6 +143,13 @@ class BriefingCog(BaseCog):
                         agenda_service = agenda_factory(session)
                     except Exception as _e:
                         logger.warning("briefing.command.agenda_service_init_failed", error=str(_e))
+
+                # lesson_service: LessonService is stateless (all methods static);
+                # BriefingService._build_lessons_context guards on truthy check,
+                # so passing a bare sentinel object with _session stored is enough.
+                # We pass the actual LessonService class so the guard is truthy
+                # and the static call inside _build_lessons_context resolves correctly.
+                from src.ai.memory.lesson_service import LessonService
 
                 svc = BriefingService(
                     watchlist_service=WatchlistService(session=session),
@@ -154,6 +163,8 @@ class BriefingCog(BaseCog):
                     dashboard_service=DashboardService(session=session),
                     agenda_service=agenda_service,
                     sector_agent=get_sector_rotation_agent(),
+                    lesson_service=LessonService,          # stateless — class reference is sentinel
+                    investor_profile_service=InvestorProfileService(session=session),
                     session=session,
                 )
                 if phase == "morning":
@@ -200,13 +211,13 @@ class BriefingCog(BaseCog):
 
 
 def build_brief_embeds(brief: BriefOutput, phase: str) -> list[discord.Embed]:
-    """Convert BriefOutput \u2192 list[discord.Embed], one embed per page.
+    """Convert BriefOutput → list[discord.Embed], one embed per page.
 
     Page 1 gets the title and accent colour.
     Continuation pages get a minimal footer-only embed so Discord renders
     them as a clean continuation rather than identical headers.
 
-    Public \u2014 importable by scheduler and other bot adapters.
+    Public — importable by scheduler and other bot adapters.
     """
     title = "\U0001f305 Morning Brief" if phase == "morning" else "\U0001f307 End-of-Day Brief"
     colour = _SENTIMENT_COLOUR.get(brief.sentiment, discord.Color.blurple())
@@ -240,7 +251,7 @@ def build_brief_embeds(brief: BriefOutput, phase: str) -> list[discord.Embed]:
 # ---------------------------------------------------------------------------
 
 def build_brief_embed(brief: BriefOutput, phase: str) -> discord.Embed:
-    """Single-embed builder \u2014 kept for backward compatibility with scheduler.
+    """Single-embed builder — kept for backward compatibility with scheduler.
 
     Prefer build_brief_embeds() for new callers.
     """
