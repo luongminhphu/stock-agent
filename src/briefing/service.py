@@ -350,7 +350,6 @@ class BriefingService:
                 line = f"{ticker}: {assumption_count} assumptions"
                 if days is not None:
                     line += f", last review {days}d ago"
-                # inject latest review verdict if available
                 verdict = t.get("latest_verdict")
                 if verdict:
                     line += f" | verdict: {verdict}"
@@ -482,9 +481,9 @@ class BriefingService:
             from src.briefing.models import BriefSnapshot
             snapshot = BriefSnapshot(
                 user_id=user_id,
-                brief_type=brief_type,
+                phase=brief_type,
                 content=brief_text,
-                tickers=tickers,
+                tickers=",".join(tickers) if tickers else None,
             )
             self._session.add(snapshot)
             await self._session.flush()
