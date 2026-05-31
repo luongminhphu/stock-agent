@@ -7,7 +7,7 @@ Owner: ai segment.
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -47,6 +47,23 @@ class PrioritizedAction(BaseModel):
     action: str = Field(description="Short action description")
     rationale: str = Field(description="Why this action at this priority")
     confidence: float = Field(ge=0.0, le=1.0, default=0.5)
+    urgency: Literal["now", "today", "this_week"] = Field(
+        default="today",
+        description=(
+            "Mức độ khẩn: "
+            "now=trong phiên này (ATC/trước 2h), "
+            "today=trước EOD, "
+            "this_week=3-5 ngày tới. "
+            "ACT_TODAY phải là 'now' hoặc 'today'."
+        ),
+    )
+    invalidation_trigger: str = Field(
+        default="",
+        description=(
+            "Điều gì sẽ làm action này sai — bắt buộc với ACT_TODAY. "
+            "VD: 'VNM đóng cửa trên 85,000', 'volume < 500k', 'VN-Index phá 1,250'."
+        ),
+    )
 
     @property
     def reason(self) -> str:
@@ -84,19 +101,19 @@ class ActionQueue(BaseModel):
     queue: list[PrioritizedAction] = Field(
         default_factory=list,
         description=(
-            "Sorted actions: ACT_TODAY -> WATCH_MORE -> SKIP_TODAY. "
-            "Max 5. Tiebreak by confidence descending."
+            "Sorted actions: ACT_TODAY (now first) -> WATCH_MORE -> SKIP_TODAY. "
+            "Max 5. Tiebreak by urgency then confidence descending."
         ),
     )
     top_action: PrioritizedAction | None = Field(
         default=None,
-        description="ACT_TODAY item with highest confidence; None if no ACT_TODAY.",
+        description="ACT_TODAY item with highest urgency+confidence; None if no ACT_TODAY.",
     )
     signal_summary: str = Field(
         default="",
         description=(
             "Summary string: '🔴 <urgent tickers>  🟡 <watch tickers>'. "
-            "Fallback: '0 urgent / 0 watch'."
+            "Fallback: '🟢 no urgent actions'."
         ),
     )
 
@@ -229,9 +246,15 @@ class BriefOutput(BaseModel):
             ActionPriority.WATCH_MORE: 1,
             ActionPriority.SKIP_TODAY: 2,
         }
+        # Secondary sort: urgency weight within same priority bucket
+        _urgency_order = {"now": 0, "today": 1, "this_week": 2}
         sorted_actions = sorted(
             actions,
-            key=lambda a: (_priority_order.get(a.priority, 9), -a.confidence),
+            key=lambda a: (
+                _priority_order.get(a.priority, 9),
+                _urgency_order.get(a.urgency, 9),
+                -a.confidence,
+            ),
         )
         queue = sorted_actions[:5]
 
@@ -242,9 +265,14 @@ class BriefOutput(BaseModel):
         urgent = [a.ticker for a in queue if a.priority == ActionPriority.ACT_TODAY and a.ticker]
         watch = [a.ticker for a in queue if a.priority == ActionPriority.WATCH_MORE and a.ticker]
         if urgent or watch:
-            urgent_str = " ".join(urgent) if urgent else f"{len(urgent)} urgent"
-            watch_str = " ".join(watch) if watch else f"{len(watch)} watch"
-            signal_summary = f"\U0001f534 {urgent_str}  \U0001f7e1 {watch_str}"
+            urgent_str = " ".join(urgent) if urgent else ""
+            watch_str = " ".join(watch) if watch else ""
+            parts = []
+            if urgent_str:
+                parts.append(f"\U0001f534 {urgent_str}")
+            if watch_str:
+                parts.append(f"\U0001f7e1 {watch_str}")
+            signal_summary = "  ".join(parts) if parts else "\U0001f7e2 no urgent actions"
         else:
             act_count = sum(1 for a in queue if a.priority == ActionPriority.ACT_TODAY)
             watch_count = sum(1 for a in queue if a.priority == ActionPriority.WATCH_MORE)

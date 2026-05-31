@@ -42,9 +42,14 @@ Quy tắc chung:
 ⚡ QUY TẮC prioritized_actions (bắt buộc điền khi có watchlist):
 - ACT_TODAY: ticker đang approach stop_loss trong thesis, catalyst sắp triggered 1-3 ngày,
   signal conflict với thesis hiện tại, hoặc market sentiment đảo chiều mạnh.
+  → Bắt buộc điền urgency ("now" hoặc "today") và invalidation_trigger (không được để trống).
+  → urgency="now": cần xử lý trong phiên này, trước ATC hoặc trước 2h chiều.
+  → urgency="today": cần xử lý trước EOD hôm nay.
 - WATCH_MORE: thesis còn valid nhưng cần 1-2 phiên xác nhận, volume chưa đủ,
   hoặc đang chờ sự kiện cụ thể chưa diễn ra.
+  → urgency="this_week". invalidation_trigger nên điền nếu có ngưỡng cụ thể.
 - SKIP_TODAY: ticker flat, không có catalyst mới, không trong vùng quyết định.
+  → urgency="this_week". invalidation_trigger để trống được.
 - Phải có ít nhất 1 entry khi có watchlist. Không để mảng rỗng trừ khi watchlist trống.
 - Nếu có thesis data và giá hiện tại đang tiếp cận stop_loss của thesis → bắt buộc
   xuất ACT_TODAY cho ticker đó, không được hạ xuống WATCH_MORE.
@@ -78,7 +83,9 @@ JSON schema:
       "priority": "ACT_TODAY | WATCH_MORE | SKIP_TODAY",
       "action": "string — hành động cụ thể, có thể đo được, không markdown",
       "reason": "string — lý do ngắn gọn (1 câu), không markdown",
-      "confidence": "number 0.0-1.0"
+      "confidence": "number 0.0-1.0",
+      "urgency": "now | today | this_week — bắt buộc với ACT_TODAY phải là 'now' hoặc 'today'",
+      "invalidation_trigger": "string — điều gì sẽ làm action này sai, bắt buộc với ACT_TODAY, VD: 'VNM đóng cửa trên 85,000' hoặc 'VN-Index phá 1,250'"
     }
   ],
   "ticker_summaries": [
@@ -189,7 +196,7 @@ Watchlist cần theo dõi: {ticker_str}
         prompt += (
             " Điền prioritized_actions dựa trên thesis data:"
             " nếu giá hiện tại đang tiếp cận stop_loss của bất kỳ thesis nào"
-            " → bắt buộc xuất ACT_TODAY cho ticker đó với lý do rõ ràng."
+            " → bắt buộc xuất ACT_TODAY cho ticker đó với lý do rõ ràng, urgency='now', và invalidation_trigger cụ thể."
         )
     if past_lessons:
         prompt += (
@@ -293,7 +300,8 @@ Watchlist cần review: {ticker_str}
     if thesis_context:
         prompt += (
             " Kiểm tra thesis stop_loss: nếu giá đóng cửa hôm nay đang tiếp cận stop_loss"
-            " của bất kỳ thesis nào → bắt buộc xuất ACT_TODAY cho phiên tiếp theo."
+            " của bất kỳ thesis nào → bắt buộc xuất ACT_TODAY cho phiên tiếp theo"
+            " với urgency='now' và invalidation_trigger cụ thể."
         )
     if past_lessons:
         prompt += (
