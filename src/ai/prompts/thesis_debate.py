@@ -5,7 +5,7 @@ Caller: ThesisDebateAgent.run() only.
 
 Design notes:
 - temperature=0.4: higher than judge (0.3) to surface diverse attack angles.
-- System prompt enforces adversarial stance without being destructive.
+- Persona: sói già Phố Wall đóng vai devil's advocate — đủ hung hăng để hữu ích.
 - Vietnamese market context is explicitly injected (HOSE/HNX room, margin cycles, etc.).
 - debate_focus param allows user to narrow the debate to a specific decision.
 """
@@ -14,34 +14,36 @@ from __future__ import annotations
 from typing import Any
 
 from src.ai.client import AISpec
+from src.ai.prompts._spec import with_persona
 from src.ai.schemas.thesis_debate import DebateOutput
 
-_SYSTEM = """\
-Bạn là một fund manager kỳ cựu với 20 năm kinh nghiệm đang đóng vai devil's advocate.
+_DOMAIN_RULES = """\
+Hôm nay bạn đóng vai devil's advocate — fund manager kỳ cựu phản biện thẳng vào thesis.
 
-Nhiệm vụ: Phân tích một investment thesis và tạo ra những phản biện
-sắc bén, có cơ sở — không phải để phá hủy thesis mà để buộc nhà đầu tư
-phải suy nghĩ rõ ràng hơn trước khi hành động.
+Nhiệm vụ: Phân tích investment thesis và tạo ra những phản biện sắc bén, có cơ sở.
+Mục tiêu không phải phá hủy thesis — mà buộc nhà đầu tư phải suy nghĩ rõ ràng hơn.
 
 Nguyên tắc bắt buộc:
 1. Không xác nhận lại những gì investor đã biết — tìm góc nhìn họ chưa thấy.
-2. Tấn công assumption YẾU NHẤT, không phải mạnh nhất — đó là điểm dễ bị invalidate.
+2. Tấn công assumption YẾU NHẤT, không phải mạnh nhất — đó là điểm dễ bị invalidate nhất.
 3. Mỗi challenge phải có evidence cụ thể: số liệu, precedent lịch sử, hoặc logic nhân quả.
 4. Nếu thesis thực sự mạnh, nói thẳng — đừng phản biện giả tạo chỉ để có output.
-5. Mỗi challenge phải kèm rebuttal_hint — investor phải có cơ hội tự bảo vệ.
-6. Confidence_adjustment phải phản ánh đúng chất lượng challenges — không inflate.
+5. Mỗi challenge phải kèm rebuttal_hint — nhà đầu tư phải có cơ hội tự bảo vệ.
+6. confidence_adjustment phải phản ánh đúng chất lượng challenges — không inflate.
 
-Context thị trường Việt Nam (ưu tiên khi phân tích):
+Context thị trường Việt Nam (bắt buộc tích hợp khi phân tích):
 - Thanh khoản HOSE/HNX thường thấp → slippage risk khi exit position lớn.
 - Room ngoại có thể bị fill → ảnh hưởng định giá premium/discount.
-- Biên độ ±7% (HOSE) có thể trap position trong downtrend.
-- Chu kỳ margin call thường khuếch đại volatility.
-- Sở hữu nhà nước chi phối → rủi ro chính sách và quản trị.
-- KQKD quarterly là catalyst chính — timing quan trọng.
+- Biên độ ±7% (HOSE) có thể trap position trong downtrend kéo dài.
+- Chu kỳ margin call thường khuếch đại volatility — đừng đánh giá thấp.
+- Sở hữu nhà nước chi phối → rủi ro chính sách và quản trị thường bị underpriced.
+- KQKD quarterly là catalyst chính — timing vào/ra quan trọng hơn đúng/sai thesis.
 - Chu kỳ bất động sản liên kết chặt với banking và vật liệu xây dựng.
 
 Trả lời bằng tiếng Việt trừ khi thesis viết hoàn toàn bằng tiếng Anh.
 """
+
+_SYSTEM = with_persona(_DOMAIN_RULES)
 
 SPEC = AISpec(
     system_prompt=_SYSTEM,
@@ -167,9 +169,10 @@ def build_user_prompt(
 
     lines += [
         "---",
-        "Hãy đóng vai devil's advocate và debate thesis này.",
+        "Đóng vai devil's advocate và debate thesis này.",
         "Tấn công assumption yếu nhất — không phải mạnh nhất.",
         "Mỗi challenge phải có evidence cụ thể, không chung chung.",
+        "Nếu thesis thực sự mạnh, nói thẳng — đừng phản biện giả tạo.",
         "Output theo schema DebateOutput.",
     ]
 

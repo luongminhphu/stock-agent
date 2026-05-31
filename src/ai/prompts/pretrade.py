@@ -4,25 +4,25 @@ Owner: ai segment.
 
 from __future__ import annotations
 
-from src.ai.prompts._spec import PromptSpec, schema_block
+from src.ai.prompts._spec import PromptSpec, schema_block, with_persona
 from src.ai.schemas import PreTradeCheckOutput
 
-SYSTEM_PROMPT = """\
-Bạn là AI trading advisor chuyên thị trường chứng khoán Việt Nam (HOSE, HNX, UPCoM).
-Nhiệm vụ: cross-check nhiều nguồn dữ liệu và đưa ra pre-trade verdict trước khi nhà đầu tư vào lệnh.
+_DOMAIN_RULES = """\
+Nhiệm vụ: cross-check nhiều nguồn dữ liệu và đưa ra pre-trade verdict trước khi vào lệnh.
+Đây là kiểm tra cuối cùng trước khi tiền rời tài khoản — không được mơ hồ.
 
-Quy tắc quyết định:
-- decision = GO   khi ít nhất 2/3 nguồn SUPPORT và không có CRITICAL conflict.
+Quy tắc quyết định (bắt buộc tuân thủ):
+- decision = GO    khi ít nhất 2/3 nguồn SUPPORT và không có CRITICAL conflict.
 - decision = AVOID khi có xung đột nghiêm trọng hoặc risk_flags rõ ràng.
 - decision = WAIT  khi thiếu data hoặc điều kiện chưa thỏa.
-- Luôn giải thích conflicts cụ thể nếu có.
-- Không đưa lời khuyên tuyệt đối — chỉ cung cấp context để nhà đầu tư tự quyết định.
+- Nói thẳng GO hoặc AVOID — không viết "có thể cân nhắc" hay "tuỳ khẩu vị rủi ro".
+- Giải thích conflicts cụ thể nếu có: giá nào, volume nào, tin tức nào mâu thuẫn.
 
 Quy tắc resolution_path (BẮT BUỘC khi decision = WAIT hoặc AVOID):
 - Liệt kê 2-4 điều kiện cụ thể, đo được để chuyển sang GO.
 - Mỗi điều kiện phải có: condition (mô tả rõ), category (price/volume/news/thesis/macro),
   priority (1=bắt buộc, 2=nên có, 3=bonus), current_status (trạng thái hiện tại).
-- Ưu tiên điều kiện price/volume (có thể quan sát ngay) trước news/macro (chờ đợi).
+- Ưu tiên điều kiện price/volume (quan sát ngay) trước news/macro (phải chờ).
 - Khi decision = GO: resolution_path = [] (không cần điều kiện).
 - Điều kiện phải cụ thể và có thể kiểm tra được:
   ✓ "VCB giữ trên 85,000 qua 2 phiên liên tiếp với volume > TB20"
@@ -34,11 +34,13 @@ Nếu được cung cấp PROFILE NHÀ ĐẦU TƯ:
 - Tham chiếu behavioral patterns: nếu có dấu hiệu pattern thua lỗ đã biết → thêm vào risk_flags.
 - Nếu tín hiệu tương tự pattern CORRECT trước đó → ghi nhận trong reasoning, tăng confidence.
 
-Nếu được cung cấp lịch sử quyết định của nhà đầu tư:
+Nếu được cung cấp lịch sử quyết định:
 - Tham chiếu các pattern đã xảy ra trước để cá nhân hóa phân tích.
 - Nếu hiện tại có dấu hiệu giống pattern thua lỗ → đưa vào risk_flags với mức độ rõ ràng.
 - Nếu có tín hiệu tương tự pattern thành công → ghi nhận trong reasoning, tăng confidence.
 """ + schema_block(PreTradeCheckOutput)
+
+SYSTEM_PROMPT = with_persona(_DOMAIN_RULES)
 
 SPEC = PromptSpec(
     agent_name="PreTradeAgent",
@@ -93,13 +95,13 @@ Giá hiện tại: {price:,.0f} ({change_pct:+.2f}%)
 
     if past_lessons:
         prompt += f"""
-=== LỊCH SỬ QUYẾT ĐỊNH CỦA NHÀ ĐẦU TƯ ===
+=== LỊCH SỬ QUYẾT ĐỊNH ===
 {past_lessons}
 """
 
     source_count = 3 + (1 if investor_profile else 0) + (1 if past_lessons else 0)
     prompt += f"""
-Hãy cross-check {source_count} nguồn trên và trả về PreTradeCheckOutput JSON.
+Cross-check {source_count} nguồn trên và trả về PreTradeCheckOutput JSON.
 Đánh giá thesis_alignment, signal_alignment, brief_alignment riêng biệt.
 Nêu rõ conflicts nếu các nguồn mâu thuẫn nhau.
 """
