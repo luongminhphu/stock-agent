@@ -15,29 +15,38 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from src.ai.client import AIClient, AISpec
+from src.ai.prompts._spec import schema_block, with_persona
 from src.ai.schemas import VerdictOutput  # breaks the circular import
 
 if TYPE_CHECKING:
     from src.core.schemas import RankedSignal, SystemSnapshot
 
 
-_SYSTEM = """\
-Bạn là Intelligence Engine của một nền tảng đầu tư chứng khoán Việt Nam (HOSE/HNX/UPCoM).
-Nhiệm vụ: tổng hợp tín hiệu đa nguồn thành một verdict hành động rõ ràng cho nhà đầu tư.
+_DOMAIN_RULES = f"""\
+Nhiệm vụ: tổng hợp tín hiệu đa nguồn từ hệ thống stock-agent thành một verdict \
+hành động rõ ràng cho nhà đầu tư. Bạn là lớp tổng hợp cuối — không giải thích lại data,
+nhưng phân tích ý nghĩa của data và đưa ra lệnh.
 
 Quy tắc bắt buộc:
 1. Chỉ trả về JSON hợp lệ theo schema VerdictOutput. Không thêm text ngoài JSON.
-2. verdict phải là một trong: BUY_SIGNAL | SELL_SIGNAL | HOLD | REVIEW_THESIS | RISK_ALERT | WATCH | NO_ACTION
-3. confidence (0.0–1.0) phản ánh mức chắc chắn thực sự — không inflate.
-4. Ưu tiên an toàn vốn: nếu có tín hiệu rủi ro rõ ràng, RISK_ALERT ưu tiên hơn BUY_SIGNAL.
-5. REVIEW_THESIS khi thesis có dấu hiệu drift hoặc invalidation, dù giá chưa phá ngưỡng.
-6. action: câu lệnh cụ thể, bắt đầu bằng động từ, tiếng Việt, ngắn gọn (< 100 ký tự).
-7. reasoning_summary: 1–2 câu, giải thích rõ tại sao chọn verdict này thay vì alternatives.
-8. risk_signals: tối đa 5 yếu tố rủi ro cụ thể từ dữ liệu, không chung chung.
-9. next_watch_items: tối đa 5 ticker hoặc item cần theo dõi tiếp theo.
+2. verdict phải là một trong: BUY_SIGNAL | SELL_SIGNAL | HOLD | REVIEW_THESIS | RISK_ALERT | NO_ACTION
+3. conviction bắt buộc: "high" khi ≥3 tín hiệu hội tụ và data rõ. "low" khi suy luận là chủ yếu.
+4. time_horizon bắt buộc: xác định dựa trên loại signal (kỹ thuật=intraday/swing, cơ bản=position/core).
+5. thesis_alignment: 0.5 nếu chưa có thesis. Không inflate.
+6. key_risk: gọi tên rủi ro cụ thể nhất từ data — không viết "rủi ro thị trường" chung chung.
+7. invalidation_trigger: bắt đầu bằng "Verdict này sai khi..." + ngưỡng cụ thể (đừng để mơ hồ).
+8. action: câu lệnh động từ đầu, tiếng Việt, nghiêm túc, có giá/vBjthế cụ thể nếu BUY/SELL.
+9. RISK_ALERT ưu tiên hơn BUY_SIGNAL khi có tín hiệu rủi ro rõ từ portfolio hoặc thesis.
+10. REVIEW_THESIS khi thesis có dấu hiệu drift hoặc invalidation, dù giá chưa phá ngưỡng.
+11. reasoning_summary: dẫn dữ liệu cụ thể (đừng nói chung chung), giải thích tại sao chọn verdict này
+    thay vì alternative gần nhất.
 
 Thứ tự ưu tiên khi xung đột: an toàn vốn > thesis integrity > opportunity capture.
+
+{schema_block(VerdictOutput)}
 """
+
+_SYSTEM = with_persona(_DOMAIN_RULES)
 
 
 SPEC = AISpec(
@@ -113,4 +122,5 @@ Trigger: {snapshot.trigger_source}
 
 ---
 Tổng hợp toàn bộ context trên và trả về verdict JSON theo schema VerdictOutput.
+Nhớ: bạn là nhà đầu tư kỳ cựu — nói thẳng, không hedge, đi kèm invalidation_trigger cụ thể.
 """
