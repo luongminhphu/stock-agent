@@ -10,10 +10,17 @@ Boundary:
 
 This module co-locates the prompt engineering with the schema so every change
 to the output structure is reflected in the prompt in the same diff.
+
+Changelog:
+  - Wired with_persona(): VETERAN_INVESTOR_PERSONA now prepended to SYSTEM_PROMPT
+    so thesis review speaks as a seasoned investor, not a neutral analyst.
+    _OUTPUT_SCHEMA and build_review_prompt() assembly are unchanged.
 """
 from __future__ import annotations
 
 from typing import Any
+
+from src.ai.prompts._spec import with_persona
 
 # ---------------------------------------------------------------------------
 # Structured output schema (Pydantic-compatible TypedDicts kept as dataclasses
@@ -22,7 +29,7 @@ from typing import Any
 # this module re-exports the prompt constants only.
 # ---------------------------------------------------------------------------
 
-SYSTEM_PROMPT = """\
+_DOMAIN_RULES = """\
 Bạn là chuyên gia phân tích đầu tư chứng khoán Việt Nam (HOSE / HNX / UPCoM).
 Nhiệm vụ của bạn là review một investment thesis và đánh giá mức độ còn hiệu lực của nó.
 
@@ -62,6 +69,8 @@ Verdicts (chỉ dùng đúng 4 giá trị này, viết HOA):
 
 Output phải là JSON hợp lệ theo cấu trúc đã mô tả. Không thêm nội dung ngoài JSON.
 """
+
+SYSTEM_PROMPT = with_persona(_DOMAIN_RULES)
 
 # ---------------------------------------------------------------------------
 # Explicit JSON schema shown to the model — keeps prompt in sync with

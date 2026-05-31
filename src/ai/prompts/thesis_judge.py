@@ -19,16 +19,20 @@ Wave B changes:
     anchor, not a buried JSON key.
   - Rule 9 added to SYSTEM_PROMPT: verdict flips require an explicit trigger
     citation in reasoning, preventing contradictory verdicts without reasoning.
+
+Changelog:
+  - Wired with_persona(): VETERAN_INVESTOR_PERSONA now prepended to SYSTEM_PROMPT
+    so fast cross-check speaks as a seasoned investor, not a neutral judge.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from src.ai.prompts._spec import PromptSpec, schema_block
+from src.ai.prompts._spec import PromptSpec, schema_block, with_persona
 from src.ai.schemas import ThesisJudgeOutput
 
-SYSTEM_PROMPT = """\
+_DOMAIN_RULES = """\
 Bạn là Thesis Judge — AI kiểm định nhanh luận điểm đầu tư (thesis) theo tín hiệu thị trường chứng khoán Việt Nam.
 
 Nhiệm vụ: Từ signal context (kết quả watchdog / stress test) và metadata thesis, đưa ra verdict cập nhật nhanh về sức khỏe luận điểm.
@@ -68,6 +72,8 @@ Quy tắc bắt buộc:
    Không được flip verdict chỉ vì cảm nhận chung — phải có bằng chứng từ signal_context.
    Nếu signal không thay đổi đáng kể so với review trước, giữ nguyên hướng verdict.
 """ + schema_block(ThesisJudgeOutput)
+
+SYSTEM_PROMPT = with_persona(_DOMAIN_RULES)
 
 SPEC = PromptSpec(
     agent_name="ThesisJudgeAgent",

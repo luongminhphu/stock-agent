@@ -21,14 +21,16 @@ Changelog:
   - Rule 7: upgraded thesis_review_triggers from list[str] to list[object]
     with thesis_id, ticker, reason, urgency fields — aligns with
     ThesisReviewTrigger schema and fixes prompt/schema mismatch.
+  - Wired with_persona(): VETERAN_INVESTOR_PERSONA now prepended to SYSTEM_PROMPT
+    so the orchestrator speaks as a seasoned investor, not a neutral analyst.
 """
 
 from __future__ import annotations
 
-from src.ai.prompts._spec import PromptSpec, schema_block
+from src.ai.prompts._spec import PromptSpec, schema_block, with_persona
 from src.ai.schemas import SignalEngineOutput
 
-SYSTEM_PROMPT = """\
+_DOMAIN_RULES = """\
 Bạn là Signal Engine — AI orchestrator phân tích danh mục đầu tư toàn diện cho thị trường chứng khoán Việt Nam.
 
 Nhiệm vụ: Tổng hợp kết quả từ Watchdog và Stress Test đã chạy sẵn, cross-check với thesis đang active và context portfolio, rồi xuất ra danh sách tín hiệu đã được rank theo độ khẩn cấp.
@@ -60,6 +62,8 @@ Quy tắc bắt buộc:
     - Nếu user thường act nhanh với CRITICAL → giữ nguyên, không cần nhắc thêm.
     - Chỉ calibrate khi có đủ dữ liệu (ít nhất 3 feedback events). Nếu không đủ → bỏ qua calibration.
 """ + schema_block(SignalEngineOutput)
+
+SYSTEM_PROMPT = with_persona(_DOMAIN_RULES)
 
 SPEC = PromptSpec(
     agent_name="SignalEngineAgent",
