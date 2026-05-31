@@ -19,14 +19,14 @@ def _build_engine():
     if is_sqlite:
         return create_async_engine(
             url,
-            echo=settings.is_development,
+            echo=settings.db_echo,
             connect_args={"check_same_thread": False},
             poolclass=StaticPool,
         )
 
     return create_async_engine(
         url,
-        echo=settings.is_development,
+        echo=settings.db_echo,
         pool_size=10,
         max_overflow=20,
         pool_pre_ping=True,
@@ -47,12 +47,6 @@ AsyncSessionLocal = async_sessionmaker(
 class Base(DeclarativeBase):
     """Base class for all SQLAlchemy ORM models. Import this in each segment's models.py."""
     pass
-
-
-async def check_migrations():
-    result = subprocess.run(["alembic", "check"], capture_output=True)
-    if result.returncode != 0:
-        raise RuntimeError("Pending migrations detected — aborting startup")
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:

@@ -17,6 +17,9 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = "sqlite+aiosqlite:///./stock_agent.db"
+    # Set DB_ECHO=true in .env to enable SQL query tracing.
+    # Intentionally separate from is_development — avoids log noise in dev by default.
+    db_echo: bool = False
 
     # Discord bot
     discord_token: str = ""
