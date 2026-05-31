@@ -50,6 +50,32 @@ class DividendType(enum.StrEnum):
     STOCK = "stock"
 
 
+class ExitReason(enum.StrEnum):
+    """Why a SELL trade was executed.
+
+    Used by ReplayAgent to contextualize post-mortem analysis and detect
+    behavioral patterns (e.g. repeated stop_loss ignoring, early exits).
+
+    Rules:
+    - Set only on SELL trades (Trade.exit_reason). Nullable for BUY trades.
+    - Caller (trade_usecase / bot command) is responsible for passing this
+      value when recording a SELL. Defaults to MANUAL when not specified.
+    - thesis_invalidated: one or more invalidation conditions were triggered.
+    - target_hit: price reached the thesis target zone.
+    - stop_loss: price hit the thesis stop_loss level.
+    - time_decay: thesis time horizon expired without catalyst.
+    - opportunity_cost: capital redeployed to a better setup.
+    - manual: user-initiated without a specific systematic reason.
+    """
+
+    THESIS_INVALIDATED = "thesis_invalidated"
+    TARGET_HIT         = "target_hit"
+    STOP_LOSS          = "stop_loss"
+    TIME_DECAY         = "time_decay"
+    OPPORTUNITY_COST   = "opportunity_cost"
+    MANUAL             = "manual"
+
+
 class Position(Base):
     """Current state of a holding.
 
@@ -99,6 +125,18 @@ class Trade(Base):
     Never mutated after creation. Source of truth for trade history.
     realized_pnl is set only on SELL trades:
         realized_pnl = (price - position.avg_cost) * qty
+
+    exit_reason (SELL only, nullable):
+        Why the position was closed. Set by caller at SELL time.
+        Used by ReplayAgent to contextualize post-mortem and detect
+        recurring behavioral patterns. Defaults to None (backward compat).
+        Use ExitReason.MANUAL when reason is not systematically tracked.
+
+    entry_signal_ref (BUY only, nullable):
+        Optional free-text reference to the brief snapshot ID, signal ID,
+        or watchlist alert that triggered this buy decision.
+        Format: free string, e.g. "brief:2024-03-15", "signal:VCB-breakout-42".
+        Used by ReplayAgent to reconstruct the decision context for replay.
     """
 
     __tablename__ = "trades"
@@ -120,6 +158,21 @@ class Trade(Base):
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
     note: Mapped[str | None] = mapped_column(Text)
+    exit_reason: Mapped[ExitReason | None] = mapped_column(
+        SAEnum(
+            ExitReason,
+            name="exitreason",
+            create_constraint=False,
+            values_callable=_values,
+        ),
+        nullable=True,
+        comment="SELL only — why position was closed. See ExitReason enum.",
+    )
+    entry_signal_ref: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        comment="BUY only — optional ref to brief/signal that triggered entry.",
+    )
 
     position: Mapped[Position] = relationship(back_populates="trades")
 
