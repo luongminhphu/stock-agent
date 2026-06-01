@@ -3,7 +3,7 @@
 Owner: thesis segment.
 
 Purpose:
-    Expose active thesis direction (LONG/SHORT) per ticker + user as a
+    Expose active thesis direction (BULLISH/BEARISH) per ticker + user as a
     simple {ticker: 'bull'|'bear'} dict.
 
     This file is the ONLY approved cross-segment interface for watchlist →
@@ -39,7 +39,7 @@ class TickerDirectionQuery:
     async def get_direction_map(
         self, user_id: str, tickers: list[str]
     ) -> dict[str, str]:
-        """Return {ticker: 'bull'|'bear'} for tickers that have an active LONG/SHORT thesis.
+        """Return {ticker: 'bull'|'bear'} for tickers that have an active BULLISH/BEARISH thesis.
 
         Tickers with no active thesis, or with NEUTRAL direction, are omitted.
         ScanService uses the absence of a key as "no thesis context" — engine skips.
@@ -49,7 +49,7 @@ class TickerDirectionQuery:
             tickers: List of tickers to check (typically all tickers in watchlist).
 
         Returns:
-            Dict mapping ticker → 'bull' (LONG) or 'bear' (SHORT).
+            Dict mapping ticker → 'bull' (BULLISH) or 'bear' (BEARISH).
             Empty dict when no matching theses found.
         """
         if not tickers:
@@ -68,8 +68,8 @@ class TickerDirectionQuery:
 
         mapping: dict[str, str] = {}
         for ticker, direction in rows:
-            if direction == ThesisDirection.LONG:
+            if direction == ThesisDirection.BULLISH:
                 mapping[ticker] = "bull"
-            elif direction == ThesisDirection.SHORT:
+            elif direction == ThesisDirection.BEARISH:
                 mapping[ticker] = "bear"
         return mapping
