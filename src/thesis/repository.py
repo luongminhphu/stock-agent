@@ -81,9 +81,12 @@ class ThesisRepository:
         return list(result.scalars().all())
 
     async def list_active_for_user(self, user_id: str) -> list[Thesis]:
-        """Return all ACTIVE theses for a user, with assumptions + catalysts loaded.
+        """Return all ACTIVE theses for a user, with assumptions + catalysts + reviews loaded.
 
-        Used by auto_expire_overdue_catalysts — needs catalysts eager-loaded.
+        Used by auto_expire_overdue_catalysts and ThesisScoreQuery.
+        reviews must be eager-loaded because ScoringService.compute() accesses
+        thesis.reviews to compute review_confidence — lazy-load in async context
+        raises MissingGreenlet (greenlet_spawn error).
         """
         stmt = (
             select(Thesis)
@@ -92,6 +95,7 @@ class ThesisRepository:
             .options(
                 selectinload(Thesis.assumptions),
                 selectinload(Thesis.catalysts),
+                selectinload(Thesis.reviews),
             )
             .order_by(Thesis.created_at.desc())
         )
@@ -307,7 +311,7 @@ class ThesisRepository:
         stmt = (
             select(ThesisSnapshot)
             .where(ThesisSnapshot.thesis_id == thesis_id)
-            .order_by(ThesisSnapshot.snapshotted_at.desc())
+            .order_by(ThesisSnapshot.snapped_at.desc())
             .limit(limit)
         )
         result = await self._session.execute(stmt)
