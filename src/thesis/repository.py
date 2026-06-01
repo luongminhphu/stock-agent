@@ -307,7 +307,7 @@ class ThesisRepository:
         stmt = (
             select(ThesisSnapshot)
             .where(ThesisSnapshot.thesis_id == thesis_id)
-            .order_by(ThesisSnapshot.snapped_at.desc())
+            .order_by(ThesisSnapshot.snapshotted_at.desc())
             .limit(limit)
         )
         result = await self._session.execute(stmt)
@@ -346,6 +346,20 @@ class ThesisRepository:
         )
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
+
+    async def save_recommendations(
+        self,
+        recs: list[ReviewRecommendation],
+    ) -> None:
+        """Persist a batch of ReviewRecommendation records.
+
+        Called by ReviewService after AI review to store auto-applied
+        recommendations. No commit here – caller owns transaction boundary.
+        """
+        if not recs:
+            return
+        self._session.add_all(recs)
+        await self._session.flush()
 
     async def get_catalyst_status_summary(self, thesis_id: int) -> dict[CatalystStatus, int]:
         """Return count of catalysts grouped by status for a thesis.
