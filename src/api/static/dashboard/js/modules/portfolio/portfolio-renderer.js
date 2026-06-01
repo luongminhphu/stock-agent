@@ -44,7 +44,7 @@
  *   - VERDICT_BADGE: map lowercase keys (buy/sell/hold/watch/neutral) khớp backend
  *   - PNL%: đọc p.pnl_pct thay vì p.unrealized_pct (backend field name)
  *   - Đổi tên cột "P&L %" → "PNL%"
- *   - pnlClass: 3 trạng thái (positive / negative / neutral) để styling rõ ràng
+ *   - pnlClass 3 trạng thái: positive (>0) / negative (<0) / neutral (=0 hoặc null)
  */
 
 import { el } from '../../utils/dom.js';
@@ -59,11 +59,11 @@ function fmtVnd(val) {
 
 function fmtPct(val) {
   if (val == null) return '—';
-  const sign = val > 0 ? '+' : val < 0 ? '' : '';
+  const sign = val > 0 ? '+' : '';
   return `${sign}${val.toFixed(2)}%`;
 }
 
-// 3 trạng thái: positive / negative / neutral
+// 3 trạng thái: dương → xanh / âm → đỏ / bằng 0 → trung tính
 function pnlClass(val) {
   if (val == null) return '';
   if (val > 0) return 'pnl-positive';
@@ -161,4 +161,290 @@ function collectErrors(trades, thesis) {
   return errors;
 }
 
-// ... (phần còn lại của file giữ nguyên, đã có trong commit trước)
+// ---------------------------------------------------------------------------
+// Error Banner
+// ---------------------------------------------------------------------------
+function badgeHTML(count) {
+  if (!count) return '';
+  return `<span class="perr-tab-badge" aria-label="${count} lỗi">${count}</span>`;
+}
+
+function renderErrorBanner(errors) {
+  if (!errors.length) return '';
+
+  const criticals = errors.filter(e => e.severity === 'critical');
+  const warnings  = errors.filter(e => e.severity === 'warning');
+  const infos     = errors.filter(e => e.severity === 'info');
+
+  const summary = criticals.length
+    ? `🔴 ${criticals.length} lỗi nghiêm trọng`
+    : warnings.length
+      ? `🟡 ${warnings.length} cảnh báo dữ liệu`
+      : `🔵 ${infos.length} thông tin`;
+
+  const items = errors.map(e => {
+    const cls = e.severity === 'critical' ? 'perr-critical'
+              : e.severity === 'warning'  ? 'perr-warning'
+              : 'perr-info';
+    return `<li class="perr-item ${cls}">${e.message}</li>`;
+  }).join('');
+
+  return `
+    <div class="perr-banner" role="alert">
+      <button class="perr-toggle" aria-expanded="false">
+        <span class="perr-summary">${summary}</span>
+        <span class="perr-chevron">▾</span>
+      </button>
+      <ul class="perr-list" hidden>${items}</ul>
+    </div>`;
+}
+
+function wireBannerToggle(banner) {
+  const btn  = banner.querySelector('.perr-toggle');
+  const list = banner.querySelector('.perr-list');
+  if (!btn || !list) return;
+  btn.addEventListener('click', () => {
+    const expanded = btn.getAttribute('aria-expanded') === 'true';
+    btn.setAttribute('aria-expanded', String(!expanded));
+    list.hidden = expanded;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Trades tab renderer
+// ---------------------------------------------------------------------------
+function renderTradesTab(data, errors) {
+  if (!data) return '<p class="empty-state">Không thể tải dữ liệu giao dịch.</p>';
+  const positions = data.positions ?? [];
+  if (!positions.length) return '<p class="empty-state">Chưa có vị thế nào. Dùng <code>/buy</code> trên Discord để bắt đầu.</p>';
+
+  const totalPnl  = data.total_unrealized_pnl ?? 0;
+  const totalPct  = data.total_unrealized_pct ?? 0;
+  const totalCost = data.total_cost_basis ?? 0;
+  const totalMkt  = data.total_market_value ?? 0;
+
+  const missingPriceTickers = new Set(positions.filter(p => p.current_price == null).map(p => p.ticker));
+
+  const rows = positions.map(p => {
+    const pct      = p.unrealized_pct ?? null;
+    const hasError = missingPriceTickers.has(p.ticker);
+    const thesisAttr = p.thesis_id ? ` data-thesis-id="${p.thesis_id}"` : '';
+
+    const thesisWarning   = p.thesis_id && p.thesis_status && p.thesis_status !== 'active';
+    const thesisWarnTitle = thesisWarning
+      ? `Thesis #${p.thesis_id} đã ${p.thesis_status} — cần review vị thế`
+      : '';
+
+    return `
+      <tr class="${hasError ? 'row-data-error' : ''}${thesisWarning ? ' row-thesis-warning' : ''}" data-ticker="${p.ticker}"${thesisAttr}>
+        <td class="col-ticker col-center">
+          <strong>${p.ticker}</strong>${hasError ? ' <span class="cell-error-dot" title="Thiếu dữ liệu giá">●</span>' : ''}${thesisWarning ? ` <span class="thesis-warn-badge" title="${thesisWarnTitle}" aria-label="${thesisWarnTitle}">⚠️</span>` : ''}
+        </td>
+        <td class="col-action col-center"></td>
+        <td class="num">${p.qty != null ? p.qty.toLocaleString('vi-VN') : '—'}</td>
+        <td class="num">${fmtVnd(p.avg_cost)}</td>
+        <td class="num${p.current_price == null ? ' cell-missing' : ''}">${fmtVnd(p.current_price)}</td>
+        <td class="num">${fmtVnd(p.cost_basis)}</td>
+        <td class="num">${fmtVnd(p.market_value)}</td>
+        <td class="num ${pnlClass(p.unrealized_pnl)}">${pnlIcon(p.unrealized_pnl)} ${fmtVnd(p.unrealized_pnl)}</td>
+        <td class="num ${pnlClass(pct)}">${fmtPct(pct)}</td>
+      </tr>`;
+  }).join('');
+
+  const banner = renderErrorBanner(errors.filter(e => e.scope === 'trades'));
+  const exposureBar = renderExposureBar(positions, totalMkt);
+  return `
+    ${banner}
+    ${exposureBar}
+    <div class="portfolio-summary">
+      <span class="summary-chip">${pnlIcon(totalPnl)} P&amp;L: <strong class="${pnlClass(totalPnl)}">${fmtVnd(totalPnl)}</strong> (${fmtPct(totalPct)})</span>
+      <span class="summary-chip">Vốn: <strong>${fmtVnd(totalCost)}</strong></span>
+      <span class="summary-chip">Thị giá: <strong>${fmtVnd(totalMkt)}</strong></span>
+      <span class="summary-chip">Vị thế: <strong>${positions.length}</strong></span>
+    </div>
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th class="col-ticker col-center">Ticker</th>
+            <th class="col-action col-center">Hành động</th>
+            <th class="num">Khối lượng</th>
+            <th class="num">Giá vốn TB</th>
+            <th class="num">Giá HT</th>
+            <th class="num">Chi phí vốn</th>
+            <th class="num">Thị giá</th>
+            <th class="num">P&amp;L</th>
+            <th class="num">%P&amp;L</th>
+          </tr>
+        </thead>
+        <tbody data-holdings-tbody data-tab="trades">${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Thesis tab renderer
+// ---------------------------------------------------------------------------
+
+// Keys khớp chính xác với giá trị backend trả về từ last_verdict
+// (lowercase: buy / sell / hold / watch / neutral)
+const VERDICT_BADGE = {
+  buy:     { icon: '🟢', label: 'Buy',     cls: 'badge-bullish'  },
+  sell:    { icon: '🔴', label: 'Sell',    cls: 'badge-bearish'  },
+  hold:    { icon: '⚖️', label: 'Hold',    cls: 'badge-neutral'  },
+  watch:   { icon: '👁',  label: 'Watch',   cls: 'badge-watchlist' },
+  neutral: { icon: '⚖️', label: 'Neutral', cls: 'badge-neutral'  },
+  // Legacy uppercase keys — giữ lại để backward-compatible nếu data cũ còn uppercase
+  BULLISH:   { icon: '🐂', label: 'Bullish',   cls: 'badge-bullish'  },
+  BEARISH:   { icon: '🐻', label: 'Bearish',   cls: 'badge-bearish'  },
+  NEUTRAL:   { icon: '⚖️', label: 'Neutral',   cls: 'badge-neutral'  },
+  WATCHLIST: { icon: '👁',  label: 'Watchlist', cls: 'badge-watchlist' },
+};
+
+function renderThesisTab(data, errors) {
+  if (!data) return '<p class="empty-state">Không thể tải dữ liệu thesis.</p>';
+  const positions = data.positions ?? [];
+  if (!positions.length) return '<p class="empty-state">Chưa có thesis nào đang active với vị thế mở.</p>';
+
+  const rows = positions.map(p => {
+    // FIX: backend trả last_verdict, không phải verdict
+    const verdictKey  = p.last_verdict ?? p.verdict ?? null;
+    const verdictDef  = (verdictKey && VERDICT_BADGE[verdictKey]) ? VERDICT_BADGE[verdictKey] : null;
+    const verdictHTML = verdictDef
+      ? `<span class="verdict-badge ${verdictDef.cls}">${verdictDef.icon} ${verdictDef.label}</span>`
+      : '<span class="verdict-badge badge-neutral">— </span>';
+
+    // FIX: backend trả pnl_pct, không phải unrealized_pct
+    const pct      = p.pnl_pct ?? p.unrealized_pct ?? null;
+    const thesisId = p.id ?? p.thesis_id;
+    const thesisAttr = thesisId ? ` data-thesis-id="${thesisId}"` : '';
+
+    return `
+      <tr data-ticker="${p.ticker}"${thesisAttr}>
+        <td class="col-ticker col-center"><strong>${p.ticker}</strong></td>
+        <td class="col-action col-center"></td>
+        <td class="col-center">${verdictHTML}</td>
+        <td class="num">${fmtVnd(p.entry_price ?? p.avg_cost)}</td>
+        <td class="num">${fmtVnd(p.current_price)}</td>
+        <td class="num ${pnlClass(pct)}">${fmtPct(pct)}</td>
+        <td class="num">${p.score != null ? p.score.toFixed(1) : '—'}</td>
+      </tr>`;
+  }).join('');
+
+  const n       = positions.length;
+  // FIX: đếm lời/lỗ dùng pnl_pct (fallback unrealized_pct)
+  const winning = positions.filter(p => ((p.pnl_pct ?? p.unrealized_pct) ?? 0) > 0).length;
+  const losing  = positions.filter(p => ((p.pnl_pct ?? p.unrealized_pct) ?? 0) < 0).length;
+
+  const totalPnlPct = data.total_pnl_pct ?? data.total_unrealized_pct ?? null;
+  const summaryPnl = totalPnlPct != null
+    ? `${pnlIcon(totalPnlPct)} P&amp;L avg: <strong class="${pnlClass(totalPnlPct)}">${fmtPct(totalPnlPct)}</strong>`
+    : '';
+  const banner = renderErrorBanner(errors.filter(e => e.scope === 'thesis'));
+
+  return `
+    ${banner}
+    <div class="portfolio-summary">
+      ${summaryPnl ? `<span class="summary-chip">${summaryPnl}</span>` : ''}
+      <span class="summary-chip">Theses: <strong>${n}</strong></span>
+      <span class="summary-chip">🟢 Lời: <strong>${winning}</strong></span>
+      <span class="summary-chip">🔴 Lỗ: <strong>${losing}</strong></span>
+    </div>
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th class="col-ticker col-center">Ticker</th>
+            <th class="col-action col-center">Hành động</th>
+            <th class="col-center">Verdict</th>
+            <th class="num">Entry</th>
+            <th class="num">Giá HT</th>
+            <th class="num">PNL%</th>
+            <th class="num">Score</th>
+          </tr>
+        </thead>
+        <tbody data-holdings-tbody data-tab="thesis">${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Main render — 2-tab layout
+// ---------------------------------------------------------------------------
+export function renderPortfolio(wrap, { trades, thesis }) {
+  const prevActivePane = wrap.querySelector('.portfolio-tab.active')
+    ?.getAttribute('aria-controls') ?? 'portfolioTradesPane';
+
+  const errors       = collectErrors(trades, thesis);
+  const tradesErrors = errors.filter(e => e.scope === 'trades');
+  const thesisErrors = errors.filter(e => e.scope === 'thesis');
+
+  const tradesBadge = badgeHTML(tradesErrors.filter(e => e.severity !== 'info').length);
+  const thesisBadge = badgeHTML(thesisErrors.filter(e => e.severity !== 'info').length);
+
+  const tradesHTML = renderTradesTab(trades, errors);
+  const thesisHTML = renderThesisTab(thesis, errors);
+
+  wrap.innerHTML = `
+    <div class="portfolio-tab-bar" role="tablist" aria-label="Portfolio view">
+      <button class="portfolio-tab active" role="tab" aria-selected="true"
+        aria-controls="portfolioTradesPane" data-tab="portfolioTradesPane">
+        📊 Trades${tradesBadge}
+      </button>
+      <button class="portfolio-tab" role="tab" aria-selected="false"
+        aria-controls="portfolioThesisPane" data-tab="portfolioThesisPane">
+        📋 Thesis${thesisBadge}
+      </button>
+    </div>
+
+    <div id="portfolioTradesPane" class="portfolio-pane" role="tabpanel">
+      ${tradesHTML}
+    </div>
+    <div id="portfolioThesisPane" class="portfolio-pane hidden" role="tabpanel">
+      ${thesisHTML}
+    </div>`;
+
+  if (prevActivePane !== 'portfolioTradesPane') {
+    const tabs  = wrap.querySelectorAll('.portfolio-tab');
+    const panes = wrap.querySelectorAll('.portfolio-pane');
+
+    tabs.forEach(t => {
+      const isTarget = t.getAttribute('aria-controls') === prevActivePane;
+      t.classList.toggle('active', isTarget);
+      t.setAttribute('aria-selected', String(isTarget));
+    });
+    panes.forEach(p => {
+      p.classList.toggle('hidden', p.id !== prevActivePane);
+    });
+  }
+
+  wrap.querySelectorAll('.perr-banner').forEach(wireBannerToggle);
+  _injectAllTradeButtons(wrap);
+
+  wrap.querySelectorAll('.portfolio-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const targetId = btn.getAttribute('aria-controls');
+      wrap.querySelectorAll('.portfolio-tab').forEach(t => {
+        const active = t === btn;
+        t.classList.toggle('active', active);
+        t.setAttribute('aria-selected', String(active));
+      });
+      wrap.querySelectorAll('.portfolio-pane').forEach(p => {
+        p.classList.toggle('hidden', p.id !== targetId);
+      });
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Private: inject B/S buttons vào tất cả tbody trong wrap
+// ---------------------------------------------------------------------------
+function _injectAllTradeButtons(wrap) {
+  const QuickTrade = window.QuickTrade;
+  if (!QuickTrade?.injectTradeButtons) return;
+
+  wrap.querySelectorAll('[data-holdings-tbody]').forEach(tbody => {
+    const fromThesisTab = tbody.getAttribute('data-tab') === 'thesis';
+    QuickTrade.injectTradeButtons(tbody, { fromThesisTab });
+  });
+}
