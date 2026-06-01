@@ -38,6 +38,12 @@
  *     - data-thesis-id từ position.id (luôn có — đây chính là thesis_id của row đó)
  *     - injectTradeButtons(tbody, { fromThesisTab: true })
  *     - Modal ẩn dropdown, hiển thị badge read-only, thesis_id luôn được forward
+ *
+ * Fix (2026-06-01):
+ *   - Verdict: đọc p.last_verdict thay vì p.verdict (backend field name)
+ *   - VERDICT_BADGE: map lowercase keys (buy/sell/hold/watch/neutral) khớp backend
+ *   - PNL%: đọc p.pnl_pct thay vì p.unrealized_pct (backend field name)
+ *   - Đổi tên cột "P&L %" → "PNL%"
  */
 
 import { el } from '../../utils/dom.js';
@@ -273,11 +279,20 @@ function renderTradesTab(data, errors) {
 // ---------------------------------------------------------------------------
 // Thesis tab renderer
 // ---------------------------------------------------------------------------
+
+// Keys khớp chính xác với giá trị backend trả về từ last_verdict
+// (lowercase: buy / sell / hold / watch / neutral)
 const VERDICT_BADGE = {
-  BULLISH:   { icon: '🐂', cls: 'badge-bullish'  },
-  BEARISH:   { icon: '🐻', cls: 'badge-bearish'  },
-  NEUTRAL:   { icon: '⚖️', cls: 'badge-neutral'  },
-  WATCHLIST: { icon: '👁', cls: 'badge-watchlist' },
+  buy:     { icon: '🟢', label: 'Buy',     cls: 'badge-bullish'  },
+  sell:    { icon: '🔴', label: 'Sell',    cls: 'badge-bearish'  },
+  hold:    { icon: '⚖️', label: 'Hold',    cls: 'badge-neutral'  },
+  watch:   { icon: '👁',  label: 'Watch',   cls: 'badge-watchlist' },
+  neutral: { icon: '⚖️', label: 'Neutral', cls: 'badge-neutral'  },
+  // Legacy uppercase keys — giữ lại để backward-compatible nếu data cũ còn uppercase
+  BULLISH:   { icon: '🐂', label: 'Bullish',   cls: 'badge-bullish'  },
+  BEARISH:   { icon: '🐻', label: 'Bearish',   cls: 'badge-bearish'  },
+  NEUTRAL:   { icon: '⚖️', label: 'Neutral',   cls: 'badge-neutral'  },
+  WATCHLIST: { icon: '👁',  label: 'Watchlist', cls: 'badge-watchlist' },
 };
 
 function renderThesisTab(data, errors) {
@@ -286,16 +301,23 @@ function renderThesisTab(data, errors) {
   if (!positions.length) return '<p class="empty-state">Chưa có thesis nào đang active với vị thế mở.</p>';
 
   const rows = positions.map(p => {
-    const verdict   = VERDICT_BADGE[p.verdict] ?? VERDICT_BADGE.NEUTRAL;
-    const pct       = p.unrealized_pct ?? null;
-    const thesisId  = p.id ?? p.thesis_id;
+    // FIX: backend trả last_verdict, không phải verdict
+    const verdictKey  = p.last_verdict ?? p.verdict ?? null;
+    const verdictDef  = (verdictKey && VERDICT_BADGE[verdictKey]) ? VERDICT_BADGE[verdictKey] : null;
+    const verdictHTML = verdictDef
+      ? `<span class="verdict-badge ${verdictDef.cls}">${verdictDef.icon} ${verdictDef.label}</span>`
+      : '<span class="verdict-badge badge-neutral">— </span>';
+
+    // FIX: backend trả pnl_pct, không phải unrealized_pct
+    const pct      = p.pnl_pct ?? p.unrealized_pct ?? null;
+    const thesisId = p.id ?? p.thesis_id;
     const thesisAttr = thesisId ? ` data-thesis-id="${thesisId}"` : '';
 
     return `
       <tr data-ticker="${p.ticker}"${thesisAttr}>
         <td class="col-ticker col-center"><strong>${p.ticker}</strong></td>
         <td class="col-action col-center"></td>
-        <td class="col-center"><span class="verdict-badge ${verdict.cls}">${verdict.icon} ${p.verdict ?? '—'}</span></td>
+        <td class="col-center">${verdictHTML}</td>
         <td class="num">${fmtVnd(p.entry_price ?? p.avg_cost)}</td>
         <td class="num">${fmtVnd(p.current_price)}</td>
         <td class="num ${pnlClass(pct)}">${fmtPct(pct)}</td>
@@ -304,10 +326,11 @@ function renderThesisTab(data, errors) {
   }).join('');
 
   const n       = positions.length;
-  const winning = positions.filter(p => (p.unrealized_pct ?? 0) > 0).length;
-  const losing  = positions.filter(p => (p.unrealized_pct ?? 0) < 0).length;
+  // FIX: đếm lời/lỗ dùng pnl_pct (fallback unrealized_pct)
+  const winning = positions.filter(p => ((p.pnl_pct ?? p.unrealized_pct) ?? 0) > 0).length;
+  const losing  = positions.filter(p => ((p.pnl_pct ?? p.unrealized_pct) ?? 0) < 0).length;
 
-  const totalPnlPct = data.total_unrealized_pct ?? null;
+  const totalPnlPct = data.total_pnl_pct ?? data.total_unrealized_pct ?? null;
   const summaryPnl = totalPnlPct != null
     ? `${pnlIcon(totalPnlPct)} P&amp;L avg: <strong class="${pnlClass(totalPnlPct)}">${fmtPct(totalPnlPct)}</strong>`
     : '';
@@ -330,7 +353,7 @@ function renderThesisTab(data, errors) {
             <th class="col-center">Verdict</th>
             <th class="num">Entry</th>
             <th class="num">Giá HT</th>
-            <th class="num">P&amp;L %</th>
+            <th class="num">PNL%</th>
             <th class="num">Score</th>
           </tr>
         </thead>
