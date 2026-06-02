@@ -208,11 +208,15 @@ class BriefingListener:
                     else None
                 )
 
+                quote_svc = get_quote_service()
+                pnl_cls = get_pnl_service()
+                pnl_svc = pnl_cls(session=session, quote_service=quote_svc)
+
                 svc = BriefingService(
                     watchlist_service=WatchlistService(session=session),
-                    quote_service=get_quote_service(),
+                    quote_service=quote_svc,
                     briefing_agent=get_briefing_agent(),
-                    pnl_service=get_pnl_service()(session),
+                    pnl_service=pnl_svc,
                     session=session,
                     sector_rotation_agent=get_sector_rotation_agent(),
                     agenda_service=agenda_svc,  # Wave B: inject agenda context (fallback path)
