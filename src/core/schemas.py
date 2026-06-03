@@ -121,8 +121,38 @@ class EngineOutput(BaseModel):
     intelligence_report: IntelligenceReport | None = None
 
 
+# ---------------------------------------------------------------------------
+# FeedbackEntry — persisted by FeedbackStore, read by evolution.py
+#
+# Fields match EngineFeedbackSubmittedEvent exactly so feedback_listener.py
+# can pass event fields through without remapping.
+#
+# Changelog:
+#   - verdict_event_id replaces verdict_id (matches event field name)
+#   - user_id, verdict, trigger_source added (were in listener call but missing here)
+#   - outcome widened: adds values emitted by EngineFeedbackSubmittedEvent
+#   - delta_score kept for evolution.py backward-compat (defaults to 0.0)
+# ---------------------------------------------------------------------------
+
+FeedbackOutcome = Literal[
+    "correct",
+    "incorrect",
+    "partial",
+    "not_acted",
+    "acted",          # user took the recommended action
+    "rejected",       # user explicitly dismissed the verdict
+]
+
+
 class FeedbackEntry(BaseModel):
-    verdict_id: str
-    outcome: Literal["correct", "incorrect", "partial", "not_acted"]
+    """Immutable value object representing one feedback record.
+
+    Produced by FeedbackStore.record() and consumed by evolution.py.
+    """
+    verdict_event_id: str
+    user_id: str = ""
+    verdict: str = ""             # e.g. "BUY_SIGNAL", "HOLD"
+    outcome: FeedbackOutcome = "not_acted"
+    trigger_source: str = ""      # "bot", "api", "scheduler"
     user_note: str | None = None
-    delta_score: float = 0.0
+    delta_score: float = 0.0      # reserved for evolution scoring
