@@ -7,7 +7,7 @@ Purpose:
     DEFER), this listener fans out the appropriate side-effects to:
       - thesis segment    (mark_closed)
       - watchlist segment (deprioritize, add, mute_alert, snooze)
-      - memory / ai       (record_action for pattern synthesis)
+      - memory / ai       (write UserBehaviorLog directly for pattern synthesis)
       - readmodel         (invalidate IntelligenceSnapshotStore hot cache — graceful
                            no-op until readmodel.intelligence_snapshot is implemented)
 
@@ -43,6 +43,15 @@ from src.platform.events import UserActionEvent
 from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
+
+# Map UserActionEvent.action_type → UserBehaviorLog.signal
+_ACTION_TO_SIGNAL: dict[str, str] = {
+    "SELL": "sold",
+    "BUY": "bought",
+    "IGNORE_ALERT": "ignored",
+    "MARK_REVIEWED": "watched",
+    "DEFER": "ignored",
+}
 
 
 class UserActionFeedbackListener:
@@ -354,30 +363,62 @@ class UserActionFeedbackListener:
             )
 
     async def _record_to_memory(self, event: UserActionEvent) -> None:
-        """Fan out action to AI memory for pattern synthesis."""
+        """Write a UserBehaviorLog row directly — no consolidator needed.
+
+        MemoryConsolidator is a batch AI distillation service; it should not
+        be called on every user action. UserBehaviorLog is the canonical write
+        path for explicit investor signals, and writing it directly is:
+          - simpler (no AIClient dependency)
+          - safer (one INSERT, no AI call latency)
+          - auditable (each action → one row, exact timestamp)
+
+        Pattern synthesis (MemoryConsolidator.synthesize_patterns) reads
+        UserBehaviorLog as its source-of-truth — this write path feeds that
+        read path correctly without any intermediary.
+
+        Signal mapping (action_type → UserBehaviorLog.signal):
+          SELL          → sold
+          BUY           → bought
+          IGNORE_ALERT  → ignored
+          MARK_REVIEWED → watched
+          DEFER         → ignored   (temporarily deprioritised)
+          (anything else) → action_type.lower()
+
+        Note on interaction_log_id:
+          UserActionEvent.verdict_id is NOT a FK to AIInteractionLog.id —
+          it is a thesis verdict reference. We set interaction_log_id=None
+          to avoid a phantom FK. If a genuine AIInteractionLog link is needed
+          in future, wire it explicitly via a new event field.
+        """
         try:
-            from src.ai.memory.consolidator import MemoryConsolidator
+            from src.ai.memory.user_behavior_log import UserBehaviorLog
+
+            signal = _ACTION_TO_SIGNAL.get(
+                event.action_type, event.action_type.lower()
+            )
 
             async with get_session() as session:
-                consolidator = MemoryConsolidator(session)
-                await consolidator.record_user_action(
-                    user_id=event.user_id,
-                    action_type=event.action_type,
-                    ticker=event.ticker,
-                    thesis_id=event.thesis_id,
-                    verdict_id=event.verdict_id or None,
-                    note=event.note or None,
-                    price=event.price,
+                session.add(
+                    UserBehaviorLog(
+                        user_id=event.user_id,
+                        signal=signal,
+                        source="feedback_listener",
+                        interaction_log_id=None,  # verdict_id ≠ AIInteractionLog FK
+                        ticker=event.ticker.upper() if event.ticker else None,
+                        agent_type="feedback_loop",
+                        note=(event.note[:512] if event.note else None),
+                    )
                 )
             logger.info(
                 "user_action_listener.memory_recorded",
                 action_type=event.action_type,
+                signal=signal,
                 ticker=event.ticker,
             )
         except ImportError:
             logger.warning(
                 "user_action_listener.memory_adapter_unavailable",
-                hint="MemoryConsolidator not importable from src.ai.memory.consolidator",
+                hint="UserBehaviorLog not importable from src.ai.memory.user_behavior_log",
             )
         except Exception as exc:
             logger.error(
