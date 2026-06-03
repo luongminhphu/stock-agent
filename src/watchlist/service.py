@@ -294,137 +294,100 @@ class WatchlistService:
         effective_cooldown_hours — so this integrates with the current
         cooldown logic without a schema migration.
 
-        NOTE: When the Alert model gains a proper `snoozed_until` DateTime
-        column (follow-up migration), replace the cooldown_hours approach
-        with a direct datetime comparison.
-
-        Called by:
-          core.FeedbackListener.on_user_action() for IGNORE_ALERT events.
+        NOTE: When the Alert model gets a dedicated snoozed_until column in a
+        future migration, replace the effective_cooldown_hours proxy here.
 
         Args:
-            alert_id:      ID of the alert to mute.
-            user_id:       Owner (for ownership check).
-            duration_days: How many days to suppress the alert (default 7).
+            alert_id:      PK of the Alert to mute.
+            user_id:       Owner — used for auth check.
+            duration_days: Mute window in days (default 7).
 
         Returns:
-            Updated Alert, or None if not found / not owned.
+            Updated Alert, or None if not found / wrong owner.
+            Never raises.
         """
-        return await self._snooze_alert_internal(
-            alert_id=alert_id,
-            user_id=user_id,
-            hours=duration_days * 24,
-        )
-
-    async def snooze_alert(
-        self,
-        alert_id: int,
-        user_id: str,
-        *,
-        until: datetime | None = None,
-        hours: int | None = None,
-    ) -> Alert | None:
-        """Snooze an alert until a specific datetime or for N hours.
-
-        Exactly one of *until* or *hours* must be supplied.
-
-        Uses Alert.effective_cooldown_hours as snooze storage (same approach
-        as mute_alert). When Alert gains a `snoozed_until` DateTime column,
-        this method should be updated to persist the exact datetime.
-
-        Called by:
-          bot commands: /snooze <alert_id> [until <date>]
-          core.FeedbackListener (future — when investor provides specific date)
-
-        Args:
-            alert_id: ID of the alert.
-            user_id:  Owner.
-            until:    Snooze until this UTC datetime.
-            hours:    Snooze for this many hours from now.
-
-        Returns:
-            Updated Alert, or None if not found / not owned.
-
-        Raises:
-            ValueError: If neither or both of *until*/*hours* are supplied.
-        """
-        if (until is None) == (hours is None):
-            raise ValueError("Provide exactly one of 'until' or 'hours'.")
-
-        if hours is None:
-            assert until is not None
-            now = datetime.now(UTC)
-            snooze_until = until if until.tzinfo else until.replace(tzinfo=UTC)
-            hours = max(1, int((snooze_until - now).total_seconds() // 3600))
-
-        return await self._snooze_alert_internal(
-            alert_id=alert_id,
-            user_id=user_id,
-            hours=hours,
-        )
-
-    async def _snooze_alert_internal(
-        self,
-        alert_id: int,
-        user_id: str,
-        hours: int,
-    ) -> Alert | None:
-        """Internal: set effective_cooldown_hours and DISMISS the alert.
-
-        Dismissing transitions the alert out of ACTIVE so it won't fire
-        during the snooze window. The existing reactivate_cooled_down()
-        scheduler will restore it to ACTIVE after the cooldown expires.
-        """
-        # Load alert — search across all statuses (not just ACTIVE) so
-        # we can snooze a TRIGGERED alert that hasn't been dismissed yet.
-        stmt = select(Alert).where(
-            Alert.id == alert_id,
-            Alert.user_id == user_id,
-        )
-        result = await self._session.execute(stmt)
-        alert = result.scalar_one_or_none()
-
-        if alert is None:
-            logger.warning(
-                "watchlist.snooze.not_found",
+        try:
+            alerts = await self._repo.list_active_alerts(user_id)
+            alert = next((a for a in alerts if a.id == alert_id), None)
+            if alert is None:
+                logger.debug(
+                    "watchlist.mute_alert.not_found",
+                    alert_id=alert_id,
+                    user_id=user_id,
+                )
+                return None
+            alert.effective_cooldown_hours = duration_days * 24
+            await self._repo.save_alert(alert)
+            logger.info(
+                "alert.muted",
                 alert_id=alert_id,
                 user_id=user_id,
+                cooldown_hours=alert.effective_cooldown_hours,
+            )
+            return alert
+        except Exception as exc:
+            logger.error(
+                "watchlist.mute_alert.failed",
+                alert_id=alert_id,
+                user_id=user_id,
+                error=str(exc),
             )
             return None
 
-        alert.effective_cooldown_hours = max(1, hours)
-        alert.status = AlertStatus.DISMISSED  # reactivate_cooled_down() will restore
-        await self._repo.save_alert(alert)
-        logger.info(
-            "watchlist.alert_snoozed",
-            alert_id=alert_id,
-            user_id=user_id,
-            hours=hours,
-        )
-        return alert
+    async def snooze(
+        self,
+        user_id: str,
+        ticker: str,
+        *,
+        duration_days: int = 3,
+    ) -> WatchlistItem | None:
+        """Temporarily suppress AI signals for *ticker* by setting snoozed_until.
 
-    # ------------------------------------------------------------------
-    # Signal event lifecycle (called by ai segment via public API only)
-    # ------------------------------------------------------------------
+        Distinct from deprioritize() and mute_alert():
+          - deprioritize(): permanent rank penalty on the WatchlistItem.
+          - mute_alert():   acts on a specific Alert row via cooldown_hours proxy.
+          - snooze():       acts on the WatchlistItem itself; downstream signal
+                            rankers and BriefingService must skip items where
+                            WatchlistItem.is_snoozed is True.
 
-    async def mark_signal_processed(self, event_id: str) -> bool:
-        """Stamp processed_at = now(UTC) on the SignalEvent row for event_id.
+        No-op (returns None) when *ticker* is not in the watchlist.
+        Never raises.
 
-        Lookup is by SignalEvent.event_id (UUID string) which is unique per row.
-        Caller is responsible for commit after this call.
+        Called by:
+          core.FeedbackListener.on_user_action() for IGNORE_ALERT events
+          when the investor wants temporary silence, not a permanent rank drop.
+
+        Args:
+            user_id:       Owner of the watchlist.
+            ticker:        Stock symbol (case-insensitive).
+            duration_days: Snooze window in days (default 3).
 
         Returns:
-            True  — row found and stamped.
-            False — row not found (already processed or never existed).
-
-        Consumed exclusively by ai.ProactiveAlertAgent._mark_processed()
-        to avoid ai segment importing watchlist repo/model layer directly.
+            Updated WatchlistItem with snoozed_until set, or None if not found.
         """
-        from src.watchlist.models import SignalEvent
-
-        stmt = select(SignalEvent).where(SignalEvent.event_id == event_id)
-        result = await self._session.execute(stmt)
-        row = result.scalar_one_or_none()
-        if row is None:
-            return False
-        await self._signal_repo.mark_processed(row)
-        return True
+        try:
+            item = await self._repo.get_item(user_id, ticker.upper())
+            if item is None:
+                logger.debug(
+                    "watchlist.snooze.not_found",
+                    user_id=user_id,
+                    ticker=ticker,
+                )
+                return None
+            item.snoozed_until = datetime.now(UTC) + timedelta(days=duration_days)
+            await self._repo.save_item(item)
+            logger.info(
+                "watchlist.snoozed",
+                user_id=user_id,
+                ticker=ticker,
+                until=item.snoozed_until.isoformat(),
+            )
+            return item
+        except Exception as exc:
+            logger.error(
+                "watchlist.snooze.failed",
+                user_id=user_id,
+                ticker=ticker,
+                error=str(exc),
+            )
+            return None

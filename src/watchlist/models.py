@@ -72,6 +72,12 @@ class WatchlistItem(Base):
     note: Mapped[str | None] = mapped_column(Text)
     thesis_id: Mapped[int | None] = mapped_column(Integer, index=True)
     priority: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
+    # snoozed_until: when set, AI signals for this ticker are suppressed until
+    # this UTC timestamp. Signal rankers and BriefingService skip items where
+    # snoozed_until > now. Set by WatchlistService.snooze().
+    snoozed_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
     added_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -93,6 +99,20 @@ class WatchlistItem(Base):
 
     def __repr__(self) -> str:
         return f"<WatchlistItem user={self.user_id} ticker={self.ticker}>"
+
+    @property
+    def is_snoozed(self) -> bool:
+        """True when AI signals for this ticker are currently suppressed."""
+        if self.snoozed_until is None:
+            return False
+        now = datetime.now(UTC)
+        # Normalise to aware datetime in case DB returns naive UTC
+        until = (
+            self.snoozed_until
+            if self.snoozed_until.tzinfo is not None
+            else self.snoozed_until.replace(tzinfo=UTC)
+        )
+        return until > now
 
 
 # ---------------------------------------------------------------------------
