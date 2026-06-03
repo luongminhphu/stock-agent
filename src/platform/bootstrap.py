@@ -53,6 +53,7 @@ _memory_injection_listener: object | None = None  # Wave E: MemoryInjectionListe
 _intelligence_engine_listener: object | None = None  # core: IntelligenceEngineListener
 _intelligence_engine_subscriber: object | None = None  # bot: IntelligenceEngineSubscriber (Discord delivery)
 _engine_feedback_listener: object | None = None      # core: FeedbackStore bridge
+_user_action_listener: object | None = None          # core: UserActionFeedbackListener (feedback loop)
 _recent_reviews_store: object | None = None          # W1: RecentReviewsStore readmodel singleton
 _portfolio_query_adapter: object | None = None       # W3: PortfolioQueryAdapter singleton
 _global_risk_subscriber: object | None = None        # readmodel: GlobalRiskSubscriber singleton
@@ -82,6 +83,7 @@ async def bootstrap() -> None:
     global _trend_reasoning_agent, _trend_prediction_store, _trend_engine_listener
     global _post_mortem_service, _memory_injection_listener
     global _intelligence_engine_listener, _intelligence_engine_subscriber, _engine_feedback_listener
+    global _user_action_listener
     global _session_factory
     global _recent_reviews_store
     global _portfolio_query_adapter
@@ -507,6 +509,17 @@ async def bootstrap() -> None:
         _engine_feedback_listener.register()
         logger.info("platform.bootstrap.engine_feedback_listener_ready")
 
+    # ── core: UserActionFeedbackListener — closes the feedback loop ───────────
+    # Subscribes to UserActionEvent published by bot/api.
+    # Without this, thesis close, watchlist deprioritize, and memory record
+    # are silently dropped on every user action.
+    if _user_action_listener is None:
+        from src.core.user_action_listener import UserActionFeedbackListener
+
+        _user_action_listener = UserActionFeedbackListener()
+        _user_action_listener.register()  # type: ignore[union-attr]
+        logger.info("platform.bootstrap.user_action_listener_ready")
+
     logger.info("platform.bootstrap.complete")
 
 
@@ -711,3 +724,12 @@ def get_portfolio_query_adapter():
     Returns None if bootstrap() has not been called yet.
     """
     return _portfolio_query_adapter
+
+
+def get_user_action_listener():
+    """Return the UserActionFeedbackListener singleton.
+
+    Used for debug/test access to verify the feedback loop is active.
+    Returns None if bootstrap() has not been called yet.
+    """
+    return _user_action_listener
