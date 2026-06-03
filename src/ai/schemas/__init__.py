@@ -144,6 +144,15 @@ from src.ai.schemas.thesis_debate import (
 # --- Intelligence Verdict ---
 from src.ai.schemas.intelligence_verdict import VerdictOutput
 
+# --- Intelligence Report (Investor OS central contract) ---
+from src.ai.schemas.intelligence_report import (
+    TRIGGER_SOURCES,
+    AgentSlot,
+    IntelligenceReport,
+    PriorityAction,
+    RiskFlag,
+)
+
 __all__ = [
     # Base
     "Verdict",
@@ -236,4 +245,10 @@ __all__ = [
     "DebateOutput",
     # Intelligence Verdict
     "VerdictOutput",
+    # Intelligence Report
+    "TRIGGER_SOURCES",
+    "AgentSlot",
+    "IntelligenceReport",
+    "PriorityAction",
+    "RiskFlag",
 ]
