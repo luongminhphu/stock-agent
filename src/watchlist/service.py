@@ -9,6 +9,7 @@ DTOs and Exceptions → dtos.py
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -44,6 +45,11 @@ __all__ = [
     "WatchlistItemAlreadyExistsError",
     "AlertNotFoundError",
 ]
+
+# Penalty applied to WatchlistItem.priority when investor ignores an alert.
+# Higher priority value = lower display rank (priority=100 is default/bottom).
+_IGNORE_PRIORITY_PENALTY = 20
+_PRIORITY_MAX = 999
 
 
 @dataclass
@@ -227,6 +233,174 @@ class WatchlistService:
 
     async def list_active_alerts(self, user_id: str) -> list[Alert]:
         return await self._repo.list_active_alerts(user_id)
+
+    # ------------------------------------------------------------------
+    # Feedback-loop helpers (called by core/feedback_listener.py)
+    # ------------------------------------------------------------------
+
+    async def deprioritize(
+        self,
+        user_id: str,
+        ticker: str,
+        *,
+        penalty: int = _IGNORE_PRIORITY_PENALTY,
+    ) -> WatchlistItem | None:
+        """Lower the display rank of *ticker* after investor ignores/exits.
+
+        Increments WatchlistItem.priority by *penalty* (higher int = lower rank).
+        Capped at _PRIORITY_MAX to prevent runaway values.
+        No-op (returns None) when the ticker is not in the watchlist.
+
+        Called by:
+          core.FeedbackListener.on_user_action() for SELL and IGNORE_ALERT events.
+
+        Args:
+            user_id: Owner of the watchlist.
+            ticker:  Stock symbol (case-insensitive).
+            penalty: Priority delta to add (default 20).
+
+        Returns:
+            Updated WatchlistItem, or None if not found.
+        """
+        item = await self._repo.get_item(user_id, ticker.upper())
+        if item is None:
+            logger.debug(
+                "watchlist.deprioritize.not_found",
+                user_id=user_id,
+                ticker=ticker,
+            )
+            return None
+        item.priority = min(item.priority + penalty, _PRIORITY_MAX)
+        await self._repo.save_item(item)
+        logger.info(
+            "watchlist.deprioritized",
+            user_id=user_id,
+            ticker=ticker,
+            new_priority=item.priority,
+        )
+        return item
+
+    async def mute_alert(
+        self,
+        alert_id: int,
+        user_id: str,
+        *,
+        duration_days: int = 7,
+    ) -> Alert | None:
+        """Mute an alert for *duration_days* by bumping its effective_cooldown_hours.
+
+        Uses Alert.effective_cooldown_hours as a snooze duration proxy.
+        The existing AlertService.reactivate_cooled_down() already reads
+        effective_cooldown_hours — so this integrates with the current
+        cooldown logic without a schema migration.
+
+        NOTE: When the Alert model gains a proper `snoozed_until` DateTime
+        column (follow-up migration), replace the cooldown_hours approach
+        with a direct datetime comparison.
+
+        Called by:
+          core.FeedbackListener.on_user_action() for IGNORE_ALERT events.
+
+        Args:
+            alert_id:      ID of the alert to mute.
+            user_id:       Owner (for ownership check).
+            duration_days: How many days to suppress the alert (default 7).
+
+        Returns:
+            Updated Alert, or None if not found / not owned.
+        """
+        return await self._snooze_alert_internal(
+            alert_id=alert_id,
+            user_id=user_id,
+            hours=duration_days * 24,
+        )
+
+    async def snooze_alert(
+        self,
+        alert_id: int,
+        user_id: str,
+        *,
+        until: datetime | None = None,
+        hours: int | None = None,
+    ) -> Alert | None:
+        """Snooze an alert until a specific datetime or for N hours.
+
+        Exactly one of *until* or *hours* must be supplied.
+
+        Uses Alert.effective_cooldown_hours as snooze storage (same approach
+        as mute_alert). When Alert gains a `snoozed_until` DateTime column,
+        this method should be updated to persist the exact datetime.
+
+        Called by:
+          bot commands: /snooze <alert_id> [until <date>]
+          core.FeedbackListener (future — when investor provides specific date)
+
+        Args:
+            alert_id: ID of the alert.
+            user_id:  Owner.
+            until:    Snooze until this UTC datetime.
+            hours:    Snooze for this many hours from now.
+
+        Returns:
+            Updated Alert, or None if not found / not owned.
+
+        Raises:
+            ValueError: If neither or both of *until*/*hours* are supplied.
+        """
+        if (until is None) == (hours is None):
+            raise ValueError("Provide exactly one of 'until' or 'hours'.")
+
+        if hours is None:
+            assert until is not None
+            now = datetime.now(UTC)
+            snooze_until = until if until.tzinfo else until.replace(tzinfo=UTC)
+            hours = max(1, int((snooze_until - now).total_seconds() // 3600))
+
+        return await self._snooze_alert_internal(
+            alert_id=alert_id,
+            user_id=user_id,
+            hours=hours,
+        )
+
+    async def _snooze_alert_internal(
+        self,
+        alert_id: int,
+        user_id: str,
+        hours: int,
+    ) -> Alert | None:
+        """Internal: set effective_cooldown_hours and DISMISS the alert.
+
+        Dismissing transitions the alert out of ACTIVE so it won't fire
+        during the snooze window. The existing reactivate_cooled_down()
+        scheduler will restore it to ACTIVE after the cooldown expires.
+        """
+        # Load alert — search across all statuses (not just ACTIVE) so
+        # we can snooze a TRIGGERED alert that hasn't been dismissed yet.
+        stmt = select(Alert).where(
+            Alert.id == alert_id,
+            Alert.user_id == user_id,
+        )
+        result = await self._session.execute(stmt)
+        alert = result.scalar_one_or_none()
+
+        if alert is None:
+            logger.warning(
+                "watchlist.snooze.not_found",
+                alert_id=alert_id,
+                user_id=user_id,
+            )
+            return None
+
+        alert.effective_cooldown_hours = max(1, hours)
+        alert.status = AlertStatus.DISMISSED  # reactivate_cooled_down() will restore
+        await self._repo.save_alert(alert)
+        logger.info(
+            "watchlist.alert_snoozed",
+            alert_id=alert_id,
+            user_id=user_id,
+            hours=hours,
+        )
+        return alert
 
     # ------------------------------------------------------------------
     # Signal event lifecycle (called by ai segment via public API only)

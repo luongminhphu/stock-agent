@@ -197,6 +197,53 @@ class ThesisService:
         return str(user_theses[0].id)
 
     # ------------------------------------------------------------------
+    # Feedback-loop helpers (called by core/feedback_listener.py)
+    # ------------------------------------------------------------------
+
+    async def mark_closed(
+        self,
+        ticker: str,
+        user_id: str,
+        *,
+        reason: str = "closed",
+    ) -> Thesis | None:
+        """Close the first ACTIVE thesis for *ticker* owned by *user_id*.
+
+        This is the entry point called by core.FeedbackListener when the
+        investor records a SELL action — it avoids the caller needing to
+        know the thesis_id.
+
+        Behaviour:
+          - Looks up the first ACTIVE thesis for the ticker.
+          - Delegates to close() or invalidate() based on *reason*.
+          - Returns None (no-op) when no active thesis exists — safe to
+            call even if the ticker was never in a thesis.
+
+        Args:
+            ticker:  Stock symbol (case-insensitive).
+            user_id: Owner.
+            reason:  "closed" (default) or "invalidated".
+
+        Returns:
+            The updated Thesis, or None if no active thesis was found.
+        """
+        ticker = ticker.upper()
+        theses = await self._repo.list_active_by_ticker(ticker)
+        user_theses = [t for t in theses if t.user_id == user_id]
+        if not user_theses:
+            logger.info(
+                "thesis.mark_closed.no_active_thesis",
+                ticker=ticker,
+                user_id=user_id,
+            )
+            return None
+
+        thesis = user_theses[0]
+        if reason == "invalidated":
+            return await self.invalidate(thesis.id, user_id)
+        return await self.close(thesis.id, user_id)
+
+    # ------------------------------------------------------------------
     # Assumption proxy
     # ------------------------------------------------------------------
 

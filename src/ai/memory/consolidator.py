@@ -16,15 +16,24 @@ Wave 7 addition — synthesize_patterns() classmethod:
   - Stores result into MemorySnapshot for backward-compat with render().
   - Min 5 episodes guard (stricter than run()'s 3) to avoid hallucinated patterns.
 
+Wave E addition — record_user_action():
+  - Appends a UserBehaviorLog row for every explicit investor action
+    (SELL, IGNORE_ALERT, BUY, WATCH, FLAG) received from FeedbackListener.
+  - Keeps episodic memory aware of real decisions so synthesize_patterns()
+    can detect behavioural patterns tied to actual outcomes, not just
+    AI-generated signals.
+  - Never raises — failure is logged and swallowed.
+
 Owner: ai segment.
 Callers: bot/scheduler.py (adapter) — scheduler just calls .run(), no logic there.
          context_builder.py — calls synthesize_patterns() for fresh inject.
+         core/feedback_listener.py — calls record_user_action() on every user action.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
@@ -323,6 +332,95 @@ class MemoryConsolidator:
                 error=str(exc),
             )
             return None
+
+    # ------------------------------------------------------------------
+    # Feedback-loop: record explicit investor action (Wave E)
+    # ------------------------------------------------------------------
+
+    async def record_user_action(
+        self,
+        session: AsyncSession,
+        action: Any,
+    ) -> bool:
+        """Persist a UserBehaviorLog row for an explicit investor action.
+
+        Called by core.FeedbackListener after it dispatches a UserAction to
+        thesis/watchlist segments. This ensures episodic memory captures what
+        the investor *decided* (not only what the AI suggested).
+
+        The UserBehaviorLog table is the canonical store for investor signals;
+        synthesize_patterns() joins this table when analysing behaviour.
+
+        Mapping from UserAction.type to UserBehaviorLog.signal:
+          SELL          → "sold"
+          BUY           → "bought"
+          IGNORE_ALERT  → "ignored"
+          WATCH         → "watched"
+          FLAG          → "flagged"
+          (anything else) → action.type.lower() (best-effort)
+
+        Args:
+            session: Active AsyncSession (caller commits after this returns).
+            action:  UserAction dataclass from core/feedback_listener.py.
+                     Expected fields:
+                       .user_id  (str)
+                       .type     (str)   — SELL | BUY | IGNORE_ALERT | WATCH | FLAG
+                       .ticker   (str | None)
+                       .note     (str | None)
+                       .source   (str | None)  — e.g. "discord_reaction" | "command"
+                       .interaction_log_id (int | None)
+
+        Returns:
+            True if the row was written, False on any error.
+            Never raises.
+        """
+        _SIGNAL_MAP: dict[str, str] = {
+            "SELL": "sold",
+            "BUY": "bought",
+            "IGNORE_ALERT": "ignored",
+            "WATCH": "watched",
+            "FLAG": "flagged",
+        }
+
+        try:
+            from src.ai.memory.user_behavior_log import UserBehaviorLog
+
+            action_type = str(getattr(action, "type", "")).upper()
+            signal = _SIGNAL_MAP.get(action_type, action_type.lower() or "unknown")
+            source = str(getattr(action, "source", None) or "feedback_listener")
+            ticker = getattr(action, "ticker", None)
+            note = getattr(action, "note", None)
+            interaction_log_id = getattr(action, "interaction_log_id", None)
+
+            log = UserBehaviorLog(
+                user_id=self._user_id,
+                signal=signal,
+                source=source,
+                interaction_log_id=interaction_log_id,
+                ticker=ticker.upper() if ticker else None,
+                agent_type="feedback_loop",
+                note=str(note)[:512] if note else None,
+            )
+            session.add(log)
+            # Caller (FeedbackListener) commits the session after all
+            # downstream calls complete — do NOT commit here.
+
+            logger.info(
+                "memory.record_user_action",
+                user_id=self._user_id,
+                signal=signal,
+                ticker=ticker,
+                source=source,
+            )
+            return True
+
+        except Exception as exc:
+            logger.error(
+                "memory.record_user_action.failed",
+                user_id=self._user_id,
+                error=str(exc),
+            )
+            return False
 
 
 def _compute_avg_confidence(episodes: list[AIInteractionLog]) -> float | None:
