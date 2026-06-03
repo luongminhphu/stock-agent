@@ -12,13 +12,15 @@ Public surface:
     CacheSubscriber         — event-bus cache invalidation hooks (Wave 3)
     get_readmodel_cache     — returns the shared DashboardTTLCache instance
     RecentReviewsStore      — cross-thesis recent AI review surface (Wave 1)
-    IntelligenceSnapshotStore — per-user cache for IntelligenceReport (Wave D)
-    get_intelligence_snapshot — returns the process-level snapshot store singleton
+    IntelligenceSnapshotStore      — per-user cache for IntelligenceReport (Wave D)
+    IntelligenceSnapshotSubscriber — event-bus wiring: auto-upsert on engine cycle (Gap 2)
+    get_intelligence_snapshot      — returns the process-level snapshot store singleton
 
 Startup wiring (call once in lifespan / startup hook)::
 
-    from src.readmodel import CacheSubscriber
+    from src.readmodel import CacheSubscriber, IntelligenceSnapshotSubscriber
     CacheSubscriber.register()
+    IntelligenceSnapshotSubscriber.register()
 """
 
 from src.readmodel.backtesting_service import BacktestingService
@@ -27,6 +29,7 @@ from src.readmodel.cache_subscriber import CacheSubscriber, get_cache as get_rea
 from src.readmodel.dashboard_service import DashboardService
 from src.readmodel.intelligence_snapshot import (
     IntelligenceSnapshotStore,
+    IntelligenceSnapshotSubscriber,
     get_intelligence_snapshot,
 )
 from src.readmodel.leaderboard_service import LeaderboardService
@@ -49,5 +52,6 @@ __all__ = [
     "get_readmodel_cache",
     "RecentReviewsStore",
     "IntelligenceSnapshotStore",
+    "IntelligenceSnapshotSubscriber",
     "get_intelligence_snapshot",
 ]
