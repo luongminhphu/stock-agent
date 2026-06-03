@@ -5,22 +5,28 @@ Owner: core segment.
 Purpose:
     When an investor explicitly acts (SELL, BUY, IGNORE_ALERT, MARK_REVIEWED,
     DEFER), this listener fans out the appropriate side-effects to:
-      - thesis segment   (mark_closed, touch_reviewed_at)
-      - watchlist segment (deprioritize, ensure_tracked, mute_alert, snooze)
-      - memory / ai      (record_action for pattern synthesis)
-      - readmodel        (invalidate IntelligenceSnapshotStore hot cache)
+      - thesis segment    (mark_closed)
+      - watchlist segment (deprioritize, add, mute_alert, snooze)
+      - memory / ai       (record_action for pattern synthesis)
+      - readmodel         (invalidate IntelligenceSnapshotStore hot cache — graceful
+                           no-op until readmodel.intelligence_snapshot is implemented)
 
     core is the orchestrator. It DELEGATES to each segment — no domain
     logic lives here beyond routing.
 
 Design rules:
-    - Each side-effect is wrapped in its own try/except.
-      One failure must never block the others.
+    - Each side-effect opens its own session via get_session() and wraps the
+      entire call in try/except. One failure must never block the others.
     - All calls are async fire-and-forget from the bus perspective.
-    - Adapters (thesis_adapter, watchlist_adapter, memory_adapter) are
-      lazy-imported to avoid circular imports at module load time.
-    - readmodel invalidation is direct (no adapter needed — readmodel
-      is a read concern, safe to call from core).
+    - Segment services are lazy-imported inside each adapter to avoid circular
+      imports at module load time.
+    - readmodel invalidation is a graceful no-op when the module does not yet
+      exist (ImportError is caught and logged as a warning, not an error).
+
+Session contract:
+    get_session() from src.platform.db is an async context manager that
+    commits on success and rolls back on exception. Each adapter call gets
+    its own session — no cross-segment session sharing.
 
 Boot::
 
@@ -29,6 +35,9 @@ Boot::
 """
 from __future__ import annotations
 
+from math import ceil
+
+from src.platform.db import get_session
 from src.platform.event_bus import EventBus, get_event_bus
 from src.platform.events import UserActionEvent
 from src.platform.logging import get_logger
@@ -76,10 +85,10 @@ class UserActionFeedbackListener:
             logger.warning("user_action_listener.unknown_action", action_type=action)
             return
 
-        # Always record to memory for pattern synthesis — regardless of action type
+        # Always fan out to memory for pattern synthesis — regardless of action type
         await self._record_to_memory(event)
 
-        # Invalidate hot cache so next bot/api query triggers a fresh engine cycle
+        # Evict hot cache — graceful no-op if readmodel module not yet present
         await self._invalidate_snapshot(event.user_id)
 
     # ------------------------------------------------------------------
@@ -88,20 +97,14 @@ class UserActionFeedbackListener:
 
     async def _on_sell(self, event: UserActionEvent) -> None:
         """SELL: close thesis lifecycle + deprioritize in watchlist."""
-        if event.thesis_id is not None:
-            await self._thesis_mark_closed(
-                thesis_id=event.thesis_id,
-                user_id=event.user_id,
-                ticker=event.ticker,
-                close_reason="user_sold",
-                outcome_price=event.price,
-                note=event.note,
-            )
-
+        await self._thesis_mark_closed(
+            user_id=event.user_id,
+            ticker=event.ticker,
+            reason="closed",
+        )
         await self._watchlist_deprioritize(
             user_id=event.user_id,
             ticker=event.ticker,
-            reason="sold",
         )
 
     async def _on_buy(self, event: UserActionEvent) -> None:
@@ -109,104 +112,97 @@ class UserActionFeedbackListener:
         await self._watchlist_ensure_tracked(
             user_id=event.user_id,
             ticker=event.ticker,
-            note=event.note,
+            note=event.note or None,
         )
 
     async def _on_ignore_alert(self, event: UserActionEvent) -> None:
-        """IGNORE_ALERT: mute alert for N days."""
+        """IGNORE_ALERT: mute specific alert + snooze ticker for mute_days."""
         if event.alert_id is not None:
             await self._watchlist_mute_alert(
                 user_id=event.user_id,
                 alert_id=event.alert_id,
-                ticker=event.ticker,
-                mute_days=event.mute_days,
+                duration_days=event.mute_days,
             )
-
-    async def _on_mark_reviewed(self, event: UserActionEvent) -> None:
-        """MARK_REVIEWED: touch thesis reviewed_at timestamp."""
-        if event.thesis_id is not None:
-            await self._thesis_touch_reviewed(
-                thesis_id=event.thesis_id,
-                user_id=event.user_id,
-                ticker=event.ticker,
-                note=event.note,
-            )
-
-    async def _on_defer(self, event: UserActionEvent) -> None:
-        """DEFER: snooze watchlist for N hours."""
+        # Also snooze the watchlist item itself for the same window
         await self._watchlist_snooze(
             user_id=event.user_id,
             ticker=event.ticker,
-            snooze_hours=event.snooze_hours,
+            duration_days=event.mute_days,
+        )
+
+    async def _on_mark_reviewed(self, event: UserActionEvent) -> None:
+        """MARK_REVIEWED: record that investor reviewed this thesis.
+
+        ThesisService has no touch_reviewed_at() — the closest equivalent is
+        closing the thesis with reason='reviewed', but that is destructive.
+        Instead we use mark_closed with reason='reviewed' only when the thesis
+        is still active; this is a no-op when no active thesis exists for the
+        ticker, so safe to call unconditionally.
+
+        TODO: add ThesisService.touch_reviewed_at() to thesis segment and
+        replace this call once the method is implemented.
+        """
+        # Intentionally NOT closing the thesis — MARK_REVIEWED is non-destructive.
+        # Side-effects: memory record (handled in _handle) + snapshot invalidation.
+        # If thesis segment adds touch_reviewed_at() in the future, call it here.
+        logger.info(
+            "user_action_listener.mark_reviewed",
+            user_id=event.user_id,
+            ticker=event.ticker,
+            thesis_id=event.thesis_id,
+            note=event.note or None,
+        )
+
+    async def _on_defer(self, event: UserActionEvent) -> None:
+        """DEFER: snooze watchlist item for snooze_hours (converted to days, min 1)."""
+        duration_days = max(1, ceil(event.snooze_hours / 24))
+        await self._watchlist_snooze(
+            user_id=event.user_id,
+            ticker=event.ticker,
+            duration_days=duration_days,
         )
 
     # ------------------------------------------------------------------
-    # Segment adapters — lazy-imported, each wrapped in try/except
+    # Segment adapters
+    # Each opens its own session. One failure never blocks the others.
     # ------------------------------------------------------------------
 
     async def _thesis_mark_closed(
         self,
-        thesis_id: int,
         user_id: str,
         ticker: str,
-        close_reason: str,
-        outcome_price: float | None,
-        note: str,
+        reason: str,
     ) -> None:
         try:
-            from src.thesis.service import ThesisService  # type: ignore[import]
+            from src.thesis.service import ThesisService
 
-            await ThesisService.mark_closed(
-                thesis_id=thesis_id,
-                close_reason=close_reason,
-                outcome_price=outcome_price,
-                note=note or None,
-            )
-            logger.info(
-                "user_action_listener.thesis_closed",
-                thesis_id=thesis_id,
-                ticker=ticker,
-            )
+            async with get_session() as session:
+                svc = ThesisService(session)
+                result = await svc.mark_closed(
+                    ticker=ticker,
+                    user_id=user_id,
+                    reason=reason,
+                )
+            if result is not None:
+                logger.info(
+                    "user_action_listener.thesis_closed",
+                    ticker=ticker,
+                    thesis_id=result.id,
+                )
+            else:
+                logger.debug(
+                    "user_action_listener.thesis_mark_closed.no_active_thesis",
+                    ticker=ticker,
+                )
         except ImportError:
             logger.warning(
                 "user_action_listener.thesis_adapter_unavailable",
-                hint="ThesisService.mark_closed not found — implement in thesis.service",
+                hint="ThesisService not importable from src.thesis.service",
             )
         except Exception as exc:
             logger.error(
                 "user_action_listener.thesis_close_failed",
-                thesis_id=thesis_id,
-                error=str(exc),
-            )
-
-    async def _thesis_touch_reviewed(
-        self,
-        thesis_id: int,
-        user_id: str,
-        ticker: str,
-        note: str,
-    ) -> None:
-        try:
-            from src.thesis.service import ThesisService  # type: ignore[import]
-
-            await ThesisService.touch_reviewed_at(
-                thesis_id=thesis_id,
-                note=note or None,
-            )
-            logger.info(
-                "user_action_listener.thesis_reviewed",
-                thesis_id=thesis_id,
                 ticker=ticker,
-            )
-        except ImportError:
-            logger.warning(
-                "user_action_listener.thesis_adapter_unavailable",
-                hint="ThesisService.touch_reviewed_at not found — implement in thesis.service",
-            )
-        except Exception as exc:
-            logger.error(
-                "user_action_listener.thesis_review_failed",
-                thesis_id=thesis_id,
                 error=str(exc),
             )
 
@@ -214,21 +210,22 @@ class UserActionFeedbackListener:
         self,
         user_id: str,
         ticker: str,
-        reason: str,
     ) -> None:
         try:
-            from src.watchlist.service import WatchlistService  # type: ignore[import]
+            from src.watchlist.service import WatchlistService
 
-            await WatchlistService.deprioritize(user_id=user_id, ticker=ticker, reason=reason)
+            async with get_session() as session:
+                svc = WatchlistService(session)
+                await svc.deprioritize(user_id=user_id, ticker=ticker)
             logger.info(
                 "user_action_listener.watchlist_deprioritized",
+                user_id=user_id,
                 ticker=ticker,
-                reason=reason,
             )
         except ImportError:
             logger.warning(
                 "user_action_listener.watchlist_adapter_unavailable",
-                hint="WatchlistService.deprioritize not found — implement in watchlist.service",
+                hint="WatchlistService not importable from src.watchlist.service",
             )
         except Exception as exc:
             logger.error(
@@ -241,20 +238,45 @@ class UserActionFeedbackListener:
         self,
         user_id: str,
         ticker: str,
-        note: str,
+        note: str | None,
     ) -> None:
-        try:
-            from src.watchlist.service import WatchlistService  # type: ignore[import]
+        """Add ticker to watchlist if not already present.
 
-            await WatchlistService.ensure_tracked(user_id=user_id, ticker=ticker, note=note or None)
-            logger.info(
-                "user_action_listener.watchlist_tracked",
-                ticker=ticker,
-            )
+        WatchlistService has no ensure_tracked() — we call add() directly and
+        swallow WatchlistItemAlreadyExistsError as a no-op.
+
+        TODO: add WatchlistService.ensure_tracked() to watchlist segment and
+        replace this call once the method is implemented.
+        """
+        try:
+            from src.watchlist.dtos import AddToWatchlistInput, WatchlistItemAlreadyExistsError
+            from src.watchlist.service import WatchlistService
+
+            async with get_session() as session:
+                svc = WatchlistService(session)
+                try:
+                    await svc.add(
+                        AddToWatchlistInput(
+                            user_id=user_id,
+                            ticker=ticker.upper(),
+                            note=note,
+                        )
+                    )
+                    logger.info(
+                        "user_action_listener.watchlist_tracked",
+                        user_id=user_id,
+                        ticker=ticker,
+                    )
+                except WatchlistItemAlreadyExistsError:
+                    logger.debug(
+                        "user_action_listener.watchlist_already_tracked",
+                        user_id=user_id,
+                        ticker=ticker,
+                    )
         except ImportError:
             logger.warning(
                 "user_action_listener.watchlist_adapter_unavailable",
-                hint="WatchlistService.ensure_tracked not found — implement in watchlist.service",
+                hint="WatchlistService not importable from src.watchlist.service",
             )
         except Exception as exc:
             logger.error(
@@ -267,27 +289,28 @@ class UserActionFeedbackListener:
         self,
         user_id: str,
         alert_id: int,
-        ticker: str,
-        mute_days: int,
+        duration_days: int,
     ) -> None:
         try:
-            from src.watchlist.service import WatchlistService  # type: ignore[import]
+            from src.watchlist.service import WatchlistService
 
-            await WatchlistService.mute_alert(
-                user_id=user_id,
-                alert_id=alert_id,
-                mute_days=mute_days,
-            )
+            async with get_session() as session:
+                svc = WatchlistService(session)
+                await svc.mute_alert(
+                    alert_id=alert_id,
+                    user_id=user_id,
+                    duration_days=duration_days,
+                )
             logger.info(
                 "user_action_listener.alert_muted",
                 alert_id=alert_id,
-                ticker=ticker,
-                mute_days=mute_days,
+                user_id=user_id,
+                duration_days=duration_days,
             )
         except ImportError:
             logger.warning(
                 "user_action_listener.watchlist_adapter_unavailable",
-                hint="WatchlistService.mute_alert not found — implement in watchlist.service",
+                hint="WatchlistService not importable from src.watchlist.service",
             )
         except Exception as exc:
             logger.error(
@@ -300,25 +323,28 @@ class UserActionFeedbackListener:
         self,
         user_id: str,
         ticker: str,
-        snooze_hours: int,
+        duration_days: int,
     ) -> None:
         try:
-            from src.watchlist.service import WatchlistService  # type: ignore[import]
+            from src.watchlist.service import WatchlistService
 
-            await WatchlistService.snooze(
-                user_id=user_id,
-                ticker=ticker,
-                snooze_hours=snooze_hours,
-            )
+            async with get_session() as session:
+                svc = WatchlistService(session)
+                await svc.snooze(
+                    user_id=user_id,
+                    ticker=ticker,
+                    duration_days=duration_days,
+                )
             logger.info(
                 "user_action_listener.watchlist_snoozed",
+                user_id=user_id,
                 ticker=ticker,
-                snooze_hours=snooze_hours,
+                duration_days=duration_days,
             )
         except ImportError:
             logger.warning(
                 "user_action_listener.watchlist_adapter_unavailable",
-                hint="WatchlistService.snooze not found — implement in watchlist.service",
+                hint="WatchlistService not importable from src.watchlist.service",
             )
         except Exception as exc:
             logger.error(
@@ -327,23 +353,22 @@ class UserActionFeedbackListener:
                 error=str(exc),
             )
 
-    async def _record_to_memory(
-        self,
-        event: UserActionEvent,
-    ) -> None:
+    async def _record_to_memory(self, event: UserActionEvent) -> None:
         """Fan out action to AI memory for pattern synthesis."""
         try:
-            from src.ai.memory.consolidator import MemoryConsolidator  # type: ignore[import]
+            from src.ai.memory.consolidator import MemoryConsolidator
 
-            await MemoryConsolidator.record_user_action(
-                user_id=event.user_id,
-                action_type=event.action_type,
-                ticker=event.ticker,
-                thesis_id=event.thesis_id,
-                verdict_id=event.verdict_id or None,
-                note=event.note or None,
-                price=event.price,
-            )
+            async with get_session() as session:
+                consolidator = MemoryConsolidator(session)
+                await consolidator.record_user_action(
+                    user_id=event.user_id,
+                    action_type=event.action_type,
+                    ticker=event.ticker,
+                    thesis_id=event.thesis_id,
+                    verdict_id=event.verdict_id or None,
+                    note=event.note or None,
+                    price=event.price,
+                )
             logger.info(
                 "user_action_listener.memory_recorded",
                 action_type=event.action_type,
@@ -352,7 +377,7 @@ class UserActionFeedbackListener:
         except ImportError:
             logger.warning(
                 "user_action_listener.memory_adapter_unavailable",
-                hint="MemoryConsolidator.record_user_action not found — add to ai.memory.consolidator",
+                hint="MemoryConsolidator not importable from src.ai.memory.consolidator",
             )
         except Exception as exc:
             logger.error(
@@ -361,17 +386,25 @@ class UserActionFeedbackListener:
                 error=str(exc),
             )
 
-    async def _invalidate_snapshot(
-        self,
-        user_id: str,
-    ) -> None:
-        """Evict hot cache so next query triggers a fresh engine cycle."""
+    async def _invalidate_snapshot(self, user_id: str) -> None:
+        """Evict hot cache so next query triggers a fresh engine cycle.
+
+        Graceful no-op: readmodel.intelligence_snapshot does not yet exist.
+        When implemented, it must expose get_intelligence_snapshot().invalidate(user_id).
+        """
         try:
             from src.readmodel.intelligence_snapshot import get_intelligence_snapshot
 
             get_intelligence_snapshot().invalidate(user_id)
             logger.info(
                 "user_action_listener.snapshot_invalidated",
+                user_id=user_id,
+            )
+        except ImportError:
+            # Expected until readmodel.intelligence_snapshot is implemented — not an error.
+            logger.debug(
+                "user_action_listener.snapshot_invalidate_skipped",
+                reason="readmodel.intelligence_snapshot not yet implemented",
                 user_id=user_id,
             )
         except Exception as exc:
