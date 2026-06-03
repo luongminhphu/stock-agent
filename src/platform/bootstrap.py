@@ -57,6 +57,7 @@ _user_action_listener: object | None = None          # core: UserActionFeedbackL
 _recent_reviews_store: object | None = None          # W1: RecentReviewsStore readmodel singleton
 _portfolio_query_adapter: object | None = None       # W3: PortfolioQueryAdapter singleton
 _global_risk_subscriber: object | None = None        # readmodel: GlobalRiskSubscriber singleton
+_intelligence_snapshot_subscriber: object | None = None  # readmodel: IntelligenceSnapshotSubscriber (Gap 2)
 
 _pnl_service_class: type | None = None
 
@@ -88,6 +89,7 @@ async def bootstrap() -> None:
     global _recent_reviews_store
     global _portfolio_query_adapter
     global _global_risk_subscriber
+    global _intelligence_snapshot_subscriber
 
     if _quote_service is None:
         from src.market.adapters.factory import build_adapter
@@ -310,6 +312,17 @@ async def bootstrap() -> None:
     from src.readmodel import CacheSubscriber
     CacheSubscriber.register()
     logger.info("platform.bootstrap.cache_subscriber_ready")
+
+    # ── Gap 2 (readmodel): IntelligenceSnapshotSubscriber ─────────────────────
+    # Subscribes to IntelligenceEngineCompletedEvent → upserts IntelligenceReport
+    # into IntelligenceSnapshotStore so bot/api read from cache without
+    # re-triggering the AI cycle.
+    if _intelligence_snapshot_subscriber is None:
+        from src.readmodel import IntelligenceSnapshotSubscriber
+
+        IntelligenceSnapshotSubscriber.register()
+        _intelligence_snapshot_subscriber = IntelligenceSnapshotSubscriber
+        logger.info("platform.bootstrap.intelligence_snapshot_subscriber_ready")
 
     # ── readmodel: GlobalRiskSubscriber — project IE verdict into memory store ─
     if _global_risk_subscriber is None:
