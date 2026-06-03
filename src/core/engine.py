@@ -9,6 +9,8 @@ Wave 3: dispatch is event-based via _EngineRunner.run_cycle() publishing
         for Discord delivery. _dispatch() is kept minimal and should not be
         extended with direct bot/briefing calls — new integrations must listen
         on the completed event instead.
+Wave B: build IntelligenceReport as the central Investor OS contract while
+        keeping EngineVerdict backward-compatible for existing callers.
 
 Design principles:
 - run_cycle() is the single entry point — snapshot → signals → synthesize → dispatch.
@@ -28,6 +30,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.ai.schemas import AgentSlot, IntelligenceReport, PriorityAction, RiskFlag
 from src.core.schemas import EngineOutput, EngineVerdict, RankedSignal, SystemSnapshot, VerdictType
 from src.core.signals import rank_signals
 from src.core.snapshot import SystemSnapshotBuilder
@@ -77,17 +80,19 @@ class IntelligenceEngine:
         ).build()
         signals = rank_signals(snapshot)
         verdict = await self._synthesize(snapshot, signals)
+        intelligence_report = self._build_intelligence_report(
+            snap=snapshot,
+            signals=signals,
+            verdict=verdict,
+            trigger_source=trigger_source,
+        )
         dispatched = await self._dispatch(verdict)
         return EngineOutput(
             snapshot=snapshot,
             verdict=verdict,
             dispatched_to=dispatched,
+            intelligence_report=intelligence_report,
         )
-
-    # ------------------------------------------------------------------
-    # Wave 1: signals-based rule synthesis
-    # Wave 2: replace body with AIClient.generate_verdict(signals)
-    # ------------------------------------------------------------------
 
     async def _synthesize(
         self,
@@ -124,6 +129,183 @@ class IntelligenceEngine:
             sources=sources,
             generated_at=datetime.now(timezone.utc),
         )
+
+    def _build_intelligence_report(
+        self,
+        snap: SystemSnapshot,
+        signals: list[RankedSignal],
+        verdict: EngineVerdict,
+        trigger_source: str,
+    ) -> IntelligenceReport:
+        """Build the central IntelligenceReport from current rule-based engine output.
+
+        Wave B scope:
+        - No cross-agent fan-out yet.
+        - Wrap existing rule synthesis into the new Investor OS contract.
+        - Preserve auditability through a minimal AgentSlot trail.
+        """
+        slot = AgentSlot(
+            agent_name="heuristic_engine",
+            status="ran",
+            ran_at=verdict.generated_at,
+            output=verdict.model_dump(mode="json"),
+        )
+
+        priority_actions = self._build_priority_actions(verdict)
+        risk_flags = self._build_risk_flags(signals)
+        next_watch_tickers = self._extract_next_watch_tickers(snap, signals)
+
+        return IntelligenceReport(
+            user_id=self.user_id,
+            trigger_source=self._normalize_trigger_source(trigger_source),
+            top_verdict=verdict.verdict,
+            top_verdict_conviction=self._confidence_to_conviction(verdict.confidence),
+            overall_confidence=verdict.confidence,
+            priority_actions=priority_actions,
+            risk_flags=risk_flags,
+            next_watch_tickers=next_watch_tickers,
+            narrative_summary=verdict.reasoning_summary,
+            agent_slots=[slot],
+            ttl_minutes=self._default_ttl_minutes(trigger_source),
+        )
+
+    def _build_priority_actions(self, verdict: EngineVerdict) -> list[PriorityAction]:
+        if verdict.verdict == "NO_ACTION":
+            return [
+                PriorityAction(
+                    rank=1,
+                    ticker=None,
+                    action_type="NO_ACTION",
+                    urgency="this_week",
+                    instruction=verdict.action,
+                    source_agent="heuristic_engine",
+                    reasoning=verdict.reasoning_summary[:150],
+                )
+            ]
+
+        action_type_map = {
+            "RISK_ALERT": "CHECK_STOP_LOSS",
+            "REVIEW_THESIS": "REVIEW_THESIS",
+            "BUY_SIGNAL": "CONSIDER_ENTRY",
+            "SELL_SIGNAL": "CONSIDER_EXIT",
+            "HOLD": "MONITOR",
+        }
+        urgency_map = {
+            "RISK_ALERT": "immediate",
+            "REVIEW_THESIS": "today",
+            "BUY_SIGNAL": "today",
+            "SELL_SIGNAL": "immediate",
+            "HOLD": "this_week",
+        }
+        return [
+            PriorityAction(
+                rank=1,
+                ticker=None,
+                action_type=action_type_map.get(verdict.verdict, "MONITOR"),
+                urgency=urgency_map.get(verdict.verdict, "this_week"),
+                instruction=verdict.action,
+                source_agent="heuristic_engine",
+                reasoning=verdict.reasoning_summary[:150],
+            )
+        ]
+
+    def _build_risk_flags(self, signals: list[RankedSignal]) -> list[RiskFlag]:
+        flags: list[RiskFlag] = []
+        for signal in signals[:5]:
+            severity = self._urgency_to_severity(signal.urgency_score)
+            flag_type = self._signal_to_flag_type(signal)
+            if flag_type is None:
+                continue
+            flags.append(
+                RiskFlag(
+                    flag_type=flag_type,
+                    ticker=None,
+                    severity=severity,
+                    description=signal.description[:200],
+                    confirmed_by=[f"signal:{signal.source}"],
+                    is_new=True,
+                )
+            )
+        return flags
+
+    def _extract_next_watch_tickers(
+        self,
+        snap: SystemSnapshot,
+        signals: list[RankedSignal],
+    ) -> list[str]:
+        seen: set[str] = set()
+        ordered: list[str] = []
+
+        def _add(ticker: str) -> None:
+            t = ticker.upper().strip()
+            if t and t not in seen:
+                seen.add(t)
+                ordered.append(t)
+
+        for thesis_ref in snap.thesis_due_review[:5]:
+            _add(thesis_ref.ticker)
+        for signal in snap.market_anomalies[:5]:
+            _add(signal.ticker)
+        for ticker in snap.watchlist.top_tickers[:5]:
+            _add(ticker)
+        for ticker in snap.market.top_opportunity_tickers[:5]:
+            _add(ticker)
+
+        return ordered[:10]
+
+    def _normalize_trigger_source(self, trigger_source: str) -> str:
+        mapping = {
+            "scheduler": "scheduler_morning",
+            "scheduler_morning": "scheduler_morning",
+            "scheduler_eod": "scheduler_eod",
+            "discord_command": "user_query",
+            "user_query": "user_query",
+            "manual": "manual",
+            "watchlist_alert": "watchlist_alert",
+            "thesis_invalidated": "thesis_invalidated",
+            "portfolio_breach": "portfolio_breach",
+        }
+        return mapping.get(trigger_source or "manual", "manual")
+
+    def _confidence_to_conviction(self, confidence: float) -> str:
+        if confidence >= 0.8:
+            return "high"
+        if confidence >= 0.55:
+            return "medium"
+        return "low"
+
+    def _default_ttl_minutes(self, trigger_source: str) -> int:
+        normalized = self._normalize_trigger_source(trigger_source)
+        if normalized in ("thesis_invalidated", "portfolio_breach"):
+            return 15
+        if normalized == "scheduler_morning":
+            return 240
+        return 60
+
+    def _urgency_to_severity(self, urgency_score: float) -> str:
+        if urgency_score >= 0.85:
+            return "CRITICAL"
+        if urgency_score >= 0.65:
+            return "HIGH"
+        if urgency_score >= 0.40:
+            return "MEDIUM"
+        return "LOW"
+
+    def _signal_to_flag_type(self, signal: RankedSignal) -> str | None:
+        description = signal.description.lower()
+        if signal.source == "portfolio":
+            if "breach" in description:
+                return "STOP_LOSS_BREACH"
+            return "CONCENTRATION_RISK"
+        if signal.source == "thesis":
+            if "invalidate" in description:
+                return "THESIS_INVALIDATED"
+            return "MARKET_TREND_REVERSAL"
+        if signal.source == "watchlist":
+            return "VOLUME_ANOMALY"
+        if signal.source == "market":
+            return "MARKET_TREND_REVERSAL"
+        return None
 
     def _map_signal_to_verdict(
         self, top: RankedSignal
@@ -168,15 +350,6 @@ class IntelligenceEngine:
             return f"Theo dõi tín hiệu thị trường: {tickers}" if tickers else "Theo dõi thị trường"
         return "Không có action ưu tiên. Hệ thống ổn định."
 
-    # ------------------------------------------------------------------
-    # Wave 1: dispatch only records local routing decisions.
-    #
-    # External side-effects (Discord, briefing, API notifications) are
-    # handled by listeners of IntelligenceEngineCompletedEvent emitted
-    # by the module-level _EngineRunner. Do NOT add cross-segment calls
-    # here — that would break core's read-only contract.
-    # ------------------------------------------------------------------
-
     async def _dispatch(self, verdict: EngineVerdict) -> list[str]:
         """Record internal dispatch decision for observability.
 
@@ -189,10 +362,6 @@ class IntelligenceEngine:
             dispatched.append("log")
         return dispatched
 
-
-# ---------------------------------------------------------------------------
-# Module-level API — used by IntelligenceEngineScheduler (bot segment)
-# ---------------------------------------------------------------------------
 
 class _EngineRunner:
     """Stateless runner — holds no session, safe as a module singleton."""
@@ -210,7 +379,6 @@ class _EngineRunner:
     ) -> EngineVerdict | None:
         from src.platform.db import AsyncSessionLocal
 
-        # Resolve effective trigger_source: prefer explicit arg, fall back to triggered_by
         effective_trigger = trigger_source or triggered_by
 
         logger.info(
@@ -240,7 +408,6 @@ class _EngineRunner:
             )
             return None
 
-        # Wave 2: override heuristic verdict with AI synthesis when agent present
         if verdict_agent is not None:
             try:
                 ai_verdict = await verdict_agent.run(
@@ -262,11 +429,8 @@ class _EngineRunner:
                     fallback="using_heuristic_verdict",
                 )
 
-        # Extract tickers from snapshot for GlobalRiskStore + downstream consumers
         flagged_tickers = _extract_snapshot_tickers(output.snapshot)
 
-        # Publish completed event
-        # Consumers: IntelligenceEngineListener (Discord), GlobalRiskSubscriber (readmodel)
         try:
             from src.platform.event_bus import get_event_bus
             from src.platform.events import IntelligenceEngineCompletedEvent
@@ -291,6 +455,7 @@ class _EngineRunner:
                 phase=phase,
                 action_required=completed.action_required,
                 flagged_ticker_count=len(flagged_tickers),
+                has_intelligence_report=output.intelligence_report is not None,
             )
         except Exception as exc:
             logger.error(
@@ -334,7 +499,6 @@ def _extract_snapshot_tickers(snapshot: SystemSnapshot) -> tuple[str, ...]:
     return tuple(result)
 
 
-# Module-level singleton
 _engine_runner: _EngineRunner | None = None
 
 
