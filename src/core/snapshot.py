@@ -143,7 +143,7 @@ class SystemSnapshotBuilder:
     # ------------------------------------------------------------------
 
     async def _fetch_alerts(self) -> list[WatchlistAlert]:
-        """Alerts đã trigger, chưa được dismiss."""
+        """Alerts đã trigger, chưa được dismiss, và ticker chưa bị snooze."""
         try:
             from src.watchlist.models import Alert  # type: ignore[import]
 
@@ -159,6 +159,28 @@ class SystemSnapshotBuilder:
                     .limit(20)
                 )
             ).scalars().all()
+
+            # Filter out tickers currently in snooze window.
+            # Wrapped separately so a WatchlistItem import/query failure
+            # degrades gracefully — alerts are returned unfiltered.
+            snoozed_tickers: set[str] = set()
+            try:
+                from src.watchlist.models import WatchlistItem  # type: ignore[import]
+
+                now = datetime.now(timezone.utc)
+                snoozed_rows = (
+                    await self.session.execute(
+                        select(WatchlistItem.ticker).where(
+                            WatchlistItem.user_id == self.user_id,
+                            WatchlistItem.snoozed_until.isnot(None),
+                            WatchlistItem.snoozed_until > now,
+                        )
+                    )
+                ).scalars().all()
+                snoozed_tickers = {t.upper() for t in snoozed_rows}
+            except Exception:
+                pass  # snooze filter unavailable — return all alerts
+
             return [
                 WatchlistAlert(
                     ticker=r.ticker,
@@ -167,6 +189,7 @@ class SystemSnapshotBuilder:
                     note=getattr(r, "note", None),
                 )
                 for r in rows
+                if r.ticker.upper() not in snoozed_tickers
             ]
         except Exception:
             return []
