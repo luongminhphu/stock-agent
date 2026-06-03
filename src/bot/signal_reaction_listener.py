@@ -4,11 +4,12 @@ Owner: bot segment (thin adapter).
 Domain logic owner:
   - ai segment (MemoryService.log_user_signal)
   - watchlist segment (AlertService.record_reaction — Wave D)
+  - thesis segment (DecisionService.record_execution_signal — Wave E)
 
 Wave B rationale:
   Investors naturally react to AI briefings / scan alerts with emoji.
   This listener intercepts those reactions and converts them into
-  structured UserBehaviorLog entries via MemoryService.log_user_signal().
+  structured UserBehaviorLog entries via MemoryService.log_user_signal()
 
   The mapping is intentionally minimal and unambiguous:
     ✅  → bought      (positive action taken)
@@ -31,9 +32,17 @@ Wave D addition:
   This listener parses that footer. If no alert_id is found, the
   MemoryService log still proceeds — only the cooldown feedback is skipped.
 
+Wave E addition:
+  For "bought" and "sold" signals, also notifies thesis.DecisionService
+  so the thesis lifecycle can track confirmed position changes. This
+  closes the feedback loop: reaction → memory log → thesis update.
+  Runs in a separate isolated AsyncSession; never blocks Wave B or Wave D.
+
 Contract:
   - Input:  discord.RawReactionActionEvent
-  - Output: MemoryService.log_user_signal() + AlertService.record_reaction()
+  - Output: MemoryService.log_user_signal()
+            + AlertService.record_reaction()       [Wave D, alert msgs only]
+            + DecisionService.record_execution_signal() [Wave E, bought/sold]
   - Zero domain logic here — emoji → signal string → forward to services
 """
 
@@ -58,9 +67,20 @@ EMOJI_SIGNAL_MAP: dict[str, str] = {
     "🚩": "flagged",
 }
 
+# Signals that represent a confirmed position change — forward to DecisionService.
+_EXECUTION_SIGNALS = {"bought", "sold"}
+
 # Pattern for alert_id embedded in message footer by bot/commands/scan.py.
 # Example footer text: "alert:42" or "... | alert:42"
 _ALERT_ID_RE = re.compile(r"alert:(\d+)")
+
+# Common Vietnamese finance / generic terms to exclude from ticker extraction.
+_TICKER_STOP: frozenset[str] = frozenset({
+    "AI", "OK", "DM", "ID", "API", "BOT", "VND", "USD", "ETF",
+    "TP", "MR", "NN", "SX", "VN", "HN", "PE", "ROE", "EPS",
+    "NW", "PB", "PS", "BUY", "SELL", "HOLD", "SL", "NAV",
+    "TT", "TK", "KL", "GT", "GD", "TC", "CE", "FL",
+})
 
 
 class SignalReactionListener:
@@ -80,7 +100,7 @@ class SignalReactionListener:
         logger.info("signal_reaction_listener.registered")
 
     async def _handle(self, event: discord.RawReactionActionEvent) -> None:
-        """Core handler — filter, map, forward to MemoryService + AlertService."""
+        """Core handler — filter, map, forward to MemoryService + AlertService + DecisionService."""
         if event.user_id == self._bot.user.id:  # type: ignore[union-attr]
             return
 
@@ -112,7 +132,7 @@ class SignalReactionListener:
         if message.author.id != self._bot.user.id:  # type: ignore[union-attr]
             return
 
-        ticker = _extract_ticker(message.content)
+        ticker = _extract_ticker(message)
         user_id = str(event.user_id)
 
         # Step 1: log to MemoryService (existing Wave B behaviour).
@@ -145,14 +165,47 @@ class SignalReactionListener:
         if alert_id is not None:
             await _record_alert_reaction(user_id=user_id, alert_id=alert_id, signal=signal)
 
+        # Step 3: Wave E — forward execution signals to thesis DecisionService.
+        # Only "bought" and "sold" carry enough intent to update thesis lifecycle.
+        if signal in _EXECUTION_SIGNALS and ticker:
+            await _forward_execution_to_thesis(
+                user_id=user_id,
+                signal=signal,
+                ticker=ticker,
+                source_message_id=event.message_id,
+            )
 
-def _extract_ticker(content: str) -> str | None:
-    """Best-effort: find first 2-4 uppercase alpha token in message."""
-    matches = re.findall(r'\b([A-Z]{2,4})\b', content or "")
-    _STOP = {"AI", "OK", "DM", "ID", "API", "BOT", "VND", "USD", "ETF"}
-    for m in matches:
-        if m not in _STOP:
-            return m
+
+def _extract_ticker(message: discord.Message) -> str | None:
+    """Extract ticker symbol from a bot message.
+
+    Resolution order (most reliable → least reliable):
+      1. Embed fields whose name contains "ticker", "mã", or "symbol".
+      2. Embed title — tickers often appear as the first ALL-CAPS word.
+      3. Regex on raw message content (fallback, filtered by STOP list).
+    """
+    # 1. Structured embed fields
+    for embed in message.embeds:
+        for field in embed.fields:
+            if field.name and any(
+                kw in field.name.lower() for kw in ("ticker", "mã", "symbol")
+            ):
+                value = (field.value or "").strip().upper()
+                if value and value not in _TICKER_STOP:
+                    return value
+
+        # 2. Embed title — first ALL-CAPS token of length 2-5
+        if embed.title:
+            m = re.match(r"^([A-Z]{2,5})\b", embed.title)
+            if m and m.group(1) not in _TICKER_STOP:
+                return m.group(1)
+
+    # 3. Raw content regex fallback
+    matches = re.findall(r"\b([A-Z]{2,5})\b", message.content or "")
+    for candidate in matches:
+        if candidate not in _TICKER_STOP:
+            return candidate
+
     return None
 
 
@@ -215,5 +268,58 @@ async def _record_alert_reaction(user_id: str, alert_id: int, signal: str) -> No
             alert_id=alert_id,
             user_id=user_id,
             signal=signal,
+            error=str(exc),
+        )
+
+
+async def _forward_execution_to_thesis(
+    user_id: str,
+    signal: str,
+    ticker: str,
+    source_message_id: int,
+) -> None:
+    """Fire-and-forget: notify thesis.DecisionService of a confirmed position change.
+
+    Runs in its own AsyncSession so a DB error here never affects Wave B
+    (MemoryService) or Wave D (AlertService) paths.
+
+    Signals forwarded:
+      "bought" → DecisionService.record_execution_signal(action="buy", ...)
+      "sold"   → DecisionService.record_execution_signal(action="sell", ...)
+    """
+    action = "buy" if signal == "bought" else "sell"
+    try:
+        from src.platform.bootstrap import get_session_factory  # noqa: PLC0415
+        from src.thesis.decision_service import DecisionService  # noqa: PLC0415
+
+        session_factory = get_session_factory()
+        if session_factory is None:
+            return
+
+        async with session_factory() as session:
+            svc = DecisionService(session)
+            await svc.record_execution_signal(
+                user_id=user_id,
+                ticker=ticker,
+                action=action,
+                source="discord_reaction",
+                source_ref=str(source_message_id),
+            )
+            await session.commit()
+
+        logger.info(
+            "signal_reaction_listener.thesis_execution_recorded",
+            user_id=user_id,
+            ticker=ticker,
+            action=action,
+            source_message_id=source_message_id,
+        )
+
+    except Exception as exc:
+        logger.warning(
+            "signal_reaction_listener.thesis_forward_failed",
+            user_id=user_id,
+            ticker=ticker,
+            action=action,
             error=str(exc),
         )
