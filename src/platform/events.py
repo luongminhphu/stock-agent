@@ -289,6 +289,18 @@ class IntelligenceEngineCompletedEvent(DomainEvent):
     flagged_tickers: tickers extracted from the engine snapshot
     (watchlist_alerts + thesis_due_review + portfolio.top_exposed_tickers).
     Consumed by GlobalRiskStore, BriefingService, ScanService, ThesisMaintenanceService.
+
+    agent_slots: execution record of each agent that ran during the multi-agent
+    orchestration cycle (Wave C). Each slot carries agent_name, status
+    ("ran" | "failed" | "skipped"), optional output dict, and ran_at timestamp.
+    Defaults to empty tuple — consumers that only read verdict/confidence are
+    unaffected. Consumed by Discord embed builder for per-agent status breakdown
+    and by future readmodel intelligence_snapshot store.
+
+    priority_actions: ordered list of recommended actions synthesised across
+    all agent outputs. Each item is a dict with keys: action, ticker, urgency,
+    reasoning. Defaults to empty tuple. Replaces the single `summary` string
+    for downstream consumers that need structured action payloads.
     """
     user_id: str = ""
     verdict: str = "NO_ACTION"
@@ -303,6 +315,10 @@ class IntelligenceEngineCompletedEvent(DomainEvent):
     sources: tuple[str, ...] = field(default_factory=tuple)
     # Ticker-level signals extracted from SystemSnapshot — used by readmodel store
     flagged_tickers: tuple[str, ...] = field(default_factory=tuple)
+    # Multi-agent execution record (Wave C) — empty when heuristic fallback runs
+    agent_slots: tuple[dict[str, Any], ...] = field(default_factory=tuple)
+    # Structured priority actions synthesised from all agent outputs
+    priority_actions: tuple[dict[str, Any], ...] = field(default_factory=tuple)
 
 
 # ─── core intelligence feedback ───────────────────────────────────────────

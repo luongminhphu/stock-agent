@@ -15,6 +15,14 @@ Wave 3 change:
     verdict_event_id echoed on IntelligenceEngineCompletedEvent so
     downstream feedback submissions can reference it.
 
+Wave C (intelligence_report wire):
+    Maps EngineOutput.intelligence_report into IntelligenceEngineCompletedEvent
+    so downstream subscribers (Discord embed builder, GlobalRiskSubscriber,
+    future readmodel intelligence_snapshot) receive full multi-agent output
+    (agent_slots + priority_actions) instead of heuristic-only verdict fields.
+    Backward-compatible — existing consumers that only read
+    verdict/confidence/action_required/summary are unaffected.
+
 Boot: call IntelligenceEngineListener(...).register() in platform bootstrap.
 """
 from __future__ import annotations
@@ -98,7 +106,63 @@ class IntelligenceEngineListener:
                 return ()
             return tuple(str(v) for v in val)
 
+        def _to_dict_tuple(val: Any) -> tuple[dict[str, Any], ...]:
+            """Coerce a list/tuple of objects into a tuple of plain dicts.
+
+            Handles:
+            - objects with .model_dump() (Pydantic v2)
+            - objects with .dict()       (Pydantic v1)
+            - plain dicts
+            - anything else → skipped with a warning
+            """
+            if not val:
+                return ()
+            result: list[dict[str, Any]] = []
+            for item in val:
+                if isinstance(item, dict):
+                    result.append(item)
+                elif hasattr(item, "model_dump"):
+                    result.append(item.model_dump(mode="json"))
+                elif hasattr(item, "dict"):
+                    result.append(item.dict())
+                else:
+                    logger.warning(
+                        "intelligence_listener.skip_unserializable_item",
+                        item_type=type(item).__name__,
+                    )
+            return tuple(result)
+
+        # Extract intelligence_report fields when available (Wave C multi-agent)
+        intelligence_report = getattr(verdict, "intelligence_report", None)
+        if intelligence_report is None:
+            # verdict is EngineVerdict (heuristic path) — check EngineOutput wrapper
+            # engine.run_cycle() returns EngineVerdict directly; EngineOutput is
+            # internal. Pull from the EngineOutput if the caller attached it.
+            pass
+
+        agent_slots: tuple[dict[str, Any], ...] = ()
+        priority_actions: tuple[dict[str, Any], ...] = ()
+
+        if intelligence_report is not None:
+            raw_slots = getattr(intelligence_report, "agent_slots", None)
+            agent_slots = _to_dict_tuple(raw_slots)
+
+            raw_actions = getattr(intelligence_report, "priority_actions", None)
+            priority_actions = _to_dict_tuple(raw_actions)
+
+            logger.info(
+                "intelligence_listener.report_mapped",
+                agent_slot_count=len(agent_slots),
+                priority_action_count=len(priority_actions),
+            )
+        else:
+            logger.debug(
+                "intelligence_listener.no_intelligence_report",
+                reason="heuristic_path_or_report_not_attached",
+            )
+
         completed = IntelligenceEngineCompletedEvent(
+            user_id=event.user_id,
             verdict=verdict.verdict,
             confidence=verdict.confidence,
             action_required=verdict.verdict not in ("NO_ACTION", "HOLD"),
@@ -109,6 +173,8 @@ class IntelligenceEngineListener:
             risk_signals=_to_tuple(getattr(verdict, "risk_signals", None)),
             next_watch_items=_to_tuple(getattr(verdict, "next_watch_items", None)),
             sources=_to_tuple(getattr(verdict, "sources", None)),
+            agent_slots=agent_slots,
+            priority_actions=priority_actions,
         )
         await self._bus.publish(completed)
 
@@ -120,4 +186,6 @@ class IntelligenceEngineListener:
             verdict_event_id=completed.verdict_event_id,
             risk_signal_count=len(completed.risk_signals),
             next_watch_count=len(completed.next_watch_items),
+            agent_slot_count=len(completed.agent_slots),
+            priority_action_count=len(completed.priority_actions),
         )
