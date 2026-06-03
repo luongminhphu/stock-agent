@@ -134,6 +134,22 @@ STATUS_COLORS: dict[str, int] = {
     "CLOSED":      COLORS.TEAL,
 }
 
+# Agent slot status → icon (used in engine verdict embed)
+_AGENT_STATUS_ICONS: dict[str, str] = {
+    "ran":     "\u2705",        # ✅
+    "failed":  "\u274c",        # ❌
+    "skipped": "\u23ed\ufe0f",  # ⏭️
+}
+
+# Urgency label → compact prefix for priority_actions rendering
+_URGENCY_PREFIX: dict[str, str] = {
+    "CRITICAL": "\U0001f6a8",  # 🚨
+    "HIGH":     "\U0001f534",  # 🔴
+    "MEDIUM":   "\U0001f7e0",  # 🟠
+    "LOW":      "\U0001f7e1",  # 🟡
+    "NORMAL":   "\U0001f7e1",  # 🟡
+}
+
 
 # ---------------------------------------------------------------------------
 # Utility functions
@@ -562,29 +578,96 @@ class EmbedBuilder:
 
 
 # ---------------------------------------------------------------------------
+# Internal helpers for engine verdict embed
+# ---------------------------------------------------------------------------
+
+def _render_priority_actions(actions: tuple[dict[str, Any], ...]) -> str:
+    """Render priority_actions list into a compact Discord field value.
+
+    Each action dict is expected to have keys: action, ticker, urgency, reasoning.
+    Shows at most 3 items. Falls back gracefully on missing keys.
+
+    Example output:
+        🔴 VIC — Xem xét cắt lỗ nếu giá dưới 45k
+        🟠 HPG — Review thesis Q3 assumptions
+        🟡 FPT — Theo dõi kết quả kinh doanh Q2
+    """
+    lines: list[str] = []
+    for item in actions[:3]:
+        if not isinstance(item, dict):
+            continue
+        urgency = str(item.get("urgency", "NORMAL")).upper()
+        ticker = str(item.get("ticker", "")).upper()
+        action_text = str(item.get("action", item.get("reasoning", "")))
+        prefix = _URGENCY_PREFIX.get(urgency, "\U0001f7e1")
+        ticker_label = f" **{ticker}**" if ticker else ""
+        lines.append(f"{prefix}{ticker_label} — {truncate(action_text, 120)}")
+    return "\n".join(lines) if lines else "_Không có action cụ thể._"
+
+
+def _render_agent_slots(slots: tuple[dict[str, Any], ...]) -> str:
+    """Render agent_slots into a single-line compact status string.
+
+    Skips the heuristic_engine slot (internal audit trail, not relevant to user).
+    Shows agent short-name + status icon side by side.
+
+    Example output:
+        thesis_judge ✅  invalidation ✅  next_action ✅  portfolio_risk ⏭️
+    """
+    # Short display names for known agents
+    _SHORT: dict[str, str] = {
+        "thesis_judge":           "thesis",
+        "invalidation_detector":  "invalidation",
+        "next_action_suggester":  "next_action",
+        "portfolio_risk_narrator": "portfolio_risk",
+    }
+    parts: list[str] = []
+    for slot in slots:
+        if not isinstance(slot, dict):
+            continue
+        name = str(slot.get("agent_name", ""))
+        if name == "heuristic_engine":
+            continue  # internal slot — skip
+        status = str(slot.get("status", "skipped")).lower()
+        icon = _AGENT_STATUS_ICONS.get(status, "\u2753")  # ❓ fallback
+        short = _SHORT.get(name, name)
+        parts.append(f"{short} {icon}")
+    return "  ".join(parts) if parts else "_heuristic only_"
+
+
+# ---------------------------------------------------------------------------
 # Ready-made embed builders — standardized UX states
 # ---------------------------------------------------------------------------
 
 def build_engine_verdict_embed(verdict: Any) -> discord.Embed:
-    """Build a rich embed from an EngineVerdict (src.core.schemas.EngineVerdict).
+    """Build a rich embed from an EngineVerdict or IntelligenceEngineCompletedEvent.
+
+    Reads Wave C fields (agent_slots, priority_actions) when available and
+    renders them as structured sections. Falls back to legacy `action` string
+    rendering when both tuples are empty (heuristic path).
 
     Compatible with both ORM objects and Pydantic models — uses getattr.
 
     Args:
-        verdict: EngineVerdict instance with fields:
+        verdict: EngineVerdict or IntelligenceEngineCompletedEvent with fields:
                  verdict, confidence, risk_signals, next_watch_items,
-                 action, reasoning_summary, sources.
+                 action, reasoning_summary, sources,
+                 agent_slots (Wave C), priority_actions (Wave C).
 
     Returns:
         discord.Embed ready to send.
     """
     verdict_type = str(getattr(verdict, "verdict", "NO_ACTION")).upper()
     confidence = float(getattr(verdict, "confidence", 0.0))
-    risk_signals: list[str] = getattr(verdict, "risk_signals", []) or []
-    next_watch: list[str] = getattr(verdict, "next_watch_items", []) or []
-    action: str = getattr(verdict, "action", "") or ""
+    risk_signals: list[str] = list(getattr(verdict, "risk_signals", []) or [])
+    next_watch: list[str] = list(getattr(verdict, "next_watch_items", []) or [])
+    action: str = getattr(verdict, "action", "") or getattr(verdict, "summary", "") or ""
     reasoning: str = getattr(verdict, "reasoning_summary", "") or ""
-    sources: list[str] = getattr(verdict, "sources", []) or []
+    sources: list[str] = list(getattr(verdict, "sources", []) or [])
+
+    # Wave C fields — empty tuples on heuristic path
+    agent_slots: tuple[dict[str, Any], ...] = getattr(verdict, "agent_slots", ()) or ()
+    priority_actions: tuple[dict[str, Any], ...] = getattr(verdict, "priority_actions", ()) or ()
 
     icon = ENGINE_VERDICT_ICONS.get(verdict_type, "\U0001f9e0")
     color = ENGINE_VERDICT_COLORS.get(verdict_type, COLORS.PURPLE)
@@ -597,10 +680,27 @@ def build_engine_verdict_embed(verdict: Any) -> discord.Embed:
         .description(reasoning or "_Không có reasoning summary._")
     )
 
+    # Confidence bar
     bar = confidence_bar(confidence)
     builder.field("Confidence", f"{bar} `{confidence:.0%}`", inline=True)
 
-    if action:
+    # Agent execution status (Wave C) — shown inline next to confidence
+    if agent_slots:
+        builder.field(
+            "\U0001f916 Agents",
+            _render_agent_slots(agent_slots),
+            inline=True,
+        )
+
+    # Priority actions (Wave C) — structured, replaces single action string
+    if priority_actions:
+        builder.field(
+            "\U0001f3af Priority Actions",
+            _render_priority_actions(priority_actions),
+            inline=False,
+        )
+    elif action:
+        # Heuristic fallback — render legacy action string
         builder.field("\U0001f3af Action", action, inline=False)
 
     if risk_signals:
