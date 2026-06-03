@@ -42,6 +42,14 @@ _DEFAULT_REVIEW_HORIZON_DAYS = 30
 # price movement <= -_VERDICT_THRESHOLD_PCT → INCORRECT for bullish decisions.
 _VERDICT_THRESHOLD_PCT = 5.0
 
+# Execution signal actions accepted from external callers (e.g. Discord reactions).
+_EXECUTION_ACTION_MAP = {
+    "buy": "BUY",
+    "sell": "SELL",
+    "bought": "BUY",
+    "sold": "SELL",
+}
+
 
 class DecisionNotFoundError(Exception):
     """Raised when a decision is not found or not owned by the requesting user."""
@@ -66,6 +74,68 @@ class DecisionService:
         self._repo = ThesisRepository(session)
         self._quote_service = quote_service
         self._replay_agent = replay_agent
+
+    async def record_execution_signal(
+        self,
+        *,
+        user_id: str,
+        ticker: str,
+        action: str,
+        source: str = "discord_reaction",
+        source_ref: str | None = None,
+    ) -> DecisionLog | None:
+        """Lightweight entry point for reaction-based execution signals.
+
+        Accepts action strings from external callers (bot, Discord reactions)
+        without requiring thesis_id. Resolves the active thesis for
+        (user_id, ticker) internally, then delegates to log_decision().
+
+        Returns None (non-fatal) when:
+          - action string is not in _EXECUTION_ACTION_MAP, OR
+          - no active thesis exists for this user + ticker.
+
+        Caller (bot segment) should handle None gracefully — it means the
+        reaction was noted but no decision log was created.
+
+        source: string label for the originating system (e.g. 'discord_reaction').
+        source_ref: optional reference ID from the source system (e.g. message ID).
+        """
+        action_lower = action.lower().strip()
+        decision_type = _EXECUTION_ACTION_MAP.get(action_lower)
+        if decision_type is None:
+            logger.debug(
+                "decision_service.record_execution_signal.unknown_action",
+                user_id=user_id,
+                ticker=ticker,
+                action=action,
+            )
+            return None
+
+        ticker = ticker.upper().strip()
+        thesis = await self._repo.get_active_by_user_and_ticker(
+            user_id=user_id, ticker=ticker
+        )
+        if thesis is None:
+            logger.info(
+                "decision_service.record_execution_signal.no_active_thesis",
+                user_id=user_id,
+                ticker=ticker,
+                action=action,
+                source=source,
+            )
+            return None
+
+        rationale = f"Confirmed via {source}"
+        if source_ref:
+            rationale += f" (ref={source_ref})"
+
+        return await self.log_decision(
+            thesis_id=thesis.id,
+            user_id=user_id,
+            decision_type=decision_type,
+            rationale=rationale,
+            active_signal=source,
+        )
 
     async def log_decision(
         self,
@@ -445,7 +515,7 @@ class DecisionService:
     def _infer_current_health_score(self, thesis: Thesis) -> int | None:
         """Freeze latest thesis health (conviction) at decision time as int 0–100.
 
-        Reads ThesisSnapshot.conviction_score (float 0.0–1.0) — the AI’s
+        Reads ThesisSnapshot.conviction_score (float 0.0–1.0) — the AI's
         confidence that the thesis is still valid, written by review_service
         after each ThesisReview. Scaled x100 to int to match the Integer
         column contract of thesis_health_score_at_decision.

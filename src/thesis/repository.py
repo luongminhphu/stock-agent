@@ -50,6 +50,40 @@ class ThesisRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_active_by_user_and_ticker(
+        self,
+        user_id: str,
+        ticker: str,
+    ) -> Thesis | None:
+        """Return the most recent ACTIVE thesis for (user_id, ticker).
+
+        Used by DecisionService.record_execution_signal() to resolve
+        thesis_id from a ticker string without exposing internals to callers
+        (bot segment, Discord reactions).
+
+        Returns the latest created_at row when multiple active theses exist
+        for the same user + ticker (edge case — should not happen in practice
+        but handled defensively). Returns None if no active thesis found.
+
+        Eager-loads assumptions + catalysts so DecisionService can freeze
+        context via _infer_current_thesis_score / _infer_current_health_score.
+        """
+        stmt = (
+            select(Thesis)
+            .where(Thesis.user_id == user_id)
+            .where(Thesis.ticker == ticker.upper().strip())
+            .where(Thesis.status == ThesisStatus.ACTIVE)
+            .options(
+                selectinload(Thesis.assumptions),
+                selectinload(Thesis.catalysts),
+                selectinload(Thesis.snapshots),
+            )
+            .order_by(Thesis.created_at.desc())
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def list_by_user(
         self,
         user_id: str,
