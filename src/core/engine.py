@@ -11,11 +11,17 @@ Wave 3: dispatch is event-based via _EngineRunner.run_cycle() publishing
         on the completed event instead.
 Wave B: build IntelligenceReport as the central Investor OS contract while
         keeping EngineVerdict backward-compatible for existing callers.
+Wave C: multi-agent orchestrator — _dispatch_to_agents() fans out to real
+        AI agents in parallel; _synthesize_agent_outputs() merges results
+        into IntelligenceReport via verdict voting + action dedup + risk
+        flag merge. Heuristic engine is kept as fallback when no AI client
+        is provided (zero breaking changes).
 
 Design principles:
 - run_cycle() is the single entry point — snapshot → signals → synthesize → dispatch.
 - Each step is replaceable without touching the others.
 - All errors are caught per-step; partial output is always returned.
+- Agents are optional: each slot degrades gracefully on timeout/error.
 
 Module-level API (used by IntelligenceEngineScheduler):
 - get_intelligence_engine(): returns a _EngineRunner singleton.
@@ -24,53 +30,116 @@ Module-level API (used by IntelligenceEngineScheduler):
 """
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.ai.schemas import AgentSlot, IntelligenceReport, PriorityAction, RiskFlag
-from src.core.schemas import EngineOutput, EngineVerdict, RankedSignal, SystemSnapshot, VerdictType
+from src.ai.schemas import (
+    AgentSlot,
+    IntelligenceReport,
+    PriorityAction,
+    RiskFlag,
+)
+from src.core.schemas import (
+    EngineOutput,
+    EngineVerdict,
+    RankedSignal,
+    SystemSnapshot,
+    VerdictType,
+)
 from src.core.signals import rank_signals
 from src.core.snapshot import SystemSnapshotBuilder
 from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Per-agent timeout — prevents one slow agent blocking the whole cycle.
+_AGENT_TIMEOUT_SECONDS = 25.0
+
+# Verdict priority for voting — higher wins ties.
+_VERDICT_PRIORITY: dict[str, int] = {
+    "RISK_ALERT":     5,
+    "SELL_SIGNAL":    4,
+    "REVIEW_THESIS":  3,
+    "BUY_SIGNAL":     2,
+    "HOLD":           1,
+    "NO_ACTION":      0,
+}
+
+
+# ---------------------------------------------------------------------------
+# Agent dispatch helpers
+# ---------------------------------------------------------------------------
+
+async def _run_with_timeout(
+    coro: Any,
+    agent_name: str,
+    timeout: float = _AGENT_TIMEOUT_SECONDS,
+) -> tuple[str, Any, str | None]:
+    """Run a coroutine with timeout; return (agent_name, result_or_None, error_summary).
+
+    Never raises — all exceptions are caught and returned as error_summary.
+    """
+    try:
+        result = await asyncio.wait_for(coro, timeout=timeout)
+        return agent_name, result, None
+    except asyncio.TimeoutError:
+        logger.warning("orchestrator.agent_timeout", agent=agent_name, timeout=timeout)
+        return agent_name, None, f"timeout after {timeout}s"
+    except Exception as exc:
+        logger.warning("orchestrator.agent_error", agent=agent_name, error=str(exc))
+        return agent_name, None, str(exc)[:120]
+
+
+# ---------------------------------------------------------------------------
+# Main engine
+# ---------------------------------------------------------------------------
+
 
 class IntelligenceEngine:
     """Central AI orchestrator for one investor.
 
-    Usage::
+    Usage (heuristic-only, no AI client)::
 
         engine = IntelligenceEngine(session, user_id)
+        output = await engine.run_cycle()
+
+    Usage (full multi-agent)::
+
+        from src.ai.client import AIClient
+        engine = IntelligenceEngine(session, user_id, ai_client=AIClient())
         output = await engine.run_cycle()
     """
 
     DISPATCH_THRESHOLD = 0.65  # only dispatch if confidence >= this
 
-    def __init__(self, session: AsyncSession, user_id: str) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        user_id: str,
+        ai_client: Any | None = None,
+    ) -> None:
         self.session = session
         self.user_id = user_id
+        self._ai_client = ai_client  # None → heuristic fallback only
 
     async def run_cycle(
         self,
         trigger_source: str = "",
         signal_engine_summary: str | None = None,
     ) -> EngineOutput:
-        """Full cycle: build snapshot → rank signals → synthesize verdict → dispatch.
+        """Full cycle: build snapshot → rank signals → synthesize → dispatch.
+
+        When ai_client is provided, fans out to real agents in parallel and
+        synthesizes their outputs into IntelligenceReport (Wave C).
+        When ai_client is None, falls back to heuristic engine (Wave B).
 
         Args:
-            trigger_source: caller identity forwarded into the snapshot
-                (e.g. "scheduler", "discord_command", "manual").
-            signal_engine_summary: free-text summary from upstream callers
-                attached to the snapshot for the AI prompt.
-
-        Note: external integrations (Discord, briefing, APIs) SHOULD NOT
-        hook into _dispatch() directly. They must subscribe to
-        IntelligenceEngineCompletedEvent, which is published by the
-        module-level _EngineRunner.run_cycle().
+            trigger_source: caller identity forwarded into the snapshot.
+            signal_engine_summary: free-text summary attached to the snapshot.
         """
         snapshot = await SystemSnapshotBuilder(
             self.session,
@@ -80,12 +149,22 @@ class IntelligenceEngine:
         ).build()
         signals = rank_signals(snapshot)
         verdict = await self._synthesize(snapshot, signals)
-        intelligence_report = self._build_intelligence_report(
-            snap=snapshot,
-            signals=signals,
-            verdict=verdict,
-            trigger_source=trigger_source,
-        )
+
+        if self._ai_client is not None:
+            intelligence_report = await self._orchestrate(
+                snapshot=snapshot,
+                signals=signals,
+                heuristic_verdict=verdict,
+                trigger_source=trigger_source,
+            )
+        else:
+            intelligence_report = self._build_intelligence_report(
+                snap=snapshot,
+                signals=signals,
+                verdict=verdict,
+                trigger_source=trigger_source,
+            )
+
         dispatched = await self._dispatch(verdict)
         return EngineOutput(
             snapshot=snapshot,
@@ -93,6 +172,503 @@ class IntelligenceEngine:
             dispatched_to=dispatched,
             intelligence_report=intelligence_report,
         )
+
+    # ------------------------------------------------------------------
+    # Wave C: multi-agent orchestration
+    # ------------------------------------------------------------------
+
+    async def _orchestrate(
+        self,
+        snapshot: SystemSnapshot,
+        signals: list[RankedSignal],
+        heuristic_verdict: EngineVerdict,
+        trigger_source: str,
+    ) -> IntelligenceReport:
+        """Fan-out to real AI agents in parallel, synthesize into IntelligenceReport.
+
+        Agent execution order (all parallel):
+          1. ThesisJudgeAgent      — conviction delta per thesis
+          2. InvalidationDetector  — breach detection per thesis
+          3. NextActionSuggester   — cross-agent action synthesis
+          4. PortfolioRiskNarrator — concentration / drawdown narrative
+
+        Each agent runs inside _run_with_timeout() — a failed or timed-out
+        agent records status='failed'/'skipped' in its AgentSlot and does
+        NOT block the other agents or the final report.
+        """
+        agent_slots: list[AgentSlot] = []
+        agent_results: dict[str, Any] = {}
+
+        # Build per-agent tasks
+        tasks = await self._build_agent_tasks(snapshot, signals)
+
+        if not tasks:
+            logger.warning("orchestrator.no_tasks_built", user_id=self.user_id)
+            return self._build_intelligence_report(
+                snap=snapshot,
+                signals=signals,
+                verdict=heuristic_verdict,
+                trigger_source=trigger_source,
+            )
+
+        # Run all agents in parallel
+        results = await asyncio.gather(
+            *[_run_with_timeout(coro, name) for name, coro in tasks],
+            return_exceptions=False,
+        )
+
+        ran_at = datetime.now(timezone.utc)
+        for agent_name, result, error in results:
+            if error:
+                slot = AgentSlot(
+                    agent_name=agent_name,
+                    status="failed",
+                    output=None,
+                    ran_at=ran_at,
+                    error_summary=error,
+                )
+            elif result is None:
+                slot = AgentSlot(
+                    agent_name=agent_name,
+                    status="skipped",
+                    output=None,
+                    ran_at=ran_at,
+                )
+            else:
+                slot = AgentSlot(
+                    agent_name=agent_name,
+                    status="ran",
+                    output=result.model_dump(mode="json") if hasattr(result, "model_dump") else dict(result),
+                    ran_at=ran_at,
+                )
+                agent_results[agent_name] = result
+            agent_slots.append(slot)
+
+        # Add heuristic_engine slot for audit trail
+        agent_slots.insert(0, AgentSlot(
+            agent_name="heuristic_engine",
+            status="ran",
+            output=heuristic_verdict.model_dump(mode="json"),
+            ran_at=ran_at,
+        ))
+
+        return self._synthesize_agent_outputs(
+            snapshot=snapshot,
+            signals=signals,
+            heuristic_verdict=heuristic_verdict,
+            agent_results=agent_results,
+            agent_slots=agent_slots,
+            trigger_source=trigger_source,
+        )
+
+    async def _build_agent_tasks(
+        self,
+        snapshot: SystemSnapshot,
+        signals: list[RankedSignal],
+    ) -> list[tuple[str, Any]]:
+        """Build list of (agent_name, coroutine) to fan out.
+
+        Each agent is only included when the snapshot has relevant data.
+        This prevents unnecessary AI calls on empty contexts.
+        """
+        from src.ai.agents.thesis_judge import ThesisJudgeAgent
+        from src.ai.agents.invalidation_detector import ThesisInvalidationDetector
+        from src.ai.agents.next_action_suggester import NextActionSuggester
+        from src.ai.agents.portfolio_risk_narrator import PortfolioRiskNarrator
+
+        tasks: list[tuple[str, Any]] = []
+
+        # 1. ThesisJudge — run when there are thesis due for review
+        if snapshot.thesis_due_review:
+            thesis_agent = ThesisJudgeAgent(self._ai_client)
+            # ThesisJudgeAgent.run() accepts snapshot directly
+            tasks.append(("thesis_judge", thesis_agent.run(
+                snapshot=snapshot,
+                session=self.session,
+                user_id=self.user_id,
+            )))
+        else:
+            logger.debug("orchestrator.skip_thesis_judge", reason="no_thesis_due")
+
+        # 2. InvalidationDetector — run when thesis exist
+        if snapshot.thesis_due_review or any(
+            s.source == "thesis" for s in signals
+        ):
+            invalidation_agent = ThesisInvalidationDetector(self._ai_client)
+            tasks.append(("invalidation_detector", invalidation_agent.run(
+                snapshot=snapshot,
+                session=self.session,
+                user_id=self.user_id,
+            )))
+        else:
+            logger.debug("orchestrator.skip_invalidation", reason="no_thesis_signals")
+
+        # 3. NextActionSuggester — always run if we have any signals
+        if signals:
+            suggester = NextActionSuggester(self._ai_client)
+            contexts = self._build_next_action_contexts(snapshot, signals)
+            tasks.append(("next_action_suggester", suggester.suggest(
+                contexts=contexts,
+                session=self.session,
+                user_id=self.user_id,
+            )))
+
+        # 4. PortfolioRiskNarrator — run when portfolio has positions
+        if snapshot.portfolio.top_exposed_tickers:
+            narrator = PortfolioRiskNarrator(self._ai_client)
+            tasks.append(("portfolio_risk_narrator", narrator.run(
+                snapshot=snapshot,
+                session=self.session,
+                user_id=self.user_id,
+            )))
+        else:
+            logger.debug("orchestrator.skip_portfolio_risk", reason="no_positions")
+
+        return tasks
+
+    def _build_next_action_contexts(
+        self,
+        snapshot: SystemSnapshot,
+        signals: list[RankedSignal],
+    ) -> list[dict[str, Any]]:
+        """Build NextActionSuggester context dicts from snapshot + signals.
+
+        Maps snapshot.thesis_due_review → ticker/thesis context.
+        Maps signals → urgency/top_signals per ticker.
+        """
+        # Index signals by ticker (best-effort from description)
+        contexts: list[dict[str, Any]] = []
+
+        # Use thesis_due_review as primary context source
+        for thesis_ref in snapshot.thesis_due_review[:8]:
+            ticker = thesis_ref.ticker
+            # Find matching signals for this ticker
+            ticker_signals = [
+                s for s in signals
+                if ticker.upper() in s.description.upper()
+            ]
+            top_urgency = max(
+                (s.urgency_score for s in ticker_signals), default=0.0
+            )
+            ctx: dict[str, Any] = {
+                "ticker": ticker,
+                "thesis_id": str(getattr(thesis_ref, "thesis_id", "") or ""),
+                "thesis_title": getattr(thesis_ref, "thesis_title", "") or "",
+                "signal_urgency": "HIGH" if top_urgency >= 0.65 else "MEDIUM" if top_urgency >= 0.40 else "LOW",
+                "top_signals": [s.source for s in ticker_signals[:3]],
+                "stop_loss_breached": any(
+                    "breach" in s.description.lower() and ticker.upper() in s.description.upper()
+                    for s in signals
+                ),
+            }
+            contexts.append(ctx)
+
+        # If no thesis context, fall back to top signal tickers
+        if not contexts:
+            for ticker in snapshot.watchlist.top_tickers[:5]:
+                contexts.append({
+                    "ticker": ticker,
+                    "signal_urgency": "MEDIUM",
+                    "top_signals": ["watchlist"],
+                })
+
+        return contexts
+
+    def _synthesize_agent_outputs(
+        self,
+        snapshot: SystemSnapshot,
+        signals: list[RankedSignal],
+        heuristic_verdict: EngineVerdict,
+        agent_results: dict[str, Any],
+        agent_slots: list[AgentSlot],
+        trigger_source: str,
+    ) -> IntelligenceReport:
+        """Merge multi-agent results into a single IntelligenceReport.
+
+        Synthesis strategy:
+          - top_verdict:    voted from heuristic + ThesisJudge + InvalidationDetector
+                            using _VERDICT_PRIORITY; highest wins.
+          - priority_actions: from NextActionPlan.actions[:5], deduped by ticker.
+                            Falls back to heuristic when suggester failed.
+          - risk_flags:     merged from InvalidationDetector + PortfolioRiskNarrator
+                            + heuristic signals. Deduped by (flag_type, ticker).
+          - next_watch_tickers: union of all agents' outputs.
+          - overall_confidence: weighted average — AI agents count 0.7 weight,
+                            heuristic 0.3 when agents ran successfully.
+        """
+        # --- Verdict voting ---
+        top_verdict = self._vote_verdict(
+            heuristic_verdict=heuristic_verdict,
+            agent_results=agent_results,
+        )
+
+        # --- Priority actions from NextActionSuggester ---
+        priority_actions = self._extract_priority_actions(agent_results)
+        if not priority_actions:
+            priority_actions = self._build_priority_actions(heuristic_verdict)
+
+        # --- Risk flags: merge heuristic + agent outputs ---
+        risk_flags = self._merge_risk_flags(
+            signals=signals,
+            agent_results=agent_results,
+        )
+
+        # --- Next watch tickers: union ---
+        next_watch_tickers = self._merge_next_watch_tickers(
+            snapshot=snapshot,
+            signals=signals,
+            agent_results=agent_results,
+        )
+
+        # --- Confidence: weighted average ---
+        overall_confidence = self._compute_confidence(
+            heuristic_verdict=heuristic_verdict,
+            agent_results=agent_results,
+        )
+
+        # --- Narrative: from NextActionPlan summary if available ---
+        narrative = ""
+        if "next_action_suggester" in agent_results:
+            plan = agent_results["next_action_suggester"]
+            narrative = getattr(plan, "summary", "") or ""
+        if not narrative:
+            narrative = heuristic_verdict.reasoning_summary
+
+        return IntelligenceReport(
+            user_id=self.user_id,
+            trigger_source=self._normalize_trigger_source(trigger_source),
+            top_verdict=top_verdict,
+            top_verdict_conviction=self._confidence_to_conviction(overall_confidence),
+            overall_confidence=overall_confidence,
+            priority_actions=priority_actions[:5],
+            risk_flags=risk_flags[:10],
+            next_watch_tickers=next_watch_tickers[:10],
+            narrative_summary=narrative[:800],
+            agent_slots=agent_slots,
+            ttl_minutes=self._default_ttl_minutes(trigger_source),
+        )
+
+    def _vote_verdict(
+        self,
+        heuristic_verdict: EngineVerdict,
+        agent_results: dict[str, Any],
+    ) -> str:
+        """Collect verdict signals from all agents; highest priority wins."""
+        candidates: list[str] = [heuristic_verdict.verdict]
+
+        # ThesisJudge verdict → map to engine verdict
+        judge_output = agent_results.get("thesis_judge")
+        if judge_output is not None:
+            raw = getattr(judge_output, "verdict", None)
+            mapped = self._map_judge_verdict(str(raw) if raw else "")
+            if mapped:
+                candidates.append(mapped)
+
+        # InvalidationDetector verdict
+        inv_output = agent_results.get("invalidation_detector")
+        if inv_output is not None:
+            raw = getattr(inv_output, "verdict", None)
+            if str(raw) in ("CONFIRMED", "CONFIRMED_INVALID"):
+                candidates.append("RISK_ALERT")
+            elif str(raw) in ("SUSPECTED", "WEAKENING"):
+                candidates.append("REVIEW_THESIS")
+
+        # Pick highest priority
+        return max(candidates, key=lambda v: _VERDICT_PRIORITY.get(v, 0))
+
+    def _map_judge_verdict(self, raw: str) -> str | None:
+        mapping = {
+            "WEAKENING":   "REVIEW_THESIS",
+            "INVALIDATED": "RISK_ALERT",
+            "CONFIRMED_INVALID": "RISK_ALERT",
+            "ON_TRACK":    "HOLD",
+            "IMPROVING":   "BUY_SIGNAL",
+        }
+        return mapping.get(raw)
+
+    def _extract_priority_actions(
+        self, agent_results: dict[str, Any]
+    ) -> list[PriorityAction]:
+        """Convert NextActionPlan.actions → PriorityAction list."""
+        plan = agent_results.get("next_action_suggester")
+        if plan is None:
+            return []
+
+        actions = getattr(plan, "actions", []) or []
+        priority_actions: list[PriorityAction] = []
+        seen_tickers: set[str] = set()
+
+        urgency_map = {
+            "critical": "immediate",
+            "high": "today",
+            "medium": "this_week",
+            "low": "this_week",
+        }
+        action_type_map = {
+            "THESIS_INVALIDATE": "CONSIDER_EXIT",
+            "THESIS_REVIEW":     "REVIEW_THESIS",
+            "SIGNAL_RESPOND":    "CHECK_STOP_LOSS",
+            "WATCHLIST_MONITOR": "MONITOR",
+        }
+
+        for rank, action in enumerate(actions[:5], start=1):
+            ticker = getattr(action, "ticker", None)
+            # Dedup per ticker — keep highest urgency (already sorted)
+            if ticker and ticker != "PORTFOLIO" and ticker in seen_tickers:
+                continue
+            if ticker:
+                seen_tickers.add(ticker)
+
+            scope_str = str(getattr(action, "scope", "") or "")
+            action_type = action_type_map.get(scope_str, "MONITOR")
+
+            urgency_raw = str(getattr(action, "urgency", "low") or "low").lower()
+            urgency = urgency_map.get(urgency_raw, "this_week")
+
+            priority_actions.append(
+                PriorityAction(
+                    rank=rank,
+                    ticker=ticker,
+                    action_type=action_type,  # type: ignore[arg-type]
+                    urgency=urgency,  # type: ignore[arg-type]
+                    instruction=str(getattr(action, "step", "") or "")[:200],
+                    source_agent="next_action_suggester",
+                    reasoning=str(getattr(action, "rationale", "") or "")[:150],
+                )
+            )
+
+        return priority_actions
+
+    def _merge_risk_flags(
+        self,
+        signals: list[RankedSignal],
+        agent_results: dict[str, Any],
+    ) -> list[RiskFlag]:
+        """Merge heuristic risk flags + agent-sourced flags. Dedup by (type, ticker)."""
+        flags: list[RiskFlag] = []
+        seen: set[tuple[str, str | None]] = set()
+
+        def _add(flag: RiskFlag) -> None:
+            key = (flag.flag_type, flag.ticker)
+            if key not in seen:
+                seen.add(key)
+                flags.append(flag)
+
+        # Heuristic flags from signals
+        for f in self._build_risk_flags(signals):
+            _add(f)
+
+        # InvalidationDetector signals
+        inv_output = agent_results.get("invalidation_detector")
+        if inv_output is not None:
+            inv_signals = getattr(inv_output, "signals", []) or []
+            for sig in inv_signals[:5]:
+                breach = str(getattr(sig, "breach_type", "") or "")
+                ticker = getattr(sig, "ticker", None)
+                if breach:
+                    flag_type = (
+                        "THESIS_INVALIDATED" if breach in ("FUNDAMENTAL", "PRICE")
+                        else "STOP_LOSS_BREACH" if breach == "STOP_LOSS"
+                        else "VOLUME_ANOMALY"
+                    )
+                    _add(RiskFlag(
+                        flag_type=flag_type,  # type: ignore[arg-type]
+                        ticker=ticker,
+                        severity="HIGH",
+                        description=str(getattr(sig, "description", "") or "")[:200],
+                        confirmed_by=["invalidation_detector"],
+                        is_new=True,
+                    ))
+
+        # PortfolioRiskNarrator chapters
+        portfolio_output = agent_results.get("portfolio_risk_narrator")
+        if portfolio_output is not None:
+            chapters = getattr(portfolio_output, "chapters", []) or []
+            for chapter in chapters[:3]:
+                theme = str(getattr(chapter, "risk_theme", "") or "")
+                if "concentration" in theme.lower():
+                    flag_type = "CONCENTRATION_RISK"
+                elif "sector" in theme.lower():
+                    flag_type = "SECTOR_ROTATION_ADVERSE"
+                else:
+                    flag_type = "MARKET_TREND_REVERSAL"
+                severity_raw = str(getattr(chapter, "severity", "MEDIUM") or "MEDIUM").upper()
+                severity = severity_raw if severity_raw in ("LOW", "MEDIUM", "HIGH", "CRITICAL") else "MEDIUM"
+                _add(RiskFlag(
+                    flag_type=flag_type,  # type: ignore[arg-type]
+                    ticker=None,
+                    severity=severity,  # type: ignore[arg-type]
+                    description=str(getattr(chapter, "summary", "") or "")[:200],
+                    confirmed_by=["portfolio_risk_narrator"],
+                    is_new=True,
+                ))
+
+        return flags
+
+    def _merge_next_watch_tickers(
+        self,
+        snapshot: SystemSnapshot,
+        signals: list[RankedSignal],
+        agent_results: dict[str, Any],
+    ) -> list[str]:
+        seen: set[str] = set()
+        ordered: list[str] = []
+
+        def _add(ticker: str) -> None:
+            t = ticker.upper().strip()
+            if t and t not in seen:
+                seen.add(t)
+                ordered.append(t)
+
+        # Highest urgency: tickers from NextActionSuggester critical/high actions
+        plan = agent_results.get("next_action_suggester")
+        if plan is not None:
+            for action in (getattr(plan, "actions", []) or []):
+                urgency = str(getattr(action, "urgency", "") or "")
+                ticker = getattr(action, "ticker", None)
+                if ticker and urgency in ("critical", "high"):
+                    _add(ticker)
+
+        # Then heuristic next_watch_items
+        for item in self._extract_next_watch_tickers(snapshot, signals):
+            _add(item)
+
+        return ordered[:10]
+
+    def _compute_confidence(
+        self,
+        heuristic_verdict: EngineVerdict,
+        agent_results: dict[str, Any],
+    ) -> float:
+        """Weighted average confidence.
+
+        When AI agents ran: their outputs carry 0.7 weight, heuristic 0.3.
+        When no agents ran: use heuristic confidence directly.
+        """
+        ai_confidences: list[float] = []
+
+        judge = agent_results.get("thesis_judge")
+        if judge is not None:
+            c = getattr(judge, "confidence", None)
+            if c is not None:
+                ai_confidences.append(float(c))
+
+        plan = agent_results.get("next_action_suggester")
+        if plan is not None:
+            actions = getattr(plan, "actions", []) or []
+            if actions:
+                avg = sum(float(getattr(a, "confidence", 0.5)) for a in actions) / len(actions)
+                ai_confidences.append(avg)
+
+        if not ai_confidences:
+            return heuristic_verdict.confidence
+
+        ai_avg = sum(ai_confidences) / len(ai_confidences)
+        return round(0.7 * ai_avg + 0.3 * heuristic_verdict.confidence, 3)
+
+    # ------------------------------------------------------------------
+    # Wave B: heuristic-only synthesis (fallback when no AI client)
+    # ------------------------------------------------------------------
 
     async def _synthesize(
         self,
@@ -137,13 +713,7 @@ class IntelligenceEngine:
         verdict: EngineVerdict,
         trigger_source: str,
     ) -> IntelligenceReport:
-        """Build the central IntelligenceReport from current rule-based engine output.
-
-        Wave B scope:
-        - No cross-agent fan-out yet.
-        - Wrap existing rule synthesis into the new Investor OS contract.
-        - Preserve auditability through a minimal AgentSlot trail.
-        """
+        """Build IntelligenceReport from heuristic-only output (Wave B fallback)."""
         slot = AgentSlot(
             agent_name="heuristic_engine",
             status="ran",
@@ -184,18 +754,18 @@ class IntelligenceEngine:
             ]
 
         action_type_map = {
-            "RISK_ALERT": "CHECK_STOP_LOSS",
+            "RISK_ALERT":    "CHECK_STOP_LOSS",
             "REVIEW_THESIS": "REVIEW_THESIS",
-            "BUY_SIGNAL": "CONSIDER_ENTRY",
-            "SELL_SIGNAL": "CONSIDER_EXIT",
-            "HOLD": "MONITOR",
+            "BUY_SIGNAL":    "CONSIDER_ENTRY",
+            "SELL_SIGNAL":   "CONSIDER_EXIT",
+            "HOLD":          "MONITOR",
         }
         urgency_map = {
-            "RISK_ALERT": "immediate",
+            "RISK_ALERT":    "immediate",
             "REVIEW_THESIS": "today",
-            "BUY_SIGNAL": "today",
-            "SELL_SIGNAL": "immediate",
-            "HOLD": "this_week",
+            "BUY_SIGNAL":    "today",
+            "SELL_SIGNAL":   "immediate",
+            "HOLD":          "this_week",
         }
         return [
             PriorityAction(
@@ -253,17 +823,21 @@ class IntelligenceEngine:
 
         return ordered[:10]
 
+    # ------------------------------------------------------------------
+    # Shared helpers
+    # ------------------------------------------------------------------
+
     def _normalize_trigger_source(self, trigger_source: str) -> str:
         mapping = {
-            "scheduler": "scheduler_morning",
-            "scheduler_morning": "scheduler_morning",
-            "scheduler_eod": "scheduler_eod",
-            "discord_command": "user_query",
-            "user_query": "user_query",
-            "manual": "manual",
-            "watchlist_alert": "watchlist_alert",
+            "scheduler":          "scheduler_morning",
+            "scheduler_morning":  "scheduler_morning",
+            "scheduler_eod":      "scheduler_eod",
+            "discord_command":    "user_query",
+            "user_query":         "user_query",
+            "manual":             "manual",
+            "watchlist_alert":    "watchlist_alert",
             "thesis_invalidated": "thesis_invalidated",
-            "portfolio_breach": "portfolio_breach",
+            "portfolio_breach":   "portfolio_breach",
         }
         return mapping.get(trigger_source or "manual", "manual")
 
@@ -310,7 +884,6 @@ class IntelligenceEngine:
     def _map_signal_to_verdict(
         self, top: RankedSignal
     ) -> tuple[VerdictType, float]:
-        """Map the highest-scored signal to a verdict + confidence."""
         if top.source == "portfolio":
             return "RISK_ALERT", min(0.95, 0.70 + top.urgency_score * 0.25)
         if top.source == "thesis" and "invalidate" in top.description.lower():
@@ -354,8 +927,8 @@ class IntelligenceEngine:
         """Record internal dispatch decision for observability.
 
         Currently returns ["log"] when confidence passes the threshold.
-        Kept for backward compatibility with EngineOutput.dispatched_to
-        but does not perform any external side-effects.
+        Kept for backward compatibility with EngineOutput.dispatched_to.
+        External integrations must subscribe to IntelligenceEngineCompletedEvent.
         """
         dispatched: list[str] = []
         if verdict.confidence >= self.DISPATCH_THRESHOLD:
@@ -363,8 +936,21 @@ class IntelligenceEngine:
         return dispatched
 
 
+# ---------------------------------------------------------------------------
+# Module-level runner (singleton used by scheduler)
+# ---------------------------------------------------------------------------
+
+
 class _EngineRunner:
-    """Stateless runner — holds no session, safe as a module singleton."""
+    """Stateless runner — holds no session, safe as a module singleton.
+
+    Wave C: accepts optional ai_client injection.
+    When ai_client is provided, IntelligenceEngine will use multi-agent
+    orchestration. Otherwise falls back to heuristic engine.
+    """
+
+    def __init__(self, ai_client: Any | None = None) -> None:
+        self._ai_client = ai_client
 
     async def run_cycle(
         self,
@@ -376,10 +962,18 @@ class _EngineRunner:
         context_hint: str | None = None,
         trigger_source: str = "",
         priority: str = "normal",
+        ai_client: Any | None = None,
     ) -> EngineVerdict | None:
+        """Run a full intelligence cycle for one user.
+
+        Args:
+            ai_client: Optional per-call override. Falls back to runner-level
+                       ai_client, then to heuristic-only mode.
+        """
         from src.platform.db import AsyncSessionLocal
 
         effective_trigger = trigger_source or triggered_by
+        effective_client = ai_client or self._ai_client
 
         logger.info(
             "engine.run_cycle.start",
@@ -389,11 +983,16 @@ class _EngineRunner:
             trigger_source=effective_trigger,
             has_signal_summary=bool(signal_engine_summary),
             has_verdict_agent=verdict_agent is not None,
+            orchestration_mode="multi_agent" if effective_client else "heuristic",
         )
 
         try:
             async with AsyncSessionLocal() as session:
-                engine = IntelligenceEngine(session=session, user_id=user_id)
+                engine = IntelligenceEngine(
+                    session=session,
+                    user_id=user_id,
+                    ai_client=effective_client,
+                )
                 output = await engine.run_cycle(
                     trigger_source=effective_trigger,
                     signal_engine_summary=signal_engine_summary or None,
@@ -456,6 +1055,7 @@ class _EngineRunner:
                 action_required=completed.action_required,
                 flagged_ticker_count=len(flagged_tickers),
                 has_intelligence_report=output.intelligence_report is not None,
+                orchestration_mode="multi_agent" if effective_client else "heuristic",
             )
         except Exception as exc:
             logger.error(
@@ -468,16 +1068,7 @@ class _EngineRunner:
 
 
 def _extract_snapshot_tickers(snapshot: SystemSnapshot) -> tuple[str, ...]:
-    """Extract all flagged tickers from a SystemSnapshot.
-
-    Sources (in priority order):
-    1. watchlist_alerts — tickers with active triggered alerts
-    2. thesis_due_review — tickers with stale/overdue thesis
-    3. portfolio.top_exposed_tickers — high-exposure positions
-    4. watchlist.top_tickers — top watchlist signals
-
-    Deduplicates and uppercases all tickers.
-    """
+    """Extract all flagged tickers from a SystemSnapshot."""
     seen: set[str] = set()
     result: list[str] = []
 
@@ -503,7 +1094,13 @@ _engine_runner: _EngineRunner | None = None
 
 
 def get_intelligence_engine() -> _EngineRunner:
-    """Return the module-level _EngineRunner singleton."""
+    """Return the module-level _EngineRunner singleton.
+
+    Wave C: to enable multi-agent mode, inject AIClient:
+        from src.ai.client import AIClient
+        runner = get_intelligence_engine()
+        runner._ai_client = AIClient()  # or pass at construction time
+    """
     global _engine_runner
     if _engine_runner is None:
         _engine_runner = _EngineRunner()
