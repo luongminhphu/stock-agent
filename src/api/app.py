@@ -20,6 +20,7 @@ Route groups:
     /api/v1/memory         — investor memory snapshot + pattern refresh (wave 9b)
     /api/v1/core           — Intelligence Engine: snapshot, verdict, feedback (wave 10)
     /api/v1/portfolio      — buy/sell quick-trade actions (wave 11)
+    /api/v1/today-loop     — daily investor intelligence summary (single-call loop)
 """
 
 from __future__ import annotations
@@ -43,6 +44,7 @@ from src.api.routes.memory import router as memory_router
 from src.api.routes.portfolio import router as portfolio_router
 from src.api.routes.readmodel import router as readmodel_router
 from src.api.routes.thesis import router as thesis_router
+from src.api.routes.today_loop import router as today_loop_router
 from src.api.routes.watchlist import router as watchlist_router
 from src.platform.bootstrap import bootstrap, shutdown
 from src.platform.config import settings
@@ -194,6 +196,7 @@ def create_app() -> FastAPI:
     app.include_router(memory_router, prefix="/api/v1")       # Wave 9b
     app.include_router(core_engine_router, prefix="/api/v1")  # Wave 10 — Intelligence Engine
     app.include_router(portfolio_router, prefix="/api/v1")    # Wave 11 — Quick Trade
+    app.include_router(today_loop_router, prefix="/api/v1")   # Daily investor loop
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request, exc: Exception) -> JSONResponse:
