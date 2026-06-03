@@ -355,3 +355,54 @@ class DailyAgendaCompletedEvent(DomainEvent):
     decide_tickers: tuple[str, ...] = field(default_factory=tuple)
     watch_tickers: tuple[str, ...] = field(default_factory=tuple)
     opening_line: str = ""
+
+
+# ─── user action feedback loop (Wave E) ──────────────────────────────────────
+
+ActionType = Literal["SELL", "BUY", "IGNORE_ALERT", "MARK_REVIEWED", "DEFER"]
+
+
+@dataclass(frozen=True)
+class UserActionEvent(DomainEvent):
+    """Emitted when the investor explicitly acts on a recommendation or alert.
+
+    This is the primary feedback signal that closes the investor OS loop:
+
+        watchlist → market → engine → briefing → user action
+            ↑___________UserActionEvent___________________________↓
+
+    Produced by:
+      - bot: !sell, !buy, !ignore, !reviewed, !defer commands
+      - api: POST /actions  (future REST surface)
+
+    Consumed by:
+      - core.UserActionFeedbackListener → side-effects per action_type:
+          SELL         → thesis.mark_closed + watchlist.deprioritize
+          BUY          → watchlist.ensure_tracked
+          IGNORE_ALERT → watchlist.mute_alert
+          MARK_REVIEWED→ thesis.touch_reviewed_at + readmodel invalidate
+          DEFER        → watchlist.snooze
+        All side-effects also fan out to memory.record_action for pattern learning.
+
+    Fields:
+        user_id:       investor identifier
+        action_type:   one of ActionType literals
+        ticker:        primary ticker the action applies to
+        thesis_id:     optional — set when action is tied to a thesis
+        alert_id:      optional — set when action is IGNORE_ALERT on a specific alert
+        verdict_id:    optional — links back to the EngineVerdict that prompted action
+        note:          free-text user comment (from bot command arguments)
+        price:         execution price if known (SELL / BUY)
+        mute_days:     for IGNORE_ALERT — how many days to suppress (default 7)
+        snooze_hours:  for DEFER — how many hours to snooze watchlist (default 24)
+    """
+    user_id: str = ""
+    action_type: ActionType = "DEFER"  # type: ignore[assignment]
+    ticker: str = ""
+    thesis_id: int | None = None
+    alert_id: int | None = None
+    verdict_id: str = ""
+    note: str = ""
+    price: float | None = None
+    mute_days: int = 7
+    snooze_hours: int = 24
