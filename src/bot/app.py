@@ -66,6 +66,7 @@ def create_bot() -> commands.Bot:
             _start_post_mortem_subscriber(bot)          # Wave E: thesis post-mortem → Discord
             _start_intelligence_engine_scheduler(bot)   # Wave A: IE verdict → Discord (2×/day)
             _start_signal_reaction_listener(bot)        # Wave B: emoji reaction → user_signal
+            _start_agenda_subscriber(bot)               # Wave B: daily agenda → Discord (07:30)
             logger.info(
                 "bot.ready",
                 user=str(bot.user),
@@ -363,3 +364,32 @@ def _start_signal_reaction_listener(bot: commands.Bot) -> None:
     from src.bot.signal_reaction_listener import SignalReactionListener
     listener = SignalReactionListener(bot)
     listener.register()
+
+
+def _start_agenda_subscriber(bot: commands.Bot) -> None:
+    """Wire daily agenda → Discord embed at 07:30 ICT.
+
+    Delivery chain:
+        AgendaScheduler.run_for_user()        [briefing segment]
+          → DailyAgendaCompletedEvent         [platform/event_bus]
+            → AgendaSubscriber._handle()      [bot — Discord delivery]
+              → _build_embed()                [inline embed builder]
+              → channel.send(embed)           [morning_channel or alert_channel]
+    """
+    from src.bot.agenda_subscriber import AgendaSubscriber
+
+    channel_id = (
+        getattr(settings, "morning_channel_id", None)
+        or getattr(settings, "alert_channel_id", None)
+    )
+    if not channel_id:
+        logger.warning(
+            "bot.agenda_subscriber.not_available",
+            reason="morning_channel_id and alert_channel_id not configured — agenda embeds disabled",
+        )
+        return
+
+    subscriber = AgendaSubscriber(channel_id=int(channel_id))
+    subscriber.set_client(bot)
+    subscriber.register()
+    logger.info("bot.agenda_subscriber.registered", channel_id=channel_id)
