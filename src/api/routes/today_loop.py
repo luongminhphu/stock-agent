@@ -23,7 +23,7 @@ Design notes:
 - get_attention_needed() and get_scan_latest() open their own isolated sessions
   internally (see DashboardService) — no ISCE risk from this route.
 - thesis_digest flags are derived from get_theses_list() fields:
-    score < 50          → low_conviction
+    score < 70          → low_conviction
     days_since_review > 14 OR health_rank in (no_review, stale) → overdue_review
 - stale_sources is non-empty when a source raises; the route still returns 200
   with partial data so the UI can degrade gracefully.
@@ -44,7 +44,7 @@ from src.readmodel.dashboard_service import DashboardService
 router = APIRouter(prefix="/today-loop", tags=["today-loop"])
 
 _OVERDUE_REVIEW_DAYS = 14  # mirror dashboard_service constant
-_LOW_CONVICTION_THRESHOLD = 50  # score < 50 → flag low_conviction
+_LOW_CONVICTION_THRESHOLD = 70  # score < 70 → flag low_conviction
 
 
 def _default_user_id() -> str:
@@ -75,9 +75,6 @@ async def _build_today_loop(
     stale_sources: list[str] = []
     svc = DashboardService(session)
 
-    # ------------------------------------------------------------------
-    # 1. Live price map  (shared across attention + thesis_digest)
-    # ------------------------------------------------------------------
     price_map: dict[str, float] = {}
     if enrich_prices:
         try:
@@ -92,10 +89,6 @@ async def _build_today_loop(
         except Exception:
             stale_sources.append("price_map")
 
-    # ------------------------------------------------------------------
-    # 2. Attention items  (urgent tasks — 4 sources inside DashboardService)
-    #    Note: get_attention_needed() opens its own isolated session internally.
-    # ------------------------------------------------------------------
     attention_result = await _safe(
         svc.get_attention_needed(user_id, price_map=price_map, limit=attention_limit),
         label="attention",
@@ -108,20 +101,12 @@ async def _build_today_loop(
                 item.model_dump() if hasattr(item, "model_dump") else dict(item)
             )
 
-    # ------------------------------------------------------------------
-    # 3. Top signals  (from get_recent_signals — grouped by ticker, by strength)
-    #    Scan snapshot JSON has no stable "signals" key; use the service method.
-    # ------------------------------------------------------------------
     top_signals: list[dict] = await _safe(
         svc.get_recent_signals(user_id, days=7, limit=signal_limit),
         label="top_signals",
         stale_sources=stale_sources,
     ) or []
 
-    # ------------------------------------------------------------------
-    # 4. Market mood  (from latest WatchlistScan JSON — best-effort keys)
-    #    get_scan_latest() uses its own isolated session internally.
-    # ------------------------------------------------------------------
     scan_snapshot = await _safe(
         svc.get_scan_latest(user_id),
         label="scan_snapshot",
@@ -136,9 +121,6 @@ async def _build_today_loop(
             "summary_raw": scan_snapshot.get("summary"),
         }
 
-    # ------------------------------------------------------------------
-    # 5. Morning brief  (latest snapshot, phase=morning)
-    # ------------------------------------------------------------------
     brief_raw = await _safe(
         svc.get_brief_latest(user_id, phase="morning"),
         label="brief",
@@ -146,8 +128,6 @@ async def _build_today_loop(
     )
     brief_summary: dict[str, Any] = {}
     if brief_raw:
-        # content field is raw string; parsed_content keys (summary/content)
-        # are merged into the dict via **parsed_content in DashboardService.
         narrative = (
             brief_raw.get("summary")
             or brief_raw.get("content")
@@ -160,11 +140,6 @@ async def _build_today_loop(
             "feedback_outcome": brief_raw.get("feedback_outcome"),
         }
 
-    # ------------------------------------------------------------------
-    # 6. Thesis digest  (active theses needing action)
-    #    Fields confirmed from ThesisQueryService.get_theses_list():
-    #      score, days_since_review, health_rank, last_verdict, ticker, id
-    # ------------------------------------------------------------------
     thesis_digest: list[dict] = []
     try:
         all_active = await svc.get_theses_list(
@@ -180,7 +155,7 @@ async def _build_today_loop(
             if score is not None and score < _LOW_CONVICTION_THRESHOLD:
                 flags.append("low_conviction")
 
-            health = t.get("health_rank")  # no_review | stale | critical | weak | neutral | strong
+            health = t.get("health_rank")
             days_since = t.get("days_since_review")
             if health in ("no_review", "stale") or (
                 days_since is not None and days_since > _OVERDUE_REVIEW_DAYS
@@ -222,11 +197,6 @@ async def _build_today_loop(
     }
 
 
-# ---------------------------------------------------------------------------
-# Multi-user variant
-# ---------------------------------------------------------------------------
-
-
 @router.get("/{user_id}")
 async def get_today_loop(
     user_id: str,
@@ -265,11 +235,6 @@ async def get_today_loop(
         attention_limit=attention_limit,
         signal_limit=signal_limit,
     )
-
-
-# ---------------------------------------------------------------------------
-# Single-user alias (owner_user_id from .env)
-# ---------------------------------------------------------------------------
 
 
 @router.get("")
