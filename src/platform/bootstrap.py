@@ -58,6 +58,7 @@ _recent_reviews_store: object | None = None          # W1: RecentReviewsStore re
 _portfolio_query_adapter: object | None = None       # W3: PortfolioQueryAdapter singleton
 _global_risk_subscriber: object | None = None        # readmodel: GlobalRiskSubscriber singleton
 _intelligence_snapshot_subscriber: object | None = None  # readmodel: IntelligenceSnapshotSubscriber (Gap 2)
+_portfolio_snapshot_listener: object | None = None   # portfolio: PortfolioSnapshotListener singleton
 
 _pnl_service_class: type | None = None
 
@@ -90,6 +91,7 @@ async def bootstrap() -> None:
     global _portfolio_query_adapter
     global _global_risk_subscriber
     global _intelligence_snapshot_subscriber
+    global _portfolio_snapshot_listener
 
     if _quote_service is None:
         from src.market.adapters.factory import build_adapter
@@ -522,6 +524,14 @@ async def bootstrap() -> None:
         _user_action_listener.register()  # type: ignore[union-attr]
         logger.info("platform.bootstrap.user_action_listener_ready")
 
+    # ── portfolio: PortfolioSnapshotListener — aggregates P&L on request ────
+    if _portfolio_snapshot_listener is None:
+        from src.portfolio.snapshot_listener import PortfolioSnapshotListener
+
+        _portfolio_snapshot_listener = PortfolioSnapshotListener()
+        _portfolio_snapshot_listener.register()  # type: ignore[union-attr]
+        logger.info("platform.bootstrap.portfolio_snapshot_listener_ready")
+
     logger.info("platform.bootstrap.complete")
 
 
@@ -638,28 +648,10 @@ def get_pnl_service():
     return get_pnl_service_class()
 
 
-def get_investor_profile_service():
-    return _investor_profile_service
-
-
-def get_memory_consolidator():
-    return _memory_consolidator
-
-
-def get_agenda_builder_agent():
-    if _agenda_builder_agent is None:
+def get_session_factory():
+    if _session_factory is None:
         raise RuntimeError("bootstrap() has not been called")
-    return _agenda_builder_agent
-
-
-def get_agenda_service_factory():
-    return _agenda_service_factory
-
-
-def get_trend_reasoning_agent():
-    if _trend_reasoning_agent is None:
-        raise RuntimeError("bootstrap() has not been called")
-    return _trend_reasoning_agent
+    return _session_factory
 
 
 def get_trend_prediction_store():
@@ -668,70 +660,13 @@ def get_trend_prediction_store():
     return _trend_prediction_store
 
 
-def get_signal_engine_agent():
-    if _signal_engine_agent is None:
-        raise RuntimeError("bootstrap() has not been called")
-    return _signal_engine_agent
-
-
-def get_briefing_listener():
-    return _briefing_listener
-
-
-def get_opportunity_screen_scheduler():
-    return _opportunity_screen_scheduler
-
-
-def get_opportunity_screen_subscriber():
-    return _opportunity_screen_subscriber
-
-
-def get_intelligence_engine_listener():
-    """Return the IntelligenceEngineListener singleton (core segment, no Discord)."""
-    return _intelligence_engine_listener
-
-
-def get_intelligence_engine_subscriber():
-    """Return the IntelligenceEngineSubscriber singleton (bot segment, Discord delivery)."""
-    return _intelligence_engine_subscriber
-
-
-def get_session_factory():
-    """Return the AsyncSessionLocal factory cached during bootstrap.
-
-    Used by bot commands that construct ReviewService with reactor support
-    (Wave 3: ReviewOutcomeReactor activated when session_factory is present).
-    Returns None if bootstrap() has not been called yet — ReviewService
-    will skip the reactor step silently in that case.
-    """
-    return _session_factory
-
-
 def get_recent_reviews_store():
-    """Return the RecentReviewsStore singleton.
-
-    Used by /reviews bot command and any API route that surfaces recent
-    AI judge output. Raises RuntimeError if bootstrap() was not called.
-    """
     if _recent_reviews_store is None:
         raise RuntimeError("bootstrap() has not been called")
     return _recent_reviews_store
 
 
 def get_portfolio_query_adapter():
-    """Return the PortfolioQueryAdapter singleton.
-
-    Used when callers outside bootstrap need direct access to portfolio
-    query (e.g. API routes, future readmodel projections).
-    Returns None if bootstrap() has not been called yet.
-    """
+    if _portfolio_query_adapter is None:
+        raise RuntimeError("bootstrap() has not been called")
     return _portfolio_query_adapter
-
-
-def get_user_action_listener():
-    """Return the UserActionFeedbackListener singleton.
-
-    Used for debug/test access to verify the feedback loop is active.
-    Returns None if bootstrap() has not been called yet.
-    """
-    return _user_action_listener

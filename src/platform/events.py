@@ -73,10 +73,37 @@ class PositionRiskBreachedEvent(DomainEvent):
 
 
 @dataclass(frozen=True)
+class PortfolioSnapshotRequestedEvent(DomainEvent):
+    """Emitted by bot.PortfolioSnapshotScheduler (08:15 ICT) to trigger snapshot build.
+
+    Produced by: bot.PortfolioSnapshotScheduler
+    Consumed by: portfolio.PortfolioSnapshotListener
+    """
+    user_id: str = ""
+    phase: str = "morning"          # "morning" | "eod"
+    triggered_by: str = "scheduler"
+
+
+@dataclass(frozen=True)
 class PortfolioSnapshotReadyEvent(DomainEvent):
+    """Emitted by portfolio.PortfolioSnapshotListener after snapshot is built.
+
+    Produced by:  portfolio.PortfolioSnapshotListener
+    Consumed by:
+      - core.IntelligenceEngineListener  → inject into SystemSnapshot
+      - briefing.BriefingListener        → inject into morning brief context
+
+    Backward-compatible: original 3 fields (total_positions, total_nav,
+    unrealized_pnl) are preserved with same types and defaults.
+    """
+    user_id: str = ""
     total_positions: int = 0
     total_nav: float = 0.0
     unrealized_pnl: float = 0.0
+    unrealized_pnl_pct: float = 0.0
+    top_exposed_tickers: tuple[str, ...] = field(default_factory=tuple)
+    cash_pct: float = 0.0           # placeholder — cash model not yet modelled
+    snapshot_phase: str = "morning"
 
 
 # ─── thesis ──────────────────────────────────────────────────────────────────────
