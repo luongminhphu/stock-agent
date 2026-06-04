@@ -17,13 +17,13 @@
  * Auto-refresh: mỗi 10 phút (heavier than attention — has AI-derived mood).
  */
 
-import { apiBase } from '../../api/client.js';
 import {
   renderThesisDigest,
   updateMarketMoodKpi,
   updateSignalsBadge,
 } from './today-loop-renderer.js';
 
+const TODAY_LOOP_URL = '/api/v1/today-loop';
 const REFRESH_INTERVAL_MS = 10 * 60 * 1000;
 let _refreshTimer = null;
 
@@ -32,9 +32,7 @@ let _refreshTimer = null;
 // ---------------------------------------------------------------------------
 
 async function fetchTodayLoop({ attentionLimit = 5, signalLimit = 10 } = {}) {
-  // attentionLimit=5: we don't use attention_items here (loadAttentionPanel owns that)
-  // but the backend still needs a valid value — 5 keeps payload small.
-  const url = `${apiBase()}/today-loop?attention_limit=${attentionLimit}&signal_limit=${signalLimit}`;
+  const url = `${TODAY_LOOP_URL}?attention_limit=${attentionLimit}&signal_limit=${signalLimit}`;
   const res = await fetch(url, { headers: { 'Content-Type': 'application/json' } });
   if (!res.ok) throw new Error(`today-loop ${res.status}`);
   return res.json();
@@ -49,18 +47,12 @@ function distributeToUI(data) {
     top_signals    = [],
     thesis_digest  = [],
     market_mood    = {},
-    meta           = {},
     stale_sources  = [],
     generated_at,
   } = data;
 
-  // 1. Signals feed badge (top signal count from today's lens)
-  updateSignalsBadge(top_signals, meta);
-
-  // 2. Thesis digest strip (new UI element, injected after #actionSurface)
+  updateSignalsBadge(top_signals);
   renderThesisDigest(thesis_digest, { generatedAt: generated_at });
-
-  // 3. Market mood → latestScanCard (fast update before loadDashboard finishes)
   updateMarketMoodKpi(market_mood, {
     stale: stale_sources.includes('scan_snapshot'),
   });
@@ -80,7 +72,6 @@ export async function loadTodayLoop({ silent = false } = {}) {
     distributeToUI(data);
   } catch (err) {
     if (!silent) console.warn('[today-loop] fetch failed:', err.message);
-    // No fallback needed — attention-loader.js handles its own data independently
   }
 }
 
