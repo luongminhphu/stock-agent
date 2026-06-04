@@ -3,7 +3,10 @@ IntelligenceEngineListener — EventBus subscriber wiring the core engine.
 
 Owner: core segment.
 
-Consumed event : IntelligenceEngineRequestedEvent
+Consumed events:
+  - IntelligenceEngineRequestedEvent   (primary trigger)
+  - PortfolioSnapshotReadyEvent        (portfolio context injector)
+
 Emitted event  : IntelligenceEngineCompletedEvent
 Side-effect    : None. Discord delivery is handled by
                  src.bot.intelligence_engine_subscriber.IntelligenceEngineSubscriber,
@@ -23,6 +26,13 @@ Wave C (intelligence_report wire):
     Backward-compatible — existing consumers that only read
     verdict/confidence/action_required/summary are unaffected.
 
+Portfolio injection (next wave):
+    PortfolioSnapshotReadyEvent (emitted at 08:15 ICT by PortfolioSnapshotScheduler)
+    is cached per user_id. When IntelligenceEngineRequestedEvent arrives (08:35 ICT),
+    top_exposed_tickers and unrealized_pnl_pct are appended to context_hint so the
+    AI verdict prompt receives portfolio-aware context.
+    Cache is cleared after each engine cycle to avoid stale data.
+
 Boot: call IntelligenceEngineListener(...).register() in platform bootstrap.
 """
 from __future__ import annotations
@@ -35,6 +45,7 @@ from src.platform.event_bus import EventBus, get_event_bus
 from src.platform.events import (
     IntelligenceEngineCompletedEvent,
     IntelligenceEngineRequestedEvent,
+    PortfolioSnapshotReadyEvent,
 )
 from src.platform.logging import get_logger
 
@@ -43,6 +54,10 @@ logger = get_logger(__name__)
 
 class IntelligenceEngineListener:
     """Subscribe to IntelligenceEngineRequestedEvent → run engine cycle → emit CompletedEvent.
+
+    Also subscribes to PortfolioSnapshotReadyEvent to cache portfolio context
+    (top_exposed_tickers, unrealized_pnl_pct) per user_id. The cached context is
+    injected into engine.run_cycle() via context_hint enrichment then cleared.
 
     This class is owned by the *core* segment and must not import from src.bot.*.
     All Discord/notification side-effects are handled by downstream subscribers
@@ -62,13 +77,37 @@ class IntelligenceEngineListener:
     ) -> None:
         self._bus = bus or get_event_bus()
         self._verdict_agent = verdict_agent
+        # Cache keyed by user_id — stores latest PortfolioSnapshotReadyEvent
+        self._portfolio_context: dict[str, PortfolioSnapshotReadyEvent] = {}
 
     def register(self) -> None:
         self._bus.subscribe(IntelligenceEngineRequestedEvent, self._handle)
+        self._bus.subscribe(PortfolioSnapshotReadyEvent, self._handle_portfolio_snapshot)
         logger.info(
             "intelligence_listener.registered",
             wave="2_ai" if self._verdict_agent is not None else "1_heuristic",
         )
+
+    # ------------------------------------------------------------------
+    # Portfolio snapshot cache — runs ~20 min before engine cycle
+    # ------------------------------------------------------------------
+
+    async def _handle_portfolio_snapshot(
+        self, event: PortfolioSnapshotReadyEvent
+    ) -> None:
+        self._portfolio_context[event.user_id] = event
+        logger.info(
+            "intelligence_listener.portfolio_snapshot_cached",
+            user_id=event.user_id,
+            total_positions=event.total_positions,
+            unrealized_pnl_pct=event.unrealized_pnl_pct,
+            top_exposed_tickers=list(event.top_exposed_tickers),
+            snapshot_phase=event.snapshot_phase,
+        )
+
+    # ------------------------------------------------------------------
+    # Main engine handler
+    # ------------------------------------------------------------------
 
     async def _handle(self, event: IntelligenceEngineRequestedEvent) -> None:
         logger.info(
@@ -79,11 +118,42 @@ class IntelligenceEngineListener:
             has_signal_summary=bool(event.signal_engine_summary),
         )
 
+        # ── Enrich context_hint with portfolio snapshot if cached ───────
+        portfolio_snap = self._portfolio_context.pop(event.user_id, None)
+        enriched_context_hint: str | None = event.context_hint
+
+        if portfolio_snap is not None:
+            portfolio_lines = [
+                f"Portfolio snapshot ({portfolio_snap.snapshot_phase}):",
+                f"  positions={portfolio_snap.total_positions}",
+                f"  nav={portfolio_snap.total_nav:.0f}",
+                f"  unrealized_pnl_pct={portfolio_snap.unrealized_pnl_pct:+.2f}%",
+                f"  top_exposed={','.join(portfolio_snap.top_exposed_tickers)}",
+            ]
+            portfolio_block = " | ".join(portfolio_lines)
+            enriched_context_hint = (
+                f"{event.context_hint} | {portfolio_block}".strip(" | ")
+                if event.context_hint
+                else portfolio_block
+            )
+            logger.info(
+                "intelligence_listener.portfolio_context_injected",
+                user_id=event.user_id,
+                unrealized_pnl_pct=portfolio_snap.unrealized_pnl_pct,
+                top_exposed_tickers=list(portfolio_snap.top_exposed_tickers),
+            )
+        else:
+            logger.debug(
+                "intelligence_listener.no_portfolio_context",
+                user_id=event.user_id,
+                reason="snapshot_not_cached_or_already_consumed",
+            )
+
         verdict = await engine.run_cycle(
             user_id=event.user_id,
             trigger_source=event.trigger_source,
             priority=event.priority,
-            context_hint=event.context_hint,
+            context_hint=enriched_context_hint,
             signal_engine_summary=event.signal_engine_summary,
             verdict_agent=self._verdict_agent,
         )
@@ -96,7 +166,7 @@ class IntelligenceEngineListener:
             )
             return
 
-        # ── Emit IntelligenceEngineCompletedEvent ──────────────────────────
+        # ── Emit IntelligenceEngineCompletedEvent ────────────────────────
         echoed_verdict_event_id: str = (
             getattr(verdict, "verdict_event_id", None) or str(uuid.uuid4())
         )
@@ -161,6 +231,11 @@ class IntelligenceEngineListener:
                 reason="heuristic_path_or_report_not_attached",
             )
 
+        # Extract flagged_tickers from verdict for GlobalRiskSubscriber
+        flagged_tickers: tuple[str, ...] = ()
+        if portfolio_snap is not None:
+            flagged_tickers = portfolio_snap.top_exposed_tickers
+
         completed = IntelligenceEngineCompletedEvent(
             user_id=event.user_id,
             verdict=verdict.verdict,
@@ -173,6 +248,7 @@ class IntelligenceEngineListener:
             risk_signals=_to_tuple(getattr(verdict, "risk_signals", None)),
             next_watch_items=_to_tuple(getattr(verdict, "next_watch_items", None)),
             sources=_to_tuple(getattr(verdict, "sources", None)),
+            flagged_tickers=flagged_tickers,
             agent_slots=agent_slots,
             priority_actions=priority_actions,
         )
@@ -188,4 +264,5 @@ class IntelligenceEngineListener:
             next_watch_count=len(completed.next_watch_items),
             agent_slot_count=len(completed.agent_slots),
             priority_action_count=len(completed.priority_actions),
+            flagged_ticker_count=len(completed.flagged_tickers),
         )
