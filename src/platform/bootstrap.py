@@ -676,3 +676,21 @@ def get_agenda_service_factory():
     if _agenda_service_factory is None:
         raise RuntimeError("bootstrap() has not been called")
     return _agenda_service_factory
+
+
+def get_investor_profile_service() -> tuple | None:
+    """Return (InvestorProfileService class, user_id str) or None if not initialised.
+
+    Returns None (not raises) when scheduler_user_id is not configured —
+    callers must handle the None case gracefully.
+    """
+    return _investor_profile_service
+
+
+def get_memory_consolidator():
+    """Return the MemoryConsolidator singleton or None if not initialised.
+
+    Returns None (not raises) when scheduler_user_id is not configured —
+    callers must handle the None case gracefully.
+    """
+    return _memory_consolidator
