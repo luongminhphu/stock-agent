@@ -1,0 +1,184 @@
+/* ─── Today-Loop UI ─────────────────────────────────────────────────────────────────
+   Owner: modules/today-loop
+   Classes:
+     .thesis-digest-strip   — container injected after #actionSurface
+     .tds-*                 — thesis digest item parts
+     .tl-signal-badge       — ⚡ Top N badge in #signalsFeed header
+──────────────────────────────────────────────────────────────────────────────── */
+
+/* ── Strip container ─────────────────────────────────────────────────────────────────── */
+.thesis-digest-strip {
+  max-width: var(--content-max);
+  margin-inline: auto;
+  margin-bottom: var(--layer-gap, 16px);
+  background: rgba(251, 146, 60, 0.04);
+  border: 1px solid rgba(251, 146, 60, 0.15);
+  border-radius: 12px;
+  padding: 10px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.thesis-digest-strip.hidden { display: none; }
+
+/* ── Strip header ───────────────────────────────────────────────────────────────────── */
+.tds-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tds-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+.tds-count {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fb923c;
+  background: rgba(251, 146, 60, 0.12);
+  padding: 1px 7px;
+  border-radius: 99px;
+}
+.tds-ts {
+  margin-left: auto;
+  font-size: 0.7rem;
+  color: var(--faint);
+}
+
+/* ── Items list ────────────────────────────────────────────────────────────────────────── */
+.tds-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* ── Single digest item ─────────────────────────────────────────────────────────────────── */
+.tds-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+  border: 1px solid transparent;
+}
+.tds-item:hover {
+  background: rgba(251, 146, 60, 0.06);
+  border-color: rgba(251, 146, 60, 0.15);
+}
+.tds-item:focus-visible {
+  outline: 2px solid rgba(125, 211, 252, 0.5);
+  outline-offset: 2px;
+}
+
+/* ── Ticker ────────────────────────────────────────────────────────────────────────────────────── */
+.tds-ticker {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--brand, #7dd3fc);
+  letter-spacing: 0.04em;
+  min-width: 52px;
+  flex-shrink: 0;
+}
+
+/* ── Flags (low_conviction, overdue_review) ────────────────────────────────────────── */
+.tds-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+}
+.tds-flag {
+  font-size: 0.68rem;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 99px;
+  white-space: nowrap;
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--muted);
+}
+.tds-flag--conviction {
+  background: rgba(251, 146, 60, 0.12);
+  color: #fb923c;
+}
+.tds-flag--overdue {
+  background: rgba(250, 204, 21, 0.1);
+  color: #facc15;
+}
+
+/* ── Aside: pnl + score + verdict ───────────────────────────────────────────────────────── */
+.tds-aside {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.tds-pnl {
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.tds-pnl--pos { color: #4ade80; }
+.tds-pnl--neg { color: #fb923c; }
+
+.tds-score {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 20px;
+  text-align: right;
+}
+
+.tds-verdict {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 99px;
+  white-space: nowrap;
+}
+.tds-verdict--buy  { background: rgba(74,  222, 128, 0.13); color: #4ade80; }
+.tds-verdict--hold { background: rgba(125, 211, 252, 0.1);  color: #7dd3fc; }
+.tds-verdict--sell { background: rgba(251, 146, 60,  0.13); color: #fb923c; }
+.tds-verdict--watch { background: rgba(250, 204, 21,  0.1);  color: #facc15; }
+
+/* ── ⚡ Top-N signal badge injected into #signalsFeed header ─────────────────────────── */
+.tl-signal-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #facc15;
+  background: rgba(250, 204, 21, 0.1);
+  border: 1px solid rgba(250, 204, 21, 0.2);
+  border-radius: 99px;
+  padding: 2px 9px;
+  margin-left: 8px;
+  vertical-align: middle;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+/* ── Mobile: stack flags, hide score ────────────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .tds-item {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .tds-flags {
+    order: 3;
+    width: 100%;
+  }
+  .tds-aside {
+    margin-left: 0;
+  }
+  .tds-score {
+    display: none;
+  }
+}
