@@ -532,7 +532,7 @@
               <span class="signal-sub" id="briefActedSub">acted / total</span>
             </article>
 
-            <!-- Latest Scan: span 2 — cùng dòng với 3 cards trên -->
+            <!-- Latest Scan: span 2 — cùng dòng với Upcoming/Review/Brief -->
             <article class="signal-card signal-card--scan" id="latestScanCard">
               <span class="signal-label">Latest scan</span>
               <strong class="signal-value" id="latestScanAt">—</strong>
@@ -1077,9 +1077,130 @@
               <input id="thesisHorizonField" name="horizon_days" type="number" placeholder="90" />
             </div>
           </div>
-          <div class="form-actions">
+          <div class="modal-footer">
             <button type="button" class="ghost-btn" data-close="thesisModal">Hủy</button>
-            <button type="submit" class="primary-btn" id="thesisSubmitBtn">Lưu thesis</button>
+            <button type="submit" class="primary-btn" id="thesisSubmitBtn">Lưu Thesis</button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+
+    <dialog id="assumptionModal" aria-labelledby="assumptionModalTitle">
+      <div class="modal-inner">
+        <div class="modal-header">
+          <h2 id="assumptionModalTitle">Thêm Assumption</h2>
+          <button class="modal-close" data-close="assumptionModal" aria-label="Đóng">&#x2715;</button>
+        </div>
+        <div class="suggest-bar">
+          <div class="form-field">
+            <label>✨ AI gợi ý assumption cho <strong id="assumptionTickerDisplay">—</strong></label>
+            <input id="assumptionSuggestTicker" type="hidden" />
+          </div>
+          <button type="button" id="assumptionAiSuggestBtn" class="suggest-btn">AI gợi ý</button>
+        </div>
+        <div id="assumptionSuggestLoading" class="suggest-loading hidden"><div class="spinner"></div>AI đang gợi ý assumptions…</div>
+        <div id="assumptionSuggestResult" class="suggest-result hidden"></div>
+        <form id="assumptionForm" class="form-grid" novalidate>
+          <input type="hidden" id="assumptionThesisId" />
+          <input type="hidden" id="assumptionIdField" />
+          <div class="form-field">
+            <label for="assumptionDescField">Nội dung giả định *</label>
+            <textarea id="assumptionDescField" name="description" placeholder="VD: Biên lợi nhuận gộp duy trì >30% trong 4Q tới" required></textarea>
+          </div>
+          <div class="form-field">
+            <label for="assumptionRationaleField">Lý do / Cơ sở</label>
+            <textarea id="assumptionRationaleField" name="rationale" placeholder="Tại sao giả định này quan trọng?"></textarea>
+          </div>
+          <div class="form-row">
+            <div class="form-field">
+              <label for="assumptionStatusField">Status</label>
+              <select id="assumptionStatusField" name="status">
+                <option value="valid">valid</option>
+                <option value="invalid">invalid</option>
+                <option value="pending">pending</option>
+                <option value="uncertain">uncertain</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="assumptionConfidenceField">Confidence (0–1)</label>
+              <input id="assumptionConfidenceField" name="confidence" type="number" min="0" max="1" step="0.05" placeholder="0.75" />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="ghost-btn" data-close="assumptionModal">Hủy</button>
+            <button type="submit" class="primary-btn">Lưu Assumption</button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+
+    <dialog id="catalystModal" aria-labelledby="catalystModalTitle">
+      <div class="modal-inner">
+        <div class="modal-header">
+          <h2 id="catalystModalTitle">Thêm Catalyst</h2>
+          <button class="modal-close" data-close="catalystModal" aria-label="Đóng">&#x2715;</button>
+        </div>
+        <div class="suggest-bar">
+          <div class="form-field">
+            <label>✨ AI gợi ý catalyst cho <strong id="catalystTickerDisplay">—</strong></label>
+            <input id="catalystSuggestTicker" type="hidden" />
+          </div>
+          <button type="button" id="catalystAiSuggestBtn" class="suggest-btn">AI gợi ý</button>
+        </div>
+        <div id="catalystSuggestLoading" class="suggest-loading hidden"><div class="spinner"></div>AI đang gợi ý catalysts…</div>
+        <div id="catalystSuggestResult" class="suggest-result hidden"></div>
+        <form id="catalystForm" class="form-grid" novalidate>
+          <input type="hidden" id="catalystThesisId" />
+          <input type="hidden" id="catalystIdField" />
+          <div class="form-field">
+            <label for="catalystDescField">Mô tả catalyst *</label>
+            <textarea id="catalystDescField" name="description" placeholder="VD: KQKD Q2/2025 vượt kỳ vọng, EPS tăng 18% YoY" required></textarea>
+          </div>
+          <div class="form-field">
+            <label for="catalystRationaleField">Tác động kỳ vọng</label>
+            <textarea id="catalystRationaleField" name="rationale" placeholder="Catalyst này ảnh hưởng thế nào đến thesis?"></textarea>
+          </div>
+          <div class="form-row">
+            <div class="form-field">
+              <label for="catalystStatusField">Status</label>
+              <select id="catalystStatusField" name="status">
+                <option value="pending">pending</option>
+                <option value="triggered">triggered</option>
+                <option value="expired">expired</option>
+                <option value="cancelled">cancelled</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="catalystDateField">Ngày kỳ vọng</label>
+              <input id="catalystDateField" name="expected_date" type="date" />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="ghost-btn" data-close="catalystModal">Hủy</button>
+            <button type="submit" class="primary-btn">Lưu Catalyst</button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+
+    <dialog id="watchlistAddModal" aria-labelledby="watchlistAddModalTitle">
+      <div class="modal-inner">
+        <div class="modal-header">
+          <h2 id="watchlistAddModalTitle">Thêm mã vào Watchlist</h2>
+          <button class="modal-close" data-close="watchlistAddModal" aria-label="Đóng">&#x2715;</button>
+        </div>
+        <form id="watchlistAddForm" class="form-grid" novalidate>
+          <div class="form-field">
+            <label for="watchlistTickerInput">Mã CK *</label>
+            <input id="watchlistTickerInput" name="ticker" class="ticker-input" placeholder="VNM, HPG, VIC…" required />
+          </div>
+          <div class="form-field">
+            <label for="watchlistNoteInput">Ghi chú</label>
+            <input id="watchlistNoteInput" name="note" placeholder="Lý do theo dõi…" />
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="ghost-btn" data-close="watchlistAddModal">Hủy</button>
+            <button type="submit" class="primary-btn">Thêm vào Watchlist</button>
           </div>
         </form>
       </div>
@@ -1092,65 +1213,78 @@
           <button class="modal-close" data-close="decisionModal" aria-label="Đóng">&#x2715;</button>
         </div>
         <form id="decisionForm" class="form-grid" novalidate>
-          <input type="hidden" id="decisionIdField" />
           <div class="form-row">
             <div class="form-field">
-              <label for="decisionTickerField">Mã CK *</label>
-              <input id="decisionTickerField" name="ticker" class="ticker-input" placeholder="VNM" required />
+              <label for="decTickerField">Mã CK *</label>
+              <input id="decTickerField" name="ticker" class="ticker-input" placeholder="VNM" required />
             </div>
             <div class="form-field">
-              <label for="decisionActionField">Hành động *</label>
-              <select id="decisionActionField" name="action" required>
-                <option value="">— chọn —</option>
-                <option value="BUY">BUY</option>
-                <option value="SELL">SELL</option>
-                <option value="HOLD">HOLD</option>
-                <option value="SKIP">SKIP</option>
-                <option value="REDUCE">REDUCE</option>
-                <option value="ADD">ADD</option>
+              <label for="decActionField">Hành động *</label>
+              <select id="decActionField" name="decision_type">
+                <option value="BUY">MUA</option>
+                <option value="SELL">BÁN</option>
+                <option value="HOLD">GIỮ</option>
+                <option value="SKIP">BỎ QUA</option>
               </select>
             </div>
           </div>
-          <div class="form-field">
-            <label for="decisionReasonField">Lý do *</label>
-            <textarea id="decisionReasonField" name="reason" placeholder="Lý do ra quyết định…" required></textarea>
-          </div>
           <div class="form-row">
             <div class="form-field">
-              <label for="decisionPriceField">Giá thực hiện</label>
-              <input id="decisionPriceField" name="price" type="number" placeholder="85000" />
+              <label for="decPriceField">Giá thực hiện</label>
+              <input id="decPriceField" name="price" type="number" placeholder="85000" step="100" />
             </div>
             <div class="form-field">
-              <label for="decisionConfidenceField">Confidence (0–100)</label>
-              <input id="decisionConfidenceField" name="confidence" type="number" min="0" max="100" placeholder="70" />
+              <label for="decQtyField">Khối lượng</label>
+              <input id="decQtyField" name="quantity" type="number" placeholder="1000" step="100" />
             </div>
           </div>
           <div class="form-field">
-            <label for="decisionEmotionField">Trạng thái tâm lý</label>
-            <select id="decisionEmotionField" name="emotion_tag">
-              <option value="">— không chọn —</option>
-              <option value="confident">Confident</option>
-              <option value="uncertain">Uncertain</option>
-              <option value="fearful">Fearful</option>
-              <option value="greedy">Greedy</option>
-              <option value="neutral">Neutral</option>
+            <label for="decisionThesisSelect">Thesis liên quan</label>
+            <select id="decisionThesisSelect" name="thesis_id">
+              <option value="">— Chọn thesis (không bắt buộc) —</option>
             </select>
           </div>
           <div class="form-field">
-            <label for="decisionContextField">Context thị trường</label>
-            <textarea id="decisionContextField" name="market_context" placeholder="Mô tả ngắn về bối cảnh thị trường lúc ra quyết định…"></textarea>
+            <label for="decReasonField">Lý do quyết định *</label>
+            <textarea id="decReasonField" name="reasoning" placeholder="Tại sao quyết định này? Thesis nào dẫn đến hành động này?" rows="3"></textarea>
           </div>
-          <div class="form-actions">
+          <div class="form-field">
+            <label for="decEmotionField">Cảm xúc lúc ra quyết định</label>
+            <select id="decEmotionField" name="emotion_tag">
+              <option value="">— chọn —</option>
+              <option value="confident">Tự tin</option>
+              <option value="uncertain">Không chắc</option>
+              <option value="fearful">Lo sợ</option>
+              <option value="greedy">Tham lam</option>
+              <option value="fomo">FOMO</option>
+              <option value="disciplined">Kỷ luật</option>
+            </select>
+          </div>
+          <div class="modal-footer">
             <button type="button" class="ghost-btn" data-close="decisionModal">Hủy</button>
-            <button type="submit" class="primary-btn" id="decisionSubmitBtn">Lưu decision</button>
+            <button type="submit" class="primary-btn">Lưu Decision</button>
           </div>
         </form>
       </div>
     </dialog>
 
-    <script src="/static/dashboard/dashboard.js" defer></script>
-    <script src="/static/dashboard/js/signals.js" defer></script>
-    <script src="/static/dashboard/js/quick-trade.js" defer></script>
-    <script src="/static/dashboard/js/heatmap.js" defer></script>
+    <dialog id="deleteModal" aria-labelledby="deleteModalTitle">
+      <div class="modal-inner">
+        <div class="modal-header">
+          <h2 id="deleteModalTitle">Xác nhận xóa</h2>
+          <button class="modal-close" data-close="deleteModal" aria-label="Đóng">&#x2715;</button>
+        </div>
+        <div class="modal-body">
+          <p id="deleteModalMsg">Bạn chắc chắn muốn xóa?</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="ghost-btn" data-close="deleteModal">Hủy</button>
+          <button type="button" id="deleteConfirmBtn" class="danger-btn">Xóa</button>
+        </div>
+      </div>
+    </dialog>
+
+    <script src="/static/dashboard/js/quick-trade.js"></script>
+    <script type="module" src="/static/dashboard/js/app.js?v=19" data-cfasync="false"></script>
   </body>
 </html>
