@@ -694,3 +694,12 @@ def get_memory_consolidator():
     callers must handle the None case gracefully.
     """
     return _memory_consolidator
+
+
+def get_briefing_listener():
+    """Return the BriefingListener singleton or None if not initialised.
+
+    Returns None (not raises) when scheduler_user_id is not configured —
+    callers must handle the None case gracefully.
+    """
+    return _briefing_listener
