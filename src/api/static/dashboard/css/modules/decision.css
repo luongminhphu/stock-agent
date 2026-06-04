@@ -280,3 +280,67 @@
   font-size: 0.76rem;
   color: var(--muted);
 }
+
+/* ── Lesson card — full fields (confidence, pnl, what_went_right/wrong, suggested_adjustment) ── */
+.lesson-conf {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 2-column right/wrong layout inside lesson card */
+.lesson-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  margin-top: 2px;
+}
+.lesson-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lesson-col-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.lesson-col--right .lesson-col-label { color: #4ade80; }
+.lesson-col--wrong .lesson-col-label { color: #fb923c; }
+.lesson-col ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.lesson-col ul li {
+  font-size: 0.78rem;
+  color: var(--muted);
+  padding-left: 8px;
+  position: relative;
+  line-height: 1.5;
+}
+.lesson-col ul li::before {
+  content: "·";
+  position: absolute;
+  left: 0;
+  color: var(--faint);
+}
+
+/* Suggested adjustment callout */
+.lesson-adjust {
+  font-size: 0.8rem;
+  color: var(--text);
+  padding: 7px 10px;
+  background: rgba(125, 211, 252, 0.05);
+  border-left: 2px solid rgba(125, 211, 252, 0.25);
+  border-radius: 0 6px 6px 0;
+  line-height: 1.5;
+  margin-top: 2px;
+}
+.lesson-adjust strong {
+  color: var(--brand, #7dd3fc);
+}
