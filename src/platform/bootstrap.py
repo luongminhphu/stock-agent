@@ -670,3 +670,9 @@ def get_portfolio_query_adapter():
     if _portfolio_query_adapter is None:
         raise RuntimeError("bootstrap() has not been called")
     return _portfolio_query_adapter
+
+
+def get_agenda_service_factory():
+    if _agenda_service_factory is None:
+        raise RuntimeError("bootstrap() has not been called")
+    return _agenda_service_factory
