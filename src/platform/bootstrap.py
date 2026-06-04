@@ -292,7 +292,7 @@ async def bootstrap() -> None:
         )
         logger.info("platform.bootstrap.recent_reviews_store_ready")
 
-    # ── W3: PortfolioQueryAdapter (readmodel) ─────────────────────────────────
+    # ── W3: PortfolioQueryAdapter (readmodel) ────────────────────────────────
     if _portfolio_query_adapter is None:
         from src.readmodel.portfolio_query_service import PortfolioQueryAdapter
         from src.platform.db import AsyncSessionLocal
@@ -308,15 +308,12 @@ async def bootstrap() -> None:
     await bus.start()
     logger.info("platform.bootstrap.event_bus_ready")
 
-    # ── Wave 3 (readmodel): cache invalidation hooks ──────────────────────────
+    # ── Wave 3 (readmodel): cache invalidation hooks ─────────────────────────
     from src.readmodel import CacheSubscriber
     CacheSubscriber.register()
     logger.info("platform.bootstrap.cache_subscriber_ready")
 
-    # ── Gap 2 (readmodel): IntelligenceSnapshotSubscriber ─────────────────────
-    # Subscribes to IntelligenceEngineCompletedEvent → upserts IntelligenceReport
-    # into IntelligenceSnapshotStore so bot/api read from cache without
-    # re-triggering the AI cycle.
+    # ── Gap 2 (readmodel): IntelligenceSnapshotSubscriber ────────────────────
     if _intelligence_snapshot_subscriber is None:
         from src.readmodel import IntelligenceSnapshotSubscriber
 
@@ -324,7 +321,7 @@ async def bootstrap() -> None:
         _intelligence_snapshot_subscriber = IntelligenceSnapshotSubscriber
         logger.info("platform.bootstrap.intelligence_snapshot_subscriber_ready")
 
-    # ── readmodel: GlobalRiskSubscriber — project IE verdict into memory store ─
+    # ── readmodel: GlobalRiskSubscriber — project IE verdict into memory store
     if _global_risk_subscriber is None:
         from src.readmodel.global_risk_subscriber import GlobalRiskSubscriber
 
@@ -394,7 +391,7 @@ async def bootstrap() -> None:
                 reason="scheduler_user_id not configured",
             )
 
-    # ── G4: StressTest → Watchlist trigger bridge ─────────────────────────────
+    # ── G4: StressTest → Watchlist trigger bridge ────────────────────────────
     if _stress_test_subscriber is None:
         from src.watchlist.stress_test_subscriber import StressTestSubscriber
         from src.platform.db import AsyncSessionLocal
@@ -419,10 +416,10 @@ async def bootstrap() -> None:
         _opportunity_screen_subscriber.register()
         logger.info("platform.bootstrap.opportunity_screen_subscriber_ready")
 
-    # ── Wave B2: SignalEngineListener — fully wired with portfolio context ─────
+    # ── Wave B2: SignalEngineListener — fully wired with portfolio context ────
     if _signal_engine_listener is None:
         from src.ai.signal_engine_listener import SignalEngineListener
-        from src.thesis.watchlist_query_service import WatchlistQueryService
+        from src.watchlist.watchlist_query_service import WatchlistQueryService
         from src.thesis.stress_test_query_service import StressTestQueryService
         from src.thesis.thesis_query_service import ThesisActiveContextQuery
         from src.platform.db import AsyncSessionLocal
@@ -438,11 +435,11 @@ async def bootstrap() -> None:
         _signal_engine_listener.register()
         logger.info("platform.bootstrap.signal_engine_listener_ready")
 
-    # ── Trend Prediction: TrendEngineListener ─────────────────────────────────
+    # ── Trend Prediction: TrendEngineListener ────────────────────────────────
     if _trend_engine_listener is None:
         from src.ai.trend_engine_listener import TrendEngineListener
         from src.market.trend_engine import TrendEngine
-        from src.thesis.watchlist_query_service import WatchlistQueryService
+        from src.watchlist.watchlist_query_service import WatchlistQueryService
         from src.thesis.thesis_query_service import ThesisActiveContextQuery
         from src.platform.db import AsyncSessionLocal
 
@@ -459,7 +456,7 @@ async def bootstrap() -> None:
         _trend_engine_listener.register()
         logger.info("platform.bootstrap.trend_engine_listener_ready")
 
-    # ── Wave E: PostMortemService + MemoryInjectionListener ───────────────────
+    # ── Wave E: PostMortemService + MemoryInjectionListener ──────────────────
     if _post_mortem_service is None:
         from src.thesis.post_mortem_service import PostMortemService
         from src.platform.db import AsyncSessionLocal
@@ -481,10 +478,7 @@ async def bootstrap() -> None:
         _memory_injection_listener.register()  # type: ignore[union-attr]
         logger.info("platform.bootstrap.memory_injection_listener_ready")
 
-    # ── core: IntelligenceEngineListener (Wave 2 AI active) ───────────────────
-    # Note: channel_id and Discord client are NOT wired here.
-    # Discord delivery is owned by IntelligenceEngineSubscriber (bot segment),
-    # registered via _inject_intelligence_engine_subscriber() in app.py.
+    # ── core: IntelligenceEngineListener (Wave 2 AI active) ──────────────────
     if _intelligence_engine_listener is None:
         from src.core.intelligence_listener import IntelligenceEngineListener
         from src.ai.agents.intelligence_verdict import IntelligenceVerdictAgent
@@ -498,9 +492,7 @@ async def bootstrap() -> None:
         _intelligence_engine_listener.register()
         logger.info("platform.bootstrap.intelligence_engine_listener_ready")
 
-    # ── bot: IntelligenceEngineSubscriber (Discord delivery) ──────────────────
-    # Singleton created here so app.py can inject the Discord client via
-    # get_intelligence_engine_subscriber().set_client(bot).
+    # ── bot: IntelligenceEngineSubscriber (Discord delivery) ─────────────────
     if _intelligence_engine_subscriber is None:
         from src.bot.intelligence_engine_subscriber import IntelligenceEngineSubscriber
         from src.platform.config import settings
@@ -514,7 +506,7 @@ async def bootstrap() -> None:
             discord_channel_id=channel_id,
         )
 
-    # ── core: EngineFeedbackListener ──────────────────────────────────────────
+    # ── core: EngineFeedbackListener ─────────────────────────────────────────
     if _engine_feedback_listener is None:
         from src.core.feedback_listener import EngineFeedbackListener
 
@@ -523,9 +515,6 @@ async def bootstrap() -> None:
         logger.info("platform.bootstrap.engine_feedback_listener_ready")
 
     # ── core: UserActionFeedbackListener — closes the feedback loop ───────────
-    # Subscribes to UserActionEvent published by bot/api.
-    # Without this, thesis close, watchlist deprioritize, and memory record
-    # are silently dropped on every user action.
     if _user_action_listener is None:
         from src.core.user_action_listener import UserActionFeedbackListener
 
