@@ -1,5 +1,5 @@
 /**
- * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard + Wave D lesson loop + Wave E brief ticker + Wave F brief feedback + Wave G brief generate + Wave 1 UX + Wave 2 memory + AttentionPanel + Wave 1 wire + Wave 2 wire + Wave 3 wire + Wave 4 wire + Wave A gap-wire + market breadth + engine heartbeat)
+ * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard + Wave D lesson loop + Wave E brief ticker + Wave F brief feedback + Wave G brief generate + Wave 1 UX + Wave 2 memory + AttentionPanel + Wave 1 wire + Wave 2 wire + Wave 3 wire + Wave 4 wire + Wave A gap-wire + market breadth + engine heartbeat + brief feedback summary KPI)
  * Responsibility: import tất cả modules, wire events, khởi động dashboard.
  * Rule: KHÔNG chứa business logic. Chỉ bootstrap + wiring.
  */
@@ -23,7 +23,7 @@ import {
   openDecisionModal,
 } from './modules/decision/decision-loader.js';
 import { loadLeaderboard }      from './modules/leaderboard/leaderboard-service.js';
-import { bindFeedbackEvents }   from './modules/briefing/brief-feedback.js';
+import { bindFeedbackEvents, loadBriefFeedbackSummary } from './modules/briefing/brief-feedback.js';
 import { bindGenerateBriefButtons } from './modules/briefing/brief-generate.js';
 import { loadMemory }           from './modules/memory/memory-loader.js';
 import { loadAttentionPanel, startAttentionAutoRefresh } from './modules/attention/attention-loader.js';
@@ -478,8 +478,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   el('newDecisionBtn')?.addEventListener('click', () => openDecisionModal({}));
 
   // reloadBtn: run independent loaders in parallel, then fire-and-forget
-  // loaders that don't block UI rendering (leaderboard, memory,
-  // attention, breadth). Pattern mirrors the initial DOMContentLoaded load.
   el('reloadBtn')?.addEventListener('click', async () => {
     await Promise.allSettled([
       loadDashboard(),
@@ -493,6 +491,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadLeaderboard();
     loadMemory();
     loadAttentionPanel();
+    loadBriefFeedbackSummary({ silent: true });
   });
 
   el('addWatchlistBtn')?.addEventListener('click', () => openModal('watchlistAddModal'));
@@ -518,8 +517,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // 7. Delete confirm modal — wire state.deleteCallback
-  // confirmDeleteThesis/Assumption/Catalyst sets state.deleteCallback then opens deleteModal.
-  // This handler executes the callback on confirm click.
   el('deleteConfirmBtn')?.addEventListener('click', async () => {
     if (typeof state.deleteCallback !== 'function') return;
     const btn = el('deleteConfirmBtn');
@@ -589,6 +586,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   loadMemory();
   loadAttentionPanel();
   loadTodayLoop();
+  // Brief feedback summary KPI — fire-and-forget, graceful 404 fallback
+  loadBriefFeedbackSummary({ silent: true });
   initKpiClickable();
 
   // Wave 2 wire: attention panel auto-refresh mỗi 5 phút
