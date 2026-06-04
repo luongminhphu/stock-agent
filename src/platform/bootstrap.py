@@ -703,3 +703,11 @@ def get_briefing_listener():
     callers must handle the None case gracefully.
     """
     return _briefing_listener
+
+
+def get_intelligence_engine_subscriber():
+    """Return the IntelligenceEngineSubscriber singleton or None if not initialised.
+
+    Returns None (not raises) — bot caller checks for None before calling set_client().
+    """
+    return _intelligence_engine_subscriber
