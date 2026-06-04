@@ -71,6 +71,7 @@ def create_bot() -> commands.Bot:
             _start_evolution_scheduler(bot)              # Wave 4: weekly self-improvement job
             _start_evolution_subscriber(bot)             # Wave 4: evolution suggestions → Discord
             _start_invalidation_subscriber(bot)          # thesis invalidation alert → Discord
+            _start_trend_shift_subscriber(bot)           # market regime shift alert → Discord
             logger.info(
                 "bot.ready",
                 user=str(bot.user),
@@ -339,20 +340,7 @@ def _start_post_mortem_subscriber(bot: commands.Bot) -> None:
 
 
 def _start_intelligence_engine_scheduler(bot: commands.Bot) -> None:
-    """Wave A: start IntelligenceEngineScheduler — fires engine 2x/day.
-
-    Timing:
-        morning — 08:35 ICT  (after ThesisMaintenance 08:30, before SignalEngine 08:40)
-        eod     — 15:12 ICT  (after SignalEngine.eod 15:10, before DecisionReplay 15:15)
-
-    Delivery chain:
-        IntelligenceEngineScheduler._run_cycle()          [bot/scheduler]
-          → engine.run_cycle()                            [core]
-            → IntelligenceEngineCompletedEvent            [platform/event_bus]
-              → IntelligenceEngineSubscriber._handle()   [bot — Discord delivery]
-                → build_engine_verdict_embed()            [bot/discord_helper]
-                → safe_send(alert_channel)                [bot/discord_helper]
-    """
+    """Wave A: start IntelligenceEngineScheduler — fires engine 2x/day."""
     from src.bot.scheduler import IntelligenceEngineScheduler
     scheduler = IntelligenceEngineScheduler(bot)
     scheduler.start()
@@ -360,26 +348,14 @@ def _start_intelligence_engine_scheduler(bot: commands.Bot) -> None:
 
 
 def _start_signal_reaction_listener(bot: commands.Bot) -> None:
-    """Wire Wave B: SignalReactionListener → captures emoji reactions as investor signals.
-
-    Requires intents.reactions = True (set in create_bot()).
-    Always registers — no config dependency.
-    """
+    """Wire Wave B: SignalReactionListener → captures emoji reactions as investor signals."""
     from src.bot.signal_reaction_listener import SignalReactionListener
     listener = SignalReactionListener(bot)
     listener.register()
 
 
 def _start_agenda_subscriber(bot: commands.Bot) -> None:
-    """Wire daily agenda → Discord embed at 07:30 ICT.
-
-    Delivery chain:
-        AgendaScheduler.run_for_user()        [briefing segment]
-          → DailyAgendaCompletedEvent         [platform/event_bus]
-            → AgendaSubscriber._handle()      [bot — Discord delivery]
-              → _build_embed()                [inline embed builder]
-              → channel.send(embed)           [morning_channel or alert_channel]
-    """
+    """Wire daily agenda → Discord embed at 07:30 ICT."""
     from src.bot.agenda_subscriber import AgendaSubscriber
 
     channel_id = (
@@ -400,15 +376,7 @@ def _start_agenda_subscriber(bot: commands.Bot) -> None:
 
 
 def _start_trend_prediction_subscriber(bot: commands.Bot) -> None:
-    """Wire Wave 2: TrendPredictionSubscriber → Discord embed after trend scan.
-
-    Delivery chain:
-        TrendEngineListener._emit_completed()          [ai segment]
-          → TrendPredictionCompletedEvent              [platform/event_bus]
-            → TrendPredictionSubscriber._handle()      [bot — Discord delivery]
-              → _build_embed()                         [inline embed builder]
-              → channel.send(embed)                    [alert_channel]
-    """
+    """Wire Wave 2: TrendPredictionSubscriber → Discord embed after trend scan."""
     from src.bot.trend_prediction_subscriber import TrendPredictionSubscriber
 
     channel_id = getattr(settings, "alert_channel_id", None)
@@ -426,14 +394,7 @@ def _start_trend_prediction_subscriber(bot: commands.Bot) -> None:
 
 
 def _start_evolution_scheduler(bot: commands.Bot) -> None:
-    """Wire Wave 4: EvolutionScheduler — weekly self-improvement job (Mon 06:00 ICT).
-
-    Delivery chain:
-        EvolutionScheduler._run()                      [bot/scheduled/evolution_job]
-          → SelfImprovementAdvisor.analyse_and_suggest [core/evolution]
-            → EvolutionSuggestionReadyEvent            [platform/event_bus]
-              → EvolutionSubscriber._handle()          [bot — Discord delivery]
-    """
+    """Wire Wave 4: EvolutionScheduler — weekly self-improvement job (Mon 06:00 ICT)."""
     from src.bot.scheduled.evolution_job import EvolutionScheduler
     scheduler = EvolutionScheduler(bot)
     scheduler.start()
@@ -441,12 +402,7 @@ def _start_evolution_scheduler(bot: commands.Bot) -> None:
 
 
 def _start_evolution_subscriber(bot: commands.Bot) -> None:
-    """Wire Wave 4: EvolutionSubscriber → Discord embed for owner review.
-
-    Uses alert_channel_id (owner-facing channel).
-    Skips silently when suggestion_count == 0.
-    Guardrail reminder in embed footer: requires_human_approval: always.
-    """
+    """Wire Wave 4: EvolutionSubscriber → Discord embed for owner review."""
     from src.bot.evolution_subscriber import EvolutionSubscriber
 
     channel_id = getattr(settings, "alert_channel_id", None)
@@ -470,11 +426,6 @@ def _start_invalidation_subscriber(bot: commands.Bot) -> None:
         ThesisReviewListener._maybe_invalidate()   [thesis segment]
           → ThesisInvalidatedEvent                 [platform/event_bus]
             → InvalidationSubscriber._handle()     [bot — Discord alert]
-              → embed: 🚨 Thesis invalidated — {SYMBOL}
-              → channel.send(embed)               [alert_channel]
-
-    Dedup: upstream publishes with dedup_key=thesis_id (60 min window).
-    No double-alert for the same thesis within one hour.
     """
     from src.bot.invalidation_subscriber import InvalidationSubscriber
 
@@ -490,3 +441,33 @@ def _start_invalidation_subscriber(bot: commands.Bot) -> None:
     subscriber.set_client(bot)
     subscriber.register()
     logger.info("bot.invalidation_subscriber.registered", channel_id=channel_id)
+
+
+def _start_trend_shift_subscriber(bot: commands.Bot) -> None:
+    """Wire market regime shift alert → Discord embed.
+
+    Delivery chain:
+        TrendShiftDetector._process_symbol()   [market segment]
+          → TrendShiftEvent                    [platform/event_bus]
+            → TrendShiftSubscriber._handle()   [bot — Discord alert]
+              → embed: 🚨/📊 Regime/Trend shift — {SYMBOL}
+              → channel.send(embed)            [alert_channel]
+
+    Noise already filtered upstream (cold start skip, neutral band, delta threshold).
+    No dedup applied — each scan phase (morning/midday/pre_atc) is a
+    distinct data point and should surface independently.
+    """
+    from src.bot.trend_shift_subscriber import TrendShiftSubscriber
+
+    channel_id = getattr(settings, "alert_channel_id", None)
+    if not channel_id:
+        logger.warning(
+            "bot.trend_shift_subscriber.not_available",
+            reason="alert_channel_id not configured — regime shift alerts disabled",
+        )
+        return
+
+    subscriber = TrendShiftSubscriber(channel_id=int(channel_id))
+    subscriber.set_client(bot)
+    subscriber.register()
+    logger.info("bot.trend_shift_subscriber.registered", channel_id=channel_id)
