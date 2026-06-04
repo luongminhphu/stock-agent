@@ -21,6 +21,7 @@ Registered tasks:
     ProactiveWatchScheduler.morning_task       — weekdays 09:15 ICT (after market open)
     ProactiveWatchScheduler.midday_task        — weekdays 11:15 ICT (mid-session)
     ProactiveWatchScheduler.pre_atc_task       — weekdays 14:15 ICT (before ATC)
+    PortfolioSnapshotScheduler.morning_task    — weekdays 08:15 ICT (before IntelligenceEngine 08:35)
     IntelligenceEngineScheduler.morning_task   — weekdays 08:35 ICT (after ThesisMaintenance, before SignalEngine)
     IntelligenceEngineScheduler.eod_task       — weekdays 15:12 ICT (after SignalEngine.eod, before DecisionReplay)
 
@@ -39,6 +40,8 @@ Channel routing:
     ProactiveWatchScheduler emits events only — Discord delivery via ProactiveWatchSubscriber.
     IntelligenceEngineScheduler emits events only — no channel routing, no Discord message.
         Wave 2: IntelligenceEngineListener (core segment) handles run_cycle + verdict + delivery.
+    PortfolioSnapshotScheduler emits events only — no channel routing, no Discord message.
+        portfolio.PortfolioSnapshotListener handles P&L build + PortfolioSnapshotReadyEvent.
 
 Wave 8:
     BriefingScheduler no longer calls BriefingService directly.
@@ -61,6 +64,14 @@ Core Engine (Wave 1):
     → core.IntelligenceEngineListener.run_cycle() builds SystemSnapshot
     → publishes IntelligenceEngineCompletedEvent
     → bot subscriber → Discord.
+
+Portfolio Snapshot loop:
+    PortfolioSnapshotScheduler emits PortfolioSnapshotRequestedEvent (08:15 ICT)
+    → portfolio.PortfolioSnapshotListener calls PnlService.get_portfolio_pnl()
+    → publishes PortfolioSnapshotReadyEvent (enriched: unrealized_pnl_pct, top_exposed_tickers)
+    → core.IntelligenceEngineListener caches snapshot per user_id
+    → IntelligenceEngineScheduler fires 08:35 ICT (20-min window)
+    → portfolio context injected into engine.run_cycle() via context_hint.
 
 Wave E (Thesis Score Sensitivity):
     WatchlistScanScheduler injects ThesisScoreQuery(session) into ScanService.
@@ -338,7 +349,7 @@ class WatchlistScanScheduler:
             )
             return
 
-        # ── Step 0: Reactivate cooled-down alerts (isolated commit) ──────────────────────────────────────────────────────────────────────────
+        # ── Step 0: Reactivate cooled-down alerts (isolated commit) ─────────────────────────────────────────────
         try:
             from src.watchlist.alert_service import AlertService
 
@@ -358,7 +369,7 @@ class WatchlistScanScheduler:
         except Exception as exc:
             logger.warning("scheduler.scan.reactivate_failed", error=str(exc))
 
-        # ── Step 1: Scan ────────────────────────────────────────────────────────────────────────────────────────────────
+        # ── Step 1: Scan ─────────────────────────────────────────────────────────────────────────────────
         try:
             from src.thesis.ticker_direction_query import TickerDirectionQuery
             from src.watchlist.scan_service import ScanService
@@ -1250,7 +1261,7 @@ class ProactiveWatchScheduler:
         self._pre_atc_task.cancel()
         logger.info("scheduler.proactive_watch.stopped")
 
-    # ── morning: 09:15 ICT ──────────────────────────────────────────────────────────────
+    # ── morning: 09:15 ICT ──────────────────────────────────────────────────────────────────────────────────────
 
     @tasks.loop(time=_PROACTIVE_MORNING_TIME)
     async def _morning_task(self) -> None:
@@ -1262,7 +1273,7 @@ class ProactiveWatchScheduler:
     async def _before_morning(self) -> None:
         await self._client.wait_until_ready()
 
-    # ── midday: 11:15 ICT ──────────────────────────────────────────────────────────────
+    # ── midday: 11:15 ICT ──────────────────────────────────────────────────────────────────────────────────────
 
     @tasks.loop(time=_PROACTIVE_MIDDAY_TIME)
     async def _midday_task(self) -> None:
@@ -1274,7 +1285,7 @@ class ProactiveWatchScheduler:
     async def _before_midday(self) -> None:
         await self._client.wait_until_ready()
 
-    # ── pre_atc: 14:15 ICT ────────────────────────────────────────────────────────────
+    # ── pre_atc: 14:15 ICT ────────────────────────────────────────────────────────────────────────────────────
 
     @tasks.loop(time=_PROACTIVE_PRE_ATC_TIME)
     async def _pre_atc_task(self) -> None:
@@ -1286,7 +1297,7 @@ class ProactiveWatchScheduler:
     async def _before_pre_atc(self) -> None:
         await self._client.wait_until_ready()
 
-    # ── shared emit ───────────────────────────────────────────────────────────────────
+    # ── shared emit ─────────────────────────────────────────────────────────────────────────────────────
 
     async def _emit(self, phase: str, task_name: str) -> None:
         """Emit ProactiveWatchRequestedEvent — bot's only responsibility here."""
@@ -1317,6 +1328,104 @@ class ProactiveWatchScheduler:
         except Exception as exc:
             logger.error(
                 "scheduler.proactive_watch.emit_error",
+                phase=phase,
+                error=str(exc),
+            )
+            await self._monitor.record_failure(task_name, exc)
+
+
+# ---------------------------------------------------------------------------
+# PortfolioSnapshotScheduler
+# ---------------------------------------------------------------------------
+
+# ICT = UTC+7  →  subtract 7h for UTC
+_PORTFOLIO_SNAPSHOT_TIME = datetime.time(hour=1, minute=15, tzinfo=datetime.UTC)  # 08:15 ICT
+
+
+class PortfolioSnapshotScheduler:
+    """Emit PortfolioSnapshotRequestedEvent at 08:15 ICT (weekdays).
+
+    Owner: bot segment — thin timing adapter only.
+    All P&L logic lives in portfolio.PortfolioSnapshotListener.
+
+    Timing:
+        08:15 ICT — 20 min before IntelligenceEngineScheduler (08:35)
+        This window allows PortfolioSnapshotListener to build the P&L snapshot
+        and cache it in IntelligenceEngineListener before the engine cycle fires.
+
+    Event chain:
+        PortfolioSnapshotRequestedEvent  [bot → portfolio]
+          → portfolio.PortfolioSnapshotListener
+            → PnlService.get_portfolio_pnl()
+            → PortfolioSnapshotReadyEvent (enriched)  [portfolio → core]
+              → core.IntelligenceEngineListener._handle_portfolio_snapshot()
+                → cached in _portfolio_context[user_id]
+                  → injected into engine.run_cycle() context_hint at 08:35 ICT
+
+    Graceful skip:
+        - Weekends (weekday >= 5).
+        - scheduler_user_id not configured → warning log, no event emitted.
+        - All exceptions caught and recorded; never blocks other schedulers.
+
+    No Discord output from this scheduler.
+    """
+
+    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
+        self._client = client
+        self._monitor = monitor or get_monitor()
+
+    def start(self) -> None:
+        self._monitor.register_task("portfolio_snapshot.morning")
+        self._morning_task.start()
+        logger.info("scheduler.portfolio_snapshot.started", time_ict="08:15")
+
+    def stop(self) -> None:
+        self._morning_task.cancel()
+        logger.info("scheduler.portfolio_snapshot.stopped")
+
+    @tasks.loop(time=_PORTFOLIO_SNAPSHOT_TIME)
+    async def _morning_task(self) -> None:
+        if datetime.datetime.now(tz=datetime.UTC).weekday() >= 5:
+            return
+        await self._emit(phase="morning", task_name="portfolio_snapshot.morning")
+
+    @_morning_task.before_loop
+    async def _before_morning(self) -> None:
+        await self._client.wait_until_ready()
+
+    async def _emit(self, phase: str, task_name: str) -> None:
+        """Emit PortfolioSnapshotRequestedEvent — bot's only responsibility here.
+
+        portfolio.PortfolioSnapshotListener (subscribed at bootstrap) handles the rest:
+        PnlService.get_portfolio_pnl() → build enriched snapshot → PortfolioSnapshotReadyEvent.
+        """
+        from src.platform.event_bus import get_event_bus
+        from src.platform.events import PortfolioSnapshotRequestedEvent
+
+        user_id = getattr(settings, "scheduler_user_id", None)
+        if not user_id:
+            logger.warning(
+                "scheduler.portfolio_snapshot.skipped",
+                phase=phase,
+                reason="scheduler_user_id not configured",
+            )
+            return
+
+        try:
+            bus = get_event_bus()
+            await bus.publish(
+                PortfolioSnapshotRequestedEvent(
+                    user_id=str(user_id),
+                    phase=phase,
+                    triggered_by="scheduler",
+                )
+            )
+            logger.info("scheduler.portfolio_snapshot.event_emitted", phase=phase, user_id=str(user_id))
+            await self._monitor.record_success(task_name)
+
+        except Exception as exc:
+            logger.error(
+                "scheduler.portfolio_snapshot.emit_error",
                 phase=phase,
                 error=str(exc),
             )
@@ -1376,7 +1485,7 @@ class IntelligenceEngineScheduler:
         self._eod_task.cancel()
         logger.info("scheduler.intelligence_engine.stopped")
 
-    # ── morning: 08:35 ICT ────────────────────────────────────────────────────────────
+    # ── morning: 08:35 ICT ──────────────────────────────────────────────────────────────────────────────────
 
     @tasks.loop(time=_IE_MORNING_TIME)
     async def _morning_task(self) -> None:
@@ -1388,7 +1497,7 @@ class IntelligenceEngineScheduler:
     async def _before_morning(self) -> None:
         await self._client.wait_until_ready()
 
-    # ── eod: 15:12 ICT ───────────────────────────────────────────────────────────────
+    # ── eod: 15:12 ICT ───────────────────────────────────────────────────────────────────────────────────
 
     @tasks.loop(time=_IE_EOD_TIME)
     async def _eod_task(self) -> None:
@@ -1400,7 +1509,7 @@ class IntelligenceEngineScheduler:
     async def _before_eod(self) -> None:
         await self._client.wait_until_ready()
 
-    # ── shared emit ───────────────────────────────────────────────────────────────────
+    # ── shared emit ─────────────────────────────────────────────────────────────────────────────────────
 
     async def _run_cycle(self, phase: str, task_name: str) -> None:
         """Emit IntelligenceEngineRequestedEvent — bot's only responsibility here.
