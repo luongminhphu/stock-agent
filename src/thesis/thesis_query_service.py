@@ -1,10 +1,14 @@
-"""ThesisQueryService — read-model adapter for SignalEngineListener.
+"""ThesisActiveContextQuery — read-model adapter for AI listeners.
 
 Owner: thesis segment.
-Consumer: ai.signal_engine_listener (read-only).
+Consumer: ai.signal_engine_listener, ai.trend_engine_listener (read-only).
 
 Exposes get_active_with_components(user_id) — returns active theses with
 assumptions + catalysts as dicts, ready for AI agent injection.
+
+Naming note: deliberately NOT named ThesisQueryService to avoid collision
+with readmodel.ThesisQueryService which owns the full UI/bot projection
+(get_theses_list, get_thesis_detail, get_upcoming_catalysts, etc.).
 
 Pattern: session_factory injection, never raises — returns [] on error.
 """
@@ -17,8 +21,8 @@ from src.platform.logging import get_logger
 logger = get_logger(__name__)
 
 
-class ThesisQueryService:
-    """Read-only: fetch active theses with assumptions + catalysts."""
+class ThesisActiveContextQuery:
+    """Read-only: fetch active theses with assumptions + catalysts for AI context."""
 
     def __init__(self, session_factory: Any) -> None:
         self._session_factory = session_factory
@@ -43,7 +47,7 @@ class ThesisQueryService:
                 return [self._to_dict(t) for t in theses]
         except Exception as exc:
             logger.warning(
-                "thesis_query_service.get_active_with_components_failed",
+                "thesis_active_context_query.get_active_with_components_failed",
                 user_id=user_id,
                 error=str(exc),
             )

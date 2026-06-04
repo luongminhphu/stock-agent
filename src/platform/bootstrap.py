@@ -424,14 +424,14 @@ async def bootstrap() -> None:
         from src.ai.signal_engine_listener import SignalEngineListener
         from src.thesis.watchlist_query_service import WatchlistQueryService
         from src.thesis.stress_test_query_service import StressTestQueryService
-        from src.thesis.thesis_query_service import ThesisQueryService
+        from src.thesis.thesis_query_service import ThesisActiveContextQuery
         from src.platform.db import AsyncSessionLocal
 
         _signal_engine_listener = SignalEngineListener(
             ai_client=_ai_client,  # type: ignore[arg-type]
             watchdog_service=WatchlistQueryService(session_factory=AsyncSessionLocal),
             stress_test_service=StressTestQueryService(session_factory=AsyncSessionLocal),
-            thesis_query=ThesisQueryService(session_factory=AsyncSessionLocal),
+            thesis_query=ThesisActiveContextQuery(session_factory=AsyncSessionLocal),
             portfolio_query=_portfolio_query_adapter,
             feedback_service=None,
         )
@@ -443,7 +443,7 @@ async def bootstrap() -> None:
         from src.ai.trend_engine_listener import TrendEngineListener
         from src.market.trend_engine import TrendEngine
         from src.thesis.watchlist_query_service import WatchlistQueryService
-        from src.thesis.thesis_query_service import ThesisQueryService
+        from src.thesis.thesis_query_service import ThesisActiveContextQuery
         from src.platform.db import AsyncSessionLocal
 
         _trend_engine = TrendEngine(
@@ -454,7 +454,7 @@ async def bootstrap() -> None:
             trend_engine=_trend_engine,
             prediction_store=_trend_prediction_store,  # type: ignore[arg-type]
             watchlist_query=WatchlistQueryService(session_factory=AsyncSessionLocal),
-            thesis_query=ThesisQueryService(session_factory=AsyncSessionLocal),
+            thesis_query=ThesisActiveContextQuery(session_factory=AsyncSessionLocal),
         )
         _trend_engine_listener.register()
         logger.info("platform.bootstrap.trend_engine_listener_ready")
