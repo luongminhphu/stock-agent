@@ -12,17 +12,27 @@ Outputs:
   DividendSummary   — dividend totals and records per user/ticker
   DividendSnapshot  — plain dataclass snapshot of a DividendRecord row
   TradeSnapshot     — plain dataclass snapshot of a Trade row (safe outside session)
+
+Risk emit:
+  PositionRiskBreachedEvent is emitted after each position is calculated.
+  Thresholds:
+    WARN:     unrealized_pct <= -8%   → urgency TODAY
+    CRITICAL: unrealized_pct <= -15%  → urgency CRITICAL
+  Dedup key: "position_risk:{user_id}:{symbol}:{breach_type}" / 6h window
+  — prevents spam when get_portfolio_pnl() runs on every user request.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Protocol, runtime_checkable
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.platform.event_bus import get_event_bus
+from src.platform.events import PositionRiskBreachedEvent
 from src.platform.logging import get_logger
 from src.portfolio.models import DividendType, Position
 from src.portfolio.repository import PortfolioRepository
@@ -32,6 +42,13 @@ logger = get_logger(__name__)
 _BREAKEVEN_EPSILON = 1.0
 _TRADE_HISTORY_MAX_LIMIT = 200
 _DIVIDEND_HISTORY_MAX_LIMIT = 100
+
+# Risk breach thresholds (unrealized_pct, negative = loss)
+_RISK_THRESHOLD_CRITICAL = -15.0   # urgency CRITICAL
+_RISK_THRESHOLD_WARN     = -8.0    # urgency TODAY
+
+# Suppress re-emit for the same position+breach within this window.
+_RISK_DEDUP_WINDOW = timedelta(hours=6)
 
 
 @runtime_checkable
@@ -55,7 +72,7 @@ class PositionPnl:
     market_value: float
     cost_basis: float
     thesis_id: int | None
-    thesis_status: str | None = None  # 'active' | 'invalidated' | 'closed' — enriched from Thesis table
+    thesis_status: str | None = None  # 'active' | 'invalidated' | 'closed'
 
 
 @dataclass
@@ -107,17 +124,14 @@ class RealizedSummary:
 
 @dataclass
 class DividendSnapshot:
-    """Plain-data snapshot of a DividendRecord row.
-
-    Copied from ORM while session is open — safe to access after session close.
-    """
+    """Plain-data snapshot of a DividendRecord row."""
 
     id: int
     ticker: str
     qty: float
     dividend_per_share: float
     total_amount: float
-    dividend_type: str          # "cash" or "stock"
+    dividend_type: str
     ex_date: datetime | None
     paid_at: datetime
     note: str | None
@@ -130,7 +144,7 @@ class DividendSummary:
     total_cash_received: float
     record_count: int
     records: list[DividendSnapshot] = field(default_factory=list)
-    ticker: str | None = None   # None = all tickers
+    ticker: str | None = None
 
 
 @dataclass
@@ -170,7 +184,7 @@ class PnlService:
         result = PortfolioPnl()
         for pos in positions:
             try:
-                pnl = await self._calc_position_pnl(pos)
+                pnl = await self._calc_position_pnl(pos, user_id=user_id)
                 result.positions.append(pnl)
             except Exception as exc:
                 logger.warning("pnl.fetch_error", ticker=pos.ticker, error=str(exc))
@@ -181,7 +195,7 @@ class PnlService:
         position = await self._repo.get_open_position(user_id, ticker.upper())
         if position is None:
             return None
-        return await self._calc_position_pnl(position)
+        return await self._calc_position_pnl(position, user_id=user_id)
 
     async def get_realized_summary(
         self,
@@ -215,12 +229,6 @@ class PnlService:
         ticker: str | None = None,
         limit: int = 20,
     ) -> DividendSummary:
-        """Return dividend history and total cash received for a user.
-
-        limit is clamped to [1, _DIVIDEND_HISTORY_MAX_LIMIT].
-        Only cash dividends count toward total_cash_received.
-        Stock dividends appear in records but are excluded from the cash total.
-        """
         limit = max(1, min(limit, _DIVIDEND_HISTORY_MAX_LIMIT))
         records = await self._repo.list_dividends(user_id, ticker=ticker, limit=limit)
         total_cash = await self._repo.get_dividend_total(user_id, ticker=ticker)
@@ -272,7 +280,11 @@ class PnlService:
     # Internal
     # ------------------------------------------------------------------
 
-    async def _calc_position_pnl(self, position: Position) -> PositionPnl:
+    async def _calc_position_pnl(
+        self,
+        position: Position,
+        user_id: str = "",
+    ) -> PositionPnl:
         if position.qty <= 0 or position.avg_cost <= 0:
             raise ValueError(
                 f"Corrupt position data for {position.ticker}: "
@@ -285,8 +297,6 @@ class PnlService:
         cost_basis = position.avg_cost * position.qty
         unrealized_pct = (unrealized_pnl / cost_basis * 100) if cost_basis else 0.0
 
-        # Enrich thesis_status — single point lookup, acceptable for current scale.
-        # If N+1 becomes a concern, batch in get_portfolio_pnl() instead.
         thesis_status: str | None = None
         if position.thesis_id is not None:
             from src.thesis.models import Thesis
@@ -294,7 +304,7 @@ class PnlService:
             if thesis_row is not None:
                 thesis_status = str(thesis_row.status.value)
 
-        return PositionPnl(
+        pnl = PositionPnl(
             ticker=position.ticker,
             qty=position.qty,
             avg_cost=position.avg_cost,
@@ -306,3 +316,70 @@ class PnlService:
             thesis_id=position.thesis_id,
             thesis_status=thesis_status,
         )
+
+        # Emit risk breach event — fire-and-forget, never raises
+        if user_id:
+            await self._maybe_emit_risk_breach(pnl, user_id)
+
+        return pnl
+
+    async def _maybe_emit_risk_breach(
+        self,
+        pnl: PositionPnl,
+        user_id: str,
+    ) -> None:
+        """Emit PositionRiskBreachedEvent if unrealized_pct breaches a threshold.
+
+        Thresholds:
+            CRITICAL: unrealized_pct <= -15%  → urgency CRITICAL
+            WARN:     unrealized_pct <= -8%   → urgency TODAY
+
+        CRITICAL is checked first so a deeply-losing position emits CRITICAL
+        rather than a second WARN on the same cycle.
+
+        Dedup: dedup_key per user+symbol+breach_type, 6-hour window.
+        """
+        pct = pnl.unrealized_pct
+
+        if pct <= _RISK_THRESHOLD_CRITICAL:
+            breach_type = "LOSS_PCT_CRITICAL"
+            urgency = "CRITICAL"
+            threshold = _RISK_THRESHOLD_CRITICAL
+        elif pct <= _RISK_THRESHOLD_WARN:
+            breach_type = "LOSS_PCT_WARN"
+            urgency = "TODAY"
+            threshold = _RISK_THRESHOLD_WARN
+        else:
+            return  # No breach
+
+        event = PositionRiskBreachedEvent(
+            symbol=pnl.ticker,
+            breach_type=breach_type,
+            current_value=round(pct, 2),
+            threshold_value=threshold,
+            urgency=urgency,
+        )
+
+        bus = get_event_bus()
+        dedup_key = f"position_risk:{user_id}:{pnl.ticker}:{breach_type}"
+        try:
+            await bus.publish(
+                event,
+                dedup_key=dedup_key,
+                dedup_window=_RISK_DEDUP_WINDOW,
+            )
+            logger.info(
+                "pnl.risk_breach.emitted",
+                symbol=pnl.ticker,
+                breach_type=breach_type,
+                unrealized_pct=pct,
+                urgency=urgency,
+                user_id=user_id,
+            )
+        except Exception as exc:
+            # Risk emit must never crash the P&L read path
+            logger.warning(
+                "pnl.risk_breach.emit_failed",
+                symbol=pnl.ticker,
+                error=str(exc),
+            )

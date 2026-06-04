@@ -24,7 +24,7 @@ def create_bot() -> commands.Bot:
     """Create and configure the Discord bot instance."""
     intents = discord.Intents.default()
     intents.message_content = True
-    intents.reactions = True  # Wave B: required for on_raw_reaction_add
+    intents.reactions = True
 
     bot = commands.Bot(
         command_prefix="/",
@@ -63,16 +63,17 @@ def create_bot() -> commands.Bot:
             _start_opportunity_screen_scheduler(bot)
             _start_proactive_watch_scheduler(bot)
             _start_proactive_watch_subscriber(bot)
-            _start_post_mortem_subscriber(bot)           # Wave E: thesis post-mortem → Discord
-            _start_intelligence_engine_scheduler(bot)    # Wave A: IE verdict → Discord (2×/day)
-            _start_signal_reaction_listener(bot)         # Wave B: emoji reaction → user_signal
-            _start_agenda_subscriber(bot)                # Wave B: daily agenda → Discord (07:30)
-            _start_trend_prediction_subscriber(bot)      # Wave 2: trend scan → Discord
-            _start_evolution_scheduler(bot)              # Wave 4: weekly self-improvement job
-            _start_evolution_subscriber(bot)             # Wave 4: evolution suggestions → Discord
-            _start_invalidation_subscriber(bot)          # thesis invalidation alert → Discord
-            _start_trend_shift_subscriber(bot)           # market regime shift alert → Discord
-            _start_stress_test_subscriber(bot)           # stress test result → Discord
+            _start_post_mortem_subscriber(bot)
+            _start_intelligence_engine_scheduler(bot)
+            _start_signal_reaction_listener(bot)
+            _start_agenda_subscriber(bot)
+            _start_trend_prediction_subscriber(bot)
+            _start_evolution_scheduler(bot)
+            _start_evolution_subscriber(bot)
+            _start_invalidation_subscriber(bot)
+            _start_trend_shift_subscriber(bot)
+            _start_stress_test_subscriber(bot)
+            _start_position_risk_subscriber(bot)           # portfolio loss threshold → Discord
             logger.info(
                 "bot.ready",
                 user=str(bot.user),
@@ -447,18 +448,6 @@ def _start_trend_shift_subscriber(bot: commands.Bot) -> None:
 
 
 def _start_stress_test_subscriber(bot: commands.Bot) -> None:
-    """Wire stress test result → Discord embed.
-
-    Delivery chain:
-        StressTestService.stress_test()          [thesis segment]
-          → StressTestCompletedEvent             [platform/event_bus]
-            → StressTestSubscriber._handle()     [bot — Discord alert]
-              → embed: {emoji} Stress test — {SYMBOL}: {VERDICT}
-              → channel.send(embed)              [alert_channel]
-
-    Dedup: upstream publishes with dedup_key=f"stress_test:{thesis_id}",
-    dedup_window=2h — no double-alert within 2 hours for the same thesis.
-    """
     from src.bot.stress_test_subscriber import StressTestSubscriber
 
     channel_id = getattr(settings, "alert_channel_id", None)
@@ -473,3 +462,36 @@ def _start_stress_test_subscriber(bot: commands.Bot) -> None:
     subscriber.set_client(bot)
     subscriber.register()
     logger.info("bot.stress_test_subscriber.registered", channel_id=channel_id)
+
+
+def _start_position_risk_subscriber(bot: commands.Bot) -> None:
+    """Wire position loss threshold breach → Discord embed.
+
+    Delivery chain:
+        PnlService._calc_position_pnl()          [portfolio segment]
+          → _maybe_emit_risk_breach()
+            → PositionRiskBreachedEvent           [platform/event_bus]
+              → PositionRiskSubscriber._handle()  [bot — Discord alert]
+                → embed: {emoji} Position risk — {SYMBOL}
+                → channel.send(embed)             [alert_channel]
+
+    Thresholds:
+        CRITICAL: unrealized_pct <= -15%  → red, urgency CRITICAL
+        WARN:     unrealized_pct <= -8%   → orange, urgency TODAY
+
+    Dedup: dedup_key per user+symbol+breach_type, window=6h.
+    """
+    from src.bot.position_risk_subscriber import PositionRiskSubscriber
+
+    channel_id = getattr(settings, "alert_channel_id", None)
+    if not channel_id:
+        logger.warning(
+            "bot.position_risk_subscriber.not_available",
+            reason="alert_channel_id not configured — position risk alerts disabled",
+        )
+        return
+
+    subscriber = PositionRiskSubscriber(channel_id=int(channel_id))
+    subscriber.set_client(bot)
+    subscriber.register()
+    logger.info("bot.position_risk_subscriber.registered", channel_id=channel_id)
