@@ -90,18 +90,17 @@ from src.bot.commands.decision_embeds import build_replay_embed
 from src.bot.commands.reminder_embeds import build_reminder_embed
 from src.bot.commands.thesis_embeds import build_drift_embed, build_maintenance_embed
 from src.bot.commands.watchlist_embeds import build_scan_embed
-from src.platform.bootstrap import (
-    get_agenda_service_factory,
-    get_investor_profile_service,
-    get_memory_consolidator,
-    get_quote_service,
-    get_replay_agent,
-    get_thesis_review_agent,
-)
 from src.platform.config import settings
 from src.platform.db import AsyncSessionLocal
 from src.platform.logging import get_logger
 from src.platform.scheduler_monitor import SchedulerMonitor, get_monitor
+
+# NOTE: src.platform.bootstrap imports are intentionally lazy (inline inside each
+# method that uses them) to break the circular import:
+#   bootstrap → src.bot.intelligence_engine_subscriber
+#   → bot/__init__.py → scheduler.py (module-level)
+#   → bootstrap (mid-load) → ImportError
+# All other domain-service imports in this file follow the same lazy pattern.
 
 logger = get_logger(__name__)
 
@@ -170,6 +169,7 @@ class InvestorProfileScheduler:
 
         task_name = "investor_profile.snapshot"
 
+        from src.platform.bootstrap import get_investor_profile_service
         result = get_investor_profile_service()
         if result is None:
             logger.warning(
@@ -371,6 +371,7 @@ class WatchlistScanScheduler:
 
         # ── Step 1: Scan ─────────────────────────────────────────────────────────────────────────────────
         try:
+            from src.platform.bootstrap import get_quote_service
             from src.thesis.ticker_direction_query import TickerDirectionQuery
             from src.watchlist.scan_service import ScanService
             from src.watchlist.thesis_score_query import ThesisScoreQuery
@@ -546,6 +547,7 @@ class ThesisMaintenanceScheduler:
 
         # -- Step 2: AI review for stale theses --
         try:
+            from src.platform.bootstrap import get_quote_service, get_thesis_review_agent
             from src.thesis.review_service import ReviewService
 
             async with AsyncSessionLocal() as session:
@@ -676,6 +678,7 @@ class ThesisDriftScheduler:
             return
 
         try:
+            from src.platform.bootstrap import get_quote_service, get_thesis_review_agent
             from src.thesis.conviction_drift_detector import ConvictionDriftDetector
             from src.thesis.drift_service import DriftService
             from src.thesis.review_service import ReviewService
@@ -920,6 +923,7 @@ class OutcomeFillerScheduler:
             return
 
         try:
+            from src.platform.bootstrap import get_quote_service
             from src.thesis.outcome_filler_service import OutcomeFillerService
 
             async with AsyncSessionLocal() as session:
@@ -992,6 +996,8 @@ class DecisionReplayScheduler:
             return
 
         try:
+            from src.platform.bootstrap import get_replay_agent
+
             async with AsyncSessionLocal() as session:
                 replay_result = await get_replay_agent().run(
                     user_id=str(user_id),
@@ -1087,6 +1093,7 @@ class MemoryConsolidatorScheduler:
 
         task_name = "memory.consolidate"
 
+        from src.platform.bootstrap import get_memory_consolidator
         consolidator = get_memory_consolidator()
         if consolidator is None:
             logger.warning(
@@ -1167,6 +1174,8 @@ class AgendaBuilderScheduler:
 
         task_name = "agenda.build"
         user_id = getattr(settings, "scheduler_user_id", None)
+
+        from src.platform.bootstrap import get_agenda_service_factory
         factory = get_agenda_service_factory()
 
         if not user_id or factory is None:
