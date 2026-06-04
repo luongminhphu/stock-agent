@@ -63,10 +63,11 @@ def create_bot() -> commands.Bot:
             _start_opportunity_screen_scheduler(bot)
             _start_proactive_watch_scheduler(bot)
             _start_proactive_watch_subscriber(bot)
-            _start_post_mortem_subscriber(bot)          # Wave E: thesis post-mortem → Discord
-            _start_intelligence_engine_scheduler(bot)   # Wave A: IE verdict → Discord (2×/day)
-            _start_signal_reaction_listener(bot)        # Wave B: emoji reaction → user_signal
-            _start_agenda_subscriber(bot)               # Wave B: daily agenda → Discord (07:30)
+            _start_post_mortem_subscriber(bot)           # Wave E: thesis post-mortem → Discord
+            _start_intelligence_engine_scheduler(bot)    # Wave A: IE verdict → Discord (2×/day)
+            _start_signal_reaction_listener(bot)         # Wave B: emoji reaction → user_signal
+            _start_agenda_subscriber(bot)                # Wave B: daily agenda → Discord (07:30)
+            _start_trend_prediction_subscriber(bot)      # Wave 2: trend scan → Discord
             logger.info(
                 "bot.ready",
                 user=str(bot.user),
@@ -393,3 +394,29 @@ def _start_agenda_subscriber(bot: commands.Bot) -> None:
     subscriber.set_client(bot)
     subscriber.register()
     logger.info("bot.agenda_subscriber.registered", channel_id=channel_id)
+
+
+def _start_trend_prediction_subscriber(bot: commands.Bot) -> None:
+    """Wire Wave 2: TrendPredictionSubscriber → Discord embed after trend scan.
+
+    Delivery chain:
+        TrendEngineListener._emit_completed()          [ai segment]
+          → TrendPredictionCompletedEvent              [platform/event_bus]
+            → TrendPredictionSubscriber._handle()      [bot — Discord delivery]
+              → _build_embed()                         [inline embed builder]
+              → channel.send(embed)                    [alert_channel]
+    """
+    from src.bot.trend_prediction_subscriber import TrendPredictionSubscriber
+
+    channel_id = getattr(settings, "alert_channel_id", None)
+    if not channel_id:
+        logger.warning(
+            "bot.trend_prediction_subscriber.not_available",
+            reason="alert_channel_id not configured — trend prediction embeds disabled",
+        )
+        return
+
+    subscriber = TrendPredictionSubscriber(channel_id=int(channel_id))
+    subscriber.set_client(bot)
+    subscriber.register()
+    logger.info("bot.trend_prediction_subscriber.registered", channel_id=channel_id)
