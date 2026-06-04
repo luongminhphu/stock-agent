@@ -265,14 +265,14 @@ async def bootstrap() -> None:
         _trend_reasoning_agent = TrendReasoningAgent(client=_ai_client)  # type: ignore[arg-type]
         logger.info("platform.bootstrap.trend_reasoning_agent_ready")
 
-    # ── Wave 2b: SignalEngineAgent ────────────────────────────────────────────
+    # ── Wave 2b: SignalEngineAgent ───────────────────────────────────────────
     if _signal_engine_agent is None:
         from src.ai.agents.signal_engine import SignalEngineAgent
 
         _signal_engine_agent = SignalEngineAgent(ai_client=_ai_client)  # type: ignore[arg-type]
         logger.info("platform.bootstrap.signal_engine_agent_ready")
 
-    # ── Trend Prediction: TrendPredictionStore (readmodel) ───────────────────
+    # ── Trend Prediction: TrendPredictionStore (readmodel) ──────────────────
     if _trend_prediction_store is None:
         from src.readmodel.trend_prediction_store import TrendPredictionStore
         from src.platform.db import AsyncSessionLocal
@@ -282,7 +282,7 @@ async def bootstrap() -> None:
         )
         logger.info("platform.bootstrap.trend_prediction_store_ready")
 
-    # ── W1: RecentReviewsStore (readmodel) ───────────────────────────────────
+    # ── W1: RecentReviewsStore (readmodel) ──────────────────────────────────
     if _recent_reviews_store is None:
         from src.readmodel.recent_reviews_store import RecentReviewsStore
         from src.platform.db import AsyncSessionLocal
@@ -292,7 +292,7 @@ async def bootstrap() -> None:
         )
         logger.info("platform.bootstrap.recent_reviews_store_ready")
 
-    # ── W3: PortfolioQueryAdapter (readmodel) ────────────────────────────────
+    # ── W3: PortfolioQueryAdapter (readmodel) ──────────────────────────────
     if _portfolio_query_adapter is None:
         from src.readmodel.portfolio_query_service import PortfolioQueryAdapter
         from src.platform.db import AsyncSessionLocal
@@ -302,7 +302,7 @@ async def bootstrap() -> None:
         )
         logger.info("platform.bootstrap.portfolio_query_adapter_ready")
 
-    # ── Event Bus + subscribers (start bus FIRST) ────────────────────────────
+    # ── Event Bus + subscribers (start bus FIRST) ───────────────────────────
     from src.platform.event_bus import get_event_bus
     bus = get_event_bus()
     await bus.start()
@@ -313,7 +313,7 @@ async def bootstrap() -> None:
     CacheSubscriber.register()
     logger.info("platform.bootstrap.cache_subscriber_ready")
 
-    # ── Gap 2 (readmodel): IntelligenceSnapshotSubscriber ────────────────────
+    # ── Gap 2 (readmodel): IntelligenceSnapshotSubscriber ───────────────────
     if _intelligence_snapshot_subscriber is None:
         from src.readmodel import IntelligenceSnapshotSubscriber
 
@@ -352,7 +352,7 @@ async def bootstrap() -> None:
         _thesis_review_listener.register()
         logger.info("platform.bootstrap.thesis_review_listener_ready")
 
-    # ── Wave C: SignalEngine → ThesisReview bridge ───────────────────────────
+    # ── Wave C: SignalEngine → ThesisReview bridge ──────────────────────────
     if _signal_review_trigger_listener is None:
         from src.thesis.signal_review_trigger_listener import SignalReviewTriggerListener
         from src.platform.db import AsyncSessionLocal
@@ -391,7 +391,7 @@ async def bootstrap() -> None:
                 reason="scheduler_user_id not configured",
             )
 
-    # ── G4: StressTest → Watchlist trigger bridge ────────────────────────────
+    # ── G4: StressTest → Watchlist trigger bridge ───────────────────────────
     if _stress_test_subscriber is None:
         from src.watchlist.stress_test_subscriber import StressTestSubscriber
         from src.platform.db import AsyncSessionLocal
@@ -400,7 +400,7 @@ async def bootstrap() -> None:
         _stress_test_subscriber.register()
         logger.info("platform.bootstrap.stress_test_subscriber_ready")
 
-    # ── Wave 3: OpportunityScreenScheduler + subscriber ──────────────────────
+    # ── Wave 3: OpportunityScreenScheduler + subscriber ─────────────────────
     if _opportunity_screen_scheduler is None:
         from src.market.opportunity_screen_scheduler import OpportunityScreenScheduler
 
@@ -420,14 +420,14 @@ async def bootstrap() -> None:
     if _signal_engine_listener is None:
         from src.ai.signal_engine_listener import SignalEngineListener
         from src.watchlist.watchlist_query_service import WatchlistQueryService
-        from src.thesis.stress_test_query_service import StressTestQueryService
+        from src.thesis.stress_test_query_service import ThesisRiskSignalQuery
         from src.thesis.thesis_query_service import ThesisActiveContextQuery
         from src.platform.db import AsyncSessionLocal
 
         _signal_engine_listener = SignalEngineListener(
             ai_client=_ai_client,  # type: ignore[arg-type]
             watchdog_service=WatchlistQueryService(session_factory=AsyncSessionLocal),
-            stress_test_service=StressTestQueryService(session_factory=AsyncSessionLocal),
+            stress_test_service=ThesisRiskSignalQuery(session_factory=AsyncSessionLocal),
             thesis_query=ThesisActiveContextQuery(session_factory=AsyncSessionLocal),
             portfolio_query=_portfolio_query_adapter,
             feedback_service=None,
@@ -435,7 +435,7 @@ async def bootstrap() -> None:
         _signal_engine_listener.register()
         logger.info("platform.bootstrap.signal_engine_listener_ready")
 
-    # ── Trend Prediction: TrendEngineListener ────────────────────────────────
+    # ── Trend Prediction: TrendEngineListener ───────────────────────────────
     if _trend_engine_listener is None:
         from src.ai.trend_engine_listener import TrendEngineListener
         from src.market.trend_engine import TrendEngine
@@ -456,7 +456,7 @@ async def bootstrap() -> None:
         _trend_engine_listener.register()
         logger.info("platform.bootstrap.trend_engine_listener_ready")
 
-    # ── Wave E: PostMortemService + MemoryInjectionListener ──────────────────
+    # ── Wave E: PostMortemService + MemoryInjectionListener ─────────────────
     if _post_mortem_service is None:
         from src.thesis.post_mortem_service import PostMortemService
         from src.platform.db import AsyncSessionLocal
@@ -478,7 +478,7 @@ async def bootstrap() -> None:
         _memory_injection_listener.register()  # type: ignore[union-attr]
         logger.info("platform.bootstrap.memory_injection_listener_ready")
 
-    # ── core: IntelligenceEngineListener (Wave 2 AI active) ──────────────────
+    # ── core: IntelligenceEngineListener (Wave 2 AI active) ─────────────────
     if _intelligence_engine_listener is None:
         from src.core.intelligence_listener import IntelligenceEngineListener
         from src.ai.agents.intelligence_verdict import IntelligenceVerdictAgent
@@ -492,7 +492,7 @@ async def bootstrap() -> None:
         _intelligence_engine_listener.register()
         logger.info("platform.bootstrap.intelligence_engine_listener_ready")
 
-    # ── bot: IntelligenceEngineSubscriber (Discord delivery) ─────────────────
+    # ── bot: IntelligenceEngineSubscriber (Discord delivery) ────────────────
     if _intelligence_engine_subscriber is None:
         from src.bot.intelligence_engine_subscriber import IntelligenceEngineSubscriber
         from src.platform.config import settings
@@ -506,7 +506,7 @@ async def bootstrap() -> None:
             discord_channel_id=channel_id,
         )
 
-    # ── core: EngineFeedbackListener ─────────────────────────────────────────
+    # ── core: EngineFeedbackListener ────────────────────────────────────────
     if _engine_feedback_listener is None:
         from src.core.feedback_listener import EngineFeedbackListener
 
@@ -514,7 +514,7 @@ async def bootstrap() -> None:
         _engine_feedback_listener.register()
         logger.info("platform.bootstrap.engine_feedback_listener_ready")
 
-    # ── core: UserActionFeedbackListener — closes the feedback loop ───────────
+    # ── core: UserActionFeedbackListener — closes the feedback loop ──────────
     if _user_action_listener is None:
         from src.core.user_action_listener import UserActionFeedbackListener
 

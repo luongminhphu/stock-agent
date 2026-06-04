@@ -1,18 +1,25 @@
-"""StressTestQueryService — read-model adapter for SignalEngineListener.
+"""ThesisRiskSignalQuery — derived risk signals for AI signal engine.
 
 Owner: thesis segment.
 Consumer: ai.signal_engine_listener (read-only).
 
-Design note:
-  StressTestService does NOT persist StressTestOutput to DB — results are
-  returned to caller and emitted as events only. Therefore this query service
-  derives risk signals from current thesis state (assumptions + catalysts)
-  rather than storing/replaying past stress-test results.
+Derive stress-test-style risk signals from current thesis assumption state.
+This is NOT a query adapter for persisted StressTest outputs — StressTestService
+does not persist results to DB. Risk signals are built on-the-fly from:
+    - threatened assumptions (INVALID / UNCERTAIN)
+    - invalidation_probability = threatened / total
+    - pending catalysts
 
-  This is an honest degraded approach for Wave B2. If true last-run persistence
-  is needed, a StressTestResult DB table should be introduced in a future wave.
+Outputs are tagged with _source: 'derived_from_thesis_state' so downstream
+SignalEngineAgent knows the provenance and can weight accordingly.
+
+If true last-run persistence is ever needed, introduce a StressTestResult
+DB table and graduate this class into a real readmodel projection.
 
 Pattern: session_factory injection, never raises — returns [] on error.
+
+Naming note: previously StressTestQueryService. Renamed to ThesisRiskSignalQuery
+to avoid implying persisted StressTest entity queries exist.
 """
 from __future__ import annotations
 
@@ -23,7 +30,7 @@ from src.platform.logging import get_logger
 logger = get_logger(__name__)
 
 
-class StressTestQueryService:
+class ThesisRiskSignalQuery:
     """Read-only: derive stress-test risk signals from active thesis state."""
 
     def __init__(self, session_factory: Any) -> None:
@@ -67,7 +74,6 @@ class StressTestQueryService:
 
                     invalidation_prob = len(threatened) / total if total > 0 else 0.0
 
-                    # Derive verdict from ratio
                     if invalidation_prob >= 0.6:
                         verdict = "INVALIDATED"
                     elif invalidation_prob >= 0.3:
@@ -75,7 +81,6 @@ class StressTestQueryService:
                     else:
                         verdict = "VALID"
 
-                    # Pending catalysts
                     catalysts = getattr(thesis, "catalysts", []) or []
                     pending_catalysts = [
                         c.description
@@ -104,15 +109,13 @@ class StressTestQueryService:
                             for a in threatened
                         ],
                         "pending_catalysts": pending_catalysts,
-                        # source tag so SignalEngineAgent knows this is derived,
-                        # not a real stress-test run
                         "_source": "derived_from_thesis_state",
                     })
 
                 return results
         except Exception as exc:
             logger.warning(
-                "stress_test_query_service.get_latest_outputs_failed",
+                "thesis_risk_signal_query.get_latest_outputs_failed",
                 user_id=user_id,
                 error=str(exc),
             )
