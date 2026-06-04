@@ -68,6 +68,8 @@ def create_bot() -> commands.Bot:
             _start_signal_reaction_listener(bot)         # Wave B: emoji reaction → user_signal
             _start_agenda_subscriber(bot)                # Wave B: daily agenda → Discord (07:30)
             _start_trend_prediction_subscriber(bot)      # Wave 2: trend scan → Discord
+            _start_evolution_scheduler(bot)              # Wave 4: weekly self-improvement job
+            _start_evolution_subscriber(bot)             # Wave 4: evolution suggestions → Discord
             logger.info(
                 "bot.ready",
                 user=str(bot.user),
@@ -420,3 +422,41 @@ def _start_trend_prediction_subscriber(bot: commands.Bot) -> None:
     subscriber.set_client(bot)
     subscriber.register()
     logger.info("bot.trend_prediction_subscriber.registered", channel_id=channel_id)
+
+
+def _start_evolution_scheduler(bot: commands.Bot) -> None:
+    """Wire Wave 4: EvolutionScheduler — weekly self-improvement job (Mon 06:00 ICT).
+
+    Delivery chain:
+        EvolutionScheduler._run()                      [bot/scheduled/evolution_job]
+          → SelfImprovementAdvisor.analyse_and_suggest [core/evolution]
+            → EvolutionSuggestionReadyEvent            [platform/event_bus]
+              → EvolutionSubscriber._handle()          [bot — Discord delivery]
+    """
+    from src.bot.scheduled.evolution_job import EvolutionScheduler
+    scheduler = EvolutionScheduler(bot)
+    scheduler.start()
+    logger.info("bot.evolution_scheduler.started")
+
+
+def _start_evolution_subscriber(bot: commands.Bot) -> None:
+    """Wire Wave 4: EvolutionSubscriber → Discord embed for owner review.
+
+    Uses alert_channel_id (owner-facing channel).
+    Skips silently when suggestion_count == 0.
+    Guardrail reminder in embed footer: requires_human_approval: always.
+    """
+    from src.bot.evolution_subscriber import EvolutionSubscriber
+
+    channel_id = getattr(settings, "alert_channel_id", None)
+    if not channel_id:
+        logger.warning(
+            "bot.evolution_subscriber.not_available",
+            reason="alert_channel_id not configured — evolution embeds disabled",
+        )
+        return
+
+    subscriber = EvolutionSubscriber(channel_id=int(channel_id))
+    subscriber.set_client(bot)
+    subscriber.register()
+    logger.info("bot.evolution_subscriber.registered", channel_id=channel_id)
