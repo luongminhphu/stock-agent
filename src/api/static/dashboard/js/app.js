@@ -1,7 +1,14 @@
 /**
- * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard + Wave D lesson loop + Wave E brief ticker + Wave F brief feedback + Wave G brief generate + Wave 1 UX + Wave 2 memory + AttentionPanel + Wave 1 wire + Wave 2 wire + Wave 3 wire + Wave 4 wire + Wave A gap-wire + market breadth + engine heartbeat + brief feedback summary KPI)
+ * app.js — Entry point (Wave 7 + Wave 2b watchlist + Wave 5 decisions + Wave A leaderboard + Wave D lesson loop + Wave E brief ticker + Wave F brief feedback + Wave G brief generate + Wave 1 UX + Wave 2 memory + AttentionPanel + Wave 1 wire + Wave 2 wire + Wave 3 wire + Wave 4 wire + Wave A gap-wire + market breadth + engine heartbeat)
  * Responsibility: import tất cả modules, wire events, khởi động dashboard.
  * Rule: KHÔNG chứa business logic. Chỉ bootstrap + wiring.
+ *
+ * NOTE(brief-feedback-summary): loadBriefFeedbackSummary is implemented in
+ * modules/briefing/brief-feedback.js but NOT wired here yet.
+ * Wire it back once GET /api/v1/dashboard/brief/feedback-summary is deployed:
+ *   import { bindFeedbackEvents, loadBriefFeedbackSummary } from './modules/briefing/brief-feedback.js';
+ *   // in step 10: loadBriefFeedbackSummary({ silent: true });
+ *   // in reloadBtn: loadBriefFeedbackSummary({ silent: true });
  */
 
 import { el, openModal, closeModal } from './utils/dom.js';
@@ -23,7 +30,7 @@ import {
   openDecisionModal,
 } from './modules/decision/decision-loader.js';
 import { loadLeaderboard }      from './modules/leaderboard/leaderboard-service.js';
-import { bindFeedbackEvents, loadBriefFeedbackSummary } from './modules/briefing/brief-feedback.js';
+import { bindFeedbackEvents }   from './modules/briefing/brief-feedback.js';
 import { bindGenerateBriefButtons } from './modules/briefing/brief-generate.js';
 import { loadMemory }           from './modules/memory/memory-loader.js';
 import { loadAttentionPanel, startAttentionAutoRefresh } from './modules/attention/attention-loader.js';
@@ -311,7 +318,6 @@ function bindDecisionQuickTradeEvent() {
 
 // ---------------------------------------------------------------------------
 // Wave A gap-wire: watchlist:changed → loadAttentionPanel
-// watchlist-loader dispatches this after add/remove/scan-complete.
 // ---------------------------------------------------------------------------
 function bindWatchlistChangedWire() {
   document.addEventListener('watchlist:changed', () => {
@@ -324,7 +330,6 @@ function bindWatchlistChangedWire() {
 
 // ---------------------------------------------------------------------------
 // Wave A gap-wire: trade:confirmed → loadWatchlist + loadAttentionPanel
-// quick-trade dispatches this unconditionally after every successful trade.
 // ---------------------------------------------------------------------------
 function bindTradeConfirmedWire() {
   document.addEventListener('trade:confirmed', () => {
@@ -335,7 +340,6 @@ function bindTradeConfirmedWire() {
 
 // ---------------------------------------------------------------------------
 // Wave A gap-wire: decision:changed + lesson:persisted → loadLeaderboard
-// Keeps leaderboard in sync after new decisions or evaluated lessons.
 // ---------------------------------------------------------------------------
 function bindDecisionLeaderboardWire() {
   document.addEventListener('decision:changed', () => loadLeaderboard());
@@ -344,16 +348,6 @@ function bindDecisionLeaderboardWire() {
 
 // ---------------------------------------------------------------------------
 // Engine Heartbeat — poll GET /api/v1/core/snapshot every 90s
-//
-// Segment owner: api (thin adapter, no business logic).
-// State is derived from SystemSnapshot.captured_at:
-//   < 5 min  → ok    🟢  engine chạy bình thường
-//   5–30 min → stale 🟡  engine có thể bị trễ
-//   > 30 min → error 🔴  engine không hoạt động
-// Fetch fail → error 🔴
-//
-// NOTE: GET /snapshot builds a fresh snapshot on each call.
-// Poll interval 90s to avoid unnecessary DB load.
 // ---------------------------------------------------------------------------
 function startEngineHeartbeat() {
   const badge  = document.getElementById('engineHeartbeat');
@@ -366,7 +360,6 @@ function startEngineHeartbeat() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
 
-      // captured_at is the canonical timestamp (ISO 8601 string)
       const capturedAt = data?.captured_at ? new Date(data.captured_at) : null;
       const ageMinutes = capturedAt
         ? (Date.now() - capturedAt.getTime()) / 60_000
@@ -407,7 +400,7 @@ function startEngineHeartbeat() {
     }
   }
 
-  poll(); // immediate on load
+  poll();
   setInterval(poll, 90_000);
 }
 
@@ -437,7 +430,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 1a. Wave F: feedback buttons
   bindFeedbackEvents();
 
-  // 1b. Wave G: generate brief buttons → POST /briefing/{phase}/generate
+  // 1b. Wave G: generate brief buttons
   bindGenerateBriefButtons();
 
   // 1c. Decision form events
@@ -477,7 +470,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   el('newDecisionBtn')?.addEventListener('click', () => openDecisionModal({}));
 
-  // reloadBtn: run independent loaders in parallel, then fire-and-forget
+  // reloadBtn
   el('reloadBtn')?.addEventListener('click', async () => {
     await Promise.allSettled([
       loadDashboard(),
@@ -487,11 +480,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       loadDecisions(),
       loadMarketBreadth(),
     ]);
-    // loadAttentionPanel after watchlist so scan data is fresh
     loadLeaderboard();
     loadMemory();
     loadAttentionPanel();
-    loadBriefFeedbackSummary({ silent: true });
   });
 
   el('addWatchlistBtn')?.addEventListener('click', () => openModal('watchlistAddModal'));
@@ -516,7 +507,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (btn) closeModal(btn.dataset.close);
   });
 
-  // 7. Delete confirm modal — wire state.deleteCallback
+  // 7. Delete confirm modal
   el('deleteConfirmBtn')?.addEventListener('click', async () => {
     if (typeof state.deleteCallback !== 'function') return;
     const btn = el('deleteConfirmBtn');
@@ -586,8 +577,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   loadMemory();
   loadAttentionPanel();
   loadTodayLoop();
-  // Brief feedback summary KPI — fire-and-forget, graceful 404 fallback
-  loadBriefFeedbackSummary({ silent: true });
   initKpiClickable();
 
   // Wave 2 wire: attention panel auto-refresh mỗi 5 phút
