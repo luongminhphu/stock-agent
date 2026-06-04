@@ -72,6 +72,7 @@ def create_bot() -> commands.Bot:
             _start_evolution_subscriber(bot)             # Wave 4: evolution suggestions → Discord
             _start_invalidation_subscriber(bot)          # thesis invalidation alert → Discord
             _start_trend_shift_subscriber(bot)           # market regime shift alert → Discord
+            _start_stress_test_subscriber(bot)           # stress test result → Discord
             logger.info(
                 "bot.ready",
                 user=str(bot.user),
@@ -184,7 +185,6 @@ def _inject_briefing_listener(bot: commands.Bot) -> None:
 
 
 def _inject_intelligence_engine_subscriber(bot: commands.Bot) -> None:
-    """Inject Discord client into IntelligenceEngineSubscriber for verdict pushes."""
     from src.platform.bootstrap import get_intelligence_engine_subscriber
     subscriber = get_intelligence_engine_subscriber()
     if subscriber is not None:
@@ -319,7 +319,6 @@ def _start_proactive_watch_subscriber(bot: commands.Bot) -> None:
 
 
 def _start_post_mortem_subscriber(bot: commands.Bot) -> None:
-    """Wire Wave E: PostMortemSubscriber → Discord embed on thesis close/invalidate."""
     from src.bot.post_mortem_subscriber import PostMortemSubscriber
 
     channel_id = (
@@ -340,7 +339,6 @@ def _start_post_mortem_subscriber(bot: commands.Bot) -> None:
 
 
 def _start_intelligence_engine_scheduler(bot: commands.Bot) -> None:
-    """Wave A: start IntelligenceEngineScheduler — fires engine 2x/day."""
     from src.bot.scheduler import IntelligenceEngineScheduler
     scheduler = IntelligenceEngineScheduler(bot)
     scheduler.start()
@@ -348,14 +346,12 @@ def _start_intelligence_engine_scheduler(bot: commands.Bot) -> None:
 
 
 def _start_signal_reaction_listener(bot: commands.Bot) -> None:
-    """Wire Wave B: SignalReactionListener → captures emoji reactions as investor signals."""
     from src.bot.signal_reaction_listener import SignalReactionListener
     listener = SignalReactionListener(bot)
     listener.register()
 
 
 def _start_agenda_subscriber(bot: commands.Bot) -> None:
-    """Wire daily agenda → Discord embed at 07:30 ICT."""
     from src.bot.agenda_subscriber import AgendaSubscriber
 
     channel_id = (
@@ -376,7 +372,6 @@ def _start_agenda_subscriber(bot: commands.Bot) -> None:
 
 
 def _start_trend_prediction_subscriber(bot: commands.Bot) -> None:
-    """Wire Wave 2: TrendPredictionSubscriber → Discord embed after trend scan."""
     from src.bot.trend_prediction_subscriber import TrendPredictionSubscriber
 
     channel_id = getattr(settings, "alert_channel_id", None)
@@ -394,7 +389,6 @@ def _start_trend_prediction_subscriber(bot: commands.Bot) -> None:
 
 
 def _start_evolution_scheduler(bot: commands.Bot) -> None:
-    """Wire Wave 4: EvolutionScheduler — weekly self-improvement job (Mon 06:00 ICT)."""
     from src.bot.scheduled.evolution_job import EvolutionScheduler
     scheduler = EvolutionScheduler(bot)
     scheduler.start()
@@ -402,7 +396,6 @@ def _start_evolution_scheduler(bot: commands.Bot) -> None:
 
 
 def _start_evolution_subscriber(bot: commands.Bot) -> None:
-    """Wire Wave 4: EvolutionSubscriber → Discord embed for owner review."""
     from src.bot.evolution_subscriber import EvolutionSubscriber
 
     channel_id = getattr(settings, "alert_channel_id", None)
@@ -420,13 +413,6 @@ def _start_evolution_subscriber(bot: commands.Bot) -> None:
 
 
 def _start_invalidation_subscriber(bot: commands.Bot) -> None:
-    """Wire thesis invalidation alert → Discord embed.
-
-    Delivery chain:
-        ThesisReviewListener._maybe_invalidate()   [thesis segment]
-          → ThesisInvalidatedEvent                 [platform/event_bus]
-            → InvalidationSubscriber._handle()     [bot — Discord alert]
-    """
     from src.bot.invalidation_subscriber import InvalidationSubscriber
 
     channel_id = getattr(settings, "alert_channel_id", None)
@@ -444,19 +430,6 @@ def _start_invalidation_subscriber(bot: commands.Bot) -> None:
 
 
 def _start_trend_shift_subscriber(bot: commands.Bot) -> None:
-    """Wire market regime shift alert → Discord embed.
-
-    Delivery chain:
-        TrendShiftDetector._process_symbol()   [market segment]
-          → TrendShiftEvent                    [platform/event_bus]
-            → TrendShiftSubscriber._handle()   [bot — Discord alert]
-              → embed: 🚨/📊 Regime/Trend shift — {SYMBOL}
-              → channel.send(embed)            [alert_channel]
-
-    Noise already filtered upstream (cold start skip, neutral band, delta threshold).
-    No dedup applied — each scan phase (morning/midday/pre_atc) is a
-    distinct data point and should surface independently.
-    """
     from src.bot.trend_shift_subscriber import TrendShiftSubscriber
 
     channel_id = getattr(settings, "alert_channel_id", None)
@@ -471,3 +444,32 @@ def _start_trend_shift_subscriber(bot: commands.Bot) -> None:
     subscriber.set_client(bot)
     subscriber.register()
     logger.info("bot.trend_shift_subscriber.registered", channel_id=channel_id)
+
+
+def _start_stress_test_subscriber(bot: commands.Bot) -> None:
+    """Wire stress test result → Discord embed.
+
+    Delivery chain:
+        StressTestService.stress_test()          [thesis segment]
+          → StressTestCompletedEvent             [platform/event_bus]
+            → StressTestSubscriber._handle()     [bot — Discord alert]
+              → embed: {emoji} Stress test — {SYMBOL}: {VERDICT}
+              → channel.send(embed)              [alert_channel]
+
+    Dedup: upstream publishes with dedup_key=f"stress_test:{thesis_id}",
+    dedup_window=2h — no double-alert within 2 hours for the same thesis.
+    """
+    from src.bot.stress_test_subscriber import StressTestSubscriber
+
+    channel_id = getattr(settings, "alert_channel_id", None)
+    if not channel_id:
+        logger.warning(
+            "bot.stress_test_subscriber.not_available",
+            reason="alert_channel_id not configured — stress test alerts disabled",
+        )
+        return
+
+    subscriber = StressTestSubscriber(channel_id=int(channel_id))
+    subscriber.set_client(bot)
+    subscriber.register()
+    logger.info("bot.stress_test_subscriber.registered", channel_id=channel_id)
