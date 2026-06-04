@@ -8,6 +8,29 @@
 
 import { briefingApiBase } from '../../api/client.js';
 
+// Session-scoped availability flag.
+// null  = not probed yet
+// true  = endpoint exists, safe to fetch
+// false = endpoint returned 404, skip all subsequent calls this session
+let _summaryAvailable = null;
+
+/**
+ * _probeSummaryEndpoint()
+ * HEAD probe on first call. Sets _summaryAvailable.
+ * Suppresses 404 noise: if backend hasn't deployed the endpoint yet,
+ * we get exactly ONE 404 in the network log instead of one per load cycle.
+ */
+async function _probeSummaryEndpoint() {
+  if (_summaryAvailable !== null) return _summaryAvailable;
+  try {
+    const res = await fetch('/api/v1/dashboard/brief/feedback-summary', { method: 'HEAD' });
+    _summaryAvailable = res.status !== 404;
+  } catch {
+    _summaryAvailable = false;
+  }
+  return _summaryAvailable;
+}
+
 /**
  * bindFeedbackEvents()
  * Wire once at bootstrap. Listens for clicks on .fb-btn inside
@@ -57,21 +80,26 @@ export function bindFeedbackEvents() {
  *   { acted: number, total: number, acted_rate: number,
  *     top_theme?: string, lookback_days?: number }
  *
- * Graceful degradation: silently no-ops on 404 or network failure.
- * The KPI card continues to show "—" — no error banner is shown.
+ * Graceful degradation:
+ * - Probes endpoint once via HEAD before first GET.
+ * - If 404: sets session flag, skips all future calls — no repeated network log.
+ * - If other error: warns once (unless silent=true).
  */
 export async function loadBriefFeedbackSummary({ silent = false } = {}) {
   const rateEl = document.getElementById('briefActedRate');
   const subEl  = document.getElementById('briefActedSub');
-  if (!rateEl && !subEl) return; // DOM not ready
+  if (!rateEl && !subEl) return;
+
+  // Probe once; if endpoint not available, bail silently for the session
+  const available = await _probeSummaryEndpoint();
+  if (!available) return;
 
   try {
-    const res = await fetch('/api/v1/dashboard/brief/feedback-summary', {
-      headers: { 'Content-Type': 'application/json' },
-    });
-
-    // 404 = endpoint not deployed yet — silent no-op
-    if (res.status === 404) return;
+    const res = await fetch('/api/v1/dashboard/brief/feedback-summary');
+    if (res.status === 404) {
+      _summaryAvailable = false;
+      return;
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     const data = await res.json();
