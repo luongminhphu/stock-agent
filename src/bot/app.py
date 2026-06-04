@@ -70,6 +70,7 @@ def create_bot() -> commands.Bot:
             _start_trend_prediction_subscriber(bot)      # Wave 2: trend scan → Discord
             _start_evolution_scheduler(bot)              # Wave 4: weekly self-improvement job
             _start_evolution_subscriber(bot)             # Wave 4: evolution suggestions → Discord
+            _start_invalidation_subscriber(bot)          # thesis invalidation alert → Discord
             logger.info(
                 "bot.ready",
                 user=str(bot.user),
@@ -460,3 +461,32 @@ def _start_evolution_subscriber(bot: commands.Bot) -> None:
     subscriber.set_client(bot)
     subscriber.register()
     logger.info("bot.evolution_subscriber.registered", channel_id=channel_id)
+
+
+def _start_invalidation_subscriber(bot: commands.Bot) -> None:
+    """Wire thesis invalidation alert → Discord embed.
+
+    Delivery chain:
+        ThesisReviewListener._maybe_invalidate()   [thesis segment]
+          → ThesisInvalidatedEvent                 [platform/event_bus]
+            → InvalidationSubscriber._handle()     [bot — Discord alert]
+              → embed: 🚨 Thesis invalidated — {SYMBOL}
+              → channel.send(embed)               [alert_channel]
+
+    Dedup: upstream publishes with dedup_key=thesis_id (60 min window).
+    No double-alert for the same thesis within one hour.
+    """
+    from src.bot.invalidation_subscriber import InvalidationSubscriber
+
+    channel_id = getattr(settings, "alert_channel_id", None)
+    if not channel_id:
+        logger.warning(
+            "bot.invalidation_subscriber.not_available",
+            reason="alert_channel_id not configured — thesis invalidation alerts disabled",
+        )
+        return
+
+    subscriber = InvalidationSubscriber(channel_id=int(channel_id))
+    subscriber.set_client(bot)
+    subscriber.register()
+    logger.info("bot.invalidation_subscriber.registered", channel_id=channel_id)
