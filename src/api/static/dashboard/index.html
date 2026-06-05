@@ -1284,7 +1284,8 @@
       </div>
     </dialog>
 
-    <script src="/static/dashboard/js/quick-trade.js"></script>
-    <script type="module" src="/static/dashboard/js/app.js?v=19" data-cfasync="false"></script>
+    <!-- quick-trade.js đã được chuyển thành ES module tại modules/portfolio/quick-trade.js -->
+    <!-- và được import trực tiếp bởi portfolio-loader.js + portfolio-renderer.js          -->
+    <script type="module" src="/static/dashboard/js/app.js?v=20" data-cfasync="false"></script>
   </body>
 </html>
