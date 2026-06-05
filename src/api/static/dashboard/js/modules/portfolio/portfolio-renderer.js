@@ -188,38 +188,42 @@ function _buildTradesTable(rows) {
   const body = rows.length
     ? rows.map(r => r.html).join('')
     : '<tr><td colspan="8" class="empty-state">Chưa có vị thế nào.</td></tr>';
-  return `<table class="holdings-table">
-    <thead><tr>
-      <th class="col-ticker col-center">Ticker</th>
-      <th class="col-qty">SL (cp)</th>
-      <th class="col-price">Giá vốn</th>
-      <th class="col-price">Thị giá</th>
-      <th class="col-pnl">P&amp;L (₫)</th>
-      <th class="col-pct">P&amp;L (%)</th>
-      <th class="col-thesis">Thesis</th>
-      <th class="col-action"></th>
-    </tr></thead>
-    <tbody data-holdings-tbody="trades">${body}</tbody>
-  </table>`;
+  return `<div class="portfolio-pane"><div class="table-scroll">
+    <table class="data-table">
+      <thead><tr>
+        <th class="col-ticker col-center">Ticker</th>
+        <th class="col-qty">SL (cp)</th>
+        <th class="col-price">Giá vốn</th>
+        <th class="col-price">Thị giá</th>
+        <th class="col-pnl">P&amp;L (₫)</th>
+        <th class="col-pct">P&amp;L (%)</th>
+        <th class="col-thesis">Thesis</th>
+        <th class="col-action"></th>
+      </tr></thead>
+      <tbody data-holdings-tbody="trades">${body}</tbody>
+    </table>
+  </div></div>`;
 }
 
 function _buildThesisTable(rows) {
   const body = rows.length
     ? rows.map(r => r.html).join('')
     : '<tr><td colspan="8" class="empty-state">Chưa có vị thế nào.</td></tr>';
-  return `<table class="holdings-table">
-    <thead><tr>
-      <th class="col-ticker col-center">Ticker</th>
-      <th class="col-qty">SL (cp)</th>
-      <th class="col-price">Giá vốn</th>
-      <th class="col-price">Thị giá</th>
-      <th class="col-pnl">P&amp;L (₫)</th>
-      <th class="col-pct">P&amp;L (%)</th>
-      <th class="col-thesis col-center">Verdict</th>
-      <th class="col-action"></th>
-    </tr></thead>
-    <tbody data-holdings-tbody="thesis">${body}</tbody>
-  </table>`;
+  return `<div class="portfolio-pane"><div class="table-scroll">
+    <table class="data-table">
+      <thead><tr>
+        <th class="col-ticker col-center">Ticker</th>
+        <th class="col-qty">SL (cp)</th>
+        <th class="col-price">Giá vốn</th>
+        <th class="col-price">Thị giá</th>
+        <th class="col-pnl">P&amp;L (₫)</th>
+        <th class="col-pct">P&amp;L (%)</th>
+        <th class="col-thesis col-center">Verdict</th>
+        <th class="col-action"></th>
+      </tr></thead>
+      <tbody data-holdings-tbody="thesis">${body}</tbody>
+    </table>
+  </div></div>`;
 }
 
 // ---------------------------------------------------------------------------
