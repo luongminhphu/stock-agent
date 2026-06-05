@@ -12,7 +12,7 @@
  */
 
 import { el }                          from '../../utils/dom.js';
-import { apiBase, getJson }            from '../../api/client.js';
+import { readmodelApiBase, getJson }   from '../../api/client.js';
 import { renderPortfolio }             from './portfolio-renderer.js';
 import { init as qtInit,
          injectTradeButtons }          from './quick-trade.js';
@@ -36,7 +36,7 @@ export async function loadPortfolio(userId) {
   section.classList.add('loading');
 
   try {
-    const base = apiBase();
+    const base = readmodelApiBase();   // '/api/v1/readmodel' — không có trailing /dashboard
     const [trades, thesis] = await Promise.allSettled([
       getJson(`${base}/dashboard/portfolio/trades`),
       getJson(`${base}/dashboard/portfolio`),
