@@ -38,6 +38,7 @@ import { loadMarketBreadth }    from './modules/market/breadth.js';
 import { debounce }             from './utils/debounce.js';
 import { state }                from './state/dashboard-state.js';
 import { loadTodayLoop, startTodayLoopAutoRefresh } from './modules/today-loop/today-loop-loader.js';
+import { initEngineHeartbeat }  from './modules/engine/engine-heartbeat.js';
 
 // ---------------------------------------------------------------------------
 // Brief tab switching
@@ -347,64 +348,6 @@ function bindDecisionLeaderboardWire() {
 }
 
 // ---------------------------------------------------------------------------
-// Engine Heartbeat — poll GET /api/v1/core/snapshot every 90s
-// ---------------------------------------------------------------------------
-function startEngineHeartbeat() {
-  const badge  = document.getElementById('engineHeartbeat');
-  const textEl = badge?.querySelector('.heartbeat-text');
-  if (!badge) return;
-
-  async function poll() {
-    try {
-      const res  = await fetch('/api/v1/core/snapshot');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-
-      const capturedAt = data?.captured_at ? new Date(data.captured_at) : null;
-      const ageMinutes = capturedAt
-        ? (Date.now() - capturedAt.getTime()) / 60_000
-        : Infinity;
-
-      const triggerSource = data?.trigger_source || '';
-      const summary       = data?.signal_engine_summary || null;
-
-      let stateClass, labelText;
-
-      if (ageMinutes < 5) {
-        stateClass = 'heartbeat-ok';
-        labelText  = summary
-          ? `Engine OK · ${summary.slice(0, 40)}`
-          : `Engine OK · ${Math.floor(ageMinutes)}m ago`;
-      } else if (ageMinutes < 30) {
-        stateClass = 'heartbeat-stale';
-        labelText  = `Engine STALE · ${Math.floor(ageMinutes)}m ago`;
-      } else {
-        stateClass = 'heartbeat-error';
-        labelText  = capturedAt
-          ? `Engine DOWN · ${Math.floor(ageMinutes)}m ago`
-          : 'Engine DOWN';
-      }
-
-      if (triggerSource) labelText += ` (${triggerSource})`;
-
-      badge.className = `engine-heartbeat ${stateClass}`;
-      badge.setAttribute('title', capturedAt
-        ? `Last snapshot: ${capturedAt.toLocaleString('vi-VN')}`
-        : 'Snapshot timestamp unavailable');
-      if (textEl) textEl.textContent = labelText;
-
-    } catch {
-      badge.className = 'engine-heartbeat heartbeat-error';
-      if (textEl) textEl.textContent = 'Engine ERROR';
-      badge.setAttribute('title', 'Không thể kết nối tới /api/v1/core/snapshot');
-    }
-  }
-
-  poll();
-  setInterval(poll, 90_000);
-}
-
-// ---------------------------------------------------------------------------
 // Main bootstrap
 // ---------------------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', async () => {
@@ -425,7 +368,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   bindDecisionLeaderboardWire();
 
   // Engine status badge
-  startEngineHeartbeat();
+  initEngineHeartbeat();
 
   // 1a. Wave F: feedback buttons
   bindFeedbackEvents();
