@@ -13,6 +13,19 @@ export function fmt(n, decimals = 0) {
 }
 
 /**
+ * Format một giá trị thành chuỗi phần trăm, ví dụ: 12.5 → "12.5%", 0.125 → "12.5%"
+ * Tự detect: nếu |n| <= 1 thì nhân 100 (ratio), ngược lại dùng trực tiếp.
+ * @param {number|null} n
+ * @param {number} decimals
+ * @returns {string}
+ */
+export function fmtPct(n, decimals = 1) {
+  if (n == null) return '\u2014';
+  const val = Math.abs(Number(n)) <= 1 ? Number(n) * 100 : Number(n);
+  return val.toLocaleString('vi-VN', { maximumFractionDigits: decimals }) + '%';
+}
+
+/**
  * Format date thành dd/mm/yyyy
  *
  * Fix bug #2: date-only strings (YYYY-MM-DD) được JS parse thành UTC midnight,
