@@ -20,6 +20,7 @@ Endpoints served (via src/api/routes/readmodel.py):
     get_price_snapshots()               — delegates to BacktestingService
     get_portfolio()                     — delegates to PortfolioQueryService
     get_attention_needed()              — aggregated attention panel (Wave B)
+    get_intelligence()                  — intelligence snapshot (Gap 4)
 
 Design rules:
 - This class is a thin facade — no query logic lives here.
@@ -80,6 +81,15 @@ try:
 except ImportError:  # pragma: no cover
     _THESIS_MODELS_AVAILABLE = False
     Catalyst = CatalystStatus = Thesis = ThesisReview = ThesisStatus = None  # type: ignore[assignment,misc]
+
+# Gap 4: IntelligenceSnapshotStore — in-process read, no DB, no AI call.
+# Guarded: store is only available after bootstrap() has been called.
+try:
+    from src.readmodel.intelligence_snapshot import get_intelligence_snapshot
+
+    _INTELLIGENCE_SNAPSHOT_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    _INTELLIGENCE_SNAPSHOT_AVAILABLE = False
 
 
 class QuoteBatchReader(Protocol):
@@ -995,3 +1005,112 @@ class DashboardService:
         )
         _cache.set("attention", user_id, response, extra=cache_extra)
         return response
+
+    # ------------------------------------------------------------------
+    # 16. Intelligence snapshot — Gap 4 (readmodel)
+    #
+    # Reads from IntelligenceSnapshotStore (in-process, no DB, no AI call).
+    # The store is populated by IntelligenceSnapshotSubscriber which listens
+    # to IntelligenceEngineCompletedEvent — wired in bootstrap.py.
+    #
+    # Returns None when:
+    #   - store not yet populated (engine hasn't run yet today)
+    #   - bootstrap() hasn't been called (ImportError guard)
+    #   - store raises unexpectedly
+    #
+    # Cached 30s — same TTL as other lightweight facade methods.
+    # is_stale=True when snapshot is older than store's staleness threshold.
+    # ------------------------------------------------------------------
+
+    async def get_intelligence(self, user_id: str) -> dict[str, Any] | None:
+        """Return the latest intelligence snapshot for user, or None if unavailable.
+
+        Output shape:
+            overall_verdict:   str | None   — e.g. "CAUTIOUS_BULLISH"
+            confidence:        float | None — 0.0–1.0
+            market_context:    str | None   — brief market narrative
+            priority_actions:  list[dict]   — [{ticker, action_text, urgency, reasoning}]
+            risk_flags:        list[dict]   — [{description, severity}]
+            watch_list:        list[str]    — tickers to monitor
+            is_stale:          bool         — True if snapshot older than threshold
+            generated_at:      str | None   — ISO8601 UTC timestamp
+        """
+        cached = _cache.get("intelligence", user_id)
+        if cached is not None:
+            return cached
+
+        if not _INTELLIGENCE_SNAPSHOT_AVAILABLE:
+            logger.warning(
+                "get_intelligence.unavailable",
+                user_id=user_id,
+                reason="intelligence_snapshot module not importable",
+            )
+            return None
+
+        try:
+            store = get_intelligence_snapshot()
+            snap_result = await store.get(user_id)
+            if snap_result is None:
+                logger.debug("get_intelligence.no_snapshot", user_id=user_id)
+                return None
+
+            report, is_stale = snap_result
+            generated_at = store.last_updated_at(user_id)
+
+            def _serialize_actions(actions: list | None) -> list[dict]:
+                if not actions:
+                    return []
+                out = []
+                for a in actions:
+                    out.append({
+                        "ticker": str(getattr(a, "ticker", "") or "").upper() or None,
+                        "action_text": str(getattr(a, "action_text", "") or "")[:300],
+                        "urgency": str(getattr(a, "urgency", "medium") or "medium").lower(),
+                        "reasoning": str(getattr(a, "reasoning", "") or "")[:500] or None,
+                    })
+                return out
+
+            def _serialize_risk_flags(flags: list | None) -> list[dict]:
+                if not flags:
+                    return []
+                out = []
+                for f in flags:
+                    out.append({
+                        "description": str(getattr(f, "description", "") or "")[:300],
+                        "severity": str(getattr(f, "severity", "low") or "low").lower(),
+                    })
+                return out
+
+            result: dict[str, Any] = {
+                "overall_verdict": str(getattr(report, "overall_verdict", "") or "") or None,
+                "confidence": float(getattr(report, "confidence", 0.0) or 0.0),
+                "market_context": str(getattr(report, "market_context", "") or "")[:500] or None,
+                "priority_actions": _serialize_actions(getattr(report, "priority_actions", None)),
+                "risk_flags": _serialize_risk_flags(getattr(report, "risk_flags", None)),
+                "watch_list": [
+                    str(t).upper()
+                    for t in (getattr(report, "watch_list", None) or [])
+                    if t
+                ],
+                "is_stale": is_stale,
+                "generated_at": generated_at.isoformat() if generated_at else None,
+            }
+
+            _cache.set("intelligence", user_id, result)
+            logger.debug(
+                "get_intelligence.ok",
+                user_id=user_id,
+                is_stale=is_stale,
+                priority_actions=len(result["priority_actions"]),
+                risk_flags=len(result["risk_flags"]),
+            )
+            return result
+
+        except Exception as exc:
+            logger.warning(
+                "get_intelligence.error",
+                user_id=user_id,
+                error=str(exc),
+                exc_info=True,
+            )
+            return None
