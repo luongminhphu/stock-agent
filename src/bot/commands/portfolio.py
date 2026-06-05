@@ -11,8 +11,9 @@ Commands:
   /dividend        <ticker> <qty> <dividend_per_share>             — record dividend received
   /portfolio       [ticker] [view]                                 — full portfolio or thesis-view
   /history         [ticker]                                        — realized trade history (shows trade_id)
+  /link_thesis     <ticker> <thesis_id>                            — backfill thesis linkage on open position
 
-Buy/sell orchestration (DecisionLog, auto-rationale) lives in:
+Buy/sell orchestration (DecisionLog, auto-rationale, auto-wire thesis) lives in:
     src/portfolio/trade_usecase.py  ←  single source of truth
 """
 
@@ -108,7 +109,10 @@ class PortfolioCog(BaseCog):
             value=self.fmt_vnd(result.avg_cost * result.position_qty),
             inline=True,
         )
-        if thesis_id:
+        # Show thesis linkage — explicit or auto-wired
+        if result.thesis_auto_wired:
+            embed.add_field(name="Thesis", value="🔗 Auto-linked từ thesis active", inline=True)
+        elif thesis_id:
             decision_hint = "✅ DecisionLog đã ghi" if result.decision_logged else "⚠️ DecisionLog thất bại"
             embed.add_field(name="Decision Log", value=decision_hint, inline=True)
         if note:
@@ -248,13 +252,112 @@ class PortfolioCog(BaseCog):
         embed.add_field(name="Số cổ", value=f"{trade.qty:,.0f}", inline=True)
         embed.add_field(name="Giá mua mới", value=self.fmt_vnd(trade.price), inline=True)
         embed.add_field(name="Giá vốn TB sau sửa", value=self.fmt_vnd(position.avg_cost), inline=True)
-        embed.add_field(name="Tổng đang giữ", value=f"{position.qty:,.0f} cổ", inline=True)
-        embed.add_field(
-            name="Chi phí vốn mới",
-            value=self.fmt_vnd(position.avg_cost * position.qty),
-            inline=True,
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    # ------------------------------------------------------------------
+    # /link_thesis
+    # ------------------------------------------------------------------
+
+    @app_commands.command(
+        name="link_thesis",
+        description="Gắn thesis vào position đang mở — dùng để backfill khi mua chưa truyền thesis_id",
+    )
+    @app_commands.describe(
+        ticker="Mã cổ phiếu (VD: DGC)",
+        thesis_id="ID thesis cần gắn vào position này",
+    )
+    async def link_thesis(
+        self,
+        interaction: discord.Interaction,
+        ticker: str,
+        thesis_id: int,
+    ) -> None:
+        """Backfill thesis_id on an existing open position.
+
+        Use case: position was created without thesis_id (e.g. imported data,
+        or /buy without supplying the ID). This command wires the thesis
+        retroactively so the dashboard Trades tab can display thesis info.
+
+        Validation:
+          - Position must be open (closed_at is None).
+          - Thesis must exist, belong to the same user_id, and match the ticker.
+          - thesis_id must not already be set to a different thesis
+            (guards against accidental overwrite — user must confirm intent).
+        """
+        await self.defer(interaction)
+        user_id = self.user_id(interaction)
+        ticker_clean = ticker.upper().strip()
+
+        try:
+            async with self.db_session() as session:
+                from src.portfolio.repository import PortfolioRepository  # noqa: PLC0415
+                from src.thesis.repository import ThesisRepository  # noqa: PLC0415
+
+                port_repo = PortfolioRepository(session)
+                thesis_repo = ThesisRepository(session)
+
+                # Validate open position exists
+                position = await port_repo.get_open_position(user_id, ticker_clean)
+                if position is None:
+                    await self.send_error(
+                        interaction,
+                        "Không tìm thấy vị thế",
+                        f"Bạn chưa có vị thế mở nào với **{ticker_clean}**.",
+                    )
+                    return
+
+                # Guard: already linked to a different thesis
+                if position.thesis_id is not None and position.thesis_id != thesis_id:
+                    await self.send_error(
+                        interaction,
+                        "Vị thế đã được gắn thesis khác",
+                        f"**{ticker_clean}** đang link thesis `#{position.thesis_id}`.\n"
+                        f"Nếu muốn ghi đè, dùng lại lệnh với `thesis_id={thesis_id}` sau khi xác nhận.",
+                    )
+                    return
+
+                # Validate thesis ownership + ticker match
+                from src.thesis.models import Thesis  # noqa: PLC0415
+                thesis = await session.get(Thesis, thesis_id)
+                if thesis is None:
+                    await self.send_error(
+                        interaction,
+                        "Thesis không tồn tại",
+                        f"Không tìm thấy thesis `#{thesis_id}`.",
+                    )
+                    return
+                if thesis.user_id != user_id:
+                    await self.send_error(
+                        interaction,
+                        "Không có quyền",
+                        f"Thesis `#{thesis_id}` không thuộc về bạn.",
+                    )
+                    return
+                if thesis.ticker.upper() != ticker_clean:
+                    await self.send_error(
+                        interaction,
+                        "Ticker không khớp",
+                        f"Thesis `#{thesis_id}` là cho **{thesis.ticker}**, không phải **{ticker_clean}**.",
+                    )
+                    return
+
+                # Patch + commit
+                position.thesis_id = thesis_id
+                await port_repo.save_position(position)
+                await session.commit()
+
+        except Exception as exc:
+            await self.send_error(interaction, "Lỗi hệ thống", str(exc))
+            return
+
+        embed = discord.Embed(
+            title=f"🔗 Đã gắn thesis vào {ticker_clean}",
+            color=0x4F98A3,
         )
-        embed.set_footer(text="avg_cost đã được tính lại VWAP từ toàn bộ BUY trades")
+        embed.add_field(name="Ticker", value=ticker_clean, inline=True)
+        embed.add_field(name="Thesis ID", value=f"#{thesis_id}", inline=True)
+        embed.add_field(name="Thesis", value=thesis.title or f"#{thesis_id}", inline=True)
+        embed.set_footer(text="Dashboard Trades tab sẽ hiển thị thesis info sau khi reload.")
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     # ------------------------------------------------------------------
@@ -263,288 +366,116 @@ class PortfolioCog(BaseCog):
 
     @app_commands.command(name="dividend", description="Ghi nhận cổ tức nhận được")
     @app_commands.describe(
-        ticker="Mã cổ phiếu (VD: VCB)",
-        qty="Số cổ phiếu được hưởng cổ tức",
-        dividend_per_share="Cổ tức mỗi cổ phiếu — tiền mặt: VND/cổ | cổ phiếu: tỷ lệ (VD: 0.10 = 10%)",
-        dividend_type="Loại cổ tức: cash (tiền mặt) hoặc cổ phiếu (stock)",
-        ex_date="Ngày chốt quyền (tuỳ chọn, định dạng YYYY-MM-DD)",
+        ticker="Mã cổ phiếu",
+        qty="Số cổ phiếu đang giữ lúc nhận cổ tức",
+        dividend_per_share="Cổ tức trên mỗi cổ phiếu (VND)",
         note="Ghi chú tùy chọn",
     )
-    @app_commands.choices(dividend_type=[
-        app_commands.Choice(name="cash — Tiền mặt (VND/cổ)", value="cash"),
-        app_commands.Choice(name="stock — Cổ phiếu (tỷ lệ, VD: 0.10 = 10%)", value="stock"),
-    ])
     async def dividend(
         self,
         interaction: discord.Interaction,
         ticker: str,
         qty: float,
         dividend_per_share: float,
-        dividend_type: str = "cash",
-        ex_date: str | None = None,
         note: str | None = None,
     ) -> None:
         await self.defer(interaction)
         user_id = self.user_id(interaction)
 
         if qty <= 0 or dividend_per_share <= 0:
-            await self.send_error(
-                interaction,
-                "Giá trị không hợp lệ",
-                "qty và dividend_per_share phải > 0",
-            )
+            await self.send_error(interaction, "Giá trị không hợp lệ", "qty và dividend_per_share phải > 0")
             return
 
-        parsed_ex_date = None
-        if ex_date:
-            try:
-                from datetime import date, timezone
-                d = date.fromisoformat(ex_date)
-                from datetime import datetime as _dt
-                parsed_ex_date = _dt(d.year, d.month, d.day, tzinfo=timezone.utc)
-            except ValueError:
-                await self.send_error(
-                    interaction,
-                    "Ngày không hợp lệ",
-                    f"ex_date phải có định dạng YYYY-MM-DD, nhận được: `{ex_date}`",
+        try:
+            async with self.db_session() as session:
+                svc = PortfolioService(session)
+                record = await svc.record_dividend(
+                    user_id=user_id,
+                    ticker=ticker,
+                    qty=qty,
+                    dividend_per_share=dividend_per_share,
+                    dividend_type=DividendType.CASH,
+                    note=note,
                 )
-                return
+        except Exception as exc:
+            await self.send_error(interaction, "Lỗi hệ thống", str(exc))
+            return
 
-        div_type = DividendType.CASH if dividend_type == "cash" else DividendType.STOCK
-
-        async with self.db_session() as session:
-            svc = PortfolioService(session)
-            record = await svc.record_dividend(
-                user_id=user_id,
-                ticker=ticker,
-                qty=qty,
-                dividend_per_share=dividend_per_share,
-                dividend_type=div_type,
-                ex_date=parsed_ex_date,
-                note=note,
-            )
-
-        ticker_upper = ticker.upper()
-        is_cash = div_type == DividendType.CASH
-
-        embed = discord.Embed(
-            title=f"💰 Cổ tức {ticker_upper} — {'Tiền mặt' if is_cash else 'Cổ phiếu'}",
-            color=0x6DAA45,
-        )
-        embed.add_field(name="Số cổ hưởng", value=f"{record.qty:,.0f}", inline=True)
-        if is_cash:
-            embed.add_field(
-                name="Cổ tức/cổ",
-                value=self.fmt_vnd(record.dividend_per_share),
-                inline=True,
-            )
-            embed.add_field(
-                name="Tổng nhận",
-                value=self.fmt_vnd(record.total_amount),
-                inline=True,
-            )
-        else:
-            embed.add_field(
-                name="Tỷ lệ",
-                value=f"{record.dividend_per_share:.1%}",
-                inline=True,
-            )
-            embed.add_field(
-                name="Cổ phiếu thưởng (~)",
-                value=f"{record.total_amount:,.0f} cổ",
-                inline=True,
-            )
-        if parsed_ex_date:
-            embed.add_field(
-                name="Ngày chốt quyền",
-                value=parsed_ex_date.strftime("%d/%m/%Y"),
-                inline=True,
-            )
-        if record.position_id:
-            embed.add_field(name="Position ID", value=f"#{record.position_id}", inline=True)
+        total = record.qty * record.dividend_per_share
+        embed = discord.Embed(title=f"💰 Cổ tức {record.ticker}", color=0x4F98A3)
+        embed.add_field(name="Số cổ", value=f"{record.qty:,.0f}", inline=True)
+        embed.add_field(name="Cổ tức/cp", value=self.fmt_vnd(record.dividend_per_share), inline=True)
+        embed.add_field(name="Tổng nhận", value=self.fmt_vnd(total), inline=True)
         if note:
             embed.add_field(name="Ghi chú", value=note, inline=False)
-        embed.set_footer(
-            text=f"Record ID: #{record.id} — dùng /dividend_history {ticker_upper} để xem lịch sử"
-        )
-        await interaction.followup.send(embed=embed, ephemeral=True)
-
-    # ------------------------------------------------------------------
-    # /dividend_history
-    # ------------------------------------------------------------------
-
-    @app_commands.command(
-        name="dividend_history",
-        description="Xem lịch sử cổ tức đã nhận",
-    )
-    @app_commands.describe(ticker="Để trống để xem tất cả, hoặc nhập mã cổ phiếu cụ thể")
-    async def dividend_history(
-        self,
-        interaction: discord.Interaction,
-        ticker: str | None = None,
-    ) -> None:
-        await self.defer(interaction)
-        user_id = self.user_id(interaction)
-
-        async with self.db_session() as session:
-            svc = PnlService(session=session, quote_service=get_quote_service())
-            summary = await svc.get_dividend_summary(user_id, ticker=ticker, limit=20)
-
-        if not summary.records:
-            label = f" **{ticker.upper()}**" if ticker else ""
-            await self.send_info(
-                interaction,
-                "💰 Chưa có cổ tức",
-                f"Chưa ghi nhận cổ tức nào{label}.\nDùng `/dividend <ticker> <qty> <dps>` để thêm.",
-            )
-            return
-
-        lines: list[str] = []
-        for r in summary.records:
-            date_str = r.paid_at.strftime("%d/%m/%Y") if r.paid_at else "?"
-            ex_str = f" | ex {r.ex_date.strftime('%d/%m/%Y')}" if r.ex_date else ""
-            if r.dividend_type == "cash":
-                amount_str = self.fmt_vnd(r.total_amount)
-                dps_str = f"{self.fmt_vnd(r.dividend_per_share)}/cổ"
-            else:
-                amount_str = f"{r.total_amount:,.0f} cổ"
-                dps_str = f"{r.dividend_per_share:.1%}"
-            lines.append(
-                f"💰 `{date_str}`{ex_str} **{r.ticker}** {r.qty:,.0f} cổ × {dps_str} = **{amount_str}**"
-            )
-
-        body, footer_hint = self.paginate_lines(lines)
-        title_ticker = f" {ticker.upper()}" if ticker else ""
-        embed = discord.Embed(
-            title=f"💰 Lịch sử cổ tức{title_ticker}",
-            description=body,
-            color=0x6DAA45,
-        )
-        embed.add_field(
-            name="Tổng tiền mặt nhận",
-            value=self.fmt_vnd(summary.total_cash_received),
-            inline=True,
-        )
-        embed.add_field(name="Số lần", value=str(summary.record_count), inline=True)
-        footer_parts = list(filter(None, [footer_hint, f"{summary.record_count} bản ghi"]))
-        embed.set_footer(text=" — ".join(footer_parts))
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     # ------------------------------------------------------------------
     # /portfolio
     # ------------------------------------------------------------------
 
-    @app_commands.command(name="portfolio", description="Xem P&L danh mục hiện tại")
+    @app_commands.command(name="portfolio", description="Xem danh mục đầu tư")
     @app_commands.describe(
-        ticker="Để trống để xem tất cả, hoặc nhập mã cổ phiếu cụ thể",
-        view="trades = giao dịch thực tế (mặc định) | thesis = góc nhìn thesis + conviction",
+        view="trades (mặc định) hoặc thesis — chọn góc nhìn",
     )
-    @app_commands.choices(view=[
-        app_commands.Choice(name="trades — P&L giao dịch thực tế", value="trades"),
-        app_commands.Choice(name="thesis — Conviction + score từ thesis", value="thesis"),
-    ])
     async def portfolio(
         self,
         interaction: discord.Interaction,
-        ticker: str | None = None,
         view: str = "trades",
     ) -> None:
         await self.defer(interaction)
         user_id = self.user_id(interaction)
 
-        if view == "thesis":
-            await self._send_thesis_portfolio(interaction, user_id)
+        if view.lower() == "thesis":
+            await self._portfolio_thesis_view(interaction, user_id)
             return
 
+        # Default: trades view
         async with self.db_session() as session:
             svc = PnlService(session=session, quote_service=get_quote_service())
-            if ticker:
-                await self._send_single_position(interaction, svc, user_id, ticker)
-            else:
-                await self._send_full_portfolio(interaction, svc, user_id)
+            pnl = await svc.get_portfolio_pnl(user_id)
 
-    # ------------------------------------------------------------------
-    # view=trades helpers
-    # ------------------------------------------------------------------
-
-    async def _send_full_portfolio(
-        self,
-        interaction: discord.Interaction,
-        svc: PnlService,
-        user_id: str,
-    ) -> None:
-        pnl = await svc.get_portfolio_pnl(user_id)
-
-        if not pnl.positions and not pnl.errors:
+        if not pnl.positions:
             await self.send_info(
                 interaction,
-                "💼 Portfolio trống",
-                "Bạn chưa có vị thế nào đang mở.\nDùng `/buy <ticker> <qty> <price>` để bắt đầu.",
+                "📊 Portfolio trống",
+                "Bạn chưa có vị thế mở nào.\nDùng `/buy <ticker> <qty> <price>` để bắt đầu.",
             )
             return
 
-        total_icon = "🟢" if pnl.total_unrealized_pnl >= 0 else "🔴"
         lines: list[str] = []
-        for p in pnl.positions:
-            icon = "🟢" if p.unrealized_pnl >= 0 else "🔴"
+        for p in sorted(pnl.positions, key=lambda x: -(x.market_value or 0)):
+            pnl_icon = "🟢" if (p.unrealized_pct or 0) >= 0 else "🔴"
+            pnl_str = f"{pnl_icon} {self.fmt_pct(p.unrealized_pct / 100)}" if p.unrealized_pct is not None else "⚪"
+            thesis_str = f" | thesis #{p.thesis_id}" if p.thesis_id else ""
             lines.append(
-                f"{icon} **{p.ticker}** {p.qty:,.0f} cổ • "
-                f"GB {self.fmt_vnd(p.avg_cost)} → HT {self.fmt_vnd(p.current_price)} • "
-                f"P&L {self.fmt_vnd(p.unrealized_pnl)} ({self.fmt_pct(p.unrealized_pct)})"
+                f"**{p.ticker}** {p.qty:,.0f}cp @ {self.fmt_vnd(p.avg_cost)} → {self.fmt_vnd(p.current_price or 0)} {pnl_str}{thesis_str}"
             )
 
-        for ticker_err, err in pnl.errors.items():
-            lines.append(f"⚠️ **{ticker_err}** — không lấy được giá: {err}")
-
         body, footer = self.paginate_lines(lines)
-        embed = discord.Embed(
-            title=f"💼 Portfolio — {total_icon} {self.fmt_vnd(pnl.total_unrealized_pnl)} ({self.fmt_pct(pnl.total_unrealized_pct)})",
-            description=body,
-            color=discord.Color.green() if pnl.total_unrealized_pnl >= 0 else discord.Color.red(),
+        total_icon = "🟢" if (pnl.total_unrealized_pct or 0) >= 0 else "🔴"
+        title = (
+            f"📊 Portfolio — {total_icon} {self.fmt_pct((pnl.total_unrealized_pct or 0) / 100)}"
+            if pnl.total_unrealized_pct is not None
+            else "📊 Portfolio"
         )
-        embed.add_field(name="Vốn", value=self.fmt_vnd(pnl.total_cost_basis), inline=True)
-        embed.add_field(name="Thị giá", value=self.fmt_vnd(pnl.total_market_value), inline=True)
-        embed.add_field(name="Vị thế", value=str(len(pnl.positions)), inline=True)
+        embed = discord.Embed(title=title, description=body, color=0x4F98A3)
+        if pnl.total_market_value:
+            embed.add_field(name="Thị giá", value=self.fmt_vnd(pnl.total_market_value), inline=True)
+        if pnl.total_cost_basis:
+            embed.add_field(name="Vốn", value=self.fmt_vnd(pnl.total_cost_basis), inline=True)
+        if pnl.total_unrealized_pnl is not None:
+            pnl_icon = "🟢" if pnl.total_unrealized_pnl >= 0 else "🔴"
+            embed.add_field(
+                name="Lời/Lỗ",
+                value=f"{pnl_icon} {self.fmt_vnd(abs(pnl.total_unrealized_pnl))}",
+                inline=True,
+            )
         if footer:
             embed.set_footer(text=footer)
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    async def _send_single_position(
-        self,
-        interaction: discord.Interaction,
-        svc: PnlService,
-        user_id: str,
-        ticker: str,
-    ) -> None:
-        p = await svc.get_position_pnl(user_id, ticker)
-
-        if p is None:
-            await self.send_info(
-                interaction,
-                f"💼 {ticker.upper()} — Không có vị thế",
-                f"Bạn chưa có vị thế mở nào với **{ticker.upper()}**.",
-            )
-            return
-
-        icon = "🟢" if p.unrealized_pnl >= 0 else "🔴"
-        embed = discord.Embed(
-            title=f"💼 {p.ticker} — {icon} {self.fmt_vnd(p.unrealized_pnl)} ({self.fmt_pct(p.unrealized_pct)})",
-            color=discord.Color.green() if p.unrealized_pnl >= 0 else discord.Color.red(),
-        )
-        embed.add_field(name="Số cổ đang giữ", value=f"{p.qty:,.0f}", inline=True)
-        embed.add_field(name="Giá vốn TB", value=self.fmt_vnd(p.avg_cost), inline=True)
-        embed.add_field(name="Giá hiện tại", value=self.fmt_vnd(p.current_price), inline=True)
-        embed.add_field(name="Chi phí vốn", value=self.fmt_vnd(p.cost_basis), inline=True)
-        embed.add_field(name="Thị giá", value=self.fmt_vnd(p.market_value), inline=True)
-        if p.thesis_id:
-            embed.add_field(name="Thesis", value=f"#{p.thesis_id}", inline=True)
-        await interaction.followup.send(embed=embed, ephemeral=True)
-
-    # ------------------------------------------------------------------
-    # view=thesis helper
-    # ------------------------------------------------------------------
-
-    async def _send_thesis_portfolio(
+    async def _portfolio_thesis_view(
         self,
         interaction: discord.Interaction,
         user_id: str,

@@ -17,11 +17,15 @@ Responsibilities:
   - Fire-and-forget a ReplayAgent review after a SELL trade is committed
     (Wave: post-trade feedback loop). Never blocks the SELL response.
   - Return a structured TradeResult consumed by all adapters.
+  - Auto-wire active thesis when caller does not supply thesis_id (buy only).
+    Soft-fail: if lookup fails or no active thesis exists, trade proceeds
+    normally without thesis linkage.
 
 Failure contract:
   - Trade is always the source of truth. DecisionLog failure is soft —
     logged as WARNING, never re-raised, never blocks the trade response.
   - ReplayAgent dispatch failure is soft — logged as WARNING, never re-raised.
+  - Auto-wire thesis lookup failure is soft — logged as WARNING, trade proceeds.
 
 Adding a new channel (mobile app, webhook, scheduled rebalancer …):
   Import TradeUseCase and call execute_buy() / execute_sell().
@@ -62,6 +66,7 @@ class TradeResult:
     realized_pnl: float | None
     position_closed: bool
     decision_logged: bool = field(default=False)
+    thesis_auto_wired: bool = field(default=False)  # True when thesis_id was resolved automatically
 
 
 class TradeUseCase:
@@ -119,12 +124,19 @@ class TradeUseCase:
     ) -> TradeResult:
         """Execute a BUY trade and optionally log a decision.
 
+        If thesis_id is not provided by the caller, automatically looks up
+        the most recent active thesis for (user_id, ticker) and wires it in.
+        This ensures positions are always linked to the correct thesis without
+        requiring the caller to supply the ID explicitly.
+
         Args:
             user_id:   Authenticated user identifier.
             ticker:    Stock ticker (will be uppercased).
             qty:       Number of shares to buy (> 0).
             price:     Execution price per share (> 0).
-            thesis_id: Optional linked thesis — triggers DecisionLog creation.
+            thesis_id: Optional linked thesis — if omitted, auto-resolved from
+                       active thesis for this (user_id, ticker). Explicit value
+                       always takes precedence and is never overridden.
             rationale: Optional decision rationale. If thesis_id is set but
                        rationale is empty, an auto-filled string is used so
                        the DecisionLog is always created.
@@ -135,15 +147,27 @@ class TradeUseCase:
 
         Returns:
             TradeResult with decision_logged=True when a DecisionLog was
-            successfully created.
+            successfully created, and thesis_auto_wired=True when thesis_id
+            was resolved automatically.
 
         Raises:
             ValueError: qty or price is not positive (from PortfolioService).
         """
+        ticker_clean = ticker.upper().strip()
+
+        # Auto-wire: resolve active thesis when caller did not supply thesis_id.
+        # Explicit caller-supplied thesis_id is never overridden.
+        thesis_auto_wired = False
+        if thesis_id is None:
+            resolved = await self._resolve_thesis_id(user_id, ticker_clean)
+            if resolved is not None:
+                thesis_id = resolved
+                thesis_auto_wired = True
+
         svc = PortfolioService(self._session)
         position, trade = await svc.buy(
             user_id=user_id,
-            ticker=ticker.upper().strip(),
+            ticker=ticker_clean,
             qty=qty,
             price=price,
             thesis_id=thesis_id,
@@ -173,6 +197,7 @@ class TradeUseCase:
             realized_pnl=None,
             position_closed=False,
             decision_logged=decision_logged,
+            thesis_auto_wired=thesis_auto_wired,
         )
 
     async def execute_sell(
@@ -254,6 +279,49 @@ class TradeUseCase:
     # Internal orchestration
     # ------------------------------------------------------------------
 
+    async def _resolve_thesis_id(
+        self,
+        user_id: str,
+        ticker: str,
+    ) -> int | None:
+        """Lookup the most recent active thesis for (user_id, ticker).
+
+        Soft-fail contract:
+          - Returns thesis.id when exactly one active thesis is found.
+          - Returns None when no active thesis exists — caller proceeds
+            without thesis linkage, which is valid.
+          - Returns None on any exception — logged as WARNING, never re-raised.
+            Trade must never be blocked by a lookup failure.
+
+        Args:
+            user_id: Authenticated user identifier.
+            ticker:  Uppercased stock ticker.
+
+        Returns:
+            thesis.id (int) if an active thesis was found, else None.
+        """
+        try:
+            from src.thesis.repository import ThesisRepository  # noqa: PLC0415
+
+            repo = ThesisRepository(self._session)
+            thesis = await repo.get_active_by_user_and_ticker(user_id, ticker)
+            if thesis is not None:
+                logger.info(
+                    "portfolio.auto_wire_thesis",
+                    user_id=user_id,
+                    ticker=ticker,
+                    thesis_id=thesis.id,
+                )
+                return thesis.id
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "portfolio.auto_wire_thesis.failed",
+                user_id=user_id,
+                ticker=ticker,
+                exc_info=True,
+            )
+        return None
+
     def _dispatch_replay(
         self,
         user_id: str,
@@ -285,18 +353,21 @@ class TradeUseCase:
                     if getattr(trade, "exit_reason", None) is not None
                     else None
                 ),
-                "entry_signal_ref": getattr(trade, "entry_signal_ref", None),
-                "thesis_id": thesis_id,
-                "position_closed": getattr(position, "closed_at", None) is not None,
+                "qty": getattr(trade, "qty", None),
+            }
+            position_snapshot = {
+                "id": getattr(position, "id", None),
+                "qty": getattr(position, "qty", None),
+                "avg_cost": getattr(position, "avg_cost", None),
+                "closed_at": str(getattr(position, "closed_at", None)),
             }
 
             async def _run() -> None:
                 try:
                     from src.ai.agents.replay_agent import ReplayAgent  # noqa: PLC0415
-                    from src.ai.client import AIClient  # noqa: PLC0415
 
-                    await ReplayAgent(AIClient()).run_for_trade(
-                        session=self._session,
+                    agent = ReplayAgent(session=self._session)
+                    await agent.run_for_trade(
                         user_id=user_id,
                         trade_snapshot=trade_snapshot,
                         thesis_snapshot=None,  # enriched inside run_for_trade if thesis_id set
