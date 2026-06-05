@@ -17,6 +17,7 @@ Route ordering rule (FastAPI matches in declaration order):
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -37,6 +38,7 @@ from src.readmodel.schemas import (
     ThesisTimelineResponse,
 )
 from src.readmodel.timeline_service import ThesisTimelineService
+from src.readmodel.today_loop_query_service import TodayLoopQueryService
 from src.portfolio.pnl_service import PnlService
 from src.watchlist.scan_service import ScanService
 
@@ -571,8 +573,6 @@ async def get_portfolio_trades(
                 "market_value": p.market_value,
                 "unrealized_pnl": p.unrealized_pnl,
                 "unrealized_pct": p.unrealized_pct,
-                # thesis_id: forward to frontend so QuickTrade can pre-select the linked
-                # thesis in the dropdown (Trades tab only — Thesis tab uses p.id directly).
                 "thesis_id": p.thesis_id,
             }
             for p in pnl.positions
@@ -660,17 +660,6 @@ async def get_attention_needed(
         Query(ge=1, le=50, description="Số attention items tối đa trả về"),
     ] = 20,
 ) -> AttentionPanelResponse:
-    """Panel 'Việc cần làm hôm nay' — aggregated từ 4 nguồn ưu tiên.
-
-    Sources (theo thứ tự urgency):
-      1. triggered_alert     — alerts đã fire, chưa dismiss
-      2. stop_loss_proximity — giá trong vòng 3% của stop_loss (critical)
-      3. overdue_review      — thesis active chưa có AI review > 14 ngày
-      4. upcoming_catalyst   — catalyst PENDING trong 72h tới
-
-    Response: AttentionPanelResponse với items sorted critical → high → medium.
-    Cached 30s. Partial results nếu một source fail.
-    """
     price_map: dict[str, float] = {}
 
     if enrich_prices:
@@ -701,14 +690,11 @@ async def get_attention_needed_single_user(
 # 16. Intelligence snapshot — Gap 4
 #
 # Route ordering: /dashboard/intelligence (static) BEFORE
-# any future /dashboard/{user_id}/intelligence (parameterised) — declared
-# first in source because FastAPI matches in declaration order.
+# /dashboard/{user_id}/intelligence (parameterised).
 #
 # Returns:
 #   200 OK  + intelligence dict  — snapshot available
 #   204 No Content               — store not yet populated / engine hasn't run
-#
-# No query params needed: snapshot is per-user, cached 30s in DashboardService.
 # ---------------------------------------------------------------------------
 
 
@@ -717,11 +703,6 @@ async def get_intelligence_single_user(
     session: Annotated[AsyncSession, Depends(get_db)],
     response: Response,
 ) -> dict[str, Any] | None:
-    """Intelligence snapshot cho owner_user_id.
-
-    204 No Content khi engine chưa chạy hoặc store chưa được bootstrap.
-    200 OK + dict khi snapshot sẵn sàng.
-    """
     svc = DashboardService(session)
     result = await svc.get_intelligence(_default_user_id())
     if result is None:
@@ -736,17 +717,49 @@ async def get_intelligence(
     session: Annotated[AsyncSession, Depends(get_db)],
     response: Response,
 ) -> dict[str, Any] | None:
-    """Intelligence snapshot cho user_id cụ thể.
-
-    204 No Content khi engine chưa chạy hoặc store chưa được bootstrap.
-    200 OK + dict khi snapshot sẵn sàng.
-    """
     svc = DashboardService(session)
     result = await svc.get_intelligence(user_id)
     if result is None:
         response.status_code = 204
         return None
     return result
+
+
+# ---------------------------------------------------------------------------
+# 17. Today Loop — aggregated actionable signals (Gap 5)
+#
+# Route ordering: /dashboard/today-loop (static) BEFORE
+# /dashboard/{user_id}/today-loop (parameterised).
+#
+# Sources aggregated by TodayLoopQueryService:
+#   1. IntelligenceSnapshotStore  — priority_actions + risk_flags (in-process)
+#   2. WatchlistAlert DB          — triggered today, snooze-filtered
+#   3. SchedulerMonitor           — engine health for 4 tasks
+#
+# No AI calls. Graceful degradation per source.
+# TodayLoopResult is a dataclass — serialized via asdict().
+# ---------------------------------------------------------------------------
+
+
+@router.get("/dashboard/today-loop")
+async def get_today_loop_single_user(
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> dict[str, Any]:
+    """Today loop cho owner_user_id — aggregated signals + engine health."""
+    svc = TodayLoopQueryService(session)
+    result = await svc.get_today_loop(_default_user_id())
+    return asdict(result)
+
+
+@router.get("/dashboard/{user_id}/today-loop")
+async def get_today_loop(
+    user_id: str,
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> dict[str, Any]:
+    """Today loop cho user_id cụ thể — aggregated signals + engine health."""
+    svc = TodayLoopQueryService(session)
+    result = await svc.get_today_loop(user_id)
+    return asdict(result)
 
 
 # ---------------------------------------------------------------------------

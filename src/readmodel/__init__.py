@@ -15,6 +15,7 @@ Public surface:
     IntelligenceSnapshotStore      — per-user cache for IntelligenceReport (Wave D)
     IntelligenceSnapshotSubscriber — event-bus wiring: auto-upsert on engine cycle (Gap 2)
     get_intelligence_snapshot      — returns the process-level snapshot store singleton
+    TodayLoopQueryService   — aggregate today's signals into actionable view (Gap 5)
 
 Startup wiring (call once in lifespan / startup hook)::
 
@@ -38,6 +39,7 @@ from src.readmodel.recent_reviews_store import RecentReviewsStore
 from src.readmodel.stats_service import StatsService
 from src.readmodel.thesis_query_service import ThesisQueryService
 from src.readmodel.timeline_service import ThesisTimelineService
+from src.readmodel.today_loop_query_service import TodayLoopQueryService
 
 __all__ = [
     "DashboardService",
@@ -54,4 +56,5 @@ __all__ = [
     "IntelligenceSnapshotStore",
     "IntelligenceSnapshotSubscriber",
     "get_intelligence_snapshot",
+    "TodayLoopQueryService",
 ]
