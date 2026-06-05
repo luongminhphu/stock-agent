@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -695,6 +695,58 @@ async def get_attention_needed_single_user(
         enrich_prices=enrich_prices,
         limit=limit,
     )
+
+
+# ---------------------------------------------------------------------------
+# 16. Intelligence snapshot — Gap 4
+#
+# Route ordering: /dashboard/intelligence (static) BEFORE
+# any future /dashboard/{user_id}/intelligence (parameterised) — declared
+# first in source because FastAPI matches in declaration order.
+#
+# Returns:
+#   200 OK  + intelligence dict  — snapshot available
+#   204 No Content               — store not yet populated / engine hasn't run
+#
+# No query params needed: snapshot is per-user, cached 30s in DashboardService.
+# ---------------------------------------------------------------------------
+
+
+@router.get("/dashboard/intelligence")
+async def get_intelligence_single_user(
+    session: Annotated[AsyncSession, Depends(get_db)],
+    response: Response,
+) -> dict[str, Any] | None:
+    """Intelligence snapshot cho owner_user_id.
+
+    204 No Content khi engine chưa chạy hoặc store chưa được bootstrap.
+    200 OK + dict khi snapshot sẵn sàng.
+    """
+    svc = DashboardService(session)
+    result = await svc.get_intelligence(_default_user_id())
+    if result is None:
+        response.status_code = 204
+        return None
+    return result
+
+
+@router.get("/dashboard/{user_id}/intelligence")
+async def get_intelligence(
+    user_id: str,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    response: Response,
+) -> dict[str, Any] | None:
+    """Intelligence snapshot cho user_id cụ thể.
+
+    204 No Content khi engine chưa chạy hoặc store chưa được bootstrap.
+    200 OK + dict khi snapshot sẵn sàng.
+    """
+    svc = DashboardService(session)
+    result = await svc.get_intelligence(user_id)
+    if result is None:
+        response.status_code = 204
+        return None
+    return result
 
 
 # ---------------------------------------------------------------------------
