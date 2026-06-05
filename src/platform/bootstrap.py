@@ -666,6 +666,18 @@ def get_trend_reasoning_agent():
     return _trend_reasoning_agent
 
 
+def get_opportunity_screen_scheduler():
+    if _opportunity_screen_scheduler is None:
+        raise RuntimeError("bootstrap() has not been called")
+    return _opportunity_screen_scheduler
+
+
+def get_opportunity_screen_subscriber():
+    if _opportunity_screen_subscriber is None:
+        raise RuntimeError("bootstrap() has not been called")
+    return _opportunity_screen_subscriber
+
+
 def get_recent_reviews_store():
     if _recent_reviews_store is None:
         raise RuntimeError("bootstrap() has not been called")
