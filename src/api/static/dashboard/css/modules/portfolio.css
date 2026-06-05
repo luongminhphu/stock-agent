@@ -21,9 +21,9 @@
      .col-center  → Verdict badge, trạng thái
      .col-right   → %, score, số lượng
      .currency    → Giá, P&L, giá trị VND — right + tabular-nums + mono
-──────────────────────────────────────────────────────────────────────────── */
+───────────────────────────────────────────────────────────────────────────────── */
 
-/* ── Banner container ───────────────────────────────────────────────────── */
+/* ── Banner container ─────────────────────────────────────────────────────────────────── */
 .perr-banner {
   margin-bottom: var(--space-3);             /* 12px via token */
   border-radius: var(--radius-sm);
@@ -38,7 +38,7 @@
   background: rgba(248, 113, 113, 0.04);
 }
 
-/* ── Toggle button ──────────────────────────────────────────────────────── */
+/* ── Toggle button ──────────────────────────────────────────────────────────────────── */
 .perr-toggle {
   display: flex;
   align-items: center;
@@ -80,7 +80,7 @@
   transform: rotate(180deg);
 }
 
-/* ── Error list ─────────────────────────────────────────────────────────── */
+/* ── Error list ───────────────────────────────────────────────────────────────────────── */
 .perr-list {
   list-style: none;
   margin: 0;
@@ -106,7 +106,7 @@
 .perr-item.perr-warning  { color: var(--warning); }
 .perr-item.perr-info     { color: var(--brand);   }
 
-/* ── Tab badge ──────────────────────────────────────────────────────────── */
+/* ── Tab badge ──────────────────────────────────────────────────────────────────────────── */
 .perr-tab-badge {
   display: inline-flex;
   align-items: center;
@@ -125,7 +125,7 @@
   letter-spacing: 0;
 }
 
-/* ── Row & cell error states ────────────────────────────────────────────── */
+/* ── Row & cell error states ────────────────────────────────────────────────────────────────────── */
 
 /* Row với ít nhất 1 data field nghiêm trọng bị thiếu */
 .row-data-error {
@@ -157,7 +157,62 @@ td.cell-missing {
   }
 }
 
-/* ── Table full-width layout ────────────────────────────────────────────── */
+/* ─── Tab bar & pane ───────────────────────────────────────────────────────────────────────
+   Owner: modules/portfolio
+   Classes:
+     .tab-bar      — hàng chứa các nút tab
+     .tab-btn      — nút tab đơn lẻ
+     .tab-btn.active — tab đang được chọn
+     .tab-pane     — panel nội dung (mặc định ẩn)
+     .tab-pane.active — panel đang hiển thị
+   Note: CSS-only, không để logic trong đây.
+          JS trong portfolio-renderer.js quản lý class toggle.
+───────────────────────────────────────────────────────────────────────────────── */
+
+.tab-bar {
+  display: flex;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  padding-bottom: var(--space-1);
+}
+
+.tab-btn {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-family: var(--font-body);
+  font-weight: 500;
+  cursor: pointer;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+  margin-bottom: -1px;   /* overlap border-bottom của .tab-bar */
+  white-space: nowrap;
+}
+
+.tab-btn:hover {
+  color: var(--text);
+}
+
+.tab-btn.active {
+  color: var(--brand, var(--text));
+  border-bottom-color: var(--brand, #4f98a3);
+  font-weight: 600;
+}
+
+/* .tab-pane — ẩn mặc định; chỉ hiển khi có .active */
+.tab-pane {
+  display: none;
+}
+
+.tab-pane.active {
+  display: block;
+}
+
+/* ── Table full-width layout ──────────────────────────────────────────────────────────────────── */
 
 /* Scroll container chiếm toàn bộ width của card/pane */
 .portfolio-pane .table-scroll {
@@ -170,7 +225,7 @@ td.cell-missing {
   table-layout: auto;
 }
 
-/* ── Table cell alignment ───────────────────────────────────────────────────
+/* ── Table cell alignment ───────────────────────────────────────────────────────────────────────────
    Dùng utility classes từ reset.css (.col-left, .col-center, .col-right,
    .currency, .num) thay vì hardcode text-align ở đây.
    Chỉ khai báo base padding + vertical-align cho table này.
@@ -181,7 +236,7 @@ td.cell-missing {
      <th class="currency">Giá</th>
      <th class="currency">P&L</th>
      <th class="col-right">Score</th>
-──────────────────────────────────────────────────────────────────────────── */
+───────────────────────────────────────────────────────────────────────────────── */
 
 /* Base: padding đều, vertical-align giữa */
 .portfolio-pane .data-table th,
@@ -196,7 +251,7 @@ td.cell-missing {
   text-align: left;
 }
 
-/* ─── Exposure Bar — Ticker Concentration (Gap 2, Option A) ──────────────
+/* ─── Exposure Bar — Ticker Concentration (Gap 2, Option A) ──────────────────────
    Owner: modules/portfolio
    Classes:
      .exposure-bar-block      — wrapper toàn bộ block
@@ -211,7 +266,7 @@ td.cell-missing {
      .exposure-dot            — màu tròn nhỏ trước ticker
      .exposure-ticker         — tên ticker
      .exposure-pct            — % giá trị
-──────────────────────────────────────────────────────────────────────────── */
+───────────────────────────────────────────────────────────────────────────────── */
 
 .exposure-bar-block {
   margin-bottom: var(--space-3);
