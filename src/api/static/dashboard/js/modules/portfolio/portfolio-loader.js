@@ -5,30 +5,33 @@
  * Rule: KHÔNG chứa business logic. Chỉ fetch → normalize → render.
  *
  * QuickTrade integration (Wave 2):
- *   1. window.__qtRefreshHoldings = loadPortfolio  — set SỜM để tránh race nếu user
- *      click B/S trong lúc portfolio đang render.
- *   2. QuickTrade.init() — gọi TRƯỚC renderPortfolio() để đảm bảo modal được
- *      inject vào DOM trước khi injectTradeButtons() chạy bên trong renderer.
- *   3. injectTradeButtons() không gọi thủ công ở đây — renderer đã lo toàn bộ
- *      (cả Trades tbody và Thesis tbody) sau khi innerHTML được set.
+ *   - import trực tiếp từ ./quick-trade.js (ES module)
+ *   - window.__qtRefreshHoldings = loadPortfolio — set SỚM để tránh race
+ *   - init() gọi TRƯỚC renderPortfolio() để modal có trong DOM
+ *     trước khi injectTradeButtons() chạy bên trong renderer
  */
 
-import { el }               from '../../utils/dom.js';
-import { apiBase, getJson } from '../../api/client.js';
-import { renderPortfolio }  from './portfolio-renderer.js';
+import { el }                          from '../../utils/dom.js';
+import { apiBase, getJson }            from '../../api/client.js';
+import { renderPortfolio }             from './portfolio-renderer.js';
+import { init as qtInit,
+         injectTradeButtons }          from './quick-trade.js';
 
 /**
- * @param {string} userId
+ * @param {string=} userId
  */
 export async function loadPortfolio(userId) {
-  const section = el('#portfolioSection');
+  const section = el('portfolioSection');   // getElementById — không có '#'
   if (!section) return;
 
   // Wave 2: register refresh hook sớm để tránh race condition
   window.__qtRefreshHoldings = () => loadPortfolio(userId);
 
-  // Wave 2: init QuickTrade modal trước render
-  if (window.QuickTrade?.init) window.QuickTrade.init();
+  // Wave 2: expose cho renderer dùng (renderer vẫn guard window.QuickTrade?.)
+  if (!window.QuickTrade) {
+    window.QuickTrade = { init: qtInit, injectTradeButtons };
+  }
+  qtInit();
 
   section.classList.add('loading');
 
