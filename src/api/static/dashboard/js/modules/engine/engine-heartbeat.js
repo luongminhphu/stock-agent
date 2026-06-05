@@ -12,7 +12,7 @@
  * Poll interval: 60s. Graceful degradation: badge ẩn nếu element không tồn tại.
  */
 
-import { apiBase, getJson } from '../../api/client.js';
+import { coreApiBase, getJson } from '../../api/client.js';
 
 const POLL_INTERVAL_MS    = 60_000;  // 1 phút
 const STALE_THRESHOLD_MIN = 35;      // > 35 phút không có cycle → STALE
@@ -27,7 +27,7 @@ export async function initEngineHeartbeat() {
 
 async function _fetchAndRender(el) {
   try {
-    const data = await getJson(`${apiBase()}/core/snapshot`);
+    const data = await getJson(`${coreApiBase()}/snapshot`);
     const capturedAt = data?.captured_at ?? data?.timestamp ?? null;
     if (!capturedAt) {
       _render(el, 'IDLE', null);

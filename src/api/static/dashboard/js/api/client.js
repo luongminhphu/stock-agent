@@ -54,6 +54,15 @@ export function marketApiBase() {
 }
 
 /**
+ * Base URL cho core engine endpoints
+ * Routes: GET /snapshot, POST /engine/run, POST /feedback
+ * @returns {string}
+ */
+export function coreApiBase() {
+  return '/api/v1/core';
+}
+
+/**
  * Headers mặc định cho mọi request
  * @returns {Record<string, string>}
  */
