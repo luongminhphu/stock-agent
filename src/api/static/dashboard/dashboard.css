@@ -24,6 +24,7 @@
 @import url('./css/components/badge.css');
 @import url('./css/components/modal.css');
 @import url('./css/components/toast.css');
+@import url('./css/components/tabs.css');
 
 /* 5. Modules */
 @import url('./css/modules/topbar.css');

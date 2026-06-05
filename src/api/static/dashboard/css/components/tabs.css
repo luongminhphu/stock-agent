@@ -1,0 +1,72 @@
+/* ─── tabs.css — Tab Bar & Pane System ────────────────────────────────────────
+   Owner: components
+   Layer: 4 — Components (dùng tokens từ base/variables, không import module nào)
+   SSOT cho tab switching pattern dùng trong toàn bộ dashboard.
+
+   Classes:
+     .tab-bar          — hàng chứa các nút tab
+     .tab-btn          — nút tab đơn lẻ
+     .tab-btn.active   — tab đang được chọn
+     .tab-pane         — panel nội dung (mặc định ẩn)
+     .tab-pane.active  — panel đang hiển thị
+
+   Usage:
+     <div class="tab-bar" role="tablist">
+       <button class="tab-btn active" role="tab" data-tab="a">Tab A</button>
+       <button class="tab-btn"        role="tab" data-tab="b">Tab B</button>
+     </div>
+     <div class="tab-pane active" data-tab-pane="a">...</div>
+     <div class="tab-pane"        data-tab-pane="b">...</div>
+
+   Note: Logic toggle class được quản lý bởi JS module (không dùng :has() hay
+         checkbox hack để tránh coupling CSS ↔ HTML structure).
+────────────────────────────────────────────────────────────────────────────── */
+
+.tab-bar {
+  display: flex;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  padding-bottom: var(--space-1);
+}
+
+.tab-btn {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-family: var(--font-body);
+  font-weight: 500;
+  cursor: pointer;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+  margin-bottom: -1px;   /* overlap border-bottom của .tab-bar */
+  white-space: nowrap;
+}
+
+.tab-btn:hover {
+  color: var(--text);
+}
+
+.tab-btn.active {
+  color: var(--brand, var(--text));
+  border-bottom-color: var(--brand, #4f98a3);
+  font-weight: 600;
+}
+
+/* .tab-pane — ẩn mặc định; chỉ hiển khi có .active */
+.tab-pane {
+  display: none;
+}
+
+.tab-pane.active {
+  display: block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab-btn {
+    transition: none;
+  }
+}
