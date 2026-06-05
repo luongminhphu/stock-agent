@@ -4,10 +4,10 @@
  * Responsibility: fetch /dashboard/portfolio/trades + /dashboard/portfolio (thesis) → render.
  * Rule: KHÔNG chứa business logic. Chỉ fetch → normalize → render.
  *
- * QuickTrade integration (Wave 2 → ES module migration):
- *   1. window.__qtRefreshHoldings = loadPortfolio  — set SớM để tránh race nếu user
+ * QuickTrade integration (Wave 2):
+ *   1. window.__qtRefreshHoldings = loadPortfolio  — set SỜM để tránh race nếu user
  *      click B/S trong lúc portfolio đang render.
- *   2. QuickTrade.init() — gọi TRƯỜC renderPortfolio() để đảm bảo modal được
+ *   2. QuickTrade.init() — gọi TRƯỚC renderPortfolio() để đảm bảo modal được
  *      inject vào DOM trước khi injectTradeButtons() chạy bên trong renderer.
  *   3. injectTradeButtons() không gọi thủ công ở đây — renderer đã lo toàn bộ
  *      (cả Trades tbody và Thesis tbody) sau khi innerHTML được set.
@@ -16,46 +16,36 @@
 import { el }               from '../../utils/dom.js';
 import { apiBase, getJson } from '../../api/client.js';
 import { renderPortfolio }  from './portfolio-renderer.js';
-import * as QuickTrade      from './quick-trade.js';
 
 /**
- * Load portfolio section.
- * Fetch cả 2 view song song:
- *   - /dashboard/portfolio/trades  → PnlService (positions thực tế)
- *   - /dashboard/portfolio         → DashboardService (thesis-based)
+ * @param {string} userId
  */
-export async function loadPortfolio() {
-  const wrap = el('portfolioSection');
-  if (!wrap) return;
+export async function loadPortfolio(userId) {
+  const section = el('#portfolioSection');
+  if (!section) return;
 
-  // ── 1. Đăng ký refresh callback SớM — trước bất kỳ await nào ───────────────────
-  // QuickTrade toast gọi window.__qtRefreshHoldings() sau khi trade thành công.
-  // Set ở đây để nếu user click B/S trong lúc fetch đang chạy,
-  // callback vẫn trỏ đúng vào loadPortfolio().
-  window.__qtRefreshHoldings = loadPortfolio;
+  // Wave 2: register refresh hook sớm để tránh race condition
+  window.__qtRefreshHoldings = () => loadPortfolio(userId);
 
-  // ── 2. Đảm bảo QuickTrade modal tồn tại trong DOM TRƯỜC render ───────────────
-  // init() bên trong QuickTrade là idempotent — safe to call nhiều lần.
-  QuickTrade.init();
+  // Wave 2: init QuickTrade modal trước render
+  if (window.QuickTrade?.init) window.QuickTrade.init();
 
-  wrap.innerHTML = '<p class="muted" style="padding:16px">Đang tải portfolio…</p>';
-
-  const base = apiBase();
+  section.classList.add('loading');
 
   try {
-    const [tradesRes, thesisRes] = await Promise.all([
-      getJson(`${base}/portfolio/trades`).catch(() => null),
-      getJson(`${base}/portfolio`).catch(() => null),
+    const base = apiBase();
+    const [trades, thesis] = await Promise.allSettled([
+      getJson(`${base}/dashboard/portfolio/trades`),
+      getJson(`${base}/dashboard/portfolio`),
     ]);
 
-    // renderPortfolio() tự gọi QuickTrade.injectTradeButtons() trên tất cả
-    // tbody[data-holdings-tbody] (cả Trades và Thesis tab) sau khi set innerHTML.
-    renderPortfolio(wrap, {
-      trades: tradesRes,
-      thesis: thesisRes,
+    renderPortfolio(section, {
+      trades: trades.status === 'fulfilled' ? trades.value : null,
+      thesis: thesis.status === 'fulfilled' ? thesis.value : null,
     });
   } catch (err) {
-    wrap.innerHTML = `<p class="empty-state">Lỗi tải portfolio: ${err.message}</p>`;
-    console.error('[portfolio-loader] loadPortfolio error:', err);
+    section.innerHTML = `<p class="section-error">Lỗi tải danh mục: ${err.message}</p>`;
+  } finally {
+    section.classList.remove('loading');
   }
 }
