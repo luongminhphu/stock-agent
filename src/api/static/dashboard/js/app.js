@@ -32,6 +32,7 @@ import {
 import { loadLeaderboard }      from './modules/leaderboard/leaderboard-service.js';
 import { bindFeedbackEvents }   from './modules/briefing/brief-feedback.js';
 import { bindGenerateBriefButtons } from './modules/briefing/brief-generate.js';
+import { bindBriefTabs, initBriefAutoOpen } from './modules/briefing/brief-tabs.js';
 import { loadMemory }           from './modules/memory/memory-loader.js';
 import { loadAttentionPanel, startAttentionAutoRefresh } from './modules/attention/attention-loader.js';
 import { loadMarketBreadth }    from './modules/market/breadth.js';
@@ -39,74 +40,6 @@ import { debounce }             from './utils/debounce.js';
 import { state }                from './state/dashboard-state.js';
 import { loadTodayLoop, startTodayLoopAutoRefresh } from './modules/today-loop/today-loop-loader.js';
 import { initEngineHeartbeat }  from './modules/engine/engine-heartbeat.js';
-
-// ---------------------------------------------------------------------------
-// Brief tab switching
-// ---------------------------------------------------------------------------
-function bindBriefTabs() {
-  const tabBar = document.querySelector('.brief-tab-bar');
-  if (!tabBar) return;
-
-  tabBar.addEventListener('click', e => {
-    const btn = e.target.closest('.brief-tab');
-    if (!btn) return;
-
-    const targetId = btn.getAttribute('aria-controls');
-    if (!targetId) return;
-
-    tabBar.querySelectorAll('.brief-tab').forEach(t => {
-      t.classList.remove('active');
-      t.setAttribute('aria-selected', 'false');
-    });
-    document.querySelectorAll('.brief-tab-pane').forEach(p => {
-      p.classList.add('hidden');
-    });
-
-    btn.classList.add('active');
-    btn.setAttribute('aria-selected', 'true');
-    document.getElementById(targetId)?.classList.remove('hidden');
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Wave 1 UX: Brief auto-open theo giờ trong ngày (GMT+7)
-// ---------------------------------------------------------------------------
-function initBriefAutoOpen() {
-  const collapsible = document.getElementById('briefCollapsible');
-  if (!collapsible) return;
-
-  const now = new Date();
-  const vnHour = (now.getUTCHours() + 7) % 24;
-  const vnMin  = now.getUTCMinutes();
-  const vnTime = vnHour + vnMin / 60;
-
-  const isMorningWindow = vnTime >= 6 && vnTime < 11;
-  const isEodWindow     = vnTime >= 14.5 && vnTime <= 18.5;
-
-  if (!isMorningWindow && !isEodWindow) return;
-
-  collapsible.open = true;
-
-  const targetTab = isMorningWindow ? 'morning' : 'eod';
-  const tabBar = collapsible.querySelector('.brief-tab-bar');
-  if (!tabBar) return;
-
-  tabBar.querySelectorAll('.brief-tab').forEach(t => {
-    const isTarget = t.dataset.tab === targetTab;
-    t.classList.toggle('active', isTarget);
-    t.setAttribute('aria-selected', String(isTarget));
-  });
-
-  const morningPane = document.getElementById('morningBriefWrap');
-  const eodPane     = document.getElementById('eodBriefWrap');
-  if (isMorningWindow) {
-    morningPane?.classList.remove('hidden');
-    eodPane?.classList.add('hidden');
-  } else {
-    eodPane?.classList.remove('hidden');
-    morningPane?.classList.add('hidden');
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Wave 1 UX: KPI cards clickable
