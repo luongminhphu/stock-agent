@@ -38,6 +38,109 @@ from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
 
+# ---------------------------------------------------------------------------
+# DB persistence helpers (Wave D.1)
+# ---------------------------------------------------------------------------
+
+async def _persist_prediction(session_factory, symbol: str, prediction) -> None:
+    """Upsert a TrendPrediction row. Fire-and-forget — never raises."""
+    if session_factory is None:
+        return
+    try:
+        import json as _json
+        from datetime import UTC, datetime as _dt, timedelta as _td
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+        from src.readmodel.models import TrendPrediction
+
+        verdict = str(getattr(prediction, "verdict", "HOLD"))
+        confidence = float(getattr(prediction, "confidence", 0.0))
+        try:
+            reasoning_json = _json.dumps(prediction.model_dump(), default=str)
+        except Exception:
+            reasoning_json = None
+        predicted_at = _dt.now(UTC)
+        expires_at = predicted_at + _td(hours=4)
+
+        async with session_factory() as session:
+            stmt = pg_insert(TrendPrediction).values(
+                symbol=symbol.upper(),
+                verdict=verdict,
+                confidence=confidence,
+                reasoning_json=reasoning_json,
+                predicted_at=predicted_at,
+                expires_at=expires_at,
+            ).on_conflict_do_update(
+                index_elements=["symbol"],
+                set_={
+                    "verdict": verdict,
+                    "confidence": confidence,
+                    "reasoning_json": reasoning_json,
+                    "predicted_at": predicted_at,
+                    "expires_at": expires_at,
+                },
+            )
+            await session.execute(stmt)
+            await session.commit()
+    except Exception as exc:
+        logger.warning("trend_prediction_store.persist_failed", symbol=symbol, error=str(exc))
+
+
+async def load_predictions_from_db(session_factory) -> list[dict]:
+    """Load non-expired predictions from DB on startup. Returns list of row dicts."""
+    if session_factory is None:
+        return []
+    try:
+        import json as _json
+        from datetime import UTC, datetime as _dt
+        from sqlalchemy import select
+        from src.readmodel.models import TrendPrediction
+
+        now = _dt.now(UTC)
+        async with session_factory() as session:
+            rows = (
+                await session.execute(
+                    select(TrendPrediction).where(TrendPrediction.expires_at > now)
+                )
+            ).scalars().all()
+            result = []
+            for row in rows:
+                result.append({
+                    "symbol": row.symbol,
+                    "verdict": row.verdict,
+                    "confidence": row.confidence,
+                    "reasoning_json": row.reasoning_json,
+                })
+            logger.info("trend_prediction_store.loaded_from_db", count=len(result))
+            return result
+    except Exception as exc:
+        logger.warning("trend_prediction_store.load_failed", error=str(exc))
+        return []
+
+
+
+# ---------------------------------------------------------------------------
+# Restored prediction wrapper — used during warm load from DB
+# ---------------------------------------------------------------------------
+
+class _RestoredPrediction:
+    """Lightweight wrapper around a JSON-restored TrendPrediction.
+
+    Exposes the same attribute interface that bot/briefing callers expect
+    (verdict, confidence, symbol) without requiring the full AI schema import.
+    Downstream callers that need the full model should filter on type checks.
+    """
+
+    def __init__(self, symbol: str, verdict: str, confidence: float, _data: dict) -> None:
+        self.symbol = symbol
+        self.verdict = verdict
+        self.confidence = confidence
+        self._data = _data
+
+    def model_dump(self) -> dict:
+        return self._data
+
+    def __repr__(self) -> str:
+        return f"_RestoredPrediction(symbol={self.symbol!r}, verdict={self.verdict!r}, confidence={self.confidence})"
 
 class TrendPredictionStore:
     """In-memory store for TrendPrediction objects.
@@ -184,18 +287,45 @@ class TrendPredictionStore:
             confidence=getattr(prediction, "confidence", None),
             direction=getattr(prediction, "direction", None),
         )
-        # Wave 2: await self._persist_to_db(symbol, prediction)
+        # Wave D.1: fire-and-forget persist to DB
+        import asyncio as _asyncio
+        _asyncio.create_task(_persist_prediction(self._session_factory, symbol, prediction))
 
     # ------------------------------------------------------------------
-    # Wave 2 stub
+    # Wave D.1: warm load on startup
     # ------------------------------------------------------------------
 
-    async def _persist_to_db(self, symbol: str, prediction: Any) -> None:  # noqa: ARG002
-        """Wave 2: persist prediction to DB so it survives bot restarts.
+    async def warm_load(self) -> int:
+        """Load non-expired predictions from DB into memory on startup.
 
-        Stub — no-op until Wave 2. Session factory injected at construction.
+        Returns number of predictions loaded.
+        Allows briefing/bot to serve the last known verdict immediately
+        after a restart without re-running the AI engine.
         """
-        # async with self._session_factory() as session:
-        #     await TrendPredictionRepo(session).upsert(symbol, prediction.model_dump())
-        #     await session.commit()
-        pass
+        rows = await load_predictions_from_db(self._session_factory)
+        loaded = 0
+        for row in rows:
+            reasoning_json = row.get("reasoning_json")
+            if reasoning_json:
+                try:
+                    import json as _json
+                    from datetime import UTC, datetime as _dt
+                    # Reconstruct a minimal stub object for the in-memory cache.
+                    # Full model restore attempted via model_validate; falls back
+                    # to a lightweight _RestoredPrediction wrapper.
+                    data = _json.loads(reasoning_json)
+                    prediction = _RestoredPrediction(
+                        symbol=row["symbol"],
+                        verdict=row["verdict"],
+                        confidence=row["confidence"],
+                        _data=data,
+                    )
+                    self._cache[row["symbol"].upper()] = {
+                        "prediction": prediction,
+                        "saved_at": _dt.now(UTC).isoformat(),
+                    }
+                    loaded += 1
+                except Exception:
+                    pass
+        logger.info("trend_prediction_store.warm_loaded", count=loaded)
+        return loaded

@@ -60,7 +60,8 @@ _recent_reviews_store: object | None = None          # W1: RecentReviewsStore re
 _portfolio_query_adapter: object | None = None       # W3: PortfolioQueryAdapter singleton
 _global_risk_subscriber: object | None = None        # readmodel: GlobalRiskSubscriber singleton
 _intelligence_snapshot_subscriber: object | None = None  # readmodel: IntelligenceSnapshotSubscriber (Gap 2)
-_portfolio_snapshot_listener: object | None = None   # portfolio: PortfolioSnapshotListener singleton
+_portfolio_snapshot_listener: object | None = None
+_trend_snapshot_store: object | None = None  # Wave D.1: persisted TrendSnapshotStore   # portfolio: PortfolioSnapshotListener singleton
 
 _pnl_service_class: type | None = None
 
@@ -96,6 +97,7 @@ async def bootstrap() -> None:
     global _global_risk_subscriber
     global _intelligence_snapshot_subscriber
     global _portfolio_snapshot_listener
+    global _trend_snapshot_store
 
     if _quote_service is None:
         from src.market.adapters.factory import build_adapter
@@ -289,6 +291,14 @@ async def bootstrap() -> None:
         _signal_engine_agent = SignalEngineAgent(ai_client=_ai_client)  # type: ignore[arg-type]
         logger.info("platform.bootstrap.signal_engine_agent_ready")
 
+    # ── Wave D.1: TrendSnapshotStore (readmodel) — persisted baseline ──────────
+    if _trend_snapshot_store is None:
+        from src.readmodel.trend_snapshot_store import TrendSnapshotStore
+        from src.platform.db import AsyncSessionLocal
+
+        _trend_snapshot_store = TrendSnapshotStore(session_factory=AsyncSessionLocal)
+        logger.info("platform.bootstrap.trend_snapshot_store_ready")
+
     # ── Trend Prediction: TrendPredictionStore (readmodel) ──────────────────
     if _trend_prediction_store is None:
         from src.readmodel.trend_prediction_store import TrendPredictionStore
@@ -345,6 +355,16 @@ async def bootstrap() -> None:
         GlobalRiskSubscriber.register()
         _global_risk_subscriber = GlobalRiskSubscriber
         logger.info("platform.bootstrap.global_risk_subscriber_ready")
+
+    # ── Wave D.1: Warm-up all persisted in-memory stores from DB ─────────────
+    # Run after all stores are initialised and before any scheduler fires.
+    # Gives agents & briefing context from the last cycle without waiting for
+    # the first scheduler run post-restart.
+    await _warm_up_persisted_stores(
+        trend_snapshot_store=_trend_snapshot_store,
+        trend_prediction_store=_trend_prediction_store,
+        session_factory=_session_factory,
+    )
 
     if _proactive_alert_agent is None:
         from src.ai.agents.proactive_alert_agent import get_proactive_alert_agent
@@ -495,7 +515,7 @@ async def bootstrap() -> None:
             trend_reasoning_agent=_trend_reasoning_agent,  # type: ignore[arg-type]
             trend_engine=_trend_engine,
             prediction_store=_trend_prediction_store,  # type: ignore[arg-type]
-            watchlist_query=WatchlistQueryService(session_factory=AsyncSessionLocal),
+watchlist_query=WatchlistQueryService(session_factory=AsyncSessionLocal),
             thesis_query=ThesisActiveContextQuery(session_factory=AsyncSessionLocal),
         )
         _trend_engine_listener.register()
@@ -576,6 +596,73 @@ async def bootstrap() -> None:
         logger.info("platform.bootstrap.portfolio_snapshot_listener_ready")
 
     logger.info("platform.bootstrap.complete")
+
+
+async def _warm_up_persisted_stores(
+    trend_snapshot_store,
+    trend_prediction_store,
+    session_factory,
+) -> None:
+    """Load all persisted in-memory stores from DB on startup.
+
+    Called once after all singletons are ready and before any scheduler fires.
+    Failures are logged and swallowed — warm-up is best-effort; stores fall
+    back gracefully to cold-start behaviour if DB is unavailable at boot.
+    """
+    from src.platform.config import settings
+    from src.platform.db import AsyncSessionLocal
+
+    sf = session_factory or AsyncSessionLocal
+
+    # TrendSnapshotStore
+    try:
+        if hasattr(trend_snapshot_store, "warm_load"):
+            n = await trend_snapshot_store.warm_load()
+            logger.info("bootstrap.warm_up.trend_snapshots", loaded=n)
+    except Exception as exc:
+        logger.warning("bootstrap.warm_up.trend_snapshots_failed", error=str(exc))
+
+    # TrendPredictionStore (readmodel)
+    try:
+        if hasattr(trend_prediction_store, "warm_load"):
+            n = await trend_prediction_store.warm_load()
+            logger.info("bootstrap.warm_up.trend_predictions", loaded=n)
+    except Exception as exc:
+        logger.warning("bootstrap.warm_up.trend_predictions_failed", error=str(exc))
+
+    # IntelligenceSnapshotStore
+    try:
+        from src.readmodel.intelligence_snapshot import get_intelligence_snapshot
+        snap_store = get_intelligence_snapshot()
+        if hasattr(snap_store, "_session_factory") and snap_store._session_factory is None:
+            snap_store._session_factory = sf
+        if hasattr(snap_store, "warm_load"):
+            n = await snap_store.warm_load()
+            logger.info("bootstrap.warm_up.intelligence_snapshots", loaded=n)
+    except Exception as exc:
+        logger.warning("bootstrap.warm_up.intelligence_snapshots_failed", error=str(exc))
+
+    # GlobalRiskStore
+    try:
+        from src.readmodel.global_risk_store import get_global_risk_store
+        risk_store = get_global_risk_store()
+        if hasattr(risk_store, "_session_factory") and risk_store._session_factory is None:
+            risk_store._session_factory = sf
+        if hasattr(risk_store, "warm_load"):
+            n = await risk_store.warm_load()
+            logger.info("bootstrap.warm_up.global_risk_snapshots", loaded=n)
+    except Exception as exc:
+        logger.warning("bootstrap.warm_up.global_risk_snapshots_failed", error=str(exc))
+
+    # AgendaCache (today only)
+    try:
+        from src.briefing.agenda_cache import warm_load_agendas
+        n = await warm_load_agendas(sf)
+        logger.info("bootstrap.warm_up.daily_agendas", loaded=n)
+    except Exception as exc:
+        logger.warning("bootstrap.warm_up.daily_agendas_failed", error=str(exc))
+
+    logger.info("bootstrap.warm_up.complete")
 
 
 async def shutdown() -> None:
@@ -777,3 +864,10 @@ def get_intelligence_engine_subscriber():
 def get_proactive_discovery_service():
     """Return ProactiveDiscoveryService singleton or None if not initialised."""
     return _proactive_discovery_service
+
+
+def get_trend_snapshot_store():
+    """Return TrendSnapshotStore singleton (Wave D.1 — DB-backed)."""
+    if _trend_snapshot_store is None:
+        raise RuntimeError("bootstrap() has not been called")
+    return _trend_snapshot_store

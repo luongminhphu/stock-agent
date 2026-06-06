@@ -57,6 +57,81 @@ from typing import TYPE_CHECKING
 
 from src.readmodel.cache import DashboardTTLCache
 
+# ---------------------------------------------------------------------------
+# DB persistence helpers (Wave D.1)
+# ---------------------------------------------------------------------------
+
+async def _persist_intelligence_snapshot(session_factory, user_id: str, report, trigger_source: str) -> None:
+    """Upsert an IntelligenceSnapshot row. Fire-and-forget — never raises."""
+    if session_factory is None:
+        return
+    try:
+        import json as _json
+        from datetime import UTC, datetime as _dt
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+        from src.readmodel.models import IntelligenceSnapshot
+
+        try:
+            report_json = _json.dumps(report.model_dump(), default=str)
+        except Exception:
+            report_json = _json.dumps({}, default=str)
+
+        async with session_factory() as session:
+            stmt = pg_insert(IntelligenceSnapshot).values(
+                user_id=user_id,
+                report_json=report_json,
+                trigger_source=trigger_source or "unknown",
+                captured_at=_dt.now(UTC),
+            ).on_conflict_do_update(
+                index_elements=["user_id"],
+                set_={
+                    "report_json": report_json,
+                    "trigger_source": trigger_source or "unknown",
+                    "captured_at": _dt.now(UTC),
+                },
+            )
+            await session.execute(stmt)
+            await session.commit()
+    except Exception as exc:
+        from src.platform.logging import get_logger as _get_logger
+        _get_logger(__name__).warning(
+            "intelligence_snapshot_store.persist_failed", user_id=user_id, error=str(exc)
+        )
+
+
+async def load_intelligence_snapshots_from_db(session_factory) -> dict[str, dict]:
+    """Load persisted intelligence snapshots on startup. Returns {user_id: row_dict}."""
+    if session_factory is None:
+        return {}
+    try:
+        import json as _json
+        from sqlalchemy import select
+        from src.readmodel.models import IntelligenceSnapshot
+        from src.platform.logging import get_logger as _get_logger
+
+        async with session_factory() as session:
+            rows = (await session.execute(select(IntelligenceSnapshot))).scalars().all()
+            result = {}
+            for row in rows:
+                try:
+                    result[row.user_id] = {
+                        "report_json": row.report_json,
+                        "trigger_source": row.trigger_source,
+                        "captured_at": row.captured_at,
+                    }
+                except Exception:
+                    pass
+            _get_logger(__name__).info(
+                "intelligence_snapshot_store.loaded_from_db", count=len(result)
+            )
+            return result
+    except Exception as exc:
+        from src.platform.logging import get_logger as _get_logger
+        _get_logger(__name__).warning(
+            "intelligence_snapshot_store.load_failed", error=str(exc)
+        )
+        return {}
+
 if TYPE_CHECKING:
     from src.ai.schemas import IntelligenceReport
 
@@ -73,10 +148,11 @@ class IntelligenceSnapshotStore:
         invalidate() — called on explicit refresh requests
     """
 
-    def __init__(self, cache: DashboardTTLCache | None = None) -> None:
+    def __init__(self, cache: DashboardTTLCache | None = None, session_factory=None) -> None:
         self._cache = cache or DashboardTTLCache()
         # warm layer: user_id -> (report, stored_at)
         self._warm: dict[str, tuple[IntelligenceReport, datetime]] = {}
+        self._session_factory = session_factory
 
     # ------------------------------------------------------------------
     # Write path — called by core/engine.py after run_cycle()
@@ -98,6 +174,14 @@ class IntelligenceSnapshotStore:
             ttl=_HOT_TTL_SECONDS,
         )
         self._warm[user_id] = (report, datetime.now(UTC))
+        # Wave D.1: fire-and-forget persist to DB
+        import asyncio as _asyncio
+        _asyncio.create_task(
+            _persist_intelligence_snapshot(
+                self._session_factory, user_id, report,
+                getattr(report, "trigger_source", "unknown"),
+            )
+        )
 
     # ------------------------------------------------------------------
     # Read path — called by bot/api
@@ -188,6 +272,46 @@ class IntelligenceSnapshotStore:
 # ---------------------------------------------------------------------------
 # Singleton factory
 # ---------------------------------------------------------------------------
+
+    async def warm_load(self) -> int:
+        """Load persisted reports from DB into warm layer on startup.
+
+        Returns number of users loaded.
+        Prevents the 204 cold-start problem where dashboard intelligence panel
+        returns empty after restart until the next engine cycle runs.
+        """
+        rows = await load_intelligence_snapshots_from_db(self._session_factory)
+        loaded = 0
+        for user_id, row_data in rows.items():
+            try:
+                import json as _json
+                from datetime import UTC, datetime as _dt
+                data = _json.loads(row_data["report_json"])
+                # Attempt full model restore; fall back to dict-wrapper
+                try:
+                    from src.ai.schemas import IntelligenceReport as _IR
+                    report = _IR.model_validate(data)
+                except Exception:
+                    report = _DictReport(data)
+                captured_at = row_data.get("captured_at") or _dt.now(UTC)
+                self._warm[user_id] = (report, captured_at)
+                loaded += 1
+            except Exception:
+                pass
+        from src.platform.logging import get_logger as _gl
+        _gl(__name__).info("intelligence_snapshot_store.warm_loaded", count=loaded)
+        return loaded
+
+
+class _DictReport:
+    """Minimal dict-backed IntelligenceReport stub for warm-load restore."""
+    def __init__(self, data: dict) -> None:
+        self._data = data
+        for k, v in data.items():
+            setattr(self, k, v)
+    def model_dump(self) -> dict:
+        return self._data
+
 
 _snapshot_store: IntelligenceSnapshotStore | None = None
 

@@ -31,6 +31,61 @@ from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
 
+# ---------------------------------------------------------------------------
+# DB persistence helpers (Wave D.1)
+# ---------------------------------------------------------------------------
+
+async def _persist_snapshot(session_factory, symbol: str, bundle_dict: dict) -> None:
+    """Upsert a TrendSnapshot row. Fire-and-forget — never raises."""
+    if session_factory is None:
+        return
+    try:
+        import json as _json
+        from datetime import UTC, datetime as _dt
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+        from src.readmodel.models import TrendSnapshot
+
+        async with session_factory() as session:
+            stmt = pg_insert(TrendSnapshot).values(
+                symbol=symbol.upper(),
+                bundle_json=_json.dumps(bundle_dict, default=str),
+                saved_at=_dt.now(UTC),
+            ).on_conflict_do_update(
+                index_elements=["symbol"],
+                set_={
+                    "bundle_json": _json.dumps(bundle_dict, default=str),
+                    "saved_at": _dt.now(UTC),
+                },
+            )
+            await session.execute(stmt)
+            await session.commit()
+    except Exception as exc:
+        logger.warning("trend_snapshot_store.persist_failed", symbol=symbol, error=str(exc))
+
+
+async def load_snapshots_from_db(session_factory) -> dict[str, dict]:
+    """Load all persisted snapshots on startup. Returns {symbol: bundle_dict}."""
+    if session_factory is None:
+        return {}
+    try:
+        import json as _json
+        from sqlalchemy import select
+        from src.readmodel.models import TrendSnapshot
+
+        async with session_factory() as session:
+            rows = (await session.execute(select(TrendSnapshot))).scalars().all()
+            result = {}
+            for row in rows:
+                try:
+                    result[row.symbol.upper()] = _json.loads(row.bundle_json)
+                except Exception:
+                    pass
+            logger.info("trend_snapshot_store.loaded_from_db", count=len(result))
+            return result
+    except Exception as exc:
+        logger.warning("trend_snapshot_store.load_failed", error=str(exc))
+        return {}
+
 
 class TrendSnapshotStore:
     """In-memory snapshot store for TechnicalSignalBundle.
@@ -82,7 +137,9 @@ class TrendSnapshotStore:
             regime=bundle_dict.get("regime"),
             composite=bundle_dict.get("composite"),
         )
-        # Wave 2: await self._persist_to_db(symbol, bundle_dict)
+        # Wave D.1: fire-and-forget persist to DB
+        import asyncio as _asyncio
+        _asyncio.create_task(_persist_snapshot(self._session_factory, symbol, bundle_dict))
 
     # ------------------------------------------------------------------
     # Introspection
@@ -101,15 +158,20 @@ class TrendSnapshotStore:
         return (datetime.now(UTC) - saved_at).total_seconds()
 
     # ------------------------------------------------------------------
-    # Wave 2 stub
+    # Wave D.1: warm load on startup
     # ------------------------------------------------------------------
 
-    async def _persist_to_db(self, symbol: str, bundle_dict: dict[str, Any]) -> None:  # noqa: ARG002
-        """Wave 2: persist snapshot to DB so it survives bot restarts.
+    async def warm_load(self) -> int:
+        """Load persisted snapshots from DB into memory on startup.
 
-        Stub — no-op until Wave 2. Session factory injected at construction.
+        Returns number of snapshots loaded.
+        Gives TrendShiftDetector a baseline so first post-restart cycle
+        is not treated as cold start.
         """
-        # async with self._session_factory() as session:
-        #     await TrendSnapshotRepo(session).upsert(symbol, bundle_dict)
-        #     await session.commit()
-        pass
+        loaded = await load_snapshots_from_db(self._session_factory)
+        for symbol, bundle_dict in loaded.items():
+            self._cache[symbol] = {
+                "bundle": bundle_dict,
+                "saved_at": "",
+            }
+        return len(loaded)

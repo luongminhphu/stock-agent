@@ -18,6 +18,10 @@ import src.thesis.models  # noqa: F401
 import src.watchlist.models  # noqa: F401
 import src.briefing.models  # noqa: F401
 import src.portfolio.models  # noqa: F401
+import src.readmodel.models  # noqa: F401 — Wave D.1: persisted in-memory stores
+import src.ai.memory.models  # noqa: F401
+import src.core.models  # noqa: F401
+import src.core.evolution  # noqa: F401
 
 from src.platform.config import settings
 
