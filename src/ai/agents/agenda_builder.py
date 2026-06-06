@@ -34,7 +34,7 @@ class AgendaBuilderAgent:
     async def build(self, ctx: AgendaContext) -> DailyAgendaResult | None:
         """Build daily agenda. Returns None if AI call fails — caller handles fallback."""
         try:
-            result = await self._client.call(
+            result = await self._client.chat(
                 system_prompt=SYSTEM_PROMPT,
                 user_prompt=build_user_prompt(ctx),
                 response_schema=DailyAgendaResult,

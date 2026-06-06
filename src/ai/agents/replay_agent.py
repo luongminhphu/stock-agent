@@ -97,12 +97,11 @@ class ReplayAgent:
         Returns None on any failure \u2014 fire-and-forget callers can ignore.
         """
         try:
-            raw = await self._client.call(
+            output: ReplayOutput = await self._client.chat(
                 system_prompt=REPLAY_SPEC.system_prompt,
                 user_prompt=build_user_prompt(ctx),
-                output_schema=REPLAY_SPEC.output_schema,
+                response_schema=REPLAY_SPEC.output_schema,
             )
-            output: ReplayOutput = REPLAY_SPEC.output_schema.model_validate(raw)
         except Exception as exc:
             logger.warning(
                 "replay_agent.ai_call_failed",

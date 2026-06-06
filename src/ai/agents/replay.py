@@ -62,13 +62,12 @@ class ReplayAgent:
             trigger:  Trigger label (default: decision_replay).
         """
         try:
-            raw = await self._client.call(
+            result = await self._client.chat(
                 system_prompt=SYSTEM_PROMPT,
                 user_prompt=build_user_prompt(ctx),
                 response_schema=DecisionReplayResult,
                 temperature=0.2,
             )
-            result = raw  # client.call() already returns parsed Pydantic model
             logger.info(
                 "decision_replay.analyzed",
                 decision_id=result.decision_id,
