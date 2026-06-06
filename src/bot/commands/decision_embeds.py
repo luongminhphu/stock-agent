@@ -97,17 +97,20 @@ def build_single_replay_embed(decision_id: int, envelope) -> discord.Embed:
 
     embed = discord.Embed(title=title, color=meta["color"])
 
-    what_right = getattr(replay, "what_went_right", None)
-    what_wrong = getattr(replay, "what_went_wrong", None)
+    _what_right_raw = getattr(replay, "what_went_right", None)
+    _what_wrong_raw = getattr(replay, "what_went_wrong", None)
+    # ReplayOutput returns list[str]; join for Discord embed value (max 1024 chars)
+    what_right = "\n".join(f"• {x}" for x in _what_right_raw) if isinstance(_what_right_raw, list) else _what_right_raw
+    what_wrong = "\n".join(f"• {x}" for x in _what_wrong_raw) if isinstance(_what_wrong_raw, list) else _what_wrong_raw
     key_lesson = getattr(replay, "key_lesson", None)
     pattern    = getattr(replay, "pattern_detected", None)
     adjustment = getattr(replay, "suggested_adjustment", None)
     conf       = getattr(replay, "confidence", None)
 
     if what_right:
-        embed.add_field(name="\u2705 Đúng ở điểm nào", value=what_right, inline=False)
+        embed.add_field(name="\u2705 Đúng ở điểm nào", value=what_right[:1024], inline=False)
     if what_wrong:
-        embed.add_field(name="\u274c Sai ở điểm nào", value=what_wrong, inline=False)
+        embed.add_field(name="\u274c Sai ở điểm nào", value=what_wrong[:1024], inline=False)
     if key_lesson:
         embed.add_field(name="\U0001f4a1 Key lesson", value=key_lesson, inline=False)
     if pattern:
