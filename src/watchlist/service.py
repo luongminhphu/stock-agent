@@ -238,6 +238,57 @@ class WatchlistService:
     # Feedback-loop helpers (called by core/feedback_listener.py)
     # ------------------------------------------------------------------
 
+    async def ensure_tracked(
+        self,
+        user_id: str,
+        ticker: str,
+        note: str | None = None,
+        thesis_id: int | None = None,
+    ) -> WatchlistItem:
+        """Add *ticker* to the watchlist if not already present. No-op otherwise.
+
+        Unlike add(), this method is idempotent — it returns the existing
+        WatchlistItem when the ticker is already tracked, instead of raising
+        WatchlistItemAlreadyExistsError.
+
+        Called by:
+          core.UserActionFeedbackListener._on_buy() for BUY events so that
+          every purchased ticker is automatically tracked in the watchlist.
+
+        Args:
+            user_id:   Owner of the watchlist.
+            ticker:    Stock symbol (case-insensitive, uppercased internally).
+            note:      Optional note — only applied when creating a new item.
+            thesis_id: Optional thesis link — only applied when creating.
+
+        Returns:
+            The existing or newly created WatchlistItem.
+        """
+        ticker_upper = ticker.upper()
+        existing = await self._repo.get_item(user_id, ticker_upper)
+        if existing is not None:
+            logger.debug(
+                "watchlist.ensure_tracked.already_exists",
+                user_id=user_id,
+                ticker=ticker_upper,
+            )
+            return existing
+
+        item = WatchlistItem(
+            user_id=user_id,
+            ticker=ticker_upper,
+            note=note or None,
+            thesis_id=thesis_id,
+            priority=100,  # default priority
+        )
+        await self._repo.save_item(item)
+        logger.info(
+            "watchlist.ensure_tracked.added",
+            user_id=user_id,
+            ticker=ticker_upper,
+        )
+        return item
+
     async def deprioritize(
         self,
         user_id: str,

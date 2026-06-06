@@ -200,6 +200,49 @@ class ThesisService:
     # Feedback-loop helpers (called by core/feedback_listener.py)
     # ------------------------------------------------------------------
 
+    async def touch_reviewed_at(
+        self,
+        thesis_id: int,
+        user_id: str,
+    ) -> Thesis | None:
+        """Record that the investor reviewed this thesis (non-destructive).
+
+        Sets Thesis.updated_at via a lightweight update so the readmodel
+        knows the thesis was recently reviewed. Does NOT change status,
+        score, or any other field.
+
+        Called by:
+          core.UserActionFeedbackListener._on_mark_reviewed() for
+          MARK_REVIEWED events.
+
+        Args:
+            thesis_id: ID of the thesis to touch.
+            user_id:   Owner — used for ownership check.
+
+        Returns:
+            The updated Thesis, or None if not found / not owned.
+        """
+        try:
+            thesis = await self._get_owned(thesis_id, user_id)
+        except ThesisNotFoundError:
+            logger.info(
+                "thesis.touch_reviewed_at.not_found",
+                thesis_id=thesis_id,
+                user_id=user_id,
+            )
+            return None
+
+        # Trigger updated_at refresh via a no-op attribute touch.
+        # SQLAlchemy detects the flush and updates the server-side onupdate.
+        thesis.updated_at = datetime.now(UTC)  # type: ignore[assignment]
+        await self._repo.save(thesis)
+        logger.info(
+            "thesis.touch_reviewed_at.done",
+            thesis_id=thesis_id,
+            user_id=user_id,
+        )
+        return thesis
+
     async def mark_closed(
         self,
         ticker: str,

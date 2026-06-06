@@ -140,20 +140,12 @@ class UserActionFeedbackListener:
         )
 
     async def _on_mark_reviewed(self, event: UserActionEvent) -> None:
-        """MARK_REVIEWED: record that investor reviewed this thesis.
+        """MARK_REVIEWED: record that investor reviewed this thesis (non-destructive).
 
-        ThesisService has no touch_reviewed_at() — the closest equivalent is
-        closing the thesis with reason='reviewed', but that is destructive.
-        Instead we use mark_closed with reason='reviewed' only when the thesis
-        is still active; this is a no-op when no active thesis exists for the
-        ticker, so safe to call unconditionally.
-
-        TODO: add ThesisService.touch_reviewed_at() to thesis segment and
-        replace this call once the method is implemented.
+        Calls ThesisService.touch_reviewed_at() to refresh updated_at so the
+        readmodel knows when this thesis was last reviewed. Does NOT close,
+        invalidate, or score the thesis.
         """
-        # Intentionally NOT closing the thesis — MARK_REVIEWED is non-destructive.
-        # Side-effects: memory record (handled in _handle) + snapshot invalidation.
-        # If thesis segment adds touch_reviewed_at() in the future, call it here.
         logger.info(
             "user_action_listener.mark_reviewed",
             user_id=event.user_id,
@@ -161,6 +153,8 @@ class UserActionFeedbackListener:
             thesis_id=event.thesis_id,
             note=event.note or None,
         )
+        if event.thesis_id is not None:
+            await self._thesis_touch_reviewed(event.thesis_id, event.user_id)
 
     async def _on_defer(self, event: UserActionEvent) -> None:
         """DEFER: snooze watchlist item for snooze_hours (converted to days, min 1)."""
@@ -215,6 +209,45 @@ class UserActionFeedbackListener:
                 error=str(exc),
             )
 
+    async def _thesis_touch_reviewed(
+        self,
+        thesis_id: int,
+        user_id: str,
+    ) -> None:
+        """Call ThesisService.touch_reviewed_at() — non-destructive review stamp."""
+        try:
+            from src.thesis.service import ThesisService
+
+            async with get_session() as session:
+                svc = ThesisService(session)
+                result = await svc.touch_reviewed_at(
+                    thesis_id=thesis_id,
+                    user_id=user_id,
+                )
+            if result is not None:
+                logger.info(
+                    "user_action_listener.thesis_reviewed_at_touched",
+                    thesis_id=thesis_id,
+                    user_id=user_id,
+                )
+            else:
+                logger.debug(
+                    "user_action_listener.thesis_touch_reviewed.not_found",
+                    thesis_id=thesis_id,
+                    user_id=user_id,
+                )
+        except ImportError:
+            logger.warning(
+                "user_action_listener.thesis_adapter_unavailable",
+                hint="ThesisService not importable from src.thesis.service",
+            )
+        except Exception as exc:
+            logger.error(
+                "user_action_listener.thesis_touch_reviewed_failed",
+                thesis_id=thesis_id,
+                error=str(exc),
+            )
+
     async def _watchlist_deprioritize(
         self,
         user_id: str,
@@ -249,39 +282,27 @@ class UserActionFeedbackListener:
         ticker: str,
         note: str | None,
     ) -> None:
-        """Add ticker to watchlist if not already present.
+        """Add ticker to watchlist if not already present (idempotent).
 
-        WatchlistService has no ensure_tracked() — we call add() directly and
-        swallow WatchlistItemAlreadyExistsError as a no-op.
-
-        TODO: add WatchlistService.ensure_tracked() to watchlist segment and
-        replace this call once the method is implemented.
+        Delegates to WatchlistService.ensure_tracked() which is idempotent:
+        returns the existing item silently when ticker is already tracked,
+        creates a new item otherwise. No exception swallowing needed.
         """
         try:
-            from src.watchlist.dtos import AddToWatchlistInput, WatchlistItemAlreadyExistsError
             from src.watchlist.service import WatchlistService
 
             async with get_session() as session:
                 svc = WatchlistService(session)
-                try:
-                    await svc.add(
-                        AddToWatchlistInput(
-                            user_id=user_id,
-                            ticker=ticker.upper(),
-                            note=note,
-                        )
-                    )
-                    logger.info(
-                        "user_action_listener.watchlist_tracked",
-                        user_id=user_id,
-                        ticker=ticker,
-                    )
-                except WatchlistItemAlreadyExistsError:
-                    logger.debug(
-                        "user_action_listener.watchlist_already_tracked",
-                        user_id=user_id,
-                        ticker=ticker,
-                    )
+                await svc.ensure_tracked(
+                    user_id=user_id,
+                    ticker=ticker,
+                    note=note,
+                )
+                logger.info(
+                    "user_action_listener.watchlist_ensure_tracked",
+                    user_id=user_id,
+                    ticker=ticker,
+                )
         except ImportError:
             logger.warning(
                 "user_action_listener.watchlist_adapter_unavailable",
