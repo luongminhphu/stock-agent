@@ -118,13 +118,48 @@ class VCIAdapter(MarketDataAdapter):
 
 def _parse_price_board(data: list[dict[str, Any]]) -> list[Quote]:
     quotes: list[Quote] = []
+    meta: list[dict[str, str]] = []
     for item in data:
         try:
             quotes.append(_parse_item(item))
+            li = item.get("listingInfo", {})
+            ticker = li.get("symbol", "")
+            name = li.get("organName", "")
+            board = li.get("board", "")  # "HOSE", "HNX", "UPCOM"
+            if ticker and name:
+                meta.append({"ticker": ticker, "name": name, "board": board})
         except (KeyError, TypeError, ValueError) as exc:
             symbol = item.get("listingInfo", {}).get("symbol", "?")
             logger.warning("vci.parse_error", symbol=symbol, error=str(exc))
+    # Fire-and-forget enrich registry with company names from VCI listing data
+    if meta:
+        _enrich_registry(meta)
     return quotes
+
+
+def _enrich_registry(meta: list[dict[str, str]]) -> None:
+    """Push VCI company name + exchange into SymbolRegistry (best-effort).
+
+    VCI listingInfo provides organName and board — enough to register unknown
+    tickers with a proper name and exchange. Sector is left unchanged (only
+    static seed has key_metrics + sector; VCI does not expose industry code).
+    Called synchronously after every price board parse — no await needed.
+    """
+    try:
+        from src.market.registry import registry
+        from src.market.registry_types import Exchange
+
+        _board_map = {"HOSE": Exchange.HOSE, "HNX": Exchange.HNX, "UPCOM": Exchange.UPCOM}
+        for item in meta:
+            ticker = item["ticker"].upper()
+            name = item["name"].strip() or ticker
+            exchange = _board_map.get(item["board"].upper(), Exchange.HOSE)
+            existing = registry.get(ticker)
+            # Only enrich name/exchange — never override sector or key_metrics from static seed
+            if existing is None or existing.name == ticker:  # placeholder name → update
+                registry.enrich(ticker, name=name, exchange=exchange)
+    except Exception:  # noqa: BLE001
+        pass  # registry enrich is best-effort — never break price fetch
 
 
 def _parse_item(item: dict[str, Any]) -> Quote:

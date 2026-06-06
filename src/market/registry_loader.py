@@ -215,9 +215,9 @@ class RegistryLoader:
                 total=len(result),
             )
         else:
-            logger.warning(
+            logger.info(
                 "registry_loader.http_skipped",
-                reason="VNDirect unreachable or returned no data — using static seed only",
+                reason="VNDirect unavailable — using static seed + lazy VCI enrich",
             )
 
         # Layer 3: DB tickers (ensure coverage for user-active tickers)
@@ -253,7 +253,14 @@ class RegistryLoader:
                 resp.raise_for_status()
                 data: list[dict[str, Any]] = resp.json().get("data", [])
         except Exception as exc:  # noqa: BLE001
-            logger.warning("registry_loader.vndirect_failed", error=str(exc))
+            # Expected on cloud deployments: VN broker WAFs block non-VN IPs.
+            # Fallback to static seed is handled by caller — this is not an error.
+            logger.info(
+                "registry_loader.vndirect_unavailable",
+                exc_type=type(exc).__name__,
+                detail=repr(exc),
+                note="cloud IP likely blocked by VNDirect WAF — static seed + VCI enrich will be used",
+            )
             return {}
 
         entries: dict[str, SymbolInfo] = {}
