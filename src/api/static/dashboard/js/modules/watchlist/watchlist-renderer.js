@@ -99,6 +99,9 @@ export function renderWatchlist(container, items, { onRemove, onScan, onAdd, onE
       dialog?.showModal();
     });
   }
+
+  // Notify search module — re-apply active query lên DOM mới
+  document.dispatchEvent(new CustomEvent('watchlist:rendered'));
 }
 
 /**

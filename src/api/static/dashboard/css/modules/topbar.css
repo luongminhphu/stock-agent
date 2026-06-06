@@ -151,3 +151,81 @@
 @media (prefers-reduced-motion: reduce) {
   .heartbeat-dot { animation: none !important; }
 }
+
+/* ── Search: result badge ─────────────────────────────────────────────────── */
+.search-result-badge {
+  position: absolute;
+  right: 32px; /* left of clear btn */
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--brand);
+  background: rgba(125, 211, 252, 0.1);
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  border-radius: var(--radius-pill);
+  padding: 1px 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  transition: opacity var(--transition-fast);
+}
+
+.search-result-badge.search-badge--hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.search-result-badge.search-badge--empty {
+  color: var(--muted);
+  background: rgba(148, 163, 184, 0.08);
+  border-color: var(--line);
+}
+
+/* ── Search: clear button ────────────────────────────────────────────────── */
+.search-clear-btn {
+  position: absolute;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-xs);
+  color: var(--faint);
+  cursor: pointer;
+  padding: 0;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.search-clear-btn:hover {
+  color: var(--text);
+  background: rgba(148, 163, 184, 0.1);
+}
+
+.search-clear-btn.search-clear-btn--hidden {
+  display: none;
+}
+
+/* Adjust input padding khi có badge + clear btn — chỉ khi đang active */
+#topbarSearch:not(:placeholder-shown) {
+  padding-right: 76px; /* space for badge + clear btn */
+}
+
+/* ── Search: highlight match ────────────────────────────────────────────── */
+mark.search-hl {
+  background: rgba(251, 191, 36, 0.22);  /* --warning tint */
+  color: var(--warning);
+  border-radius: 2px;
+  padding: 0 1px;
+  font-style: normal;
+}
+
+/* ── Search: hidden rows/cards ──────────────────────────────────────────── */
+tr.search-hidden {
+  display: none;
+}
+
+.wl-card.search-hidden {
+  display: none;
+}

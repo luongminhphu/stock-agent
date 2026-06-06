@@ -358,4 +358,7 @@ export function renderThesesTable(list, callbacks = {}) {
     const canvas = document.getElementById(`spark-${t.id}`);
     if (canvas) loadSparkChart(t.id, canvas);
   });
+
+  // Notify search module — re-apply active query lên DOM mới
+  document.dispatchEvent(new CustomEvent('dashboard:rendered'));
 }

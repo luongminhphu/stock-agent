@@ -44,6 +44,7 @@ import {
   bindWatchlistAddModal,
 } from './modules/watchlist/watchlist-nav.js';
 import { initKpiClickable }             from './modules/dashboard/kpi-clickable.js';
+import { initTopbarSearch, reapplySearch } from './modules/search/topbar-search.js';
 
 // ---------------------------------------------------------------------------
 // Event wires — decision loop
@@ -260,6 +261,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   loadAttentionPanel();
   loadTodayLoop();
   initKpiClickable();
+  initTopbarSearch();
+
+  // Re-apply search query sau mỗi lần data reload
+  document.addEventListener('dashboard:rendered',  reapplySearch);
+  document.addEventListener('watchlist:rendered',  reapplySearch);
 
   startAttentionAutoRefresh();
   startTodayLoopAutoRefresh();
