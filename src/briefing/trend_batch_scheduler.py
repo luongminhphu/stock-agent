@@ -8,6 +8,7 @@ Suggested cron: 06:45 ICT daily (45 min before BriefingRequestedEvent at 07:30).
 Pipeline:
     WatchlistService.get_symbols(user_id)
         → TrendEngine.run_for_symbols()         [market segment — pure technical]
+        → ThesisActiveContextQuery (optional)    [thesis segment — investor context]
         → TrendReasoningAgent.analyze() x N     [ai segment — LLM verdict]
         → TrendPredictionStore.store()          [briefing segment — in-process cache]
         → optional: push STRONG alerts to Discord
@@ -18,11 +19,14 @@ Boundary:
     - Does NOT call BriefingService — that is a separate concern at 07:30.
     - TrendEngine is market segment; imported lazily to keep boundary explicit.
     - TrendReasoningAgent is ai segment; injected via constructor.
+    - ThesisActiveContextQuery is thesis segment; injected via constructor (optional).
+      When None, thesis_context falls back to "N/A" (backward-compatible).
 
 Error handling:
     - Failure for one symbol is isolated (asyncio.gather with return_exceptions).
     - Failure for one user does not block others.
     - run_for_user() always writes to store — even partial results are useful.
+    - Thesis context fetch failure is silent — falls back to "N/A" per symbol.
 """
 from __future__ import annotations
 
@@ -61,12 +65,14 @@ class TrendBatchScheduler:
         prediction_store: "TrendPredictionStore",
         watchlist_service,
         bot_notifier=None,
+        thesis_query=None,
     ) -> None:
         self._engine = trend_engine
         self._agent = reasoning_agent
         self._store = prediction_store
         self._watchlist = watchlist_service
         self._notifier = bot_notifier
+        self._thesis_query = thesis_query  # ThesisActiveContextQuery | None
 
     # ------------------------------------------------------------------
     # Public API
@@ -103,14 +109,18 @@ class TrendBatchScheduler:
         # Step 1: Batch technical signals
         bundles = await self._engine.run_for_symbols(symbols)
 
-        # Step 2: AI reasoning per bundle (concurrent, isolated)
+        # Step 2: Build thesis context for this user (soft-fail — falls back to "N/A")
+        thesis_context = await self._build_thesis_context(user_id)
+
+        # Step 3: AI reasoning per bundle (concurrent, isolated)
         predictions = await self._run_reasoning_batch(
             bundles=bundles,
             session=session,
             user_id=user_id,
+            thesis_context=thesis_context,
         )
 
-        # Step 3: Write to store
+        # Step 4: Write to store
         self._store.store(predictions)
 
         logger.info(
@@ -123,7 +133,7 @@ class TrendBatchScheduler:
             ],
         )
 
-        # Step 4: Push strong alerts
+        # Step 5: Push strong alerts
         await self._push_strong_alerts(predictions, user_id)
 
         return predictions
@@ -162,11 +172,64 @@ class TrendBatchScheduler:
             )
             return []
 
+    async def _build_thesis_context(self, user_id: str) -> str:
+        """Fetch active theses and format as compact context string for AI agent.
+
+        Returns "N/A" when:
+          - thesis_query was not injected (backward-compat)
+          - query fails for any reason
+          - no active theses found
+
+        Format (one line per thesis, readable by TrendReasoningAgent prompt):
+          VHM: LONG | target 55,000 | stop 42,000 | "Growth momentum thesis"
+          DGC: LONG | target 120,000 | stop 95,000 | "Phosphate supercycle"
+        """
+        if self._thesis_query is None:
+            return "N/A"
+        try:
+            theses = await self._thesis_query.get_active_with_components(user_id)
+            if not theses:
+                return "N/A"
+
+            lines: list[str] = []
+            for t in theses:
+                ticker = t.get("ticker", "")
+                direction = t.get("direction", "LONG")
+                target = t.get("target_price")
+                stop = t.get("stop_loss")
+                title = t.get("title", "") or t.get("summary", "")
+
+                parts = [f"{ticker}: {direction}"]
+                if target:
+                    parts.append(f"target {target:,.0f}")
+                if stop:
+                    parts.append(f"stop {stop:,.0f}")
+                if title:
+                    short_title = title[:60].strip()
+                    parts.append(f'"{short_title}"')
+                lines.append(" | ".join(parts))
+
+            result = "\n".join(lines)
+            logger.debug(
+                "trend_batch_scheduler.thesis_context_built",
+                user_id=user_id,
+                thesis_count=len(theses),
+            )
+            return result
+        except Exception as exc:
+            logger.warning(
+                "trend_batch_scheduler.thesis_context_failed",
+                user_id=user_id,
+                error=str(exc),
+            )
+            return "N/A"
+
     async def _run_reasoning_batch(
         self,
         bundles: list,
         session,
         user_id: str,
+        thesis_context: str = "N/A",
     ) -> list["TrendPrediction"]:
         """Run TrendReasoningAgent for each bundle concurrently.
 
@@ -179,7 +242,7 @@ class TrendBatchScheduler:
         async def _analyze_one(bundle) -> "TrendPrediction":
             return await self._agent.analyze(
                 bundle=bundle,
-                thesis_context="N/A",  # Wave 3: inject ThesisQueryService
+                thesis_context=thesis_context,
                 session=session,
                 user_id=user_id,
             )
