@@ -16,13 +16,30 @@ Design notes:
 from __future__ import annotations
 
 import asyncio
+import datetime
 import time
 from dataclasses import dataclass
 
 from src.market.registry import Exchange, registry
 from src.market.quote_service import QuoteService
 
-_DEFAULT_TTL = 30.0  # seconds — breadth does not need sub-30s freshness
+_MARKET_TTL   = 30.0   # seconds — trong giờ giao dịch: refresh 30s
+_OFFHOURS_TTL = 3600.0 # seconds — ngoài giờ: giữ 1 tiếng (giảm số lần call đêm/sáng sớm)
+
+# Giờ giao dịch HOSE: 09:00–15:05 ICT (UTC+7) weekdays
+_MARKET_OPEN_ICT  = datetime.time(9,  0)
+_MARKET_CLOSE_ICT = datetime.time(15, 5)
+
+
+def _ttl_seconds() -> float:
+    """30s trong giờ giao dịch weekday, 1h ngoài giờ."""
+    now_ict = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=7)))
+    if now_ict.weekday() < 5 and _MARKET_OPEN_ICT <= now_ict.time() <= _MARKET_CLOSE_ICT:
+        return _MARKET_TTL
+    return _OFFHOURS_TTL
+
+
+_DEFAULT_TTL = _MARKET_TTL  # backward-compat cho unit tests
 
 
 @dataclass(frozen=True)
@@ -59,11 +76,14 @@ class BreadthService:
         instead of each firing a full bulk-quote call.
     """
 
-    def __init__(self, quote_svc: QuoteService, ttl: float = _DEFAULT_TTL) -> None:
+    def __init__(self, quote_svc: QuoteService, ttl: float | None = None) -> None:
         self._quote_svc = quote_svc
-        self._ttl = ttl
+        self._fixed_ttl = ttl  # None = dynamic (market hours aware)
         self._cache: dict[str, _CacheEntry] = {}
         self._locks: dict[str, asyncio.Lock] = {}
+
+    def _get_ttl(self) -> float:
+        return self._fixed_ttl if self._fixed_ttl is not None else _ttl_seconds()
 
     def _lock_for(self, key: str) -> asyncio.Lock:
         if key not in self._locks:
@@ -98,7 +118,7 @@ class BreadthService:
             result = await self._fetch(exchange, key)
             self._cache[key] = _CacheEntry(
                 value=result,
-                expires_at=time.monotonic() + self._ttl,
+                expires_at=time.monotonic() + self._get_ttl(),
             )
             return result
 

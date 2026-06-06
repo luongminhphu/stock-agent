@@ -49,6 +49,7 @@ _HEADERS = {
 _TIMEOUT = 10.0
 _BULK_CHUNK_SIZE = 50
 _LOT_SIZE = 100  # 1 lô = 100 CP (HOSE, HNX, UPCoM)
+_MAX_CONCURRENT_CHUNKS = 5  # giới hạn concurrent requests — tránh VCI rate-limit
 
 
 def _safe_float(val: Any, fallback: float = 0.0) -> float:
@@ -70,6 +71,7 @@ class VCIAdapter(MarketDataAdapter):
             headers=_HEADERS,
             timeout=timeout,
         )
+        self._sem = asyncio.Semaphore(_MAX_CONCURRENT_CHUNKS)
 
     async def fetch_quote(self, ticker: str) -> Quote:
         results = await self.fetch_bulk_quotes([ticker])
@@ -78,17 +80,17 @@ class VCIAdapter(MarketDataAdapter):
         return results[0]
 
     async def fetch_bulk_quotes(self, tickers: list[str]) -> list[Quote]:
-        """Fetch quotes — all chunks fired in parallel via asyncio.gather.
-
-        Parallel strategy giảm wall-clock từ O(n_chunks * timeout) xuống
-        ~1 round-trip. VCI không có strict rate-limit nên an toàn.
-        """
+        """Fetch quotes — chunks chạy song song nhưng giới hạn _MAX_CONCURRENT_CHUNKS
+        request cùng lúc để tránh VCI rate-limit/reject."""
         chunks = [
             tickers[i : i + _BULK_CHUNK_SIZE] for i in range(0, len(tickers), _BULK_CHUNK_SIZE)
         ]
-        raw_lists = await asyncio.gather(
-            *[self._fetch_price_board(chunk) for chunk in chunks]
-        )
+
+        async def _fetch_with_sem(chunk: list[str]) -> list[dict]:
+            async with self._sem:
+                return await self._fetch_price_board(chunk)
+
+        raw_lists = await asyncio.gather(*[_fetch_with_sem(c) for c in chunks])
         results: list[Quote] = []
         for raw in raw_lists:
             results.extend(_parse_price_board(raw))

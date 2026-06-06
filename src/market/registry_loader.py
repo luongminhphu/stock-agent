@@ -150,11 +150,16 @@ def _load_vnstock_sync() -> dict[str, SymbolInfo]:
             return str(val).strip()
 
         # Build exchange lookup: ticker → (organ_name, exchange_str)
+        # Chỉ giữ type=='stock' — loại bỏ CW, ETF/fund, bond, corpbond, future.
+        # vnstock trả về 3243 rows nhưng chỉ 1532 là stock thực sự.
         exch_map: dict[str, tuple[str, str]] = {}
         for row in exch_raw.itertuples(index=False):
             ticker = _s(getattr(row, "symbol", "")).upper()
             if not ticker:
                 continue
+            instrument_type = _s(getattr(row, "type", "stock")).lower()
+            if instrument_type != "stock":
+                continue  # skip CW (cw), ETF (fund), bond, corpbond, future
             name = _s(getattr(row, "organ_name", ""))
             exch_str = _s(getattr(row, "exchange", "")).upper()
             exch_map[ticker] = (name, exch_str)

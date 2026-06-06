@@ -47,6 +47,7 @@ _HEADERS = {
 }
 _TIMEOUT = 10.0
 _BULK_CHUNK_SIZE = 20  # VNDirect query string limit
+_MAX_CONCURRENT_CHUNKS = 5  # giới hạn concurrent — tránh VNDirect reject
 
 
 def _safe_float(val: Any, fallback: float = 0.0) -> float:
@@ -68,6 +69,7 @@ class VNDirectAdapter(MarketDataAdapter):
             headers=_HEADERS,
             timeout=timeout,
         )
+        self._sem = asyncio.Semaphore(_MAX_CONCURRENT_CHUNKS)
 
     async def fetch_quote(self, ticker: str) -> Quote:
         results = await self.fetch_bulk_quotes([ticker])
@@ -76,18 +78,17 @@ class VNDirectAdapter(MarketDataAdapter):
         return results[0]
 
     async def fetch_bulk_quotes(self, tickers: list[str]) -> list[Quote]:
-        """Fetch quotes — all chunks fired in parallel via asyncio.gather.
-
-        VNDirect có chunk size 20 (query string limit) — parallel giảm
-        wall-clock từ O(n_chunks * timeout) xuống ~1 round-trip.
-        Chỉ được gọi khi VCI fail (secondary) nên batch sẽ nhỏ hơn.
-        """
+        """Fetch quotes — chunks song song nhưng giới hạn _MAX_CONCURRENT_CHUNKS
+        để tránh VNDirect reject. Chỉ gọi khi VCI fail (secondary)."""
         chunks = [
             tickers[i : i + _BULK_CHUNK_SIZE] for i in range(0, len(tickers), _BULK_CHUNK_SIZE)
         ]
-        raw_lists = await asyncio.gather(
-            *[self._fetch_stocks(chunk) for chunk in chunks]
-        )
+
+        async def _fetch_with_sem(chunk: list[str]) -> list[dict]:
+            async with self._sem:
+                return await self._fetch_stocks(chunk)
+
+        raw_lists = await asyncio.gather(*[_fetch_with_sem(c) for c in chunks])
         results: list[Quote] = []
         for raw in raw_lists:
             results.extend(_parse_stocks(raw))
