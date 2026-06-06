@@ -49,6 +49,15 @@
 @media (max-width: 860px) {
   .panel-duo { grid-template-columns: 1fr; }
 }
+/* Watchlist + Catalyst: watchlist gets 60% — more tickers, catalyst narrower */
+.panel-duo--watchlist {
+  grid-template-columns: 3fr 2fr;
+}
+
+@media (max-width: 860px) {
+  .panel-duo--watchlist { grid-template-columns: 1fr; }
+}
+
 
 /* ── 3. Brief collapsible ──────────────────────────────────────────── */
 .brief-collapsible {

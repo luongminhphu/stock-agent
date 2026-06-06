@@ -225,3 +225,85 @@
   color: var(--muted);
 }
 .wl-scan-result.hidden { display: none; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   COMPACT MODE: .panel-duo--watchlist context → dense row list
+   Applied when watchlist lives inside panel-duo--watchlist (Dashboard Cluster A)
+   Thay card grid bằng row list gọn hơn.
+   ─────────────────────────────────────────────────────────────────────── */
+
+.panel-duo--watchlist .wl-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.panel-duo--watchlist .wl-card {
+  flex-direction: row;
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  gap: var(--space-3);
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+}
+.panel-duo--watchlist .wl-card:first-child {
+  border-top: 1px solid var(--line);
+}
+.panel-duo--watchlist .wl-card:hover {
+  background: var(--surface-2);
+  border-bottom-color: var(--line);
+}
+
+/* Ticker col — fixed width */
+.panel-duo--watchlist .wl-card-head {
+  min-width: 52px;
+  flex-shrink: 0;
+  justify-content: flex-start;
+}
+
+/* Badges — flex row, max 2 visible */
+.panel-duo--watchlist .wl-card-badges {
+  flex: 1;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+.panel-duo--watchlist .wl-card-badges .wl-thesis-badge,
+.panel-duo--watchlist .wl-card-badges .wl-signal-tag {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90px;
+}
+
+/* Price block — push right */
+.panel-duo--watchlist .wl-price-row {
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.panel-duo--watchlist .wl-price {
+  font-size: var(--text-sm);
+}
+.panel-duo--watchlist .wl-change {
+  font-size: var(--text-xs);
+}
+
+/* Note — hide in compact */
+.panel-duo--watchlist .wl-note { display: none; }
+
+/* Footer — actions only, minimal */
+.panel-duo--watchlist .wl-card-foot {
+  margin-top: 0;
+  flex-shrink: 0;
+}
+.panel-duo--watchlist .wl-added-at { display: none; }
+
+/* Toolbar stays but slightly tighter */
+.panel-duo--watchlist .wl-toolbar {
+  margin-bottom: var(--space-2);
+}

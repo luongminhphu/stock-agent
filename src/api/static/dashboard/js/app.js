@@ -37,6 +37,7 @@ import { debounce }                      from './utils/debounce.js';
 import { state }                         from './state/dashboard-state.js';
 import { loadTodayLoop, startTodayLoopAutoRefresh } from './modules/today-loop/today-loop-loader.js';
 import { initEngineHeartbeat }           from './modules/engine/engine-heartbeat.js';
+import { initEngineControls }            from './modules/engine/engine-controls.js';
 import { bindDecisionTabs }              from './modules/decision/decision-tabs.js';
 import { bindLeaderboardSort }           from './modules/leaderboard/leaderboard-sort.js';
 import {
@@ -122,6 +123,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // — Module init —
   initEngineHeartbeat();
+  initEngineControls();
+  // Engine run-complete → reload dashboard + intelligence panel
+  document.addEventListener('engine:run-complete', () => {
+    loadDashboard().catch(() => null);
+  });
   bindFeedbackEvents();
   bindGenerateBriefButtons();
 

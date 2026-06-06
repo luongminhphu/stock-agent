@@ -227,3 +227,44 @@
   .cal-day-track { padding: var(--space-2) var(--space-2); }
   .cal-pill      { padding: var(--space-2) var(--space-2); }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   COMPACT MODE: .panel-duo--watchlist context → tighter catalyst layout
+   ─────────────────────────────────────────────────────────────────────── */
+
+.panel-duo--watchlist .cal-day-track {
+  padding: var(--space-2) var(--space-2);
+  gap: var(--space-1);
+}
+
+.panel-duo--watchlist .cal-pill {
+  padding: var(--space-1) var(--space-2);
+  gap: 2px;
+}
+
+.panel-duo--watchlist .cal-pill-desc {
+  font-size: var(--text-sm);
+  line-height: 1.35;
+}
+
+.panel-duo--watchlist .cal-pill-thesis {
+  font-size: 0.67rem;
+}
+
+.panel-duo--watchlist .cal-day-label {
+  font-size: var(--text-sm);
+}
+
+.panel-duo--watchlist .cal-legend {
+  padding-bottom: var(--space-1);
+}
+
+.panel-duo--watchlist .cal-urgency-pill {
+  font-size: 0.60rem;
+  padding: 1px var(--space-1);
+}
+
+/* Show fewer items by default — show-more button stays functional */
+.panel-duo--watchlist .cal-timeline {
+  gap: var(--space-2);
+}

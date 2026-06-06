@@ -10,7 +10,7 @@
 import { el } from '../../utils/dom.js';
 import { esc, fmtDate } from '../../utils/format.js';
 
-const INITIAL_VISIBLE = 10;
+const INITIAL_VISIBLE = 6;
 
 export function renderCatalystCalendar(raw, wrapId = 'catalystList') {
   const wrap = el(wrapId);

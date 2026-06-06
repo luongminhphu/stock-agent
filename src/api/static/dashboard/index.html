@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>stock-agent — Investor Dashboard</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>%F0%9F%93%88</text></svg>" />
-    <link rel="stylesheet" href="/static/dashboard/dashboard.css?v=22" />
-    <link rel="stylesheet" href="/static/dashboard/css/signals.css?v=22" />
-    <link rel="stylesheet" href="/static/dashboard/css/quick-trade.css?v=22" />
-    <link rel="stylesheet" href="/static/dashboard/css/heatmap.css?v=22" />
+    <link rel="stylesheet" href="/static/dashboard/dashboard.css?v=23" />
+    <link rel="stylesheet" href="/static/dashboard/css/signals.css?v=23" />
+    <link rel="stylesheet" href="/static/dashboard/css/quick-trade.css?v=23" />
+    <link rel="stylesheet" href="/static/dashboard/css/heatmap.css?v=23" />
     <style>
       /* ── Wave-1 layout additions ────────────────────────────────── */
 
@@ -583,6 +583,17 @@
           </div>
         </div>
 
+        <!-- Engine run button -->
+        <button
+          id="engineRunBtn"
+          class="quick-action-btn engine-run-btn"
+          type="button"
+          aria-label="Chạy Intelligence Engine thủ công"
+          title="Trigger engine cycle ngay bây giờ">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Chạy Engine
+        </button>
+
         <!-- Quick actions -->
         <div class="sidebar-quick-actions" aria-label="Quick actions">
           <button class="quick-action-btn" id="newThesisBtn" type="button" aria-label="Tạo thesis mới">
@@ -788,6 +799,14 @@
             <!-- #thesisDigestStrip injected here by today-loop-renderer.js -->
           </div>
 
+          <!-- ── 5b. INTELLIGENCE SNAPSHOT ──────────────────────────────────────── -->
+          <div
+            id="intelligencePanel"
+            class="intelligence-panel hidden"
+            aria-live="polite"
+            aria-label="Intelligence Snapshot"
+          ></div>
+
           <!-- ── 6. BRIEFING ──────────────────────────────────────────────────────── -->
           <details class="brief-collapsible" id="briefCollapsible">
             <summary>
@@ -829,7 +848,7 @@
           </details>
 
           <!-- ── 7. WATCHLIST + CATALYST ──────────────────────────────────────────── -->
-          <div class="panel-duo">
+          <div class="panel-duo panel-duo--watchlist">
             <section class="panel glass watchlist-layer" aria-labelledby="watchlistTitle">
               <div class="panel-header split-header">
                 <div>

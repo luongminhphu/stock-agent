@@ -1,0 +1,232 @@
+/* ─── Intelligence Panel ─────────────────────────────────────────────────────
+   Owner  : modules/intelligence
+   Surface: #intelligencePanel — Cluster A, below #todayDuoRow
+   Tokens : only variables.css tokens — ZERO hardcoded hex
+────────────────────────────────────────────────────────────────────────────── */
+
+.intelligence-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  /* Top accent — brand gradient left border */
+  border-left: 3px solid var(--brand);
+  transition: border-color var(--transition-base);
+}
+.intelligence-panel.hidden { display: none; }
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+.intel-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.intel-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.intel-icon { font-size: 1rem; line-height: 1; flex-shrink: 0; }
+
+.intel-title {
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.intel-stale-badge {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--warning);
+  background: rgba(251,191,36,.12);
+  border: 1px solid rgba(251,191,36,.30);
+  border-radius: var(--radius-pill);
+  padding: 1px var(--space-2);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.intel-ts {
+  font-size: var(--text-xs);
+  color: var(--faint);
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* ── Verdict row ─────────────────────────────────────────────────────────── */
+.intel-verdict-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.intel-verdict {
+  font-size: var(--text-md);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 3px var(--space-3);
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.intel-verdict--bull    { background: rgba(74,222,128,.15);  color: var(--success); border: 1px solid rgba(74,222,128,.30); }
+.intel-verdict--bear    { background: rgba(248,113,113,.15); color: var(--danger);  border: 1px solid rgba(248,113,113,.30); }
+.intel-verdict--neutral { background: rgba(148,163,184,.10); color: var(--muted);   border: 1px solid rgba(148,163,184,.20); }
+.intel-verdict--watch   { background: rgba(251,191,36,.12);  color: var(--warning); border: 1px solid rgba(251,191,36,.25); }
+.intel-verdict--default { background: var(--surface-2);      color: var(--text);    border: 1px solid var(--line); }
+
+/* ── Confidence bar ──────────────────────────────────────────────────────── */
+.intel-confidence {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 80px;
+  max-width: 180px;
+}
+
+.intel-conf-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--surface-2);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.intel-conf-fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--brand);
+  transition: width 0.4s ease;
+}
+
+.intel-conf-label {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+  min-width: 28px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Body sections ───────────────────────────────────────────────────────── */
+.intel-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.intel-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.intel-section-label {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.intel-market-ctx {
+  font-size: var(--text-base);
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* ── Priority action list ────────────────────────────────────────────────── */
+.intel-action-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.intel-action-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--text-base);
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.intel-action-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  border-radius: 50%;
+  background: var(--brand-bg);
+  color: var(--brand);
+  font-size: 0.65rem;
+  font-weight: 800;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* ── Chips (risk/watch) ──────────────────────────────────────────────────── */
+.intel-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.intel-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
+.intel-chip--risk  { background: rgba(248,113,113,.12); color: var(--danger);  border: 1px solid rgba(248,113,113,.20); }
+.intel-chip--watch { background: var(--brand-bg);        color: var(--brand);   border: 1px solid rgba(125,211,252,.20); }
+
+/* ── Skeleton ────────────────────────────────────────────────────────────── */
+.intel-skel {
+  display: block;
+  background: var(--surface-2);
+  border-radius: var(--radius-xs);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+.intel-skel--verdict { width: 90px;  height: 26px; border-radius: var(--radius-pill); }
+.intel-skel--bar     { width: 120px; height: 6px;  border-radius: var(--radius-pill); }
+.intel-skel--line    { width: 100%;  height: 14px; margin-bottom: var(--space-1); }
+.intel-skel--short   { width: 60%; }
+
+@keyframes pulse {
+  0%,100% { opacity: 1; }
+  50%      { opacity: .4; }
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+@media (max-width: 540px) {
+  .intelligence-panel { padding: var(--space-3) var(--space-3); }
+  .intel-verdict-row  { flex-direction: column; align-items: flex-start; }
+  .intel-confidence   { max-width: 100%; }
+}

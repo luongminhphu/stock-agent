@@ -17,6 +17,7 @@ import {
   initCallsTabs,
 } from '../backtesting/render-backtesting.js';
 import { renderCatalystCalendar, renderSnapshots } from '../briefing/render-brief.js';
+import { loadIntelligencePanel } from '../intelligence/intelligence-panel.js';
 import { loadLeaderboard } from './leaderboard-loader.js';
 import { renderHealthHeatmap, refreshHeatmapCell } from './render-heatmap.js';
 import { countUp, flashValue } from '../../utils/animate.js';
@@ -387,6 +388,8 @@ export async function loadDashboard() {
     });
 
     loadLeaderboard().catch(() => null);
+    // Intelligence snapshot: lazy — không block main render
+    loadIntelligencePanel().catch(() => null);
 
     if (state.selectedThesisId) {
       const t = state.theses.find(x => x.id === state.selectedThesisId);
