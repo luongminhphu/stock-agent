@@ -84,7 +84,7 @@
   background: rgba(251, 191, 36, 0.18);
   color: #fbbf24;
   border: 1px solid rgba(251, 191, 36, 0.3);
-  border-radius: 99px;
+  border-radius: var(--radius-pill);
   padding: 2px 7px;
   letter-spacing: 0.03em;
   flex-shrink: 0;
@@ -134,7 +134,7 @@
   font-weight: 600;
   color: var(--faint);
   background: rgba(148, 163, 184, 0.1);
-  border-radius: 99px;
+  border-radius: var(--radius-pill);
   padding: 1px 6px;
   line-height: 1.4;
 }
@@ -276,7 +276,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  border-radius: 99px;
+  border-radius: var(--radius-pill);
   padding: 2px 7px;
   white-space: nowrap;
   line-height: 1.4;
@@ -356,7 +356,7 @@
   );
   background-size: 200% 100%;
   animation: attn-shimmer 1.5s ease-in-out infinite;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -425,7 +425,7 @@
   color: var(--brand);
   background: none;
   border: 1px solid rgba(125, 211, 252, 0.25);
-  border-radius: 8px;
+  border-radius: var(--radius-btn);
   padding: 4px 10px;
   cursor: pointer;
   white-space: nowrap;
@@ -454,7 +454,7 @@
   );
   background-size: 200% 100%;
   animation: as-shimmer 1.5s ease-in-out infinite;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
 }
 
 .as-skel--icon { width: 20px; height: 20px; border-radius: 4px; flex-shrink: 0; }

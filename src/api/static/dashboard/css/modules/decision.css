@@ -26,7 +26,7 @@
 }
 .dec-tab {
   padding: 6px 16px;
-  border-radius: 99px;
+  border-radius: var(--radius-pill);
   font-size: 0.82rem;
   font-weight: 500;
   color: var(--muted);
@@ -63,12 +63,12 @@
 .dec-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.84rem;
+  font-size: var(--tbl-td-size);
 }
 .dec-table th {
   text-align: left;
-  padding: 8px 10px;
-  font-size: 0.72rem;
+  padding: var(--tbl-th-pad);
+  font-size: var(--tbl-th-size);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -77,7 +77,7 @@
   white-space: nowrap;
 }
 .dec-table td {
-  padding: 10px 10px;
+  padding: var(--tbl-td-pad);
   border-bottom: 1px solid rgba(148, 163, 184, 0.06);
   vertical-align: middle;
 }
@@ -101,7 +101,7 @@
 .dec-type {
   display: inline-block;
   padding: 2px 8px;
-  border-radius: 99px;
+  border-radius: var(--radius-pill);
   font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -116,7 +116,7 @@
 .dec-verdict {
   display: inline-block;
   padding: 2px 8px;
-  border-radius: 99px;
+  border-radius: var(--radius-pill);
   font-size: 0.7rem;
   font-weight: 600;
   white-space: nowrap;
@@ -176,7 +176,7 @@
 .replay-panel {
   background: rgba(125, 211, 252, 0.04);
   border: 1px solid rgba(125, 211, 252, 0.12);
-  border-radius: 12px;
+  border-radius: var(--radius-btn);
   padding: 14px 16px;
   font-size: 0.82rem;
   line-height: 1.6;
@@ -249,7 +249,7 @@
 .lesson-card {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(148, 163, 184, 0.12);
-  border-radius: 14px;
+  border-radius: var(--radius-sm);
   padding: 14px 16px;
   display: flex;
   flex-direction: column;

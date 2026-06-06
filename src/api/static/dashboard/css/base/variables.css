@@ -1,7 +1,26 @@
-/* ─── Design Tokens ───────────────────────────────────────────────────────────────────────────
+/* ─── Design Tokens — SINGLE SOURCE OF TRUTH ─────────────────────────────────────────────────
    Owner: base
-   Single source of truth cho toàn bộ CSS custom properties của dashboard.
+   Đây là file duy nhất được phép khai báo design tokens cho toàn bộ dashboard.
    Không chứa bất kỳ selector nào ngoài :root và @keyframes global.
+
+   ════ DESIGN CONTRACT ════════════════════════════════════════════════════════
+
+   SPACING     Dùng var(--space-*). Không hardcode px trong margin/padding/gap.
+   RADIUS      Dùng var(--radius-*). Mapping:
+               panel/dialog  → --radius-lg (24px) / --radius-md (18px)
+               input/toast   → --radius-sm (14px)
+               button        → --radius-btn (9px)
+               badge/tag     → --radius-tag (6px)
+               micro bar     → --radius-xs (4px)
+               pill/chip     → --radius-pill (9999px)
+   TYPOGRAPHY  Dùng var(--text-*). Không hardcode rem/px trong font-size.
+   TABLE       Dùng --tbl-th-pad / --tbl-td-pad (standard) hoặc
+               --tbl-th-pad-sm / --tbl-td-pad-sm (compact).
+               Không define th/td padding trong module CSS riêng.
+   FORM        Dùng --form-gap / --form-field-gap / --form-input-pad / --form-label-size.
+   BUTTON      Height: --btn-h (36px) / --btn-h-sm (28px). Radius: --radius-btn.
+   COLOR       Xanh lá = --success. Đỏ/âm = --danger. Cam = --orange (chỉ semantic).
+
    NOTE: --font-body và --font-mono được định nghĩa duy nhất trong reset.css
          (Roboto + Roboto Mono via Google Fonts). Không override ở đây.
 ──────────────────────────────────────────────────────────────────────────── */
@@ -87,15 +106,73 @@
   --panel-pad: var(--space-4);
 
   /* ── Radius ── */
-  --radius-lg: 24px;
-  --radius-md: 18px;
-  --radius-sm: 14px;
-  --radius-xs: 6px;      /* thêm: dùng cho badge nhỏ, nút nhỏ */
-  --radius-pill: 9999px; /* thêm: dùng cho tag/chip */
+  /* Scale cứng — tất cả module PHẢI dùng var(--radius-*), không hardcode px
+     --radius-lg  24px  panel chính, dialog shell
+     --radius-md  18px  card, inner panel, table row group
+     --radius-sm  14px  form input, toast, quote-strip shell
+     --radius-btn  9px  tất cả button variants (primary/ghost/danger/icon)
+     --radius-tag  6px  badge, tag, chip nhỏ, suggest-item
+     --radius-xs   4px  micro: progress bar, nano-indicator, heatmap cell
+     --radius-pill 9999px tag/chip dạng pill, avatar, score badge tròn
+  */
+  --radius-lg:   24px;
+  --radius-md:   18px;
+  --radius-sm:   14px;
+  --radius-btn:   9px;
+  --radius-tag:   6px;
+  --radius-xs:    4px;
+  --radius-pill: 9999px;
 
   /* ── Shadow ── */
   --shadow: 0 24px 70px rgba(2, 6, 23, 0.36);
   --shadow-sm: 0 4px 16px rgba(2, 6, 23, 0.24);
+
+  /* ── Table anatomy (SSOT cho tất cả data-table trong dashboard) ──────────
+     Mọi module PHẢI dùng các token này. Không define th/td padding riêng
+     trong từng module CSS.
+
+     Standard table  — watchlist, portfolio, thesis, decision
+     --tbl-th-pad     8px 12px
+     --tbl-td-pad    10px 12px
+     --tbl-th-size   --text-xs  (~11px, uppercase eyebrow)
+     --tbl-td-size   --text-base (14px)
+
+     Compact table  — briefing ticker, signal list, inner sub-tables
+     --tbl-th-pad-sm  4px 8px
+     --tbl-td-pad-sm  5px 8px
+     --tbl-th-size-sm --text-2xs (10px)
+  ── */
+  --tbl-th-pad:      var(--space-2) var(--space-3);   /*  8px 12px */
+  --tbl-td-pad:      10px var(--space-3);             /* 10px 12px */
+  --tbl-th-size:     var(--text-xs);
+  --tbl-td-size:     var(--text-base);
+  --tbl-th-pad-sm:   var(--space-1) var(--space-2);   /*  4px  8px */
+  --tbl-td-pad-sm:   5px var(--space-2);              /*  5px  8px */
+  --tbl-th-size-sm:  var(--text-2xs);
+
+  /* ── Form anatomy (SSOT cho modal forms, inline add-forms) ──────────────
+     --form-gap        khoảng cách giữa các form-field trong 1 form-grid
+     --form-row-gap    khoảng cách giữa các form-row
+     --form-field-gap  khoảng cách label → input bên trong 1 field
+     --form-input-pad  padding bên trong input/select/textarea
+     --form-label-size font-size cho form label (eyebrow uppercase)
+     --form-input-size font-size cho giá trị input
+  ── */
+  --form-gap:        var(--space-3);   /* 12px */
+  --form-row-gap:    var(--space-3);   /* 12px */
+  --form-field-gap:  var(--space-2);   /*  8px — tăng từ 5–6px hiện tại */
+  --form-input-pad:  var(--space-2) var(--space-3);   /* 8px 12px */
+  --form-label-size: var(--text-xs);   /* ~11px */
+  --form-input-size: var(--text-base); /* 14px */
+
+  /* ── Button height scale ──────────────────────────────────────────────
+     --btn-h      36px  standard (primary, ghost, danger, icon, icon-text)
+     --btn-h-sm   28px  compact (ghost-btn--compact, suggest “apply”, nhỏ)
+     --btn-h-xs   24px  micro inline action (nếu cần)
+  ── */
+  --btn-h:    36px;
+  --btn-h-sm: 28px;
+  --btn-h-xs: 24px;
 }
 
 /* ─── Flash animations (dùng bởi animate.js → flashValue) ───────────────────────────

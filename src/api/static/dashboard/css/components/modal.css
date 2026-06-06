@@ -31,9 +31,9 @@ dialog::backdrop {
 
 /* ── Inner layout ────────────────────────────────────────────────────────────────────── */
 .modal-inner {
-  padding: 22px;
+  padding: var(--space-6);
   display: grid;
-  gap: 16px;
+  gap: var(--form-gap);
 }
 .modal-header {
   display: flex;
@@ -42,19 +42,19 @@ dialog::backdrop {
   gap: 10px;
 }
 .modal-header h2 {
-  font-size: 1.08rem;
+  font-size: var(--text-lg);
   letter-spacing: -0.03em;
   color: var(--text);
 }
 .modal-close {
   width: 32px;
   height: 32px;
-  border-radius: 10px;
+  border-radius: var(--radius-btn);
   border: 1px solid var(--line);
   background: transparent;
   color: var(--muted);
   cursor: pointer;
-  font-size: 1rem;
+  font-size: var(--text-md);
   display: grid;
   place-items: center;
   flex-shrink: 0;
@@ -65,27 +65,27 @@ dialog::backdrop {
 .modal-footer {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
-  padding-top: 8px;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
   border-top: 1px solid var(--line);
 }
 
 /* ── Form fields ──────────────────────────────────────────────────────────────────── */
 .form-grid {
   display: grid;
-  gap: 12px;
+  gap: var(--form-gap);
 }
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: var(--form-row-gap);
 }
 .form-field {
   display: grid;
-  gap: 6px;
+  gap: var(--form-field-gap);
 }
 .form-field label {
-  font-size: 0.7rem;
+  font-size: var(--form-label-size);
   font-weight: 600;
   color: var(--muted);
   text-transform: uppercase;
@@ -100,11 +100,11 @@ dialog::backdrop {
 
 .field {
   display: grid;
-  gap: 5px;
+  gap: var(--form-field-gap);
 }
 .field span {
   color: var(--muted);
-  font-size: 0.7rem;
+  font-size: var(--form-label-size);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -116,10 +116,10 @@ dialog select,
 dialog textarea {
   background: rgba(13, 23, 40, 0.9);
   border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-btn);
   color: var(--text);
-  padding: 8px 12px;
-  font-size: 0.85rem;
+  padding: var(--form-input-pad);
+  font-size: var(--form-input-size);
   font-family: var(--font-body);
   width: 100%;
   min-width: 0;
@@ -156,8 +156,8 @@ dialog select option {
   display: flex;
   gap: 10px;
   align-items: flex-end;
-  padding: 12px;
-  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  border-radius: var(--radius-btn);
   background: rgba(125, 211, 252, 0.05);
   border: 1px solid rgba(125, 211, 252, 0.16);
 }
@@ -167,7 +167,7 @@ dialog select option {
   min-height: 36px;
   padding: 0 14px;
   border: 1px solid rgba(125, 211, 252, 0.36);
-  border-radius: 9px;
+  border-radius: var(--radius-btn);
   background: rgba(125, 211, 252, 0.1);
   color: var(--brand);
   font-weight: 700;
@@ -176,7 +176,7 @@ dialog select option {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   transition: background 0.15s;
 }
 .suggest-btn:hover { background: rgba(125, 211, 252, 0.18); }
@@ -187,12 +187,12 @@ dialog select option {
   align-items: center;
   gap: 10px;
   color: var(--muted);
-  font-size: 0.82rem;
-  padding: 10px 12px;
+  font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-3);
 }
 
 .suggest-result {
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-btn);
   background: rgba(125, 211, 252, 0.04);
   border: 1px solid rgba(125, 211, 252, 0.18);
   overflow: hidden;
@@ -202,22 +202,22 @@ dialog select option {
   justify-content: space-between;
   align-items: center;
   gap: 10px;
-  padding: 12px 14px;
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid rgba(125, 211, 252, 0.12);
   background: rgba(125, 211, 252, 0.06);
 }
 .suggest-result-header strong {
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   color: var(--brand);
 }
 .apply-suggest-btn {
-  min-height: 30px;
-  padding: 0 12px;
+  min-height: var(--btn-h-sm);
+  padding: 0 var(--space-3);
   border: 1px solid rgba(74, 222, 128, 0.3);
-  border-radius: 10px;
+  border-radius: var(--radius-btn);
   background: rgba(74, 222, 128, 0.08);
   color: var(--success);
-  font-size: 0.76rem;
+  font-size: var(--text-sm);
   font-weight: 700;
   cursor: pointer;
   transition: background 0.15s;
@@ -225,12 +225,12 @@ dialog select option {
 .apply-suggest-btn:hover { background: rgba(74, 222, 128, 0.16); }
 
 .suggest-body {
-  padding: 12px 14px;
+  padding: var(--space-3) var(--space-4);
   display: grid;
-  gap: 10px;
+  gap: var(--space-2);
 }
 .suggest-section-title {
-  font-size: 0.68rem;
+  font-size: var(--text-xs);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -238,11 +238,11 @@ dialog select option {
   margin-bottom: 5px;
 }
 .suggest-item {
-  padding: 9px 10px;
-  border-radius: 12px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-btn);
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--line);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   line-height: 1.45;
 }
 .suggest-item strong {
@@ -252,13 +252,13 @@ dialog select option {
 }
 .suggest-item span {
   color: var(--muted);
-  font-size: 0.74rem;
+  font-size: var(--text-xs);
 }
 .suggest-confidence {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 0.74rem;
+  font-size: var(--text-xs);
   color: var(--muted);
 }
 .confidence-bar {

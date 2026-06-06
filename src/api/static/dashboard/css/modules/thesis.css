@@ -54,7 +54,7 @@
 }
 .detail-stat {
   padding: 12px 14px;
-  border-radius: 16px;
+  border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(148, 163, 184, 0.12);
 }
@@ -81,7 +81,7 @@
 .detail-list { display: grid; gap: 8px; }
 .detail-item {
   padding: 12px;
-  border-radius: 16px;
+  border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(148, 163, 184, 0.12);
   display: flex;
@@ -128,7 +128,7 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
 }
 .review-card {
   padding: 14px;
-  border-radius: 16px;
+  border-radius: var(--radius-md);
   background: rgba(125, 211, 252, 0.05);
   border: 1px solid rgba(125, 211, 252, 0.14);
   transition: opacity 0.2s ease, border-color 0.2s ease;
@@ -164,7 +164,7 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
 }
 .review-box {
   padding: 12px;
-  border-radius: 14px;
+  border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.035);
   border: 1px solid rgba(148, 163, 184, 0.12);
 }
@@ -177,7 +177,7 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
 .review-box li + li { margin-top: 4px; }
 
 /* ── Form stack (inline rows inside thesis modal) ─────────────────────── */
-.form-stack { display: grid; gap: 8px; }
+.form-stack { display: grid; gap: var(--form-gap); }
 
 /* ───────────────────────────────────────────────────────────────────────────────────
    WAVE 2d — SKELETON LOADER
@@ -192,7 +192,7 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
 }
 
 .skel {
-  border-radius: 6px;
+  border-radius: var(--radius-tag);
   background: linear-gradient(
     90deg,
     rgba(148, 163, 184, 0.08) 25%,
@@ -227,7 +227,7 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
 }
 .skel-stat {
   height: 58px;
-  border-radius: 16px;
+  border-radius: var(--radius-md);
 }
 .skel-row {
   height: 44px;
@@ -236,7 +236,7 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
 }
 .skel-item {
   height: 72px;
-  border-radius: 16px;
+  border-radius: var(--radius-md);
   margin-bottom: 8px;
 }
 .skel-detail-wrap {
@@ -271,7 +271,7 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
 .price-mini-chart-skeleton { padding: 0; }
 .price-mini-chart-wrap {
   padding: 12px 14px;
-  border-radius: 16px;
+  border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.025);
   border: 1px solid rgba(148, 163, 184, 0.10);
 }
@@ -332,7 +332,7 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
   padding: 10px 14px;
   background: var(--surface, #1c1b19);
   border-bottom: 1px solid rgba(148, 163, 184, 0.12);
-  border-radius: 12px 12px 0 0;
+  border-radius: var(--radius-btn) var(--radius-btn) 0 0;
   backdrop-filter: blur(12px);
 }
 .dsb-left   { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
@@ -363,8 +363,8 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
 .detail-tab-nav::-webkit-scrollbar { display: none; }
 .dtab {
   position: relative;
-  padding: 6px 14px 8px;
-  font-size: 0.8rem;
+  padding: var(--space-2) var(--space-4) var(--space-2);
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--muted, #797876);
   background: none;
@@ -397,7 +397,7 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
 .dtab-count--danger { background: rgba(248,113,113,.18); color: #f87171; }
 
 /* ── Tab panels ───────────────────────────────────────────────────────────────── */
-.detail-tab-panels { padding: 16px 14px; }
+.detail-tab-panels { padding: var(--space-4) var(--space-3); }
 .dtab-panel        { display: none; animation: tabFadeIn 180ms ease; }
 .dtab-panel.active { display: block; }
 @keyframes tabFadeIn {
@@ -506,7 +506,8 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
 }
 
 #thesesTableWrap th {
-  font-size: 0.72rem;
+  padding: var(--tbl-th-pad);
+  font-size: var(--tbl-th-size);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;

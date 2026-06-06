@@ -266,22 +266,22 @@
 .brief-ticker-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: .78rem;
+  font-size: var(--tbl-td-size);
 }
 
 .brief-ticker-table th {
-  font-size: .65rem;
+  font-size: var(--tbl-th-size-sm);
   font-weight: 600;
   letter-spacing: .05em;
   text-transform: uppercase;
   color: var(--faint);
-  padding: 4px 6px;
+  padding: var(--tbl-th-pad-sm);
   text-align: left;
   border-bottom: 1px solid var(--line);
 }
 
 .brief-ticker-table td {
-  padding: 5px 6px;
+  padding: var(--tbl-td-pad-sm);
   border-bottom: 1px solid var(--line);
   vertical-align: top;
   line-height: 1.35;

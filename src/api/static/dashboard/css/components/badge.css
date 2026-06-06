@@ -8,8 +8,8 @@
   align-items: center;
   justify-content: center;
   padding: 4px 8px;
-  border-radius: 999px;
-  font-size: 0.68rem;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
   font-weight: 700;
   white-space: nowrap;
   background: rgba(148, 163, 184, 0.16);
