@@ -460,11 +460,25 @@ class SelfImprovementAdvisor:
         user   = build_user_prompt(report)
 
         try:
-            raw = await self._ai_client.chat(
-                system=system,
-                user=user,
-                response_format="json_object",
+            # Use chat_completion directly — evolution uses its own parse_ai_response()
+            # and does NOT need response_schema parsing. Do NOT pass response_format:
+            # sonar-pro rejects json_object (HTTP 400); JSON is enforced via prompt.
+            import json as _json  # noqa: PLC0415
+            import re as _re        # noqa: PLC0415
+            json_instruction = (
+                "You MUST respond with valid JSON only. "
+                "No markdown, no code fences, no explanation outside JSON."
             )
+            messages = [
+                {"role": "system", "content": f"{json_instruction}\n\n{system}"},
+                {"role": "user",   "content": user},
+            ]
+            response = await self._ai_client.chat_completion(messages=messages)
+            raw_text = self._ai_client.extract_text(response)
+            # Strip markdown code fences if model wraps output
+            raw_text = _re.sub(r"^```(?:json)?\s*", "", raw_text.strip(), flags=_re.MULTILINE)
+            raw_text = _re.sub(r"```\s*$", "", raw_text.strip(), flags=_re.MULTILINE)
+            raw = _json.loads(raw_text.strip())
             suggestions = parse_ai_response(raw)
             logger.info(
                 "evolution.ai_suggestions_parsed",

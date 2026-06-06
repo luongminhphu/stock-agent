@@ -11,7 +11,6 @@ Boundary:
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
@@ -63,17 +62,13 @@ class ReplayAgent:
             trigger:  Trigger label (default: decision_replay).
         """
         try:
-            messages = [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": build_user_prompt(ctx)},
-            ]
-            response = await self._client.chat_completion(
-                messages=messages,
+            raw = await self._client.call(
+                system_prompt=SYSTEM_PROMPT,
+                user_prompt=build_user_prompt(ctx),
+                response_schema=DecisionReplayResult,
                 temperature=0.2,
-                response_format={"type": "json_object"},
             )
-            raw = self._client.extract_text(response)
-            result = DecisionReplayResult(**json.loads(raw))
+            result = raw  # client.call() already returns parsed Pydantic model
             logger.info(
                 "decision_replay.analyzed",
                 decision_id=result.decision_id,
