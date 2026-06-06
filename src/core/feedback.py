@@ -30,8 +30,9 @@ Public API (called by evolution.py)::
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import ClassVar
+
 
 from src.core.models import CoreFeedback
 from src.core.schemas import FeedbackEntry, FeedbackOutcome
@@ -131,34 +132,44 @@ class FeedbackStore:
     # ---------------------------------------------------------------------------
 
     @classmethod
-    async def get_recent(cls, limit: int = 200) -> list[dict]:
-        """Return most recent N feedback records.
+    async def get_recent(
+        cls,
+        limit: int = 200,
+        days: int | None = None,
+        user_id: str | None = None,
+    ) -> list["FeedbackEntry"]:
+        """Return most recent feedback records as FeedbackEntry objects.
 
-        Queries DB first. If DB is unavailable, falls back to in-memory store.
-        Each record is a plain dict matching FeedbackEntry.model_dump() shape
-        plus a 'recorded_at' ISO string.
+        Args:
+            limit:   Max rows to return (default 200). Ignored when days is set
+                     (returns all rows within the time window, up to 1000).
+            days:    When set, filter to rows recorded within the last N days.
+            user_id: When set, filter to rows for this user.
+
+        Queries DB first. Falls back to in-memory store on DB error.
         """
         try:
             from sqlalchemy import select
             async with get_session() as session:
-                stmt = (
-                    select(CoreFeedback)
-                    .order_by(CoreFeedback.recorded_at.desc())
-                    .limit(limit)
-                )
+                stmt = select(CoreFeedback).order_by(CoreFeedback.recorded_at.desc())
+                if days is not None:
+                    cutoff = datetime.now(UTC) - timedelta(days=days)
+                    stmt = stmt.where(CoreFeedback.recorded_at >= cutoff)
+                if user_id is not None:
+                    stmt = stmt.where(CoreFeedback.user_id == user_id)
+                stmt = stmt.limit(1000 if days is not None else limit)
                 result = await session.execute(stmt)
                 rows = result.scalars().all()
                 return [
-                    {
-                        "verdict_event_id": r.verdict_event_id,
-                        "user_id": r.user_id,
-                        "verdict": r.verdict,
-                        "outcome": r.outcome,
-                        "trigger_source": r.trigger_source,
-                        "user_note": r.user_note,
-                        "delta_score": r.delta_score,
-                        "recorded_at": r.recorded_at.isoformat() if r.recorded_at else None,
-                    }
+                    FeedbackEntry(
+                        verdict_event_id=r.verdict_event_id,
+                        user_id=r.user_id,
+                        verdict=r.verdict,
+                        outcome=r.outcome,  # type: ignore[arg-type]
+                        trigger_source=r.trigger_source,
+                        user_note=r.user_note,
+                        delta_score=r.delta_score,
+                    )
                     for r in rows
                 ]
         except Exception as exc:  # noqa: BLE001
@@ -166,7 +177,15 @@ class FeedbackStore:
                 "feedback_store.get_recent_db_failed",
                 extra={"error": str(exc)},
             )
-            return cls._store[-limit:]
+            # In-memory fallback: reconstruct FeedbackEntry from stored dicts
+            fallback = cls._store[-limit:]
+            result_list: list[FeedbackEntry] = []
+            for item in fallback:
+                try:
+                    result_list.append(FeedbackEntry(**{k: v for k, v in item.items() if k != "recorded_at"}))
+                except Exception:
+                    pass
+            return result_list
 
     @classmethod
     async def get_by_verdict_event(

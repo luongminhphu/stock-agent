@@ -30,7 +30,8 @@ from uuid import uuid4
 from sqlalchemy import DateTime, Integer, String, Text, select, update
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.core.feedback import EngineFeedback, FeedbackStore
+from src.core.feedback import FeedbackStore
+from src.core.schemas import FeedbackEntry
 from src.platform.db import AsyncSessionLocal, Base
 from src.platform.logging import get_logger
 
@@ -158,7 +159,7 @@ class FailurePatternAnalyser:
 
     @staticmethod
     def aggregate_verdict_outcomes(
-        entries: list[EngineFeedback],
+        entries: list[FeedbackEntry],
     ) -> dict[str, VerdictStats]:
         """Group feedback by verdict type and compute accuracy metrics."""
         stats: dict[str, VerdictStats] = {}
@@ -197,7 +198,7 @@ class FailurePatternAnalyser:
 
     @staticmethod
     def find_dominant_trigger_sources(
-        entries: list[EngineFeedback],
+        entries: list[FeedbackEntry],
         incorrect_rate_threshold: float = 0.40,
         min_samples: int = 3,
     ) -> list[TriggerSourceStats]:
@@ -226,7 +227,7 @@ class FailurePatternAnalyser:
     @classmethod
     def build_pattern_report(
         cls,
-        entries: list[EngineFeedback],
+        entries: list[FeedbackEntry],
         days: int,
     ) -> PatternReport:
         """Top-level: build the full PatternReport from raw feedback entries."""
