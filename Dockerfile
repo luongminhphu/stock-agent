@@ -3,11 +3,12 @@
 # stock-agent — multi-stage Dockerfile
 #
 # Dep install strategy:
-#   1. Copy pyproject.toml + a stub src/ (so hatchling can resolve packages)
-#   2. pip install --no-cache-dir . — installs all [project.dependencies] from
-#      pyproject.toml as the single source of truth. No manual dep list.
-#   3. Runtime stage copies real src/ over PYTHONPATH so the installed stub
-#      is shadowed by live source — editable-install behaviour without -e.
+#   - pyproject.toml là single source of truth cho tất cả runtime deps.
+#   - pip cache được giữ lại giữa các lần build qua BuildKit cache mount
+#     (/root/.cache/pip trên host) — không re-download khi pyproject.toml không đổi.
+#   - Layer cache: COPY pyproject.toml → pip install là 1 layer riêng.
+#     Chỉ invalidate khi pyproject.toml thay đổi, không bị ảnh hưởng bởi code commit.
+#   - Runtime stage COPY src/ ghi đè stub — source thay đổi không làm pip chạy lại.
 # ---------------------------------------------------------------------------
 
 # -- Stage 1: builder -------------------------------------------------------
@@ -25,14 +26,15 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 RUN pip install --upgrade pip
 
-# Copy pyproject.toml + minimal stub so hatchling can build the wheel metadata
-# without needing the full source tree. The stub is overwritten in runtime stage.
+# Layer 1: chỉ copy pyproject.toml + stub src — layer này cache until pyproject.toml đổi.
+# Commit code không đụng vào layer này → pip không bao giờ chạy lại khi chỉ đổi code.
 COPY pyproject.toml ./
 RUN mkdir -p src && touch src/__init__.py
 
-# Install all runtime deps declared in [project.dependencies] — single source
-# of truth. Adding a dep to pyproject.toml is enough; no Dockerfile change needed.
-RUN pip install --no-cache-dir .
+# BuildKit cache mount giữ pip wheel cache giữa các lần build trên host.
+# Khi pyproject.toml đổi: pip chỉ download package mới, package cũ vẫn được cache.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install .
 
 # -- Stage 2: runtime -------------------------------------------------------
 FROM python:3.12-slim AS runtime
