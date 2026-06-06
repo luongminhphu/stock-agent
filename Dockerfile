@@ -50,13 +50,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
-# --home + --create-home: đảm bảo HOME=/home/appuser tồn tại và được set đúng trong passwd.
-# adduser --system mặc định không tạo home dir → pathlib.Path.home() trả về / → PermissionError.
+# --home /home/appuser: set HOME trong passwd nhưng không tạo thư mục.
+# Tạo thủ công + chức năng vnstock cache (.vnstock/id) với đúng owner.
 RUN addgroup --system appgroup \
- && adduser --system --ingroup appgroup --home /home/appuser --create-home appuser
-
-# vnstock tạo ~/.vnstock/id khi import — tạo sẵn để không bị race condition.
-RUN mkdir -p /home/appuser/.vnstock/id
+ && adduser --system --ingroup appgroup --home /home/appuser appuser \
+ && mkdir -p /home/appuser/.vnstock/id \
+ && chown -R appuser:appgroup /home/appuser
 
 # Copy venv (deps only, no project wheel needed)
 COPY --from=builder /opt/venv /opt/venv
