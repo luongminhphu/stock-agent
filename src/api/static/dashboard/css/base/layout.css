@@ -1,0 +1,160 @@
+/* ─── layout.css — Sidebar + Main 2-column layout system ──────────────────────
+   Owner: base
+   Depends on: variables.css
+   Replaces/extends: css/modules/layout.css shell and main rules
+   NOTE: modules/layout.css vẫn giữ nguyên cho panel, form, cluster, etc.
+         File này chỉ quản lý app shell: .shell, .sidebar, .main-area, .topbar
+──────────────────────────────────────────────────────────────────────────── */
+
+/* ── App shell: 2-column persistent layout ──────────────────────────────── */
+.shell {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    "sidebar topbar"
+    "sidebar main";
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────────────────── */
+.sidebar {
+  grid-area: sidebar;
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-2);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  z-index: 90;
+  flex-shrink: 0;
+}
+
+.sidebar::-webkit-scrollbar { display: none; }
+
+/* ── Topbar (main area header) ───────────────────────────────────────────── */
+.topbar {
+  grid-area: topbar;
+  position: sticky;
+  top: 0;
+  z-index: 80;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-5);
+  gap: var(--space-4);
+  background: rgba(8, 17, 31, 0.88);
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* ── Main content area ───────────────────────────────────────────────────── */
+main#main-content {
+  grid-area: main;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap, 12px);
+  padding: var(--space-4) var(--space-5) var(--space-8);
+  max-width: 1200px;
+  width: 100%;
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+/* ── Error banner ────────────────────────────────────────────────────────── */
+.error-banner {
+  grid-column: 2 / -1;
+  padding: var(--space-3) var(--space-5);
+  background: rgba(248,113,113,.1);
+  border-bottom: 1px solid rgba(248,113,113,.22);
+  color: var(--danger);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+/* ── Skip link (accessibility) ───────────────────────────────────────────── */
+.skip-link {
+  position: fixed;
+  top: -48px;
+  left: 0;
+  background: var(--brand);
+  color: #000;
+  padding: var(--space-2) var(--space-4);
+  z-index: 9999;
+  font-weight: 700;
+  font-size: var(--text-sm);
+  border-radius: 0 0 var(--radius-xs) 0;
+  transition: top var(--transition-fast);
+}
+.skip-link:focus { top: 0; }
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+.footer-note {
+  grid-column: 2 / -1;
+  padding: var(--space-3) var(--space-5);
+  font-size: var(--text-xs);
+  color: var(--faint);
+  border-top: 1px solid var(--line);
+  text-align: center;
+}
+
+/* ── Responsive: collapse sidebar below 900px ────────────────────────────── */
+@media (max-width: 900px) {
+  .shell {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "topbar"
+      "main";
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: -260px;
+    width: 240px;
+    height: 100dvh;
+    z-index: 200;
+    transition: left var(--transition-base);
+    box-shadow: 4px 0 32px rgba(2, 6, 23, 0.5);
+  }
+
+  .sidebar.is-open {
+    left: 0;
+  }
+
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(2, 6, 23, 0.6);
+    z-index: 199;
+    backdrop-filter: blur(2px);
+  }
+
+  .sidebar.is-open ~ .sidebar-overlay { display: block; }
+
+  .topbar {
+    grid-column: 1 / -1;
+  }
+
+  main#main-content {
+    padding: var(--space-3) var(--space-4) var(--space-8);
+  }
+}
+
+@media (max-width: 480px) {
+  main#main-content {
+    padding: var(--space-3) var(--space-3) var(--space-6);
+  }
+}

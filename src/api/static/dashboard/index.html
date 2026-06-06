@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>stock-agent — Investor Dashboard</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>%F0%9F%93%88</text></svg>" />
-    <link rel="stylesheet" href="/static/dashboard/dashboard.css?v=20" />
-    <link rel="stylesheet" href="/static/dashboard/css/signals.css?v=20" />
-    <link rel="stylesheet" href="/static/dashboard/css/quick-trade.css?v=20" />
-    <link rel="stylesheet" href="/static/dashboard/css/heatmap.css?v=20" />
+    <link rel="stylesheet" href="/static/dashboard/dashboard.css?v=21" />
+    <link rel="stylesheet" href="/static/dashboard/css/signals.css?v=21" />
+    <link rel="stylesheet" href="/static/dashboard/css/quick-trade.css?v=21" />
+    <link rel="stylesheet" href="/static/dashboard/css/heatmap.css?v=21" />
     <style>
       /* ── Wave-1 layout additions ────────────────────────────────── */
 
@@ -419,14 +419,200 @@
       .mem-ep-outcome.neg { color: var(--red, #f87171); }
       .mem-ep-date     { font-size: .68rem; color: var(--muted); white-space: nowrap; margin-left: 2px; }
       .mem-ep-icon     { font-size: .9rem; flex-shrink: 0; }
+
+      /* ── Cluster label enhanced ─────────────────────────────────────────── */
+      .cluster-label {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: var(--space-2) 0 var(--space-2);
+        border-bottom: 1px solid var(--line);
+        margin-bottom: 2px;
+      }
+
+      .cluster-badge {
+        width: 22px;
+        height: 22px;
+        border-radius: 5px;
+        font-size: .68rem;
+        font-weight: 800;
+        flex-shrink: 0;
+      }
+
+      .cluster-label-content {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        min-width: 0;
+      }
+
+      .cluster-label-title {
+        font-size: var(--text-sm);
+        font-weight: 700;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        color: var(--muted);
+        line-height: 1.2;
+      }
+
+      .cluster-label-desc {
+        font-size: var(--text-2xs);
+        color: var(--faint);
+        font-weight: 500;
+        letter-spacing: .02em;
+        line-height: 1.3;
+      }
+
+      /* ── KPI trend indicator ─────────────────────────────────────────────── */
+      .kpi-trend::before {
+        display: inline;
+        margin-right: 2px;
+        font-size: .68rem;
+      }
+
+      .kpi-trend.trend-up::before   { content: "▲"; color: var(--success); }
+      .kpi-trend.trend-down::before { content: "▼"; color: var(--danger); }
+      .kpi-trend.trend-up   { color: var(--success); }
+      .kpi-trend.trend-down { color: var(--danger); }
+
+      /* ── Action surface priority dot ─────────────────────────────────────── */
+      .as-priority-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        margin-right: -2px;
+      }
+
+      .as-priority-dot--skel {
+        background: var(--surface-3, rgba(255,255,255,.06));
+        animation: shimmer 1.5s ease-in-out infinite;
+        background-size: 200% 100%;
+      }
+
+      .as-priority-dot--high   { background: var(--danger); }
+      .as-priority-dot--medium { background: var(--warning); }
+      .as-priority-dot--low    { background: var(--faint); }
+
+      /* ── Sidebar overlay visibility class ──────────────────────────────── */
+      .sidebar-overlay.is-visible {
+        display: block;
+        animation: fadeIn .2s ease;
+      }
+
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+      }
+
+      /* ── KPI signal cards: border-left accent ──────────────────────────── */
+      .signal-card--portfolio { border-left: 3px solid rgba(125, 211, 252, 0.35); }
+      .signal-card--pnl       { border-left: 3px solid rgba(74, 222, 128, 0.35); }
+      .signal-card--risk      { border-left: 3px solid rgba(248, 113, 113, 0.35); }
+      .signal-card--scan      { border-left: 3px solid rgba(167, 139, 250, 0.35); }
     </style>
   </head>
   <body>
     <a class="skip-link" href="#main-content">Bỏ qua điều hướng</a>
     <div class="shell">
 
+      <!-- ── SIDEBAR ─────────────────────────────────────────────────────────────────── -->
+      <aside class="sidebar" id="sidebar" aria-label="Navigation">
+        <!-- Brand -->
+        <a class="sidebar-brand" href="#">
+          <svg class="sidebar-brand-logo" aria-label="stock-agent" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="32" height="32" rx="8" fill="currentColor" fill-opacity=".12"/>
+            <polyline points="4,22 11,14 17,18 28,8" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="28" cy="8" r="2.5" fill="currentColor"/>
+          </svg>
+          <span class="sidebar-brand-name">stock-agent</span>
+          <span class="sidebar-brand-tag">AI</span>
+        </a>
+
+        <!-- Nav clusters -->
+        <nav class="sidebar-scroll" aria-label="Cluster navigation">
+          <span class="nav-section-label">Clusters</span>
+
+          <a class="nav-item active" href="#cluster-a" aria-label="Cluster A: Hôm nay cần làm gì?">
+            <span class="nav-cluster-badge" aria-hidden="true">A</span>
+            <span>Hôm nay cần làm gì?</span>
+          </a>
+
+          <a class="nav-item" href="#cluster-b" aria-label="Cluster B: Thesis của tôi đang ở đâu?">
+            <span class="nav-cluster-badge" aria-hidden="true">B</span>
+            <span>Thesis của tôi</span>
+          </a>
+
+          <a class="nav-item" href="#cluster-c" aria-label="Cluster C: Tôi đã quyết định gì?">
+            <span class="nav-cluster-badge" aria-hidden="true">C</span>
+            <span>Quyết định của tôi</span>
+          </a>
+
+          <a class="nav-item" href="#cluster-d" aria-label="Cluster D: Hệ thống đã học được gì?">
+            <span class="nav-cluster-badge" aria-hidden="true">D</span>
+            <span>AI đã học được gì?</span>
+          </a>
+
+          <span class="nav-section-label">Modules</span>
+
+          <a class="nav-item" href="#watchlistSection">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            Watchlist
+          </a>
+
+          <a class="nav-item" href="#thesesTableWrap">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            Thesis board
+          </a>
+
+          <a class="nav-item" href="#decisionsTableWrap">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            Decision log
+          </a>
+
+          <a class="nav-item" href="#episodicFeed">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            Memory
+          </a>
+        </nav>
+
+        <!-- Engine heartbeat -->
+        <div class="sidebar-heartbeat">
+          <div id="engineHeartbeat" class="engine-heartbeat heartbeat-idle" role="status" aria-live="polite" aria-label="Engine status">
+            <span class="heartbeat-dot"></span><span class="heartbeat-text">Engine …</span>
+          </div>
+        </div>
+
+        <!-- Quick actions -->
+        <div class="sidebar-quick-actions" aria-label="Quick actions">
+          <button class="quick-action-btn" id="newThesisBtn" type="button" aria-label="Tạo thesis mới">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Thesis mới
+          </button>
+          <button class="quick-action-btn" id="newDecisionBtnSidebar" type="button" aria-label="Log quyết định mới"
+            onclick="document.getElementById('newDecisionBtn').click()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Log Decision
+          </button>
+          <button class="quick-action-btn" type="button" aria-label="Thêm vào watchlist"
+            onclick="document.querySelector('[data-open-watchlist]')?.click() || document.getElementById('watchlistSection')?.scrollIntoView({behavior:'smooth'})">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            + Watchlist
+          </button>
+        </div>
+      </aside>
+
+      <!-- Mobile sidebar overlay -->
+      <div class="sidebar-overlay" id="sidebarOverlay" aria-hidden="true"></div>
+
       <!-- ── TOPBAR ──────────────────────────────────────────────────────────────────── -->
       <header class="topbar">
+        <!-- Mobile sidebar toggle -->
+        <button class="sidebar-toggle" id="sidebarToggle" type="button" aria-label="Mở menu" aria-expanded="false" aria-controls="sidebar">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+
+        <!-- Brand (mobile only — sidebar has it on desktop) -->
         <div class="brand-block">
           <svg class="brand-logo" aria-label="stock-agent" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
             <rect width="32" height="32" rx="8" fill="currentColor" fill-opacity=".1"/>
@@ -435,15 +621,30 @@
           </svg>
           <span class="brand-name">stock-agent</span>
         </div>
+
+        <!-- Search intent input -->
+        <div class="topbar-search">
+          <svg class="topbar-search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input
+            id="topbarSearch"
+            type="search"
+            placeholder="Tìm mã, thesis, quyết định…"
+            aria-label="Tìm kiếm trong dashboard"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </div>
+
+        <!-- Toolbar (reload only on desktop — new thesis is in sidebar) -->
         <div class="toolbar">
-          <div id="engineHeartbeat" class="engine-heartbeat heartbeat-idle" role="status" aria-live="polite" aria-label="Engine status">
-            <span class="heartbeat-dot"></span><span class="heartbeat-text">Engine …</span>
-          </div>
           <button id="reloadBtn" class="icon-text-btn" type="button" aria-label="Tải lại dữ liệu">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
             Reload
           </button>
-          <button id="newThesisBtn" class="primary-btn" type="button">+ Thesis mới</button>
+          <!-- Mobile-only: new thesis btn (hidden on desktop via topbar.css) -->
+          <button id="newThesisBtnTopbar" class="primary-btn" type="button" aria-label="Tạo thesis mới"
+            onclick="document.getElementById('newThesisBtn').click()"
+            style="display:none" aria-hidden="true">+ Thesis</button>
         </div>
       </header>
 
@@ -454,10 +655,13 @@
         <!-- ══════════════════════════════════════════════════════════════════
              CLUSTER A — "Hôm nay cần làm gì?"
         ══════════════════════════════════════════════════════════════════ -->
-        <div class="cluster" aria-label="Cluster A: Hôm nay cần làm gì?">
+        <div class="cluster" id="cluster-a" aria-label="Cluster A: Hôm nay cần làm gì?">
           <div class="cluster-label">
             <span class="cluster-badge">A</span>
-            <span>Hôm nay cần làm gì?</span>
+            <div class="cluster-label-content">
+              <span class="cluster-label-title">Hôm nay cần làm gì?</span>
+              <span class="cluster-label-desc">Command center · KPIs · Action surface · Briefing</span>
+            </div>
           </div>
 
           <!-- ── 1. ALERTS TRIGGERED ───────────────────────────────────────────── -->
@@ -489,7 +693,7 @@
             <article class="signal-card signal-card--pnl">
               <span class="signal-label">Unrealized P&amp;L</span>
               <strong class="signal-value" id="unrealizedPnl">—</strong>
-              <span class="signal-sub" id="unrealizedPnlPct"></span>
+              <span class="signal-sub kpi-trend" id="unrealizedPnlPct"></span>
             </article>
 
             <article class="signal-card signal-card--risk">
@@ -567,11 +771,13 @@
             <div class="as-label" aria-hidden="true">Việc cần làm hôm nay</div>
             <div class="as-items" data-as-skeleton aria-hidden="true">
               <div class="as-item as-item--skel">
+                <span class="as-priority-dot as-priority-dot--skel" aria-hidden="true"></span>
                 <span class="as-skel as-skel--icon"></span>
                 <span class="as-skel as-skel--text"></span>
                 <span class="as-skel as-skel--cta"></span>
               </div>
               <div class="as-item as-item--skel">
+                <span class="as-priority-dot as-priority-dot--skel" aria-hidden="true"></span>
                 <span class="as-skel as-skel--icon"></span>
                 <span class="as-skel as-skel--text"></span>
                 <span class="as-skel as-skel--cta"></span>
@@ -665,10 +871,13 @@
         <!-- ══════════════════════════════════════════════════════════════════
              CLUSTER B — "Thesis của tôi đang ở đâu?"
         ══════════════════════════════════════════════════════════════════ -->
-        <div class="cluster" aria-label="Cluster B: Thesis của tôi đang ở đâu?">
+        <div class="cluster" id="cluster-b" aria-label="Cluster B: Thesis của tôi đang ở đâu?">
           <div class="cluster-label">
             <span class="cluster-badge">B</span>
-            <span>Thesis của tôi đang ở đâu?</span>
+            <div class="cluster-label-content">
+              <span class="cluster-label-title">Thesis của tôi đang ở đâu?</span>
+              <span class="cluster-label-desc">Thesis board · Leaderboard · Backtesting</span>
+            </div>
           </div>
 
           <section class="panel glass watchlist-layer" aria-labelledby="thesisBoardTitle">
@@ -766,10 +975,13 @@
         <!-- ══════════════════════════════════════════════════════════════════
              CLUSTER C — "Tôi đã quyết định gì &amp; học được gì?"
         ══════════════════════════════════════════════════════════════════ -->
-        <div class="cluster" aria-label="Cluster C: Tôi đã quyết định gì và học được gì?">
+        <div class="cluster" id="cluster-c" aria-label="Cluster C: Tôi đã quyết định gì và học được gì?">
           <div class="cluster-label">
             <span class="cluster-badge">C</span>
-            <span>Tôi đã quyết định gì &amp; học được gì?</span>
+            <div class="cluster-label-content">
+              <span class="cluster-label-title">Tôi đã quyết định gì?</span>
+              <span class="cluster-label-desc">Decision log · Win rate · AI Lessons</span>
+            </div>
           </div>
 
           <section class="panel glass decision-layer" aria-labelledby="decisionTitle">
@@ -821,10 +1033,13 @@
         <!-- ══════════════════════════════════════════════════════════════════
              CLUSTER D — "Hệ thống đã học được gì từ tôi?"
         ══════════════════════════════════════════════════════════════════ -->
-        <div class="cluster" id="memory" aria-label="Cluster D: Hệ thống đã học được gì từ tôi?">
+        <div class="cluster" id="cluster-d" aria-label="Cluster D: Hệ thống đã học được gì từ tôi?">
           <div class="cluster-label">
             <span class="cluster-badge">D</span>
-            <span>Hệ thống đã học được gì từ tôi?</span>
+            <div class="cluster-label-content">
+              <span class="cluster-label-title">AI đã học được gì từ tôi?</span>
+              <span class="cluster-label-desc">Episodic memory · Semantic patterns · Bias warnings</span>
+            </div>
           </div>
 
           <div class="memory-kpi-strip" id="memoryKpiStrip" aria-label="Memory overview">
@@ -1286,6 +1501,61 @@
 
     <!-- quick-trade.js đã được chuyển thành ES module tại modules/portfolio/quick-trade.js -->
     <!-- và được import trực tiếp bởi portfolio-loader.js + portfolio-renderer.js          -->
-    <script type="module" src="/static/dashboard/js/app.js?v=20" data-cfasync="false"></script>
+    <script type="module" src="/static/dashboard/js/app.js?v=21" data-cfasync="false"></script>
+    <script>
+      /* ── Sidebar toggle (mobile) ─────────────────────────────────────── */
+      (function () {
+        var sidebar = document.getElementById('sidebar');
+        var toggle  = document.getElementById('sidebarToggle');
+        var overlay = document.getElementById('sidebarOverlay');
+
+        function openSidebar() {
+          if (!sidebar) return;
+          sidebar.classList.add('is-open');
+          overlay && overlay.classList.add('is-visible');
+          toggle && toggle.setAttribute('aria-expanded', 'true');
+          document.body.style.overflow = 'hidden';
+        }
+
+        function closeSidebar() {
+          if (!sidebar) return;
+          sidebar.classList.remove('is-open');
+          overlay && overlay.classList.remove('is-visible');
+          toggle && toggle.setAttribute('aria-expanded', 'false');
+          document.body.style.overflow = '';
+        }
+
+        toggle  && toggle.addEventListener('click', function () {
+          sidebar.classList.contains('is-open') ? closeSidebar() : openSidebar();
+        });
+        overlay && overlay.addEventListener('click', closeSidebar);
+
+        /* Close sidebar on nav item click (mobile) */
+        sidebar && sidebar.querySelectorAll('.nav-item, .quick-action-btn').forEach(function (el) {
+          el.addEventListener('click', function () {
+            if (window.innerWidth <= 900) closeSidebar();
+          });
+        });
+
+        /* Active nav item: highlight based on scroll position ─────────── */
+        var clusters = ['cluster-a', 'cluster-b', 'cluster-c', 'cluster-d'];
+        var navLinks  = document.querySelectorAll('.nav-item[href^="#cluster-"]');
+
+        function updateActiveNav() {
+          var fromTop = window.scrollY + 80;
+          var active  = clusters[0];
+          clusters.forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el && el.offsetTop <= fromTop) active = id;
+          });
+          navLinks.forEach(function (link) {
+            link.classList.toggle('active', link.getAttribute('href') === '#' + active);
+          });
+        }
+
+        window.addEventListener('scroll', updateActiveNav, { passive: true });
+        updateActiveNav();
+      })();
+    </script>
   </body>
 </html>

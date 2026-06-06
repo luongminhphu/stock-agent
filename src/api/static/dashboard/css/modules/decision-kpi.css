@@ -35,11 +35,19 @@
   padding: var(--space-3) var(--space-4) 13px;
   background: rgba(255, 255, 255, 0.025);
   border: 1px solid rgba(148, 163, 184, 0.1);
+  /* border-left accent — brand default */
+  border-left: 3px solid rgba(125, 211, 252, 0.25);
   border-radius: var(--radius-sm);
   min-width: 0;
   overflow: hidden;
   transition: background var(--transition-fast), border-color var(--transition-fast);
 }
+
+/* Per-card border-left accent colors */
+#dkpiWinRate  { border-left-color: rgba(74, 222, 128, 0.35); }
+#dkpiBuyCount { border-left-color: rgba(167, 139, 250, 0.35); }
+#dkpiPending  { border-left-color: rgba(251, 191, 36, 0.45); }
+
 .dec-kpi-card:hover {
   background: var(--brand-bg);
   border-color: rgba(125, 211, 252, 0.15);

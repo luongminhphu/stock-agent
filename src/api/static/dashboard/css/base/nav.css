@@ -1,0 +1,235 @@
+/* ─── nav.css — Sidebar navigation styles ─────────────────────────────────
+   Owner: base
+   Depends on: variables.css, layout.css
+   Rendered by: sidebar HTML in index.html
+   JS: sidebar toggle via data attribute, no business logic
+──────────────────────────────────────────────────────────────────────────── */
+
+/* ── Sidebar brand header ────────────────────────────────────────────────── */
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-4) var(--space-3);
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+  text-decoration: none;
+  color: inherit;
+}
+
+.sidebar-brand-logo {
+  width: 26px;
+  height: 26px;
+  color: var(--brand);
+  flex-shrink: 0;
+}
+
+.sidebar-brand-name {
+  font-size: var(--text-base);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.sidebar-brand-tag {
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  color: var(--brand);
+  background: rgba(125, 211, 252, 0.1);
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  border-radius: var(--radius-xs);
+  padding: 1px 5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* ── Sidebar scroll area ─────────────────────────────────────────────────── */
+.sidebar-scroll {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: var(--space-2) 0 var(--space-3);
+}
+.sidebar-scroll::-webkit-scrollbar { display: none; }
+
+/* ── Section label ───────────────────────────────────────────────────────── */
+.nav-section-label {
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--faint);
+  padding: var(--space-3) var(--space-4) var(--space-1);
+  margin-top: var(--space-2);
+}
+
+/* ── Nav items ───────────────────────────────────────────────────────────── */
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 7px var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--muted);
+  border-radius: 0;
+  text-decoration: none;
+  cursor: pointer;
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  transition: color var(--transition-fast), background var(--transition-fast);
+  position: relative;
+  line-height: 1.4;
+  user-select: none;
+}
+
+.nav-item:hover {
+  color: var(--text);
+  background: rgba(125, 211, 252, 0.05);
+}
+
+.nav-item.active {
+  color: var(--brand);
+  background: rgba(125, 211, 252, 0.08);
+  font-weight: 600;
+}
+
+.nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  background: var(--brand);
+  border-radius: 0 2px 2px 0;
+}
+
+/* Cluster badge inside nav */
+.nav-cluster-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: rgba(125, 211, 252, 0.12);
+  color: var(--brand);
+  font-size: 0.6rem;
+  font-weight: 800;
+  flex-shrink: 0;
+  letter-spacing: 0;
+}
+
+.nav-item.active .nav-cluster-badge {
+  background: var(--brand);
+  color: #000;
+}
+
+/* Nav icon */
+.nav-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  opacity: 0.6;
+  transition: opacity var(--transition-fast);
+}
+
+.nav-item:hover .nav-icon,
+.nav-item.active .nav-icon {
+  opacity: 1;
+}
+
+/* ── Engine heartbeat in sidebar ─────────────────────────────────────────── */
+.sidebar-heartbeat {
+  padding: var(--space-2) var(--space-4);
+  border-top: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+/* ── Quick actions section ───────────────────────────────────────────────── */
+.sidebar-quick-actions {
+  padding: var(--space-3) var(--space-3) var(--space-2);
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.quick-action-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 7px var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--muted);
+  background: rgba(148, 163, 184, 0.05);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.quick-action-btn:hover {
+  color: var(--brand);
+  background: rgba(125, 211, 252, 0.07);
+  border-color: rgba(125, 211, 252, 0.2);
+}
+
+.quick-action-btn svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.quick-action-btn:hover svg { opacity: 1; }
+
+/* ── Sidebar toggle button (mobile) ─────────────────────────────────────── */
+.sidebar-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  color: var(--muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.sidebar-toggle:hover {
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+
+@media (max-width: 900px) {
+  .sidebar-toggle { display: flex; }
+}
+
+/* ── Sidebar overlay (mobile) ────────────────────────────────────────────── */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.55);
+  z-index: 199;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}

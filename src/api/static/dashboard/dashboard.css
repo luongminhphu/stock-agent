@@ -46,3 +46,8 @@
 @import url('./css/modules/catalyst-calendar.css');
 @import url('./css/modules/breadth.css');
 @import url('./css/signals.css');
+
+/* 6. Layout system overrides (sidebar 2-col shell + nav) — must come LAST
+      so they override modules/layout.css shell rules cleanly */
+@import url('./css/base/layout.css');
+@import url('./css/base/nav.css');

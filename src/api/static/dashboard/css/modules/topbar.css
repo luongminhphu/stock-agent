@@ -1,8 +1,93 @@
-/* ── topbar.css — Engine Heartbeat badge ─────────────────────────────────────
+/* ── topbar.css — Topbar chrome + search intent + Engine Heartbeat ──────────
    Owner: api segment (thin UI chrome, no business logic).
-   Used by: #engineHeartbeat in index.html.
+   Used by: .topbar, #engineHeartbeat, #topbarSearch in index.html.
    State classes applied by js/app.js startEngineHeartbeat().
+   Layout height 48px governed by css/base/layout.css.
 ──────────────────────────────────────────────────────────────────────────── */
+
+/* ── Topbar brand block (compact, right of toggle) ───────────────────────── */
+.topbar .brand-block {
+  display: none; /* hidden at wide — brand in sidebar; shown at mobile */
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+@media (max-width: 900px) {
+  .topbar .brand-block {
+    display: flex;
+  }
+}
+
+.topbar .brand-logo {
+  width: 20px;
+  height: 20px;
+  color: var(--brand);
+}
+
+.topbar .brand-name {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+/* ── Search intent input ─────────────────────────────────────────────────── */
+.topbar-search {
+  flex: 1;
+  max-width: 440px;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.topbar-search-icon {
+  position: absolute;
+  left: 10px;
+  color: var(--faint);
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+#topbarSearch {
+  width: 100%;
+  height: 32px;
+  background: rgba(148, 163, 184, 0.06);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  padding: 0 var(--space-4) 0 32px;
+  font-size: var(--text-sm);
+  color: var(--text);
+  transition: border-color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+#topbarSearch::placeholder {
+  color: var(--faint);
+  font-size: var(--text-sm);
+}
+
+#topbarSearch:focus {
+  outline: none;
+  border-color: rgba(125, 211, 252, 0.4);
+  background: rgba(125, 211, 252, 0.04);
+  box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.08);
+}
+
+/* ── Toolbar (right side) ────────────────────────────────────────────────── */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+/* Hide the brand's newThesisBtn from topbar on wide screens — moved to sidebar */
+@media (min-width: 901px) {
+  .toolbar #newThesisBtn {
+    display: none;
+  }
+}
+
 
 .engine-heartbeat {
   display: inline-flex;
