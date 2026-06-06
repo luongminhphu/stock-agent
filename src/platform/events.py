@@ -262,6 +262,45 @@ class OpportunityScreenCompletedEvent(DomainEvent):
     candidates_found: int = 0
     top_symbol: str = ""
     screen_criteria: str = ""
+    # Serialised candidates for downstream AI handler.
+    # Each item is a compact string from ScreenCandidate.format_for_prompt().
+    # Defaults to empty tuple for backward compatibility.
+    candidates_payload: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True)
+class OpportunityAIAnalysisRequestedEvent(DomainEvent):
+    """Emitted by OpportunityScreenSubscriber to request AI cross-check.
+
+    Produced by: market.OpportunityScreenSubscriber (Wave 3)
+    Consumed by: ai.OpportunityAnalysisHandler
+
+    Carries serialised candidates so the AI handler does not need to
+    re-fetch market data — it only needs watchlist + thesis context.
+    """
+    user_id: str = ""
+    candidates_payload: tuple[str, ...] = field(default_factory=tuple)
+    screen_criteria: str = ""
+    trading_date: str = ""
+    top_symbol: str = ""
+
+
+@dataclass(frozen=True)
+class OpportunityAnalysisCompletedEvent(DomainEvent):
+    """Emitted by ai.OpportunityAnalysisHandler after cross-check.
+
+    Produced by: ai.OpportunityAnalysisHandler
+    Consumed by: bot.OpportunityAnalysisSubscriber (Discord delivery)
+    """
+    user_id: str = ""
+    verdict: str = ""           # e.g. "2 candidates overlap with watchlist"
+    ranked_tickers: tuple[str, ...] = field(default_factory=tuple)
+    watchlist_overlap: tuple[str, ...] = field(default_factory=tuple)
+    thesis_relevant: tuple[str, ...] = field(default_factory=tuple)
+    action: str = ""            # e.g. "REVIEW VHM and DGC before EOD"
+    reasoning_summary: str = ""
+    confidence: float = 0.0
+    trading_date: str = ""
 
 
 # ─── trend shift ────────────────────────────────────────────────────────────

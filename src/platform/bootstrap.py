@@ -41,6 +41,7 @@ _briefing_listener: object | None = None
 _stress_test_subscriber: object | None = None  # G4: StressTest → Watchlist bridge
 _opportunity_screen_scheduler: object | None = None  # Wave 3
 _opportunity_screen_subscriber: object | None = None  # Wave 3
+_opportunity_analysis_handler: object | None = None   # Wave 3: AI cross-check handler
 _signal_engine_agent: object | None = None   # Wave 2b: cross-check engine
 _signal_engine_listener: object | None = None  # Wave B2: fully wired
 _agenda_builder_agent: object | None = None   # AgendaBuilderAgent singleton
@@ -80,6 +81,7 @@ async def bootstrap() -> None:
     global _signal_review_trigger_listener
     global _briefing_listener, _stress_test_subscriber
     global _opportunity_screen_scheduler, _opportunity_screen_subscriber
+    global _opportunity_analysis_handler
     global _signal_engine_agent, _signal_engine_listener
     global _agenda_builder_agent, _agenda_service_factory
     global _trend_reasoning_agent, _trend_prediction_store, _trend_engine_listener
@@ -417,6 +419,18 @@ async def bootstrap() -> None:
         _opportunity_screen_subscriber = OpportunityScreenSubscriber()
         _opportunity_screen_subscriber.register()
         logger.info("platform.bootstrap.opportunity_screen_subscriber_ready")
+
+    # ── Wave 3: OpportunityAnalysisHandler (ai segment) ───────────────────────────
+    if _opportunity_analysis_handler is None:
+        from src.ai.opportunity_analysis_handler import get_opportunity_analysis_handler
+        from src.platform.db import AsyncSessionLocal
+
+        _opportunity_analysis_handler = get_opportunity_analysis_handler(
+            ai_client=_ai_client,  # type: ignore[arg-type]
+            session_factory=AsyncSessionLocal,
+        )
+        _opportunity_analysis_handler.register()  # type: ignore[union-attr]
+        logger.info("platform.bootstrap.opportunity_analysis_handler_ready")
 
     # ── Wave B2: SignalEngineListener — fully wired with portfolio context ────
     if _signal_engine_listener is None:

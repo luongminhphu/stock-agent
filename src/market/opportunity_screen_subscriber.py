@@ -1,4 +1,4 @@
-"""Opportunity Screen Subscriber — market segment, Wave 3.
+"""Opportunity Screen Subscriber — market segment.
 
 Owner: market segment (event subscriber adapter).
 
@@ -7,16 +7,13 @@ run_opportunity_screen_job() after each market screen run.
 
 Responsibilities:
     - Receive OpportunityScreenCompletedEvent from EventBus.
-    - Log receipt with candidate metadata for observability.
-    - (Wave 3 TODO) Trigger AI analysis of top candidates:
-        * Cross-check candidates against user watchlist + active theses.
-        * Emit OpportunityAIAnalysisRequestedEvent → ai segment handler.
-        * ai segment returns ranked, context-aware opportunity summary.
+    - Resolve scheduler_user_id from settings (single-user mode).
+    - Emit OpportunityAIAnalysisRequestedEvent → ai segment handler.
 
 Non-responsibilities:
     - Does NOT call AI directly — that belongs in ai segment.
     - Does NOT persist candidates — they are ephemeral screen results.
-    - Does NOT send Discord messages — bot/briefing adapters handle delivery.
+    - Does NOT send Discord messages — bot adapter handles delivery.
 
 Lifecycle:
     subscriber = OpportunityScreenSubscriber()
@@ -30,11 +27,7 @@ logger = get_logger(__name__)
 
 
 class OpportunityScreenSubscriber:
-    """Subscribe to OpportunityScreenCompletedEvent and route to AI analysis.
-
-    Wave 3 stub: logs receipt and provides the hook point for downstream
-    AI cross-check against watchlist + thesis context.
-    """
+    """Subscribe to OpportunityScreenCompletedEvent and emit AI request."""
 
     def register(self) -> None:
         """Register handler on the EventBus. Safe to call multiple times."""
@@ -46,20 +39,21 @@ class OpportunityScreenSubscriber:
         logger.info("opportunity_screen_subscriber.registered")
 
     async def _handle(self, event: object) -> None:
-        """Handle OpportunityScreenCompletedEvent.
+        """Handle OpportunityScreenCompletedEvent → emit AI analysis request.
 
-        Current behaviour (stub):
-            - Log event metadata for observability.
+        Emits OpportunityAIAnalysisRequestedEvent with candidates_payload
+        so the ai.OpportunityAnalysisHandler can cross-check against
+        the investor’s watchlist and active theses without re-fetching
+        market data.
 
-        Wave 3 TODO:
-            - Fetch user watchlist tickers from watchlist segment.
-            - Cross-check top candidates against active theses.
-            - Emit OpportunityAIAnalysisRequestedEvent for ai segment to
-              produce a ranked, context-aware opportunity narrative.
+        Failure contract: any error is caught and logged as WARNING.
+        Never raises — screen pipeline is never blocked.
         """
         candidates_found: int = getattr(event, "candidates_found", 0)
         top_symbol: str = getattr(event, "top_symbol", "")
         screen_criteria: str = getattr(event, "screen_criteria", "")
+        candidates_payload: tuple[str, ...] = getattr(event, "candidates_payload", ())
+        trading_date: str = getattr(event, "trading_date", "")
 
         logger.info(
             "opportunity_screen_subscriber.received",
@@ -72,9 +66,35 @@ class OpportunityScreenSubscriber:
             logger.debug("opportunity_screen_subscriber.no_candidates_skip")
             return
 
-        # Wave 3 TODO: emit OpportunityAIAnalysisRequestedEvent so ai segment
-        # can cross-check candidates against watchlist + active theses.
-        logger.debug(
-            "opportunity_screen_subscriber.ai_hook_pending",
-            note="Wave 3: AI cross-check not yet implemented",
-        )
+        try:
+            from src.platform.config import settings
+            from src.platform.event_bus import get_event_bus
+            from src.platform.events import OpportunityAIAnalysisRequestedEvent
+
+            user_id = getattr(settings, "scheduler_user_id", "") or ""
+            if not user_id:
+                logger.warning(
+                    "opportunity_screen_subscriber.no_user_id",
+                    hint="Set SCHEDULER_USER_ID in .env to enable AI cross-check",
+                )
+                return
+
+            ai_event = OpportunityAIAnalysisRequestedEvent(
+                user_id=str(user_id),
+                candidates_payload=candidates_payload,
+                screen_criteria=screen_criteria,
+                trading_date=trading_date,
+                top_symbol=top_symbol,
+            )
+            await get_event_bus().publish(ai_event)
+            logger.info(
+                "opportunity_screen_subscriber.ai_request_emitted",
+                user_id=str(user_id),
+                candidates_count=len(candidates_payload),
+                top_symbol=top_symbol,
+            )
+        except Exception as exc:
+            logger.warning(
+                "opportunity_screen_subscriber.ai_request_failed",
+                error=str(exc),
+            )

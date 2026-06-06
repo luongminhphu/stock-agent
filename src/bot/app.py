@@ -61,6 +61,7 @@ def create_bot() -> commands.Bot:
             _start_memory_consolidator_scheduler(bot)
             _start_recommendation_listener(bot)
             _start_opportunity_screen_scheduler(bot)
+            _start_opportunity_analysis_subscriber(bot)
             _start_proactive_watch_scheduler(bot)
             _start_proactive_watch_subscriber(bot)
             _start_post_mortem_subscriber(bot)
@@ -273,6 +274,12 @@ def _start_recommendation_listener(bot: commands.Bot) -> None:
     from src.bot.recommendation_listener import RecommendationListener
     listener = RecommendationListener(bot)
     listener.register()
+
+
+def _start_opportunity_analysis_subscriber(bot: commands.Bot) -> None:
+    from src.bot.opportunity_analysis_subscriber import OpportunityAnalysisSubscriber
+    subscriber = OpportunityAnalysisSubscriber(bot)
+    subscriber.register()
 
 
 def _start_opportunity_screen_scheduler(bot: commands.Bot) -> None:

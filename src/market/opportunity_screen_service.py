@@ -311,6 +311,9 @@ async def run_opportunity_screen_job(quote_service: object) -> ScreenResult:
             candidates_found=len(result.candidates),
             top_symbol=result.top_ticker,
             screen_criteria=result.screen_criteria_summary,
+            candidates_payload=tuple(
+                c.format_for_prompt() for c in result.candidates
+            ),
         )
         emitted = await bus.publish(event, dedup_key="daily")
         if emitted:
