@@ -1,10 +1,12 @@
-/* leaderboard.css — Thesis Leaderboard strip
+/* leaderboard.css — Thesis Leaderboard strip (compact redesign)
    Owner: dashboard / readmodel adapter
-   Depends on: variables.css, layout.css
-   PADDING NOTE: .panel-header (renamed from .lb-strip-header) horizontal
-   padding is now owned by layout.css via var(--panel-pad). Do NOT
-   re-declare padding-inline here.
-   ───────────────────────────────────────────────────────────────────── */
+   Layout: each .lb-item is a single-line 5-col grid
+     col 1  rank    : 1.6rem  right   tabular
+     col 2  ticker  : 4rem    left    bold
+     col 3  name    : 1fr     left    truncate
+     col 4  badges  : auto    center  verdict + tier
+     col 5  value   : 4rem    right   tabular metric
+   ─────────────────────────────────────────────────────────────────── */
 
 /* ── Strip container ─────────────────────────────────────────────── */
 .lb-strip {
@@ -15,7 +17,7 @@
   overflow: hidden;
 }
 
-/* ── Sort bar (sits inside .panel-header .split-header) ──────────── */
+/* ── Sort bar ────────────────────────────────────────────────────── */
 .lb-sort-bar {
   display: flex;
   align-items: center;
@@ -24,8 +26,8 @@
 }
 
 .lb-sort-btn {
-  padding: var(--space-1) var(--space-3);
-  font-size: var(--text-sm);
+  padding: 2px var(--space-2);
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--muted);
   background: none;
@@ -35,7 +37,7 @@
   transition: color var(--transition-fast),
               background var(--transition-fast),
               border-color var(--transition-fast);
-  line-height: 1.4;
+  line-height: 1.5;
   white-space: nowrap;
 }
 
@@ -50,118 +52,124 @@
   border-color: rgba(125, 211, 252, .22);
 }
 
-/* ── List ──────────────────────────────────────────────────────────── */
+/* ── List ────────────────────────────────────────────────────────── */
 .lb-list {
   list-style: none;
   margin: 0;
-  padding: var(--space-2) 0 var(--space-1);
+  padding: var(--space-1) 0;
   display: flex;
   flex-direction: column;
   gap: 0;
 }
 
-/* ── Item ──────────────────────────────────────────────────────────── */
+/* ── Item — single-line 5-col ────────────────────────────────────── */
 .lb-item {
   display: grid;
-  grid-template-columns: 1.4rem 1fr auto;
+  grid-template-columns: 1.6rem 3.8rem 1fr auto 4.2rem;
   align-items: center;
   gap: var(--space-2);
-  padding: 7px var(--panel-pad);
+  padding: 6px var(--panel-pad, 16px);
   border-bottom: 1px solid var(--line);
+  cursor: pointer;
   transition: background var(--transition-fast);
-  cursor: default;
+  min-width: 0;
 }
 
 .lb-item:last-child { border-bottom: none; }
+.lb-item:hover      { background: var(--surface-3); }
 
-.lb-item:hover { background: var(--surface-3); }
-
-/* Rank number */
+/* ── Col 1: Rank ─────────────────────────────────────────────────── */
 .lb-rank {
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   font-weight: 700;
   color: var(--faint);
   text-align: right;
   font-variant-numeric: tabular-nums;
   line-height: 1;
+  flex-shrink: 0;
 }
 
-/* Top-3 rank colours — consume tokens từ variables.css */
-.lb-item:nth-child(1) .lb-rank { color: var(--rank-gold);   }
-.lb-item:nth-child(2) .lb-rank { color: var(--rank-silver); }
-.lb-item:nth-child(3) .lb-rank { color: var(--rank-bronze); }
+.lb-item:nth-child(1) .lb-rank { color: var(--rank-gold,   #f5c518); }
+.lb-item:nth-child(2) .lb-rank { color: var(--rank-silver, #94a3b8); }
+.lb-item:nth-child(3) .lb-rank { color: var(--rank-bronze, #b87333); }
 
-/* Main content */
-.lb-main {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-
+/* ── Col 2: Ticker ───────────────────────────────────────────────── */
 .lb-ticker {
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   font-weight: 700;
   color: var(--text);
-  line-height: 1.2;
+  letter-spacing: 0.04em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.lb-title {
-  font-size: var(--text-sm);
+/* ── Col 3: Name ─────────────────────────────────────────────────── */
+.lb-name {
+  font-size: var(--text-xs);
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
 }
 
-/* Score / PnL value — consume --success/--danger thay vì --green/--red chưa tồn tại */
-.lb-value {
-  font-size: var(--text-base);
+/* ── Col 4: Badges (verdict + tier) ─────────────────────────────── */
+.lb-badges {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* Verdict pill */
+.lb-vd {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: var(--radius-pill);
+  font-size: 0.60rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.lb-vd--bull { background: var(--success-bg); color: var(--success); }
+.lb-vd--bear { background: var(--danger-bg);  color: var(--danger);  }
+.lb-vd--neut { background: var(--line);        color: var(--muted);   }
+
+/* Tier pill */
+.lb-tier {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: var(--radius-pill);
+  font-size: 0.60rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.lb-tier--a { background: var(--success-bg); color: var(--success); }
+.lb-tier--b { background: var(--brand-bg);   color: var(--brand);   }
+.lb-tier--c { background: var(--warning-bg); color: var(--warning); }
+.lb-tier--d { background: var(--danger-bg);  color: var(--danger);  }
+
+/* ── Col 5: Metric value ─────────────────────────────────────────── */
+.lb-val {
+  font-size: var(--text-sm);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  text-align: right;
   white-space: nowrap;
   color: var(--text);
 }
 
-.lb-value.positive { color: var(--success); }
-.lb-value.negative { color: var(--danger);  }
-
-/* Score badge — background giữ alpha inline (tốt nhất cho dark surface),
-   color consume semantic vars */
-.lb-score-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 36px;
-  padding: 2px var(--space-2);
-  border-radius: var(--radius-xs);
-  font-size: var(--text-sm);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.3;
-}
-
-.lb-score-badge.tier-a  { background: var(--success-bg); color: var(--success); }
-.lb-score-badge.tier-b  { background: var(--brand-bg);   color: var(--brand);   }
-.lb-score-badge.tier-c  { background: var(--warning-bg); color: var(--warning); }
-.lb-score-badge.tier-d  { background: var(--danger-bg);  color: var(--danger);  }
-
-/* Direction indicator */
-.lb-direction {
-  font-size: var(--text-xs);
-  font-weight: 600;
-  padding: 1px var(--space-1);
-  border-radius: var(--radius-xs);
-  text-transform: uppercase;
-  letter-spacing: .04em;
-}
-
-.lb-direction.bullish  { background: var(--success-bg); color: var(--success); }
-.lb-direction.bearish  { background: var(--danger-bg);  color: var(--danger);  }
-.lb-direction.neutral  { background: var(--line);        color: var(--muted);   }
+.lb-val--pos { color: var(--success); }
+.lb-val--neg { color: var(--danger);  }
 
 /* ── Skeleton items ──────────────────────────────────────────────── */
 .lb-item--skel {
@@ -171,22 +179,32 @@
 
 .lb-item--skel .skel-text {
   width: 100%;
-  height: 2.4rem;
+  height: 1.8rem;
 }
 
-/* ── Empty / error states ──────────────────────────────────────────── */
+/* ── Empty ───────────────────────────────────────────────────────── */
 .lb-empty {
-  padding: var(--space-6) var(--panel-pad);
-  text-align: center;
-  font-size: var(--text-base);
+  padding: var(--space-4) var(--panel-pad, 16px);
+  font-size: var(--text-xs);
   color: var(--faint);
+  text-align: center;
 }
 
-/* ── Responsive ──────────────────────────────────────────────────────── */
+/* ── Hover flash from leaderboard → detail ───────────────────────── */
+.lb-detail-flash {
+  animation: lbFlash 600ms ease;
+}
+
+@keyframes lbFlash {
+  0%   { box-shadow: 0 0 0 2px var(--brand); }
+  100% { box-shadow: none; }
+}
+
+/* ── Responsive ──────────────────────────────────────────────────── */
 @media (max-width: 600px) {
   .lb-item {
-    grid-template-columns: 1.2rem 1fr auto;
-    gap: var(--space-2);
-    padding: 6px var(--space-3);
+    grid-template-columns: 1.4rem 3.2rem 1fr auto 3.6rem;
+    gap: var(--space-1);
+    padding: 5px var(--space-3);
   }
 }

@@ -87,37 +87,54 @@ function _metricDisplay(item, sortBy) {
   };
 }
 
+// Tier badge HTML — compact, no emoji text noise
+const TIER_BADGE = score =>
+  score == null  ? '' :
+  score >= 80    ? '<span class="lb-tier lb-tier--a">Strong</span>'  :
+  score >= 60    ? '<span class="lb-tier lb-tier--b">Good</span>'    :
+  score >= 40    ? '<span class="lb-tier lb-tier--c">Watch</span>'   :
+                   '<span class="lb-tier lb-tier--d">Risky</span>';
+
+const VERDICT_CLS = v => {
+  const s = String(v ?? '').toLowerCase();
+  return s === 'bullish' || s === 'buy'  ? 'lb-vd--bull' :
+         s === 'bearish' || s === 'sell' ? 'lb-vd--bear' :
+         s === 'neutral' || s === 'hold' ? 'lb-vd--neut' : 'lb-vd--neut';
+};
+
 function _render(listEl, items, sortBy) {
   if (!items.length) {
-    listEl.innerHTML = '<li class="lb-empty">Chưa có thesis nào trong leaderboard.</li>';
+    listEl.innerHTML = '<li class="lb-empty">Chưa có thesis nào.</li>';
     return;
   }
 
   listEl.innerHTML = items.map((item, idx) => {
     const rank    = item.rank ?? (idx + 1);
     const metric  = _metricDisplay(item, sortBy);
-    const tier    = TIER_LABEL(item.score);
-    const verdict = item.last_verdict ? `<span class="lb-verdict">${_esc(item.last_verdict)}</span>` : '';
     const tid     = item.thesis_id ?? '';
-    return `
-      <li class="lb-item"
-          role="button"
-          tabindex="0"
-          data-thesis-id="${_esc(String(tid))}"
-          aria-label="Xem thesis ${_esc(item.ticker ?? '')}">
-        <span class="lb-rank" data-rank="${rank}">#${rank}</span>
-        <div class="lb-ticker-row">
-          <span class="lb-ticker">${_esc(item.ticker ?? '—')}</span>
-          <span class="lb-title">${_esc(item.title ?? '')}</span>
-          ${verdict}
-        </div>
-        <div class="lb-metric ${metric.cls}">
-          ${_esc(String(metric.value))}
-          <span class="lb-metric-label">${metric.label}</span>
-          ${tier ? `<span class="lb-tier">${tier}</span>` : ''}
-        </div>
-      </li>
-    `.trim();
+
+    // Metric value with colour
+    const valCls  = metric.cls === 'up' ? 'lb-val--pos'
+                  : metric.cls === 'down' ? 'lb-val--neg' : '';
+
+    // Verdict badge — only when present
+    const verdictHtml = item.last_verdict
+      ? `<span class="lb-vd ${VERDICT_CLS(item.last_verdict)}">${_esc(item.last_verdict.toUpperCase())}</span>`
+      : '';
+
+    // Tier badge — only for score sort
+    const tierHtml = sortBy === 'score' ? TIER_BADGE(item.score) : '';
+
+    return `<li class="lb-item"
+        role="button" tabindex="0"
+        data-thesis-id="${_esc(String(tid))}"
+        aria-label="${_esc(item.ticker ?? '')} — ${_esc(item.title ?? '')}">
+      <span class="lb-rank">${rank}</span>
+      <span class="lb-ticker">${_esc(item.ticker ?? '—')}</span>
+      <span class="lb-name">${_esc(item.title ?? '')}</span>
+      <span class="lb-badges">${verdictHtml}${tierHtml}</span>
+      <span class="lb-val ${valCls}">${_esc(String(metric.value))}</span>
+    </li>`;
   }).join('');
 }
 
