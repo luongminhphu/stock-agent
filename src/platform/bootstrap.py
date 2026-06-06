@@ -104,6 +104,17 @@ async def bootstrap() -> None:
         _quote_service = QuoteService(build_adapter())
         logger.info("platform.bootstrap.quote_service_ready")
 
+    # ── SymbolRegistry: dynamic engine init (HTTP + DB, async) ────────────────
+    # Always runs on first bootstrap — idempotent within TTL window.
+    # Runs after quote_service so session_factory is safely importable.
+    from src.market.registry import registry as _symbol_registry
+    from src.platform.db import AsyncSessionLocal as _AsyncSessionLocal
+    await _symbol_registry.initialize(session_factory=_AsyncSessionLocal)
+    logger.info(
+        "platform.bootstrap.symbol_registry_ready",
+        size=_symbol_registry.size(),
+    )
+
     if _ohlcv_service is None:
         from src.market.adapters.vci_ohlcv import VCIOHLCVAdapter
         from src.market.ohlcv_service import OHLCVService
@@ -438,7 +449,7 @@ async def bootstrap() -> None:
     if _proactive_discovery_service is None:
         from src.ai.agents.proactive_discovery import ProactiveDiscoveryAgent
         from src.market.proactive_discovery_service import ProactiveDiscoveryService
-        from src.market.registry import SymbolRegistry
+        from src.market.registry import registry as _reg
         from src.platform.db import AsyncSessionLocal
 
         _discovery_agent = ProactiveDiscoveryAgent(ai_client=_ai_client)  # type: ignore[arg-type]
@@ -446,7 +457,7 @@ async def bootstrap() -> None:
             ai_agent=_discovery_agent,
             session_factory=AsyncSessionLocal,
             quote_service=_quote_service,
-            registry=SymbolRegistry(),
+            registry=_reg,  # dynamic singleton
         )
         logger.info("platform.bootstrap.proactive_discovery_service_ready")
 

@@ -59,7 +59,7 @@ class BreadthService:
         if exchange is not None:
             symbols = registry.list_by_exchange(exchange)
         else:
-            symbols = list(registry._REGISTRY.values())  # noqa: SLF001
+            symbols = registry.list_all()
 
         tickers = [s.ticker for s in symbols]
         if not tickers:

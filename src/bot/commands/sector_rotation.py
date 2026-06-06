@@ -37,12 +37,12 @@ class SectorRotationCog(BaseCog):
             watchlist = [t.strip().upper() for t in tickers.split() if t.strip()]
 
         try:
-            from src.market.registry import SymbolRegistry
+            from src.market.registry import registry as _registry
             from src.market.sector_rotation_service import SectorRotationService
 
             svc = SectorRotationService(
                 quote_service=get_quote_service(),
-                registry=SymbolRegistry(),
+                registry=_registry,
             )
             # flows là list[SectorFlowData] — market data, bukan AI schema
             flows = await svc.get_sector_flows(watchlist_tickers=watchlist)

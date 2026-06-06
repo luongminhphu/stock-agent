@@ -428,12 +428,12 @@ class BriefingService:
         if not self._sector_agent or not self._quote_service:
             return ""
         try:
-            from src.market.registry import SymbolRegistry
+            from src.market.registry import registry as _registry
             from src.market.sector_rotation_service import SectorRotationService
 
             svc = SectorRotationService(
                 quote_service=self._quote_service,
-                registry=SymbolRegistry(),
+                registry=_registry,
             )
             flows = await svc.get_sector_flows()
             if not flows:

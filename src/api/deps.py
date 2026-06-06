@@ -111,9 +111,9 @@ def get_symbol_registry() -> "SymbolRegistry":  # type: ignore[name-defined]  # 
     Used by routes that need company_name / sector context before calling AI agents.
     SymbolRegistry is stateless — safe to instantiate per-request.
     """
-    from src.market.registry import SymbolRegistry
+    from src.market.registry import registry
 
-    return SymbolRegistry()
+    return registry
 
 
 def get_breadth_service(

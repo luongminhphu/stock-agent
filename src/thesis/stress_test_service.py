@@ -63,7 +63,11 @@ class StressTestService:
         self._session = session
         self._agent = agent
         self._quote_service = quote_service
-        self._registry = symbol_registry or SymbolRegistry()
+        if symbol_registry is not None:
+            self._registry = symbol_registry
+        else:
+            from src.market.registry import registry as _default_registry
+            self._registry = _default_registry
         self._repo = ThesisRepository(session)
 
     async def stress_test(
