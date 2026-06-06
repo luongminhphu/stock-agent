@@ -38,7 +38,8 @@ RUN pip install --no-cache-dir \
     "tenacity>=8.3.0" \
     "structlog>=24.2.0" \
     "discord.py>=2.4.0" \
-    "python-dotenv>=1.0.0"
+    "python-dotenv>=1.0.0" \
+    "vnstock>=3.0.0"
 
 # -- Stage 2: runtime -------------------------------------------------------
 FROM python:3.12-slim AS runtime
