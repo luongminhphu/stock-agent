@@ -26,6 +26,7 @@ Response shape:
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from typing import Any
 
@@ -75,12 +76,20 @@ class VNDirectAdapter(MarketDataAdapter):
         return results[0]
 
     async def fetch_bulk_quotes(self, tickers: list[str]) -> list[Quote]:
+        """Fetch quotes — all chunks fired in parallel via asyncio.gather.
+
+        VNDirect có chunk size 20 (query string limit) — parallel giảm
+        wall-clock từ O(n_chunks * timeout) xuống ~1 round-trip.
+        Chỉ được gọi khi VCI fail (secondary) nên batch sẽ nhỏ hơn.
+        """
         chunks = [
             tickers[i : i + _BULK_CHUNK_SIZE] for i in range(0, len(tickers), _BULK_CHUNK_SIZE)
         ]
+        raw_lists = await asyncio.gather(
+            *[self._fetch_stocks(chunk) for chunk in chunks]
+        )
         results: list[Quote] = []
-        for chunk in chunks:
-            raw = await self._fetch_stocks(chunk)
+        for raw in raw_lists:
             results.extend(_parse_stocks(raw))
         return results
 

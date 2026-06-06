@@ -27,6 +27,7 @@ Phải nhân 100 để ra số CP thực tế — Quote.volume contract là số
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from typing import Any
 
@@ -77,13 +78,19 @@ class VCIAdapter(MarketDataAdapter):
         return results[0]
 
     async def fetch_bulk_quotes(self, tickers: list[str]) -> list[Quote]:
-        """Fetch quotes in chunks to respect VCI's soft limit."""
+        """Fetch quotes — all chunks fired in parallel via asyncio.gather.
+
+        Parallel strategy giảm wall-clock từ O(n_chunks * timeout) xuống
+        ~1 round-trip. VCI không có strict rate-limit nên an toàn.
+        """
         chunks = [
             tickers[i : i + _BULK_CHUNK_SIZE] for i in range(0, len(tickers), _BULK_CHUNK_SIZE)
         ]
+        raw_lists = await asyncio.gather(
+            *[self._fetch_price_board(chunk) for chunk in chunks]
+        )
         results: list[Quote] = []
-        for chunk in chunks:
-            raw = await self._fetch_price_board(chunk)
+        for raw in raw_lists:
             results.extend(_parse_price_board(raw))
         return results
 
