@@ -18,6 +18,18 @@
   display: none;
 }
 
+/* ── Multi-exchange rows ── */
+.breadth-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.breadth-row--divider {
+  padding-block-end: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+
 /* ── Header row ── */
 .breadth-header {
   display: flex;
