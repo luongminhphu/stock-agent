@@ -314,7 +314,7 @@ td.cell-missing {
 
 .col-pnl.negative,
 .col-pct.negative {
-  color: var(--orange);
+  color: var(--danger);
 }
 
 .col-pnl.neutral,

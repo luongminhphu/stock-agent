@@ -157,7 +157,7 @@
   font-variant-numeric: tabular-nums;
 }
 .tds-pnl--pos { color: #4ade80; }
-.tds-pnl--neg { color: #fb923c; }
+.tds-pnl--neg { color: var(--danger); }
 
 .tds-score {
   font-size: 0.72rem;

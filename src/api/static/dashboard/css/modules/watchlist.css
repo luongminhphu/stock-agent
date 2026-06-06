@@ -156,7 +156,7 @@
   text-align: right;
 }
 .wl-change.up   { color: var(--success); }
-.wl-change.down { color: var(--orange);  }   /* dùng --orange thay #fb923c hardcode */
+.wl-change.down { color: var(--danger);  }   /* negative price change → --danger (#f87171) */
 .wl-change.flat { color: var(--muted);   }
 
 .wl-ceil-badge,

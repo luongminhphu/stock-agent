@@ -81,7 +81,7 @@ export function highlightScanText(text) {
     )
     .replace(
       /(-\d+(?:\.\d+)?%?)/g,
-      '<span style="color:#fb923c;font-weight:600;">$1</span>'
+      '<span style="color:#f87171;font-weight:600;">$1</span>'
     )
     .replace(
       /(\+\d+(?:\.\d+)?%?)/g,
