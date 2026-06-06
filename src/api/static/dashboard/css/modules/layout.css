@@ -131,6 +131,9 @@ main {
   border: 1px solid var(--line);
   background: var(--surface);
   overflow: hidden;
+  /* Stretch: khi nằm trong grid stretch row, panel fill toàn bộ chiều cao row */
+  display: flex;
+  flex-direction: column;
 }
 
 .glass {
@@ -145,6 +148,7 @@ main {
 
 .panel-body {
   padding: 0 var(--panel-pad, 16px) var(--panel-pad, 16px);
+  flex: 1; /* fill chiều cao còn lại khi panel stretch trong grid row */
 }
 
 .split-header {
