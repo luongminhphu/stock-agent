@@ -16,6 +16,9 @@ Responsibilities:
     regardless of whether the caller supplied a rationale string.
   - Fire-and-forget a ReplayAgent review after a SELL trade is committed
     (Wave: post-trade feedback loop). Never blocks the SELL response.
+  - Emit UserActionEvent (BUY/SELL) after trade commits to close the
+    investor OS feedback loop. Fire-and-forget via EventBus.publish().
+    Failure is silent — trade response is never blocked.
   - Return a structured TradeResult consumed by all adapters.
   - Auto-wire active thesis when caller does not supply thesis_id (buy only).
     Soft-fail: if lookup fails or no active thesis exists, trade proceeds
@@ -25,6 +28,7 @@ Failure contract:
   - Trade is always the source of truth. DecisionLog failure is soft —
     logged as WARNING, never re-raised, never blocks the trade response.
   - ReplayAgent dispatch failure is soft — logged as WARNING, never re-raised.
+  - UserActionEvent publish failure is soft — logged as WARNING, never re-raised.
   - Auto-wire thesis lookup failure is soft — logged as WARNING, trade proceeds.
 
 Adding a new channel (mobile app, webhook, scheduled rebalancer …):
@@ -185,6 +189,15 @@ class TradeUseCase:
             source=source,
         )
 
+        # Emit feedback event — closes the investor OS loop (fire-and-forget).
+        self._emit_user_action(
+            action_type="BUY",
+            user_id=user_id,
+            ticker=trade.ticker,
+            thesis_id=thesis_id,
+            price=price,
+        )
+
         return TradeResult(
             trade_id=trade.id,
             position_id=position.id,
@@ -261,6 +274,15 @@ class TradeUseCase:
             thesis_id=thesis_id,
         )
 
+        # Emit feedback event — closes the investor OS loop (fire-and-forget).
+        self._emit_user_action(
+            action_type="SELL",
+            user_id=user_id,
+            ticker=trade.ticker,
+            thesis_id=thesis_id,
+            price=price,
+        )
+
         return TradeResult(
             trade_id=trade.id,
             position_id=position.id,
@@ -278,6 +300,72 @@ class TradeUseCase:
     # ------------------------------------------------------------------
     # Internal orchestration
     # ------------------------------------------------------------------
+
+    def _emit_user_action(
+        self,
+        action_type: str,
+        user_id: str,
+        ticker: str,
+        thesis_id: int | None,
+        price: float | None,
+    ) -> None:
+        """Publish UserActionEvent to EventBus. Fire-and-forget, never raises.
+
+        Closes the investor OS feedback loop:
+          BUY  → watchlist.ensure_tracked + memory.record_action
+          SELL → thesis.mark_closed + watchlist.deprioritize + memory.record_action
+
+        Failure contract: any exception is caught and logged as WARNING.
+        Trade response is never blocked by this call.
+        """
+        try:
+            from src.platform.event_bus import get_event_bus  # noqa: PLC0415
+            from src.platform.events import UserActionEvent    # noqa: PLC0415
+
+            event = UserActionEvent(
+                user_id=user_id,
+                action_type=action_type,  # type: ignore[arg-type]
+                ticker=ticker,
+                thesis_id=thesis_id,
+                price=price,
+            )
+
+            async def _publish() -> None:
+                try:
+                    await get_event_bus().publish(event)
+                    logger.info(
+                        "portfolio.user_action_event_published",
+                        action_type=action_type,
+                        user_id=user_id,
+                        ticker=ticker,
+                        thesis_id=thesis_id,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "portfolio.user_action_event_publish_failed",
+                        action_type=action_type,
+                        user_id=user_id,
+                        ticker=ticker,
+                        error=str(exc),
+                    )
+
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(_publish())
+            else:
+                logger.debug(
+                    "portfolio.user_action_event_skipped_no_loop",
+                    action_type=action_type,
+                    user_id=user_id,
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "portfolio.user_action_event_dispatch_failed",
+                action_type=action_type,
+                user_id=user_id,
+                ticker=ticker,
+                error=str(exc),
+            )
 
     async def _resolve_thesis_id(
         self,
