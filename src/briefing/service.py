@@ -545,10 +545,17 @@ class BriefingService:
         if not self._trend_store:
             return ""
         try:
-            preds = await self._trend_store.get_recent(user_id)
+            # readmodel.TrendPredictionStore exposes get_top_by_confidence (sync)
+            # Falls back gracefully if store has no predictions yet.
+            preds = self._trend_store.get_top_by_confidence(n=10)
             if not preds:
                 return ""
-            lines = [f"{p.ticker}: {p.direction} ({p.confidence:.0%})" for p in preds]
+            lines = [
+                f"{getattr(p, 'symbol', getattr(p, 'ticker', '?'))}: "
+                f"{getattr(p, 'verdict', getattr(p, 'direction', '?'))} "
+                f"({getattr(p, 'confidence', 0.0):.0%})"
+                for p in preds
+            ]
             return "\n".join(lines)
         except Exception as exc:
             logger.warning("briefing.trend_pred_context.failed", error=str(exc))

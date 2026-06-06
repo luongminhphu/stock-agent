@@ -291,6 +291,29 @@ class TrendPredictionStore:
         import asyncio as _asyncio
         _asyncio.create_task(_persist_prediction(self._session_factory, symbol, prediction))
 
+    def store(self, predictions: list[Any]) -> None:
+        """Bulk-replace cache with a fresh batch (TrendBatchScheduler compat).
+
+        Mirrors briefing.TrendPredictionStore.store() — allows TrendBatchScheduler
+        (briefing segment) to call store(list) without knowing individual symbols.
+        Each prediction must expose a .symbol attribute.
+        """
+        for pred in predictions:
+            symbol = getattr(pred, "symbol", None)
+            if symbol:
+                self.save(symbol, pred)
+        logger.info(
+            "trend_prediction_store.bulk_stored",
+            count=len(predictions),
+            symbols=[getattr(p, "symbol", "?") for p in predictions],
+        )
+
+    def upsert(self, prediction: Any) -> None:
+        """Alias for save() — keeps briefing.TrendPredictionStore callers working."""
+        symbol = getattr(prediction, "symbol", None)
+        if symbol:
+            self.save(symbol, prediction)
+
     # ------------------------------------------------------------------
     # Wave D.1: warm load on startup
     # ------------------------------------------------------------------

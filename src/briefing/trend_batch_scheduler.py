@@ -37,7 +37,7 @@ from src.platform.logging import get_logger
 
 if TYPE_CHECKING:
     from src.ai.agents.trend_reasoning import TrendPrediction, TrendReasoningAgent
-    from src.briefing.trend_prediction_store import TrendPredictionStore
+    from src.readmodel.trend_prediction_store import TrendPredictionStore
     from src.market.trend_engine import TrendEngine
 
 logger = get_logger(__name__)
@@ -53,7 +53,7 @@ class TrendBatchScheduler:
     Args:
         trend_engine:        TrendEngine instance (market segment).
         reasoning_agent:     TrendReasoningAgent instance (ai segment).
-        prediction_store:    TrendPredictionStore instance (briefing segment).
+        prediction_store:    TrendPredictionStore instance (readmodel segment).
         watchlist_service:   WatchlistService instance (watchlist segment).
         bot_notifier:        Optional — push strong alerts to Discord before briefing.
     """
