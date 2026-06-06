@@ -76,6 +76,7 @@ services:
     environment:
       DATABASE_URL: 'postgresql+asyncpg://stock_agent:stock_agent_dev@db:5432/stock_agent'
       ENVIRONMENT: development
+      HOME: /home/appuser
     depends_on:
       migrate:
         condition: service_completed_successfully
