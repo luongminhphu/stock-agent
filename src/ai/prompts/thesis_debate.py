@@ -67,6 +67,7 @@ def build_user_prompt(
     days_since_written: int | None = None,
     conviction_current: float | None = None,
     debate_focus: str | None = None,
+    investor_context: str = "",
 ) -> str:
     """Build user prompt for ThesisDebateAgent.
 
@@ -84,7 +85,18 @@ def build_user_prompt(
         conviction_current:      Conviction hiện tại (0.0-1.0).
         debate_focus:            "entry" | "exit" | "sizing" | None (general)
     """
-    lines: list[str] = [
+    lines: list[str] = []
+
+    # Inject investor memory context first so the model has behavioural framing
+    # before reading the thesis — same pattern as thesis_judge.
+    if investor_context:
+        lines += [
+            "## Investor Context",
+            investor_context,
+            "",
+        ]
+
+    lines += [
         "## Thesis Debate Request",
         f"Ticker: **{ticker}** | Thesis ID: {thesis_id}",
         f"Tiêu đề: {thesis_title}",

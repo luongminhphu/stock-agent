@@ -136,13 +136,18 @@ class ThesisDebateAgent:
             days_since_written:      Days since thesis was created.
             conviction_current:      Current conviction (0.0-1.0).
             debate_focus:            Narrow the debate: "entry" | "exit" | "sizing" | None.
-            session:                 Optional DB session (reserved for Wave C.3 memory logging).
-            user_id:                 Optional user ID (reserved for Wave C.3 memory logging).
+            session:                 Optional DB session for memory inject + log (Wave C.3).
+            user_id:                 Optional user ID for memory inject + log (Wave C.3).
 
         Returns:
             DebateOutput — always. Never raises.
             On AI failure: fallback with empty challenges, stance=NEUTRAL.
         """
+        # Wave C.3: fetch investor memory context before calling AI.
+        # Gives the debate agent awareness of prior patterns and bias warnings
+        # so its challenges are personalised to this investor's blind spots.
+        investor_context = await _fetch_investor_context(session, user_id)
+
         user_prompt = build_user_prompt(
             thesis_id=thesis_id,
             ticker=ticker,
@@ -156,6 +161,7 @@ class ThesisDebateAgent:
             days_since_written=days_since_written,
             conviction_current=conviction_current,
             debate_focus=debate_focus,
+            investor_context=investor_context,
         )
 
         try:
@@ -178,6 +184,28 @@ class ThesisDebateAgent:
                 len(result.challenges),
                 result.confidence,
             )
+
+            # Wave C.3: log to episodic memory (fire-and-forget)
+            if session and user_id:
+                try:
+                    from src.ai.memory.memory_service import InteractionEntry, MemoryService
+
+                    entry = InteractionEntry(
+                        user_id=user_id,
+                        agent_type="thesis_debate",
+                        trigger="debate",
+                        tickers=[ticker],
+                        ai_verdict=str(result.overall_stance),
+                        ai_confidence=result.confidence,
+                        ai_key_points=result.verdict[:200] if result.verdict else None,
+                        thesis_id=int(thesis_id) if str(thesis_id).isdigit() else None,
+                    )
+                    await MemoryService.log_interaction(session, entry)
+                except Exception as log_exc:
+                    logger.warning(
+                        "thesis_debate.log_interaction_failed", error=str(log_exc)
+                    )
+
             return result
 
         except AIError as exc:
@@ -217,3 +245,20 @@ class ThesisDebateAgent:
                 exc,
             )
             return _fallback_debate(thesis_id, ticker, thesis_title)
+
+
+async def _fetch_investor_context(session: Any, user_id: str | None) -> str:
+    """Fetch and render investor memory context for prompt injection (Wave C.3).
+
+    Returns empty string on any failure — never raises.
+    """
+    if not session or not user_id:
+        return ""
+    try:
+        from src.ai.context_builder import ContextBuilder, render_for_agent
+
+        ctx = await ContextBuilder(session).build(user_id=user_id)
+        return render_for_agent(ctx)
+    except Exception as exc:
+        logger.warning("thesis_debate.investor_context_failed", error=str(exc))
+        return ""

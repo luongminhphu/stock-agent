@@ -60,6 +60,7 @@ SPEC = AISpec(
 def build_user_prompt(
     snapshot: "SystemSnapshot",
     ranked_signals: "list[RankedSignal]",
+    investor_context: str = "",
 ) -> str:
     """Serialize SystemSnapshot + ranked signals into a structured prompt string."""
 
@@ -102,7 +103,13 @@ def build_user_prompt(
         else ""
     )
 
-    return f"""## System Snapshot — {snapshot.captured_at.strftime('%Y-%m-%d %H:%M')} ICT
+    investor_block = (
+        f"## Investor Context\n{investor_context}\n\n"
+        if investor_context
+        else ""
+    )
+
+    return investor_block + f"""## System Snapshot — {snapshot.captured_at.strftime('%Y-%m-%d %H:%M')} ICT
 Trigger: {snapshot.trigger_source}
 
 ### Ranked Signals (urgency cao → thấp):

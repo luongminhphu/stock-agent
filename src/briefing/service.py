@@ -312,6 +312,14 @@ class BriefingService:
         _build_agenda_context reads from in-memory cache — no DB access —
         so it is safe to include in the gather without greenlet_spawn risk.
         """
+        # Phase 1: build investor context first so judge can use it.
+        # ContextBuilder.build() is DB-bound and must not share a session
+        # with the gather below — it creates its own SAVEPOINT chain.
+        investor_profile_context = await self._build_investor_profile_context(user_id)
+
+        # Phase 2: all remaining context builders in parallel.
+        # _build_judge_context_with_investor receives the already-built
+        # investor_context so ThesisJudgeAgent can apply bias-awareness.
         (
             pnl_context,
             thesis_context,
@@ -323,7 +331,6 @@ class BriefingService:
             trend_pred_context,
             feedback_summary,
             lessons_context,
-            investor_profile_context,
             portfolio_note,
             agenda_context,
         ) = await asyncio.gather(
@@ -331,13 +338,12 @@ class BriefingService:
             self._build_thesis_context(user_id),
             self._build_quote_context(tickers),
             self._build_sector_context(user_id),
-            self._build_judge_context(user_id),
+            self._build_judge_context(user_id, investor_context=investor_profile_context),
             self._build_risk_context(user_id),
             self._build_next_action_context(user_id),
             self._build_trend_pred_context(user_id),
             self._build_feedback_summary(user_id),
             self._build_lessons_context(user_id),
-            self._build_investor_profile_context(user_id),
             self._build_portfolio_note(user_id),
             self._build_agenda_context(user_id),
         )
@@ -491,14 +497,28 @@ class BriefingService:
             logger.warning("briefing.sector_context.failed", error=str(exc))
             return ""
 
-    async def _build_judge_context(self, user_id: str) -> str:
+    async def _build_judge_context(
+        self, user_id: str, investor_context: str = ""
+    ) -> str:
+        """Run ThesisJudge for all active theses.
+
+        investor_context: pre-rendered ContextBuilder block; passed into
+        ThesisJudgeAgent so each verdict is aware of investor bias patterns
+        and prior memory (e.g. 'you tend to exit VHM too early').
+        """
         if not self._thesis_judge_agent or not self._thesis_service:
             return ""
         try:
             theses = await self._thesis_service.list_active(user_id)
             if not theses:
                 return ""
-            return await self._thesis_judge_agent.judge(theses) or ""
+            # judge() convenience wrapper — pass investor_context through
+            return (
+                await self._thesis_judge_agent.judge(
+                    theses, investor_context=investor_context
+                )
+                or ""
+            )
         except Exception as exc:
             logger.warning("briefing.judge_context.failed", error=str(exc))
             return ""
@@ -592,6 +612,26 @@ class BriefingService:
             return ""
 
     async def _build_investor_profile_context(self, user_id: str) -> str:
+        """Build investor profile + full memory context via ContextBuilder.
+
+        Replaces the old InvestorProfileService-only call so that briefing
+        receives episodic memory, pattern synthesis, replay pattern, and
+        thesis health — not just the static profile block.
+
+        Falls back to InvestorProfileService when ContextBuilder is unavailable
+        (defensive: old path kept for environments without DB).
+        """
+        try:
+            from src.ai.context_builder import ContextBuilder, render_for_agent  # noqa: PLC0415
+
+            ctx = await ContextBuilder(self._session).build(user_id=user_id)
+            rendered = render_for_agent(ctx)
+            if rendered:
+                return rendered
+        except Exception as exc:
+            logger.warning("briefing.investor_context_builder.failed", error=str(exc))
+
+        # Fallback: legacy InvestorProfileService (static profile only)
         if not self._investor_profile_service:
             return ""
         try:
@@ -601,7 +641,7 @@ class BriefingService:
             block = getattr(ctx, "to_prompt_block", None)
             return block() if callable(block) else str(ctx)
         except Exception as exc:
-            logger.warning("briefing.investor_profile_context.failed", error=str(exc))
+            logger.warning("briefing.investor_profile_context.fallback_failed", error=str(exc))
             return ""
 
     async def _build_portfolio_note(self, user_id: str) -> Any:  # noqa: ARG002

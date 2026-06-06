@@ -81,6 +81,11 @@ logger = get_logger(__name__)
 # Synthesize fresh patterns when the latest snapshot is older than this.
 _PATTERN_STALE_DAYS = 3
 
+# Per-user timestamp of last successful pattern synthesis — prevents thundering herd
+# when multiple agents call ContextBuilder concurrently during a scheduler cycle.
+_SYNTHESIS_COOLDOWN_TS: dict[str, datetime] = {}
+_SYNTHESIS_COOLDOWN_MINUTES = 60
+
 
 @dataclass
 class InvestorContext:
@@ -373,21 +378,51 @@ class ContextBuilder:
             )
 
             if is_stale:
-                logger.info(
-                    "context_builder.pattern_synthesis.trigger",
-                    user_id=user_id,
-                    latest_snapshot_end=str(
-                        getattr(latest, "period_end", None)
-                    ),
+                # Cooldown guard: skip synthesis if triggered within last 60 minutes.
+                # Prevents N concurrent AI calls when multiple agents call ContextBuilder
+                # in the same scheduler cycle (e.g. briefing + engine simultaneously).
+                now_utc = datetime.now(tz=timezone.utc)
+                last_synth = _SYNTHESIS_COOLDOWN_TS.get(user_id)
+                within_cooldown = (
+                    last_synth is not None
+                    and (now_utc - last_synth).total_seconds() < _SYNTHESIS_COOLDOWN_MINUTES * 60
                 )
-                ai_client = AIClient()
-                consolidator = MemoryConsolidator(
-                    client=ai_client, user_id=user_id
-                )
-                output = await consolidator.synthesize_patterns(self._session)
-                if output is not None:
-                    pattern_block = output.to_prompt_block()
-                    # to_prompt_block() returns "" when confidence < 0.5 — no extra guard
+
+                if within_cooldown:
+                    logger.info(
+                        "context_builder.pattern_synthesis.cooldown_skip",
+                        user_id=user_id,
+                        last_synth=str(last_synth),
+                    )
+                    # Render from latest stored snapshot instead of synthesizing again
+                    behavioral = getattr(latest, "behavioral_patterns", None) if latest else None
+                    if behavioral:
+                        try:
+                            import json
+                            from src.ai.memory.consolidator import PatternSynthesisOutput
+
+                            stored = json.loads(behavioral)
+                            synth = PatternSynthesisOutput(**stored)
+                            pattern_block = synth.to_prompt_block()
+                        except Exception:
+                            pass  # Malformed stored blob — skip silently
+                else:
+                    logger.info(
+                        "context_builder.pattern_synthesis.trigger",
+                        user_id=user_id,
+                        latest_snapshot_end=str(
+                            getattr(latest, "period_end", None)
+                        ),
+                    )
+                    ai_client = AIClient()
+                    consolidator = MemoryConsolidator(
+                        client=ai_client, user_id=user_id
+                    )
+                    output = await consolidator.synthesize_patterns(self._session)
+                    if output is not None:
+                        pattern_block = output.to_prompt_block()
+                        # to_prompt_block() returns "" when confidence < 0.5 — no extra guard
+                        _SYNTHESIS_COOLDOWN_TS[user_id] = now_utc
             else:
                 # Snapshot is fresh — render pattern block from stored JSON blob
                 behavioral = getattr(latest, "behavioral_patterns", None)

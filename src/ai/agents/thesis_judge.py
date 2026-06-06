@@ -167,6 +167,7 @@ class ThesisJudgeAgent:
         days_since_written: int | None = None,
         session: Any = None,
         user_id: str | None = None,
+        investor_context: str = "",
     ) -> ThesisJudgeOutput:
         """Run a single thesis judge check. Returns ThesisJudgeOutput.
 
@@ -196,6 +197,10 @@ class ThesisJudgeAgent:
             session:                 Optional DB session from caller (BriefingService).
                                      When provided, verdict is logged as episodic memory.
             user_id:                 Optional user ID for episodic memory logging.
+            investor_context:        Pre-rendered investor profile + memory block from
+                                     ContextBuilder.render_for_agent(). Injected into
+                                     prompt so judge is aware of investor bias patterns.
+                                     Empty string → skipped (backward-compat).
         """
         import json
 
@@ -212,6 +217,7 @@ class ThesisJudgeAgent:
             signal_context=signal_context,
             conviction_history=conviction_history,
             days_since_written=days_since_written,
+            investor_context=investor_context,
         )
 
         try:
@@ -296,6 +302,7 @@ class ThesisJudgeAgent:
         triggers: list[ThesisJudgeTrigger],
         session: Any = None,
         user_id: str | None = None,
+        investor_context: str = "",
     ) -> list[ThesisJudgeOutput]:
         """Run thesis judge for multiple triggers concurrently.
 
@@ -344,6 +351,7 @@ class ThesisJudgeAgent:
                         days_since_written=t.get("days_since_written"),
                         session=session,
                         user_id=user_id,
+                        investor_context=investor_context,
                     )
                 except Exception as exc:
                     # Should not reach here (run() has its own try/except),
@@ -411,6 +419,57 @@ class ThesisJudgeAgent:
             confidence=0.3,
             judged_at=datetime.now(UTC).isoformat(),
         )
+
+
+    async def judge(
+        self,
+        theses: list[Any],
+        session: Any = None,
+        user_id: str | None = None,
+        investor_context: str = "",
+    ) -> str:
+        """Convenience wrapper for BriefingService: batch-judge active theses.
+
+        Converts thesis domain objects to ThesisJudgeTrigger dicts,
+        runs run_batch(), and renders a compact summary string for briefing.
+
+        Args:
+            theses:           list of Thesis domain objects from ThesisService.
+            session:          Optional DB session for memory logging.
+            user_id:          Optional user ID for memory logging.
+            investor_context: Pre-rendered ContextBuilder block (profile + memory).
+
+        Returns:
+            Compact multi-line verdict string or empty string.
+            Never raises.
+        """
+        if not theses:
+            return ""
+        try:
+            triggers: list[ThesisJudgeTrigger] = [
+                {
+                    "thesis_id": str(getattr(t, "id", "?")),
+                    "ticker":     getattr(t, "ticker", ""),
+                    "thesis_title":   getattr(t, "title", ""),
+                    "thesis_summary": getattr(t, "summary", "") or "",
+                    "signal_context": {},
+                }
+                for t in theses
+            ]
+            results = await self.run_batch(
+                triggers,
+                session=session,
+                user_id=user_id,
+                investor_context=investor_context,
+            )
+            lines = [
+                f"{r.ticker}: {r.verdict} (delta={r.conviction_delta:+.2f}, action={r.action})"
+                for r in results
+            ]
+            return "\n".join(lines) if lines else ""
+        except Exception as exc:
+            logger.warning("ThesisJudge.judge wrapper failed: %s", exc)
+            return ""
 
 
 # ---------------------------------------------------------------------------

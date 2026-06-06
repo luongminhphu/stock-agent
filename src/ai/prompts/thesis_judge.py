@@ -93,6 +93,7 @@ def build_user_prompt(
     signal_context: dict[str, Any],
     conviction_history: list[dict[str, Any]] | None = None,
     days_since_written: int | None = None,
+    investor_context: str = "",
 ) -> str:
     """Build user-turn prompt for ThesisJudgeAgent.
 
@@ -184,8 +185,14 @@ def build_user_prompt(
             "⚠️ Nếu verdict của bạn khác với review trên, phải nêu trigger cụ thể trong reasoning.\n"
         )
 
+    investor_block = (
+        f"\n## Investor Context (profile + memory patterns)\n{investor_context}\n"
+        if investor_context
+        else ""
+    )
+
     return f"""Thesis ID: {thesis_id} | Ticker: {ticker}
-{age_line}
+{age_line}{investor_block}
 
 ## Thesis
 **Tiêu đề:** {thesis_title}

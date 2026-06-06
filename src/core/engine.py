@@ -1013,6 +1013,8 @@ class _EngineRunner:
                     snapshot=output.snapshot,
                     signals_summary=signal_engine_summary or verdict.reasoning_summary,
                     phase=phase,
+                    session=session,
+                    user_id=user_id,
                 )
                 if ai_verdict is not None:
                     verdict = ai_verdict

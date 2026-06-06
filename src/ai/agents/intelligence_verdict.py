@@ -16,7 +16,7 @@ Fallback contract:
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from src.ai.client import AIClient
 from src.ai.schemas import VerdictOutput  # canonical location — no circular import
@@ -65,8 +65,12 @@ class IntelligenceVerdictAgent:
         self,
         snapshot: "SystemSnapshot",
         ranked_signals: "list[RankedSignal]",
+        session: Any = None,
+        user_id: str | None = None,
+        **_: Any,
     ) -> VerdictOutput:
-        user_prompt = build_user_prompt(snapshot, ranked_signals)
+        investor_context = await _fetch_investor_context(session, user_id)
+        user_prompt = build_user_prompt(snapshot, ranked_signals, investor_context=investor_context)
 
         try:
             result: VerdictOutput = await self._client.structured_call(
@@ -78,6 +82,28 @@ class IntelligenceVerdictAgent:
                 verdict=result.verdict,
                 confidence=result.confidence,
             )
+
+            # Log to episodic memory (fire-and-forget)
+            if session and user_id:
+                try:
+                    from src.ai.memory.memory_service import InteractionEntry, MemoryService
+
+                    entry = InteractionEntry(
+                        user_id=user_id,
+                        agent_type="intelligence_verdict",
+                        trigger="engine_cycle",
+                        tickers=[],
+                        ai_verdict=str(result.verdict),
+                        ai_confidence=result.confidence,
+                        ai_key_points=result.reasoning_summary[:200] if result.reasoning_summary else None,
+                    )
+                    await MemoryService.log_interaction(session, entry)
+                except Exception as log_exc:
+                    logger.warning(
+                        "intelligence_verdict_agent.log_interaction_failed",
+                        error=str(log_exc),
+                    )
+
             return result
 
         except Exception as exc:
@@ -86,3 +112,19 @@ class IntelligenceVerdictAgent:
                 error=str(exc),
             )
             return _FALLBACK
+
+async def _fetch_investor_context(session: Any, user_id: str | None) -> str:
+    """Fetch and render investor memory context for prompt injection.
+
+    Returns empty string on any failure -- never raises.
+    """
+    if not session or not user_id:
+        return ""
+    try:
+        from src.ai.context_builder import ContextBuilder, render_for_agent
+
+        ctx = await ContextBuilder(session).build(user_id=user_id)
+        return render_for_agent(ctx)
+    except Exception as exc:
+        logger.warning("intelligence_verdict_agent.investor_context_failed", error=str(exc))
+        return ""
