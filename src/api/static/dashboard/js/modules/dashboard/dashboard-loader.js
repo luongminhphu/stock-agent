@@ -17,6 +17,7 @@ import {
   initCallsTabs,
 } from '../backtesting/render-backtesting.js';
 import { renderCatalystCalendar, renderSnapshots } from '../briefing/render-brief.js';
+import { renderCatalystUrgentStrip }              from '../market/catalyst-urgent.js';
 import { loadIntelligencePanel } from '../intelligence/intelligence-panel.js';
 import { loadLeaderboard } from './leaderboard-loader.js';
 import { renderHealthHeatmap, refreshHeatmapCell } from './render-heatmap.js';
@@ -356,6 +357,7 @@ export async function loadDashboard() {
     renderSummary(stats, portfolioTrades, briefFeedback);
     renderTierBreakdown(thesisAggregate);
     renderAlertsStrip(alertsTriggered);
+    renderCatalystUrgentStrip(catalysts?.items ?? catalysts ?? []);
     renderSignalsFeed(recentSignals);
     renderActionSurface(stats, catalysts?.items ?? catalysts ?? []);
 

@@ -268,3 +268,115 @@
 .panel-duo--watchlist .cal-timeline {
   gap: var(--space-2);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CATALYST URGENT STRIP — Cluster A compact chip row (≤72h)
+   Owner: market segment / dashboard adapter
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.catalyst-urgent-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.catalyst-urgent-strip.hidden {
+  display: none;
+}
+
+.cu-strip__label {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-right: var(--space-1);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.cu-strip__more {
+  font-size: var(--text-xs);
+  color: var(--faint);
+  padding: 2px var(--space-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+
+/* ── Chip ── */
+.cu-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px var(--space-2);
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+  cursor: default;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.cu-chip__ticker {
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.cu-chip__day {
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.cu-chip__desc {
+  color: inherit;
+  opacity: 0.75;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* ── Urgency colours (reuse cal token palette) ── */
+.cu-chip--today {
+  background: rgba(248,113,113,.12);
+  color: var(--danger);
+  border-color: rgba(248,113,113,.30);
+}
+.cu-chip--today:hover {
+  background: rgba(248,113,113,.20);
+}
+
+.cu-chip--tomorrow {
+  background: rgba(251,191,36,.10);
+  color: var(--warning);
+  border-color: rgba(251,191,36,.28);
+}
+.cu-chip--tomorrow:hover {
+  background: rgba(251,191,36,.18);
+}
+
+.cu-chip--soon {
+  background: rgba(125,211,252,.10);
+  color: var(--brand);
+  border-color: rgba(125,211,252,.22);
+}
+.cu-chip--soon:hover {
+  background: rgba(125,211,252,.18);
+}
+
+/* ── Responsive: collapse desc on small screens ── */
+@media (max-width: 480px) {
+  .cu-chip__desc { display: none; }
+  .cu-chip { max-width: none; }
+}
