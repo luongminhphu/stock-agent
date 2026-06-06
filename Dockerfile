@@ -52,6 +52,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
 
+# vnstock ghi cache vào ~/.vnstock khi import — tạo sẵn với đúng owner
+# để appuser không bị PermissionError khi khởi động.
+RUN mkdir -p /home/appuser/.vnstock/id && chown -R appuser:appgroup /home/appuser
+
 # Copy venv (deps only, no project wheel needed)
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
