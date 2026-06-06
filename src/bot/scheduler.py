@@ -15,8 +15,8 @@ Registered tasks:
     OutcomeFillerScheduler.fill_task           — weekdays 15:05 ICT (fill decision outcomes before replay)
     DecisionReplayScheduler.replay_task        — weekdays 15:15 ICT (after market close)
     MemoryConsolidatorScheduler.consolidate    — Sundays 09:00 ICT (weekly memory distill)
-    SignalEngineScheduler.morning_task         — weekdays 08:40 ICT (before morning brief)
-    SignalEngineScheduler.eod_task             — weekdays 15:10 ICT (after market close)
+    SignalEngineScheduler.morning_task         — weekdays 08:40 ICT (after IntelligenceEngine 08:35)
+    SignalEngineScheduler.eod_task             — weekdays 15:10 ICT (after market close, before IE.eod 15:12)
     AgendaBuilderScheduler.agenda_task         — weekdays 07:30 ICT (before all morning tasks)
     ProactiveWatchScheduler.morning_task       — weekdays 09:15 ICT (after market open)
     ProactiveWatchScheduler.midday_task        — weekdays 11:15 ICT (mid-session)
@@ -1639,6 +1639,96 @@ class ProactiveDiscoveryScheduler:
                 logger.warning("scheduler.proactive_discovery.no_output", user_id=str(user_id))
         except Exception as exc:
             logger.error("scheduler.proactive_discovery.error", error=str(exc))
+            await self._monitor.record_failure(task_name, exc)
+
+
+# ---------------------------------------------------------------------------
+# SignalEngineScheduler — emit SignalEngineRequestedEvent (08:40 + 15:10 ICT)
+# ---------------------------------------------------------------------------
+
+_SE_MORNING_TIME = datetime.time(hour=1, minute=40, tzinfo=datetime.UTC)   # 08:40 ICT
+_SE_EOD_TIME     = datetime.time(hour=8, minute=10, tzinfo=datetime.UTC)   # 15:10 ICT
+
+
+class SignalEngineScheduler:
+    """Emit SignalEngineRequestedEvent twice per trading day.
+
+    Owner: bot segment — thin timing adapter only.
+    All signal logic lives in src/ai/signal_engine_listener.py → SignalEngineAgent.
+    TrendEngineListener co-subscribes the same event → trend prediction pipeline.
+
+    Timing:
+        morning — 08:40 ICT  after IntelligenceEngine (08:35 ICT)
+        eod     — 15:10 ICT  after market close, before IntelligenceEngine.eod (15:12 ICT)
+
+    Graceful skip:
+        - Weekends (weekday >= 5).
+        - scheduler_user_id not configured → warning log, no event emitted.
+        - All exceptions caught; never blocks other schedulers.
+    """
+
+    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
+        self._client = client
+        self._monitor = monitor or get_monitor()
+
+    def start(self) -> None:
+        self._monitor.register_task("signal_engine.morning")
+        self._monitor.register_task("signal_engine.eod")
+        self._morning_task.start()
+        self._eod_task.start()
+        logger.info("scheduler.signal_engine.started", phases=["08:40", "15:10"])
+
+    def stop(self) -> None:
+        self._morning_task.cancel()
+        self._eod_task.cancel()
+        logger.info("scheduler.signal_engine.stopped")
+
+    @tasks.loop(time=_SE_MORNING_TIME)
+    async def _morning_task(self) -> None:
+        if datetime.datetime.now(tz=datetime.UTC).weekday() >= 5:
+            return
+        await self._run_cycle(phase="morning", task_name="signal_engine.morning")
+
+    @_morning_task.before_loop
+    async def _before_morning(self) -> None:
+        await self._client.wait_until_ready()
+
+    @tasks.loop(time=_SE_EOD_TIME)
+    async def _eod_task(self) -> None:
+        if datetime.datetime.now(tz=datetime.UTC).weekday() >= 5:
+            return
+        await self._run_cycle(phase="eod", task_name="signal_engine.eod")
+
+    @_eod_task.before_loop
+    async def _before_eod(self) -> None:
+        await self._client.wait_until_ready()
+
+    async def _run_cycle(self, phase: str, task_name: str) -> None:
+        from src.platform.event_bus import get_event_bus
+        from src.platform.events import SignalEngineRequestedEvent
+
+        user_id = getattr(settings, "scheduler_user_id", None)
+        if not user_id:
+            logger.warning(
+                "scheduler.signal_engine.skipped",
+                phase=phase,
+                reason="scheduler_user_id not configured",
+            )
+            return
+
+        try:
+            bus = get_event_bus()
+            await bus.publish(
+                SignalEngineRequestedEvent(
+                    user_id=str(user_id),
+                    phase=phase,
+                    triggered_by="scheduler",
+                )
+            )
+            logger.info("scheduler.signal_engine.event_emitted", phase=phase)
+            await self._monitor.record_success(task_name)
+        except Exception as exc:
+            logger.error("scheduler.signal_engine.emit_error", phase=phase, error=str(exc))
             await self._monitor.record_failure(task_name, exc)
 
 

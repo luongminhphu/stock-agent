@@ -78,6 +78,10 @@ def create_bot() -> commands.Bot:
             _start_proactive_discovery_subscriber(bot)        # AI market scan → ranked picks → Discord
             _start_proactive_discovery_scheduler(bot)         # triggers 09:30 ICT weekdays
             _start_trend_batch_scheduler(bot)                 # pre-compute trend verdicts 06:45 ICT
+            _start_agenda_builder_scheduler(bot)               # build daily agenda 07:30 ICT
+            _start_portfolio_snapshot_scheduler(bot)           # portfolio snapshot 08:15 ICT
+            _start_investor_profile_scheduler(bot)             # investor profile snapshot 08:20 ICT
+            _start_signal_engine_scheduler(bot)                # signal engine 08:40 + 15:10 ICT
             logger.info(
                 "bot.ready",
                 user=str(bot.user),
@@ -542,6 +546,56 @@ def _start_position_risk_subscriber(bot: commands.Bot) -> None:
     subscriber.register()
     logger.info("bot.position_risk_subscriber.registered", channel_id=channel_id)
 
+
+
+
+def _start_agenda_builder_scheduler(bot: commands.Bot) -> None:
+    """Start AgendaBuilderScheduler — 07:30 ICT weekdays.
+
+    Builds daily investor agenda (decide/watch/defer buckets) before
+    InvestorProfileScheduler (08:20) and BriefingScheduler (08:30).
+    briefing/service.py reads DailyAgendaResult via AgendaService.get_latest_agenda().
+    """
+    from src.bot.scheduler import AgendaBuilderScheduler
+    scheduler = AgendaBuilderScheduler(bot)
+    scheduler.start()
+    logger.info("bot.agenda_builder_scheduler.started")
+
+
+def _start_portfolio_snapshot_scheduler(bot: commands.Bot) -> None:
+    """Start PortfolioSnapshotScheduler — 08:15 ICT weekdays.
+
+    Emits PortfolioSnapshotRequestedEvent so portfolio/snapshot_listener.py
+    builds PortfolioSnapshotReadyEvent before IntelligenceEngine (08:35 ICT).
+    """
+    from src.bot.scheduler import PortfolioSnapshotScheduler
+    scheduler = PortfolioSnapshotScheduler(bot)
+    scheduler.start()
+    logger.info("bot.portfolio_snapshot_scheduler.started")
+
+
+def _start_investor_profile_scheduler(bot: commands.Bot) -> None:
+    """Start InvestorProfileScheduler — 08:20 ICT weekdays.
+
+    Snapshots the investor profile before ThesisMaintenance (08:30) and
+    BriefingScheduler (08:30) so morning brief has fresh profile context.
+    """
+    from src.bot.scheduler import InvestorProfileScheduler
+    scheduler = InvestorProfileScheduler(bot)
+    scheduler.start()
+    logger.info("bot.investor_profile_scheduler.started")
+
+
+def _start_signal_engine_scheduler(bot: commands.Bot) -> None:
+    """Start SignalEngineScheduler — 08:40 ICT + 15:10 ICT weekdays.
+
+    Emits SignalEngineRequestedEvent → SignalEngineListener (SignalEngineAgent)
+    and TrendEngineListener (trend prediction pipeline).
+    """
+    from src.bot.scheduler import SignalEngineScheduler
+    scheduler = SignalEngineScheduler(bot)
+    scheduler.start()
+    logger.info("bot.signal_engine_scheduler.started")
 
 def _start_trend_batch_scheduler(bot: commands.Bot) -> None:
     """Start TrendBatchPrecomputeScheduler — 06:45 ICT weekdays.
