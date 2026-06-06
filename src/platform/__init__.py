@@ -21,7 +21,7 @@ Public API:
     ThesisInvalidatedEvent, ThesisReviewRequestedEvent,
     RecommendationReadyEvent,
     BriefingRequestedEvent, BriefingReadyEvent,
-    MarketDataRefreshedEvent, OpportunityScreenCompletedEvent
+    OpportunityScreenCompletedEvent
 """
 
 from src.platform.bootstrap import bootstrap
@@ -32,7 +32,6 @@ from src.platform.events import (
     BriefingReadyEvent,
     BriefingRequestedEvent,
     DomainEvent,
-    MarketDataRefreshedEvent,
     OpportunityScreenCompletedEvent,
     PortfolioSnapshotReadyEvent,
     PositionRiskBreachedEvent,
@@ -73,6 +72,5 @@ __all__ = [
     "RecommendationReadyEvent",
     "BriefingRequestedEvent",
     "BriefingReadyEvent",
-    "MarketDataRefreshedEvent",
     "OpportunityScreenCompletedEvent",
 ]

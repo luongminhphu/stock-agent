@@ -246,15 +246,6 @@ class BriefingReadyEvent(DomainEvent):
     user_id: str = ""
 
 
-# ─── market ─────────────────────────────────────────────────────────────────────────
-
-@dataclass(frozen=True)
-class MarketDataRefreshedEvent(DomainEvent):
-    symbols_updated: int = 0
-    source_adapter: str = ""
-    trading_date: str = ""
-
-
 # ─── opportunity screen ───────────────────────────────────────────────
 
 @dataclass(frozen=True)

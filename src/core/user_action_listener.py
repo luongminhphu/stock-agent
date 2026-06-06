@@ -451,8 +451,9 @@ class UserActionFeedbackListener:
     async def _invalidate_snapshot(self, user_id: str) -> None:
         """Evict hot cache so next query triggers a fresh engine cycle.
 
-        Graceful no-op: readmodel.intelligence_snapshot does not yet exist.
-        When implemented, it must expose get_intelligence_snapshot().invalidate(user_id).
+        Calls IntelligenceSnapshotStore.invalidate(user_id) — removes the hot
+        TTL layer so the next read falls back to the warm layer (stale=True)
+        and triggers a background refresh in the API/bot layer.
         """
         try:
             from src.readmodel.intelligence_snapshot import get_intelligence_snapshot
@@ -460,13 +461,6 @@ class UserActionFeedbackListener:
             get_intelligence_snapshot().invalidate(user_id)
             logger.info(
                 "user_action_listener.snapshot_invalidated",
-                user_id=user_id,
-            )
-        except ImportError:
-            # Expected until readmodel.intelligence_snapshot is implemented — not an error.
-            logger.debug(
-                "user_action_listener.snapshot_invalidate_skipped",
-                reason="readmodel.intelligence_snapshot not yet implemented",
                 user_id=user_id,
             )
         except Exception as exc:

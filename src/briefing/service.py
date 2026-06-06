@@ -55,8 +55,7 @@ Context sources injected into BriefingAgent
   quotes            — QuoteService.get_bulk_quotes(tickers) → rendered into market_context
   pnl               — PnLService.get_portfolio_pnl(user_id) → unrealised P&L
   thesis            — ThesisService.get_thesis_health(user_id) → thesis status
-  sector            — stubbed (SectorRotationAgent.analyze needs sector_performance
-                       data not yet available in this flow)
+  sector            — SectorRotationAgent.analyze(sector_performance) → compact regime string
   judge             — ThesisJudgeAgent.judge(theses) → rendered into market_context
   risk              — PortfolioRiskNarrator.narrate(user_id) → rendered into market_context
   next_action       — NextActionSuggester.suggest(user_id) → rendered into market_context
@@ -107,9 +106,9 @@ class BriefingService:
     thesis_service               — ThesisService (thesis health context). Optional.
     quote_service                — Any object with get_bulk_quotes(tickers) → list[Quote]. Optional.
     thesis_judge_agent           — ThesisJudgeAgent. Optional.
-    sector_agent                 — SectorRotationAgent. Optional. Currently stubbed —
-                                   sector context requires sector_performance data
-                                   not yet available in the briefing flow.
+    sector_agent                 — SectorRotationAgent. Optional.
+                                   Uses SectorRotationService.get_sector_flows() →
+                                   SectorRotationAgent.analyze() → compact regime string.
     risk_narrator                — PortfolioRiskNarrator. Optional.
     next_action_agent            — NextActionSuggester. Optional.
     trend_store                  — TrendPredictionStore. Optional.
