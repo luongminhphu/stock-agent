@@ -236,17 +236,16 @@ tr.search-hidden {
 ──────────────────────────────────────────────────────────────────────────── */
 
 .engine-run-btn {
-  /* Kế thừa .quick-action-btn từ buttons.css; override màu */
-  color: var(--brand) !important;
-  border-color: rgba(125,211,252,.25) !important;
-  background: rgba(125,211,252,.05) !important;
+  /* Kế thừa .quick-action-btn; override màu brand — giờ nằm trong sidebar-quick-actions */
+  color: var(--brand);
+  border-color: rgba(125,211,252,.25);
+  background: rgba(125,211,252,.05);
   width: 100%;
-  margin-bottom: var(--space-2);
 }
 
 .engine-run-btn:hover:not(:disabled) {
-  background: rgba(125,211,252,.12) !important;
-  border-color: rgba(125,211,252,.40) !important;
+  background: rgba(125,211,252,.12);
+  border-color: rgba(125,211,252,.40);
 }
 
 .engine-run-btn:disabled {

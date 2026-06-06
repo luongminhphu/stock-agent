@@ -582,19 +582,17 @@
           </div>
         </div>
 
-        <!-- Engine run button -->
-        <button
-          id="engineRunBtn"
-          class="quick-action-btn engine-run-btn"
-          type="button"
-          aria-label="Chạy Intelligence Engine thủ công"
-          title="Trigger engine cycle ngay bây giờ">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-          Chạy Engine
-        </button>
-
-        <!-- Quick actions -->
+        <!-- Quick actions (Engine run + shortcuts — cùng container để đồng nhất sizing) -->
         <div class="sidebar-quick-actions" aria-label="Quick actions">
+          <button
+            id="engineRunBtn"
+            class="quick-action-btn engine-run-btn"
+            type="button"
+            aria-label="Chạy Intelligence Engine thủ công"
+            title="Trigger engine cycle ngay bây giờ">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Chạy Engine
+          </button>
           <button class="quick-action-btn" id="newThesisBtn" type="button" aria-label="Tạo thesis mới">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Thesis mới
