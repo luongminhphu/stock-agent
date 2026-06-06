@@ -218,7 +218,7 @@ class BriefingListener:
                     briefing_agent=get_briefing_agent(),
                     pnl_service=pnl_svc,
                     session=session,
-                    sector_rotation_agent=get_sector_rotation_agent(),
+                    sector_agent=get_sector_rotation_agent(),
                     agenda_service=agenda_svc,  # Wave B: inject agenda context (fallback path)
                 )
                 if phase == "morning":

@@ -416,10 +416,81 @@ class BriefingService:
             return []
 
     async def _build_sector_context(self, user_id: str) -> str:  # noqa: ARG002
-        """Stubbed — SectorRotationAgent.analyze requires sector_performance data
-        not yet available. Returns empty string silently.
+        """Fetch sector performance via SectorRotationService, run AI analysis.
+
+        Uses the same pipeline as bot.commands.sector_rotation:/sector command:
+          SectorRotationService.get_sector_flows() → sector_performance list
+          → SectorRotationAgent.analyze() → formatted context string.
+
+        Soft-fail contract:
+          - Returns "" when sector_agent or quote_service is not injected.
+          - Returns "" on any error (quota, network, parse) — brief is never blocked.
         """
-        return ""
+        if not self._sector_agent or not self._quote_service:
+            return ""
+        try:
+            from src.market.registry import SymbolRegistry
+            from src.market.sector_rotation_service import SectorRotationService
+
+            svc = SectorRotationService(
+                quote_service=self._quote_service,
+                registry=SymbolRegistry(),
+            )
+            flows = await svc.get_sector_flows()
+            if not flows:
+                logger.debug("briefing.sector_context.no_flows")
+                return ""
+
+            snapshot_date = await svc.get_snapshot_date()
+
+            # Build sector_performance list in the same format as /sector command
+            sector_performance = [
+                {
+                    "sector": f.sector,
+                    "avg_change_pct_1d": f.avg_change_pct_1d,
+                    "flow_direction": f.flow_direction,
+                    "top_movers": f.top_movers,
+                    "ticker_count": f.ticker_count,
+                }
+                for f in flows
+            ]
+
+            inflow = [f.sector for f in flows if f.avg_change_pct_1d > 0]
+            outflow = [f.sector for f in flows if f.avg_change_pct_1d < 0]
+            macro_context = (
+                f"Ngày {snapshot_date}. "
+                f"Sectors tăng: {', '.join(inflow) or 'không có'}. "
+                f"Sectors giảm: {', '.join(outflow) or 'không có'}."
+            )
+
+            result = await self._sector_agent.analyze(
+                sector_performance=sector_performance,
+                macro_context=macro_context,
+                foreign_flow="",
+            )
+
+            # Format compact string for briefing injection
+            lines = [
+                f"Regime: {result.market_regime} (confidence: {result.confidence})",
+                f"Rotate In: {', '.join(result.top_rotate_in) or '—'}",
+                f"Rotate Out: {', '.join(result.top_rotate_out) or '—'}",
+            ]
+            if result.macro_summary:
+                lines.append(f"Macro: {result.macro_summary[:200]}")
+            if result.key_risk:
+                lines.append(f"Key Risk: {result.key_risk[:150]}")
+
+            context = "\n".join(lines)
+            logger.info(
+                "briefing.sector_context.built",
+                regime=result.market_regime,
+                top_in=result.top_rotate_in,
+                sector_count=len(flows),
+            )
+            return context
+        except Exception as exc:
+            logger.warning("briefing.sector_context.failed", error=str(exc))
+            return ""
 
     async def _build_judge_context(self, user_id: str) -> str:
         if not self._thesis_judge_agent or not self._thesis_service:
