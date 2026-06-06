@@ -81,10 +81,9 @@ logger = get_logger(__name__)
 # Synthesize fresh patterns when the latest snapshot is older than this.
 _PATTERN_STALE_DAYS = 3
 
-# Per-user timestamp of last successful pattern synthesis — prevents thundering herd
-# when multiple agents call ContextBuilder concurrently during a scheduler cycle.
-_SYNTHESIS_COOLDOWN_TS: dict[str, datetime] = {}
-_SYNTHESIS_COOLDOWN_MINUTES = 60
+# Wave D.2: cooldown guard is now DB-backed via memory_snapshots.last_synthesis_at.
+# The volatile _SYNTHESIS_COOLDOWN_TS dict has been replaced — cooldown survives restarts.
+_SYNTHESIS_COOLDOWN_MINUTES = 60  # kept as named constant for clarity
 
 
 @dataclass
@@ -378,23 +377,26 @@ class ContextBuilder:
             )
 
             if is_stale:
-                # Cooldown guard: skip synthesis if triggered within last 60 minutes.
-                # Prevents N concurrent AI calls when multiple agents call ContextBuilder
-                # in the same scheduler cycle (e.g. briefing + engine simultaneously).
+                # Wave D.2: DB-backed cooldown guard — survives restarts.
+                # Read last_synthesis_at from the latest memory_snapshots row.
+                # If synthesis ran within _SYNTHESIS_COOLDOWN_MINUTES: skip + render
+                # from stored snapshot. Otherwise: synthesize + stamp the column.
                 now_utc = datetime.now(tz=timezone.utc)
-                last_synth = _SYNTHESIS_COOLDOWN_TS.get(user_id)
+                last_synth_db: datetime | None = getattr(latest, "last_synthesis_at", None)
+
                 within_cooldown = (
-                    last_synth is not None
-                    and (now_utc - last_synth).total_seconds() < _SYNTHESIS_COOLDOWN_MINUTES * 60
+                    last_synth_db is not None
+                    and (now_utc - last_synth_db).total_seconds()
+                        < _SYNTHESIS_COOLDOWN_MINUTES * 60
                 )
 
                 if within_cooldown:
                     logger.info(
                         "context_builder.pattern_synthesis.cooldown_skip",
                         user_id=user_id,
-                        last_synth=str(last_synth),
+                        last_synthesis_at=str(last_synth_db),
                     )
-                    # Render from latest stored snapshot instead of synthesizing again
+                    # Render from stored behavioral_patterns blob instead of synthesizing
                     behavioral = getattr(latest, "behavioral_patterns", None) if latest else None
                     if behavioral:
                         try:
@@ -422,7 +424,28 @@ class ContextBuilder:
                     if output is not None:
                         pattern_block = output.to_prompt_block()
                         # to_prompt_block() returns "" when confidence < 0.5 — no extra guard
-                        _SYNTHESIS_COOLDOWN_TS[user_id] = now_utc
+
+                        # Wave D.2: stamp last_synthesis_at on the latest snapshot row.
+                        # Uses UPDATE directly — avoids re-fetching or re-inserting the snapshot.
+                        if latest is not None:
+                            try:
+                                from sqlalchemy import update as _update
+                                from src.ai.memory.models import MemorySnapshot as _MS
+
+                                await self._session.execute(
+                                    _update(_MS)
+                                    .where(_MS.id == latest.id)
+                                    .values(last_synthesis_at=now_utc)
+                                )
+                                # No commit here — caller owns the outer transaction.
+                                # SAVEPOINT context in build() will flush this UPDATE
+                                # before the outer session commits.
+                            except Exception as stamp_exc:
+                                logger.warning(
+                                    "context_builder.pattern_synthesis.stamp_failed",
+                                    user_id=user_id,
+                                    error=str(stamp_exc),
+                                )
             else:
                 # Snapshot is fresh — render pattern block from stored JSON blob
                 behavioral = getattr(latest, "behavioral_patterns", None)

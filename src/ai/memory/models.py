@@ -184,6 +184,16 @@ class MemorySnapshot(Base):
         DateTime(timezone=True), server_default=func.now(), index=True
     )
 
+    # Wave D.2: tracks when pattern synthesis last ran for this user.
+    # ContextBuilder reads this to enforce the 60-minute cooldown guard
+    # across restarts — replaces the volatile _SYNTHESIS_COOLDOWN_TS dict.
+    last_synthesis_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        default=None,
+        comment="Timestamp of the last successful synthesize_patterns() call for this user",
+    )
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
