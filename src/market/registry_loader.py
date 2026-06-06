@@ -121,55 +121,66 @@ def _parse_exchange(raw: str | None) -> Exchange:
 # ---------------------------------------------------------------------------
 
 def _load_vnstock_sync() -> dict[str, SymbolInfo]:
-    """Fetch full listing from vnstock (VCI source) — synchronous.
+    """Fetch full listing from vnstock (VCI source) — synchronous, no pandas.
 
     Called via asyncio.to_thread() to avoid blocking the event loop.
     Returns empty dict on any failure.
     """
     try:
-        import pandas as pd
         import vnstock
 
         listing = vnstock.Listing()
 
         # symbols_by_exchange → name + exchange for all 3000+ tickers
-        exch_df = listing.symbols_by_exchange()  # symbol, organ_name, exchange, type, id
-        if exch_df is None or exch_df.empty:
+        # Returns a DataFrame-like object; we convert to records manually.
+        exch_raw = listing.symbols_by_exchange()
+        if exch_raw is None or len(exch_raw) == 0:
             return {}
 
-        # Normalise
-        exch_df = exch_df[["symbol", "organ_name", "exchange"]].copy()
-        exch_df["symbol"] = exch_df["symbol"].str.upper().str.strip()
-        exch_df["organ_name"] = exch_df["organ_name"].fillna("").str.strip()
-        exch_df["exchange"] = exch_df["exchange"].fillna("").str.upper()
+        def _s(val: object) -> str:
+            """Safe string coerce — handles pandas NaN (float) and None."""
+            if val is None:
+                return ""
+            try:
+                f = float(val)  # type: ignore[arg-type]
+                if f != f:  # NaN check
+                    return ""
+            except (ValueError, TypeError):
+                pass
+            return str(val).strip()
 
-        # symbols_by_industries → sector per symbol (~700 tickers)
-        try:
-            indu_df = listing.symbols_by_industries()  # symbol, industry_code, industry_name
-            if indu_df is not None and not indu_df.empty:
-                indu_df = indu_df[["symbol", "industry_name"]].copy()
-                indu_df["symbol"] = indu_df["symbol"].str.upper().str.strip()
-                indu_df["industry_name"] = indu_df["industry_name"].fillna("")
-                merged = pd.merge(exch_df, indu_df, on="symbol", how="left")
-            else:
-                merged = exch_df.copy()
-                merged["industry_name"] = ""
-        except Exception:  # noqa: BLE001
-            merged = exch_df.copy()
-            merged["industry_name"] = ""
-
-        entries: dict[str, SymbolInfo] = {}
-        for row in merged.itertuples(index=False):
-            ticker: str = row.symbol  # type: ignore[attr-defined]
+        # Build exchange lookup: ticker → (organ_name, exchange_str)
+        exch_map: dict[str, tuple[str, str]] = {}
+        for row in exch_raw.itertuples(index=False):
+            ticker = _s(getattr(row, "symbol", "")).upper()
             if not ticker:
                 continue
-            name: str = row.organ_name or ticker  # type: ignore[attr-defined]
-            exchange = _parse_exchange(row.exchange)  # type: ignore[attr-defined]
-            industry_name: str = getattr(row, "industry_name", "") or ""
+            name = _s(getattr(row, "organ_name", ""))
+            exch_str = _s(getattr(row, "exchange", "")).upper()
+            exch_map[ticker] = (name, exch_str)
+
+        # symbols_by_industries → industry_name per ticker (~700 tickers)
+        sector_map: dict[str, str] = {}  # ticker → industry_name
+        try:
+            indu_raw = listing.symbols_by_industries()
+            if indu_raw is not None and len(indu_raw) > 0:
+                for row in indu_raw.itertuples(index=False):
+                    ticker = _s(getattr(row, "symbol", "")).upper()
+                    industry = _s(getattr(row, "industry_name", ""))
+                    if ticker:
+                        sector_map[ticker] = industry
+        except Exception:  # noqa: BLE001
+            pass  # sector_map stays empty → Sector.OTHER for all
+
+        # Merge: iterate exch_map, lookup sector_map
+        entries: dict[str, SymbolInfo] = {}
+        for ticker, (name, exch_str) in exch_map.items():
+            exchange = _parse_exchange(exch_str)
+            industry_name = sector_map.get(ticker, "")
             sector = _parse_sector(industry_name)
             entries[ticker] = SymbolInfo(
                 ticker=ticker,
-                name=name,
+                name=name or ticker,
                 exchange=exchange,
                 sector=sector,
                 key_metrics="",  # static seed has key_metrics; vnstock does not
