@@ -43,9 +43,16 @@ class Settings(BaseSettings):
     eod_channel_id: str = ""
     scheduler_user_id: str = ""
 
-    # Alert channel — Wave 4 proactive alerts (RecommendationListener)
-    # Bỏ trống = dùng chung morning_channel_id
+    # Alert channel — cảnh báo quan trọng: InvalidationSubscriber, PositionRiskSubscriber,
+    # TrendShiftSubscriber, StressTestSubscriber, ProactiveWatchSubscriber,
+    # ProactiveDiscoverySubscriber, TrendPredictionSubscriber, EvolutionSubscriber,
+    # IntelligenceEngineSubscriber.
+    # Bỏ trống = alert subscribers bị disable (không fallback sang morning_channel).
     discord_alert_channel_id: str = ""
+
+    # Decision review channel — PostMortemSubscriber (post-mortem / decision replay).
+    # Bỏ trống = fallback sang morning_channel_id.
+    discord_decision_channel_id: str = ""
 
     # Thesis Drift Detector
     thesis_drift_threshold_pct: float = 5.0   # Trigger review khi |drift| >= threshold
@@ -109,12 +116,23 @@ class Settings(BaseSettings):
 
     @property
     def alert_channel_id(self) -> str:
-        """Resolve alert channel: discord_alert_channel_id → morning_channel_id.
+        """Alert channel cho cảnh báo quan trọng (InvalidationSubscriber,
+        PositionRiskSubscriber, TrendShiftSubscriber, StressTestSubscriber,
+        ProactiveWatchSubscriber, ProactiveDiscoverySubscriber,
+        TrendPredictionSubscriber, EvolutionSubscriber, IntelligenceEngineSubscriber).
 
-        RecommendationListener dùng property này để không cần hardcode fallback chain.
-        Nếu muốn tách channel riêng cho AI alert, set DISCORD_ALERT_CHANNEL_ID trong .env.
+        KHÔNG fallback sang morning_channel_id — nếu DISCORD_ALERT_CHANNEL_ID chưa set,
+        các subscriber này sẽ bị disable để tránh trộn alert vào briefing channel.
         """
-        return self.discord_alert_channel_id or self.morning_channel_id
+        return self.discord_alert_channel_id
+
+    @property
+    def decision_channel_id(self) -> str:
+        """Decision review channel cho PostMortemSubscriber (post-mortem / decision replay).
+
+        Fallback sang morning_channel_id vì post-mortem review thuộc nội dung briefing.
+        """
+        return self.discord_decision_channel_id or self.morning_channel_id
 
     @property
     def is_single_user(self) -> bool:

@@ -371,14 +371,11 @@ def _start_signal_reaction_listener(bot: commands.Bot) -> None:
 def _start_agenda_subscriber(bot: commands.Bot) -> None:
     from src.bot.agenda_subscriber import AgendaSubscriber
 
-    channel_id = (
-        getattr(settings, "morning_channel_id", None)
-        or getattr(settings, "alert_channel_id", None)
-    )
+    channel_id = getattr(settings, "morning_channel_id", None)
     if not channel_id:
         logger.warning(
             "bot.agenda_subscriber.not_available",
-            reason="morning_channel_id and alert_channel_id not configured — agenda embeds disabled",
+            reason="morning_channel_id not configured — agenda embeds disabled",
         )
         return
 
