@@ -24,6 +24,7 @@ Registered tasks:
     PortfolioSnapshotScheduler.morning_task    — weekdays 08:15 ICT (before IntelligenceEngine 08:35)
     IntelligenceEngineScheduler.morning_task   — weekdays 08:35 ICT (after ThesisMaintenance, before SignalEngine)
     IntelligenceEngineScheduler.eod_task       — weekdays 15:12 ICT (after SignalEngine.eod, before DecisionReplay)
+    TrendBatchPrecomputeScheduler.trend_batch  — weekdays 06:45 ICT (45 min before morning brief)
 
 Note:
     MORNING_CHANNEL_ID and EOD_CHANNEL_ID must be set in settings.
@@ -1639,3 +1640,126 @@ class ProactiveDiscoveryScheduler:
         except Exception as exc:
             logger.error("scheduler.proactive_discovery.error", error=str(exc))
             await self._monitor.record_failure(task_name, exc)
+
+
+# ---------------------------------------------------------------------------
+# TrendBatchScheduler — pre-compute trend predictions before morning brief
+# ---------------------------------------------------------------------------
+
+_TREND_BATCH_TIME = datetime.time(hour=23, minute=45, tzinfo=datetime.UTC)  # 06:45 ICT next day
+# Note: 06:45 ICT = 23:45 UTC (previous calendar day in UTC terms).
+# discord.ext.tasks resolves times correctly across midnight UTC boundaries.
+
+
+class TrendBatchPrecomputeScheduler:
+    """Run TrendBatchScheduler once daily at 06:45 ICT (Mon–Fri).
+
+    Fires 45 min before BriefingScheduler (08:30 ICT) so morning brief
+    always has fresh AI trend verdicts ready in TrendPredictionStore.
+
+    Flow:
+        TrendBatchScheduler.run_for_user(user_id)
+            → WatchlistService.get_watchlist()
+            → TrendEngine.run_for_symbols()
+            → TrendReasoningAgent.analyze() × N
+            → readmodel.TrendPredictionStore.store(predictions)
+
+    Graceful skip:
+        - scheduler_user_id not configured → skip silently.
+        - Any dependency not initialised → skip with warning.
+        - Per-symbol failures are isolated inside TrendBatchScheduler.
+    """
+
+    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
+        self._client = client
+        self._monitor = monitor or get_monitor()
+
+    def start(self) -> None:
+        self._monitor.register_task("trend_batch.precompute")
+        self._trend_batch_task.start()
+        logger.info("scheduler.trend_batch.started", time_ict="06:45")
+
+    def stop(self) -> None:
+        self._trend_batch_task.cancel()
+        logger.info("scheduler.trend_batch.stopped")
+
+    @tasks.loop(time=_TREND_BATCH_TIME)
+    async def _trend_batch_task(self) -> None:
+        now_utc = datetime.datetime.now(tz=datetime.UTC)
+        if now_utc.weekday() >= 5:  # skip weekends
+            return
+
+        task_name = "trend_batch.precompute"
+
+        from src.platform.bootstrap import (
+            get_trend_reasoning_agent,
+            get_trend_prediction_store,
+            get_ohlcv_service,
+        )
+        from src.platform.config import settings
+
+        user_id = getattr(settings, "scheduler_user_id", None)
+        if not user_id:
+            logger.warning(
+                "scheduler.trend_batch.skipped",
+                reason="scheduler_user_id not configured",
+            )
+            return
+
+        reasoning_agent = get_trend_reasoning_agent()
+        prediction_store = get_trend_prediction_store()
+        ohlcv_svc = get_ohlcv_service()
+
+        if reasoning_agent is None or prediction_store is None or ohlcv_svc is None:
+            logger.warning(
+                "scheduler.trend_batch.skipped",
+                reason="dependency not initialised",
+                agent_ok=reasoning_agent is not None,
+                store_ok=prediction_store is not None,
+                ohlcv_ok=ohlcv_svc is not None,
+            )
+            return
+
+        try:
+            from src.briefing.trend_batch_scheduler import TrendBatchScheduler
+            from src.market.trend_engine import TrendEngine
+            from src.watchlist.service import WatchlistService
+            from src.thesis.thesis_query_service import ThesisActiveContextQuery
+            from src.platform.db import AsyncSessionLocal
+
+            trend_engine = TrendEngine(ohlcv_service=ohlcv_svc)
+
+            async with AsyncSessionLocal() as session:
+                watchlist_svc = WatchlistService(session=session)
+                thesis_query = ThesisActiveContextQuery(session_factory=AsyncSessionLocal)
+
+                scheduler = TrendBatchScheduler(
+                    trend_engine=trend_engine,
+                    reasoning_agent=reasoning_agent,
+                    prediction_store=prediction_store,
+                    watchlist_service=watchlist_svc,
+                    thesis_query=thesis_query,
+                )
+                predictions = await scheduler.run_for_user(
+                    user_id=str(user_id),
+                    session=session,
+                )
+
+            logger.info(
+                "scheduler.trend_batch.done",
+                user_id=str(user_id),
+                count=len(predictions),
+                actionable=sum(
+                    1 for p in predictions
+                    if getattr(p, "is_actionable", False)
+                ),
+            )
+            await self._monitor.record_success(task_name)
+
+        except Exception as exc:
+            logger.error("scheduler.trend_batch.error", error=str(exc), exc_info=True)
+            await self._monitor.record_failure(task_name, exc)
+
+    @_trend_batch_task.before_loop
+    async def _before_trend_batch(self) -> None:
+        await self._client.wait_until_ready()

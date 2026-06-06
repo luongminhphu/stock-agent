@@ -77,6 +77,7 @@ def create_bot() -> commands.Bot:
             _start_position_risk_subscriber(bot)           # portfolio loss threshold → Discord
             _start_proactive_discovery_subscriber(bot)        # AI market scan → ranked picks → Discord
             _start_proactive_discovery_scheduler(bot)         # triggers 09:30 ICT weekdays
+            _start_trend_batch_scheduler(bot)                 # pre-compute trend verdicts 06:45 ICT
             logger.info(
                 "bot.ready",
                 user=str(bot.user),
@@ -540,3 +541,16 @@ def _start_position_risk_subscriber(bot: commands.Bot) -> None:
     subscriber.set_client(bot)
     subscriber.register()
     logger.info("bot.position_risk_subscriber.registered", channel_id=channel_id)
+
+
+def _start_trend_batch_scheduler(bot: commands.Bot) -> None:
+    """Start TrendBatchPrecomputeScheduler — 06:45 ICT weekdays.
+
+    Pre-computes AI trend verdicts for the user's watchlist so morning
+    brief at 08:30 ICT always has fresh TrendPrediction data ready.
+    """
+    from src.bot.scheduler import TrendBatchPrecomputeScheduler
+
+    scheduler = TrendBatchPrecomputeScheduler(bot)
+    scheduler.start()
+    logger.info("bot.trend_batch_scheduler.started")
