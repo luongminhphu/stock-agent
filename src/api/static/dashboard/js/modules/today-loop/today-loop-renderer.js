@@ -67,14 +67,19 @@ function _getOrCreateStrip() {
   strip.className = 'thesis-digest-strip hidden';
   strip.setAttribute('aria-label', 'Thesis cần chú ý hôm nay');
 
-  // Inject after #actionSurface
-  const anchor = document.getElementById('actionSurface');
-  if (anchor?.parentNode) {
-    anchor.parentNode.insertBefore(strip, anchor.nextSibling);
+  // Inject into #todayDuoRow (alongside #actionSurface in the same row)
+  const duoRow = document.getElementById('todayDuoRow');
+  if (duoRow) {
+    duoRow.appendChild(strip);
   } else {
-    // Fallback: prepend into main content
-    const main = document.querySelector('main') ?? document.body;
-    main.prepend(strip);
+    // Fallback: inject after #actionSurface
+    const anchor = document.getElementById('actionSurface');
+    if (anchor?.parentNode) {
+      anchor.parentNode.insertBefore(strip, anchor.nextSibling);
+    } else {
+      const main = document.querySelector('main') ?? document.body;
+      main.prepend(strip);
+    }
   }
   return strip;
 }

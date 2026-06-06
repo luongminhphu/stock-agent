@@ -760,29 +760,32 @@
             aria-label="Tín hiệu kỹ thuận gần đây"
           ></div>
 
-          <!-- ── 5. ACTION SURFACE ─────────────────────────────────────────────── -->
-          <div
-            id="actionSurface"
-            class="action-surface hidden"
-            aria-live="polite"
-            aria-label="Việc cần làm hôm nay"
-            aria-busy="true"
-          >
-            <div class="as-label" aria-hidden="true">Việc cần làm hôm nay</div>
-            <div class="as-items" data-as-skeleton aria-hidden="true">
-              <div class="as-item as-item--skel">
-                <span class="as-priority-dot as-priority-dot--skel" aria-hidden="true"></span>
-                <span class="as-skel as-skel--icon"></span>
-                <span class="as-skel as-skel--text"></span>
-                <span class="as-skel as-skel--cta"></span>
-              </div>
-              <div class="as-item as-item--skel">
-                <span class="as-priority-dot as-priority-dot--skel" aria-hidden="true"></span>
-                <span class="as-skel as-skel--icon"></span>
-                <span class="as-skel as-skel--text"></span>
-                <span class="as-skel as-skel--cta"></span>
+          <!-- ── 5. ACTION SURFACE + THESIS DIGEST — same row ──────────────── -->
+          <div id="todayDuoRow" class="today-duo-row">
+            <div
+              id="actionSurface"
+              class="action-surface hidden"
+              aria-live="polite"
+              aria-label="Việc cần làm hôm nay"
+              aria-busy="true"
+            >
+              <div class="as-label" aria-hidden="true">Việc cần làm hôm nay</div>
+              <div class="as-items" data-as-skeleton aria-hidden="true">
+                <div class="as-item as-item--skel">
+                  <span class="as-priority-dot as-priority-dot--skel" aria-hidden="true"></span>
+                  <span class="as-skel as-skel--icon"></span>
+                  <span class="as-skel as-skel--text"></span>
+                  <span class="as-skel as-skel--cta"></span>
+                </div>
+                <div class="as-item as-item--skel">
+                  <span class="as-priority-dot as-priority-dot--skel" aria-hidden="true"></span>
+                  <span class="as-skel as-skel--icon"></span>
+                  <span class="as-skel as-skel--text"></span>
+                  <span class="as-skel as-skel--cta"></span>
+                </div>
               </div>
             </div>
+            <!-- #thesisDigestStrip injected here by today-loop-renderer.js -->
           </div>
 
           <!-- ── 6. BRIEFING ──────────────────────────────────────────────────────── -->

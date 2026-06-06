@@ -6,10 +6,43 @@
      .tl-signal-badge       — ⚡ Top N badge in #signalsFeed header
 ──────────────────────────────────────────────────────────────────────────────── */
 
+/* ── Today Duo Row: Việc cần làm + Thesis cần chú ý — cùng 1 hàng ─────────────── */
+.today-duo-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: start;
+  gap: var(--layer-gap, 16px);
+  margin-bottom: var(--layer-gap, 16px);
+}
+
+/* Khi chỉ có 1 child hiện (thesis digest hidden) → actionSurface chiếm toàn bộ width */
+.today-duo-row > :only-child {
+  grid-column: 1 / -1;
+}
+
+/* Bỏ margin-bottom riêng lẻ của từng block — duo row đã có gap */
+.today-duo-row #actionSurface,
+.today-duo-row .thesis-digest-strip {
+  margin-bottom: 0;
+}
+
+/* actionSurface chiếm full width nếu thesis strip chưa render */
+.today-duo-row #actionSurface:last-child {
+  grid-column: 1 / -1;
+}
+
+/* Responsive: stack thành 1 cột trên mobile */
+@media (max-width: 768px) {
+  .today-duo-row {
+    grid-template-columns: 1fr;
+  }
+  .today-duo-row #actionSurface:last-child {
+    grid-column: auto;
+  }
+}
+
 /* ── Strip container ─────────────────────────────────────────────────────────────────── */
 .thesis-digest-strip {
-  max-width: var(--content-max);
-  margin-inline: auto;
   margin-bottom: var(--layer-gap, 16px);
   background: rgba(251, 146, 60, 0.04);
   border: 1px solid rgba(251, 146, 60, 0.15);
