@@ -125,14 +125,14 @@ function _buildTradesRows(data) {
     return {
       hasError: errors.length > 0,
       html: `<tr data-ticker="${_esc(ticker)}"${thesisAttr}${rowClass}>
-        <td class="col-ticker col-center"><strong>${_esc(ticker)}</strong>${warnBadge}${errors.includes('ticker') ? ' <span class="cell-error" title="Thiếu ticker">⚠</span>' : ''}</td>
-        <td class="col-qty">${qty != null ? _fmtNum(qty) : '<span class="cell-error" title="Thiếu qty">⚠</span>'}</td>
-        <td class="col-price">${avgCost != null ? _fmtNum(avgCost) : '<span class="cell-error" title="Thiếu avg_cost">⚠</span>'}</td>
-        <td class="col-price">${currPrice != null ? _fmtNum(currPrice) : '<span class="cell-error" title="Thiếu curr_price">⚠</span>'}</td>
-        <td class="col-pnl ${pnlClass}">${_fmtNum(pnlAbs)}</td>
-        <td class="col-pct ${pnlClass}">${_fmtPct(pnlPct)}</td>
-        <td class="col-thesis">${thesisRef}</td>
-        <td class="col-action"></td>
+        <td class="col-left"><strong>${_esc(ticker)}</strong>${warnBadge}${errors.includes('ticker') ? ' <span class="cell-error" title="Thiếu ticker">⚠</span>' : ''}</td>
+        <td class="num">${qty != null ? _fmtNum(qty) : '<span class="cell-error" title="Thiếu qty">⚠</span>'}</td>
+        <td class="currency">${avgCost != null ? _fmtNum(avgCost) : '<span class="cell-error" title="Thiếu avg_cost">⚠</span>'}</td>
+        <td class="currency">${currPrice != null ? _fmtNum(currPrice) : '<span class="cell-error" title="Thiếu curr_price">⚠</span>'}</td>
+        <td class="currency col-pnl ${pnlClass}">${_fmtNum(pnlAbs)}</td>
+        <td class="num col-pct ${pnlClass}">${_fmtPct(pnlPct)}</td>
+        <td class="col-center">${thesisRef}</td>
+        <td class="col-center col-action"></td>
       </tr>`,
     };
   });
@@ -168,14 +168,14 @@ function _buildThesisRows(data) {
     return {
       hasError: errors.length > 0,
       html: `<tr data-ticker="${_esc(ticker)}"${thesisAttr}>
-        <td class="col-ticker col-center"><strong>${_esc(ticker)}</strong>${errors.includes('ticker') ? ' <span class="cell-error">⚠</span>' : ''}</td>
-        <td class="col-qty">${qty != null ? _fmtNum(qty) : '<span class="muted">—</span>'}</td>
-        <td class="col-price">${avgCost != null ? _fmtNum(avgCost) : '<span class="muted">—</span>'}</td>
-        <td class="col-price">${currPrice != null ? _fmtNum(currPrice) : '<span class="muted">—</span>'}</td>
-        <td class="col-pnl ${pnlClass}">${_fmtNum(pnlAbs)}</td>
-        <td class="col-pct ${pnlClass}">${_fmtPct(pnlPct)}</td>
-        <td class="col-thesis col-center">${verdictLabel} ${scoreLabel}</td>
-        <td class="col-action"></td>
+        <td class="col-left"><strong>${_esc(ticker)}</strong>${errors.includes('ticker') ? ' <span class="cell-error">⚠</span>' : ''}</td>
+        <td class="num">${qty != null ? _fmtNum(qty) : '<span class="muted">—</span>'}</td>
+        <td class="currency">${avgCost != null ? _fmtNum(avgCost) : '<span class="muted">—</span>'}</td>
+        <td class="currency">${currPrice != null ? _fmtNum(currPrice) : '<span class="muted">—</span>'}</td>
+        <td class="currency col-pnl ${pnlClass}">${_fmtNum(pnlAbs)}</td>
+        <td class="num col-pct ${pnlClass}">${_fmtPct(pnlPct)}</td>
+        <td class="col-center">${verdictLabel} ${scoreLabel}</td>
+        <td class="col-center col-action"></td>
       </tr>`,
     };
   });
@@ -191,14 +191,14 @@ function _buildTradesTable(rows) {
   return `<div class="portfolio-pane"><div class="table-scroll">
     <table class="data-table">
       <thead><tr>
-        <th class="col-ticker col-center">Ticker</th>
-        <th class="col-qty">SL (cp)</th>
-        <th class="col-price">Giá vốn</th>
-        <th class="col-price">Thị giá</th>
-        <th class="col-pnl">P&amp;L (₫)</th>
-        <th class="col-pct">P&amp;L (%)</th>
-        <th class="col-thesis">Thesis</th>
-        <th class="col-action"></th>
+        <th class="col-left">Ticker</th>
+        <th class="num">SL (cp)</th>
+        <th class="currency">Giá vốn</th>
+        <th class="currency">Thị giá</th>
+        <th class="currency">P&amp;L (₫)</th>
+        <th class="num">P&amp;L (%)</th>
+        <th class="col-center">Thesis</th>
+        <th class="col-center"></th>
       </tr></thead>
       <tbody data-holdings-tbody="trades">${body}</tbody>
     </table>
@@ -212,14 +212,14 @@ function _buildThesisTable(rows) {
   return `<div class="portfolio-pane"><div class="table-scroll">
     <table class="data-table">
       <thead><tr>
-        <th class="col-ticker col-center">Ticker</th>
-        <th class="col-qty">SL (cp)</th>
-        <th class="col-price">Giá vốn</th>
-        <th class="col-price">Thị giá</th>
-        <th class="col-pnl">P&amp;L (₫)</th>
-        <th class="col-pct">P&amp;L (%)</th>
-        <th class="col-thesis col-center">Verdict</th>
-        <th class="col-action"></th>
+        <th class="col-left">Ticker</th>
+        <th class="num">SL (cp)</th>
+        <th class="currency">Giá vốn</th>
+        <th class="currency">Thị giá</th>
+        <th class="currency">P&amp;L (₫)</th>
+        <th class="num">P&amp;L (%)</th>
+        <th class="col-center">Verdict</th>
+        <th class="col-center"></th>
       </tr></thead>
       <tbody data-holdings-tbody="thesis">${body}</tbody>
     </table>

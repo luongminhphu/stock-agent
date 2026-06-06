@@ -152,34 +152,103 @@ td.cell-missing {
     transition: none;
   }
 }
-
-/* ── Table full-width layout ────────────────────────────────────────────── */
+/* ── Table layout ──────────────────────────────────────────────────────────
+   table-layout: fixed → cột nằm ổn định theo width khai báo ở colgroup/th,
+   không bị dữ liệu dài đẩy lệch.
+   overflow-x: auto trên wrapper để scroll ngang trên màn hình nhỏ.
+─────────────────────────────────────────────────────────────────────────── */
 
 .portfolio-pane .table-scroll {
   width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .portfolio-pane .data-table {
   width: 100%;
-  table-layout: auto;
+  min-width: 560px;
+  table-layout: fixed;
+  border-collapse: collapse;
 }
 
-/* ── Table cell alignment ───────────────────────────────────────────────────
-   Dùng utility classes từ reset.css (.col-left, .col-center, .col-right,
-   .currency, .num) thay vì hardcode text-align ở đây.
-   Chỉ khai báo base padding + vertical-align cho table này.
-──────────────────────────────────────────────────────────────────────────── */
+/* ── Column widths ──────────────────────────────────────────────────────────
+   col 1 Ticker  : 12%  left
+   col 2 SL      :  9%  right num
+   col 3 Giá vốn : 14%  right currency
+   col 4 Thị giá : 14%  right currency
+   col 5 P&L (₫) : 16%  right currency
+   col 6 P&L (%) : 10%  right num
+   col 7 Thesis  : 16%  center
+   col 8 Action  :  9%  center
+─────────────────────────────────────────────────────────────────────────── */
 
-.portfolio-pane .data-table th,
+.portfolio-pane .data-table th:nth-child(1),
+.portfolio-pane .data-table td:nth-child(1) { width: 12%; }
+
+.portfolio-pane .data-table th:nth-child(2),
+.portfolio-pane .data-table td:nth-child(2) { width:  9%; }
+
+.portfolio-pane .data-table th:nth-child(3),
+.portfolio-pane .data-table td:nth-child(3) { width: 14%; }
+
+.portfolio-pane .data-table th:nth-child(4),
+.portfolio-pane .data-table td:nth-child(4) { width: 14%; }
+
+.portfolio-pane .data-table th:nth-child(5),
+.portfolio-pane .data-table td:nth-child(5) { width: 16%; }
+
+.portfolio-pane .data-table th:nth-child(6),
+.portfolio-pane .data-table td:nth-child(6) { width: 10%; }
+
+.portfolio-pane .data-table th:nth-child(7),
+.portfolio-pane .data-table td:nth-child(7) { width: 16%; }
+
+.portfolio-pane .data-table th:nth-child(8),
+.portfolio-pane .data-table td:nth-child(8) { width:  9%; }
+
+/* ── Cell base ──────────────────────────────────────────────────────────── */
+
+.portfolio-pane .data-table th {
+  padding: var(--space-2) var(--space-3);
+  vertical-align: middle;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  border-bottom: 2px solid var(--line);
+  background: var(--surface-2, rgba(255,255,255,.03));
+}
+
 .portfolio-pane .data-table td {
   padding: var(--space-2) var(--space-3);
   vertical-align: middle;
+  font-size: var(--text-sm);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.portfolio-pane .data-table th:not([class]),
-.portfolio-pane .data-table td:not([class]) {
-  text-align: left;
+/* Ticker cell: allow text + badge inline */
+.portfolio-pane .data-table td.col-left {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
 }
+
+/* Striped rows for readability */
+.portfolio-pane .data-table tbody tr:nth-child(even) {
+  background: rgba(148, 163, 184, 0.03);
+}
+
+.portfolio-pane .data-table tbody tr:hover {
+  background: rgba(148, 163, 184, 0.07);
+  transition: background 120ms ease;
+}
+
 
 /* ─── Exposure Bar — Ticker Concentration (Gap 2, Option A) ──────────────
    Owner: modules/portfolio
