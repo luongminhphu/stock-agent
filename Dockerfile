@@ -1,9 +1,13 @@
 # syntax=docker/dockerfile:1
 # ---------------------------------------------------------------------------
 # stock-agent — multi-stage Dockerfile
-# No pip install of the project itself — source is copied directly and
-# PYTHONPATH is set so Python can find src/ without a package install step.
-# This avoids all hatchling / editable-install issues in Docker.
+#
+# Dep install strategy:
+#   1. Copy pyproject.toml + a stub src/ (so hatchling can resolve packages)
+#   2. pip install --no-cache-dir . — installs all [project.dependencies] from
+#      pyproject.toml as the single source of truth. No manual dep list.
+#   3. Runtime stage copies real src/ over PYTHONPATH so the installed stub
+#      is shadowed by live source — editable-install behaviour without -e.
 # ---------------------------------------------------------------------------
 
 # -- Stage 1: builder -------------------------------------------------------
@@ -21,25 +25,14 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 RUN pip install --upgrade pip
 
-# Copy only the deps list first — layer cached until pyproject.toml changes
+# Copy pyproject.toml + minimal stub so hatchling can build the wheel metadata
+# without needing the full source tree. The stub is overwritten in runtime stage.
 COPY pyproject.toml ./
+RUN mkdir -p src && touch src/__init__.py
 
-# Install all runtime dependencies directly (no package install, no hatchling)
-RUN pip install --no-cache-dir \
-    "fastapi>=0.115.0" \
-    "uvicorn[standard]>=0.30.0" \
-    "sqlalchemy[asyncio]>=2.0.0" \
-    "alembic>=1.13.0" \
-    "asyncpg>=0.29.0" \
-    "aiosqlite>=0.20.0" \
-    "pydantic>=2.7.0" \
-    "pydantic-settings>=2.3.0" \
-    "httpx>=0.27.0" \
-    "tenacity>=8.3.0" \
-    "structlog>=24.2.0" \
-    "discord.py>=2.4.0" \
-    "python-dotenv>=1.0.0" \
-    "vnstock>=3.0.0"
+# Install all runtime deps declared in [project.dependencies] — single source
+# of truth. Adding a dep to pyproject.toml is enough; no Dockerfile change needed.
+RUN pip install --no-cache-dir .
 
 # -- Stage 2: runtime -------------------------------------------------------
 FROM python:3.12-slim AS runtime
