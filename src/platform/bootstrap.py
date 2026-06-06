@@ -42,6 +42,7 @@ _stress_test_subscriber: object | None = None  # G4: StressTest → Watchlist br
 _opportunity_screen_scheduler: object | None = None  # Wave 3
 _opportunity_screen_subscriber: object | None = None  # Wave 3
 _opportunity_analysis_handler: object | None = None   # Wave 3: AI cross-check handler
+_proactive_discovery_service: object | None = None    # Proactive Discovery: portfolio-aware picks
 _signal_engine_agent: object | None = None   # Wave 2b: cross-check engine
 _signal_engine_listener: object | None = None  # Wave B2: fully wired
 _agenda_builder_agent: object | None = None   # AgendaBuilderAgent singleton
@@ -82,6 +83,7 @@ async def bootstrap() -> None:
     global _briefing_listener, _stress_test_subscriber
     global _opportunity_screen_scheduler, _opportunity_screen_subscriber
     global _opportunity_analysis_handler
+    global _proactive_discovery_service
     global _signal_engine_agent, _signal_engine_listener
     global _agenda_builder_agent, _agenda_service_factory
     global _trend_reasoning_agent, _trend_prediction_store, _trend_engine_listener
@@ -432,6 +434,22 @@ async def bootstrap() -> None:
         _opportunity_analysis_handler.register()  # type: ignore[union-attr]
         logger.info("platform.bootstrap.opportunity_analysis_handler_ready")
 
+    # ── Proactive Discovery: portfolio-aware market scan + AI synthesis ────────
+    if _proactive_discovery_service is None:
+        from src.ai.agents.proactive_discovery import ProactiveDiscoveryAgent
+        from src.market.proactive_discovery_service import ProactiveDiscoveryService
+        from src.market.registry import SymbolRegistry
+        from src.platform.db import AsyncSessionLocal
+
+        _discovery_agent = ProactiveDiscoveryAgent(ai_client=_ai_client)  # type: ignore[arg-type]
+        _proactive_discovery_service = ProactiveDiscoveryService(
+            ai_agent=_discovery_agent,
+            session_factory=AsyncSessionLocal,
+            quote_service=_quote_service,
+            registry=SymbolRegistry(),
+        )
+        logger.info("platform.bootstrap.proactive_discovery_service_ready")
+
     # ── Wave B2: SignalEngineListener — fully wired with portfolio context ────
     if _signal_engine_listener is None:
         from src.ai.signal_engine_listener import SignalEngineListener
@@ -743,3 +761,8 @@ def get_intelligence_engine_subscriber():
     Returns None (not raises) — bot caller checks for None before calling set_client().
     """
     return _intelligence_engine_subscriber
+
+
+def get_proactive_discovery_service():
+    """Return ProactiveDiscoveryService singleton or None if not initialised."""
+    return _proactive_discovery_service

@@ -479,3 +479,32 @@ class UserActionEvent(DomainEvent):
     price: float | None = None
     mute_days: int = 7
     snooze_hours: int = 24
+
+
+# ─── proactive discovery (portfolio-aware market scan) ────────────────────────
+
+@dataclass(frozen=True)
+class ProactiveDiscoveryReadyEvent(DomainEvent):
+    """Emitted by ProactiveDiscoveryService after AI synthesis completes.
+
+    Carries ranked picks personalised to the investor's current portfolio.
+    Consumed by:
+      - bot.ProactiveDiscoverySubscriber  → Discord embed
+      - (future) api/readmodel            → dashboard surface
+
+    Fields:
+        user_id          : investor identifier
+        picks_json       : JSON-serialised list[DiscoveryPick] (compact, bot-renderable)
+        portfolio_gaps   : sectors under-represented in current portfolio
+        market_regime_note: one-sentence market context for the session
+        avoid_tickers    : tickers to steer clear of today
+        picks_count      : len(picks) for quick log/monitor
+        trading_date     : YYYY-MM-DD of the scan
+    """
+    user_id: str = ""
+    picks_json: str = ""                               # JSON string — list[dict]
+    portfolio_gaps: tuple[str, ...] = field(default_factory=tuple)
+    market_regime_note: str = ""
+    avoid_tickers: tuple[str, ...] = field(default_factory=tuple)
+    picks_count: int = 0
+    trading_date: str = ""

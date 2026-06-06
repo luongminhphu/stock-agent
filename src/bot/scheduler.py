@@ -1557,3 +1557,85 @@ class IntelligenceEngineScheduler:
                 error=str(exc),
             )
             await self._monitor.record_failure(task_name, exc)
+
+
+# ─── ProactiveDiscoveryScheduler ─────────────────────────────────────────────
+
+_DISCOVERY_TIME = datetime.time(hour=2, minute=30, tzinfo=datetime.UTC)  # 09:30 ICT
+
+
+class ProactiveDiscoveryScheduler:
+    """Trigger ProactiveDiscoveryService at 09:30 ICT on weekdays.
+
+    Fires 30 minutes after market open — enough time for morning price action
+    to materialise before AI synthesis runs.
+
+    Flow:
+        09:30 ICT → _run() → ProactiveDiscoveryService.run(user_id)
+                           → AI synthesis → ProactiveDiscoveryReadyEvent
+                           → ProactiveDiscoverySubscriber → Discord embed
+
+    No EventBus intermediary needed — service owns the full pipeline and
+    emits the event internally. Scheduler is a pure timing adapter.
+
+    Graceful skip:
+        - Weekends.
+        - scheduler_user_id not configured → warning, no-op.
+        - quote_service not ready → warning, no-op.
+        - All exceptions caught; never blocks other schedulers.
+    """
+
+    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
+        self._client  = client
+        self._monitor = monitor or get_monitor()
+
+    def start(self) -> None:
+        self._monitor.register_task("proactive_discovery.morning")
+        self._task.start()
+        logger.info("scheduler.proactive_discovery.started", time_ict="09:30")
+
+    def stop(self) -> None:
+        self._task.cancel()
+        logger.info("scheduler.proactive_discovery.stopped")
+
+    @tasks.loop(time=_DISCOVERY_TIME)
+    async def _task(self) -> None:
+        if datetime.datetime.now(tz=datetime.UTC).weekday() >= 5:
+            return
+        await self._run(task_name="proactive_discovery.morning")
+
+    @_task.before_loop
+    async def _before_task(self) -> None:
+        await self._client.wait_until_ready()
+
+    async def _run(self, task_name: str) -> None:
+        """Call ProactiveDiscoveryService — thin timing adapter only."""
+        from src.platform.bootstrap import get_proactive_discovery_service
+        from src.platform.config import settings
+
+        user_id = getattr(settings, "scheduler_user_id", None)
+        if not user_id:
+            logger.warning(
+                "scheduler.proactive_discovery.skipped",
+                reason="scheduler_user_id not configured",
+            )
+            return
+
+        svc = get_proactive_discovery_service()
+        if svc is None:
+            logger.warning(
+                "scheduler.proactive_discovery.skipped",
+                reason="ProactiveDiscoveryService not initialised at bootstrap",
+            )
+            return
+
+        try:
+            ok = await svc.run(user_id=str(user_id))
+            if ok:
+                await self._monitor.record_success(task_name)
+                logger.info("scheduler.proactive_discovery.done", user_id=str(user_id))
+            else:
+                logger.warning("scheduler.proactive_discovery.no_output", user_id=str(user_id))
+        except Exception as exc:
+            logger.error("scheduler.proactive_discovery.error", error=str(exc))
+            await self._monitor.record_failure(task_name, exc)

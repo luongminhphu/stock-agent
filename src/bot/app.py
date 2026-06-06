@@ -75,6 +75,8 @@ def create_bot() -> commands.Bot:
             _start_trend_shift_subscriber(bot)
             _start_stress_test_subscriber(bot)
             _start_position_risk_subscriber(bot)           # portfolio loss threshold → Discord
+            _start_proactive_discovery_subscriber(bot)        # AI market scan → ranked picks → Discord
+            _start_proactive_discovery_scheduler(bot)         # triggers 09:30 ICT weekdays
             logger.info(
                 "bot.ready",
                 user=str(bot.user),
@@ -471,6 +473,40 @@ def _start_stress_test_subscriber(bot: commands.Bot) -> None:
     subscriber.set_client(bot)
     subscriber.register()
     logger.info("bot.stress_test_subscriber.registered", channel_id=channel_id)
+
+
+def _start_proactive_discovery_subscriber(bot: commands.Bot) -> None:
+    """Wire ProactiveDiscoveryReadyEvent → Discord embed.
+
+    Delivery chain:
+        ProactiveDiscoveryService.run()          [market segment]
+          → ProactiveDiscoveryAgent.analyze()    [ai segment]
+            → ProactiveDiscoveryReadyEvent        [platform/event_bus]
+              → ProactiveDiscoverySubscriber      [bot — Discord embed]
+                → embed: ranked picks (max 5) with verdict, entry logic
+                → channel.send(embed)             [alert_channel]
+    """
+    from src.bot.proactive_discovery_subscriber import ProactiveDiscoverySubscriber
+
+    channel_id = getattr(settings, "alert_channel_id", None)
+    if not channel_id:
+        logger.warning(
+            "bot.proactive_discovery_subscriber.not_available",
+            reason="alert_channel_id not configured — proactive discovery embeds disabled",
+        )
+        return
+
+    subscriber = ProactiveDiscoverySubscriber(bot)
+    subscriber.register()
+    logger.info("bot.proactive_discovery_subscriber.registered", channel_id=channel_id)
+
+
+def _start_proactive_discovery_scheduler(bot: commands.Bot) -> None:
+    """Start ProactiveDiscoveryScheduler — fires 09:30 ICT (02:30 UTC) on weekdays."""
+    from src.bot.scheduler import ProactiveDiscoveryScheduler
+    scheduler = ProactiveDiscoveryScheduler(bot)
+    scheduler.start()
+    logger.info("bot.proactive_discovery_scheduler.started")
 
 
 def _start_position_risk_subscriber(bot: commands.Bot) -> None:
