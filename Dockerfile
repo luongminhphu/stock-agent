@@ -26,15 +26,20 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 RUN pip install --upgrade pip
 
-# Layer 1: chỉ copy pyproject.toml + stub src — layer này cache until pyproject.toml đổi.
+# Layer 1: chỉ copy pyproject.toml — layer này cache until pyproject.toml đổi.
 # Commit code không đụng vào layer này → pip không bao giờ chạy lại khi chỉ đổi code.
 COPY pyproject.toml ./
-RUN mkdir -p src && touch src/__init__.py
 
-# BuildKit cache mount giữ pip wheel cache giữa các lần build trên host.
-# Khi pyproject.toml đổi: pip chỉ download package mới, package cũ vẫn được cache.
+# Parse [project.dependencies] từ pyproject.toml bằng Python stdlib (tomllib, Python 3.11+)
+# rồi pip install trực tiếp — không install package stock-agent vào venv, giữ source
+# hoàn toàn qua PYTHONPATH. BuildKit cache mount tránh re-download wheel đã có.
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install .
+    python - <<'EOF'
+import tomllib, subprocess, sys
+with open("pyproject.toml", "rb") as f:
+    deps = tomllib.load(f)["project"]["dependencies"]
+subprocess.check_call([sys.executable, "-m", "pip", "install", "--cache-dir", "/root/.cache/pip", *deps])
+EOF
 
 # -- Stage 2: runtime -------------------------------------------------------
 FROM python:3.12-slim AS runtime
