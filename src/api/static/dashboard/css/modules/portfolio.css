@@ -305,3 +305,19 @@ td.cell-missing {
     transition: none;
   }
 }
+
+/* ── P&L color rules (Trades + Thesis tables) ──────────────────────────── */
+.col-pnl.positive,
+.col-pct.positive {
+  color: var(--success);
+}
+
+.col-pnl.negative,
+.col-pct.negative {
+  color: var(--orange);
+}
+
+.col-pnl.neutral,
+.col-pct.neutral {
+  color: var(--muted);
+}
