@@ -294,3 +294,76 @@
 .rrg-q--weakening { background: var(--warning-bg);  color: var(--warning); }
 .rrg-q--lagging   { background: var(--danger-bg);   color: var(--danger);  }
 .rrg-q--improving { background: var(--brand-bg);    color: var(--brand);   }
+
+/* ── RRG Filter bar ──────────────────────────────────────────────── */
+.rrg-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  padding-bottom: var(--space-2);
+}
+
+/* "Tất cả" / "Bỏ hết" bulk buttons */
+.rrg-bulk-btn {
+  padding: 2px var(--space-2);
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--surface-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  white-space: nowrap;
+  line-height: 1.6;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+.rrg-bulk-btn:hover {
+  color: var(--text);
+  background: var(--surface-2);
+  border-color: var(--line-strong);
+}
+
+/* Thin vertical divider between bulk btns and chips */
+.rrg-filter-divider {
+  width: 1px;
+  height: 14px;
+  background: var(--line);
+  flex-shrink: 0;
+}
+
+/* Ticker chip — toggle button */
+.rrg-chip {
+  padding: 2px 7px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--chip-color, var(--brand));
+  background: color-mix(in srgb, var(--chip-color, var(--brand)) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--chip-color, var(--brand)) 30%, transparent);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  white-space: nowrap;
+  line-height: 1.6;
+  transition: opacity var(--transition-fast), background var(--transition-fast);
+}
+.rrg-chip:hover {
+  background: color-mix(in srgb, var(--chip-color, var(--brand)) 22%, transparent);
+}
+
+/* Hidden state — greyed out, faded */
+.rrg-chip--off {
+  opacity: 0.30;
+  background: var(--surface-3);
+  border-color: var(--line);
+  color: var(--faint);
+}
+.rrg-chip--off:hover {
+  opacity: 0.55;
+}
+
+/* Legend empty fallback */
+.rrg-legend-empty {
+  font-size: var(--text-xs);
+  color: var(--faint);
+}
