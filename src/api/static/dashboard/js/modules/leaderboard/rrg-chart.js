@@ -92,16 +92,18 @@ export async function loadRRG() {
 
 function _renderFilterBar(wrap) {
   let bar = wrap.querySelector('.rrg-filter-bar');
-  if (!bar) {
+  const isNew = !bar;
+
+  if (isNew) {
     bar = document.createElement('div');
     bar.className = 'rrg-filter-bar';
-    // Insert before canvas (or at top of wrap after title/status)
     const firstChild = wrap.querySelector('.rrg-canvas, .rrg-legend');
     if (firstChild) wrap.insertBefore(bar, firstChild);
     else wrap.appendChild(bar);
   }
 
-  // "All" / "None" bulk buttons + ticker chips
+  // Rebuild chip HTML every time tickers may have changed (new fetch).
+  // Event listener is added ONLY on first creation to avoid stacking.
   bar.innerHTML = `
     <button class="rrg-bulk-btn" data-rrg-bulk="all"  type="button">Tất cả</button>
     <button class="rrg-bulk-btn" data-rrg-bulk="none" type="button">Bỏ hết</button>
@@ -111,7 +113,6 @@ function _renderFilterBar(wrap) {
       return `<button
         class="rrg-chip"
         data-rrg-ticker="${_esc(t.ticker)}"
-        data-rrg-color="${_esc(color)}"
         style="--chip-color:${color}"
         type="button"
         aria-pressed="true"
@@ -120,29 +121,35 @@ function _renderFilterBar(wrap) {
     }).join('')}
   `;
 
-  // Wire events (delegation on bar)
-  bar.addEventListener('click', e => {
-    const bulk = e.target.closest('[data-rrg-bulk]');
-    if (bulk) {
-      const mode = bulk.dataset.rrgBulk;
-      if (mode === 'all')  _hidden = new Set();
-      if (mode === 'none') _hidden = new Set(_allTickers.map(t => t.ticker));
-      _syncChips(bar);
-      _redraw(wrap);
-      return;
-    }
+  // Wire click ONCE — guard with dataset flag to survive innerHTML rebuilds
+  if (isNew) {
+    bar.addEventListener('click', e => {
+      const bulk = e.target.closest('[data-rrg-bulk]');
+      if (bulk) {
+        const mode = bulk.dataset.rrgBulk;
+        if (mode === 'all')  _hidden = new Set();
+        if (mode === 'none') _hidden = new Set(_allTickers.map(t => t.ticker));
+        _syncChips(bar);
+        _redraw(wrap);
+        return;
+      }
 
-    const chip = e.target.closest('[data-rrg-ticker]');
-    if (chip) {
-      const ticker = chip.dataset.rrgTicker;
-      if (_hidden.has(ticker)) _hidden.delete(ticker);
-      else                     _hidden.add(ticker);
-      // Prevent hiding all — keep at least 1 visible
-      if (_hidden.size === _allTickers.length) _hidden.delete(ticker);
-      _syncChips(bar);
-      _redraw(wrap);
-    }
-  });
+      const chip = e.target.closest('[data-rrg-ticker]');
+      if (chip) {
+        const ticker = chip.dataset.rrgTicker;
+        // Toggle: add to hidden if visible, remove if already hidden
+        if (_hidden.has(ticker)) {
+          _hidden.delete(ticker);
+        } else {
+          _hidden.add(ticker);
+          // Guard: cannot hide all — revert if this was the last visible one
+          if (_hidden.size === _allTickers.length) _hidden.delete(ticker);
+        }
+        _syncChips(bar);
+        _redraw(wrap);
+      }
+    });
+  }
 }
 
 function _syncChips(bar) {
