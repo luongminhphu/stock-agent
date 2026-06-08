@@ -11,7 +11,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 # ---------------------------------------------------------------------------
 # Shared primitives
@@ -124,10 +124,17 @@ class TimelineEventKind(StrEnum):
 
 
 class TimelineEvent(BaseModel):
-    """Single event on a thesis timeline."""
+    """Single event on a thesis timeline.
 
-    kind: str
-    ts: datetime
+    JSON output uses frontend-facing aliases:
+      kind  → event_type
+      ts    → occurred_at
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    kind: str         = Field(serialization_alias="event_type")
+    ts:   datetime    = Field(serialization_alias="occurred_at")
     summary: str
     detail: dict | None
 

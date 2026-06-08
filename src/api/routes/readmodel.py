@@ -793,7 +793,7 @@ async def get_leaderboard_single_user(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/thesis/{thesis_id}/timeline", response_model=ThesisTimelineResponse)
+@router.get("/thesis/{thesis_id}/timeline", response_model=ThesisTimelineResponse, response_model_by_alias=True)
 async def get_thesis_timeline(
     thesis_id: int,
     session: Annotated[AsyncSession, Depends(get_db)],

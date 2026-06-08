@@ -593,7 +593,7 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
   width: 1%;
   white-space: nowrap;
   text-align: center;
-  vertical-align: middle;
+  vertical-align: middle !important;
 }
 
 /* Score cell: number + tier badge always on single line */
@@ -622,7 +622,7 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
 }
 
 .thesis-row-actions {
-  display: inline-flex;
+  display: flex;
   gap: var(--space-2);
   align-items: center;
   justify-content: center;
