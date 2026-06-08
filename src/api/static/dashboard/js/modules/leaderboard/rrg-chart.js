@@ -107,6 +107,9 @@ export async function loadRRG() {
 
     _clearStatus();
     _renderFilterBar(wrap);
+    // Sync chip visual state with restored _hidden set (chips render aria-pressed=true by default)
+    const bar = wrap.querySelector('.rrg-filter-bar');
+    if (bar) _syncChips(bar);
     _redraw(wrap);
   } catch (err) {
     _setStatus(`Không tải được RRG: ${err.message}`);
