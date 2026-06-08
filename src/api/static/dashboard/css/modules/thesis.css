@@ -542,6 +542,7 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
   border-bottom: 1px solid rgba(148, 163, 184, 0.06);
   cursor: pointer;
   transition: background 140ms ease;
+  vertical-align: middle;
 }
 #thesesTableWrap tbody tr:hover    { background: rgba(255, 255, 255, 0.04); }
 #thesesTableWrap tbody tr.is-selected { background: rgba(79, 152, 163, 0.10); }
@@ -589,16 +590,13 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
    Replaces inline style="display:flex;gap:6px;align-items:center;justify-content:center"
    in render-thesis-table.js — SSOT enforced here.
 ─────────────────────────────────────────────────────────────────────────────────── */
-/* col-actions: make td itself a flex container so content is always centered */
+/* col-actions: table-cell with vertical-align — do NOT use display:flex on td (breaks table layout) */
 .col-actions {
   width: 1%;
   white-space: nowrap;
-  padding: 0 12px !important;
-  /* Use flex on the td directly — avoids vertical-align ambiguity in table rows */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
+  text-align: center;
+  vertical-align: middle;
+  padding: 0 8px;
 }
 
 /* Score cell: number + tier badge always on single line */
@@ -626,7 +624,10 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
   flex-shrink: 0;
 }
 
-/* thesis-row-actions is now redundant wrapper — keep for event delegation compat */
+/* thesis-row-actions: inline-flex wrapper inside td — aligns hm-slot + icon-btns horizontally */
 .thesis-row-actions {
-  display: contents; /* flatten so col-actions flex governs layout */
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  vertical-align: middle;
 }
