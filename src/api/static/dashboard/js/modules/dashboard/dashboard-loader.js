@@ -19,7 +19,7 @@ import {
 import { renderCatalystCalendar, renderSnapshots } from '../briefing/render-brief.js';
 import { renderCatalystUrgentStrip }              from '../market/catalyst-urgent.js';
 import { loadIntelligencePanel } from '../intelligence/intelligence-panel.js';
-import { loadLeaderboard } from './leaderboard-loader.js';
+import { loadLeaderboard } from '../leaderboard/leaderboard-service.js';
 import { renderHealthHeatmap, refreshHeatmapCell } from './render-heatmap.js';
 import { countUp, flashValue } from '../../utils/animate.js';
 
