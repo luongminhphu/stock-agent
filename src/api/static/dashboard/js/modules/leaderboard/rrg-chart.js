@@ -187,22 +187,23 @@ function _drawCanvas(wrap, tickers) {
   const plotW = W - PAD * 2;
   const plotH = H - PAD * 2;
 
-  // ── Axis range — always based on full dataset so axes don't jump when filtering
+  // ── Axis range — always based on full dataset so axes don't jump when filtering.
+  // Centre is ALWAYS fixed at 100 so the 4 quadrants are always equal size.
+  // halfSpan = max distance any point has from 100, plus a fixed padding.
   const allR = _allTickers.flatMap(t => t.trail.map(p => p.rs_ratio));
   const allM = _allTickers.flatMap(t => t.trail.map(p => p.rs_momentum));
-  const pad  = 1.5;
-  const rMid = (_minOf(allR) + _maxOf(allR)) / 2;
-  const mMid = (_minOf(allM) + _maxOf(allM)) / 2;
-  const span = Math.max(
-    _maxOf(allR) - _minOf(allR),
-    _maxOf(allM) - _minOf(allM),
-  ) + pad * 2;
-  const halfSpan = Math.max(span / 2, pad + 1);
+  const MIN_HALF = 3.5;   // minimum half-span so chart never collapses
+  const MARGIN   = 1.5;   // extra breathing room beyond the farthest point
 
-  const finalRMin = Math.min(rMid - halfSpan, 100 - pad - 1);
-  const finalRMax = Math.max(rMid + halfSpan, 100 + pad + 1);
-  const finalMMin = Math.min(mMid - halfSpan, 100 - pad - 1);
-  const finalMMax = Math.max(mMid + halfSpan, 100 + pad + 1);
+  const rHalf = Math.max(MIN_HALF, ...allR.map(v => Math.abs(v - 100))) + MARGIN;
+  const mHalf = Math.max(MIN_HALF, ...allM.map(v => Math.abs(v - 100))) + MARGIN;
+  // Use the larger of the two so X and Y scales are equal (square quadrants)
+  const halfSpan = Math.max(rHalf, mHalf);
+
+  const finalRMin = 100 - halfSpan;
+  const finalRMax = 100 + halfSpan;
+  const finalMMin = 100 - halfSpan;
+  const finalMMax = 100 + halfSpan;
 
   const toX = r => PAD + ((r - finalRMin) / (finalRMax - finalRMin)) * plotW;
   const toY = m => PAD + ((finalMMax - m) / (finalMMax - finalMMin)) * plotH;
