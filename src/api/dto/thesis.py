@@ -191,6 +191,7 @@ class ThesisUpdateRequest(BaseModel):
     entry_price: float | None = Field(default=None, gt=0)
     target_price: float | None = Field(default=None, gt=0)
     stop_loss: float | None = Field(default=None, gt=0)
+    time_horizon: str | None = Field(default=None, max_length=64, description="e.g. 'Q3/2026', '6 tháng', '2026-09-30'")
 
     @field_validator("direction", mode="before")
     @classmethod
