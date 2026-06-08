@@ -424,8 +424,14 @@ class DashboardService:
             return {
                 "last_feedback_outcome": row.last_outcome,
                 "last_feedback_at": last_at.isoformat() if last_at else None,
-                "acted_rate_30d": acted_rate,
+                # Primary keys
+                "acted_rate_30d":     acted_rate,
                 "total_feedbacks_30d": total,
+                "acted_count_30d":     acted,
+                # Aliases for frontend compatibility
+                "acted_rate":   acted_rate,
+                "total":        total,
+                "acted":        acted,
             }
         except Exception as exc:
             logger.warning("get_brief_feedback_summary.db_error", error=str(exc), exc_info=True)
@@ -434,6 +440,10 @@ class DashboardService:
                 "last_feedback_at": None,
                 "acted_rate_30d": None,
                 "total_feedbacks_30d": 0,
+                "acted_count_30d": 0,
+                "acted_rate": None,
+                "total": 0,
+                "acted": 0,
             }
 
     async def get_acted_tickers_recent(

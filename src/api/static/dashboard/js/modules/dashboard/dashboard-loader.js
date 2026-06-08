@@ -536,9 +536,12 @@ export function renderSummary(s, portfolio, briefFeedback) {
   const subEl   = el('briefActedSub');
   const card    = el('briefFeedbackCard');
   if (rateEl && briefFeedback) {
-    const acted = briefFeedback.acted_count  ?? briefFeedback.acted  ?? null;
-    const total = briefFeedback.total_count  ?? briefFeedback.total  ?? null;
-    const rate  = briefFeedback.acted_rate   ?? briefFeedback.rate   ?? null;
+    // API returns acted_rate_30d / total_feedbacks_30d — support both naming conventions
+    const acted = briefFeedback.acted_count     ?? briefFeedback.acted          ?? null;
+    const total = briefFeedback.total_count     ?? briefFeedback.total
+               ?? briefFeedback.total_feedbacks_30d                             ?? null;
+    const rate  = briefFeedback.acted_rate      ?? briefFeedback.rate
+               ?? briefFeedback.acted_rate_30d                                  ?? null;
 
     if (rate != null) {
       const pct = (rate * 100).toFixed(0);
