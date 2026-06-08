@@ -596,6 +596,31 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
   vertical-align: middle;
 }
 
+/* Score cell: number + tier badge always on single line */
+.col-score { vertical-align: middle; }
+.score-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  flex-wrap: nowrap;
+}
+.score-cell .badge {
+  font-size: 0.68rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* col-heatmap-actions: hm-slot + Sửa + Xóa all center-aligned */
+.col-heatmap-actions { vertical-align: middle; }
+
+/* hm-slot: inline wrapper so health-heatmap sits inline with icon-btns */
+.hm-slot {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
 .thesis-row-actions {
   display: inline-flex;
   gap: var(--space-2);

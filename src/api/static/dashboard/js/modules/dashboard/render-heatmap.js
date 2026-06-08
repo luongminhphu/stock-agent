@@ -71,19 +71,20 @@ export function renderHealthHeatmap(theses) {
   _renderLegend();
 
   theses.forEach(thesis => {
-    const row = document.querySelector(
-      `#thesesTableWrap [data-thesis-id="${thesis.id}"]`
+    // Target the .hm-slot inside col-actions — valid DOM, always in a <td>
+    const slot = document.querySelector(
+      `#thesesTableWrap .hm-slot[data-thesis-id="${thesis.id}"]`
     );
-    if (!row) return;
+    if (!slot) return;
 
     // Idempotent: remove previous render on hot reload
-    const existing = row.querySelector('.health-heatmap');
+    const existing = slot.querySelector('.health-heatmap');
     if (existing) existing.remove();
 
-    row.insertAdjacentHTML('beforeend', buildHeatmapRow(thesis));
+    slot.insertAdjacentHTML('beforeend', buildHeatmapRow(thesis));
 
     // Click any cell → open breakdown panel for this thesis
-    row.querySelector('.health-heatmap').addEventListener('click', () => {
+    slot.querySelector('.health-heatmap').addEventListener('click', () => {
       openBreakdownPanel(thesis);
     });
   });

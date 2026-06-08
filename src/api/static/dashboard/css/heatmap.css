@@ -16,8 +16,8 @@
   gap: 3px;
   align-items: center;
   vertical-align: middle;
-  margin-left: 8px;
   flex-shrink: 0;
+  /* margin-left removed — spacing handled by .thesis-row-actions gap */
 }
 
 /* ── Cell base ──────────────────────────────────────────────────── */

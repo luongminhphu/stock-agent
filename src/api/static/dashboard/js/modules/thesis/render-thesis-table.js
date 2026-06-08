@@ -310,8 +310,8 @@ export function renderThesesTable(list, callbacks = {}) {
               ${t.direction ? badge(t.direction) : '<span style="color:var(--muted);">—</span>'}
             </td>
             <td>${esc(t.title ?? '—')}</td>
-            <td class="${scoreClass(t.score)}">
-              <div style="display:flex;flex-direction:row;align-items:center;gap:6px;flex-wrap:wrap;">
+            <td class="col-score ${scoreClass(t.score)}">
+              <div class="score-cell">
                 <strong>${fmtScore(t.score)}</strong>
                 ${tierBadge}
               </div>
@@ -328,8 +328,9 @@ export function renderThesesTable(list, callbacks = {}) {
             </td>
             <td class="col-center">${badge(t.status)}</td>
             <td style="color:var(--muted);font-size:.82rem;">${fmtDate(t.updated_at)}</td>
-            <td class="col-actions">
+            <td class="col-actions col-heatmap-actions">
               <div class="thesis-row-actions">
+                <div class="hm-slot" data-thesis-id="${t.id}"></div>
                 <button class="icon-btn edit-thesis-btn" data-id="${t.id}" title="Sửa thesis">✏️</button>
                 <button class="icon-btn danger delete-thesis-btn" data-id="${t.id}" title="Xóa thesis">🗑</button>
               </div>
