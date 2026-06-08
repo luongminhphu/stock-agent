@@ -448,5 +448,7 @@ class ThesisService:
 
     @staticmethod
     def _assert_mutable(thesis: Thesis) -> None:
-        if thesis.status not in (ThesisStatus.ACTIVE, ThesisStatus.UNDER_REVIEW):
+        # UNDER_REVIEW was removed from ThesisStatus — mutable states are ACTIVE and WEAKENING.
+        # PAUSED is intentionally excluded: paused thesis should not be modified until resumed.
+        if thesis.status not in (ThesisStatus.ACTIVE, ThesisStatus.WEAKENING):
             raise ThesisAlreadyClosedError(thesis.id)
