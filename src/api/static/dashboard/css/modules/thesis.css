@@ -589,11 +589,16 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
    Replaces inline style="display:flex;gap:6px;align-items:center;justify-content:center"
    in render-thesis-table.js — SSOT enforced here.
 ─────────────────────────────────────────────────────────────────────────────────── */
+/* col-actions: make td itself a flex container so content is always centered */
 .col-actions {
   width: 1%;
   white-space: nowrap;
-  text-align: center;
-  vertical-align: middle !important;
+  padding: 0 12px !important;
+  /* Use flex on the td directly — avoids vertical-align ambiguity in table rows */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
 }
 
 /* Score cell: number + tier badge always on single line */
@@ -621,9 +626,7 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
   flex-shrink: 0;
 }
 
+/* thesis-row-actions is now redundant wrapper — keep for event delegation compat */
 .thesis-row-actions {
-  display: flex;
-  gap: var(--space-2);
-  align-items: center;
-  justify-content: center;
+  display: contents; /* flatten so col-actions flex governs layout */
 }
