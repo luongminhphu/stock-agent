@@ -118,10 +118,6 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
           <strong class="dsb-kpi-value">${fmt(t.stop_loss)}₫ ${downsideRisk ? `<span class="dsb-downside">${downsideRisk}%</span>` : ''}</strong>
         </div>` : ''}
       </div>
-      <div class="dsb-actions">
-        <button class="ghost-btn" id="detailEditBtn">✏️ Sửa</button>
-        <button class="danger-btn" id="detailDeleteBtn">🗑 Xóa</button>
-      </div>
     </div>
 
     <nav class="detail-tab-nav" role="tablist" aria-label="Thesis sections">
@@ -134,6 +130,10 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
       </button>
       <button class="dtab"        role="tab" aria-selected="false" data-tab="reviews"      aria-controls="dtab-reviews">🔍 Reviews</button>
       <button class="dtab"        role="tab" aria-selected="false" data-tab="history"      aria-controls="dtab-history">📅 History</button>
+      <div class="dtab-nav-actions" role="none">
+        <button class="ghost-btn ghost-btn--sm" id="detailEditBtn" type="button">✏️ Sửa</button>
+        <button class="danger-btn danger-btn--sm" id="detailDeleteBtn" type="button">🗑 Xóa</button>
+      </div>
     </nav>
 
     <div class="detail-tab-panels">

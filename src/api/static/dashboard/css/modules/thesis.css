@@ -396,6 +396,28 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
 .dtab-count--warn   { background: rgba(251,191,36,.18); color: #fbbf24; }
 .dtab-count--danger { background: rgba(248,113,113,.18); color: #f87171; }
 
+/* Sửa / Xóa buttons pinned to right end of tab nav — same row, aligned center */
+.dtab-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding-left: 12px;
+  flex-shrink: 0;
+}
+.ghost-btn--sm {
+  padding: 3px 10px;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  border-radius: var(--radius-btn, 6px);
+}
+.danger-btn--sm {
+  padding: 3px 10px;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  border-radius: var(--radius-btn, 6px);
+}
+
 /* ── Tab panels ───────────────────────────────────────────────────────────────── */
 .detail-tab-panels { padding: var(--space-4) var(--space-3); }
 .dtab-panel        { display: none; animation: tabFadeIn 180ms ease; }
