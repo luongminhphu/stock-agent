@@ -53,6 +53,31 @@ let _allTickers = [];   // full list from API (valid entries only)
 let _hidden     = new Set();  // tickers currently hidden
 let _asOf       = null;
 
+// ── Persistence ──────────────────────────────────────────────────────────
+const _STORAGE_KEY = 'rrg_hidden_tickers';
+
+function _saveHidden() {
+  try {
+    localStorage.setItem(_STORAGE_KEY, JSON.stringify([..._hidden]));
+  } catch (_) { /* storage unavailable — silent */ }
+}
+
+/** Restore persisted hidden set, clamped to currently valid tickers. */
+function _loadHidden(validTickers) {
+  try {
+    const raw = localStorage.getItem(_STORAGE_KEY);
+    if (!raw) return new Set();
+    const saved = new Set(JSON.parse(raw));
+    // Only keep tickers that still exist in the current fetch
+    const clamped = new Set([...saved].filter(t => validTickers.has(t)));
+    // Guard: if every current ticker is hidden, fall back to showing all
+    if (clamped.size >= validTickers.size) return new Set();
+    return clamped;
+  } catch (_) {
+    return new Set();
+  }
+}
+
 // ── Public ────────────────────────────────────────────────────────────────
 
 export async function loadRRG() {
@@ -77,7 +102,7 @@ export async function loadRRG() {
     }
 
     _allTickers = valid;
-    _hidden     = new Set();   // reset filter on reload
+    _hidden     = _loadHidden(new Set(valid.map(t => t.ticker)));
     _asOf       = data.as_of ?? null;
 
     _clearStatus();
@@ -129,6 +154,7 @@ function _renderFilterBar(wrap) {
         const mode = bulk.dataset.rrgBulk;
         if (mode === 'all')  _hidden = new Set();
         if (mode === 'none') _hidden = new Set(_allTickers.map(t => t.ticker));
+        _saveHidden();
         _syncChips(bar);
         _redraw(wrap);
         return;
@@ -145,6 +171,7 @@ function _renderFilterBar(wrap) {
           // Guard: cannot hide all — revert if this was the last visible one
           if (_hidden.size === _allTickers.length) _hidden.delete(ticker);
         }
+        _saveHidden();
         _syncChips(bar);
         _redraw(wrap);
       }
