@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re as _re
 from dataclasses import dataclass, field
 from typing import Any, Type, TypeVar
 
@@ -226,6 +227,8 @@ class AIClient:
 
         # Strip markdown fences if model wraps output anyway
         content = _strip_json_fences(content)
+        # Strip citation markers inserted by web-search models (e.g. [1][2])
+        content = _clean_citations(content)
 
         try:
             return response_schema.model_validate(json.loads(content))
@@ -279,6 +282,21 @@ def _strip_json_fences(text: str) -> str:
         if text.endswith("```"):
             text = text[:-3].rstrip()
     return text
+
+
+_CITATION_RE = _re.compile(r'\[\d+\]')
+
+
+def _clean_citations(text: str) -> str:
+    """Strip inline citation markers inserted by web-search models (e.g. sonar-pro).
+
+    Models like Perplexity sonar-pro append [1], [2][3] etc. inside JSON string
+    values.  These are syntactically valid in prose but break JSON parsing.
+
+    Strategy: remove every occurrence of [<digits>] globally.  This is safe
+    because no JSON field name or numeric value contains this pattern.
+    """
+    return _CITATION_RE.sub('', text)
 
 
 @dataclass(frozen=True)
