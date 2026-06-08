@@ -191,6 +191,7 @@ async def create_thesis(
     ]
 
     thesis = await svc.create(
+        user_id,
         CreateThesisInput(
             user_id=user_id,
             ticker=body.ticker,
@@ -200,10 +201,19 @@ async def create_thesis(
             entry_price=body.entry_price,
             target_price=body.target_price,
             stop_loss=body.stop_loss,
-            assumptions=body.assumptions or None,
-            catalysts=catalyst_inputs or None,
-        )
+        ),
     )
+
+    # Save assumptions (list[str] → AddAssumptionInput)
+    for desc in (body.assumptions or []):
+        await svc.add_assumption(
+            thesis.id, user_id, AddAssumptionInput(description=desc)
+        )
+
+    # Save catalysts (already mapped to AddCatalystInput above)
+    for cat in catalyst_inputs:
+        await svc.add_catalyst(thesis.id, user_id, cat)
+
     return ThesisResponse.model_validate(thesis)
 
 
