@@ -15,6 +15,7 @@
 
 import { getJson } from '../../api/client.js';
 import { loadThesisDetail } from '../thesis/thesis-service.js';
+import { loadRRG } from './rrg-chart.js';
 
 const LIMIT        = 5;
 let   _wired       = false;
@@ -46,6 +47,9 @@ export async function loadLeaderboard(sortBy = 'score') {
     );
     const items = Array.isArray(data) ? data : (data.entries ?? []);
     _render(list, items, sortBy);
+
+    // Load RRG chart after leaderboard renders (non-blocking)
+    loadRRG().catch(err => console.warn('[rrg] loadRRG failed:', err));
 
     if (!_itemsWired) {
       _wireItemClicks(list);
