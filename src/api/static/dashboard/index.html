@@ -552,6 +552,11 @@
             <span>AI đã học được gì?</span>
           </a>
 
+          <a class="nav-item" href="#cluster-e" aria-label="Cluster E: Thesis đang quay vòng thế nào?">
+            <span class="nav-cluster-badge" aria-hidden="true">E</span>
+            <span>Rotation graph</span>
+          </a>
+
           <span class="nav-section-label">Modules</span>
 
           <a class="nav-item" href="#watchlistSection">
@@ -958,11 +963,6 @@
                 <li class="lb-item lb-item--skel" aria-hidden="true"><div class="skel skel-text"></div></li>
                 <li class="lb-item lb-item--skel" aria-hidden="true"><div class="skel skel-text"></div></li>
               </ol>
-              <!-- RRG Chart — embeds below leaderboard list -->
-              <div id="rrgWrap" class="rrg-wrap" aria-label="Relative Rotation Graph">
-                <p class="rrg-title">📡 Relative Rotation Graph (26w)</p>
-                <p id="rrgStatus" class="rrg-status">Đang tải…</p>
-              </div>
             </section>
 
             <section class="panel glass validation-layer backtesting-panel" aria-labelledby="backtestTitle">
@@ -1221,6 +1221,35 @@
           </div><!-- /memory-grid -->
 
         </div><!-- /cluster-d -->
+
+        <!-- ══════════════════════════════════════════════════════════════════
+             CLUSTER E — "Thesis đang quay vòng thế nào?"
+        ══════════════════════════════════════════════════════════════════ -->
+        <div class="cluster" id="cluster-e" aria-label="Cluster E: Thesis đang quay vòng thế nào?">
+          <div class="cluster-label">
+            <span class="cluster-badge">E</span>
+            <div class="cluster-label-content">
+              <span class="cluster-label-title">Thesis đang quay vòng thế nào?</span>
+              <span class="cluster-label-desc">Relative Rotation Graph · RS-Ratio · RS-Momentum · 26 tuần</span>
+            </div>
+          </div>
+
+          <section id="rrgPanel" class="panel glass" aria-labelledby="rrgPanelTitle">
+            <div class="panel-header split-header">
+              <div>
+                <p class="eyebrow">⑦ 📡 RRG</p>
+                <h2 id="rrgPanelTitle">Relative Rotation Graph</h2>
+              </div>
+              <p class="muted panel-hint">VNINDEX benchmark · 26 tuần · trail 8 điểm/tuần</p>
+            </div>
+            <div class="panel-body">
+              <div id="rrgWrap" class="rrg-wrap" aria-label="Relative Rotation Graph">
+                <p id="rrgStatus" class="rrg-status">Đang tải…</p>
+              </div>
+            </div>
+          </section>
+
+        </div><!-- /cluster-e -->
 
       </main>
 
@@ -1570,7 +1599,7 @@
         });
 
         /* Active nav item: highlight based on scroll position ─────────── */
-        var clusters = ['cluster-a', 'cluster-b', 'cluster-c', 'cluster-d'];
+        var clusters = ['cluster-a', 'cluster-b', 'cluster-c', 'cluster-d', 'cluster-e'];
         var navLinks  = document.querySelectorAll('.nav-item[href^="#cluster-"]');
 
         function updateActiveNav() {

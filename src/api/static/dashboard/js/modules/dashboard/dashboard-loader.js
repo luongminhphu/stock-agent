@@ -20,6 +20,7 @@ import { renderCatalystCalendar, renderSnapshots } from '../briefing/render-brie
 import { renderCatalystUrgentStrip }              from '../market/catalyst-urgent.js';
 import { loadIntelligencePanel } from '../intelligence/intelligence-panel.js';
 import { loadLeaderboard } from '../leaderboard/leaderboard-service.js';
+import { loadRRG }          from '../leaderboard/rrg-chart.js';
 import { renderHealthHeatmap, refreshHeatmapCell } from './render-heatmap.js';
 import { countUp, flashValue } from '../../utils/animate.js';
 
@@ -390,6 +391,7 @@ export async function loadDashboard() {
     });
 
     loadLeaderboard().catch(() => null);
+    loadRRG().catch(() => null);
     // Intelligence snapshot: lazy — không block main render
     loadIntelligencePanel().catch(() => null);
 
