@@ -201,6 +201,7 @@ async def create_thesis(
             entry_price=body.entry_price,
             target_price=body.target_price,
             stop_loss=body.stop_loss,
+            time_horizon=body.time_horizon,
         ),
     )
 

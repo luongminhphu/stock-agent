@@ -27,6 +27,7 @@ class CreateThesisInput:
     entry_price: float | None = None
     target_price: float | None = None
     stop_loss: float | None = None
+    time_horizon: str | None = None  # e.g. "Q3/2026", "6 tháng" — parsed to target_date by service
     assumptions: list[str] | None = None
     catalysts: list[AddCatalystInput] | None = None
     user_id: str | None = None
