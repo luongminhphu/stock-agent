@@ -237,23 +237,32 @@ function _renderExposureBar(positions) {
   const sorted  = [...withMV].sort((a, b) => b.market_value - a.market_value);
   const palette = ['#4f98a3','#d19900','#6daa45','#bb653b','#5591c7','#a86fdf','#dd6974','#fdab43','#6daa45','#4f98a3'];
 
-  const overConcentrated = sorted.some(p => (p.market_value / total) >= 0.3);
-  const warning = overConcentrated
-    ? '<span class="exposure-warning">⚠️ Over-concentrated</span>' : '';
+  const warnChip = sorted.some(p => (p.market_value / total) >= 0.3)
+    ? '<span class="exposure-warn-chip" title="1 mã chiếm ≥30% danh mục">⚠️ Over-concentrated</span>'
+    : '';
 
   const segments = sorted.map((p, i) => {
     const pct = (p.market_value / total * 100).toFixed(1);
-    return `<div class="exposure-seg" style="width:${pct}%;background:${palette[i % palette.length]}" title="${_esc(p.ticker)} ${pct}%"></div>`;
+    return `<div class="exposure-segment" style="width:${pct}%;background:${palette[i % palette.length]}" title="${_esc(p.ticker)} ${pct}%"></div>`;
   }).join('');
 
   const legend = sorted.map((p, i) => {
-    const pct = (p.market_value / total * 100).toFixed(1);
-    return `<span class="exposure-legend-item"><span class="exposure-dot" style="background:${palette[i % palette.length]}"></span>${_esc(p.ticker)} ${pct}%</span>`;
+    const pct  = (p.market_value / total * 100).toFixed(1);
+    const warn = (p.market_value / total) >= 0.3 ? ' exposure-legend-warn' : '';
+    return `<span class="exposure-legend-item${warn}">
+      <span class="exposure-dot" style="background:${palette[i % palette.length]}"></span>
+      <span class="exposure-ticker">${_esc(p.ticker)}</span>
+      <span class="exposure-pct">${pct}%</span>
+    </span>`;
   }).join('');
 
-  return `<div class="exposure-bar-wrap">
-    <div class="exposure-bar">${segments}</div>
-    <div class="exposure-legend">${legend}${warning}</div>
+  return `<div class="exposure-bar-block">
+    <div class="exposure-bar-header">
+      <span class="exposure-label">Concentration</span>
+      ${warnChip}
+    </div>
+    <div class="exposure-bar-track">${segments}</div>
+    <div class="exposure-legend">${legend}</div>
   </div>`;
 }
 
