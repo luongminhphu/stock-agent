@@ -29,7 +29,9 @@
 import { getJson } from '../../api/client.js';
 
 // ── Config ────────────────────────────────────────────────────────────────
-const API_URL   = '/api/v1/rrg/thesis';
+const API_URL         = '/api/v1/rrg/thesis';
+const LOOKBACK_OPTIONS = [26, 52];  // weeks — maps to toggle buttons
+const LOOKBACK_KEY     = 'rrg_lookback_weeks';
 const CANVAS_ID = 'rrgCanvas';
 const WRAP_ID   = 'rrgWrap';
 const STATUS_ID = 'rrgStatus';
@@ -49,9 +51,10 @@ const TRAIL_PALETTE = [
 
 // ── Module state ──────────────────────────────────────────────────────────
 // Cached after first fetch; filter operates on this.
-let _allTickers = [];   // full list from API (valid entries only)
-let _hidden     = new Set();  // tickers currently hidden
-let _asOf       = null;
+let _allTickers    = [];        // full list from API (valid entries only)
+let _hidden        = new Set(); // tickers currently hidden
+let _asOf          = null;
+let _lookbackWeeks = _loadLookback(); // 26 or 52 — persisted
 
 // ── Persistence ──────────────────────────────────────────────────────────
 const _STORAGE_KEY = 'rrg_hidden_tickers';
@@ -60,6 +63,17 @@ function _saveHidden() {
   try {
     localStorage.setItem(_STORAGE_KEY, JSON.stringify([..._hidden]));
   } catch (_) { /* storage unavailable — silent */ }
+}
+
+/** Persist + restore lookback weeks selection. */
+function _saveLookback() {
+  try { localStorage.setItem(LOOKBACK_KEY, String(_lookbackWeeks)); } catch (_) {}
+}
+function _loadLookback() {
+  try {
+    const v = parseInt(localStorage.getItem(LOOKBACK_KEY), 10);
+    return LOOKBACK_OPTIONS.includes(v) ? v : LOOKBACK_OPTIONS[0];
+  } catch (_) { return LOOKBACK_OPTIONS[0]; }
 }
 
 /** Restore persisted hidden set, clamped to currently valid tickers. */
@@ -87,7 +101,7 @@ export async function loadRRG() {
   _setStatus('Đang tải RRG…');
 
   try {
-    const data = await getJson(API_URL);
+    const data = await getJson(`${API_URL}?lookback_weeks=${_lookbackWeeks}`);
     const tickers = data?.tickers ?? [];
 
     if (!tickers.length) {
@@ -107,9 +121,9 @@ export async function loadRRG() {
 
     _clearStatus();
     _renderFilterBar(wrap);
-    // Sync chip visual state with restored _hidden set (chips render aria-pressed=true by default)
+    // Sync chip + lookback toggle visual state with restored values
     const bar = wrap.querySelector('.rrg-filter-bar');
-    if (bar) _syncChips(bar);
+    if (bar) { _syncChips(bar); _syncLookbackBtns(bar); }
     _redraw(wrap);
   } catch (err) {
     _setStatus(`Không tải được RRG: ${err.message}`);
@@ -133,6 +147,10 @@ function _renderFilterBar(wrap) {
   // Rebuild chip HTML every time tickers may have changed (new fetch).
   // Event listener is added ONLY on first creation to avoid stacking.
   bar.innerHTML = `
+    ${LOOKBACK_OPTIONS.map(w =>
+      `<button class="rrg-bulk-btn rrg-lookback-btn" data-rrg-lookback="${w}" type="button">${w}W</button>`
+    ).join('')}
+    <span class="rrg-filter-divider"></span>
     <button class="rrg-bulk-btn" data-rrg-bulk="all"  type="button">Tất cả</button>
     <button class="rrg-bulk-btn" data-rrg-bulk="none" type="button">Bỏ hết</button>
     <span class="rrg-filter-divider"></span>
@@ -152,6 +170,19 @@ function _renderFilterBar(wrap) {
   // Wire click ONCE — guard with dataset flag to survive innerHTML rebuilds
   if (isNew) {
     bar.addEventListener('click', e => {
+      // Lookback toggle (26W / 52W) — triggers re-fetch
+      const lookbackBtn = e.target.closest('[data-rrg-lookback]');
+      if (lookbackBtn) {
+        const weeks = parseInt(lookbackBtn.dataset.rrgLookback, 10);
+        if (weeks !== _lookbackWeeks) {
+          _lookbackWeeks = weeks;
+          _saveLookback();
+          _syncLookbackBtns(bar);
+          loadRRG(); // re-fetch with new lookback
+        }
+        return;
+      }
+
       const bulk = e.target.closest('[data-rrg-bulk]');
       if (bulk) {
         const mode = bulk.dataset.rrgBulk;
@@ -180,6 +211,14 @@ function _renderFilterBar(wrap) {
       }
     });
   }
+}
+
+function _syncLookbackBtns(bar) {
+  bar.querySelectorAll('[data-rrg-lookback]').forEach(btn => {
+    const active = parseInt(btn.dataset.rrgLookback, 10) === _lookbackWeeks;
+    btn.classList.toggle('rrg-bulk-btn--active', active);
+    btn.setAttribute('aria-pressed', String(active));
+  });
 }
 
 function _syncChips(bar) {
