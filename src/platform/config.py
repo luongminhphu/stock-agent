@@ -38,6 +38,15 @@ class Settings(BaseSettings):
     # Feature flags
     mock_market: bool = False  # Force MockAdapter regardless of environment
 
+    # Trading hours guard (Asia/Ho_Chi_Minh = UTC+7)
+    # Ngoài giờ này + T7/CN → QuoteService trả cached quote (hoặc skip fetch)
+    # Set MARKET_FETCH_ALWAYS=true trong .env để disable guard (debug/backfill)
+    market_open_hour:   int  = 9    # 09:00 ICT
+    market_open_minute: int  = 0
+    market_close_hour:  int  = 15   # 15:00 ICT (sau ATC ~14:45)
+    market_close_minute: int = 15
+    market_fetch_always: bool = False  # bypass guard khi cần debug
+
     # Briefing scheduler
     morning_channel_id: str = ""
     eod_channel_id: str = ""

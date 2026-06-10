@@ -9,7 +9,11 @@ import asyncio
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.platform.config import Settings
 
 # ---------------------------------------------------------------------------
 # Domain types
@@ -89,11 +93,62 @@ class MarketDataAdapter(ABC):
 
 
 # ---------------------------------------------------------------------------
+# Trading hours guard
+# ---------------------------------------------------------------------------
+
+_ICT = timezone(timedelta(hours=7))  # Asia/Ho_Chi_Minh (UTC+7, no DST)
+
+
+class TradingHoursGuard:
+    """Check whether live market data fetches should be allowed right now.
+
+    Rules (HOSE/HNX/UPCoM):
+    - Weekdays only (Mon–Fri)
+    - 09:00 – 15:15 ICT
+    - market_fetch_always=True bypasses all checks (debug / backfill)
+    """
+
+    def __init__(
+        self,
+        open_hour: int   = 9,
+        open_minute: int = 0,
+        close_hour: int  = 15,
+        close_minute: int = 15,
+        always: bool     = False,
+    ) -> None:
+        self._open   = open_hour  * 60 + open_minute
+        self._close  = close_hour * 60 + close_minute
+        self._always = always
+
+    @classmethod
+    def from_settings(cls, settings: "Settings") -> "TradingHoursGuard":
+        return cls(
+            open_hour    = settings.market_open_hour,
+            open_minute  = settings.market_open_minute,
+            close_hour   = settings.market_close_hour,
+            close_minute = settings.market_close_minute,
+            always       = settings.market_fetch_always,
+        )
+
+    def is_market_open(self, now: datetime | None = None) -> bool:
+        """Return True if live fetch is appropriate right now."""
+        if self._always:
+            return True
+        t = (now or datetime.now(_ICT)).astimezone(_ICT)
+        if t.weekday() >= 5:     # 5=Saturday, 6=Sunday
+            return False
+        minutes = t.hour * 60 + t.minute
+        return self._open <= minutes <= self._close
+
+
+# ---------------------------------------------------------------------------
 # In-process quote cache with in-flight deduplication
 # ---------------------------------------------------------------------------
 
 _QUOTE_TTL    = 3.0   # seconds — short enough for real-time feel, long enough to coalesce
 _BULK_TTL     = 3.0   # same for bulk
+# Ngoài giờ: cache lâu hơn (giá cuối phiên — 15 phút refreshà không cần thay đổi)
+_OFF_HOURS_TTL = 15 * 60.0   # 15 phút
 
 
 class _QuoteCache:
@@ -133,6 +188,9 @@ class _QuoteCache:
     def set_single(self, ticker: str, quote: Quote) -> None:
         self._single[ticker] = (quote, time.monotonic() + _QUOTE_TTL)
 
+    def set_single_ttl(self, ticker: str, quote: Quote, ttl: float) -> None:
+        self._single[ticker] = (quote, time.monotonic() + ttl)
+
     def get_bulk(self, tickers: list[str]) -> list[Quote] | None:
         key = self._bulk_key(tickers)
         entry = self._bulk.get(key)
@@ -142,11 +200,14 @@ class _QuoteCache:
         return None
 
     def set_bulk(self, tickers: list[str], quotes: list[Quote]) -> None:
+        self.set_bulk_ttl(tickers, quotes, _BULK_TTL)
+
+    def set_bulk_ttl(self, tickers: list[str], quotes: list[Quote], ttl: float) -> None:
         key = self._bulk_key(tickers)
-        self._bulk[key] = (quotes, time.monotonic() + _BULK_TTL)
+        self._bulk[key] = (quotes, time.monotonic() + ttl)
         # Also populate single cache from bulk result
         for q in quotes:
-            self._single[q.ticker] = (q, time.monotonic() + _QUOTE_TTL)
+            self._single[q.ticker] = (q, time.monotonic() + ttl)
 
     def get_inflight_single(self, ticker: str) -> asyncio.Future[Quote] | None:
         fut = self._inflight_single.get(ticker)
@@ -180,6 +241,14 @@ class QuoteServiceNotConfiguredError(Exception):
     """Raised when QuoteService is called without an adapter (Wave 1 stub)."""
 
 
+class MarketClosedError(Exception):
+    """Raised when a live fetch is requested outside trading hours.
+
+    Callers (price_enrichment, ChainedAdapter users, readmodel) should catch
+    this and return stale/cached data gracefully rather than showing an error.
+    """
+
+
 class QuoteService:
     """Public quote service used by watchlist, briefing, bot, and api segments.
 
@@ -191,9 +260,18 @@ class QuoteService:
     - In-flight dedup: concurrent callers for same ticker share 1 HTTP request.
     """
 
-    def __init__(self, adapter: MarketDataAdapter | None = None) -> None:
+    def __init__(
+        self,
+        adapter: MarketDataAdapter | None = None,
+        guard: TradingHoursGuard | None = None,
+    ) -> None:
         self._adapter = adapter
         self._cache   = _QuoteCache()
+        self._guard   = guard or TradingHoursGuard()  # default: standard HOSE hours
+
+    def _ttl_for_now(self) -> float:
+        """Short TTL during trading hours, long TTL outside."""
+        return _QUOTE_TTL if self._guard.is_market_open() else _OFF_HOURS_TTL
 
     def _require_adapter(self) -> MarketDataAdapter:
         if self._adapter is None:
@@ -210,18 +288,26 @@ class QuoteService:
         if cached is not None:
             return cached
 
-        # 2. In-flight dedup: join existing request if one is running
+        # 2. Outside trading hours — no live fetch, raise informative error
+        if not self._guard.is_market_open():
+            raise MarketClosedError(
+                f"Market is closed — no live quote for {sym}. "
+                "Use MARKET_FETCH_ALWAYS=true to bypass."
+            )
+
+        # 3. In-flight dedup: join existing request if one is running
         inflight = self._cache.get_inflight_single(sym)
         if inflight is not None:
             return await asyncio.shield(inflight)
 
-        # 3. Start new fetch, register as in-flight
+        # 4. Start new fetch, register as in-flight
         loop = asyncio.get_event_loop()
         fut: asyncio.Future[Quote] = loop.create_future()
         self._cache.set_inflight_single(sym, fut)
         try:
+            ttl = self._ttl_for_now()
             quote = await self._require_adapter().fetch_quote(sym)
-            self._cache.set_single(sym, quote)
+            self._cache.set_single_ttl(sym, quote, ttl)
             fut.set_result(quote)
             return quote
         except Exception as exc:
@@ -239,18 +325,26 @@ class QuoteService:
         if cached_bulk is not None:
             return cached_bulk
 
-        # 2. In-flight dedup
+        # 2. Outside trading hours — no live fetch
+        if not self._guard.is_market_open():
+            raise MarketClosedError(
+                f"Market is closed — no live quotes for {syms}. "
+                "Use MARKET_FETCH_ALWAYS=true to bypass."
+            )
+
+        # 3. In-flight dedup
         inflight = self._cache.get_inflight_bulk(syms)
         if inflight is not None:
             return await asyncio.shield(inflight)
 
-        # 3. Start new fetch
+        # 4. Start new fetch
         loop = asyncio.get_event_loop()
         fut: asyncio.Future[list[Quote]] = loop.create_future()
         self._cache.set_inflight_bulk(syms, fut)
         try:
+            ttl = self._ttl_for_now()
             quotes = await self._require_adapter().fetch_bulk_quotes(syms)
-            self._cache.set_bulk(syms, quotes)
+            self._cache.set_bulk_ttl(syms, quotes, ttl)
             fut.set_result(quotes)
             return quotes
         except Exception as exc:

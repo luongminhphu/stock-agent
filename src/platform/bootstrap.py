@@ -101,9 +101,12 @@ async def bootstrap() -> None:
 
     if _quote_service is None:
         from src.market.adapters.factory import build_adapter
-        from src.market.quote_service import QuoteService
+        from src.market.quote_service import QuoteService, TradingHoursGuard
+        from src.platform.config import get_settings
 
-        _quote_service = QuoteService(build_adapter())
+        _settings = get_settings()
+        _guard = TradingHoursGuard.from_settings(_settings)
+        _quote_service = QuoteService(build_adapter(), guard=_guard)
         logger.info("platform.bootstrap.quote_service_ready")
 
     # ── SymbolRegistry: dynamic engine init (HTTP + DB, async) ────────────────
