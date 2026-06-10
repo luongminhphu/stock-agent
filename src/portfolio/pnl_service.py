@@ -37,6 +37,8 @@ from src.platform.logging import get_logger
 from src.portfolio.models import DividendType, Position
 from src.portfolio.repository import PortfolioRepository
 
+
+
 logger = get_logger(__name__)
 
 _BREAKEVEN_EPSILON = 1.0
@@ -291,8 +293,21 @@ class PnlService:
                 f"qty={position.qty}, avg_cost={position.avg_cost} — "
                 "both must be positive."
             )
-        quote = await self._quote_service.get_quote(position.ticker)
-        current_price = quote.price  # type: ignore[union-attr]
+        try:
+            quote = await self._quote_service.get_quote(position.ticker)
+            current_price = quote.price  # type: ignore[union-attr]
+        except Exception as _exc:
+            # Import là lazy để tránh circular — kiểm tra theo tên class
+            if type(_exc).__name__ == "MarketClosedError":
+                # Ngoài giờ giao dịch: dùng avg_cost làm thị giá tạm (P&L = 0)
+                # Position vẫn hiển thị đầy đủ với giá vốn, không bị skip.
+                current_price = position.avg_cost
+                logger.debug(
+                    "pnl.market_closed.use_avg_cost ticker=%s avg_cost=%s",
+                    position.ticker, position.avg_cost,
+                )
+            else:
+                raise  # re-raise với lỗi khác (network, DB, ...) để get_portfolio_pnl log đúng
         unrealized_pnl = (current_price - position.avg_cost) * position.qty
         cost_basis = position.avg_cost * position.qty
         unrealized_pct = (unrealized_pnl / cost_basis * 100) if cost_basis else 0.0

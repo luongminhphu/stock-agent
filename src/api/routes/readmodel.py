@@ -91,14 +91,24 @@ async def _ensure_scan_snapshot(
 
 
 async def _build_price_map(tickers: list[str]) -> dict[str, float]:
-    """Fetch current prices cho danh sach tickers tu QuoteService."""
+    """Fetch current prices cho danh sach tickers tu QuoteService.
+
+    Trả {} khi market đóng (MarketClosedError) hoặc fetch thất bại.
+    Caller fallback sang avg_cost khi price_map thiếu key.
+    """
     if not tickers:
         return {}
     try:
         quote_svc = get_quote_service()
         quotes = await quote_svc.get_bulk_quotes(tickers)
         return {q.ticker: q.price for q in quotes if q.price}
-    except Exception:
+    except Exception as exc:
+        if type(exc).__name__ == "MarketClosedError":
+            # Ngoài giờ: im lặng, caller sẽ fallback sang avg_cost
+            pass
+        else:
+            from src.platform.logging import get_logger as _gl
+            _gl(__name__).warning("readmodel.price_map.fetch_failed error=%s", str(exc))
         return {}
 
 
