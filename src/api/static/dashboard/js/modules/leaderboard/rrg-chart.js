@@ -36,7 +36,9 @@ const LOOKBACK_KEY     = 'rrg_lookback_weeks';
 const CANVAS_ID = 'rrgCanvas';
 const WRAP_ID   = 'rrgWrap';
 const STATUS_ID = 'rrgStatus';
-const POPUP_ID  = 'rrgPopup';
+const POPUP_ID      = 'rrgPopup';
+const EXTRA_KEY     = 'rrg_extra_tickers';   // localStorage key
+const MAX_EXTRA     = 10;
 
 // Hit-test radius (CSS px) — click within this distance of a head dot counts
 const HIT_RADIUS = 18;
@@ -65,6 +67,9 @@ let _lookbackWeeks = _loadLookback(); // 26 or 52 — persisted
 // Map<ticker, {x, y}> in CSS pixel space.
 let _headPositions = new Map();
 
+// Extra tickers added by user (not in thesis/portfolio) — persisted localStorage
+let _extraTickers  = _loadExtra();   // Set<string>
+
 // ── Persistence ──────────────────────────────────────────────────────────
 const _STORAGE_KEY = 'rrg_hidden_tickers';
 
@@ -75,6 +80,17 @@ function _saveHidden() {
 }
 
 /** Persist + restore lookback weeks selection. */
+// ── Extra tickers persistence
+function _saveExtra() {
+  try { localStorage.setItem(EXTRA_KEY, JSON.stringify([..._extraTickers])); } catch (_) {}
+}
+function _loadExtra() {
+  try {
+    const v = JSON.parse(localStorage.getItem(EXTRA_KEY) ?? '[]');
+    return new Set(Array.isArray(v) ? v.slice(0, MAX_EXTRA) : []);
+  } catch (_) { return new Set(); }
+}
+
 function _saveLookback() {
   try { localStorage.setItem(LOOKBACK_KEY, String(_lookbackWeeks)); } catch (_) {}
 }
@@ -112,7 +128,10 @@ export async function loadRRG() {
   try {
     // trail_points=0 → backend auto-derives from lookback_weeks
     // (26W→13pts, 52W→26pts) so trail length reflects the chosen window.
-    const data = await getJson(`${API_URL}?lookback_weeks=${_lookbackWeeks}&trail_points=0`);
+    const extraParam = _extraTickers.size
+      ? `&extra=${[..._extraTickers].join(',')}`
+      : '';
+    const data = await getJson(`${API_URL}?lookback_weeks=${_lookbackWeeks}&trail_points=0${extraParam}`);
     const tickers = data?.tickers ?? [];
 
     if (!tickers.length) {
@@ -126,9 +145,13 @@ export async function loadRRG() {
       return;
     }
 
-    _allTickers = valid;
-    _hidden     = _loadHidden(new Set(valid.map(t => t.ticker)));
-    _asOf       = data.as_of ?? null;
+    _allTickers   = valid;
+    _hidden       = _loadHidden(new Set(valid.map(t => t.ticker)));
+    _asOf         = data.as_of ?? null;
+    // Sync extra set from backend (already sanitised + deduped server-side)
+    if (Array.isArray(data.extra_tickers)) {
+      _extraTickers = new Set(data.extra_tickers);
+    }
 
     _clearStatus();
     _renderFilterBar(wrap);
@@ -168,17 +191,41 @@ function _renderFilterBar(wrap) {
     <button class="rrg-bulk-btn" data-rrg-bulk="none" type="button">Bỏ hết</button>
     <span class="rrg-filter-divider"></span>
     ${_allTickers.map((t, idx) => {
-      const color = TRAIL_PALETTE[idx % TRAIL_PALETTE.length];
+      const color   = TRAIL_PALETTE[idx % TRAIL_PALETTE.length];
+      const isExtra = _extraTickers.has(t.ticker);
       return `<button
-        class="rrg-chip"
+        class="rrg-chip${isExtra ? ' rrg-chip--extra' : ''}"
         data-rrg-ticker="${_esc(t.ticker)}"
+        data-rrg-extra="${isExtra ? '1' : ''}"
         style="--chip-color:${color}"
         type="button"
         aria-pressed="true"
-        title="${_esc(t.ticker)} — ${_esc(t.quadrant)}"
-      >${_esc(t.ticker)}</button>`;
+        title="${_esc(t.ticker)} — ${_esc(t.quadrant)}${isExtra ? ' (thêm thủ công)' : ''}"
+      >${_esc(t.ticker)}${isExtra ? ` <span class="rrg-chip-remove" data-rrg-remove="${_esc(t.ticker)}">x</span>` : ''}</button>`;
     }).join('')}
+    <span class="rrg-filter-divider"></span>
+    <form class="rrg-add-form" data-rrg-add-form>
+      <input
+        class="rrg-add-input"
+        type="text"
+        placeholder="+ Mã cổ phiếu"
+        maxlength="10"
+        autocomplete="off"
+        spellcheck="false"
+        data-rrg-add-input
+      />
+    </form>
   `;
+  // Wire remove buttons on extra chips (rebuild each time, no stacking risk)
+  bar.querySelectorAll('[data-rrg-remove]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const sym = btn.dataset.rrgRemove;
+      _extraTickers.delete(sym);
+      _saveExtra();
+      loadRRG();
+    });
+  });
 
   // Wire click ONCE — guard with dataset flag to survive innerHTML rebuilds
   if (isNew) {
@@ -208,7 +255,7 @@ function _renderFilterBar(wrap) {
       }
 
       const chip = e.target.closest('[data-rrg-ticker]');
-      if (chip) {
+      if (chip && !e.target.closest('[data-rrg-remove]')) {
         const ticker = chip.dataset.rrgTicker;
         // Toggle: add to hidden if visible, remove if already hidden
         if (_hidden.has(ticker)) {
@@ -222,6 +269,19 @@ function _renderFilterBar(wrap) {
         _syncChips(bar);
         _redraw(wrap);
       }
+    });
+
+    // Form submit — add new extra ticker
+    bar.addEventListener('submit', e => {
+      e.preventDefault();
+      const input = bar.querySelector('[data-rrg-add-input]');
+      if (!input) return;
+      const sym = input.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+      input.value = '';
+      if (!sym || _extraTickers.size >= MAX_EXTRA) return;
+      _extraTickers.add(sym);
+      _saveExtra();
+      loadRRG();
     });
   }
 }

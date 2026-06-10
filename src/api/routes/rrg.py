@@ -43,6 +43,7 @@ async def get_rrg_thesis(
     benchmark:      str = Query(default="VNINDEX", description="Benchmark ticker"),
     lookback_weeks: int = Query(default=26,        ge=4,  le=52),
     trail_points:   int = Query(default=0,         ge=0,  le=52),
+    extra:          str = Query(default="",        description="Extra tickers (comma-separated) appended to thesis list"),
     session: AsyncSession = Depends(get_db),
     user_id: str          = Depends(get_current_user_id),
     ohlcv_svc: OHLCVService = Depends(get_ohlcv_service),
@@ -62,7 +63,16 @@ async def get_rrg_thesis(
     if trail_points == 0:
         trail_points = max(8, min(26, lookback_weeks // 2))
 
-    cache_extra = f"{benchmark}:{lookback_weeks}:{trail_points}"
+    # Parse + sanitise extra tickers (uppercase, max 10, alphanumeric only)
+    extra_tickers: list[str] = []
+    if extra:
+        for t in extra.split(","):
+            sym = t.strip().upper()
+            if sym and sym.isalnum() and len(sym) <= 10:
+                extra_tickers.append(sym)
+        extra_tickers = extra_tickers[:10]
+
+    cache_extra = f"{benchmark}:{lookback_weeks}:{trail_points}:{','.join(sorted(extra_tickers))}"
     cached = _cache.get("rrg", user_id, extra=cache_extra)
     if cached is not None:
         return cached
@@ -77,7 +87,11 @@ async def get_rrg_thesis(
         .distinct()
     )
     rows = (await session.execute(stmt)).all()
-    tickers = [row[0] for row in rows]
+    thesis_tickers = [row[0] for row in rows]
+
+    # Merge extra tickers — deduplicate, preserve thesis order first
+    seen = set(thesis_tickers)
+    tickers = thesis_tickers + [t for t in extra_tickers if t not in seen]
 
     if not tickers:
         return {
@@ -115,6 +129,7 @@ async def get_rrg_thesis(
         "lookback_weeks": result.lookback_weeks,
         "trail_points":   result.trail_points,
         "tickers":        [_serialise_ticker(t) for t in result.tickers],
+        "extra_tickers":  extra_tickers,   # FE uses this to style chips differently
     }
     _cache.set("rrg", user_id, response, extra=cache_extra)
     return response
