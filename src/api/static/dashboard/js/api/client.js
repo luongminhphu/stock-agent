@@ -76,8 +76,13 @@ function buildRequestKey(url, options = {}) {
 }
 
 async function fetchJson(url, options = {}) {
+  const method = (options.method ?? 'GET').toUpperCase();
   const r = await fetch(url, {
     ...options,
+    // Prevent browser from serving stale GET responses from HTTP cache.
+    // API data changes frequently (market prices, thesis state) — always
+    // go to the network. Server-side TTL cache handles repeat-fetch cost.
+    cache: method === 'GET' ? 'no-store' : (options.cache ?? 'default'),
     headers: { ...authHeaders(), ...(options.headers ?? {}) },
   });
   if (!r.ok) {
