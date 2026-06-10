@@ -23,12 +23,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.deps import get_current_user_id, get_db, get_ohlcv_service
 from src.market.ohlcv_service import OHLCVService
 from src.market.rrg_service import RRGService
+from src.readmodel.cache import DashboardTTLCache
 from src.thesis.models import Thesis, ThesisStatus
 
 router = APIRouter(prefix="/rrg", tags=["rrg"])
 
 # Scope: ACTIVE + WEAKENING (thesis is still in play)
 _ACTIVE_STATUSES = {ThesisStatus.ACTIVE, ThesisStatus.WEAKENING}
+
+# Module-level cache shared across requests (same process).
+# TTL = 10 min: RRG uses weekly OHLCV — intraday re-fetches are wasteful.
+_cache = DashboardTTLCache()
 
 
 @router.get("/thesis")
@@ -48,6 +53,12 @@ async def get_rrg_thesis(
       - trail: list of {rs_ratio, rs_momentum} — oldest → newest, weekly sampled
       - error: null on success, string on data failure
     """
+    # Cache key encodes all query params that affect the result.
+    cache_extra = f"{benchmark}:{lookback_weeks}:{trail_points}"
+    cached = _cache.get("rrg", user_id, extra=cache_extra)
+    if cached is not None:
+        return cached
+
     # 1. Fetch active thesis tickers from DB
     stmt = (
         select(Thesis.ticker)
@@ -90,10 +101,12 @@ async def get_rrg_thesis(
             "error":       t.error,
         }
 
-    return {
+    response = {
         "benchmark":      result.benchmark,
         "as_of":          result.as_of,
         "lookback_weeks": result.lookback_weeks,
         "trail_points":   result.trail_points,
         "tickers":        [_serialise_ticker(t) for t in result.tickers],
     }
+    _cache.set("rrg", user_id, response, extra=cache_extra)
+    return response

@@ -46,6 +46,7 @@ from src.ai.schemas import ThesisSuggestionResult
 from src.ai.schemas.thesis_debate import DebateOutput
 from src.api.deps import (
     get_current_user_id,
+    get_db,
     get_review_service,
     get_symbol_registry,
     get_thesis_debate_agent,
@@ -53,6 +54,14 @@ from src.api.deps import (
     get_thesis_suggest_agent,
     get_timeline_service,
 )
+from sqlalchemy.ext.asyncio import AsyncSession
+
+
+def _bust_thesis_cache(thesis_id: int, user_id: str, session: AsyncSession) -> None:
+    """Invalidate thesis_detail cache after any write that mutates thesis/assumptions/catalysts."""
+    DashboardService(session).invalidate_thesis_detail(user_id, thesis_id)
+
+
 from src.api.dto.thesis import (
     ApplyRecommendationRequest,
     ApplyAiReviewRequest,
@@ -77,6 +86,7 @@ from src.api.dto.thesis import (
     ThesisUpdateRequest,
 )
 from src.market.registry import SymbolNotFoundError, SymbolRegistry
+from src.readmodel.dashboard_service import DashboardService
 from src.readmodel.schemas import ConvictionTimelineResponse
 from src.readmodel.timeline_service import ThesisTimelineService
 from src.thesis.models import ThesisStatus
@@ -276,6 +286,7 @@ async def update_thesis(
     body: ThesisUpdateRequest,
     user_id: str = Depends(get_current_user_id),
     svc: ThesisService = Depends(get_thesis_service),
+    session: AsyncSession = Depends(get_db),
 ) -> ThesisResponse:
     """Partially update thesis header fields (title, summary, direction, prices)."""
     try:
@@ -296,6 +307,7 @@ async def update_thesis(
         raise _not_found(exc) from exc
     except ThesisAlreadyClosedError as exc:
         raise _conflict(exc) from exc
+    _bust_thesis_cache(thesis_id, user_id, session)
     return ThesisResponse.model_validate(thesis)
 
 
@@ -304,12 +316,14 @@ async def delete_thesis(
     thesis_id: int,
     user_id: str = Depends(get_current_user_id),
     svc: ThesisService = Depends(get_thesis_service),
+    session: AsyncSession = Depends(get_db),
 ) -> None:
     """Hard delete a thesis and all its children."""
     try:
         await svc.delete(thesis_id, user_id)
     except ThesisNotFoundError as exc:
         raise _not_found(exc) from exc
+    _bust_thesis_cache(thesis_id, user_id, session)
 
 
 @router.post("/{thesis_id}/close", response_model=ThesisResponse)
@@ -317,6 +331,7 @@ async def close_thesis(
     thesis_id: int,
     user_id: str = Depends(get_current_user_id),
     svc: ThesisService = Depends(get_thesis_service),
+    session: AsyncSession = Depends(get_db),
 ) -> ThesisResponse:
     """Mark thesis as closed."""
     try:
@@ -325,6 +340,7 @@ async def close_thesis(
         raise _not_found(exc) from exc
     except ThesisAlreadyClosedError as exc:
         raise _conflict(exc) from exc
+    _bust_thesis_cache(thesis_id, user_id, session)
     return ThesisResponse.model_validate(thesis)
 
 
@@ -333,6 +349,7 @@ async def invalidate_thesis(
     thesis_id: int,
     user_id: str = Depends(get_current_user_id),
     svc: ThesisService = Depends(get_thesis_service),
+    session: AsyncSession = Depends(get_db),
 ) -> ThesisResponse:
     """Mark thesis as invalidated."""
     try:
@@ -341,6 +358,7 @@ async def invalidate_thesis(
         raise _not_found(exc) from exc
     except ThesisAlreadyClosedError as exc:
         raise _conflict(exc) from exc
+    _bust_thesis_cache(thesis_id, user_id, session)
     return ThesisResponse.model_validate(thesis)
 
 
@@ -430,6 +448,7 @@ async def add_assumption(
     body: AssumptionCreateRequest,
     user_id: str = Depends(get_current_user_id),
     svc: ThesisService = Depends(get_thesis_service),
+    session: AsyncSession = Depends(get_db),
 ) -> AssumptionResponse:
     """Add a new assumption to a thesis."""
     try:
@@ -446,6 +465,7 @@ async def add_assumption(
         raise _not_found(exc) from exc
     except ThesisAlreadyClosedError as exc:
         raise _conflict(exc) from exc
+    _bust_thesis_cache(thesis_id, user_id, session)
     return AssumptionResponse.model_validate(assumption)
 
 
@@ -483,6 +503,7 @@ async def update_assumption(
     body: AssumptionUpdateRequest,
     user_id: str = Depends(get_current_user_id),
     svc: ThesisService = Depends(get_thesis_service),
+    session: AsyncSession = Depends(get_db),
 ) -> AssumptionResponse:
     """Update description, status, or note of an assumption."""
     try:
@@ -500,6 +521,7 @@ async def update_assumption(
         raise _not_found(exc) from exc
     except AssumptionNotFoundError as exc:
         raise _not_found(exc) from exc
+    _bust_thesis_cache(thesis_id, user_id, session)
     return AssumptionResponse.model_validate(assumption)
 
 
@@ -512,6 +534,7 @@ async def delete_assumption(
     assumption_id: int,
     user_id: str = Depends(get_current_user_id),
     svc: ThesisService = Depends(get_thesis_service),
+    session: AsyncSession = Depends(get_db),
 ) -> None:
     """Delete an assumption from a thesis."""
     try:
@@ -520,6 +543,7 @@ async def delete_assumption(
         raise _not_found(exc) from exc
     except AssumptionNotFoundError as exc:
         raise _not_found(exc) from exc
+    _bust_thesis_cache(thesis_id, user_id, session)
 
 
 # ---------------------------------------------------------------------------
@@ -555,6 +579,7 @@ async def add_catalyst(
     body: CatalystCreateRequest,
     user_id: str = Depends(get_current_user_id),
     svc: ThesisService = Depends(get_thesis_service),
+    session: AsyncSession = Depends(get_db),
 ) -> CatalystResponse:
     """Add a new catalyst to a thesis."""
     try:
@@ -572,6 +597,7 @@ async def add_catalyst(
         raise _not_found(exc) from exc
     except ThesisAlreadyClosedError as exc:
         raise _conflict(exc) from exc
+    _bust_thesis_cache(thesis_id, user_id, session)
     return CatalystResponse.model_validate(catalyst)
 
 
@@ -609,6 +635,7 @@ async def update_catalyst(
     body: CatalystUpdateRequest,
     user_id: str = Depends(get_current_user_id),
     svc: ThesisService = Depends(get_thesis_service),
+    session: AsyncSession = Depends(get_db),
 ) -> CatalystResponse:
     """Update description, status, dates, or note of a catalyst."""
     try:
@@ -628,6 +655,7 @@ async def update_catalyst(
         raise _not_found(exc) from exc
     except CatalystNotFoundError as exc:
         raise _not_found(exc) from exc
+    _bust_thesis_cache(thesis_id, user_id, session)
     return CatalystResponse.model_validate(catalyst)
 
 
@@ -640,6 +668,7 @@ async def delete_catalyst(
     catalyst_id: int,
     user_id: str = Depends(get_current_user_id),
     svc: ThesisService = Depends(get_thesis_service),
+    session: AsyncSession = Depends(get_db),
 ) -> None:
     """Delete a catalyst from a thesis."""
     try:
@@ -648,6 +677,7 @@ async def delete_catalyst(
         raise _not_found(exc) from exc
     except CatalystNotFoundError as exc:
         raise _not_found(exc) from exc
+    _bust_thesis_cache(thesis_id, user_id, session)
 
 
 # ---------------------------------------------------------------------------

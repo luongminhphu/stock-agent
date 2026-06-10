@@ -11,9 +11,11 @@ import enum
 from datetime import UTC, datetime
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -22,7 +24,6 @@ from sqlalchemy import (
 from sqlalchemy import (
     Enum as SAEnum,
 )
-from sqlalchemy import Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -122,6 +123,11 @@ class WatchlistItem(Base):
 
 class Alert(Base):
     __tablename__ = "alerts"
+    __table_args__ = (
+        # Covers the most common read pattern:
+        # WHERE user_id = ? AND status = 'TRIGGERED' ORDER BY triggered_at DESC
+        Index("ix_alerts_user_status_triggered", "user_id", "status", "triggered_at"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
@@ -310,6 +316,13 @@ class SignalEvent(Base):
     """
 
     __tablename__ = "signal_events"
+    __table_args__ = (
+        # Covers: WHERE user_id = ? AND occurred_at >= ? GROUP BY ticker
+        # (get_recent_signals — the primary dashboard read path)
+        Index("ix_signal_events_user_occurred", "user_id", "occurred_at"),
+        # Covers: WHERE user_id = ? AND ticker = ? for per-ticker drill-down
+        Index("ix_signal_events_user_ticker_occurred", "user_id", "ticker", "occurred_at"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     event_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)

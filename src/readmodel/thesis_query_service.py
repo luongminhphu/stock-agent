@@ -301,8 +301,20 @@ class ThesisQueryService:
             ThesisReview,
         )
 
+        # 2 queries instead of 4:
+        # Q1: Thesis + assumptions + catalysts via selectinload (2 IN-clause sub-SELECTs,
+        #     issued by SQLAlchemy in a single round-trip batch).
+        # Q2: ThesisReview — kept separate because it needs column projection + ORDER + LIMIT
+        #     and selectinload would load all columns / all rows.
         thesis = (
-            await self._session.execute(select(Thesis).where(Thesis.id == thesis_id))
+            await self._session.execute(
+                select(Thesis)
+                .where(Thesis.id == thesis_id)
+                .options(
+                    selectinload(Thesis.assumptions),
+                    selectinload(Thesis.catalysts),
+                )
+            )
         ).scalar_one_or_none()
         if thesis is None or thesis.user_id != user_id:
             return None
@@ -325,28 +337,11 @@ class ThesisQueryService:
             )
         ).all()
 
-        assumptions_rows = (
-            (
-                await self._session.execute(
-                    select(Assumption)
-                    .where(Assumption.thesis_id == thesis_id)
-                    .order_by(Assumption.id.asc())
-                )
-            )
-            .scalars()
-            .all()
-        )
-
-        catalysts_rows = (
-            (
-                await self._session.execute(
-                    select(Catalyst)
-                    .where(Catalyst.thesis_id == thesis_id)
-                    .order_by(Catalyst.expected_date.asc())
-                )
-            )
-            .scalars()
-            .all()
+        # Use already-loaded relationships — no extra DB round-trip.
+        assumptions_rows = sorted(thesis.assumptions, key=lambda a: a.id)
+        catalysts_rows   = sorted(
+            thesis.catalysts,
+            key=lambda c: (c.expected_date is None, c.expected_date),
         )
 
         def _review_dict(r: Any) -> dict:

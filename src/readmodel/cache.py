@@ -47,15 +47,22 @@ class DashboardTTLCache:
 
     # Default TTLs (seconds) per namespace — tunable at call-site via ttl= kwarg.
     DEFAULTS: dict[str, int] = {
-        "stats": 60,
-        "scan_latest": 30,
-        "recent_signals": 30,
-        "brief_latest": 30,
+        "stats":           60,
+        "scan_latest":     30,
+        "recent_signals":  30,
+        "brief_latest":    30,
+        "thesis_detail":   15,
+        "rrg":             600,   # 10 min — weekly OHLCV data; no point re-fetching intraday
+        "attention":       30,
     }
+
+    # Evict expired entries after this many set() calls (amortised O(1) per call).
+    _EVICT_EVERY: int = 50
 
     def __init__(self) -> None:
         # _store: key -> (payload, expires_at)
         self._store: dict[tuple, tuple[Any, datetime]] = {}
+        self._set_count: int = 0
 
     # ------------------------------------------------------------------
     # Core API
@@ -88,6 +95,19 @@ class DashboardTTLCache:
         effective_ttl = ttl if ttl is not None else self.DEFAULTS.get(namespace, 30)
         expires_at = datetime.now(UTC) + timedelta(seconds=effective_ttl)
         self._store[(namespace, user_id, extra)] = (value, expires_at)
+
+        # Amortised periodic eviction: every _EVICT_EVERY set() calls, sweep expired
+        # entries so memory doesn’t grow unbounded when keys are never re-read.
+        self._set_count += 1
+        if self._set_count % self._EVICT_EVERY == 0:
+            self._evict_expired()
+
+    def _evict_expired(self) -> None:
+        """Remove all expired entries in one pass. Called amortised from set()."""
+        now = datetime.now(UTC)
+        expired = [k for k, (_, exp) in self._store.items() if now >= exp]
+        for k in expired:
+            del self._store[k]
 
     def invalidate(self, namespace: str, user_id: str, extra: str = "") -> None:
         """Evict a specific cache entry."""

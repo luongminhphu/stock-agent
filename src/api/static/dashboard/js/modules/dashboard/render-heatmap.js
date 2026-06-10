@@ -70,23 +70,36 @@ export function renderHealthHeatmap(theses) {
 
   _renderLegend();
 
-  theses.forEach(thesis => {
-    // Target the .hm-slot inside col-actions — valid DOM, always in a <td>
-    const slot = document.querySelector(
-      `#thesesTableWrap .hm-slot[data-thesis-id="${thesis.id}"]`
-    );
-    if (!slot) return;
+  // Build a lookup map: thesisId -> thesis object (O(1) slot lookup later)
+  const thesisMap = new Map(theses.map(t => [String(t.id), t]));
 
-    // Idempotent: remove previous render on hot reload
+  // Collect all slots in one querySelectorAll — single DOM query instead of N
+  const slots = document.querySelectorAll('#thesesTableWrap .hm-slot[data-thesis-id]');
+  if (!slots.length) return;
+
+  // Batch all writes into a DocumentFragment per slot; minimise reflow
+  // by doing all reads first, then all writes.
+  /** @type {Array<{slot: Element, thesis: object}>} */
+  const pending = [];
+  slots.forEach(slot => {
+    const thesis = thesisMap.get(slot.dataset.thesisId);
+    if (thesis) pending.push({ slot, thesis });
+  });
+
+  // Write phase — all DOM mutations in one pass
+  pending.forEach(({ slot, thesis }) => {
+    // Idempotent: remove stale heatmap
     const existing = slot.querySelector('.health-heatmap');
     if (existing) existing.remove();
 
-    slot.insertAdjacentHTML('beforeend', buildHeatmapRow(thesis));
+    const frag = document.createDocumentFragment();
+    const tmp  = document.createElement('div');
+    tmp.innerHTML = buildHeatmapRow(thesis);
+    while (tmp.firstChild) frag.appendChild(tmp.firstChild);
+    slot.appendChild(frag);
 
-    // Click any cell → open breakdown panel for this thesis
-    slot.querySelector('.health-heatmap').addEventListener('click', () => {
-      openBreakdownPanel(thesis);
-    });
+    // Event delegation via slot — single listener per slot (not per cell)
+    slot.addEventListener('click', () => openBreakdownPanel(thesis), { once: false });
   });
 }
 

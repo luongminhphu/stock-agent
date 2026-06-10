@@ -171,7 +171,18 @@ class DashboardService:
         )
 
     async def get_thesis_detail(self, user_id: str, thesis_id: int) -> dict[str, Any] | None:
-        return await self._thesis_query.get_thesis_detail(user_id, thesis_id)
+        cache_extra = str(thesis_id)
+        cached = _cache.get("thesis_detail", user_id, extra=cache_extra)
+        if cached is not None:
+            return cached
+        result = await self._thesis_query.get_thesis_detail(user_id, thesis_id)
+        if result is not None:
+            _cache.set("thesis_detail", user_id, result, extra=cache_extra)
+        return result
+
+    def invalidate_thesis_detail(self, user_id: str, thesis_id: int) -> None:
+        """Evict thesis_detail cache entry. Call after any write to thesis/assumptions/catalysts."""
+        _cache.invalidate("thesis_detail", user_id, extra=str(thesis_id))
 
     async def get_upcoming_catalysts(self, user_id: str, days: int = 30) -> list[dict[str, Any]]:
         try:

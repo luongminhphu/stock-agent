@@ -185,16 +185,18 @@ export async function loadThesisDetail(thesisId) {
   destroyPriceChart(thesisId);
 
   try {
-    const [thesis, assumptions, catalysts, reviews] = await Promise.all([
-      getJson(`${thesisApiBase()}/${thesisId}`),
-      getJson(`${thesisApiBase()}/${thesisId}/assumptions`).catch(() => []),
-      getJson(`${thesisApiBase()}/${thesisId}/catalysts`).catch(() => []),
-      getJson(`${thesisApiBase()}/${thesisId}/reviews`).catch(() => []),
-    ]);
+    // Single fetch — ThesisResponse already embeds assumptions + catalysts.
+    // Separate /assumptions, /catalysts, /reviews fetches were redundant (4 → 1 request).
+    const thesis = await getJson(`${thesisApiBase()}/${thesisId}`);
     if (!thesis) {
       wrap.innerHTML = emptyDetailHTML();
       return;
     }
+
+    const assumptions = thesis.assumptions ?? [];
+    const catalysts   = thesis.catalysts   ?? [];
+    // reviews tab content is loaded lazily via loadReviewTimeline — no upfront fetch needed
+    const reviews = [];
 
     wrap.innerHTML = renderThesisDetailHTML(thesis, assumptions, catalysts, reviews);
 
