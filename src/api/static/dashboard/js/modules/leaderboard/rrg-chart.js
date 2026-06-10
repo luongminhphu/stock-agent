@@ -56,6 +56,10 @@ let _hidden        = new Set(); // tickers currently hidden
 let _asOf          = null;
 let _lookbackWeeks = _loadLookback(); // 26 or 52 — persisted
 
+// Head positions for click hit-testing (populated after each _drawCanvas).
+// Map<ticker, {x, y}> in CSS pixel space.
+let _headPositions = new Map();
+
 // ── Persistence ──────────────────────────────────────────────────────────
 const _STORAGE_KEY = 'rrg_hidden_tickers';
 
@@ -123,6 +127,8 @@ export async function loadRRG() {
 
     _clearStatus();
     _renderFilterBar(wrap);
+    _ensurePopup(wrap);
+    _wireCanvasClick(wrap);
     // Sync chip + lookback toggle visual state with restored values
     const bar = wrap.querySelector('.rrg-filter-bar');
     if (bar) { _syncChips(bar); _syncLookbackBtns(bar); }
@@ -397,6 +403,18 @@ function _drawCanvas(wrap, tickers) {
     ctx.fillText(ticker.ticker, lx, ly);
   });
 
+  // ── Store head positions for click hit-testing (CSS px space)
+  _headPositions = new Map();
+  tickers.forEach(ticker => {
+    const trail = ticker.trail;
+    if (!trail.length) return;
+    const head = trail[trail.length - 1];
+    _headPositions.set(ticker.ticker, {
+      x: toX(head.rs_ratio),
+      y: toY(head.rs_momentum),
+    });
+  });
+
   // ── Date stamp
   if (_asOf) {
     ctx.font      = '8px system-ui, sans-serif';
@@ -449,4 +467,204 @@ function _esc(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+// ── Popup ─────────────────────────────────────────────────────────────────
+
+const _SIGNAL_ICONS = {
+  BUY: '▲', WATCH: '◉', HOLD: '─', REDUCE: '▽', AVOID: '✕',
+};
+const _PATTERN_LABELS = {
+  ENTERING_LEADING:   'Đang vào Leading',
+  EXITING_LEADING:    'Rời Leading',
+  ENTERING_IMPROVING: 'Đang vào Improving',
+  DEEP_LAGGING:       'Lagging sâu',
+  WEAKENING_FAST:     'Suy yếu nhanh',
+  RECOVERY:           'Đang phục hồi',
+  ROTATING:           'Đang luân chuyển',
+  STABLE:             'Ổn định',
+};
+
+/** Create popup DOM once, appended to wrap (position: relative required). */
+function _ensurePopup(wrap) {
+  if (wrap.dataset.rrgPopupWired) return;
+  wrap.style.position = 'relative';
+
+  const popup = document.createElement('div');
+  popup.id        = POPUP_ID;
+  popup.className = 'rrg-popup rrg-popup--hidden';
+  popup.innerHTML = '<p class="rrg-popup-loading">Đang phân tích…</p>';
+  wrap.appendChild(popup);
+  wrap.dataset.rrgPopupWired = '1';
+}
+
+function _getPopup(wrap) {
+  return wrap.querySelector(`#${POPUP_ID}`);
+}
+
+/** Wire canvas click ONCE. Guard via dataset flag. */
+function _wireCanvasClick(wrap) {
+  if (wrap.dataset.rrgClickWired) return;
+  wrap.dataset.rrgClickWired = '1';
+
+  wrap.addEventListener('click', e => {
+    const canvas = wrap.querySelector(`#${CANVAS_ID}`);
+    if (!canvas) return;
+
+    // Close popup if clicking outside canvas area and not on popup
+    const popup = _getPopup(wrap);
+    if (!e.target.closest(`#${CANVAS_ID}`)) {
+      if (!e.target.closest(`#${POPUP_ID}`)) {
+        _hidePopup(wrap);
+      }
+      return;
+    }
+
+    // Hit-test: find nearest head within HIT_RADIUS
+    const rect = canvas.getBoundingClientRect();
+    const cx   = e.clientX - rect.left;
+    const cy   = e.clientY - rect.top;
+
+    let best = null;
+    let bestDist = HIT_RADIUS;
+    _headPositions.forEach((pos, ticker) => {
+      const d = Math.hypot(pos.x - cx, pos.y - cy);
+      if (d < bestDist) { bestDist = d; best = ticker; }
+    });
+
+    if (!best) {
+      _hidePopup(wrap);
+      return;
+    }
+
+    // Position popup near click point, keep inside wrap bounds
+    _showPopupLoading(wrap, best, e.clientX - rect.left, e.clientY - rect.top);
+    _fetchRotation(wrap, best);
+  });
+}
+
+function _showPopupLoading(wrap, ticker, cx, cy) {
+  const popup = _getPopup(wrap);
+  if (!popup) return;
+  popup.innerHTML = `
+    <div class="rrg-popup-header">
+      <span class="rrg-popup-ticker">${_esc(ticker)}</span>
+      <button class="rrg-popup-close" type="button" title="Đóng">✕</button>
+    </div>
+    <p class="rrg-popup-loading">Đang phân tích AI…</p>
+  `;
+  popup.querySelector('.rrg-popup-close')
+    ?.addEventListener('click', () => _hidePopup(wrap), { once: true });
+  _positionPopup(popup, wrap, cx, cy);
+  popup.classList.remove('rrg-popup--hidden');
+}
+
+function _positionPopup(popup, wrap, cx, cy) {
+  // Default: right + below click point
+  const wW = wrap.offsetWidth;
+  const wH = wrap.offsetHeight;
+  const pW = 240; // approx popup width
+
+  let left = cx + 10;
+  let top  = cy + 10;
+
+  if (left + pW > wW - 8)  left = cx - pW - 10;
+  if (left < 8)             left = 8;
+  if (top  + 160 > wH - 8) top  = cy - 170;
+  if (top  < 8)             top  = 8;
+
+  popup.style.left = left + 'px';
+  popup.style.top  = top  + 'px';
+}
+
+function _hidePopup(wrap) {
+  const popup = _getPopup(wrap);
+  if (popup) popup.classList.add('rrg-popup--hidden');
+}
+
+async function _fetchRotation(wrap, ticker) {
+  const popup = _getPopup(wrap);
+  if (!popup) return;
+
+  try {
+    const data = await getJson(
+      `${ROTATION_API}/${encodeURIComponent(ticker)}?lookback_weeks=${_lookbackWeeks}`
+    );
+    if (data?.error) {
+      _renderPopupError(popup, ticker, data.error);
+    } else {
+      _renderPopupSignal(popup, ticker, data);
+    }
+  } catch (err) {
+    _renderPopupError(popup, ticker, err.message);
+  }
+}
+
+function _renderPopupSignal(popup, ticker, d) {
+  const icon    = _SIGNAL_ICONS[d.signal] ?? '?';
+  const pattern = _PATTERN_LABELS[d.pattern] ?? d.pattern ?? '';
+  const confPct = Math.round((d.confidence ?? 0) * 100);
+
+  popup.innerHTML = `
+    <div class="rrg-popup-header">
+      <span class="rrg-popup-ticker">${_esc(ticker)}</span>
+      <button class="rrg-popup-close" type="button">✕</button>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+      <span class="rrg-popup-signal rrg-signal--${_esc(d.signal)}">${icon} ${_esc(d.signal)}</span>
+      <span class="rrg-popup-pattern">${_esc(pattern)}</span>
+    </div>
+
+    ${d.signal_reason ? `
+    <div class="rrg-popup-row">
+      <span class="rrg-popup-label">Lý do</span>
+      <span class="rrg-popup-value">${_esc(d.signal_reason)}</span>
+    </div>` : ''}
+
+    ${d.opportunity ? `
+    <div class="rrg-popup-row">
+      <span class="rrg-popup-label">Cơ hội</span>
+      <span class="rrg-popup-value">${_esc(d.opportunity)}</span>
+    </div>` : ''}
+
+    ${d.risk ? `
+    <div class="rrg-popup-row">
+      <span class="rrg-popup-label">Rủi ro</span>
+      <span class="rrg-popup-value">${_esc(d.risk)}</span>
+    </div>` : ''}
+
+    ${d.next_watch ? `
+    <div class="rrg-popup-row">
+      <span class="rrg-popup-label">Theo dõi tiếp</span>
+      <span class="rrg-popup-value">${_esc(d.next_watch)}</span>
+    </div>` : ''}
+
+    <div class="rrg-popup-confidence">
+      <div class="rrg-popup-conf-bar">
+        <div class="rrg-popup-conf-fill" style="width:${confPct}%"></div>
+      </div>
+      <span class="rrg-popup-conf-label">Confidence ${confPct}%</span>
+    </div>
+  `;
+  popup.querySelector('.rrg-popup-close')
+    ?.addEventListener('click', () => {
+      const wrap = popup.closest(`#${WRAP_ID}`);
+      if (wrap) _hidePopup(wrap);
+    }, { once: true });
+}
+
+function _renderPopupError(popup, ticker, msg) {
+  popup.innerHTML = `
+    <div class="rrg-popup-header">
+      <span class="rrg-popup-ticker">${_esc(ticker)}</span>
+      <button class="rrg-popup-close" type="button">✕</button>
+    </div>
+    <span class="rrg-popup-value" style="color:var(--danger)">${_esc(msg)}</span>
+  `;
+  popup.querySelector('.rrg-popup-close')
+    ?.addEventListener('click', () => {
+      const wrap = popup.closest(`#${WRAP_ID}`);
+      if (wrap) _hidePopup(wrap);
+    }, { once: true });
 }
