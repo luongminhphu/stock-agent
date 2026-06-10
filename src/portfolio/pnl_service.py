@@ -75,6 +75,7 @@ class PositionPnl:
     cost_basis: float
     thesis_id: int | None
     thesis_status: str | None = None  # 'active' | 'invalidated' | 'closed'
+    price_stale: bool = False         # True khi giá là avg_cost do market đóng
 
 
 @dataclass
@@ -302,12 +303,15 @@ class PnlService:
                 # Ngoài giờ giao dịch: dùng avg_cost làm thị giá tạm (P&L = 0)
                 # Position vẫn hiển thị đầy đủ với giá vốn, không bị skip.
                 current_price = position.avg_cost
+                price_stale   = True
                 logger.debug(
                     "pnl.market_closed.use_avg_cost ticker=%s avg_cost=%s",
                     position.ticker, position.avg_cost,
                 )
             else:
                 raise  # re-raise với lỗi khác (network, DB, ...) để get_portfolio_pnl log đúng
+        else:
+            price_stale = False
         unrealized_pnl = (current_price - position.avg_cost) * position.qty
         cost_basis = position.avg_cost * position.qty
         unrealized_pct = (unrealized_pnl / cost_basis * 100) if cost_basis else 0.0

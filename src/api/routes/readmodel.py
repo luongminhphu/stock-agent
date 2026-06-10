@@ -584,6 +584,7 @@ async def get_portfolio_trades(
                 "unrealized_pnl": p.unrealized_pnl,
                 "unrealized_pct": p.unrealized_pct,
                 "thesis_id": p.thesis_id,
+                "price_stale": p.price_stale,
             }
             for p in pnl.positions
         ],

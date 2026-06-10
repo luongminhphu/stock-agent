@@ -20,6 +20,23 @@
 .badge.neutral, .badge.pending, .badge.paused { background: rgba(251, 191, 36, 0.14); color: #fde68a; }
 .badge.watchlist, .badge.uncertain, .badge.expired, .badge.closed { background: rgba(167, 139, 250, 0.14); color: #ddd6fe; }
 
+/* Price stale badge — hiển thị khi giá là giá cuối phiên (ngoài giờ giao dịch) */
+.price-stale-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  margin-left: 5px;
+  border-radius: var(--radius-pill);
+  font-size: 0.68rem;
+  font-weight: 600;
+  white-space: nowrap;
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--muted);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  vertical-align: middle;
+  cursor: default;
+}
+
 /* Score tiers */
 .score-high { color: var(--success); font-weight: 700; }
 .score-mid  { color: var(--warning); font-weight: 700; }

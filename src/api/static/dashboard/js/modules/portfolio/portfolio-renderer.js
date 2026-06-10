@@ -109,6 +109,7 @@ function _buildTradesRows(data) {
     const pnlPct    = p.unrealized_pct ?? p.pnl_pct    ?? null;
     const thesisId  = p.thesis_id    ?? null;
     const thesisSt  = p.thesis_status ?? null;
+    const priceStale = p.price_stale  ?? false;
 
     if (!ticker)           errors.push('ticker');
     if (qty       == null) errors.push('qty');
@@ -128,7 +129,7 @@ function _buildTradesRows(data) {
         <td class="col-left"><strong>${_esc(ticker)}</strong>${warnBadge}${errors.includes('ticker') ? ' <span class="cell-error" title="Thiếu ticker">⚠</span>' : ''}</td>
         <td class="num">${qty != null ? _fmtNum(qty) : '<span class="cell-error" title="Thiếu qty">⚠</span>'}</td>
         <td class="currency">${avgCost != null ? _fmtNum(avgCost) : '<span class="cell-error" title="Thiếu avg_cost">⚠</span>'}</td>
-        <td class="currency">${currPrice != null ? _fmtNum(currPrice) : '<span class="cell-error" title="Thiếu curr_price">⚠</span>'}</td>
+        <td class="currency">${currPrice != null ? _fmtNum(currPrice) + (priceStale ? ' <span class="price-stale-badge" title="Giá cuối phiên — chưa cập nhật realtime">Cuối phiên</span>' : '') : '<span class="cell-error" title="Thiếu curr_price">⚠</span>'}</td>
         <td class="currency col-pnl ${pnlClass}">${_fmtNum(pnlAbs)}</td>
         <td class="num col-pct ${pnlClass}">${_fmtPct(pnlPct)}</td>
         <td class="col-center">${thesisRef}</td>
