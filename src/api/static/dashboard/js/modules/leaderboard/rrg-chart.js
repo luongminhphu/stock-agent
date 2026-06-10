@@ -30,11 +30,16 @@ import { getJson } from '../../api/client.js';
 
 // ── Config ────────────────────────────────────────────────────────────────
 const API_URL         = '/api/v1/rrg/thesis';
+const ROTATION_API    = '/api/v1/rrg/rotation';
 const LOOKBACK_OPTIONS = [26, 52];  // weeks — maps to toggle buttons
 const LOOKBACK_KEY     = 'rrg_lookback_weeks';
 const CANVAS_ID = 'rrgCanvas';
 const WRAP_ID   = 'rrgWrap';
 const STATUS_ID = 'rrgStatus';
+const POPUP_ID  = 'rrgPopup';
+
+// Hit-test radius (CSS px) — click within this distance of a head dot counts
+const HIT_RADIUS = 18;
 
 const Q_COLORS = {
   leading:   { bg: 'rgba(74,222,128,0.06)',  label: 'rgba(74,222,128,0.50)'  },
