@@ -337,37 +337,46 @@ function _drawCanvas(wrap, tickers) {
     const color = TRAIL_PALETTE[idx % TRAIL_PALETTE.length];
     const trail = ticker.trail;
 
-    // Trail line
-    ctx.beginPath();
-    ctx.strokeStyle = color + '60';
-    ctx.lineWidth   = 1.2;
-    trail.forEach((pt, i) => {
-      const x = toX(pt.rs_ratio);
-      const y = toY(pt.rs_momentum);
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    });
-    ctx.stroke();
+    // ── Trail: segment-by-segment so line width + alpha fade oldest→newest
+    // t=0 (oldest): thin + faint.  t=n-1 (head): thick + fully opaque.
+    const n = trail.length;
+    for (let i = 1; i < n; i++) {
+      const progress  = i / (n - 1);              // 0 at first segment → 1 at last
+      const segAlpha  = 0.12 + progress * 0.78;   // 0.12 → 0.90
+      const segWidth  = 0.6  + progress * 2.2;    // 0.6px → 2.8px
+      const alphaHex  = Math.round(segAlpha * 255).toString(16).padStart(2, '0');
 
-    // Trail dots
+      const x0 = toX(trail[i - 1].rs_ratio);  const y0 = toY(trail[i - 1].rs_momentum);
+      const x1 = toX(trail[i].rs_ratio);      const y1 = toY(trail[i].rs_momentum);
+
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.strokeStyle = color + alphaHex;
+      ctx.lineWidth   = segWidth;
+      ctx.stroke();
+    }
+
+    // Trail dots — fade oldest, emphasise head
     trail.forEach((pt, i) => {
-      const x      = toX(pt.rs_ratio);
-      const y      = toY(pt.rs_momentum);
-      const isHead = i === trail.length - 1;
-      const radius = isHead ? 4.5 : 2.0;
-      const alpha  = isHead ? 1.0 : 0.25 + (i / trail.length) * 0.5;
+      const x        = toX(pt.rs_ratio);
+      const y        = toY(pt.rs_momentum);
+      const isHead   = i === trail.length - 1;
+      const progress = n > 1 ? i / (n - 1) : 1;
+      const alpha    = isHead ? 1.0 : 0.10 + progress * 0.55;  // 0.10 → 0.65
+      const radius   = isHead ? 4.5 : 1.5 + progress * 1.0;    // 1.5px → 2.5px
+      const alphaHex = Math.round(alpha * 255).toString(16).padStart(2, '0');
 
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.fillStyle = isHead
-        ? color
-        : color + Math.round(alpha * 255).toString(16).padStart(2, '0');
+      ctx.fillStyle = isHead ? color : color + alphaHex;
       ctx.fill();
 
       if (isHead) {
         ctx.beginPath();
         ctx.arc(x, y, radius + 2, 0, Math.PI * 2);
         ctx.strokeStyle = color + '50';
-        ctx.lineWidth = 1;
+        ctx.lineWidth   = 1;
         ctx.stroke();
       }
     });
