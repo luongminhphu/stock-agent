@@ -81,6 +81,7 @@ def create_bot() -> commands.Bot:
             _start_agenda_builder_scheduler(bot)               # build daily agenda 07:30 ICT
             _start_portfolio_snapshot_scheduler(bot)           # portfolio snapshot 08:15 ICT
             _start_investor_profile_scheduler(bot)             # investor profile snapshot 08:20 ICT
+            _start_eod_portfolio_snapshot_scheduler(bot)       # EOD P&L snapshot 15:20 ICT
             _start_signal_engine_scheduler(bot)                # signal engine 08:40 + 15:10 ICT
             logger.info(
                 "bot.ready",
@@ -605,3 +606,16 @@ def _start_trend_batch_scheduler(bot: commands.Bot) -> None:
     scheduler = TrendBatchPrecomputeScheduler(bot)
     scheduler.start()
     logger.info("bot.trend_batch_scheduler.started")
+
+
+def _start_eod_portfolio_snapshot_scheduler(bot: commands.Bot) -> None:
+    """Start EodPortfolioSnapshotScheduler — 15:20 ICT weekdays.
+
+    Writes persistent EOD P&L snapshot per position to position_daily_snapshots.
+    Dashboard reads from snapshot as primary source — independent of QuoteService.
+    Catch-up: runs immediately on start if today's snapshot is missing (after 15:20 ICT).
+    """
+    from src.bot.scheduler import EodPortfolioSnapshotScheduler
+    scheduler = EodPortfolioSnapshotScheduler(bot)
+    scheduler.start()
+    logger.info("bot.eod_portfolio_snapshot_scheduler.started")

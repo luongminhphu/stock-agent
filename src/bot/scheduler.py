@@ -25,6 +25,7 @@ Registered tasks:
     IntelligenceEngineScheduler.morning_task   — weekdays 08:35 ICT (after ThesisMaintenance, before SignalEngine)
     IntelligenceEngineScheduler.eod_task       — weekdays 15:12 ICT (after SignalEngine.eod, before DecisionReplay)
     TrendBatchPrecomputeScheduler.trend_batch  — weekdays 06:45 ICT (45 min before morning brief)
+    EodPortfolioSnapshotScheduler.eod_task     — weekdays 15:20 ICT (5 min after market close)
 
 Note:
     MORNING_CHANNEL_ID and EOD_CHANNEL_ID must be set in settings.
@@ -1853,3 +1854,148 @@ class TrendBatchPrecomputeScheduler:
     @_trend_batch_task.before_loop
     async def _before_trend_batch(self) -> None:
         await self._client.wait_until_ready()
+
+
+# ---------------------------------------------------------------------------
+# EodPortfolioSnapshotScheduler
+# ---------------------------------------------------------------------------
+
+_EOD_PORTFOLIO_SNAPSHOT_TIME = datetime.time(hour=8, minute=20, tzinfo=datetime.UTC)  # 15:20 ICT
+
+
+class EodPortfolioSnapshotScheduler:
+    """Write EOD P&L snapshot for all open positions at 15:20 ICT (weekdays).
+
+    Owner: bot segment — thin timing adapter only.
+    All snapshot logic lives in portfolio.EodSnapshotService.
+
+    Timing:
+        15:20 ICT — 5 min after market close (15:15 ICT).
+        QuoteService cache should still hold closing prices at this point.
+
+    Catch-up on start:
+        If today is a weekday AND current ICT time > 15:20 AND no snapshot
+        exists for today → run immediately on bot start.
+        Handles server restarts after 15:20 without missing the day.
+
+    No Discord output from this scheduler.
+    """
+
+    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
+        self._client = client
+        self._monitor = monitor or get_monitor()
+
+    def start(self) -> None:
+        self._monitor.register_task("portfolio.eod_snapshot")
+        self._eod_task.start()
+        logger.info("scheduler.eod_portfolio_snapshot.started", time_ict="15:20")
+
+    def stop(self) -> None:
+        self._eod_task.cancel()
+        logger.info("scheduler.eod_portfolio_snapshot.stopped")
+
+    @tasks.loop(time=_EOD_PORTFOLIO_SNAPSHOT_TIME)
+    async def _eod_task(self) -> None:
+        now_utc = datetime.datetime.now(tz=datetime.UTC)
+        if now_utc.weekday() >= 5:
+            return
+        await self._run_snapshot(task_name="portfolio.eod_snapshot")
+
+    @_eod_task.before_loop
+    async def _before_eod(self) -> None:
+        await self._client.wait_until_ready()
+        await self._maybe_catchup()
+
+    async def _maybe_catchup(self) -> None:
+        """Run snapshot immediately on start if missed today's 15:20 job."""
+        import datetime as dt
+
+        _ICT_OFFSET = dt.timezone(dt.timedelta(hours=7))
+        now_ict = dt.datetime.now(tz=_ICT_OFFSET)
+
+        # Only weekdays
+        if now_ict.weekday() >= 5:
+            return
+
+        # Only after 15:20 ICT
+        cutoff = now_ict.replace(hour=15, minute=20, second=0, microsecond=0)
+        if now_ict < cutoff:
+            return
+
+        # Check if snapshot already written today
+        user_id = getattr(settings, "scheduler_user_id", None)
+        if not user_id:
+            return
+
+        try:
+            from src.portfolio.eod_snapshot_service import EodSnapshotService
+            from src.portfolio.models import PositionDailySnapshot
+            from src.platform.bootstrap import get_quote_service
+            from src.platform.db import AsyncSessionLocal
+            from sqlalchemy import select
+
+            today = now_ict.date()
+            async with AsyncSessionLocal() as session:
+                existing = await session.execute(
+                    select(PositionDailySnapshot.id)
+                    .where(PositionDailySnapshot.user_id == str(user_id))
+                    .where(PositionDailySnapshot.snapshot_date == today)
+                    .limit(1)
+                )
+                if existing.scalar_one_or_none() is not None:
+                    logger.info(
+                        "scheduler.eod_portfolio_snapshot.catchup_skipped",
+                        reason="snapshot already exists for today",
+                        date=str(today),
+                    )
+                    return
+
+            logger.info(
+                "scheduler.eod_portfolio_snapshot.catchup_running",
+                date=str(today),
+                user_id=str(user_id),
+            )
+            await self._run_snapshot(task_name="portfolio.eod_snapshot.catchup")
+
+        except Exception as exc:
+            logger.warning(
+                "scheduler.eod_portfolio_snapshot.catchup_error",
+                error=str(exc),
+            )
+
+    async def _run_snapshot(self, task_name: str) -> None:
+        from src.portfolio.eod_snapshot_service import EodSnapshotService
+        from src.platform.bootstrap import get_quote_service
+        from src.platform.db import AsyncSessionLocal
+
+        user_id = getattr(settings, "scheduler_user_id", None)
+        if not user_id:
+            logger.warning(
+                "scheduler.eod_portfolio_snapshot.skipped",
+                reason="scheduler_user_id not configured",
+            )
+            return
+
+        try:
+            async with AsyncSessionLocal() as session:
+                svc = EodSnapshotService(
+                    session=session,
+                    quote_service=get_quote_service(),
+                )
+                result = await svc.record_eod_snapshot(user_id=str(user_id))
+
+            logger.info(
+                "scheduler.eod_portfolio_snapshot.done",
+                user_id=str(user_id),
+                written=result.written,
+                skipped=result.skipped,
+                errors=list(result.errors.keys()),
+            )
+            await self._monitor.record_success(task_name)
+
+        except Exception as exc:
+            logger.error(
+                "scheduler.eod_portfolio_snapshot.error",
+                error=str(exc),
+            )
+            await self._monitor.record_failure(task_name, exc)

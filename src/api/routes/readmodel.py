@@ -40,6 +40,7 @@ from src.readmodel.schemas import (
 from src.readmodel.timeline_service import ThesisTimelineService
 from src.readmodel.today_loop_query_service import TodayLoopQueryService
 from src.portfolio.pnl_service import PnlService
+from src.portfolio.eod_snapshot_service import EodSnapshotService
 from src.watchlist.scan_service import ScanService
 
 router = APIRouter(prefix="/readmodel", tags=["readmodel"])
@@ -570,29 +571,96 @@ async def get_portfolio_trades(
     user_id: str,
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict[str, Any]:
-    svc = PnlService(session=session, quote_service=get_quote_service())
-    pnl = await svc.get_portfolio_pnl(user_id)
+    """Portfolio trades — snapshot primary source + realtime overlay.
+
+    Priority:
+      1. Load latest EOD snapshot per ticker from position_daily_snapshots.
+      2. If market is open: enrich current_price realtime via QuoteService.
+      3. If no snapshot exists yet (first day): fallback to PnlService on-the-fly.
+    """
+    quote_svc = get_quote_service()
+    eod_svc = EodSnapshotService(session=session, quote_service=quote_svc)
+    snapshots = await eod_svc.get_latest_snapshots(user_id)
+
+    # Fallback to on-the-fly PnlService if no snapshot written yet
+    if not snapshots:
+        pnl = await PnlService(session=session, quote_service=quote_svc).get_portfolio_pnl(user_id)
+        return {
+            "positions": [
+                {
+                    "ticker": p.ticker,
+                    "qty": p.qty,
+                    "avg_cost": p.avg_cost,
+                    "current_price": p.current_price,
+                    "cost_basis": p.cost_basis,
+                    "market_value": p.market_value,
+                    "unrealized_pnl": p.unrealized_pnl,
+                    "unrealized_pct": p.unrealized_pct,
+                    "thesis_id": p.thesis_id,
+                    "price_stale": p.price_stale,
+                }
+                for p in pnl.positions
+            ],
+            "total_unrealized_pnl": pnl.total_unrealized_pnl,
+            "total_unrealized_pct": pnl.total_unrealized_pct,
+            "total_cost_basis": pnl.total_cost_basis,
+            "total_market_value": pnl.total_market_value,
+            "errors": pnl.errors,
+            "source": "pnl_live",
+        }
+
+    # Build price map: start from snapshot close_price, overlay realtime if market open
+    market_open = quote_svc.is_market_open()
+    price_map: dict[str, float] = {}
+    price_stale_map: dict[str, bool] = {}
+
+    if market_open:
+        tickers = [s.ticker for s in snapshots]
+        for ticker in tickers:
+            try:
+                quote = await quote_svc.get_quote(ticker)
+                price_map[ticker] = quote.price  # type: ignore[union-attr]
+                price_stale_map[ticker] = False
+            except Exception:
+                # Fallback to snapshot close_price on individual ticker error
+                pass
+
+    positions_out = []
+    total_cost = 0.0
+    total_mkt = 0.0
+    for snap in snapshots:
+        current_price = price_map.get(snap.ticker, snap.close_price)
+        stale = price_stale_map.get(snap.ticker, True)  # stale unless overridden by realtime
+        cost_basis = snap.avg_cost * snap.qty
+        market_value = current_price * snap.qty
+        unrealized_pnl = (current_price - snap.avg_cost) * snap.qty
+        unrealized_pct = (unrealized_pnl / cost_basis * 100) if cost_basis else 0.0
+        total_cost += cost_basis
+        total_mkt += market_value
+        positions_out.append({
+            "ticker": snap.ticker,
+            "qty": snap.qty,
+            "avg_cost": snap.avg_cost,
+            "current_price": current_price,
+            "cost_basis": cost_basis,
+            "market_value": market_value,
+            "unrealized_pnl": round(unrealized_pnl, 2),
+            "unrealized_pct": round(unrealized_pct, 4),
+            "thesis_id": snap.thesis_id,
+            "price_stale": stale,
+            "snapshot_date": str(snap.snapshot_date),
+        })
+
+    total_pnl = total_mkt - total_cost
+    total_pct = (total_pnl / total_cost * 100) if total_cost else 0.0
     return {
-        "positions": [
-            {
-                "ticker": p.ticker,
-                "qty": p.qty,
-                "avg_cost": p.avg_cost,
-                "current_price": p.current_price,
-                "cost_basis": p.cost_basis,
-                "market_value": p.market_value,
-                "unrealized_pnl": p.unrealized_pnl,
-                "unrealized_pct": p.unrealized_pct,
-                "thesis_id": p.thesis_id,
-                "price_stale": p.price_stale,
-            }
-            for p in pnl.positions
-        ],
-        "total_unrealized_pnl": pnl.total_unrealized_pnl,
-        "total_unrealized_pct": pnl.total_unrealized_pct,
-        "total_cost_basis": pnl.total_cost_basis,
-        "total_market_value": pnl.total_market_value,
-        "errors": pnl.errors,
+        "positions": positions_out,
+        "total_unrealized_pnl": round(total_pnl, 2),
+        "total_unrealized_pct": round(total_pct, 4),
+        "total_cost_basis": total_cost,
+        "total_market_value": total_mkt,
+        "errors": {},
+        "source": "eod_snapshot" + ("+realtime" if market_open and price_map else ""),
     }
 
 

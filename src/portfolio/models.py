@@ -31,7 +31,7 @@ import enum
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -229,6 +229,52 @@ class DividendRecord(Base):
         return (
             f"<DividendRecord {self.ticker} qty={self.qty} "
             f"dps={self.dividend_per_share} total={self.total_amount}>"
+        )
+
+
+# ---------------------------------------------------------------------------
+# PositionDailySnapshot — EOD persistent P&L per position
+# ---------------------------------------------------------------------------
+
+
+class PositionDailySnapshot(Base):
+    """End-of-day P&L snapshot for a single position.
+
+    Written once per trading day per (user_id, ticker) by EodSnapshotService at 15:20 ICT.
+    Used as primary source for portfolio dashboard — independent of QuoteService availability.
+
+    Invariants:
+      - UNIQUE(user_id, ticker, snapshot_date): upsert on conflict.
+      - close_price = giá đóng cửa thực tế từ QuoteService.
+      - unrealized_pnl = (close_price - avg_cost) * qty.
+      - qty / avg_cost copied from Position at snapshot time (immutable audit trail).
+    """
+
+    __tablename__ = "position_daily_snapshots"
+    __table_args__ = (
+        UniqueConstraint("user_id", "ticker", "snapshot_date", name="uq_position_daily_snapshot"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    ticker: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    snapshot_date: Mapped[datetime] = mapped_column(Date, nullable=False, index=True)
+    qty: Mapped[float] = mapped_column(Float, nullable=False)
+    avg_cost: Mapped[float] = mapped_column(Float, nullable=False)
+    close_price: Mapped[float] = mapped_column(Float, nullable=False)
+    cost_basis: Mapped[float] = mapped_column(Float, nullable=False)
+    market_value: Mapped[float] = mapped_column(Float, nullable=False)
+    unrealized_pnl: Mapped[float] = mapped_column(Float, nullable=False)
+    unrealized_pct: Mapped[float] = mapped_column(Float, nullable=False)
+    thesis_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<PositionDailySnapshot {self.ticker} {self.snapshot_date} "
+            f"close={self.close_price} pnl={self.unrealized_pnl}>"
         )
 
 
