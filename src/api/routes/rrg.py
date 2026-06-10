@@ -40,7 +40,7 @@ _cache = DashboardTTLCache()
 async def get_rrg_thesis(
     benchmark:      str = Query(default="VNINDEX", description="Benchmark ticker"),
     lookback_weeks: int = Query(default=26,        ge=4,  le=52),
-    trail_points:   int = Query(default=8,         ge=3,  le=20),
+    trail_points:   int = Query(default=0,         ge=0,  le=52),
     session: AsyncSession = Depends(get_db),
     user_id: str          = Depends(get_current_user_id),
     ohlcv_svc: OHLCVService = Depends(get_ohlcv_service),
@@ -54,6 +54,12 @@ async def get_rrg_thesis(
       - error: null on success, string on data failure
     """
     # Cache key encodes all query params that affect the result.
+    # Auto trail_points: if caller passes 0 (default), derive from lookback.
+    # 26W → 8 pts (quarterly granularity), 52W → 16 pts (bi-weekly granularity).
+    # Formula: 1 trail point per ~(lookback_weeks / 8) weeks, clamped 8-26.
+    if trail_points == 0:
+        trail_points = max(8, min(26, lookback_weeks // 2))
+
     cache_extra = f"{benchmark}:{lookback_weeks}:{trail_points}"
     cached = _cache.get("rrg", user_id, extra=cache_extra)
     if cached is not None:

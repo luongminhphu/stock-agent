@@ -101,7 +101,9 @@ export async function loadRRG() {
   _setStatus('Đang tải RRG…');
 
   try {
-    const data = await getJson(`${API_URL}?lookback_weeks=${_lookbackWeeks}`);
+    // trail_points=0 → backend auto-derives from lookback_weeks
+    // (26W→13pts, 52W→26pts) so trail length reflects the chosen window.
+    const data = await getJson(`${API_URL}?lookback_weeks=${_lookbackWeeks}&trail_points=0`);
     const tickers = data?.tickers ?? [];
 
     if (!tickers.length) {
