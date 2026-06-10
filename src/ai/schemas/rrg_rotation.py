@@ -6,7 +6,7 @@ Downstream: api/routes/rrg.py → FE rrg-chart.js popup.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class RRGRotationSignal(BaseModel):
@@ -18,6 +18,32 @@ class RRGRotationSignal(BaseModel):
     quadrant: str = Field(
         description="leading | weakening | lagging | improving"
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalise_aliases(cls, data: object) -> object:
+        """Absorb common model field-name variations."""
+        if not isinstance(data, dict):
+            return data
+        d = dict(data)
+        # Model sometimes returns current_quadrant / current_position instead of quadrant
+        if "quadrant" not in d:
+            for alias in ("current_quadrant", "current_position", "position"):
+                if alias in d:
+                    d["quadrant"] = d[alias]
+                    break
+        # risk / next_watch aliases
+        if "risk" not in d:
+            for alias in ("key_risk", "risks", "warning"):
+                if alias in d:
+                    d["risk"] = d[alias]
+                    break
+        if "next_watch" not in d:
+            for alias in ("watch", "next", "next_action", "watchlist"):
+                if alias in d:
+                    d["next_watch"] = d[alias]
+                    break
+        return d
 
     # Movement pattern detected from trail
     pattern: str = Field(

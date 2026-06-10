@@ -204,18 +204,15 @@ class RRGRotationAgent:
             )
             result.ticker = ticker  # ensure ticker is always set from caller
             logger.info(
-                "rrg_rotation_agent.complete",
-                ticker=ticker,
-                pattern=result.pattern,
-                signal=result.signal,
-                confidence=result.confidence,
+                "rrg_rotation_agent.complete ticker=%s pattern=%s signal=%s confidence=%.2f",
+                ticker, result.pattern, result.signal, result.confidence,
             )
             return result
 
         except (AIError, Exception) as exc:
             logger.warning(
-                "rrg_rotation_agent.fallback",
-                ticker=ticker,
-                error=str(exc),
+                "rrg_rotation_agent.fallback ticker=%s error=%s",
+                ticker,
+                str(exc),
             )
             return _rule_based_fallback(ticker, quadrant, rs_ratio, rs_momentum, trail)
