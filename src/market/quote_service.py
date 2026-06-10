@@ -173,6 +173,8 @@ class _QuoteCache:
         self._inflight_single: dict[str, asyncio.Future[Quote]] = {}
         # in-flight bulk: cache_key -> Future[list[Quote]]
         self._inflight_bulk: dict[str, asyncio.Future[list[Quote]]] = {}
+        # Persistent last-known price: survives TTL expiry (giá cuối phiên off-hours)
+        self._last_known: dict[str, Quote] = {}
 
     @staticmethod
     def _bulk_key(tickers: list[str]) -> str:
@@ -190,6 +192,7 @@ class _QuoteCache:
 
     def set_single_ttl(self, ticker: str, quote: Quote, ttl: float) -> None:
         self._single[ticker] = (quote, time.monotonic() + ttl)
+        self._last_known[ticker] = quote  # persist bên ngoài TTL
 
     def get_bulk(self, tickers: list[str]) -> list[Quote] | None:
         key = self._bulk_key(tickers)
@@ -208,6 +211,7 @@ class _QuoteCache:
         # Also populate single cache from bulk result
         for q in quotes:
             self._single[q.ticker] = (q, time.monotonic() + ttl)
+            self._last_known[q.ticker] = q  # persist bên ngoài TTL
 
     def get_inflight_single(self, ticker: str) -> asyncio.Future[Quote] | None:
         fut = self._inflight_single.get(ticker)
@@ -235,6 +239,15 @@ class _QuoteCache:
 
     def clear_inflight_bulk(self, tickers: list[str]) -> None:
         self._inflight_bulk.pop(self._bulk_key(tickers), None)
+
+    def get_last_known(self, ticker: str) -> Quote | None:
+        """Return last successfully fetched Quote for ticker, regardless of TTL.
+
+        Used as fallback when market is closed — returns giá đóng cửa cuối phiên
+        instead of raising MarketClosedError.
+        Returns None if ticker has never been fetched in this process lifetime.
+        """
+        return self._last_known.get(ticker)
 
 
 class QuoteServiceNotConfiguredError(Exception):
@@ -288,10 +301,13 @@ class QuoteService:
         if cached is not None:
             return cached
 
-        # 2. Outside trading hours — no live fetch, raise informative error
+        # 2. Outside trading hours — try last_known first, then raise
         if not self._guard.is_market_open():
+            last = self._cache.get_last_known(sym)
+            if last is not None:
+                return last  # giá đóng cửa cuối phiên, caller nhận biết qua price_stale
             raise MarketClosedError(
-                f"Market is closed — no live quote for {sym}. "
+                f"Market is closed — no live quote and no cached price for {sym}. "
                 "Use MARKET_FETCH_ALWAYS=true to bypass."
             )
 
@@ -325,10 +341,17 @@ class QuoteService:
         if cached_bulk is not None:
             return cached_bulk
 
-        # 2. Outside trading hours — no live fetch
+        # 2. Outside trading hours — try last_known per ticker, then raise
         if not self._guard.is_market_open():
+            last_quotes = [self._cache.get_last_known(s) for s in syms]
+            if all(q is not None for q in last_quotes):
+                return [q for q in last_quotes if q is not None]  # type: ignore[misc]
+            # partial hit: return what we have, raise only if nothing at all
+            known = [q for q in last_quotes if q is not None]
+            if known:
+                return known
             raise MarketClosedError(
-                f"Market is closed — no live quotes for {syms}. "
+                f"Market is closed — no live quotes and no cached prices for {syms}. "
                 "Use MARKET_FETCH_ALWAYS=true to bypass."
             )
 
@@ -353,6 +376,10 @@ class QuoteService:
             raise
         finally:
             self._cache.clear_inflight_bulk(syms)
+
+    def is_market_open(self) -> bool:
+        """Expose guard state — consumed by PnlService via QuoteServiceProtocol."""
+        return self._guard.is_market_open()
 
     async def close(self) -> None:
         """Forward close to the underlying adapter. Safe to call even if no adapter."""

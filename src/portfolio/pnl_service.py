@@ -60,6 +60,10 @@ class QuoteServiceProtocol(Protocol):
     async def get_quote(self, ticker: str) -> object:
         ...
 
+    def is_market_open(self) -> bool:
+        """Return True nếu hiện tại đang trong giờ giao dịch."""
+        ...
+
 
 @dataclass
 class PositionPnl:
@@ -294,24 +298,30 @@ class PnlService:
                 f"qty={position.qty}, avg_cost={position.avg_cost} — "
                 "both must be positive."
             )
+        market_open = self._quote_service.is_market_open()  # type: ignore[attr-defined]
         try:
             quote = await self._quote_service.get_quote(position.ticker)
             current_price = quote.price  # type: ignore[union-attr]
+            # Ngoài giờ giao dịch: get_quote trả về last_known — đánh dấu stale
+            price_stale = not market_open
+            if price_stale:
+                logger.debug(
+                    "pnl.market_closed.use_last_known ticker=%s price=%s",
+                    position.ticker, current_price,
+                )
         except Exception as _exc:
             # Import là lazy để tránh circular — kiểm tra theo tên class
             if type(_exc).__name__ == "MarketClosedError":
-                # Ngoài giờ giao dịch: dùng avg_cost làm thị giá tạm (P&L = 0)
-                # Position vẫn hiển thị đầy đủ với giá vốn, không bị skip.
+                # Market đóng VÀ không có last_known nào (ticker chưa từng được fetch)
+                # → fallback avg_cost để position vẫn hiển thị, P&L = 0
                 current_price = position.avg_cost
                 price_stale   = True
                 logger.debug(
-                    "pnl.market_closed.use_avg_cost ticker=%s avg_cost=%s",
-                    position.ticker, position.avg_cost,
+                    "pnl.market_closed.no_last_known ticker=%s fallback=avg_cost",
+                    position.ticker,
                 )
             else:
                 raise  # re-raise với lỗi khác (network, DB, ...) để get_portfolio_pnl log đúng
-        else:
-            price_stale = False
         unrealized_pnl = (current_price - position.avg_cost) * position.qty
         cost_basis = position.avg_cost * position.qty
         unrealized_pct = (unrealized_pnl / cost_basis * 100) if cost_basis else 0.0
@@ -334,6 +344,7 @@ class PnlService:
             cost_basis=cost_basis,
             thesis_id=position.thesis_id,
             thesis_status=thesis_status,
+            price_stale=price_stale,
         )
 
         # Emit risk breach event — fire-and-forget, never raises
