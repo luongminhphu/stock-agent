@@ -129,7 +129,9 @@ function _buildTradesRows(data) {
         <td class="col-left"><strong>${_esc(ticker)}</strong>${warnBadge}${errors.includes('ticker') ? ' <span class="cell-error" title="Thiếu ticker">⚠</span>' : ''}</td>
         <td class="num">${qty != null ? _fmtNum(qty) : '<span class="cell-error" title="Thiếu qty">⚠</span>'}</td>
         <td class="currency">${avgCost != null ? _fmtNum(avgCost) : '<span class="cell-error" title="Thiếu avg_cost">⚠</span>'}</td>
-        <td class="currency">${currPrice != null ? _fmtNum(currPrice) + (priceStale ? ' <span class="price-stale-badge" title="Giá cuối phiên — chưa cập nhật realtime">Cuối phiên</span>' : '') : '<span class="cell-error" title="Thiếu curr_price">⚠</span>'}</td>
+        <td class="currency">${currPrice != null
+          ? `<span class="price-val">${_fmtNum(currPrice)}</span>${priceStale ? '<span class="price-stale-badge" title="Gi\u00e1 cu\u1ed1i phi\u00ean \u2014 ch\u01b0a c\u1eadp nh\u1eadt realtime">Cu\u1ed1i phi\u00ean</span>' : ''}`
+          : '<span class="cell-error" title="Thi\u1ebfu curr_price">\u26a0</span>'}</td>
         <td class="currency col-pnl ${pnlClass}">${_fmtNum(pnlAbs)}</td>
         <td class="num col-pct ${pnlClass}">${_fmtPct(pnlPct)}</td>
         <td class="col-center">${thesisRef}</td>

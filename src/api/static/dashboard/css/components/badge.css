@@ -21,20 +21,21 @@
 .badge.watchlist, .badge.uncertain, .badge.expired, .badge.closed { background: rgba(167, 139, 250, 0.14); color: #ddd6fe; }
 
 /* Price stale badge — hiển thị khi giá là giá cuối phiên (ngoài giờ giao dịch) */
+/* Block-level: nằm dưới số giá, không phá text-align: right của td.currency */
 .price-stale-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 5px;
-  margin-left: 5px;
+  display: block;
+  margin-top: 2px;
+  padding: 1px 4px;
   border-radius: var(--radius-pill);
-  font-size: 0.68rem;
+  font-size: 0.62rem;
   font-weight: 600;
   white-space: nowrap;
-  background: rgba(148, 163, 184, 0.12);
+  background: rgba(148, 163, 184, 0.10);
   color: var(--muted);
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  vertical-align: middle;
+  border: 1px solid rgba(148, 163, 184, 0.20);
   cursor: default;
+  text-align: right;
+  letter-spacing: 0.02em;
 }
 
 /* Score tiers */
