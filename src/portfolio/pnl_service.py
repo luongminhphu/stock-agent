@@ -306,8 +306,8 @@ class PnlService:
             price_stale = not market_open
             if price_stale:
                 logger.debug(
-                    "pnl.market_closed.use_last_known ticker=%s price=%s",
-                    position.ticker, current_price,
+                    "pnl.market_closed.use_last_known",
+                    ticker=position.ticker, price=current_price,
                 )
         except Exception as _exc:
             # Import là lazy để tránh circular — kiểm tra theo tên class
@@ -317,8 +317,8 @@ class PnlService:
                 current_price = position.avg_cost
                 price_stale   = True
                 logger.debug(
-                    "pnl.market_closed.no_last_known ticker=%s fallback=avg_cost",
-                    position.ticker,
+                    "pnl.market_closed.no_last_known",
+                    ticker=position.ticker,
                 )
             else:
                 raise  # re-raise với lỗi khác (network, DB, ...) để get_portfolio_pnl log đúng
