@@ -43,7 +43,7 @@ async function _fetchAndRender(el) {
 
 function _render(el, state, diffMin) {
   const label = _label(state, diffMin);
-  el.className = `engine-heartbeat ${_cls(state)}`;
+  el.className = `engine-heartbeat ${_cls(state, diffMin)}`;
   el.setAttribute('title', _tooltip(state, diffMin));
   el.setAttribute('aria-label', label);
   el.innerHTML = `<span class="heartbeat-dot"></span><span class="heartbeat-text">${label}</span>`;
@@ -62,8 +62,11 @@ function _tooltip(state, diffMin) {
   return `Last cycle: ${Math.round(diffMin ?? 0)} phút trước`;
 }
 
-function _cls(state) {
+function _cls(state, diffMin) {
   if (state === 'ERROR') return 'heartbeat-error';
   if (state === 'STALE') return 'heartbeat-stale';
+  // IDLE + có captured_at hợp lệ → xanh lá (hệ thống đang chạy bình thường)
+  if (diffMin !== null)  return 'heartbeat-ok';
+  // IDLE nhưng chưa từng có snapshot → giữ muted
   return 'heartbeat-idle';
 }
