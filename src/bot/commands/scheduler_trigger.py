@@ -8,6 +8,11 @@ Commands:
   /run_intelligence      — trigger Intelligence Engine thủ công (phân tích + khuyến nghị).
 
 Tất cả đều gated: chỉ bot owner được dùng.
+
+Design contract:
+  - No discord.Embed() / discord.Color.* literals — use send_ok / send_error /
+    send_info / EmbedBuilder + COLORS from discord_helper (via BaseCog).
+  - No business logic — delegates to schedulers/services/event bus only.
 """
 
 from __future__ import annotations
@@ -17,9 +22,25 @@ from discord import app_commands
 from discord.ext import commands
 
 from src.bot.commands.base import BaseCog
+from src.bot.discord_helper import COLORS, EmbedBuilder
 from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
+
+_OWNER_ONLY_MSG = "Lệnh này chỉ dành cho bot owner."
+
+
+async def _check_owner(cog: BaseCog, interaction: discord.Interaction) -> bool:
+    """Return True if caller is bot owner, else send error and return False."""
+    app_info = await cog.bot.application_info()
+    if interaction.user.id != app_info.owner.id:
+        await cog.send_error(
+            interaction,
+            title="Không có quyền",
+            description=_OWNER_ONLY_MSG,
+        )
+        return False
+    return True
 
 
 class SchedulerTriggerCog(BaseCog):
@@ -38,14 +59,7 @@ class SchedulerTriggerCog(BaseCog):
         interaction: discord.Interaction,
     ) -> None:
         await interaction.response.defer(ephemeral=True)
-
-        app_info = await self.bot.application_info()
-        if interaction.user.id != app_info.owner.id:
-            await self.send_error(
-                interaction,
-                title="Không có quyền",
-                description="Lệnh này chỉ dành cho bot owner.",
-            )
+        if not await _check_owner(self, interaction):
             return
 
         try:
@@ -74,7 +88,7 @@ class SchedulerTriggerCog(BaseCog):
 
         processed = len(results)
         if processed == 0:
-            await self.send_info(
+            await self.send_ok(
                 interaction,
                 title="✅ Scheduler chạy xong",
                 description="Không có decision nào đến hạn.",
@@ -92,14 +106,16 @@ class SchedulerTriggerCog(BaseCog):
                     lesson_preview = f" → _{lesson[:80]}{'...' if len(lesson) > 80 else ''}_"
             lines.append(f"• `#{env.decision_id}` **{env.ticker}** [{verdict}]{lesson_preview}")
 
-        body, footer = self.paginate_lines(lines)
-        embed = discord.Embed(
-            title=f"🔄 Replay Scheduler — {processed} decision(s) processed",
-            description=body,
-            color=discord.Color.blurple(),
+        body, footer_text = self.paginate_lines(lines)
+        embed = (
+            EmbedBuilder(
+                title=f"🔄 Replay Scheduler — {processed} decision(s) processed",
+                color=COLORS.BLUE,
+            )
+            .description(body)
+            .footer(footer_text, brand=True, timestamp=True)
+            .build()
         )
-        if footer:
-            embed.set_footer(text=footer)
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     # ------------------------------------------------------------------
@@ -115,14 +131,7 @@ class SchedulerTriggerCog(BaseCog):
         interaction: discord.Interaction,
     ) -> None:
         await interaction.response.defer(ephemeral=True)
-
-        app_info = await self.bot.application_info()
-        if interaction.user.id != app_info.owner.id:
-            await self.send_error(
-                interaction,
-                title="Không có quyền",
-                description="Lệnh này chỉ dành cho bot owner.",
-            )
+        if not await _check_owner(self, interaction):
             return
 
         try:
@@ -137,16 +146,14 @@ class SchedulerTriggerCog(BaseCog):
             )
             return
 
-        embed = discord.Embed(
+        await self.send_ok(
+            interaction,
             title="📸 Snapshot hoàn tất",
             description=(
                 f"**{written}** snapshot(s) vừa ghi.\n\n"
                 "Tab **Backtesting** trên dashboard sẽ có data sau khi refresh."
             ),
-            color=discord.Color.green(),
         )
-        await interaction.followup.send(embed=embed, ephemeral=True)
-
 
     # ------------------------------------------------------------------
     # /run_intelligence
@@ -161,14 +168,7 @@ class SchedulerTriggerCog(BaseCog):
         interaction: discord.Interaction,
     ) -> None:
         await interaction.response.defer(ephemeral=True)
-
-        app_info = await self.bot.application_info()
-        if interaction.user.id != app_info.owner.id:
-            await self.send_error(
-                interaction,
-                title="Không có quyền",
-                description="Lệnh này chỉ dành cho bot owner.",
-            )
+        if not await _check_owner(self, interaction):
             return
 
         try:
@@ -209,14 +209,18 @@ class SchedulerTriggerCog(BaseCog):
             )
             return
 
-        embed = discord.Embed(
-            title="🧠 Intelligence Engine — Đã kích hoạt",
-            description=(
+        embed = (
+            EmbedBuilder(
+                title="🧠 Intelligence Engine — Đã kích hoạt",
+                color=COLORS.AI,
+            )
+            .description(
                 "Engine đang chạy trong nền.\n\n"
                 "• Kết quả sẽ xuất hiện trên dashboard sau vài giây.\n"
                 "• Discord embed sẽ gửi vào channel sau khi hoàn thành."
-            ),
-            color=discord.Color.blurple(),
+            )
+            .footer(brand=True, timestamp=True)
+            .build()
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
 
