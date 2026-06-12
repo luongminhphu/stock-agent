@@ -61,7 +61,7 @@ class UserActionFeedbackListener:
         self._bus = bus or get_event_bus()
 
     def register(self) -> None:
-        self._bus.subscribe(UserActionEvent, self._handle)
+        self._bus.subscribe_handler(UserActionEvent, self._handle)
         logger.info("user_action_listener.registered")
 
     # ------------------------------------------------------------------

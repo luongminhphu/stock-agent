@@ -31,7 +31,7 @@ class EngineFeedbackListener:
         self._bus = bus or get_event_bus()
 
     def register(self) -> None:
-        self._bus.subscribe(EngineFeedbackSubmittedEvent, self._handle)
+        self._bus.subscribe_handler(EngineFeedbackSubmittedEvent, self._handle)
         logger.info("feedback_listener.registered")
 
     async def _handle(self, event: EngineFeedbackSubmittedEvent) -> None:

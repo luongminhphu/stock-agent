@@ -46,7 +46,7 @@ class PortfolioSnapshotListener:
         self._bus = bus or get_event_bus()
 
     def register(self) -> None:
-        self._bus.subscribe(PortfolioSnapshotRequestedEvent, self._handle)
+        self._bus.subscribe_handler(PortfolioSnapshotRequestedEvent, self._handle)
         logger.info("portfolio_snapshot_listener.registered")
 
     async def _handle(self, event: PortfolioSnapshotRequestedEvent) -> None:

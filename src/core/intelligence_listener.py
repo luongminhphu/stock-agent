@@ -81,8 +81,8 @@ class IntelligenceEngineListener:
         self._portfolio_context: dict[str, PortfolioSnapshotReadyEvent] = {}
 
     def register(self) -> None:
-        self._bus.subscribe(IntelligenceEngineRequestedEvent, self._handle)
-        self._bus.subscribe(PortfolioSnapshotReadyEvent, self._handle_portfolio_snapshot)
+        self._bus.subscribe_handler(IntelligenceEngineRequestedEvent, self._handle)
+        self._bus.subscribe_handler(PortfolioSnapshotReadyEvent, self._handle_portfolio_snapshot)
         logger.info(
             "intelligence_listener.registered",
             wave="2_ai" if self._verdict_agent is not None else "1_heuristic",
