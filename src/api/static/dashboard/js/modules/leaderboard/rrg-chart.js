@@ -520,7 +520,7 @@ function _showTooltip(wrap, ticker, x, y) {
     <span class="rrg-tt-ticker" style="color:${color}">${_esc(ticker)}</span>
     <span class="rrg-tt-badge rrg-q--${_esc(t.quadrant)}">${_esc(t.quadrant)}</span>
     ${velHtml}
-    <span class="rrg-tt-hint">Click để phân tích AI</span>
+
   `;
   tip.classList.remove('rrg-tooltip--hidden');
 
@@ -1096,7 +1096,7 @@ function _renderLegend(wrap, visibleTickers) {
       class="rrg-legend-item"
       type="button"
       data-rrg-legend-ticker="${_esc(t.ticker)}"
-      title="${_esc(t.ticker)} — ${_esc(t.quadrant)}. Click để phân tích AI"
+      title="${_esc(t.ticker)} — ${_esc(t.quadrant)}"
       aria-label="${_esc(t.ticker)}"
     >${_sparklineSVG(t, color)}
       <span class="rrg-ticker-label" style="color:${color}">${_esc(t.ticker)}</span>
