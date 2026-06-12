@@ -172,12 +172,11 @@ class SchedulerTriggerCog(BaseCog):
             return
 
         try:
+            from src.platform.config import settings
             from src.platform.event_bus import get_event_bus
             from src.platform.events import IntelligenceEngineRequestedEvent
-            from src.platform.settings import get_settings
 
-            cfg = get_settings()
-            user_id = getattr(cfg, "scheduler_user_id", None)
+            user_id = getattr(settings, "scheduler_user_id", None)
             if not user_id:
                 await self.send_error(
                     interaction,
