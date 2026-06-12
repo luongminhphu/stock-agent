@@ -149,7 +149,7 @@ class IntelligenceEngineListener:
                 reason="snapshot_not_cached_or_already_consumed",
             )
 
-        verdict = await engine.run_cycle(
+        verdict = await engine.get_intelligence_engine().run_cycle(
             user_id=event.user_id,
             trigger_source=event.trigger_source,
             priority=event.priority,
