@@ -41,6 +41,7 @@ from src.readmodel.timeline_service import ThesisTimelineService
 from src.readmodel.today_loop_query_service import TodayLoopQueryService
 from src.portfolio.pnl_service import PnlService
 from src.portfolio.eod_snapshot_service import EodSnapshotService
+from src.readmodel.intelligence_read_service import IntelligenceReadService
 from src.watchlist.scan_service import ScanService
 
 router = APIRouter(prefix="/readmodel", tags=["readmodel"])
@@ -377,6 +378,60 @@ async def get_scan_latest_single_user(
 # ---------------------------------------------------------------------------
 # 7. Brief snapshots + feedback
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Recommendations — Intelligence Engine primary actions
+# ---------------------------------------------------------------------------
+
+
+@router.get("/dashboard/{user_id}/recommendations")
+async def get_recommendations(
+    user_id: str,
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> dict[str, Any]:
+    """Return latest Intelligence Engine verdict + priority actions for dashboard.
+
+    Data source: IntelligenceSnapshotStore (in-process) — no AI call.
+    Populated by IntelligenceSnapshotSubscriber after each engine cycle.
+    Returns empty shell when engine hasn’t run yet (is_fresh=False).
+    """
+    svc = IntelligenceReadService(session)
+    data = await svc.get_intelligence(user_id)
+    if data is None:
+        return {
+            "is_fresh": False,
+            "overall_verdict": None,
+            "confidence": None,
+            "market_context": None,
+            "priority_actions": [],
+            "risk_flags": [],
+            "watch_list": [],
+            "generated_at": None,
+            "is_stale": True,
+        }
+    return {"is_fresh": True, **data}
+
+
+@router.get("/dashboard/recommendations")
+async def get_recommendations_single_user(
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> dict[str, Any]:
+    svc = IntelligenceReadService(session)
+    data = await svc.get_intelligence(_default_user_id())
+    if data is None:
+        return {
+            "is_fresh": False,
+            "overall_verdict": None,
+            "confidence": None,
+            "market_context": None,
+            "priority_actions": [],
+            "risk_flags": [],
+            "watch_list": [],
+            "generated_at": None,
+            "is_stale": True,
+        }
+    return {"is_fresh": True, **data}
 
 
 @router.get("/dashboard/{user_id}/brief/latest")

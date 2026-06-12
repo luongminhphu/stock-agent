@@ -1,0 +1,270 @@
+/* ============================================================
+   recommendations.css
+   Owner: modules/recommendations
+   Panel: Khuyến nghị AI — Intelligence Engine primary actions
+   ============================================================ */
+
+/* ── Verdict header ─────────────────────────────────────────── */
+
+.rec-verdict-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1.1rem;
+  border-radius: var(--radius-md);
+  margin-bottom: 1.1rem;
+  border: 1px solid transparent;
+}
+
+.rec-verdict-left  { display: flex; align-items: center; gap: 0.75rem; }
+.rec-verdict-right { display: flex; align-items: center; gap: 0.6rem; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+
+.rec-verdict-icon  { font-size: 1.6rem; line-height: 1; }
+
+.rec-verdict-label {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  display: block;
+}
+
+.rec-confidence {
+  font-size: 0.75rem;
+  opacity: 0.75;
+  display: block;
+  margin-top: 1px;
+}
+
+/* verdict color variants */
+.rec-verdict--buy    { background: rgba(74, 222, 128, 0.10); border-color: rgba(74, 222, 128, 0.25); color: #bbf7d0; }
+.rec-verdict--sell   { background: rgba(248, 113, 113, 0.10); border-color: rgba(248, 113, 113, 0.25); color: #fecaca; }
+.rec-verdict--hold   { background: rgba(148, 163, 184, 0.08); border-color: rgba(148, 163, 184, 0.18); color: var(--muted); }
+.rec-verdict--review { background: rgba(251, 191, 36, 0.10); border-color: rgba(251, 191, 36, 0.25); color: #fde68a; }
+.rec-verdict--risk   { background: rgba(251, 146, 60, 0.10); border-color: rgba(251, 146, 60, 0.25); color: #fed7aa; }
+.rec-verdict--none   { background: rgba(148, 163, 184, 0.06); border-color: rgba(148, 163, 184, 0.12); color: var(--muted); }
+
+/* ── Meta badges ────────────────────────────────────────────── */
+
+.rec-stale-badge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  background: rgba(251, 191, 36, 0.14);
+  color: #fde68a;
+  border: 1px solid rgba(251, 191, 36, 0.25);
+  white-space: nowrap;
+}
+
+.rec-generated-at {
+  font-size: 0.7rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* ── Market context ─────────────────────────────────────────── */
+
+.rec-market-context {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin: 0 0 1rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 2px solid var(--line);
+  line-height: 1.55;
+}
+
+/* ── Section labels ─────────────────────────────────────────── */
+
+.rec-section-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 1.1rem 0 0.55rem;
+}
+
+.rec-count {
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  min-width: 20px;
+  text-align: center;
+}
+
+/* ── Empty state ────────────────────────────────────────────── */
+
+.rec-empty-state {
+  font-size: 0.82rem;
+  color: var(--muted);
+  padding: 1.2rem 1rem;
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--line);
+  text-align: center;
+  line-height: 1.55;
+}
+
+.rec-empty-state--error {
+  border-color: rgba(248, 113, 113, 0.3);
+  background: rgba(248, 113, 113, 0.06);
+}
+
+/* ── Action cards ───────────────────────────────────────────── */
+
+.rec-action-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.rec-action-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 0.9rem;
+  transition: border-color 0.15s;
+}
+
+.rec-action-card:hover { border-color: rgba(148, 163, 184, 0.35); }
+
+.rec-action-rank {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--surface-3, var(--surface-2));
+  border: 1px solid var(--line);
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+
+.rec-action-body  { flex: 1; min-width: 0; }
+
+.rec-action-header {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.35rem;
+}
+
+.rec-ticker-badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: rgba(96, 165, 250, 0.14);
+  color: #93c5fd;
+  border: 1px solid rgba(96, 165, 250, 0.25);
+  letter-spacing: 0.03em;
+}
+
+.rec-action-type {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.rec-urgency-chip {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+  margin-left: auto;
+}
+
+.urgency--immediate { background: rgba(248, 113, 113, 0.14); color: #fca5a5; border: 1px solid rgba(248,113,113,.25); }
+.urgency--today     { background: rgba(251, 191, 36,  0.14); color: #fde68a; border: 1px solid rgba(251,191,36,.25); }
+.urgency--week      { background: rgba(148, 163, 184, 0.10); color: var(--muted); border: 1px solid rgba(148,163,184,.2); }
+
+.rec-action-instruction {
+  font-size: 0.83rem;
+  color: var(--text, #e2e8f0);
+  margin: 0 0 0.25rem;
+  line-height: 1.5;
+  font-weight: 500;
+}
+
+.rec-action-reasoning {
+  font-size: 0.76rem;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ── Risk flags ─────────────────────────────────────────────── */
+
+.rec-risk-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.rec-risk-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  padding: 0.35rem 0.6rem;
+  border-radius: var(--radius-sm);
+}
+
+.rec-risk-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-top: 0.45rem;
+}
+
+.risk--high   { background: rgba(248,113,113,0.08); color: #fca5a5; }
+.risk--high   .rec-risk-dot { background: #f87171; }
+.risk--medium { background: rgba(251,191,36,0.08);  color: #fde68a; }
+.risk--medium .rec-risk-dot { background: #fbbf24; }
+.risk--low    { background: rgba(148,163,184,0.06); color: var(--muted); }
+.risk--low    .rec-risk-dot { background: var(--muted); }
+
+/* ── Watch chips ────────────────────────────────────────────── */
+
+.rec-watch-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+
+.rec-watch-chip {
+  font-size: 0.73rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  letter-spacing: 0.03em;
+}

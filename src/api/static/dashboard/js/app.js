@@ -46,6 +46,7 @@ import {
 } from './modules/watchlist/watchlist-nav.js';
 import { initKpiClickable }             from './modules/dashboard/kpi-clickable.js';
 import { initTopbarSearch, reapplySearch } from './modules/search/topbar-search.js';
+import { loadRecommendations, startRecommendationsAutoRefresh } from './modules/recommendations/recommendations-panel.js';
 
 // ---------------------------------------------------------------------------
 // Event wires — decision loop
@@ -266,6 +267,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   loadMemory();
   loadAttentionPanel();
   loadTodayLoop();
+  loadRecommendations();
   initKpiClickable();
   initTopbarSearch();
 
@@ -275,4 +277,5 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   startAttentionAutoRefresh();
   startTodayLoopAutoRefresh();
+  startRecommendationsAutoRefresh();
 });
