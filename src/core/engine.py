@@ -1009,10 +1009,10 @@ class _EngineRunner:
 
         if verdict_agent is not None:
             try:
+                ranked_signals = rank_signals(output.snapshot)
                 ai_verdict = await verdict_agent.run(
                     snapshot=output.snapshot,
-                    signals_summary=signal_engine_summary or verdict.reasoning_summary,
-                    phase=phase,
+                    ranked_signals=ranked_signals,
                     session=session,
                     user_id=user_id,
                 )
