@@ -168,34 +168,47 @@ function _snapshotCanvas() {
 function _redrawAnimated(wrap) {
   if (_animFrame) cancelAnimationFrame(_animFrame);
 
-  // Draw target state immediately to an offscreen canvas
   const visible = _allTickers.filter(t => !_hidden.has(t.ticker));
+
+  // Always draw canvas + legend + set a11y attrs synchronously.
+  // The fade-overlay is purely cosmetic and must not gate these.
   _drawCanvas(wrap, visible);
+  _renderLegend(wrap, visible);
+  _setCanvasA11y();   // tabindex + role after canvas exists
 
-  if (!_prevImageData) { _renderLegend(wrap, visible); return; }
+  if (!_prevImageData) return;
 
-  // Overlay old image and fade it out
+  // Cosmetic: fade old snapshot over the newly drawn frame
   const canvas = document.getElementById(CANVAS_ID);
-  if (!canvas) { _renderLegend(wrap, visible); return; }
+  if (!canvas) return;
   const ctx = canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
-  const W   = canvas.width / dpr;
+  const W   = canvas.width  / dpr;
   const H   = canvas.height / dpr;
 
-  const img   = new Image();
-  img.src     = _prevImageData;
-  let alpha   = 0.85;
-  const step  = () => {
-    if (alpha <= 0) { _prevImageData = null; _renderLegend(wrap, visible); return; }
+  const img = new Image();
+  img.src   = _prevImageData;
+  let alpha = 0.80;
+  const step = () => {
+    if (alpha <= 0) { _prevImageData = null; return; }
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.drawImage(img, 0, 0, W, H);
     ctx.restore();
-    alpha -= 0.10;
+    alpha -= 0.12;
     _animFrame = requestAnimationFrame(step);
   };
-  img.onload = () => _animFrame = requestAnimationFrame(step);
-  img.onerror = () => { _prevImageData = null; _renderLegend(wrap, visible); };
+  img.onload  = () => { _animFrame = requestAnimationFrame(step); };
+  img.onerror = () => { _prevImageData = null; };
+}
+
+/** Set tabindex + aria attrs on canvas after it has been created. */
+function _setCanvasA11y() {
+  const cv = document.getElementById(CANVAS_ID);
+  if (!cv) return;
+  cv.setAttribute('tabindex', '0');
+  cv.setAttribute('role', 'img');
+  cv.setAttribute('aria-label', 'Relative Rotation Graph — dùng ←→ để chọn ticker');
 }
 
 // ── C5: Aggregate quadrant summary bar ─────────────────────────────────────
@@ -248,9 +261,9 @@ function _renderSummaryBar(wrap) {
 
 function _renderFilterBar(wrap) {
   let bar = wrap.querySelector('.rrg-filter-bar');
-  const isNew = !bar;
+  const eventsAlreadyWired = Boolean(bar?.dataset.rrgEventsWired);
 
-  if (isNew) {
+  if (!bar) {
     bar = document.createElement('div');
     bar.className = 'rrg-filter-bar';
     // Insert after summary bar, before canvas
@@ -262,6 +275,7 @@ function _renderFilterBar(wrap) {
     else wrap.appendChild(bar);
   }
 
+  // Always rebuild innerHTML so chips/lookback reflect current _allTickers
   bar.innerHTML = `
     <div class="rrg-filter-controls">
       ${LOOKBACK_OPTIONS.map(w =>
@@ -305,7 +319,7 @@ function _renderFilterBar(wrap) {
     </div>
   `;
 
-  // Wire remove buttons
+  // Wire remove buttons (re-wire every rebuild — safe because innerHTML replaced)
   bar.querySelectorAll('[data-rrg-remove]').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation();
@@ -315,7 +329,9 @@ function _renderFilterBar(wrap) {
     });
   });
 
-  if (!isNew) return; // events wired once only
+  // Guard: only wire delegated events once
+  if (eventsAlreadyWired) return;
+  bar.dataset.rrgEventsWired = '1';
 
   // Controls: lookback + bulk
   bar.querySelector('.rrg-filter-controls').addEventListener('click', e => {
@@ -430,6 +446,7 @@ function _redraw(wrap) {
   const visible = _allTickers.filter(t => !_hidden.has(t.ticker));
   _drawCanvas(wrap, visible);
   _renderLegend(wrap, visible);
+  _setCanvasA11y();
 }
 
 // ── C3: Tooltip ────────────────────────────────────────────────────────────
@@ -688,58 +705,54 @@ function _wireCanvasEvents(wrap) {
   });
 
   // C3: mousemove → hover tooltip
-  const canvas = document.getElementById(CANVAS_ID);
+  // NOTE: canvas is NOT available when _wireCanvasEvents runs (it is created
+  // inside _drawCanvas which runs later). Always look it up dynamically.
   wrap.addEventListener('mousemove', e => {
-    if (!e.target.closest(`#${CANVAS_ID}`)) { _hideTooltip(wrap); return; }
-    const rect   = canvas?.getBoundingClientRect();
+    const cv = document.getElementById(CANVAS_ID);
+    if (!cv || !e.target.closest(`#${CANVAS_ID}`)) { _hideTooltip(wrap); return; }
+    const rect   = cv.getBoundingClientRect();
     if (!rect) return;
     const cx     = e.clientX - rect.left;
     const cy     = e.clientY - rect.top;
     const ticker = _hitTest(cx, cy);
     if (ticker) {
       _showTooltip(wrap, ticker, cx, cy);
-      if (canvas) canvas.style.cursor = 'pointer';
+      cv.style.cursor = 'pointer';
     } else {
       _hideTooltip(wrap);
-      if (canvas) canvas.style.cursor = 'default';
+      cv.style.cursor = 'default';
     }
   });
 
   wrap.addEventListener('mouseleave', () => _hideTooltip(wrap));
 
-  // C8: keyboard navigation via canvas tabindex
-  const canvasEl = document.getElementById(CANVAS_ID);
-  if (canvasEl) {
-    canvasEl.setAttribute('tabindex', '0');
-    canvasEl.setAttribute('role', 'img');
-    canvasEl.setAttribute('aria-label', 'Relative Rotation Graph — dùng ←→ để chọn ticker');
+  // C8: keyboard navigation — delegated from wrap so it works even after
+  // canvas is created later by _drawCanvas.
+  wrap.addEventListener('keydown', e => {
+    if (!e.target.matches(`#${CANVAS_ID}`)) return;
+    const visible = _allTickers.filter(t => !_hidden.has(t.ticker));
+    if (!visible.length) return;
 
-    canvasEl.addEventListener('keydown', e => {
-      const visible = _allTickers.filter(t => !_hidden.has(t.ticker));
-      if (!visible.length) return;
-
-      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-        e.preventDefault();
-        _focusedIdx = e.key === 'ArrowRight'
-          ? (_focusedIdx + 1) % visible.length
-          : (_focusedIdx - 1 + visible.length) % visible.length;
-
-        const ticker = visible[_focusedIdx]?.ticker;
-        if (ticker) {
-          _drawCanvas(wrap, visible, ticker);  // highlight focused
-          _showDetailLoading(wrap, ticker);
-          _fetchRotation(ticker);
-        }
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+      e.preventDefault();
+      _focusedIdx = e.key === 'ArrowRight'
+        ? (_focusedIdx + 1) % visible.length
+        : (_focusedIdx - 1 + visible.length) % visible.length;
+      const ticker = visible[_focusedIdx]?.ticker;
+      if (ticker) {
+        _drawCanvas(wrap, visible, ticker);
+        _showDetailLoading(wrap, ticker);
+        _fetchRotation(ticker);
       }
+    }
 
-      if (e.key === 'Escape') {
-        _focusedIdx = -1;
-        _redraw(wrap);
-        const panel = document.getElementById(DETAIL_ID);
-        if (panel) { panel.classList.add('rrg-detail--hidden'); _activeDetail = null; }
-      }
-    });
-  }
+    if (e.key === 'Escape') {
+      _focusedIdx = -1;
+      _redraw(wrap);
+      const panel = document.getElementById(DETAIL_ID);
+      if (panel) { panel.classList.add('rrg-detail--hidden'); _activeDetail = null; }
+    }
+  });
 }
 
 // ── Hit test ──────────────────────────────────────────────────────────────
