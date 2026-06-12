@@ -1029,6 +1029,109 @@ function _drawTicker(ctx, ticker, toX, toY, masterAlpha) {
   ctx.fillStyle = color;
   ctx.textAlign = 'left';
   ctx.fillText(ticker.ticker, lx, ly);
+
+  // Forecast trail — dashed extrapolation
+  _drawForecast(ctx, ticker, toX, toY, masterAlpha);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Forecast Trail — pure math extrapolation (no AI call)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Extrapolate N forecast points from a real trail using:
+ *   1. Weighted velocity from last K points (recent heavier)
+ *   2. Mean reversion toward 100 (natural RS behaviour)
+ *   3. Damping factor per step (growing uncertainty)
+ *
+ * @param {Array<{rs_ratio:number, rs_momentum:number}>} trail  oldest→newest
+ * @param {number} n  number of forecast points
+ * @returns {Array<{rs_ratio:number, rs_momentum:number}>}  forecast points oldest→newest
+ */
+function _forecastTrail(trail, n) {
+  if (!trail || trail.length < 2) return [];
+
+  const K       = Math.min(trail.length, 5); // use up to last 5 points for velocity
+  const DAMP    = 0.82;                       // velocity decay per step
+  const REVERT  = 0.06;                       // mean-reversion pull toward 100
+  const CENTER  = 100;
+
+  // Weighted velocity: pair (i-1 → i), weight = i / sum
+  let wDr = 0, wDm = 0, wSum = 0;
+  const start = trail.length - K;
+  for (let i = start + 1; i < trail.length; i++) {
+    const w   = i - start;                    // 1, 2, … K-1 (recent heavier)
+    const dr  = trail[i].rs_ratio    - trail[i - 1].rs_ratio;
+    const dm  = trail[i].rs_momentum - trail[i - 1].rs_momentum;
+    wDr  += dr * w;
+    wDm  += dm * w;
+    wSum += w;
+  }
+  let vr = wDr / wSum;
+  let vm = wDm / wSum;
+
+  const pts  = [];
+  let cur_r  = trail[trail.length - 1].rs_ratio;
+  let cur_m  = trail[trail.length - 1].rs_momentum;
+
+  for (let i = 0; i < n; i++) {
+    // Mean reversion nudge
+    const revR = (CENTER - cur_r) * REVERT;
+    const revM = (CENTER - cur_m) * REVERT;
+
+    cur_r += vr + revR;
+    cur_m += vm + revM;
+
+    pts.push({ rs_ratio: cur_r, rs_momentum: cur_m });
+
+    // Dampen velocity for next step
+    vr *= DAMP;
+    vm *= DAMP;
+  }
+  return pts;
+}
+
+/**
+ * Draw the forecast trail as a dashed polyline.
+ * Called at end of _drawTicker — shares same ctx state.
+ */
+function _drawForecast(ctx, ticker, toX, toY, masterAlpha) {
+  const trail = ticker.trail;
+  if (!trail || trail.length < 2) return;
+
+  const N_FORECAST = 6;
+  const forecast   = _forecastTrail(trail, N_FORECAST);
+  if (!forecast.length) return;
+
+  const idx   = _allTickers.findIndex(t => t.ticker === ticker.ticker);
+  const color = TRAIL_PALETTE[idx % TRAIL_PALETTE.length];
+
+  // Prepend the actual head as starting point so the dashed line connects
+  const head   = trail[trail.length - 1];
+  const allPts = [head, ...forecast];
+
+  ctx.save();
+  ctx.setLineDash([3, 4]);
+  ctx.lineCap = 'round';
+
+  for (let i = 1; i < allPts.length; i++) {
+    const progress  = i / (allPts.length - 1);     // 0 → 1
+    const segAlpha  = (0.50 - progress * 0.45) * masterAlpha;  // 0.50 → 0.05
+    const segWidth  = Math.max(0.8, 1.6 - progress * 0.8);
+    const alphaHex  = Math.round(Math.max(0, segAlpha) * 255).toString(16).padStart(2, '0');
+
+    const x0 = toX(allPts[i - 1].rs_ratio);   const y0 = toY(allPts[i - 1].rs_momentum);
+    const x1 = toX(allPts[i].rs_ratio);         const y1 = toY(allPts[i].rs_momentum);
+
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
+    ctx.strokeStyle = color + alphaHex;
+    ctx.lineWidth   = segWidth;
+    ctx.stroke();
+  }
+
+  ctx.restore(); // clears setLineDash
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
