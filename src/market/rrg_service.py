@@ -262,8 +262,12 @@ class RRGService:
                 ))
                 continue
 
-            # Align: use only dates covered by both series (take tail of longer)
-            n   = min(len(tc), len(bench_closes))
+            # Align: use only dates covered by both series, clamped to
+            # lookback_weeks worth of trading days so that 26W and 52W
+            # produce genuinely different EMA windows (not just different
+            # trail_points on the same underlying series).
+            max_candles = lookback_weeks * _TRADING_DAYS_PER_WEEK
+            n   = min(len(tc), len(bench_closes), max_candles)
             res = _compute_rrg(tc[-n:], bench_closes[-n:], trail_points)
 
             if res is None:
