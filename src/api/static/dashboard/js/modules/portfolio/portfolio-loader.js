@@ -17,6 +17,30 @@ import { renderPortfolio }             from './portfolio-renderer.js';
 import { init as qtInit,
          injectTradeButtons }          from './quick-trade.js';
 
+// Wave 4: Skeleton screen — hiển thị ngay trước khi fetch complete
+function portfolioSkeletonHTML() {
+  const row = (cols) => `<tr style="pointer-events:none;">${cols.map(w =>
+    `<td><div class="skel skel-text" style="width:${w}%;"></div></td>`
+  ).join('')}</tr>`;
+  return `
+    <div class="skel-table-wrap" aria-busy="true" aria-label="Đang tải danh mục…">
+      <div style="display:flex;gap:8px;margin-bottom:10px;">
+        <div class="skel skel-badge" style="width:72px;"></div>
+        <div class="skel skel-badge" style="width:60px;"></div>
+      </div>
+      <table class="data-table">
+        <thead><tr>
+          ${['40','30','45','40','50','40','45'].map(w =>
+            `<th><div class="skel skel-text" style="width:${w}%;"></div></th>`
+          ).join('')}
+        </tr></thead>
+        <tbody>
+          ${[row([55,35,42,38,52,44,40]),row([48,38,50,36,44,48,42]),row([60,30,38,44,56,36,48]),row([45,42,44,40,48,52,36])]}
+        </tbody>
+      </table>
+    </div>`;
+}
+
 /**
  * @param {string=} userId
  */
@@ -33,6 +57,8 @@ export async function loadPortfolio(userId) {
   }
   qtInit();
 
+  // Wave 4: show skeleton immediately
+  section.innerHTML = portfolioSkeletonHTML();
   section.classList.add('loading');
 
   try {

@@ -52,3 +52,9 @@
       so they override modules/layout.css shell rules cleanly */
 @import url('./css/base/layout.css');
 @import url('./css/base/nav.css');
+
+/* 7. Feature-scoped stylesheets — consolidated from index.html <link> tags
+      (Wave 3: reduce blocking HTTP requests from 5 → 1) */
+@import url('./css/quick-trade.css');
+@import url('./css/heatmap.css');
+@import url('./css/modules/recommendations.css');

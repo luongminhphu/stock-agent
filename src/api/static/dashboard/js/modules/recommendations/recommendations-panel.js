@@ -54,9 +54,36 @@ const _SEVERITY_CLS = { HIGH: 'risk--high', MEDIUM: 'risk--medium', LOW: 'risk--
 
 // ── Public API ─────────────────────────────────────────────────────────────────
 
+// Wave 4: skeleton screen for recommendations panel
+function _skeletonHTML() {
+  const card = () => `
+    <li class="rec-action-card" style="pointer-events:none;">
+      <div class="rec-action-rank"><div class="skel" style="width:16px;height:16px;border-radius:50%;"></div></div>
+      <div class="rec-action-body" style="flex:1;">
+        <div style="display:flex;gap:6px;margin-bottom:8px;">
+          <div class="skel skel-badge" style="width:52px;"></div>
+          <div class="skel skel-badge" style="width:80px;"></div>
+          <div class="skel skel-badge" style="width:64px;margin-left:auto;"></div>
+        </div>
+        <div class="skel skel-text" style="width:85%;margin-bottom:5px;"></div>
+        <div class="skel skel-text" style="width:70%;"></div>
+      </div>
+    </li>`;
+  return `
+    <div class="skel" style="height:62px;border-radius:var(--radius-md);margin-bottom:1.1rem;"></div>
+    <div style="display:flex;gap:8px;margin-bottom:0.75rem;">
+      <div class="skel skel-text" style="width:120px;"></div>
+      <div class="skel skel-badge" style="width:24px;"></div>
+    </div>
+    <ol class="rec-action-list" aria-busy="true">${[card(), card(), card()].join('')}</ol>`;
+}
+
 export async function loadRecommendations() {
   const root = document.getElementById('recommendationsPanelBody');
   if (!root) return;
+
+  // Wave 4: show skeleton immediately
+  root.innerHTML = _skeletonHTML();
 
   try {
     const data = await getJson(_API_URL);

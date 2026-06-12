@@ -331,18 +331,15 @@ export async function loadDashboard() {
   showLoadingSkeletons();
 
   try {
-    const [
-      stats, theses, verdictAccuracy, catalysts,
-      latestScan, latestMorningBrief, latestEodBrief,
-      portfolioTrades,
-      briefFeedback,
-      alertsTriggered,
-      thesisAggregate,
-      recentSignals,
-    ] = await Promise.all([
+    // Wave 1 — Split fetches into critical (blocks render) + deferred (enrichment)
+    //
+    // Critical: stats, theses, catalysts, scan, briefs, portfolio trades
+    //           → needed to render thesis table + KPI strip + brief panel
+    // Deferred: verdict-accuracy, alerts, aggregate, signals
+    //           → enrichment only, rendered after critical paint
+    const criticalPromise = Promise.all([
       getJson(`${base}/stats`).catch(() => null),
       getJson(`${base}/theses?status=${status}`).catch(() => []),
-      getJson(`${base}/backtesting/verdict-accuracy`).catch(() => null),
       // days=30: catalyst window aligned with scheduler _CATALYST_LOOKAHEAD_DAYS
       getJson(`${base}/catalysts/upcoming?days=30`).catch(() => []),
       getJson(`${base}/scan/latest`).catch(() => null),
@@ -350,16 +347,24 @@ export async function loadDashboard() {
       getJson(`${briefBase}/latest?phase=eod`).catch(() => null),
       getJson(`${base}/portfolio/trades`).catch(() => null),
       getJson(`${briefBase}/feedback-summary`).catch(() => null),
+    ]);
+
+    // Deferred: fire in parallel with critical but don't block render
+    const deferredPromise = Promise.all([
+      getJson(`${base}/backtesting/verdict-accuracy`).catch(() => null),
       getJson(`${base}/alerts/triggered`).catch(() => null),
       getJson(`${base}/theses/aggregate`).catch(() => null),
       getJson(`${base}/signals/recent?days=7&limit=30`).catch(() => null),
     ]);
 
+    const [
+      stats, theses, catalysts,
+      latestScan, latestMorningBrief, latestEodBrief,
+      portfolioTrades, briefFeedback,
+    ] = await criticalPromise;
+
+    // Render critical content immediately
     renderSummary(stats, portfolioTrades, briefFeedback);
-    renderTierBreakdown(thesisAggregate);
-    renderAlertsStrip(alertsTriggered);
-    renderCatalystUrgentStrip(catalysts?.items ?? catalysts ?? []);
-    renderSignalsFeed(recentSignals);
     renderActionSurface(stats, catalysts?.items ?? catalysts ?? []);
 
     state.theses = theses?.items ?? theses ?? [];
@@ -370,15 +375,7 @@ export async function loadDashboard() {
     });
 
     renderHealthHeatmap(state.theses);
-
-    const accuracyRows = normalizeAccuracyRes(verdictAccuracy);
-    state.cachedVerdictAccuracy = accuracyRows;
-    renderVerdicts(accuracyRows);
-    renderAccuracy(accuracyRows);
-
-    // ←— Catalyst Calendar (timeline view, replaces flat list)
     renderCatalystCalendar(catalysts?.items ?? catalysts ?? []);
-
     renderSnapshots({
       latest_scan:               latestScan ?? null,
       latest_scan_at:            latestScan?.scanned_at ?? latestScan?.created_at ?? null,
@@ -390,20 +387,38 @@ export async function loadDashboard() {
       brief_feedback:            briefFeedback ?? null,
     });
 
-    loadLeaderboard().catch(() => null);
-    loadRRG().catch(() => null);
-    // Intelligence snapshot: lazy — không block main render
-    loadIntelligencePanel().catch(() => null);
-
+    // Restore selected thesis detail if any
     if (state.selectedThesisId) {
       const t = state.theses.find(x => x.id === state.selectedThesisId);
-      if (t) await loadThesisDetail(t.id);
+      if (t) loadThesisDetail(t.id).catch(() => null);
       else {
         const detail = el('thesisDetail');
         if (detail) detail.innerHTML = emptyDetailHTML();
         state.selectedThesisId = null;
       }
     }
+
+    // Resolve deferred enrichment (may already be done)
+    const [
+      verdictAccuracy, alertsTriggered, thesisAggregate, recentSignals,
+    ] = await deferredPromise;
+
+    // Render deferred enrichments
+    renderTierBreakdown(thesisAggregate);
+    renderAlertsStrip(alertsTriggered);
+    renderCatalystUrgentStrip(catalysts?.items ?? catalysts ?? []);
+    renderSignalsFeed(recentSignals);
+
+    const accuracyRows = normalizeAccuracyRes(verdictAccuracy);
+    state.cachedVerdictAccuracy = accuracyRows;
+    renderVerdicts(accuracyRows);
+    renderAccuracy(accuracyRows);
+
+    loadLeaderboard().catch(() => null);
+    loadRRG().catch(() => null);
+    // Intelligence snapshot: lazy — không block main render
+    loadIntelligencePanel().catch(() => null);
+
   } catch (err) {
     const banner = el('errorBanner');
     if (banner) {
