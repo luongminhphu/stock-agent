@@ -308,12 +308,7 @@
   padding-bottom: 1px;
 }
 .rrg-chip-scroll::-webkit-scrollbar { display: none; }
-.rrg-filter-divider {
-  width: 1px;
-  height: 12px;
-  background: var(--line);
-  flex-shrink: 0;
-}
+
 
 /* Lookback + bulk buttons */
 .rrg-bulk-btn {

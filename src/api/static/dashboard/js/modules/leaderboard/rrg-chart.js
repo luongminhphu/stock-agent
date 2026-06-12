@@ -41,8 +41,7 @@ import { loadThesisDetail } from '../thesis/thesis-service.js';
 
 const API_URL          = '/api/v1/rrg/thesis';
 const ROTATION_API     = '/api/v1/rrg/rotation';
-const LOOKBACK_OPTIONS = [26, 52];
-const LOOKBACK_KEY     = 'rrg_lookback_weeks';
+const LOOKBACK_WEEKS = 26;
 const EXTRA_KEY        = 'rrg_extra_tickers';
 const HIDDEN_KEY       = 'rrg_hidden_tickers';
 const MAX_EXTRA        = 10;
@@ -74,7 +73,7 @@ const TRAIL_PALETTE = [
 let _allTickers    = [];            // all valid tickers from last fetch
 let _hidden        = new Set();     // tickers excluded from canvas
 let _asOf          = null;          // date string from API
-let _lookbackWeeks = _loadLookback();
+let _lookbackWeeks = LOOKBACK_WEEKS;
 let _extraTickers  = _loadExtra();
 let _focusedIdx    = -1;            // C8: keyboard nav index
 let _headPositions = new Map();     // Map<ticker, {x,y}> CSS px — for hit-test
@@ -110,15 +109,7 @@ function _loadExtra() {
     return new Set(Array.isArray(v) ? v.slice(0, MAX_EXTRA) : []);
   } catch (_) { return new Set(); }
 }
-function _saveLookback() {
-  try { localStorage.setItem(LOOKBACK_KEY, String(_lookbackWeeks)); } catch (_) {}
-}
-function _loadLookback() {
-  try {
-    const v = parseInt(localStorage.getItem(LOOKBACK_KEY), 10);
-    return LOOKBACK_OPTIONS.includes(v) ? v : LOOKBACK_OPTIONS[0];
-  } catch (_) { return LOOKBACK_OPTIONS[0]; }
-}
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Public entry point
@@ -175,7 +166,6 @@ export async function loadRRG() {
     // Sync button active states after rebuilding HTML
     const bar = wrap.querySelector('.rrg-filter-bar');
     if (bar) {
-      _syncLookbackBtns(bar);
       _syncChips(bar);
     }
 
@@ -322,10 +312,6 @@ function _renderFilterBar(wrap) {
   // Always rebuild inner HTML to reflect current _allTickers / _extraTickers
   bar.innerHTML = `
     <div class="rrg-filter-controls">
-      ${LOOKBACK_OPTIONS.map(w =>
-        `<button class="rrg-bulk-btn rrg-lookback-btn" data-rrg-lookback="${w}" type="button">${w}W</button>`
-      ).join('')}
-      <span class="rrg-filter-divider"></span>
       <button class="rrg-bulk-btn" data-rrg-bulk="all"  type="button">Tất cả</button>
       <button class="rrg-bulk-btn" data-rrg-bulk="none" type="button">Bỏ hết</button>
     </div>
@@ -366,22 +352,9 @@ function _renderFilterBar(wrap) {
   if (bar.dataset.rrgBarWired) return;
   bar.dataset.rrgBarWired = '1';
 
-  // ── Click: lookback / bulk / chip-remove / chip-toggle ───────────────────
+  // ── Click: bulk / chip-remove / chip-toggle ───────────────────
   bar.addEventListener('click', e => {
-    // 1. Lookback button (26W / 52W)
-    const lookbackBtn = e.target.closest('[data-rrg-lookback]');
-    if (lookbackBtn) {
-      const weeks = parseInt(lookbackBtn.dataset.rrgLookback, 10);
-      if (weeks !== _lookbackWeeks) {
-        _lookbackWeeks = weeks;
-        _saveLookback();
-        _syncLookbackBtns(bar);
-        loadRRG();
-      }
-      return;
-    }
-
-    // 2. Bulk select / deselect
+    // 1. Bulk select / deselect
     const bulk = e.target.closest('[data-rrg-bulk]');
     if (bulk) {
       const mode = bulk.dataset.rrgBulk;
@@ -453,14 +426,6 @@ function _renderFilterBar(wrap) {
     _extraTickers.add(sym);
     _saveExtra();
     loadRRG();
-  });
-}
-
-function _syncLookbackBtns(bar) {
-  bar.querySelectorAll('[data-rrg-lookback]').forEach(btn => {
-    const active = parseInt(btn.dataset.rrgLookback, 10) === _lookbackWeeks;
-    btn.classList.toggle('rrg-bulk-btn--active', active);
-    btn.setAttribute('aria-pressed', String(active));
   });
 }
 
