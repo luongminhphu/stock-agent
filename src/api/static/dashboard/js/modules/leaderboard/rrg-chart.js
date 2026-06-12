@@ -435,7 +435,9 @@ function _wireResizeObserver(wrap) {
   _resizeObs = new ResizeObserver(() => {
     if (!_allTickers.length) return;
     const visible = _allTickers.filter(t => !_hidden.has(t.ticker));
-    _drawCanvas(wrap, visible);
+    _drawCanvas(wrap, visible);       // R1: also refresh legend + a11y on resize
+    _renderLegend(wrap, visible);
+    _setCanvasA11y();
   });
   _resizeObs.observe(wrap);
 }
@@ -549,6 +551,7 @@ function _showDetailLoading(wrap, ticker) {
 }
 
 function _renderDetailSignal(ticker, d) {
+  if (ticker !== _activeDetail) return; // R2: discard stale AI response
   const panel = document.getElementById(DETAIL_ID);
   if (!panel) return;
   const idx    = _allTickers.findIndex(t => t.ticker === ticker);
@@ -649,6 +652,7 @@ function _renderDetailSignal(ticker, d) {
 }
 
 function _renderDetailError(ticker, msg) {
+  if (ticker !== _activeDetail) return; // R2: discard stale error response
   const panel = document.getElementById(DETAIL_ID);
   if (!panel) return;
   const idx   = _allTickers.findIndex(t => t.ticker === ticker);
