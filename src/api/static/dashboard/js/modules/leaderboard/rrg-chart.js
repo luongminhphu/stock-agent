@@ -319,22 +319,19 @@ function _renderFilterBar(wrap) {
     </div>
   `;
 
-  // Wire remove buttons (re-wire every rebuild — safe because innerHTML replaced)
-  bar.querySelectorAll('[data-rrg-remove]').forEach(btn => {
-    btn.addEventListener('click', e => {
-      e.stopPropagation();
-      _extraTickers.delete(btn.dataset.rrgRemove);
-      _saveExtra();
-      loadRRG();
-    });
-  });
-
   // Guard: only wire delegated events once
+  // (remove buttons are handled by the delegated bar click listener below)
   if (eventsAlreadyWired) return;
   bar.dataset.rrgEventsWired = '1';
 
-  // Controls: lookback + bulk
-  bar.querySelector('.rrg-filter-controls').addEventListener('click', e => {
+  // ── Delegate ALL events to `bar` (not to child elements). ──────────────
+  // bar.innerHTML is rebuilt on every loadRRG() call, destroying child nodes
+  // and their listeners. Delegating to `bar` itself survives innerHTML rebuilds
+  // because bar is never replaced — only its children are.
+
+  // Click: lookback buttons + bulk + chip toggle + chip remove
+  bar.addEventListener('click', e => {
+    // Lookback (26W / 52W)
     const lookbackBtn = e.target.closest('[data-rrg-lookback]');
     if (lookbackBtn) {
       const weeks = parseInt(lookbackBtn.dataset.rrgLookback, 10);
@@ -346,6 +343,8 @@ function _renderFilterBar(wrap) {
       }
       return;
     }
+
+    // Bulk select / deselect
     const bulk = e.target.closest('[data-rrg-bulk]');
     if (bulk) {
       const mode = bulk.dataset.rrgBulk;
@@ -354,12 +353,20 @@ function _renderFilterBar(wrap) {
       _saveHidden();
       _syncChips(bar);
       _redraw(wrap);
+      return;
     }
-  });
 
-  // Chip scroll: click toggle + remove
-  bar.querySelector('.rrg-chip-scroll').addEventListener('click', e => {
-    if (e.target.closest('[data-rrg-remove]')) return; // handled above
+    // Chip remove (×)
+    const removeBtn = e.target.closest('[data-rrg-remove]');
+    if (removeBtn) {
+      e.stopPropagation();
+      _extraTickers.delete(removeBtn.dataset.rrgRemove);
+      _saveExtra();
+      loadRRG();
+      return;
+    }
+
+    // Chip toggle
     const chip = e.target.closest('[data-rrg-ticker]');
     if (!chip) return;
     const ticker = chip.dataset.rrgTicker;
@@ -374,12 +381,11 @@ function _renderFilterBar(wrap) {
     _redraw(wrap);
   });
 
-  // C8: keyboard ←→ navigation on chip scroll
-  bar.querySelector('.rrg-chip-scroll').addEventListener('keydown', e => {
-    const chips = [...bar.querySelectorAll('.rrg-chip')];
-    if (!chips.length) return;
-
+  // Keydown: ←→ navigation + Space/Enter on chips
+  bar.addEventListener('keydown', e => {
     if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+      const chips = [...bar.querySelectorAll('.rrg-chip')];
+      if (!chips.length) return;
       e.preventDefault();
       const cur = chips.findIndex(c => c === document.activeElement);
       const next = e.key === 'ArrowRight'
@@ -387,6 +393,7 @@ function _renderFilterBar(wrap) {
         : Math.max(0, cur - 1);
       chips[next]?.focus();
       _focusedIdx = next;
+      return;
     }
 
     if (e.key === ' ' || e.key === 'Enter') {
@@ -397,8 +404,9 @@ function _renderFilterBar(wrap) {
     }
   });
 
-  // Add form submit
-  bar.querySelector('[data-rrg-add-form]').addEventListener('submit', e => {
+  // Submit: add ticker form
+  bar.addEventListener('submit', e => {
+    if (!e.target.closest('[data-rrg-add-form]')) return;
     e.preventDefault();
     const input = bar.querySelector('[data-rrg-add-input]');
     if (!input) return;
