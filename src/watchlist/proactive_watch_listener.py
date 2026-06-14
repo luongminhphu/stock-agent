@@ -46,7 +46,7 @@ class ProactiveWatchListener:
     def register(self) -> None:
         """Register handler on the event bus. Called once from bootstrap."""
         bus = get_event_bus()
-        bus.subscribe(ProactiveWatchRequestedEvent, self._handle)
+        bus.subscribe_handler(ProactiveWatchRequestedEvent, self._handle)
         logger.info("proactive_watch_listener.registered")
 
     async def _handle(self, event: ProactiveWatchRequestedEvent) -> None:

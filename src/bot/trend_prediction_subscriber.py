@@ -62,7 +62,7 @@ class TrendPredictionSubscriber:
         logger.info("trend_prediction_subscriber.discord_client_injected")
 
     def register(self) -> None:
-        get_event_bus().subscribe(TrendPredictionCompletedEvent, self._handle)
+        get_event_bus().subscribe_handler(TrendPredictionCompletedEvent, self._handle)
         logger.info("trend_prediction_subscriber.registered")
 
     def _resolve_channel_id(self) -> int | None:

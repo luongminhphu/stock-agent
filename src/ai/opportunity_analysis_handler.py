@@ -146,7 +146,7 @@ class OpportunityAnalysisHandler:
     def register(self) -> None:
         """Subscribe handler on EventBus. Safe to call multiple times."""
         bus = get_event_bus()
-        bus.subscribe(OpportunityAIAnalysisRequestedEvent, self._handle)
+        bus.subscribe_handler(OpportunityAIAnalysisRequestedEvent, self._handle)
         logger.info("opportunity_analysis_handler.registered")
 
     async def _handle(self, event: OpportunityAIAnalysisRequestedEvent) -> None:

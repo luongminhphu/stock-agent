@@ -35,7 +35,7 @@ class OpportunityScreenSubscriber:
         from src.platform.events import OpportunityScreenCompletedEvent
 
         bus = get_event_bus()
-        bus.subscribe(OpportunityScreenCompletedEvent, self._handle)
+        bus.subscribe_handler(OpportunityScreenCompletedEvent, self._handle)
         logger.info("opportunity_screen_subscriber.registered")
 
     async def _handle(self, event: object) -> None:

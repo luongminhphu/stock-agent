@@ -56,7 +56,7 @@ class PositionRiskSubscriber:
 
     def register(self) -> None:
         bus = get_event_bus()
-        bus.subscribe(PositionRiskBreachedEvent, self._handle)
+        bus.subscribe_handler(PositionRiskBreachedEvent, self._handle)
         logger.info("position_risk_subscriber.registered", channel_id=self._channel_id)
 
     async def _handle(self, event: PositionRiskBreachedEvent) -> None:

@@ -43,7 +43,7 @@ class PostMortemService:
 
     def register(self) -> None:
         bus = get_event_bus()
-        bus.subscribe(ThesisClosedEvent, self._handle)
+        bus.subscribe_handler(ThesisClosedEvent, self._handle)
         logger.info("post_mortem_service.registered")
 
     async def _handle(self, event: ThesisClosedEvent) -> None:

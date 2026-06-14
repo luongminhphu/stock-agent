@@ -42,7 +42,7 @@ class EvolutionSubscriber:
 
     def register(self) -> None:
         bus = get_event_bus()
-        bus.subscribe(EvolutionSuggestionReadyEvent, self._handle)
+        bus.subscribe_handler(EvolutionSuggestionReadyEvent, self._handle)
         logger.info("evolution_subscriber.registered")
 
     async def _handle(self, event: EvolutionSuggestionReadyEvent) -> None:

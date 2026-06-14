@@ -69,12 +69,21 @@ def _resolve_user_id(user_id: str | None) -> str:
 
 
 async def _emit_thesis_closed(thesis: Thesis, close_reason: str) -> None:
-    """Fire-and-forget event emission. Failure is silent."""
+    """Fire-and-forget ThesisClosedEvent emission."""
     try:
-        from src.platform.events import emit
-        await emit("thesis.closed", {"thesis_id": thesis.id, "reason": close_reason})
-    except Exception:
-        pass
+        from src.platform.event_bus import get_event_bus
+        from src.platform.events import ThesisClosedEvent
+        event = ThesisClosedEvent(
+            thesis_id=thesis.id,
+            user_id=thesis.user_id or "",
+            ticker=thesis.ticker or "",
+            close_reason=close_reason,
+            thesis_title=thesis.title or "",
+            thesis_summary=thesis.summary or "",
+        )
+        await get_event_bus().publish(event)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("thesis.closed_event.emit_failed", error=str(exc))
 
 
 class ThesisService:

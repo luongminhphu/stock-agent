@@ -90,7 +90,7 @@ class OpportunityAnalysisSubscriber:
         """Subscribe to EventBus. Safe to call multiple times."""
         if self._registered:
             return
-        get_event_bus().subscribe(OpportunityAnalysisCompletedEvent, self._handle)
+        get_event_bus().subscribe_handler(OpportunityAnalysisCompletedEvent, self._handle)
         self._registered = True
         logger.info("opportunity_analysis_subscriber.registered")
 

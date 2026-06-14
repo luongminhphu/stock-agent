@@ -47,7 +47,7 @@ class AgendaSubscriber:
         logger.info("agenda_subscriber.discord_client_injected")
 
     def register(self) -> None:
-        get_event_bus().subscribe(DailyAgendaCompletedEvent, self._handle)
+        get_event_bus().subscribe_handler(DailyAgendaCompletedEvent, self._handle)
         logger.info("agenda_subscriber.registered")
 
     def _resolve_channel_id(self) -> int | None:

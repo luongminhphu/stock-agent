@@ -44,7 +44,7 @@ class MemoryInjectionListener:
 
     def register(self) -> None:
         bus = get_event_bus()
-        bus.subscribe(ThesisPostMortemReadyEvent, self._handle)
+        bus.subscribe_handler(ThesisPostMortemReadyEvent, self._handle)
         logger.info("memory_injection_listener.registered")
 
     async def _handle(self, event: ThesisPostMortemReadyEvent) -> None:

@@ -52,7 +52,7 @@ class IntelligenceEngineSubscriber:
         logger.info("intelligence_engine_subscriber.discord_client_injected")
 
     def register(self) -> None:
-        get_event_bus().subscribe(IntelligenceEngineCompletedEvent, self._handle)
+        get_event_bus().subscribe_handler(IntelligenceEngineCompletedEvent, self._handle)
         logger.info("intelligence_engine_subscriber.registered")
 
     def _resolve_channel_id(self) -> int | None:

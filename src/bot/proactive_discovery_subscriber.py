@@ -121,7 +121,7 @@ class ProactiveDiscoverySubscriber:
         """Subscribe to EventBus. Idempotent."""
         if self._registered:
             return
-        get_event_bus().subscribe(ProactiveDiscoveryReadyEvent, self._handle)
+        get_event_bus().subscribe_handler(ProactiveDiscoveryReadyEvent, self._handle)
         self._registered = True
         logger.info("proactive_discovery_subscriber.registered")
 

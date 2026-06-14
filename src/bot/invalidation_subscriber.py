@@ -44,7 +44,7 @@ class InvalidationSubscriber:
 
     def register(self) -> None:
         bus = get_event_bus()
-        bus.subscribe(ThesisInvalidatedEvent, self._handle)
+        bus.subscribe_handler(ThesisInvalidatedEvent, self._handle)
         logger.info("invalidation_subscriber.registered", channel_id=self._channel_id)
 
     async def _handle(self, event: ThesisInvalidatedEvent) -> None:

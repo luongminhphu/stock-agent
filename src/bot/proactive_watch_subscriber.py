@@ -52,7 +52,7 @@ class ProactiveWatchSubscriber:
 
     def register(self) -> None:
         bus = get_event_bus()
-        bus.subscribe(ProactiveWatchAlertFiredEvent, self._handle)
+        bus.subscribe_handler(ProactiveWatchAlertFiredEvent, self._handle)
         logger.info("proactive_watch_subscriber.registered", channel_id=self._channel_id)
 
     async def _handle(self, event: ProactiveWatchAlertFiredEvent) -> None:
