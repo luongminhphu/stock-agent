@@ -834,3 +834,49 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
   padding: .5rem 0;
   text-align: center;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+/* Thesis lifecycle buttons (Đóng / Invalidate) + Debate button                */
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+.ghost-btn--warn {
+  border-color: var(--warning, #f59e0b);
+  color: var(--warning, #f59e0b);
+}
+.ghost-btn--warn:hover {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: var(--warning, #f59e0b);
+  color: var(--warning, #f59e0b);
+}
+
+.ghost-btn--debate {
+  border-color: var(--accent, #7c9ef7);
+  color: var(--accent, #7c9ef7);
+}
+.ghost-btn--debate:hover {
+  background: rgba(124, 158, 247, 0.12);
+  border-color: var(--accent, #7c9ef7);
+  color: var(--accent, #7c9ef7);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+/* Debate modal — wide variant + challenge cards                                */
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+#debateModal .modal-box {
+  width: min(680px, calc(100vw - 32px));
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.debate-focus-btn.active {
+  background: rgba(124, 158, 247, 0.15);
+  border-color: var(--accent, #7c9ef7);
+  color: var(--accent, #7c9ef7);
+}
+
+/* Shared badge variants used by debate challenges */
+.badge-danger  { background: rgba(248, 113, 113, 0.18); color: #fca5a5; border-radius: 4px; padding: 2px 6px; }
+.badge-warn    { background: rgba(245, 158, 11, 0.18);  color: #fcd34d; border-radius: 4px; padding: 2px 6px; }
+.badge-info    { background: rgba(96, 165, 250, 0.18);  color: #93c5fd; border-radius: 4px; padding: 2px 6px; }
+.badge-muted   { background: rgba(120, 120, 140, 0.18); color: #a0a0b0; border-radius: 4px; padding: 2px 6px; }

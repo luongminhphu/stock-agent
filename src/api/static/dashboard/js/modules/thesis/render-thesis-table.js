@@ -132,6 +132,11 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
       <button class="dtab"        role="tab" aria-selected="false" data-tab="history"      aria-controls="dtab-history">📅 History</button>
       <div class="dtab-nav-actions" role="none">
         <button class="ghost-btn ghost-btn--sm" id="detailEditBtn" type="button">✏️ Sửa</button>
+        ${t.status === 'active' ? `
+        <button class="ghost-btn ghost-btn--sm ghost-btn--debate" id="detailDebateBtn" type="button" title="AI phản biện thesis này (devil's advocate)">🤺 Debate</button>
+        <button class="ghost-btn ghost-btn--sm ghost-btn--warn" id="detailCloseBtn" type="button" title="Đóng thesis — đã hoàn thành">✅ Đóng</button>
+        <button class="ghost-btn ghost-btn--sm ghost-btn--warn" id="detailInvalidateBtn" type="button" title="Invalidate thesis — luận điểm đã sai">⚠️ Invalidate</button>
+        ` : ''}
         <button class="danger-btn danger-btn--sm" id="detailDeleteBtn" type="button">🗑 Xóa</button>
       </div>
     </nav>

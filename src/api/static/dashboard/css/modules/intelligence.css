@@ -230,3 +230,48 @@
   .intel-verdict-row  { flex-direction: column; align-items: flex-start; }
   .intel-confidence   { max-width: 100%; }
 }
+
+/* ── Intelligence feedback bar ──────────────────────────────────────────── */
+
+.intel-feedback {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--border);
+  margin-top: var(--space-2);
+}
+
+.intel-feedback-label {
+  font-size: .78rem;
+  color: var(--muted);
+  margin-right: 2px;
+}
+
+.intel-fb-btn {
+  font-size: .76rem;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill, 999px);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-2, #c0c0c8);
+  cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s;
+  line-height: 1.4;
+}
+
+.intel-fb-btn:hover:not(:disabled) {
+  background: rgba(124, 158, 247, 0.1);
+  border-color: var(--accent, #7c9ef7);
+  color: var(--accent, #7c9ef7);
+}
+
+.intel-fb-btn--active {
+  background: rgba(124, 158, 247, 0.15);
+  border-color: var(--accent, #7c9ef7);
+  color: var(--accent, #7c9ef7);
+  cursor: default;
+}
+
+.intel-fb-btn:disabled { opacity: .5; cursor: not-allowed; }

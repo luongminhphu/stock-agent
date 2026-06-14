@@ -239,6 +239,9 @@ export async function openCatalystModal(thesisId, catId) {
 export function wireDetailActions(thesisId, wrap) {
   wrap.querySelector('#detailEditBtn')?.addEventListener('click', () => openEditThesisModal(thesisId));
   wrap.querySelector('#detailDeleteBtn')?.addEventListener('click', () => confirmDeleteThesis(thesisId));
+  wrap.querySelector('#detailCloseBtn')?.addEventListener('click', () => _confirmLifecycle(thesisId, 'close'));
+  wrap.querySelector('#detailInvalidateBtn')?.addEventListener('click', () => _confirmLifecycle(thesisId, 'invalidate'));
+  wrap.querySelector('#detailDebateBtn')?.addEventListener('click', () => openDebateModal(thesisId));
   wrap.querySelector('#addAssumBtn')?.addEventListener('click', () => openAssumptionModal(thesisId, null));
   wrap.querySelectorAll('.edit-assum-btn').forEach(btn =>
     btn.addEventListener('click', () => openAssumptionModal(thesisId, btn.dataset.id)));
@@ -264,6 +267,151 @@ export function wireDetailActions(thesisId, wrap) {
       return;
     }
   });
+}
+
+// ---------------------------------------------------------------------------
+// Thesis lifecycle: Close + Invalidate
+// ---------------------------------------------------------------------------
+
+/**
+ * _confirmLifecycle — hiện confirm dialog trước khi POST /close hoặc /invalidate.
+ * @param {number} thesisId
+ * @param {'close'|'invalidate'} action
+ */
+async function _confirmLifecycle(thesisId, action) {
+  const label    = action === 'close' ? 'đóng' : 'invalidate';
+  const icon     = action === 'close' ? '✅' : '⚠️';
+  const msgEl    = el('deleteModalMsg');
+  const t        = state.theses?.find(x => x.id === thesisId);
+  if (msgEl) {
+    msgEl.textContent = `${icon} Bạn chắc chắn muốn ${label} thesis "${t?.title ?? thesisId}" (${t?.ticker ?? ''})?`;
+  }
+  state.deleteCallback = async () => {
+    try {
+      await sendJson(`${thesisApiBase()}/${thesisId}/${action}`, 'POST', null);
+      closeModal('deleteModal');
+      showToast(`${icon} Thesis đã được ${label}`);
+      // Reload detail to reflect new status + refresh thesis list
+      await loadThesisDetail(thesisId);
+      document.dispatchEvent(new CustomEvent('thesis:lifecycle-changed', { detail: { thesisId, action } }));
+    } catch (err) {
+      closeModal('deleteModal');
+      showToast(`Lỗi: ${err.message}`, 'error');
+    }
+  };
+  openModal('deleteModal');
+}
+
+// ---------------------------------------------------------------------------
+// Debate modal
+// ---------------------------------------------------------------------------
+
+/**
+ * openDebateModal — mở panel AI Debate cho thesis.
+ * POST /thesis/{id}/debate với debate_focus tuỳ chọn.
+ */
+export async function openDebateModal(thesisId) {
+  const t = state.theses?.find(x => x.id === thesisId);
+
+  // Build or reuse modal
+  let modal = document.getElementById('debateModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id        = 'debateModal';
+    modal.className = 'modal-overlay hidden';
+    modal.innerHTML = `
+      <div class="modal-box modal-box--wide">
+        <div class="modal-header">
+          <h2 class="modal-title">🤺 AI Debate — Devil's Advocate</h2>
+          <button class="modal-close" data-close="debateModal" aria-label="Đóng">&#x2715;</button>
+        </div>
+        <div class="modal-body">
+          <div id="debateTickerLine" style="font-size:.88rem;color:var(--muted);margin-bottom:12px;"></div>
+          <div class="debate-focus-row" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+            <span style="font-size:.82rem;color:var(--muted);align-self:center;">Góc phân tích:</span>
+            <button class="ghost-btn ghost-btn--sm debate-focus-btn active" data-focus="">Toàn diện</button>
+            <button class="ghost-btn ghost-btn--sm debate-focus-btn" data-focus="entry">Entry</button>
+            <button class="ghost-btn ghost-btn--sm debate-focus-btn" data-focus="exit">Exit</button>
+            <button class="ghost-btn ghost-btn--sm debate-focus-btn" data-focus="sizing">Sizing</button>
+          </div>
+          <button class="primary-btn" id="debateRunBtn" style="width:100%;margin-bottom:16px;">🤺 Chạy Debate</button>
+          <div id="debateResult" style="min-height:60px;"></div>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+
+    // Wire close
+    modal.querySelector('[data-close="debateModal"]')?.addEventListener('click', () => closeModal('debateModal'));
+    modal.addEventListener('click', e => { if (e.target === modal) closeModal('debateModal'); });
+
+    // Wire focus toggle
+    modal.querySelectorAll('.debate-focus-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        modal.querySelectorAll('.debate-focus-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
+    });
+  }
+
+  // Reset state
+  modal.querySelector('#debateTickerLine').textContent =
+    t ? `${t.ticker} — ${t.title ?? ''}` : `Thesis #${thesisId}`;
+  const resultEl = modal.querySelector('#debateResult');
+  resultEl.innerHTML = '';
+  modal.querySelectorAll('.debate-focus-btn').forEach(b => b.classList.remove('active'));
+  modal.querySelector('.debate-focus-btn[data-focus=""]')?.classList.add('active');
+
+  // Wire run button (re-wire each open to avoid stale thesisId)
+  const runBtn = modal.querySelector('#debateRunBtn');
+  const newRunBtn = runBtn.cloneNode(true);
+  runBtn.replaceWith(newRunBtn);
+  newRunBtn.addEventListener('click', async () => {
+    const focusBtn = modal.querySelector('.debate-focus-btn.active');
+    const focus    = focusBtn?.dataset.focus || null;
+    newRunBtn.disabled  = true;
+    newRunBtn.textContent = '⏳ Đang phân tích…';
+    resultEl.innerHTML  = '<p class="muted" style="padding:8px">AI đang phản biện thesis…</p>';
+    try {
+      const data = await sendJson(
+        `${thesisApiBase()}/${thesisId}/debate`,
+        'POST',
+        { debate_focus: focus || null },
+      );
+      resultEl.innerHTML = _renderDebateOutput(data);
+    } catch (err) {
+      resultEl.innerHTML = `<div class="error-banner" style="margin:0">Lỗi: ${esc(err.message)}</div>`;
+    } finally {
+      newRunBtn.disabled  = false;
+      newRunBtn.textContent = '🤺 Chạy lại';
+    }
+  });
+
+  openModal('debateModal');
+}
+
+/** Render DebateOutput into readable HTML. */
+function _renderDebateOutput(d) {
+  const stanceIcon = { bull: '🟢', bear: '🔴', neutral: '🟡' }[d.overall_stance] ?? '⚪';
+  const strengthClass = { critical: 'badge-danger', significant: 'badge-warn', moderate: 'badge-info', minor: 'badge-muted' };
+  const challenges = (d.challenges ?? []).map(c => `
+    <div class="debate-challenge" style="margin-bottom:12px;padding:10px 12px;background:var(--surface-2,#1a1a2e);border-radius:6px;border-left:3px solid var(--border);">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+        <span class="badge ${strengthClass[c.strength] ?? 'badge-muted'}" style="font-size:.72rem;">${esc(c.strength?.toUpperCase())}</span>
+        <strong style="font-size:.88rem;">${esc(c.area)}</strong>
+      </div>
+      <p style="font-size:.84rem;margin:0 0 6px;">${esc(c.challenge)}</p>
+      ${c.counter_argument ? `<p style="font-size:.80rem;color:var(--muted);margin:0;">💡 ${esc(c.counter_argument)}</p>` : ''}
+    </div>`).join('');
+  return `
+    <div style="margin-bottom:12px;padding:10px 12px;background:var(--surface-2,#1a1a2e);border-radius:6px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+        <span>${stanceIcon} <strong>${esc(d.overall_stance?.toUpperCase())}</strong></span>
+        <span class="muted" style="font-size:.8rem;">Confidence ${d.confidence?.toFixed(0)}%</span>
+      </div>
+      <p style="font-size:.88rem;margin:0;">${esc(d.verdict)}</p>
+      ${d.suggested_action ? `<p style="font-size:.82rem;color:var(--accent,#7c9ef7);margin:6px 0 0;">→ ${esc(d.suggested_action)}</p>` : ''}
+    </div>
+    <div class="debate-challenges-list">${challenges}</div>`;
 }
 
 // ---------------------------------------------------------------------------

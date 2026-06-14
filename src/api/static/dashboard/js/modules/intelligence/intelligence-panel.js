@@ -11,7 +11,7 @@
 
 import { el, showToast } from '../../utils/dom.js';
 import { esc }           from '../../utils/format.js';
-import { getJson }       from '../../api/client.js';
+import { getJson, sendJson, coreApiBase } from '../../api/client.js';
 
 const PANEL_ID = 'intelligencePanel';
 
@@ -35,9 +35,45 @@ export async function loadIntelligencePanel() {
     }
 
     panel.innerHTML = _renderHTML(data);
+    _wireFeedback(panel);
   } catch {
     panel.classList.add('hidden');
   }
+}
+
+// ─── Feedback wiring ────────────────────────────────────────────────────────
+
+function _wireFeedback(panel) {
+  const bar = panel.querySelector('.intel-feedback');
+  if (!bar) return;
+
+  bar.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.intel-fb-btn');
+    if (!btn) return;
+
+    const outcome         = btn.dataset.outcome;
+    const verdictEventId  = bar.dataset.verdictEventId;
+    const verdict         = bar.dataset.verdict;
+
+    // Mark selected
+    bar.querySelectorAll('.intel-fb-btn').forEach(b => b.classList.remove('intel-fb-btn--active'));
+    btn.classList.add('intel-fb-btn--active');
+    btn.disabled = true;
+
+    try {
+      await sendJson(`${coreApiBase()}/feedback`, 'POST', {
+        verdict_event_id: verdictEventId,
+        verdict,
+        outcome,
+        trigger_source: 'api',
+      });
+      showToast('✅ Đã ghi nhận feedback');
+    } catch (err) {
+      btn.classList.remove('intel-fb-btn--active');
+      btn.disabled = false;
+      showToast(`Feedback lỗi: ${err.message}`, 'error');
+    }
+  });
 }
 
 // ─── Render ─────────────────────────────────────────────────────────────────
@@ -103,6 +139,8 @@ function _renderHTML(d) {
       </div>`
     : '';
 
+  const verdictEventId = d.generated_at ?? `intel-${Date.now()}`;
+
   return `
     <div class="intel-header">
       <div class="intel-title-row">
@@ -121,6 +159,12 @@ function _renderHTML(d) {
       ${priorityHtml}
       ${riskHtml}
       ${watchHtml}
+    </div>
+    <div class="intel-feedback" data-verdict-event-id="${esc(verdictEventId)}" data-verdict="${esc(d.overall_verdict ?? '')}">
+      <span class="intel-feedback-label">Phản hồi verdict này:</span>
+      <button class="intel-fb-btn" data-outcome="correct" title="Verdict chính xác">✅ Đúng</button>
+      <button class="intel-fb-btn" data-outcome="incorrect" title="Verdict sai">❌ Sai</button>
+      <button class="intel-fb-btn" data-outcome="not_acted" title="Không hành động">⏸️ Không hành động</button>
     </div>`;
 }
 

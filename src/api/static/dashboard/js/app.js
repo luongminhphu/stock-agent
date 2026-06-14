@@ -219,6 +219,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   bindTradeConfirmedWire();
   bindDecisionLeaderboardWire();
 
+  // Thesis lifecycle (close / invalidate) — reload dashboard so status badges update
+  document.addEventListener('thesis:lifecycle-changed', () => {
+    loadDashboard().catch(() => null);
+  });
+
   // ── Module init ─────────────────────────────────────────────────────────────
   initEngineHeartbeat();
   initEngineControls();
