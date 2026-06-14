@@ -173,3 +173,122 @@
   border-left: 3px solid var(--primary, #4f98a3);
   font-size: .78rem; color: var(--muted); line-height: 1.6;
 }
+
+/* ── Compact feed (History tab) ─────────────────────────────────────────── */
+/* Each entry: icon | meta row + reasoning + risk pills                      */
+
+.cv-cf-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: .5rem;
+  padding: .55rem 1rem;
+  border-bottom: 1px solid var(--divider, #262523);
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+.cv-cf-entry:last-of-type { border-bottom: none; }
+.cv-cf-entry:hover        { background: var(--surface-dyn, #2d2c2a); }
+.cv-cf-entry--review      { border-left: 2px solid var(--primary, #4f98a3); padding-left: calc(1rem - 2px); }
+
+/* Icon column */
+.cv-cf-icon {
+  font-size: .85rem;
+  flex-shrink: 0;
+  min-width: 18px;
+  margin-top: 2px;
+  text-align: center;
+  opacity: .8;
+}
+
+/* Content column */
+.cv-cf-content { flex: 1; min-width: 0; }
+
+/* Meta row: date · vtag · score · conf · price — all inline, wrap on small */
+.cv-cf-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .25rem .375rem;
+  line-height: 1;
+}
+
+.cv-cf-date {
+  font-size: .68rem;
+  color: var(--muted, #797876);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .02em;
+  flex-shrink: 0;
+}
+
+/* Separator dot between meta chips */
+.cv-cf-date::after,
+.cv-cf-score-wrap::after {
+  content: '·';
+  margin-left: .375rem;
+  color: var(--muted, #797876);
+  opacity: .5;
+}
+
+.cv-cf-score-wrap {
+  font-size: .7rem;
+  color: var(--muted, #797876);
+  font-variant-numeric: tabular-nums;
+}
+.cv-cf-score {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.cv-cf-kind {
+  font-size: .65rem;
+  color: var(--muted, #797876);
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-dyn, rgba(255,255,255,.06));
+}
+
+.cv-cf-conf {
+  font-size: .65rem;
+  color: var(--muted, #797876);
+  font-variant-numeric: tabular-nums;
+}
+
+.cv-cf-price {
+  font-size: .65rem;
+  color: var(--muted, #797876);
+  font-variant-numeric: tabular-nums;
+  margin-left: auto; /* push price to end of row */
+}
+
+/* Reasoning — italic quote, indented under meta */
+.cv-cf-reason {
+  margin-top: .3rem;
+  font-size: .75rem;
+  color: var(--muted, #797876);
+  line-height: 1.55;
+  font-style: italic;
+  white-space: normal;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+/* Risk pills row */
+.cv-cf-risks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem;
+  margin-top: .3rem;
+}
+
+.cv-cf-risk-pill {
+  display: inline-flex;
+  align-items: center;
+  font-size: .62rem;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--error-hl, color-mix(in oklch,#d163a7 12%,#1c1b19));
+  color: var(--error, #d163a7);
+  line-height: 1.4;
+}

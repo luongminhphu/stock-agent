@@ -52,21 +52,50 @@ export function parsePoints(points) {
 export function renderEventList(events) {
   if (!events.length) return '<p class="cv-empty">Chưa có sự kiện nào.</p>';
   const shown = events.filter(e => e.kind === 'reviewed' || e.verdict != null || e === events[events.length - 1]);
-  const list = shown.length ? shown : events.slice(-5);
+  const list  = shown.length ? shown : events.slice(-5);
+
   return list.slice().reverse().map(e => {
     const icon  = EVENT_KIND_ICON[e.kind] || '📌';
-    const vtag  = e.verdict
+    const isReview = e.kind === 'reviewed' || e.verdict != null;
+
+    // ─ Meta row: date · verdict · score · conf · price ─────────────
+    const dateStr  = fmtDate(e.date);
+    const scoreStr = `<span class="cv-cf-score" style="color:${tierColor(e.score)}">${e.score.toFixed(0)}</span>`;
+    const vtag     = e.verdict
       ? `<span class="cv-vtag ${VERDICT_CLS[e.verdict] || 'cv-vtag--hold'}">${esc(e.verdict)}</span>`
+      : `<span class="cv-cf-kind">${esc(e.kind)}</span>`;
+    const confStr  = e.confidence != null
+      ? `<span class="cv-cf-conf">Conf ${e.confidence}%</span>`
       : '';
-    const conf  = e.confidence != null ? `<span class="cv-chip">Conf ${e.confidence}%</span>` : '';
-    const price = e.price ? `<span class="cv-chip">${Number(e.price).toLocaleString('vi-VN')}₫</span>` : '';
+    const priceStr = e.price
+      ? `<span class="cv-cf-price">${Number(e.price).toLocaleString('vi-VN')}₫</span>`
+      : '';
+
+    // ─ Reasoning inline ────────────────────────────────
+    const reasoningHTML = isReview && e.reasoning
+      ? `<div class="cv-cf-reason">“${esc(e.reasoning)}”</div>`
+      : '';
+
+    // ─ Risk signals (compact pills) ─────────────────────
+    const risksHTML = e.risks?.length
+      ? `<div class="cv-cf-risks">${e.risks.slice(0, 3).map(r =>
+          `<span class="cv-cf-risk-pill">⚠️ ${esc(typeof r === 'string' ? r : r.label ?? r.signal ?? String(r))}</span>`
+        ).join('')}</div>`
+      : '';
+
     return `
-      <div class="cv-ev" data-ev-idx="${e.idx}" role="button" tabindex="0" aria-expanded="false">
-        <span class="cv-ev-icon">${icon}</span>
-        <div class="cv-ev-body">
-          <div class="cv-ev-date">${fmtDate(e.date)} · ${esc(e.kind)}</div>
-          <div class="cv-ev-score">Score <strong>${e.score.toFixed(1)}</strong></div>
-          <div class="cv-ev-meta">${vtag}${conf}${price}</div>
+      <div class="cv-cf-entry${isReview ? ' cv-cf-entry--review' : ''}" data-ev-idx="${e.idx}">
+        <span class="cv-cf-icon">${icon}</span>
+        <div class="cv-cf-content">
+          <div class="cv-cf-meta">
+            <span class="cv-cf-date">${dateStr}</span>
+            ${vtag}
+            <span class="cv-cf-score-wrap">Score ${scoreStr}</span>
+            ${confStr}
+            ${priceStr}
+          </div>
+          ${reasoningHTML}
+          ${risksHTML}
         </div>
       </div>`;
   }).join('');
@@ -117,7 +146,7 @@ export function renderDrawer(e) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function wireEventList(containerEl, events) {
-  const evEls = containerEl.querySelectorAll('.cv-ev');
+  const evEls = containerEl.querySelectorAll('.cv-cf-entry');
 
   evEls.forEach(el => {
     const handler = () => {
