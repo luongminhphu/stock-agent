@@ -18,7 +18,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_db
 from src.core.engine import IntelligenceEngine
-from src.core.feedback import FeedbackStore
 from src.core.schemas import EngineOutput, FeedbackEntry, SystemSnapshot
 from src.core.snapshot import SystemSnapshotBuilder
 from src.platform.config import settings
@@ -91,20 +90,27 @@ async def get_system_snapshot(
 @router.post("/feedback")
 async def submit_feedback(
     entry: FeedbackEntry,
-    session: Annotated[AsyncSession, Depends(get_db)],  # noqa: ARG001 — Wave 3 will use this
+    session: Annotated[AsyncSession, Depends(get_db)],  # noqa: ARG001
 ) -> dict:
     """Ghi nhận outcome của một verdict.
 
-    Được dùng bởi self-improvement loop:
-    - Wave 3: persist to DB, reweight signal scores.
-    - Wave 4: evolution.py phân tích patterns và đề xuất cải tiến prompt/rule.
-
-    Wave 1: in-memory log, confirm receipt.
+    Publishes EngineFeedbackSubmittedEvent → EngineFeedbackListener → FeedbackStore.record().
+    Route là thin adapter — không gọi FeedbackStore trực tiếp.
     """
-    await FeedbackStore.record(entry)
+    from src.platform.event_bus import get_event_bus
+    from src.platform.events import EngineFeedbackSubmittedEvent
+
+    event = EngineFeedbackSubmittedEvent(
+        verdict_event_id=entry.verdict_event_id,
+        user_id=entry.user_id or _default_user_id(),
+        verdict=entry.verdict,
+        outcome=entry.outcome,
+        trigger_source=entry.trigger_source or "api",
+        user_note=entry.user_note or "",
+    )
+    await get_event_bus().publish(event)
     return {
         "status": "received",
-        "verdict_id": entry.verdict_id,
+        "verdict_event_id": entry.verdict_event_id,
         "outcome": entry.outcome,
-        "note": "Wave 1 — stored in-memory. Wave 3 sẽ persist vào DB và reweight signals.",
     }
