@@ -11,17 +11,12 @@ Public API:
     bootstrap()           — async startup routine (logging + future: migrations)
     check_health()        — async health probe
 
-    --- Blueprint V2: Event Bus ---
+    --- Event Bus ---
     get_event_bus()       — return the global EventBus singleton
     reset_event_bus()     — reset singleton (tests only)
     EventBus              — the bus class (for type hints)
     DomainEvent           — base event class
-    SignalDetectedEvent, WatchlistScanCompletedEvent,
-    PositionRiskBreachedEvent, PortfolioSnapshotReadyEvent,
-    ThesisInvalidatedEvent, ThesisReviewRequestedEvent,
-    RecommendationReadyEvent,
-    BriefingRequestedEvent, BriefingReadyEvent,
-    OpportunityScreenCompletedEvent
+    All typed events from src.platform.events (30 event classes)
 """
 
 from src.platform.bootstrap import bootstrap
@@ -31,21 +26,41 @@ from src.platform.event_bus import EventBus, get_event_bus, reset_event_bus
 from src.platform.events import (
     BriefingReadyEvent,
     BriefingRequestedEvent,
+    DailyAgendaCompletedEvent,
     DomainEvent,
+    EngineFeedbackSubmittedEvent,
+    EvolutionSuggestionReadyEvent,
+    IntelligenceEngineCompletedEvent,
+    IntelligenceEngineRequestedEvent,
+    OpportunityAIAnalysisRequestedEvent,
+    OpportunityAnalysisCompletedEvent,
     OpportunityScreenCompletedEvent,
     PortfolioSnapshotReadyEvent,
+    PortfolioSnapshotRequestedEvent,
     PositionRiskBreachedEvent,
+    ProactiveDiscoveryReadyEvent,
+    ProactiveWatchAlertFiredEvent,
+    ProactiveWatchRequestedEvent,
     RecommendationReadyEvent,
     SignalDetectedEvent,
+    SignalEngineCompletedEvent,
+    SignalEngineRequestedEvent,
+    StressTestCompletedEvent,
+    ThesisClosedEvent,
     ThesisInvalidatedEvent,
+    ThesisPostMortemReadyEvent,
     ThesisReviewRequestedEvent,
+    ThesisReviewTriggeredEvent,
+    TrendPredictionCompletedEvent,
+    TrendShiftEvent,
+    UserActionEvent,
     WatchlistScanCompletedEvent,
 )
 from src.platform.health import HealthReport, HealthStatus, check_health
 from src.platform.logging import configure_logging, get_logger
 
 __all__ = [
-    # --- existing ---
+    # infra
     "bootstrap",
     "get_settings",
     "settings",
@@ -57,20 +72,40 @@ __all__ = [
     "check_health",
     "configure_logging",
     "get_logger",
-    # --- V2: event bus ---
+    # event bus
     "EventBus",
     "get_event_bus",
     "reset_event_bus",
-    # --- V2: events catalog ---
+    # events
     "DomainEvent",
-    "SignalDetectedEvent",
-    "WatchlistScanCompletedEvent",
-    "PositionRiskBreachedEvent",
-    "PortfolioSnapshotReadyEvent",
-    "ThesisInvalidatedEvent",
-    "ThesisReviewRequestedEvent",
-    "RecommendationReadyEvent",
-    "BriefingRequestedEvent",
     "BriefingReadyEvent",
+    "BriefingRequestedEvent",
+    "DailyAgendaCompletedEvent",
+    "EngineFeedbackSubmittedEvent",
+    "EvolutionSuggestionReadyEvent",
+    "IntelligenceEngineCompletedEvent",
+    "IntelligenceEngineRequestedEvent",
+    "OpportunityAIAnalysisRequestedEvent",
+    "OpportunityAnalysisCompletedEvent",
     "OpportunityScreenCompletedEvent",
+    "PortfolioSnapshotReadyEvent",
+    "PortfolioSnapshotRequestedEvent",
+    "PositionRiskBreachedEvent",
+    "ProactiveDiscoveryReadyEvent",
+    "ProactiveWatchAlertFiredEvent",
+    "ProactiveWatchRequestedEvent",
+    "RecommendationReadyEvent",
+    "SignalDetectedEvent",
+    "SignalEngineCompletedEvent",
+    "SignalEngineRequestedEvent",
+    "StressTestCompletedEvent",
+    "ThesisClosedEvent",
+    "ThesisInvalidatedEvent",
+    "ThesisPostMortemReadyEvent",
+    "ThesisReviewRequestedEvent",
+    "ThesisReviewTriggeredEvent",
+    "TrendPredictionCompletedEvent",
+    "TrendShiftEvent",
+    "UserActionEvent",
+    "WatchlistScanCompletedEvent",
 ]

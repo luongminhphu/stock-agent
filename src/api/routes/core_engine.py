@@ -90,7 +90,6 @@ async def get_system_snapshot(
 @router.post("/feedback")
 async def submit_feedback(
     entry: FeedbackEntry,
-    session: Annotated[AsyncSession, Depends(get_db)],  # noqa: ARG001
 ) -> dict:
     """Ghi nhận outcome của một verdict.
 
