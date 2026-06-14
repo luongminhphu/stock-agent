@@ -280,6 +280,26 @@ class ReviewOutcomeReactor:
             confidence=round(confidence, 3),
         )
 
+        # Emit ThesisClosedEvent when invalidated so post-mortem + memory chains fire
+        if new_status == ThesisStatus.INVALIDATED:
+            try:
+                from src.platform.event_bus import get_event_bus
+                from src.platform.events import ThesisClosedEvent
+                await get_event_bus().publish(ThesisClosedEvent(
+                    thesis_id=thesis.id,
+                    user_id=thesis.user_id or "",
+                    ticker=thesis.ticker or "",
+                    close_reason="review_invalidated",
+                    thesis_title=getattr(thesis, "title", "") or "",
+                    thesis_summary=getattr(thesis, "summary", "") or "",
+                ))
+            except Exception as _ev_exc:  # noqa: BLE001
+                logger.warning(
+                    "review_outcome_reactor.thesis_closed_event.emit_failed",
+                    thesis_id=thesis.id,
+                    error=str(_ev_exc),
+                )
+
     async def _ensure_alert(
         self,
         session: AsyncSession,

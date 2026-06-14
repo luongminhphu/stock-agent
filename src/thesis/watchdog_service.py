@@ -320,6 +320,24 @@ class WatchdogService:
                     action=signal.action,
                     confidence=signal.confidence,
                 )
+                # Emit ThesisClosedEvent so post-mortem + memory chains fire
+                try:
+                    from src.platform.event_bus import get_event_bus
+                    from src.platform.events import ThesisClosedEvent
+                    await get_event_bus().publish(ThesisClosedEvent(
+                        thesis_id=thesis.id,
+                        user_id=thesis.user_id or "",
+                        ticker=thesis.ticker or "",
+                        close_reason="watchdog_auto_invalidated",
+                        thesis_title=thesis.title or "",
+                        thesis_summary=thesis.summary or "",
+                    ))
+                except Exception as _ev_exc:  # noqa: BLE001
+                    logger.warning(
+                        "watchdog.thesis_closed_event.emit_failed",
+                        thesis_id=thesis.id,
+                        error=str(_ev_exc),
+                    )
 
         except Exception as exc:
             logger.warning(
