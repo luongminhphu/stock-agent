@@ -32,8 +32,8 @@
  *  - Legend listeners are delegated to the legend container, not per-item.
  */
 
-import { getJson }          from '../../api/client.js';
-import { loadThesisDetail } from '../thesis/thesis-service.js';
+import { getJson, readmodelApiBase } from '../../api/client.js';
+import { loadThesisDetail }          from '../thesis/thesis-service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Config
@@ -74,6 +74,7 @@ let _allTickers    = [];            // all valid tickers from last fetch
 let _hidden        = new Set();     // tickers excluded from canvas
 let _asOf          = null;          // date string from API
 let _lookbackWeeks = LOOKBACK_WEEKS;
+let _portfolioMap  = new Map();     // Map<ticker, {unrealized_pct, unrealized_pnl}> — portfolio overlay
 let _extraTickers  = _loadExtra();
 let _focusedIdx    = -1;            // C8: keyboard nav index
 let _headPositions = new Map();     // Map<ticker, {x,y}> CSS px — for hit-test
@@ -131,12 +132,28 @@ export async function loadRRG() {
     const extraParam = _extraTickers.size
       ? `&extra=${[..._extraTickers].join(',')}`
       : '';
-    const data = await getJson(
-      `${API_URL}?lookback_weeks=${_lookbackWeeks}&trail_points=0${extraParam}`
-    );
+
+    // Fetch RRG data + portfolio holdings in parallel
+    const [data, portfolioData] = await Promise.all([
+      getJson(`${API_URL}?lookback_weeks=${_lookbackWeeks}&trail_points=0${extraParam}`),
+      getJson(`${readmodelApiBase()}/dashboard/portfolio/trades`).catch(() => null),
+    ]);
 
     // Stale response guard — a newer call has already taken over
     if (serial !== _fetchSerial) return;
+
+    // Build portfolio map for overlay
+    _portfolioMap = new Map();
+    if (portfolioData?.positions) {
+      for (const p of portfolioData.positions) {
+        if (p.ticker) {
+          _portfolioMap.set(p.ticker, {
+            unrealized_pct: p.unrealized_pct ?? 0,
+            unrealized_pnl: p.unrealized_pnl ?? 0,
+          });
+        }
+      }
+    }
 
     const tickers = data?.tickers ?? [];
     if (!tickers.length) { _setStatus('Chưa có thesis active để vẽ RRG.'); return; }
@@ -171,6 +188,9 @@ export async function loadRRG() {
 
     // C4: draw + animate
     _redrawAnimated(wrap);
+
+    // W3: AI chart summary (non-blocking — renders async after canvas)
+    _loadChartSummary(wrap);
 
   } catch (err) {
     if (serial !== _fetchSerial) return; // stale error — ignore
@@ -562,6 +582,21 @@ function _showDetailLoading(ticker) {
       <div class="rrg-detail-coords">
         ${t ? `<span>RS-Ratio <b>${t.rs_ratio?.toFixed(2) ?? '—'}</b></span><span>RS-Mom <b>${t.rs_momentum?.toFixed(2) ?? '—'}</b></span>` : ''}
       </div>
+      ${t ? (() => {
+        const traj = _predictTrajectory(t);
+        if (!traj) return '';
+        const arrow = traj.stayStable ? '→' : `→ <b>${_esc(QUADRANT_LABELS[traj.nextQuadrant])}</b>`;
+        const weeks = traj.weeksEst ? `~${traj.weeksEst} tuần` : `>${12} tuần`;
+        return `
+        <div class="rrg-detail-trajectory">
+          <div class="rrg-traj-row">
+            <span class="rrg-traj-label">Tiếp theo</span>
+            <span class="rrg-traj-val">${arrow}</span>
+            <span class="rrg-traj-weeks">${weeks}</span>
+          </div>
+          <p class="rrg-traj-desc">${traj.description}</p>
+        </div>`;
+      })() : ''}
       <p class="rrg-detail-loading">
         <span class="rrg-detail-spinner"></span> Đang phân tích AI…
       </p>
@@ -623,6 +658,21 @@ function _renderDetailSignal(ticker, d) {
       </div>
       ${d.company_name ? `<p class="rrg-detail-company">${_esc(d.company_name)}</p>` : ''}
       ${d.sector       ? `<p class="rrg-detail-sector">${_esc(d.sector)}</p>`       : ''}
+      ${t ? (() => {
+        const traj = _predictTrajectory(t);
+        if (!traj) return '';
+        const arrow = traj.stayStable ? '→' : `→ <b>${_esc(QUADRANT_LABELS[traj.nextQuadrant])}</b>`;
+        const weeks = traj.weeksEst ? `~${traj.weeksEst} tuần` : `>${12} tuần`;
+        return `
+        <div class="rrg-detail-trajectory">
+          <div class="rrg-traj-row">
+            <span class="rrg-traj-label">Tiếp theo</span>
+            <span class="rrg-traj-val">${arrow}</span>
+            <span class="rrg-traj-weeks">${weeks}</span>
+          </div>
+          <p class="rrg-traj-desc">${traj.description}</p>
+        </div>`;
+      })() : ''}
       ${thesisLink}
     </div>
   `;
@@ -931,6 +981,42 @@ function _drawTicker(ctx, ticker, toX, toY, masterAlpha) {
       ctx.strokeStyle = color + Math.round(0.35 * masterAlpha * 255).toString(16).padStart(2, '0');
       ctx.lineWidth   = 1.2;
       ctx.stroke();
+
+      // Portfolio overlay: bold ring + P&L badge if ticker is held
+      const holding = _portfolioMap.get(ticker.ticker);
+      if (holding) {
+        const pct     = holding.unrealized_pct;
+        const isPos   = pct >= 0;
+        const ringClr = isPos ? '#22c55e' : '#ef4444';  // green / red
+        const ringAlpha = Math.round(0.85 * masterAlpha * 255).toString(16).padStart(2, '0');
+
+        // Bold outer ring — marks as "held"
+        ctx.beginPath();
+        ctx.arc(x, y, radius + 5, 0, Math.PI * 2);
+        ctx.strokeStyle = ringClr + ringAlpha;
+        ctx.lineWidth   = 2.2;
+        ctx.stroke();
+
+        // P&L badge — small pill below head dot
+        const sign    = isPos ? '+' : '';
+        const label   = `${sign}${pct.toFixed(1)}%`;
+        ctx.font      = 'bold 8px system-ui, sans-serif';
+        const tw      = ctx.measureText(label).width;
+        const bw      = tw + 8;
+        const bh      = 11;
+        const bx      = x - bw / 2;
+        const by      = y + radius + 8;
+        const bgAlpha = Math.round(0.80 * masterAlpha * 255).toString(16).padStart(2, '0');
+
+        ctx.fillStyle = ringClr + bgAlpha;
+        ctx.beginPath();
+        ctx.roundRect(bx, by, bw, bh, 3);
+        ctx.fill();
+
+        ctx.fillStyle = `rgba(255,255,255,${0.95 * masterAlpha})`;
+        ctx.textAlign = 'center';
+        ctx.fillText(label, x, by + bh - 2);
+      }
     }
   });
 
@@ -997,6 +1083,93 @@ function _drawTicker(ctx, ticker, toX, toY, masterAlpha) {
 
   // Forecast trail — dashed extrapolation
   _drawForecast(ctx, ticker, toX, toY, masterAlpha);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Trajectory Prediction — quadrant transition + weeks estimate
+// ─────────────────────────────────────────────────────────────────────────────
+
+const QUADRANT_LABELS = {
+  leading:   'Leading',
+  weakening: 'Weakening',
+  lagging:   'Lagging',
+  improving: 'Improving',
+};
+
+function _getQuadrant(r, m) {
+  if (r >= 100 && m >= 100) return 'leading';
+  if (r >= 100 && m <  100) return 'weakening';
+  if (r <  100 && m <  100) return 'lagging';
+  return 'improving';
+}
+
+/**
+ * Predict next quadrant transition for a ticker using forecast trail.
+ * Returns { nextQuadrant, weeksEst, stayProb, momentum_strength, description }
+ */
+function _predictTrajectory(tickerObj) {
+  const trail = tickerObj.trail;
+  if (!trail || trail.length < 2) return null;
+
+  const N_AHEAD    = 12;  // look up to 12 weeks ahead
+  const forecast   = _forecastTrail(trail, N_AHEAD);
+  if (!forecast.length) return null;
+
+  const curQ       = tickerObj.quadrant;
+  const curR       = tickerObj.rs_ratio;
+  const curM       = tickerObj.rs_momentum;
+
+  // Find first forecast point that crosses into a different quadrant
+  let nextQ     = null;
+  let weeksEst  = null;
+  for (let i = 0; i < forecast.length; i++) {
+    const q = _getQuadrant(forecast[i].rs_ratio, forecast[i].rs_momentum);
+    if (q !== curQ) {
+      nextQ    = q;
+      weeksEst = i + 1;
+      break;
+    }
+  }
+
+  // If no crossing found in N_AHEAD weeks — ticker likely stays in current quadrant
+  if (!nextQ) {
+    nextQ    = curQ;
+    weeksEst = null;  // stable
+  }
+
+  // Momentum strength: magnitude of weighted velocity
+  const K = Math.min(trail.length, 5);
+  let wDr = 0, wDm = 0, wSum = 0;
+  const start = trail.length - K;
+  for (let i = start + 1; i < trail.length; i++) {
+    const w  = i - start;
+    wDr  += (trail[i].rs_ratio    - trail[i-1].rs_ratio)    * w;
+    wDm  += (trail[i].rs_momentum - trail[i-1].rs_momentum) * w;
+    wSum += w;
+  }
+  const vr  = wDr / wSum;
+  const vm  = wDm / wSum;
+  const mag = Math.hypot(vr, vm);
+  const momentum_strength = mag < 0.3 ? 'yếu' : mag < 0.8 ? 'trung bình' : 'mạnh';
+
+  // Distance to quadrant boundary (nearest axis from current pos)
+  const distR = Math.abs(curR - 100);
+  const distM = Math.abs(curM - 100);
+  const nearBoundary = distR < 1.5 || distM < 1.5;
+
+  // Human-readable description
+  let description = '';
+  if (nextQ === curQ && !weeksEst) {
+    const staying = QUADRANT_LABELS[curQ];
+    description = `Dự kiến giữ ${staying} trong ~${N_AHEAD} tuần tới, momentum ${momentum_strength}.`;
+  } else {
+    const fromL = QUADRANT_LABELS[curQ];
+    const toL   = QUADRANT_LABELS[nextQ];
+    description = `Dự kiến chuyển sang <b>${toL}</b> sau ~${weeksEst} tuần, momentum ${momentum_strength}.`;
+    if (nearBoundary) description += ' ⚠️ Đang gần biên — có thể dao động qua lại.';
+  }
+
+  return { nextQuadrant: nextQ, weeksEst, momentum_strength, description, stayStable: nextQ === curQ };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1097,6 +1270,78 @@ function _drawForecast(ctx, ticker, toX, toY, masterAlpha) {
   }
 
   ctx.restore(); // clears setLineDash
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// W3: AI Chart Summary
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SUMMARY_API      = '/api/v1/rrg/chart-summary';
+const SUMMARY_PANEL_ID = 'rrgChartSummary';
+const ACTION_ICONS     = { BUY: '▲', WATCH: '◎', HOLD: '─', REDUCE: '▽', AVOID: '✕' };
+const ACTION_CLASSES   = { BUY: 'success', WATCH: 'brand', HOLD: 'muted', REDUCE: 'warning', AVOID: 'danger' };
+
+async function _loadChartSummary(wrap) {
+  // Ensure panel exists (create once, position after canvas)
+  let panel = document.getElementById(SUMMARY_PANEL_ID);
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id        = SUMMARY_PANEL_ID;
+    panel.className = 'rrg-chart-summary';
+    const canvas    = wrap.querySelector(`#${CANVAS_ID}`);
+    if (canvas?.parentNode) canvas.parentNode.insertBefore(panel, canvas.nextSibling);
+    else wrap.appendChild(panel);
+  }
+
+  // Show skeleton while loading
+  panel.innerHTML = `
+    <div class="rrg-cs-header">
+      <span class="rrg-cs-title">🧠 AI Đọc Chart</span>
+      <span class="rrg-cs-loading">Đang phân tích…</span>
+    </div>`;
+  panel.classList.remove('rrg-chart-summary--hidden');
+
+  try {
+    const d = await getJson(`${SUMMARY_API}?lookback_weeks=${_lookbackWeeks}`);
+
+    const oppHTML = (d.opportunities ?? []).map(o => `
+      <div class="rrg-cs-item rrg-cs-item--opp">
+        <span class="rrg-cs-action rrg-cs-action--${ACTION_CLASSES[o.action] ?? 'muted'}">${ACTION_ICONS[o.action] ?? '●'}</span>
+        <span class="rrg-cs-ticker">${_esc(o.ticker)}</span>
+        <span class="rrg-cs-insight">${_esc(o.insight)}</span>
+      </div>`).join('');
+
+    const riskHTML = (d.risks ?? []).map(r => `
+      <div class="rrg-cs-item rrg-cs-item--risk">
+        <span class="rrg-cs-action rrg-cs-action--${ACTION_CLASSES[r.action] ?? 'muted'}">${ACTION_ICONS[r.action] ?? '●'}</span>
+        <span class="rrg-cs-ticker">${_esc(r.ticker)}</span>
+        <span class="rrg-cs-insight">${_esc(r.insight)}</span>
+      </div>`).join('');
+
+    const alertHTML = d.portfolio_alert
+      ? `<div class="rrg-cs-alert">⚠️ ${_esc(d.portfolio_alert)}</div>`
+      : '';
+
+    const rotateHTML = d.rotate_from
+      ? `<div class="rrg-cs-rotate">↻ Rotate: <b>${_esc(d.rotate_from)}</b> → <b>${_esc(d.rotate_to)}</b> — ${_esc(d.rotate_reason)}</div>`
+      : '';
+
+    panel.innerHTML = `
+      <div class="rrg-cs-header">
+        <span class="rrg-cs-title">🧠 AI Đọc Chart</span>
+        <span class="rrg-cs-market-read">${_esc(d.market_read ?? '')}</span>
+      </div>
+      ${alertHTML}
+      ${rotateHTML}
+      <div class="rrg-cs-rows">
+        ${oppHTML || riskHTML
+          ? `${oppHTML}${riskHTML}`
+          : '<span class="rrg-cs-empty">Không có tín hiệu nổi bật lúc này.</span>'}
+      </div>`;
+  } catch (_) {
+    panel.innerHTML = ''; // silent fail — do not disrupt main chart
+    panel.classList.add('rrg-chart-summary--hidden');
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

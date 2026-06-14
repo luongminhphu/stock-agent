@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.ai.agents.rrg_chart_summary import RRGChartSummaryAgent
 from src.ai.agents.rrg_rotation import RRGRotationAgent
 from src.ai.schemas.rrg_rotation import RRGRotationSignal
 from src.api.deps import get_ai_client, get_current_user_id, get_db, get_ohlcv_service, get_symbol_registry
@@ -139,7 +140,9 @@ async def get_rrg_thesis(
 
 # Cache rotation signals separately — TTL 5 min (AI call is expensive).
 _rotation_cache = DashboardTTLCache()
-_ROTATION_TTL   = 300  # 5 min
+_ROTATION_TTL   = 300   # 5 min
+_summary_cache  = DashboardTTLCache()
+_SUMMARY_TTL    = 300   # 5 min
 
 
 @router.get("/rotation/{ticker}")
@@ -223,4 +226,95 @@ async def get_rrg_rotation(
         "company_name":  company_name,
     }
     _rotation_cache.set("rrg_rotation", user_id, response, ttl=_ROTATION_TTL, extra=cache_extra)
+    return response
+
+
+@router.get("/chart-summary")
+async def get_rrg_chart_summary(
+    lookback_weeks: int   = Query(default=26, ge=4, le=52),
+    user_id: str          = Depends(get_current_user_id),
+    ohlcv_svc: OHLCVService = Depends(get_ohlcv_service),
+    ai_client: object     = Depends(get_ai_client),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """AI summary of the full RRG chart — opportunities, risks, portfolio context.
+
+    - Fetches all active thesis tickers (same as /rrg/thesis)
+    - Fetches portfolio positions for held-ticker context
+    - Calls RRGChartSummaryAgent (1 AI call) — falls back to heuristic
+    - Cached 5 min per user
+    """
+    cached = _summary_cache.get("rrg_chart_summary", user_id)
+    if cached is not None:
+        return cached
+
+    # 1. Load active thesis tickers
+    async with session as s:
+        rows = await s.execute(
+            select(Thesis.ticker)
+            .where(Thesis.user_id == user_id, Thesis.status.in_(_ACTIVE_STATUSES))
+        )
+        ticker_list = [r[0] for r in rows.all()]
+
+    if not ticker_list:
+        return {"market_read": "Chưa có thesis active để phân tích.", "opportunities": [], "risks": [], "portfolio_alert": "", "rotate_from": "", "rotate_to": "", "rotate_reason": ""}
+
+    # 2. Compute RRG
+    trail_points = max(8, min(26, lookback_weeks // 2))
+    svc    = RRGService(ohlcv_service=ohlcv_svc)
+    result = await svc.compute(
+        tickers=ticker_list,
+        benchmark="VNINDEX",
+        lookback_weeks=lookback_weeks,
+        trail_points=trail_points,
+    )
+    valid = [t for t in result.tickers if not t.error and t.trail]
+    if not valid:
+        return {"market_read": "Dữ liệu giá chưa đủ để phân tích RRG.", "opportunities": [], "risks": [], "portfolio_alert": "", "rotate_from": "", "rotate_to": "", "rotate_reason": ""}
+
+    # 3. Load portfolio positions for held-ticker context
+    from src.portfolio.position_service import PositionService  # local import — avoids circular
+    pos_svc     = PositionService(session=session)
+    positions   = await pos_svc.get_open_positions(user_id)
+    held_set    = {p.ticker for p in positions}
+    pnl_map: dict[str, float] = {p.ticker: 0.0 for p in positions}  # basic; enriched if available
+
+    # 4. Build tickers_context for agent
+    tickers_context = []
+    for t in valid:
+        trail = t.trail
+        vel_dir = ""
+        if len(trail) >= 2:
+            dr = trail[-1].rs_ratio    - trail[-2].rs_ratio
+            dm = trail[-1].rs_momentum - trail[-2].rs_momentum
+            if dr > 0 and dm > 0:    vel_dir = "tăng cả 2 trục"
+            elif dr > 0:             vel_dir = "RS-Ratio tăng"
+            elif dm > 0:             vel_dir = "RS-Mom tăng"
+            else:                    vel_dir = "giảm cả 2 trục"
+        tickers_context.append({
+            "ticker":       t.ticker,
+            "quadrant":     t.quadrant,
+            "rs_ratio":     t.rs_ratio,
+            "rs_momentum":  t.rs_momentum,
+            "velocity_dir": vel_dir,
+            "pct":          pnl_map.get(t.ticker),
+        })
+
+    # 5. Call AI agent
+    agent   = RRGChartSummaryAgent(ai_client=ai_client)  # type: ignore[arg-type]
+    summary = await agent.analyze(
+        tickers_context=tickers_context,
+        held_tickers=list(held_set),
+    )
+
+    response: dict[str, Any] = {
+        "market_read":     summary.market_read,
+        "portfolio_alert": summary.portfolio_alert,
+        "rotate_from":     summary.rotate_from,
+        "rotate_to":       summary.rotate_to,
+        "rotate_reason":   summary.rotate_reason,
+        "opportunities":   [{"ticker": o.ticker, "insight": o.insight, "action": o.action} for o in summary.opportunities],
+        "risks":           [{"ticker": r.ticker, "insight": r.insight, "action": r.action} for r in summary.risks],
+    }
+    _summary_cache.set("rrg_chart_summary", user_id, response, ttl=_SUMMARY_TTL)
     return response
