@@ -85,21 +85,67 @@ const TIMELINE_EVENT_META = {
 
 const TIMELINE_MAX = 30;
 
+/** Render event detail as structured HTML based on event_type. */
+function formatEventDetailHTML(eventType, detail, summary) {
+  if (!detail && !summary) return '';
+
+  // ── snapshot ────────────────────────────────────────────────────────────
+  if (eventType === 'snapshot') {
+    if (!detail) return '';
+    const price   = detail.price   != null ? Number(detail.price).toLocaleString('vi-VN') + '₫' : null;
+    const pnl     = detail.pnl_pct != null ? `<span class="tl-pnl ${detail.pnl_pct >= 0 ? 'tl-pnl--up' : 'tl-pnl--down'}">${detail.pnl_pct >= 0 ? '+' : ''}${Number(detail.pnl_pct).toFixed(1)}%</span>` : null;
+    const score   = detail.score   != null ? `Score <strong>${Number(detail.score).toFixed(0)}</strong>` : null;
+    const chips   = [price, pnl, score].filter(Boolean);
+    return chips.length ? `<div class="tl-chips">${chips.map(c => `<span class="tl-chip">${c}</span>`).join('')}</div>` : '';
+  }
+
+  // ── reviewed ─────────────────────────────────────────────────────────────
+  if (eventType === 'reviewed' || eventType === 'review_added') {
+    if (!detail) return '';
+    const verdictMap = { BULLISH: 'buy', BEARISH: 'sell', NEUTRAL: 'hold', REDUCE: 'reduce' };
+    const vKey  = (detail.verdict || '').toUpperCase();
+    const vCls  = verdictMap[vKey] || 'hold';
+    const vtag  = detail.verdict ? `<span class="cv-vtag cv-vtag--${vCls}">${esc(detail.verdict)}</span>` : '';
+    const conf  = detail.confidence != null ? `<span class="tl-chip">Conf ${Math.round(detail.confidence * 100)}%</span>` : '';
+    // risk signals — array of strings
+    let risks = detail.risk_signals;
+    if (typeof risks === 'string') { try { risks = JSON.parse(risks); } catch { risks = []; } }
+    const riskHTML = Array.isArray(risks) && risks.length
+      ? `<div class="tl-risks">${risks.slice(0, 2).map(r => `<span class="tl-risk-pill">⚠ ${esc(String(r).length > 80 ? String(r).slice(0, 80) + '…' : r)}</span>`).join('')}${risks.length > 2 ? `<span class="tl-risk-more">+${risks.length - 2} rủi ro khác</span>` : ''}</div>` : '';
+    return `<div class="tl-review-detail">${vtag}${conf}${riskHTML}</div>`;
+  }
+
+  // ── assumption_updated ───────────────────────────────────────────────────
+  if (eventType === 'assumption_updated' || eventType === 'assumption_changed') {
+    const status = detail?.status;
+    if (!status) return summary ? `<div class="tl-summary">${esc(summary)}</div>` : '';
+    const statusMap = { confirmed: 'buy', failed: 'sell', pending: 'hold' };
+    const cls = statusMap[(status || '').toLowerCase()] || 'hold';
+    return `<span class="cv-vtag cv-vtag--${cls}">${esc(status)}</span>`;
+  }
+
+  // ── created ──────────────────────────────────────────────────────────────
+  if (eventType === 'created') {
+    const entry  = detail?.entry_price  != null ? `Entry <strong>${Number(detail.entry_price).toLocaleString('vi-VN')}₫</strong>` : null;
+    const target = detail?.target_price != null ? `Target <strong>${Number(detail.target_price).toLocaleString('vi-VN')}₫</strong>` : null;
+    const chips  = [entry, target].filter(Boolean);
+    return chips.length ? `<div class="tl-chips">${chips.map(c => `<span class="tl-chip">${c}</span>`).join('')}</div>` : '';
+  }
+
+  // ── catalyst_triggered / invalidated / closed ────────────────────────────
+  if (summary) return `<div class="tl-summary">${esc(summary)}</div>`;
+  return '';
+}
+
+/** @deprecated kept for isEventVisible compat — returns plain string */
 function formatEventDetail(raw) {
   if (raw == null) return null;
-  if (typeof raw === 'string') {
-    const trimmed = raw.trim();
-    return trimmed.length ? trimmed : null;
-  }
+  if (typeof raw === 'string') { const t = raw.trim(); return t.length ? t : null; }
   if (typeof raw === 'number' || typeof raw === 'boolean') return String(raw);
   try {
-    const pairs = Object.entries(raw)
-      .filter(([, v]) => v != null && v !== '')
-      .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`);
+    const pairs = Object.entries(raw).filter(([, v]) => v != null && v !== '').map(([k, v]) => `${k}: ${v}`);
     return pairs.length ? pairs.join(' · ') : null;
-  } catch {
-    return JSON.stringify(raw);
-  }
+  } catch { return null; }
 }
 
 function isEventVisible(ev) {
@@ -142,15 +188,17 @@ function renderThesisTimeline(slot, rawEvents) {
         ${events.map((ev, idx) => {
           const meta    = TIMELINE_EVENT_META[ev.event_type] ?? { icon: '•', label: ev.event_type };
           const dateStr = ev.occurred_at ? fmtDate(ev.occurred_at) : '';
-          const detail  = formatEventDetail(ev.detail ?? ev.description ?? ev.summary ?? null);
+          const detailHTML = formatEventDetailHTML(ev.event_type, ev.detail ?? null, ev.summary ?? null);
           const isFirst = idx === 0;
           return `
             <li class="tl-item${isFirst ? ' tl-item--latest' : ''}">
               <span class="tl-icon" aria-hidden="true">${meta.icon}</span>
               <div class="tl-content">
-                <div class="tl-label">${esc(meta.label)}${isFirst ? ' <span class="tl-latest-tag">mới nhất</span>' : ''}</div>
-                ${detail ? `<div class="tl-detail">${esc(detail)}</div>` : ''}
-                ${dateStr ? `<div class="tl-date">${dateStr}</div>` : ''}
+                <div class="tl-header-row">
+                  <span class="tl-label">${esc(meta.label)}${isFirst ? ' <span class="tl-latest-tag">mới nhất</span>' : ''}</span>
+                  ${dateStr ? `<span class="tl-date">${dateStr}</span>` : ''}
+                </div>
+                ${detailHTML}
               </div>
             </li>`;
         }).join('')}

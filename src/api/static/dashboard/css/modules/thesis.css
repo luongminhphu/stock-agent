@@ -631,3 +631,206 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
   gap: var(--space-2);
   vertical-align: middle;
 }
+
+/* ── Thesis History Timeline ────────────────────────────────────────────────
+ * Scoped to .tl-* classes. Used in the History tab of the thesis detail panel.
+ * Replaces raw key: value dump with compact structured entries.
+ */
+
+.tl-section {
+  padding: .875rem 1rem;
+}
+
+.tl-section-title {
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--muted, #797876);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  margin-bottom: .75rem;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+.tl-count-badge {
+  font-size: .65rem;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface-dyn, rgba(255,255,255,.06));
+  color: var(--muted, #797876);
+  font-variant-numeric: tabular-nums;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* ── List ── */
+.tl-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.tl-item {
+  display: flex;
+  align-items: flex-start;
+  gap: .5rem;
+  padding: .5rem .25rem;
+  border-bottom: 1px solid var(--divider, #262523);
+  position: relative;
+}
+.tl-item:last-of-type { border-bottom: none; }
+
+/* Timeline connector line */
+.tl-item::before {
+  content: '';
+  position: absolute;
+  left: .85rem;
+  top: 1.6rem;
+  bottom: -.5rem;
+  width: 1px;
+  background: var(--divider, #262523);
+}
+.tl-item:last-of-type::before { display: none; }
+
+.tl-item--latest { background: var(--primary-hl, #313b3b); border-radius: var(--radius-md, .5rem); }
+
+/* ── Icon ── */
+.tl-icon {
+  font-size: .85rem;
+  flex-shrink: 0;
+  min-width: 1.4rem;
+  text-align: center;
+  margin-top: 1px;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Content ── */
+.tl-content { flex: 1; min-width: 0; }
+
+.tl-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+
+.tl-label {
+  font-size: .75rem;
+  font-weight: 600;
+  color: var(--text, #cdccca);
+}
+
+.tl-latest-tag {
+  font-size: .62rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--primary, #4f98a3);
+  color: #fff;
+  vertical-align: middle;
+  margin-left: 4px;
+}
+
+.tl-date {
+  font-size: .65rem;
+  color: var(--muted, #797876);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── Snapshot chips (price · PnL · score) ── */
+.tl-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem;
+  margin-top: .3rem;
+}
+
+.tl-chip {
+  font-size: .68rem;
+  color: var(--muted, #797876);
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-dyn, rgba(255,255,255,.06));
+  font-variant-numeric: tabular-nums;
+}
+
+.tl-chip strong {
+  color: var(--text, #cdccca);
+  font-weight: 600;
+}
+
+.tl-pnl { font-weight: 700; font-variant-numeric: tabular-nums; }
+.tl-pnl--up   { color: var(--success, #6daa45); }
+.tl-pnl--down { color: var(--error, #d163a7); }
+
+/* ── Review detail row (verdict tag + conf + risk pills) ── */
+.tl-review-detail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: .25rem .375rem;
+  margin-top: .3rem;
+}
+
+/* ── Risk pills ── */
+.tl-risks {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: .2rem;
+  margin-top: .2rem;
+}
+
+.tl-risk-pill {
+  display: block;
+  font-size: .68rem;
+  color: var(--muted, #797876);
+  line-height: 1.45;
+  padding: 2px 0;
+  /* Truncate long risk text */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.tl-risk-more {
+  font-size: .65rem;
+  color: var(--muted, #797876);
+  opacity: .7;
+  font-style: italic;
+}
+
+/* ── Summary fallback ── */
+.tl-summary {
+  font-size: .72rem;
+  color: var(--muted, #797876);
+  margin-top: .25rem;
+  line-height: 1.5;
+}
+
+/* ── Truncation note ── */
+.tl-truncated-note {
+  font-size: .68rem;
+  color: var(--muted, #797876);
+  text-align: center;
+  padding: .5rem 0 0;
+  opacity: .7;
+}
+
+/* ── Empty state ── */
+.tl-empty {
+  font-size: .8rem;
+  color: var(--muted, #797876);
+  padding: .5rem 0;
+  text-align: center;
+}
