@@ -149,7 +149,7 @@ class IntelligenceEngineListener:
                 reason="snapshot_not_cached_or_already_consumed",
             )
 
-        verdict = await engine.get_intelligence_engine().run_cycle(
+        output = await engine.get_intelligence_engine().run_cycle(
             user_id=event.user_id,
             trigger_source=event.trigger_source,
             priority=event.priority,
@@ -158,7 +158,7 @@ class IntelligenceEngineListener:
             verdict_agent=self._verdict_agent,
         )
 
-        if verdict is None:
+        if output is None:
             logger.info(
                 "intelligence_listener.no_verdict",
                 trigger_source=event.trigger_source,
@@ -167,8 +167,12 @@ class IntelligenceEngineListener:
             return
 
         # ── Emit IntelligenceEngineCompletedEvent ────────────────────────
+        # Unwrap EngineOutput → EngineVerdict + IntelligenceReport
+        verdict             = output.verdict
+        intelligence_report = output.intelligence_report
+
         echoed_verdict_event_id: str = (
-            getattr(verdict, "verdict_event_id", None) or str(uuid.uuid4())
+            getattr(verdict, "verdict_id", None) or str(uuid.uuid4())
         )
 
         def _to_tuple(val: Any) -> tuple[str, ...]:
@@ -201,14 +205,6 @@ class IntelligenceEngineListener:
                         item_type=type(item).__name__,
                     )
             return tuple(result)
-
-        # Extract intelligence_report fields when available (Wave C multi-agent)
-        intelligence_report = getattr(verdict, "intelligence_report", None)
-        if intelligence_report is None:
-            # verdict is EngineVerdict (heuristic path) — check EngineOutput wrapper
-            # engine.run_cycle() returns EngineVerdict directly; EngineOutput is
-            # internal. Pull from the EngineOutput if the caller attached it.
-            pass
 
         agent_slots: tuple[dict[str, Any], ...] = ()
         priority_actions: tuple[dict[str, Any], ...] = ()
