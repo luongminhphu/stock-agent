@@ -29,7 +29,24 @@ Nguyên tắc:
 - Ngôn ngữ: tiếng Việt, đơn giản, không dùng thuật ngữ phức tạp.
 - Mỗi insight tối đa 1 câu, tối đa 100 ký tự.
 - Chỉ đề xuất rotate khi có tín hiệu rõ ràng.
-- Trả về JSON theo schema RRGChartSummary.
+
+Output: JSON thuần, BẮT BUỘC đúng cấu trúc sau:
+{
+  "market_read": "<1 câu nhận định tổng quan toàn chart>",
+  "opportunities": [
+    {"ticker": "<TICKER>", "insight": "<lý do cơ hội>", "action": "BUY|WATCH"},
+    {"ticker": "<TICKER>", "insight": "<lý do cơ hội>", "action": "BUY|WATCH"}
+  ],
+  "risks": [
+    {"ticker": "<TICKER>", "insight": "<lý do rủi ro>", "action": "REDUCE|AVOID"},
+    {"ticker": "<TICKER>", "insight": "<lý do rủi ro>", "action": "REDUCE|AVOID"}
+  ],
+  "portfolio_alert": "<cảnh báo danh mục hoặc chuỗi rỗng>",
+  "rotate_from": "<ticker đang hold nên giảm hoặc chuỗi rỗng>",
+  "rotate_to": "<ticker nên tăng hoặc chuỗi rỗng>",
+  "rotate_reason": "<lý do rotate hoặc chuỗi rỗng>"
+}
+Không được dùng key khác. Không trả về markdown, không prose thêm.
 """
 
 

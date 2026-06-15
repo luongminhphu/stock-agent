@@ -6,7 +6,7 @@ Downstream: api/routes/rrg.py → FE rrg-chart.js summary bar.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class RRGTickerInsight(BaseModel):
@@ -44,6 +44,70 @@ class RRGTickerInsight(BaseModel):
 class RRGChartSummary(BaseModel):
     """AI summary of the full RRG chart — opportunities, risks, held context."""
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalise_keys(cls, data: object) -> object:  # noqa: N805
+        """Absorb camelCase / alternate-structure responses from older prompts."""
+        if not isinstance(data, dict):
+            return data
+        d = dict(data)
+
+        # market_read aliases
+        if "market_read" not in d:
+            for alias in ("marketRead", "overall", "summary", "overview"):
+                if alias in d:
+                    d["market_read"] = d[alias]
+                    break
+
+        # opportunities: accept bestOpportunity (single object) or camelCase list
+        if "opportunities" not in d:
+            if "bestOpportunity" in d:
+                bo = d["bestOpportunity"]
+                if isinstance(bo, dict):
+                    # normalize inner keys
+                    d["opportunities"] = [{
+                        "ticker":  bo.get("ticker", ""),
+                        "insight": bo.get("reason", bo.get("insight", "")),
+                        "action":  bo.get("action", "WATCH"),
+                    }]
+            elif "topOpportunities" in d:
+                d["opportunities"] = d["topOpportunities"]
+
+        # risks: accept highestRisk (single object)
+        if "risks" not in d:
+            if "highestRisk" in d:
+                hr = d["highestRisk"]
+                if isinstance(hr, dict):
+                    d["risks"] = [{
+                        "ticker":  hr.get("ticker", ""),
+                        "insight": hr.get("reason", hr.get("insight", "")),
+                        "action":  hr.get("action", "REDUCE"),
+                    }]
+            elif "topRisks" in d:
+                d["risks"] = d["topRisks"]
+
+        # rotate fields: accept rotationSuggestions[0] as fallback
+        if "rotate_from" not in d and "rotationSuggestions" in d:
+            suggestions = d.get("rotationSuggestions") or []
+            if suggestions and isinstance(suggestions[0], dict):
+                first = suggestions[0]
+                d.setdefault("rotate_from",   first.get("fromTicker", ""))
+                d.setdefault("rotate_to",     first.get("toTicker", ""))
+                d.setdefault("rotate_reason", first.get("reason", ""))
+
+        # Normalize insight lists: each item may use "reason" instead of "insight"
+        for key in ("opportunities", "risks"):
+            items = d.get(key, [])
+            if isinstance(items, list):
+                normalized = []
+                for item in items:
+                    if isinstance(item, dict) and "insight" not in item and "reason" in item:
+                        item = {**item, "insight": item["reason"]}
+                    normalized.append(item)
+                d[key] = normalized
+
+        return d
+
     # Top opportunities (max 2)
     opportunities: list[RRGTickerInsight] = Field(
         default_factory=list,
@@ -73,6 +137,7 @@ class RRGChartSummary(BaseModel):
 
     # One-line overall market read
     market_read: str = Field(
+        default="",
         description=(
             "Nhận định tổng quan về toàn bộ chart trong 1 câu: "
             "xu hướng đang tập trung ở quadrant nào, động lực tổng thể."
