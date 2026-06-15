@@ -1,62 +1,229 @@
-/* ─── Catalyst Calendar — compact row layout ──────────────────────────────
+/* ─── Catalyst Calendar — Graphical monthly calendar ──────────────────────────
    Owner  : modules/briefing
-   Tokens : base/variables.css only — zero hardcoded hex
-   Prefix : .cc-*  (catalyst calendar)
+   Tokens : base/variables.css only — zero hardcoded hex (except rgba tints)
+   Prefix : .cc-cal-*  (new calendar), .cc-* (empty state — kept)
    Kept   : .catalyst-urgent-strip / .cu-* (Cluster A strip — unchanged)
-─────────────────────────────────────────────────────────────────────────── */
+─────────────────────────────────────────────────────────────────────────────── */
 
-/* ── List wrapper ────────────────────────────────────────────────────────── */
-.cc-list {
+/* ── Shell ────────────────────────────────────────────────────────────────── */
+.cc-cal-shell {
   display: flex;
   flex-direction: column;
-}
-
-/* ── Section label ───────────────────────────────────────────────────────── */
-.cc-section-label {
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--faint);
-  padding: var(--space-1) 0 var(--space-1);
-  margin-top: var(--space-1);
-}
-.cc-section-label--urgent { color: var(--warning); }
-
-/* ── Divider ─────────────────────────────────────────────────────────────── */
-.cc-divider {
-  height: 1px;
-  background: var(--line);
-  margin: var(--space-2) 0;
-}
-
-/* ── Single row ──────────────────────────────────────────────────────────── */
-.cc-row {
-  display: grid;
-  /* badge · ticker · desc(flex) · date */
-  grid-template-columns: auto auto 1fr auto;
-  align-items: center;
   gap: var(--space-2);
-  padding: 5px var(--space-1);
-  border-radius: var(--radius-xs);
-  border-left: 2px solid transparent;
-  transition: background var(--transition-fast);
-  min-width: 0;
+  min-width: 280px;
+  width: 100%;
 }
-.cc-row:hover {
+
+/* ── Month header ─────────────────────────────────────────────────────────── */
+.cc-cal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-1) var(--space-1);
+  gap: var(--space-2);
+}
+
+.cc-cal-month-label {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  flex: 1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.cc-cal-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: none;
+  border: 1px solid var(--border, var(--line));
+  border-radius: var(--radius-btn);
+  color: var(--muted);
+  font-size: var(--text-md);
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color var(--transition-fast), border-color var(--transition-fast),
+              background var(--transition-fast);
+}
+.cc-cal-nav:hover {
+  color: var(--text);
+  border-color: var(--line-strong);
   background: var(--surface-2);
 }
+.cc-cal-nav:focus-visible {
+  outline: 2px solid var(--accent, var(--brand));
+  outline-offset: 2px;
+}
 
-/* Urgency accent — left border colour */
-.cc-row--today    { border-left-color: var(--danger);  }
-.cc-row--tomorrow { border-left-color: var(--warning); }
-.cc-row--soon     { border-left-color: var(--brand);   }
+/* ── Weekday header row ───────────────────────────────────────────────────── */
+.cc-cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
 
-/* ── Urgency badge ───────────────────────────────────────────────────────── */
-.cc-badge {
+.cc-cal-wday {
+  text-align: center;
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: var(--space-1) 0;
+}
+
+/* ── Day grid ─────────────────────────────────────────────────────────────── */
+.cc-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+/* ── Day cell ─────────────────────────────────────────────────────────────── */
+.cc-cal-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 3px 2px 4px;
+  border-radius: var(--radius-tag);
+  min-height: 36px;
+  border: 1px solid transparent;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+  user-select: none;
+}
+
+/* Empty filler cells */
+.cc-cal-cell--empty {
+  pointer-events: none;
+  opacity: 0.35;
+}
+
+/* Day number */
+.cc-cal-day-num {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--muted);
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Today highlight */
+.cc-cal-cell--today .cc-cal-day-num {
+  color: var(--accent, var(--brand));
+  font-weight: 800;
+}
+.cc-cal-cell--today {
+  border-color: rgba(125, 211, 252, 0.35);
+  background: rgba(125, 211, 252, 0.06);
+}
+
+/* Cells with catalysts: interactive */
+.cc-cal-cell--has-cats {
+  cursor: pointer;
+}
+.cc-cal-cell--has-cats .cc-cal-day-num {
+  color: var(--text);
+  font-weight: 700;
+}
+.cc-cal-cell--has-cats:hover {
+  background: var(--surface-2);
+  border-color: var(--line-strong);
+}
+
+/* Selected state */
+.cc-cal-cell--selected {
+  background: var(--surface-3);
+  border-color: rgba(125, 211, 252, 0.45);
+}
+.cc-cal-cell--selected .cc-cal-day-num {
+  color: var(--accent, var(--brand));
+}
+
+/* Focus ring */
+.cc-cal-cell:focus-visible {
+  outline: 2px solid var(--accent, var(--brand));
+  outline-offset: 1px;
+}
+
+/* ── Dot indicators ───────────────────────────────────────────────────────── */
+.cc-cal-dots {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  margin-top: 2px;
+  max-width: 100%;
+}
+
+.cc-cal-dot {
+  display: block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.cc-cal-dot--red   { background: var(--danger);  }
+.cc-cal-dot--amber { background: var(--warning); }
+.cc-cal-dot--blue  { background: var(--brand);   }
+
+/* Overflow: "+N" label */
+.cc-cal-overflow {
+  font-size: var(--text-2xs);
+  color: var(--muted);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+/* ── Detail panel ─────────────────────────────────────────────────────────── */
+.cc-cal-detail {
+  border: 1px solid var(--border, var(--line));
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  animation: cc-cal-detail-in var(--transition-fast) ease both;
+}
+
+@keyframes cc-cal-detail-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-cal-detail { animation: none; }
+}
+
+.cc-cal-detail-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.cc-cal-detail-date {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* ── Urgency badges ───────────────────────────────────────────────────────── */
+.cc-cal-badge {
   display: inline-flex;
   align-items: center;
-  padding: 0 5px;
+  padding: 1px 6px;
   border-radius: var(--radius-pill);
   font-size: 0.58rem;
   font-weight: 700;
@@ -65,64 +232,50 @@
   white-space: nowrap;
   flex-shrink: 0;
 }
-.cc-badge--today    { background: var(--danger-bg);  color: var(--danger);  }
-.cc-badge--tomorrow { background: var(--warning-bg); color: var(--warning); }
-.cc-badge--soon     { background: var(--brand-bg);   color: var(--brand);   }
+.cc-cal-badge--today    { background: var(--danger-bg);  color: var(--danger);  }
+.cc-cal-badge--tomorrow { background: var(--warning-bg); color: var(--warning); }
+.cc-cal-badge--soon     { background: var(--brand-bg);   color: var(--brand);   }
 
-/* ── Ticker ──────────────────────────────────────────────────────────────── */
-.cc-ticker {
-  font-size: var(--text-xs);
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--brand);
-  flex-shrink: 0;
-  white-space: nowrap;
+/* ── Detail body: catalyst rows ───────────────────────────────────────────── */
+.cc-cal-detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
 }
 
-/* ── Description ─────────────────────────────────────────────────────────── */
-.cc-desc {
-  font-size: var(--text-sm);
-  font-weight: 500;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.cc-cal-detail-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
   min-width: 0;
-  line-height: 1.4;
 }
 
-/* ── Date ────────────────────────────────────────────────────────────────── */
-.cc-date {
-  font-size: 0.62rem;
-  color: var(--faint);
+.cc-cal-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 5px;
+  border-radius: var(--radius-tag);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-3);
+  font-size: var(--text-2xs);
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--accent, var(--brand));
   white-space: nowrap;
   flex-shrink: 0;
-  font-variant-numeric: tabular-nums;
+  line-height: 1.7;
 }
 
-/* ── Show-more button ────────────────────────────────────────────────────── */
-.cc-more-btn {
-  width: 100%;
-  margin-top: var(--space-2);
-  padding: 5px 0;
-  background: none;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-xs);
-  color: var(--muted);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  cursor: pointer;
-  transition: color var(--transition-fast), border-color var(--transition-fast),
-              background var(--transition-fast);
-}
-.cc-more-btn:hover {
+.cc-cal-detail-desc {
+  font-size: var(--text-sm);
   color: var(--text);
-  border-color: var(--line-strong);
-  background: var(--surface-2);
+  line-height: 1.5;
+  min-width: 0;
+  word-break: break-word;
 }
 
-/* ── Empty state ─────────────────────────────────────────────────────────── */
+/* ── Empty state (kept from old layout) ──────────────────────────────────── */
 .cc-empty {
   display: flex;
   flex-direction: column;
@@ -134,10 +287,12 @@
   text-align: center;
 }
 
-/* ── Responsive: hide date on very narrow panels ─────────────────────────── */
-@media (max-width: 420px) {
-  .cc-date { display: none; }
-  .cc-row  { grid-template-columns: auto auto 1fr; }
+/* ── Responsive: very narrow panels ──────────────────────────────────────── */
+@media (max-width: 300px) {
+  .cc-cal-month-label { font-size: 0.65rem; }
+  .cc-cal-wday        { font-size: 0.55rem; }
+  .cc-cal-day-num     { font-size: 0.6rem;  }
+  .cc-cal-dot         { width: 4px; height: 4px; }
 }
 
 
