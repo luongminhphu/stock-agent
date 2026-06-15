@@ -113,11 +113,14 @@ class WatchdogAgent:
         try:
             investor_profile = await self._build_investor_profile(session, user_id)
             user_prompt = build_user_prompt(ctx, investor_profile=investor_profile)
-            raw = await self._client.complete(
-                system=SYSTEM_PROMPT,
-                user=user_prompt,
+            api_resp = await self._client.chat_completion(
+                messages=[
+                    {\"role\": \"system\", \"content\": SYSTEM_PROMPT},
+                    {\"role\": \"user\",   \"content\": user_prompt},
+                ],
                 temperature=0.2,
             )
+            raw = self._client.extract_text(api_resp)
             data = json.loads(raw)
             result = ThesisHealthScore(**data)
             logger.info(

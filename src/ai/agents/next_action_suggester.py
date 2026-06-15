@@ -313,11 +313,14 @@ class NextActionSuggester:
         user_prompt = _build_prompt(contexts)
 
         try:
-            raw = await self._client.complete(
-                system=_SYSTEM_PROMPT,
-                user=user_prompt,
+            api_resp = await self._client.chat_completion(
+                messages=[
+                    {\"role\": \"system\", \"content\": _SYSTEM_PROMPT},
+                    {\"role\": \"user\",   \"content\": user_prompt},
+                ],
                 temperature=0.3,
             )
+            raw = self._client.extract_text(api_resp)
             data = json.loads(raw)
 
             raw_actions = data.get("actions", [])

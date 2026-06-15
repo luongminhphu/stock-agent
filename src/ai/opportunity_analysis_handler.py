@@ -175,11 +175,14 @@ class OpportunityAnalysisHandler:
                 thesis_context=thesis_context,
                 trading_date=event.trading_date,
             )
-            raw = await self._client.complete(
-                system=_SYSTEM_PROMPT,
-                user=user_prompt,
+            api_resp = await self._client.chat_completion(
+                messages=[
+                    {"role": "system", "content": _SYSTEM_PROMPT},
+                    {"role": "user",   "content": user_prompt},
+                ],
                 temperature=0.2,
             )
+            raw = self._client.extract_text(api_resp)
 
             # Step 3: Parse output
             data = _parse_output(raw)

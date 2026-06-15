@@ -64,11 +64,14 @@ class SignalCredibilityAgent:
         """Score the signal. Returns None on any failure (graceful degrade)."""
         try:
             user_prompt = build_user_prompt(ctx)
-            raw = await self._client.complete(
-                system=SYSTEM_PROMPT,
-                user=user_prompt,
+            api_resp = await self._client.chat_completion(
+                messages=[
+                    {\"role\": \"system\", \"content\": SYSTEM_PROMPT},
+                    {\"role\": \"user\",   \"content\": user_prompt},
+                ],
                 temperature=0.2,
             )
+            raw = self._client.extract_text(api_resp)
             data = json.loads(raw)
             result = SignalCredibilityResult(**data)
             logger.info(

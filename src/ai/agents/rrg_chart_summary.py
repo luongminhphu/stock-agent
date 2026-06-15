@@ -146,7 +146,7 @@ class RRGChartSummaryAgent:
         user_prompt = _build_prompt(tickers_context, held_tickers)
 
         try:
-            result: RRGChartSummary = await self._ai.complete(  # type: ignore[attr-defined]
+            result: RRGChartSummary = await self._ai.chat(
                 system_prompt=_SYSTEM_PROMPT,
                 user_prompt=user_prompt,
                 response_schema=RRGChartSummary,
