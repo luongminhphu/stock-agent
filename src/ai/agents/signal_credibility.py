@@ -66,8 +66,8 @@ class SignalCredibilityAgent:
             user_prompt = build_user_prompt(ctx)
             api_resp = await self._client.chat_completion(
                 messages=[
-                    {\"role\": \"system\", \"content\": SYSTEM_PROMPT},
-                    {\"role\": \"user\",   \"content\": user_prompt},
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user",   "content": user_prompt},
                 ],
                 temperature=0.2,
             )

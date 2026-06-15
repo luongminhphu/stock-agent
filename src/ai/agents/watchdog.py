@@ -115,8 +115,8 @@ class WatchdogAgent:
             user_prompt = build_user_prompt(ctx, investor_profile=investor_profile)
             api_resp = await self._client.chat_completion(
                 messages=[
-                    {\"role\": \"system\", \"content\": SYSTEM_PROMPT},
-                    {\"role\": \"user\",   \"content\": user_prompt},
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user",   "content": user_prompt},
                 ],
                 temperature=0.2,
             )

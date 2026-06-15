@@ -175,8 +175,8 @@ class PortfolioRiskNarratorAgent:
             user_prompt = _build_user_prompt(ctx)
             api_resp = await self._client.chat_completion(
                 messages=[
-                    {\"role\": \"system\", \"content\": _SYSTEM_PROMPT},
-                    {\"role\": \"user\",   \"content\": user_prompt},
+                    {"role": "system", "content": _SYSTEM_PROMPT},
+                    {"role": "user",   "content": user_prompt},
                 ],
                 temperature=0.3,
             )
