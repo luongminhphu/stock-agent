@@ -273,9 +273,9 @@ async def get_rrg_chart_summary(
         return {"market_read": "Dữ liệu giá chưa đủ để phân tích RRG.", "opportunities": [], "risks": [], "portfolio_alert": "", "rotate_from": "", "rotate_to": "", "rotate_reason": ""}
 
     # 3. Load portfolio positions for held-ticker context
-    from src.portfolio.position_service import PositionService  # local import — avoids circular
-    pos_svc     = PositionService(session=session)
-    positions   = await pos_svc.get_open_positions(user_id)
+    from src.portfolio.service import PortfolioService  # local import — avoids circular
+    pos_svc     = PortfolioService(session=session)
+    positions   = await pos_svc.list_open(user_id)
     held_set    = {p.ticker for p in positions}
     pnl_map: dict[str, float] = {p.ticker: 0.0 for p in positions}  # basic; enriched if available
 
