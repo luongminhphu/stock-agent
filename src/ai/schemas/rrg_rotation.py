@@ -16,6 +16,7 @@ class RRGRotationSignal(BaseModel):
 
     # Current position
     quadrant: str = Field(
+        default="unknown",
         description="leading | weakening | lagging | improving"
     )
 

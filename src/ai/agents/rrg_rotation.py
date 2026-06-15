@@ -53,11 +53,22 @@ Nhiệm vụ: Phân tích vị trí và trajectory của một mã cổ phiếu 
 
 ## Quy tắc output
 - signal_reason: tối đa 120 ký tự, tiếng Việt, không nhắc giá cụ thể
-- opportunity: chỉ điền khi có pattern rõ ràng (ENTERING_LEADING, ENTERING_IMPROVING, RECOVERY)
+- opportunity: chỉ điền khi có pattern rõ ràng (ENTERING_LEADING, ENTERING_IMPROVING, RECOVERY), để "" nếu không có
 - confidence tối đa 0.85
 - Không dùng markdown, không prose thêm
 
-Output: JSON thuần theo schema RRGRotationSignal.
+Output: JSON thuần, BẮT BUỘC đủ các fields sau:
+{
+  "ticker": "<TICKER>",
+  "quadrant": "leading|weakening|lagging|improving",
+  "pattern": "<PATTERN>",
+  "signal": "BUY|WATCH|HOLD|REDUCE|AVOID",
+  "signal_reason": "<lý do ngắn tiếng Việt>",
+  "opportunity": "<mô tả hoặc chuỗi rỗng>",
+  "risk": "<rủi ro chính hoặc chuỗi rỗng>",
+  "next_watch": "<điều kiện cần theo dõi hoặc chuỗi rỗng>",
+  "confidence": 0.0
+}
 """
 
 
