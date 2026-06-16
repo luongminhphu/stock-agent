@@ -123,7 +123,7 @@ class WatchlistCog(BaseCog):
             return
         except Exception as exc:
             logger.error("watchlist_add.error", ticker=ticker, error=str(exc))
-            await self.send_error(interaction, title="Error", description=str(exc))
+            await self.send_error(interaction, title="Lỗi", description=str(exc))
             return
 
         await self.send_ok(
@@ -153,13 +153,13 @@ class WatchlistCog(BaseCog):
         except WatchlistItemNotFoundError:
             await self.send_error(
                 interaction,
-                title="Not found",
+                title="Không tìm thấy",
                 description=f"**{ticker.upper()}** is not in your watchlist.",
             )
             return
         except Exception as exc:
             logger.error("watchlist_remove.error", ticker=ticker, error=str(exc))
-            await self.send_error(interaction, title="Error", description=str(exc))
+            await self.send_error(interaction, title="Lỗi", description=str(exc))
             return
 
         await self.send_ok(
@@ -186,7 +186,7 @@ class WatchlistCog(BaseCog):
                 items = await svc.list_items_with_prices(user_id, get_quote_service())
         except Exception as exc:
             logger.error("watchlist_list.error", error=str(exc))
-            await self.send_error(interaction, title="Error", description=str(exc))
+            await self.send_error(interaction, title="Lỗi", description=str(exc))
             return
 
         if not items:
@@ -343,7 +343,7 @@ class WatchlistCog(BaseCog):
             return
         except Exception as exc:
             logger.error("watchlist_alert.error", ticker=ticker, error=str(exc))
-            await self.send_error(interaction, title="Error", description=str(exc))
+            await self.send_error(interaction, title="Lỗi", description=str(exc))
             return
 
         label = _CONDITION_LABEL.get(condition_type, condition)

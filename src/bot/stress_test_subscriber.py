@@ -130,7 +130,7 @@ class StressTestSubscriber:
             inline=True,
         )
         embed.add_field(
-            name="Confidence",
+            name="Độ tin cậy",
             value=f"`{event.confidence:.0%}`",
             inline=True,
         )

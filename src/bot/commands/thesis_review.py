@@ -131,7 +131,7 @@ class ThesisReviewCog(BaseCog):
             return
         except Exception as exc:
             logger.error("bot.recommendations.error", thesis_id=thesis_id, error=str(exc))
-            await self.send_error(interaction, title="Error", description=str(exc))
+            await self.send_error(interaction, title="Lỗi", description=str(exc))
             return
 
         if not recs:
@@ -254,7 +254,7 @@ class ThesisReviewCog(BaseCog):
                 recommendation_id=recommendation_id,
                 error=str(exc),
             )
-            await self.send_error(interaction, title="Error", description=str(exc))
+            await self.send_error(interaction, title="Lỗi", description=str(exc))
             return
 
         icon = "✅" if accept else "🚫"

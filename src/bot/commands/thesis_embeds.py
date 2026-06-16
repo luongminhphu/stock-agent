@@ -148,7 +148,7 @@ def build_review_embed(review: object) -> discord.Embed:
 
     confidence = float(getattr(review, "confidence", 0.0) or 0.0)
     embed.add_field(
-        name="Confidence",
+        name="Độ tin cậy",
         value=f"{confidence_bar(confidence)} `{confidence:.0%}`",
         inline=False,
     )

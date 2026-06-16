@@ -125,9 +125,9 @@ def _build_sector_embed(
     )
 
     if result.top_rotate_in:
-        embed.add_field(name="⬆️ Rotate In", value=", ".join(result.top_rotate_in), inline=True)
+        embed.add_field(name="⬆️ Vào vị thế", value=", ".join(result.top_rotate_in), inline=True)
     if result.top_rotate_out:
-        embed.add_field(name="⬇️ Rotate Out", value=", ".join(result.top_rotate_out), inline=True)
+        embed.add_field(name="⬇️ Thoát vị thế", value=", ".join(result.top_rotate_out), inline=True)
 
     # Signals — nếu có watchlist, ưu tiên signals có tickers overlap
     signals = result.sector_signals
@@ -144,10 +144,10 @@ def _build_sector_embed(
             bar = "█" * round(s.momentum_score * 5) + "░" * (5 - round(s.momentum_score * 5))
             tickers_str = ", ".join(s.key_tickers[:3]) if s.key_tickers else "—"
             lines.append(f"**{s.sector}** `{s.signal}` {bar} — {tickers_str}")
-        embed.add_field(name="📊 Signals", value="\n".join(lines), inline=False)
+        embed.add_field(name="📊 Tín hiệu", value="\n".join(lines), inline=False)
 
-    embed.add_field(name="⚠️ Key Risk", value=result.key_risk, inline=False)
-    embed.add_field(name="👀 Next Watch", value=result.next_watch, inline=False)
+    embed.add_field(name="⚠️ Rủi ro chính", value=result.key_risk, inline=False)
+    embed.add_field(name="👀 Cần theo dõi", value=result.next_watch, inline=False)
 
     conf_label = {"HIGH": "🟢 HIGH", "MEDIUM": "🟡 MEDIUM", "LOW": "🔴 LOW"}.get(
         result.confidence, result.confidence

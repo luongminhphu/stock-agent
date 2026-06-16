@@ -92,7 +92,7 @@ class ThesisCrudCog(BaseCog):
             logger.error("thesis_add.error", ticker=ticker, error=str(exc))
             await self.send_error(
                 interaction,
-                title="Failed to create thesis",
+                title="Không tạo được thesis",
                 description=str(exc),
             )
             return
@@ -114,7 +114,7 @@ class ThesisCrudCog(BaseCog):
         embed.add_field(name="Upside", value=upside_str, inline=True)
         embed.add_field(name="R/R", value=rr_str, inline=True)
         if summary:
-            embed.add_field(name="Summary", value=summary[:500], inline=False)
+            embed.add_field(name="Tóm tắt", value=summary[:500], inline=False)
         embed.set_footer(text="Use /review_thesis to run AI review")
         await interaction.followup.send(embed=embed, ephemeral=True)
 
@@ -148,7 +148,7 @@ class ThesisCrudCog(BaseCog):
                 theses = await svc.list_for_user(user_id=user_id, status=filter_status)
         except Exception as exc:
             logger.error("thesis_list.error", error=str(exc))
-            await self.send_error(interaction, title="Error", description=str(exc))
+            await self.send_error(interaction, title="Lỗi", description=str(exc))
             return
 
         if not theses:
@@ -211,13 +211,13 @@ class ThesisCrudCog(BaseCog):
         except ThesisNotFoundError:
             await self.send_error(
                 interaction,
-                title="Not found",
+                title="Không tìm thấy",
                 description=f"Thesis **#{thesis_id}** not found or doesn't belong to you.",
             )
             return
         except Exception as exc:
             logger.error("thesis_close.error", thesis_id=thesis_id, error=str(exc))
-            await self.send_error(interaction, title="Error", description=str(exc))
+            await self.send_error(interaction, title="Lỗi", description=str(exc))
             return
 
         icon = "✅" if reason == "closed" else "❌"

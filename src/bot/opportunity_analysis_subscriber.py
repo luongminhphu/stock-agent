@@ -31,50 +31,50 @@ def _build_opportunity_embed(event: OpportunityAnalysisCompletedEvent) -> discor
         else discord.Color.light_grey()
     )
 
-    title = f"🔍 Opportunity Screen — {event.trading_date or 'Today'}"
+    title = f"🔍 Quét cơ hội — {event.trading_date or 'Hôm nay'}"
     embed = discord.Embed(
         title=title,
-        description=event.verdict or "No significant overlap found.",
+        description=event.verdict or "Không có cổ phiếu nào tương đồng đáng chú ý.",
         colour=colour,
     )
 
     if event.ranked_tickers:
         embed.add_field(
-            name="📊 Top Candidates",
+            name="📊 Ứng viên hàng đầu",
             value=", ".join(f"**{t}**" for t in event.ranked_tickers),
             inline=False,
         )
 
     if event.watchlist_overlap:
         embed.add_field(
-            name="✅ In Your Watchlist",
+            name="✅ Có trong Watchlist",
             value=", ".join(f"**{t}**" for t in event.watchlist_overlap),
             inline=True,
         )
 
     if event.thesis_relevant:
         embed.add_field(
-            name="📋 Active Thesis",
+            name="📋 Thesis đang mở",
             value=", ".join(f"**{t}**" for t in event.thesis_relevant),
             inline=True,
         )
 
     if event.action:
         embed.add_field(
-            name="⚡ Action",
+            name="⚡ Hành động",
             value=event.action,
             inline=False,
         )
 
     if event.reasoning_summary:
         embed.add_field(
-            name="💡 Reasoning",
+            name="💡 Lý do",
             value=event.reasoning_summary[:500],
             inline=False,
         )
 
     confidence_pct = int(event.confidence * 100)
-    embed.set_footer(text=f"Confidence {confidence_pct}%  ·  stock-agent opportunity screen")
+    embed.set_footer(text=f"Độ tin cậy {confidence_pct}%  ·  stock-agent quét cơ hội")
 
     return embed
 

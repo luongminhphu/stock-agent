@@ -100,7 +100,7 @@ def _build_actions_embed(data: dict) -> discord.Embed | None:
     lines = [f"{i + 1}. {_fmt_action(a)}" for i, a in enumerate(top)]
 
     embed = discord.Embed(
-        title="⚡ Priority Actions",
+        title="⚡ Hành động ưu tiên",
         description="\n".join(lines),
         color=discord.Color.blurple(),
     )
@@ -119,7 +119,7 @@ def _build_risk_embed(data: dict) -> discord.Embed | None:
 
     lines = [f"• {_fmt_flag(f)}" for f in flags]
     embed = discord.Embed(
-        title="⚠️ Risk Flags",
+        title="⚠️ Rủi ro cần chú ý",
         description="\n".join(lines),
         color=discord.Color.red(),
     )

@@ -137,7 +137,7 @@ def build_conviction_embed(result: "ConvictionTimelineResponse") -> discord.Embe
             f"`{_score_bar(bd.risk_reward, 20)}`      Risk/Reward   **{bd.risk_reward:.1f}**/20",
             f"`{_score_bar(bd.review_confidence, 10)}`      AI Confidence **{bd.review_confidence:.1f}**/10",
         ]
-        embed.add_field(name="Score breakdown", value="\n".join(lines), inline=False)
+        embed.add_field(name="Chi tiết điểm", value="\n".join(lines), inline=False)
 
     if latest_pt and latest_pt.verdict:
         v_icon = VERDICT_ICON.get(latest_pt.verdict.upper(), "\u26aa")

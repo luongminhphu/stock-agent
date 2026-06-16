@@ -94,7 +94,7 @@ class MarketCog(BaseCog):
         if not quotes:
             await self.send_error(
                 interaction,
-                title="No data",
+                title="Không có dữ liệu",
                 description="No quotes returned for those tickers.",
             )
             return
