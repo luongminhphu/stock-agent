@@ -227,7 +227,7 @@ async def replay_decision(
     Persists lesson back to DecisionLog automatically.
     """
     try:
-        envelope = await svc.analyze_decision(decision_id)
+        envelope = await svc.replay_decision(decision_id, user_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except Exception as exc:
