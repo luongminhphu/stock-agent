@@ -216,7 +216,7 @@
 mark.search-hl {
   background: rgba(251, 191, 36, 0.22);  /* --warning tint */
   color: var(--warning);
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   padding: 0 1px;
   font-style: normal;
 }

@@ -54,14 +54,14 @@
 }
 
 /* Màu theo trạng thái */
-.quote-price--up   { color: #4ade80; }
-.quote-price--down { color: #f87171; }
+.quote-price--up   { color: var(--success); }
+.quote-price--down { color: var(--danger); }
 .quote-price--ceiling {
-  color: #f97316;
+  color: var(--orange);
   text-shadow: 0 0 8px rgba(249, 115, 22, 0.4);
 }
 .quote-price--floor {
-  color: #a78bfa;
+  color: var(--violet);
   text-shadow: 0 0 8px rgba(167, 139, 250, 0.35);
 }
 
@@ -73,8 +73,8 @@
   align-items: center;
   gap: 4px;
 }
-.quote-change--up   { color: #4ade80; }
-.quote-change--down { color: #f87171; }
+.quote-change--up   { color: var(--success); }
+.quote-change--down { color: var(--danger); }
 .quote-change--flat { color: var(--muted); }
 
 .quote-change-abs {
@@ -92,7 +92,7 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   background: rgba(249, 115, 22, 0.15);
-  color: #f97316;
+  color: var(--orange);
   border: 1px solid rgba(249, 115, 22, 0.25);
 }
 .quote-badge-floor {
@@ -103,7 +103,7 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   background: rgba(167, 139, 250, 0.15);
-  color: #a78bfa;
+  color: var(--violet);
   border: 1px solid rgba(167, 139, 250, 0.25);
 }
 
@@ -161,7 +161,7 @@
 .quote-vol-fill {
   height: 100%;
   border-radius: var(--radius-xs);
-  background: var(--brand, #7dd3fc);
+  background: var(--brand);
   transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
 

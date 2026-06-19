@@ -325,7 +325,7 @@ td.cell-missing {
 
 .exposure-segment {
   height: 100%;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   flex-shrink: 0;
   min-width: 4px;
   transition: opacity 150ms ease;

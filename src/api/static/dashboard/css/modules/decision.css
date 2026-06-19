@@ -21,28 +21,32 @@
 /* ── Tab bar (reuses .brief-tab-bar pattern) ────────────────────────────────────── */
 .dec-tab-bar {
   display: flex;
-  gap: 4px;
-  margin-bottom: 14px;
+  gap: var(--space-1);
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  padding-bottom: var(--space-1);
 }
 .dec-tab {
-  padding: 6px 16px;
-  border-radius: var(--radius-pill);
-  font-size: var(--text-base);
-  font-weight: 500;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
   color: var(--muted);
-  background: transparent;
-  border: 1px solid rgba(148, 163, 184, 0.15);
+  font-size: var(--text-sm);
+  font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+  margin-bottom: -1px;
+  white-space: nowrap;
 }
 .dec-tab:hover {
   color: var(--text);
-  background: rgba(125, 211, 252, 0.06);
 }
 .dec-tab.active {
-  color: var(--brand, #7dd3fc);
-  background: rgba(125, 211, 252, 0.1);
-  border-color: rgba(125, 211, 252, 0.3);
+  color: var(--brand);
+  border-bottom-color: var(--brand);
+  font-weight: 600;
 }
 
 /* ── Empty state ────────────────────────────────────────────────────────────────────────────── */
@@ -93,7 +97,7 @@
 .dec-ticker {
   font-size: var(--text-md);
   font-weight: 700;
-  color: var(--brand, #7dd3fc);
+  color: var(--brand);
   letter-spacing: 0.04em;
 }
 
@@ -107,8 +111,8 @@
   letter-spacing: 0.04em;
   white-space: nowrap;
 }
-.dec-type-buy  { background: rgba(74, 222, 128, 0.15); color: #4ade80; }
-.dec-type-sell { background: rgba(251, 146, 60,  0.15); color: #fb923c; }
+.dec-type-buy  { background: rgba(74, 222, 128, 0.15); color: var(--success); }
+.dec-type-sell { background: rgba(251, 146, 60,  0.15); color: var(--orange); }
 .dec-type-hold { background: rgba(125, 211, 252, 0.12); color: #7dd3fc; }
 .dec-type-skip { background: rgba(148, 163, 184, 0.1);  color: var(--muted); }
 
@@ -121,9 +125,9 @@
   font-weight: 600;
   white-space: nowrap;
 }
-.dec-verdict-correct   { background: rgba(74, 222, 128, 0.12); color: #4ade80; }
-.dec-verdict-incorrect { background: rgba(251, 146, 60,  0.15); color: #fb923c; }
-.dec-verdict-mixed     { background: rgba(250, 204, 21,  0.12); color: #facc15; }
+.dec-verdict-correct   { background: rgba(74, 222, 128, 0.12); color: var(--success); }
+.dec-verdict-incorrect { background: rgba(251, 146, 60,  0.15); color: var(--orange); }
+.dec-verdict-mixed     { background: rgba(250, 204, 21,  0.12); color: var(--warning); }
 .dec-verdict.muted     { font-size: var(--text-sm); }
 
 /* ── PnL ──────────────────────────────────────────────────────────────────────────────────────────── */
@@ -132,7 +136,7 @@
   font-weight: 600;
   font-size: var(--text-base);
 }
-.dec-pnl.up   { color: #4ade80; }
+.dec-pnl.up   { color: var(--success); }
 .dec-pnl.down { color: var(--danger); }
 .dec-pnl.muted { color: var(--muted); }
 
@@ -167,7 +171,7 @@
   padding: 4px 0 10px;
 }
 .dec-replay-error {
-  color: #fb923c;
+  color: var(--orange);
   font-size: var(--text-base);
   padding: 8px 10px;
 }
@@ -228,7 +232,7 @@
   padding: 8px 10px;
   background: rgba(250, 204, 21, 0.06);
   border-left: 2px solid rgba(250, 204, 21, 0.3);
-  border-radius: 0 6px 6px 0;
+  border-radius: 0 var(--radius-tag) var(--radius-tag) 0;
   font-size: var(--text-base);
   margin-top: 8px;
   color: var(--text);
@@ -306,8 +310,8 @@
   letter-spacing: 0.04em;
   color: var(--muted);
 }
-.lesson-col--right .lesson-col-label { color: #4ade80; }
-.lesson-col--wrong .lesson-col-label { color: #fb923c; }
+.lesson-col--right .lesson-col-label { color: var(--success); }
+.lesson-col--wrong .lesson-col-label { color: var(--orange); }
 .lesson-col ul {
   list-style: none;
   padding: 0;
@@ -337,10 +341,10 @@
   padding: 7px 10px;
   background: rgba(125, 211, 252, 0.05);
   border-left: 2px solid rgba(125, 211, 252, 0.25);
-  border-radius: 0 6px 6px 0;
+  border-radius: 0 var(--radius-tag) var(--radius-tag) 0;
   line-height: 1.5;
   margin-top: 2px;
 }
 .lesson-adjust strong {
-  color: var(--brand, #7dd3fc);
+  color: var(--brand);
 }
