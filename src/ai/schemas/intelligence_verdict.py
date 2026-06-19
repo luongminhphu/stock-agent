@@ -100,7 +100,7 @@ class VerdictOutput(BaseModel):
     # ------------------------------------------------------------------
     action: str = Field(
         ...,
-        max_length=120,
+        max_length=300,
         description=(
             "Câu lệnh hành động cụ thể. Bắt đầu bằng động từ tiếng Việt. "
             "VD: 'Mua vào 30% vị thế tại vùng 48-49k, SL 46.5k' "
@@ -110,8 +110,8 @@ class VerdictOutput(BaseModel):
 
     reasoning_summary: str = Field(
         ...,
-        max_length=400,
-        description="1–3 câu giải thích tại sao chọn verdict này. Dẫn dữ liệu cụ thể.",
+        max_length=600,
+        description="2–4 câu giải thích tại sao chọn verdict này. Dẫn dữ liệu cụ thể.",
     )
 
     # ------------------------------------------------------------------

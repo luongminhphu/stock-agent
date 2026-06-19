@@ -6,7 +6,7 @@ All downstream consumers (api, bot, briefing) import from here.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -119,6 +119,9 @@ class EngineOutput(BaseModel):
     verdict: EngineVerdict
     dispatched_to: list[str] = Field(default_factory=list)
     intelligence_report: IntelligenceReport | None = None
+    # Optional richer AI verdict — set by _EngineRunner when verdict_agent
+    # succeeds. Listener should prefer this over .verdict when present.
+    ai_verdict: Any | None = Field(default=None, exclude=True)
 
 
 # ---------------------------------------------------------------------------

@@ -963,8 +963,12 @@ class _EngineRunner:
         trigger_source: str = "",
         priority: str = "normal",
         ai_client: Any | None = None,
-    ) -> EngineVerdict | None:
+    ) -> EngineOutput | None:
         """Run a full intelligence cycle for one user.
+
+        Returns EngineOutput (verdict + intelligence_report + snapshot) so
+        callers (intelligence_listener) can build IntelligenceEngineCompletedEvent
+        with the full report. Returns None when snapshot fails.
 
         Args:
             ai_client: Optional per-call override. Falls back to runner-level
@@ -997,7 +1001,6 @@ class _EngineRunner:
                     trigger_source=effective_trigger,
                     signal_engine_summary=signal_engine_summary or None,
                 )
-            verdict = output.verdict
         except Exception as exc:
             logger.error(
                 "engine.run_cycle.snapshot_failed",
@@ -1007,6 +1010,9 @@ class _EngineRunner:
             )
             return None
 
+        # Inject AI verdict into output if verdict_agent provided.
+        # Replaces output.verdict so intelligence_listener receives the richer
+        # AI verdict (VerdictOutput) instead of the heuristic EngineVerdict.
         if verdict_agent is not None:
             try:
                 ranked_signals = rank_signals(output.snapshot)
@@ -1017,11 +1023,20 @@ class _EngineRunner:
                     user_id=user_id,
                 )
                 if ai_verdict is not None:
-                    verdict = ai_verdict
+                    # Rebuild EngineOutput with ai_verdict field populated.
+                    # Keeps EngineVerdict (heuristic) intact for backward-compat;
+                    # intelligence_listener prefers ai_verdict when present.
+                    output = EngineOutput(
+                        snapshot=output.snapshot,
+                        verdict=output.verdict,
+                        dispatched_to=output.dispatched_to,
+                        intelligence_report=output.intelligence_report,
+                        ai_verdict=ai_verdict,
+                    )
                     logger.info(
                         "engine.run_cycle.ai_verdict_applied",
-                        verdict=verdict.verdict,
-                        confidence=verdict.confidence,
+                        verdict=ai_verdict.verdict,
+                        confidence=ai_verdict.confidence,
                     )
             except Exception as exc:
                 logger.warning(
@@ -1030,43 +1045,21 @@ class _EngineRunner:
                     fallback="using_heuristic_verdict",
                 )
 
-        flagged_tickers = _extract_snapshot_tickers(output.snapshot)
+        # Event publishing is handled by intelligence_listener which subscribes
+        # to IntelligenceEngineRequestedEvent and builds the full CompletedEvent
+        # with agent_slots + priority_actions from output.intelligence_report.
+        # Do NOT publish IntelligenceEngineCompletedEvent here to avoid duplicates.
+        logger.info(
+            "engine.run_cycle.output_ready",
+            user_id=user_id,
+            verdict=output.verdict.verdict,
+            confidence=output.verdict.confidence,
+            phase=phase,
+            has_intelligence_report=output.intelligence_report is not None,
+            orchestration_mode="multi_agent" if effective_client else "heuristic",
+        )
 
-        try:
-            from src.platform.event_bus import get_event_bus
-            from src.platform.events import IntelligenceEngineCompletedEvent
-
-            completed = IntelligenceEngineCompletedEvent(
-                user_id=user_id,
-                verdict=verdict.verdict,
-                confidence=verdict.confidence,
-                action_required=verdict.verdict not in ("NO_ACTION", "HOLD"),
-                summary=verdict.action,
-                trigger_source=effective_trigger,
-                flagged_tickers=flagged_tickers,
-            )
-            bus = get_event_bus()
-            await bus.publish(completed)
-
-            logger.info(
-                "engine.run_cycle.completed_event_published",
-                user_id=user_id,
-                verdict=verdict.verdict,
-                confidence=verdict.confidence,
-                phase=phase,
-                action_required=completed.action_required,
-                flagged_ticker_count=len(flagged_tickers),
-                has_intelligence_report=output.intelligence_report is not None,
-                orchestration_mode="multi_agent" if effective_client else "heuristic",
-            )
-        except Exception as exc:
-            logger.error(
-                "engine.run_cycle.event_publish_failed",
-                error=str(exc),
-                verdict=verdict.verdict,
-            )
-
-        return verdict
+        return output
 
 
 def _extract_snapshot_tickers(snapshot: SystemSnapshot) -> tuple[str, ...]:

@@ -168,7 +168,10 @@ class IntelligenceEngineListener:
 
         # ── Emit IntelligenceEngineCompletedEvent ────────────────────────
         # Unwrap EngineOutput → EngineVerdict + IntelligenceReport
-        verdict             = output.verdict
+        # Prefer ai_verdict (VerdictOutput from verdict_agent) when present.
+        # Falls back to heuristic EngineVerdict. Both share the same field
+        # names so getattr access below is safe for both types.
+        verdict             = getattr(output, "ai_verdict", None) or output.verdict
         intelligence_report = output.intelligence_report
 
         echoed_verdict_event_id: str = (
