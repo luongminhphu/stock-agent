@@ -1,0 +1,159 @@
+/* ============================================================
+   mobile-nav.css — Bottom Tab Bar navigation for mobile
+   Owner: dashboard (static adapter)
+   Applies: ≤900px only via @media
+   ============================================================ */
+
+/* ── Bottom tab bar shell ────────────────────────────────────── */
+.mobile-tab-bar {
+  display: none; /* hidden on desktop */
+}
+
+@media (max-width: 900px) {
+  /* ── Show bottom tab bar ─────────────────────────────────── */
+  .mobile-tab-bar {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 150;
+    height: calc(56px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: rgba(8, 17, 31, 0.96);
+    border-top: 1px solid var(--line);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    align-items: stretch;
+    justify-content: stretch;
+  }
+
+  /* ── Each tab button ─────────────────────────────────────── */
+  .mobile-tab {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: var(--text-2xs);
+    font-family: var(--font-body);
+    font-weight: 500;
+    line-height: 1.2;
+    padding: 8px 4px;
+    /* iOS touch target minimum */
+    min-height: 44px;
+    -webkit-tap-highlight-color: transparent;
+    transition: color 0.15s ease;
+    position: relative;
+  }
+
+  .mobile-tab:active {
+    background: rgba(125, 211, 252, 0.06);
+  }
+
+  .mobile-tab.active {
+    color: var(--brand);
+  }
+
+  /* Active indicator dot */
+  .mobile-tab.active::after {
+    content: '';
+    position: absolute;
+    top: 6px;
+    width: 4px;
+    height: 4px;
+    border-radius: var(--radius-pill);
+    background: var(--brand);
+  }
+
+  /* ── Tab icon ────────────────────────────────────────────── */
+  .mobile-tab__icon {
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .mobile-tab__icon svg {
+    width: 20px;
+    height: 20px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: transform 0.15s ease;
+  }
+
+  .mobile-tab.active .mobile-tab__icon svg {
+    stroke-width: 2.2;
+    transform: translateY(-1px);
+  }
+
+  /* ── Tab label ───────────────────────────────────────────── */
+  .mobile-tab__label {
+    font-size: var(--text-2xs);
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 56px;
+  }
+
+  /* ── Cluster sections — show/hide via JS ─────────────────── */
+  /* Default: chỉ cluster-a visible */
+  .cluster {
+    display: none;
+  }
+
+  .cluster.mobile-active {
+    display: block;
+  }
+
+  /* ── Ensure main content has bottom padding for tab bar ─── */
+  main#main-content {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* ── KPI strip: horizontal scroll ───────────────────────── */
+  .kpi-strip {
+    overflow-x: auto;
+    overflow-y: visible;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    /* fade edges */
+    mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      black 12px,
+      black calc(100% - 12px),
+      transparent 100%
+    );
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      black 12px,
+      black calc(100% - 12px),
+      transparent 100%
+    );
+    padding-left: var(--space-3);
+    padding-right: var(--space-3);
+  }
+
+  .kpi-strip::-webkit-scrollbar {
+    display: none;
+  }
+
+  .kpi-strip .kpi-card {
+    flex: 0 0 auto;
+    min-width: 120px;
+  }
+}

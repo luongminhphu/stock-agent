@@ -36,6 +36,7 @@ import { bindBriefTickerClick }          from './modules/briefing/brief-ticker.j
 import { loadAttentionPanel, startAttentionAutoRefresh } from './modules/attention/attention-loader.js';
 import { loadMarketBreadth }             from './modules/market/breadth.js';
 import { debounce }                      from './utils/debounce.js';
+import { initMobileNav }                 from './modules/mobile-nav.js';
 import { state }                         from './state/dashboard-state.js';
 import { initEngineHeartbeat }           from './modules/engine/engine-heartbeat.js';
 import { initEngineControls }            from './modules/engine/engine-controls.js';
@@ -188,6 +189,9 @@ function _observeLazy(selector, loader) {
 // Main bootstrap
 // ---------------------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', async () => {
+  // ── Mobile nav: bottom tab bar (no-op on desktop) ─────────────────────────
+  initMobileNav();
+
   // ── UI / tab init (critical — needed before user interaction) ──────────────
   initBriefAutoOpen();
   bindBriefTabs();

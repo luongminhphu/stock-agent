@@ -290,3 +290,43 @@ tr.search-hidden {
     display: none;
   }
 }
+
+/* ── Mobile: compact topbar + touch targets ─────────────────────────── */
+@media (max-width: 900px) {
+  /* Topbar height: keep 48px but ensure touch targets inside are 44px */
+  .topbar {
+    padding: 0 var(--space-3);
+    gap: var(--space-2);
+  }
+
+  /* Ẩn brand text trên mobile (logo icon đủ rồi) */
+  .brand-name {
+    display: none;
+  }
+
+  /* Ẩn sidebar-toggle (sidebar đã bị ẩn hoàn toàn) */
+  .sidebar-toggle {
+    display: none;
+  }
+
+  /* Toolbar: chỉ giữ Reload, ẩn label */
+  .toolbar .icon-text-btn .btn-label {
+    display: none;
+  }
+
+  /* Touch target: tất cả icon buttons trên topbar ≥ 44px */
+  .topbar .icon-text-btn,
+  .topbar .icon-btn {
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
+  }
+
+  /* Mobile new thesis button visible */
+  #newThesisBtnTopbar {
+    display: flex !important;
+    min-height: 44px;
+    padding: 0 var(--space-3);
+    font-size: var(--text-sm);
+  }
+}

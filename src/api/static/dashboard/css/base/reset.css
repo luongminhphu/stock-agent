@@ -137,3 +137,29 @@ input:focus, select:focus, textarea:focus {
   border-color: rgba(125, 211, 252, 0.48);
   box-shadow: 0 0 0 var(--space-1) rgba(56, 189, 248, 0.12);
 }
+
+/* ── Mobile touch targets: iOS 44px minimum ─────────────────────────── */
+@media (max-width: 900px) {
+  /* Primary interactive elements */
+  .primary-btn,
+  .ghost-btn,
+  .danger-btn {
+    min-height: 44px;
+  }
+
+  /* Tab buttons */
+  .tab-btn,
+  .brief-tab,
+  .dec-tab,
+  .calls-tab,
+  .lb-sort-btn {
+    min-height: 44px;
+    padding-top: var(--space-2);
+    padding-bottom: var(--space-2);
+  }
+
+  /* Nav items */
+  .nav-item {
+    min-height: 44px;
+  }
+}
