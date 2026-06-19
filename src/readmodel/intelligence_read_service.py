@@ -110,13 +110,37 @@ class IntelligenceReadService:
 
             result: dict[str, Any] = {
                 "overall_verdict": str(getattr(report, "overall_verdict", "") or "") or None,
-                "confidence": float(getattr(report, "confidence", 0.0) or 0.0),
+                # top_verdict is the canonical field (IntelligenceReport uses top_verdict)
+                "top_verdict": str(
+                    getattr(report, "top_verdict", "")
+                    or getattr(report, "overall_verdict", "")
+                    or ""
+                ) or None,
+                "conviction": str(
+                    getattr(report, "top_verdict_conviction", "")
+                    or getattr(report, "conviction", "medium")
+                    or "medium"
+                ).lower(),
+                "confidence": float(
+                    getattr(report, "overall_confidence", None)
+                    or getattr(report, "confidence", 0.0)
+                    or 0.0
+                ),
+                "narrative_summary": str(
+                    getattr(report, "narrative_summary", "")
+                    or getattr(report, "market_context", "")
+                    or ""
+                )[:800] or None,
                 "market_context": str(getattr(report, "market_context", "") or "")[:500] or None,
                 "priority_actions": _serialize_actions(getattr(report, "priority_actions", None)),
                 "risk_flags": _serialize_risk_flags(getattr(report, "risk_flags", None)),
                 "watch_list": [
                     str(t).upper()
-                    for t in (getattr(report, "watch_list", None) or [])
+                    for t in (
+                        getattr(report, "next_watch_tickers", None)
+                        or getattr(report, "watch_list", None)
+                        or []
+                    )
                     if t
                 ],
                 "is_stale": is_stale,
