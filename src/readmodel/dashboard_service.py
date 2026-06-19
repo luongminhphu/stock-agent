@@ -585,7 +585,16 @@ class DashboardService:
         days: int = 7,
         limit: int = 50,
         group_by_ticker: bool = True,
+        stale_days: int = 3,
     ) -> list[dict[str, Any]]:
+        """
+        Trả về danh sách tín hiệu kỹ thuật nhóm theo ticker.
+
+        stale_days: bỏ ticker không có tín hiệu mới trong ``stale_days`` ngày gần nhất.
+                    Mặc định 3 ngày — ticker không được scan lại trong 3 ngày sẽ tự
+                    biến mất khỏi feed tín hiệu (không cần xoá thủ công).
+                    Truyền ``stale_days=0`` để tắt bộ lọc này.
+        """
         if not _WATCHLIST_MODELS_AVAILABLE:
             logger.warning("get_recent_signals.import_error", detail="SignalEvent model not available")
             return []
@@ -627,7 +636,7 @@ class DashboardService:
                     })
                 return result
 
-            cache_extra = f"{ticker or ''}:{days}"
+            cache_extra = f"{ticker or ''}:{days}:{stale_days}"
             cached = _cache.get("recent_signals", user_id, extra=cache_extra)
             if cached is not None:
                 return cached
@@ -691,6 +700,18 @@ class DashboardService:
                     "last_seen": last_seen.isoformat() if last_seen else None,
                     "source": r.source,
                 })
+
+            # --------------- staleness filter ---------------
+            # Loại bỏ tickers không có tín hiệu mới trong stale_days ngày.
+            # Điều này đảm bảo feed chỉ hiển thị mã đang có tín hiệu "còn hiệu lực".
+            if stale_days > 0:
+                stale_cutoff = datetime.now(UTC) - timedelta(days=stale_days)
+                result = [
+                    r for r in result
+                    if r["last_seen"] is not None
+                    and datetime.fromisoformat(r["last_seen"]) >= stale_cutoff
+                ]
+            # ------------------------------------------------------
 
             _cache.set("recent_signals", user_id, result, extra=cache_extra)
             return result

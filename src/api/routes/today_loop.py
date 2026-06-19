@@ -102,7 +102,7 @@ async def _build_today_loop(
             )
 
     top_signals: list[dict] = await _safe(
-        svc.get_recent_signals(user_id, days=7, limit=signal_limit),
+        svc.get_recent_signals(user_id, days=7, limit=signal_limit, stale_days=3),
         label="top_signals",
         stale_sources=stale_sources,
     ) or []

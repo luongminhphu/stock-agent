@@ -511,10 +511,14 @@ async def get_recent_signals(
     ] = None,
     days: Annotated[int, Query(ge=1, le=90, description="Window thời gian (ngày)")] = 7,
     limit: Annotated[int, Query(ge=1, le=200, description="Số signal tối đa trả về")] = 50,
+    stale_days: Annotated[
+        int,
+        Query(ge=0, le=30, description="Bỏ qua ticker không có tín hiệu mới trong N ngày. 0 = tắt bộ lọc."),
+    ] = 3,
 ) -> dict[str, Any]:
     svc = DashboardService(session)
     return _paginated(
-        await svc.get_recent_signals(user_id, ticker=ticker, days=days, limit=limit)
+        await svc.get_recent_signals(user_id, ticker=ticker, days=days, limit=limit, stale_days=stale_days)
     )
 
 
@@ -527,10 +531,14 @@ async def get_recent_signals_single_user(
     ] = None,
     days: Annotated[int, Query(ge=1, le=90, description="Window thời gian (ngày)")] = 7,
     limit: Annotated[int, Query(ge=1, le=200, description="Số signal tối đa trả về")] = 50,
+    stale_days: Annotated[
+        int,
+        Query(ge=0, le=30, description="Bỏ qua ticker không có tín hiệu mới trong N ngày. 0 = tắt bộ lọc."),
+    ] = 3,
 ) -> dict[str, Any]:
     svc = DashboardService(session)
     return _paginated(
-        await svc.get_recent_signals(_default_user_id(), ticker=ticker, days=days, limit=limit)
+        await svc.get_recent_signals(_default_user_id(), ticker=ticker, days=days, limit=limit, stale_days=stale_days)
     )
 
 
