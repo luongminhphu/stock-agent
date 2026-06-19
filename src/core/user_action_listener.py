@@ -40,6 +40,13 @@ from math import ceil
 from src.platform.db import get_session
 from src.platform.event_bus import EventBus, get_event_bus
 from src.platform.events import UserActionEvent
+from src.platform.feedback_loop_monitor import (
+    ADAPTER_MEMORY,
+    ADAPTER_SNAPSHOT,
+    ADAPTER_THESIS,
+    ADAPTER_WATCHLIST,
+    get_feedback_monitor,
+)
 from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
@@ -197,17 +204,20 @@ class UserActionFeedbackListener:
                     "user_action_listener.thesis_mark_closed.no_active_thesis",
                     ticker=ticker,
                 )
+            await get_feedback_monitor().record_ok(ADAPTER_THESIS)
         except ImportError:
             logger.warning(
                 "user_action_listener.thesis_adapter_unavailable",
                 hint="ThesisService not importable from src.thesis.service",
             )
+            await get_feedback_monitor().record_error(ADAPTER_THESIS, "ImportError: ThesisService unavailable")
         except Exception as exc:
             logger.error(
                 "user_action_listener.thesis_close_failed",
                 ticker=ticker,
                 error=str(exc),
             )
+            await get_feedback_monitor().record_error(ADAPTER_THESIS, str(exc))
 
     async def _thesis_touch_reviewed(
         self,
@@ -236,17 +246,20 @@ class UserActionFeedbackListener:
                     thesis_id=thesis_id,
                     user_id=user_id,
                 )
+            await get_feedback_monitor().record_ok(ADAPTER_THESIS)
         except ImportError:
             logger.warning(
                 "user_action_listener.thesis_adapter_unavailable",
                 hint="ThesisService not importable from src.thesis.service",
             )
+            await get_feedback_monitor().record_error(ADAPTER_THESIS, "ImportError: ThesisService unavailable")
         except Exception as exc:
             logger.error(
                 "user_action_listener.thesis_touch_reviewed_failed",
                 thesis_id=thesis_id,
                 error=str(exc),
             )
+            await get_feedback_monitor().record_error(ADAPTER_THESIS, str(exc))
 
     async def _watchlist_deprioritize(
         self,
@@ -264,17 +277,20 @@ class UserActionFeedbackListener:
                 user_id=user_id,
                 ticker=ticker,
             )
+            await get_feedback_monitor().record_ok(ADAPTER_WATCHLIST)
         except ImportError:
             logger.warning(
                 "user_action_listener.watchlist_adapter_unavailable",
                 hint="WatchlistService not importable from src.watchlist.service",
             )
+            await get_feedback_monitor().record_error(ADAPTER_WATCHLIST, "ImportError: WatchlistService unavailable")
         except Exception as exc:
             logger.error(
                 "user_action_listener.watchlist_deprioritize_failed",
                 ticker=ticker,
                 error=str(exc),
             )
+            await get_feedback_monitor().record_error(ADAPTER_WATCHLIST, str(exc))
 
     async def _watchlist_ensure_tracked(
         self,
@@ -303,17 +319,20 @@ class UserActionFeedbackListener:
                     user_id=user_id,
                     ticker=ticker,
                 )
+            await get_feedback_monitor().record_ok(ADAPTER_WATCHLIST)
         except ImportError:
             logger.warning(
                 "user_action_listener.watchlist_adapter_unavailable",
                 hint="WatchlistService not importable from src.watchlist.service",
             )
+            await get_feedback_monitor().record_error(ADAPTER_WATCHLIST, "ImportError: WatchlistService unavailable")
         except Exception as exc:
             logger.error(
                 "user_action_listener.watchlist_track_failed",
                 ticker=ticker,
                 error=str(exc),
             )
+            await get_feedback_monitor().record_error(ADAPTER_WATCHLIST, str(exc))
 
     async def _watchlist_mute_alert(
         self,
@@ -337,17 +356,20 @@ class UserActionFeedbackListener:
                 user_id=user_id,
                 duration_days=duration_days,
             )
+            await get_feedback_monitor().record_ok(ADAPTER_WATCHLIST)
         except ImportError:
             logger.warning(
                 "user_action_listener.watchlist_adapter_unavailable",
                 hint="WatchlistService not importable from src.watchlist.service",
             )
+            await get_feedback_monitor().record_error(ADAPTER_WATCHLIST, "ImportError: WatchlistService unavailable")
         except Exception as exc:
             logger.error(
                 "user_action_listener.mute_alert_failed",
                 alert_id=alert_id,
                 error=str(exc),
             )
+            await get_feedback_monitor().record_error(ADAPTER_WATCHLIST, str(exc))
 
     async def _watchlist_snooze(
         self,
@@ -371,17 +393,20 @@ class UserActionFeedbackListener:
                 ticker=ticker,
                 duration_days=duration_days,
             )
+            await get_feedback_monitor().record_ok(ADAPTER_WATCHLIST)
         except ImportError:
             logger.warning(
                 "user_action_listener.watchlist_adapter_unavailable",
                 hint="WatchlistService not importable from src.watchlist.service",
             )
+            await get_feedback_monitor().record_error(ADAPTER_WATCHLIST, "ImportError: WatchlistService unavailable")
         except Exception as exc:
             logger.error(
                 "user_action_listener.watchlist_snooze_failed",
                 ticker=ticker,
                 error=str(exc),
             )
+            await get_feedback_monitor().record_error(ADAPTER_WATCHLIST, str(exc))
 
     async def _record_to_memory(self, event: UserActionEvent) -> None:
         """Write a UserBehaviorLog row directly — no consolidator needed.
@@ -436,17 +461,20 @@ class UserActionFeedbackListener:
                 signal=signal,
                 ticker=event.ticker,
             )
+            await get_feedback_monitor().record_ok(ADAPTER_MEMORY)
         except ImportError:
             logger.warning(
                 "user_action_listener.memory_adapter_unavailable",
                 hint="UserBehaviorLog not importable from src.ai.memory.user_behavior_log",
             )
+            await get_feedback_monitor().record_error(ADAPTER_MEMORY, "ImportError: UserBehaviorLog unavailable")
         except Exception as exc:
             logger.error(
                 "user_action_listener.memory_record_failed",
                 ticker=event.ticker,
                 error=str(exc),
             )
+            await get_feedback_monitor().record_error(ADAPTER_MEMORY, str(exc))
 
     async def _invalidate_snapshot(self, user_id: str) -> None:
         """Evict hot cache so next query triggers a fresh engine cycle.
@@ -463,9 +491,11 @@ class UserActionFeedbackListener:
                 "user_action_listener.snapshot_invalidated",
                 user_id=user_id,
             )
+            await get_feedback_monitor().record_ok(ADAPTER_SNAPSHOT)
         except Exception as exc:
             logger.error(
                 "user_action_listener.snapshot_invalidate_failed",
                 user_id=user_id,
                 error=str(exc),
             )
+            await get_feedback_monitor().record_error(ADAPTER_SNAPSHOT, str(exc))

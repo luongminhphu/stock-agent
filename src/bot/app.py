@@ -83,6 +83,7 @@ def create_bot() -> commands.Bot:
             _start_investor_profile_scheduler(bot)             # investor profile snapshot 08:20 ICT
             _start_eod_portfolio_snapshot_scheduler(bot)       # EOD P&L snapshot 15:20 ICT
             _start_signal_engine_scheduler(bot)                # signal engine 08:40 + 15:10 ICT
+            _wire_feedback_loop_monitor(bot)                    # FeedbackLoopMonitor — sliding-window error rate alert
             logger.info(
                 "bot.ready",
                 user=str(bot.user),
@@ -606,6 +607,35 @@ def _start_trend_batch_scheduler(bot: commands.Bot) -> None:
     scheduler = TrendBatchPrecomputeScheduler(bot)
     scheduler.start()
     logger.info("bot.trend_batch_scheduler.started")
+
+
+def _wire_feedback_loop_monitor(bot: commands.Bot) -> None:
+    """Wire FeedbackLoopMonitor alert channel after bot login.
+
+    Reuses DISCORD_ALERT_CHANNEL_ID — same channel as SchedulerMonitor.
+    Must be called last (after all subscribers registered) so the monitor
+    can start receiving record_ok / record_error calls immediately.
+    """
+    from src.platform.feedback_loop_monitor import get_feedback_monitor
+
+    channel_id = getattr(settings, "alert_channel_id", None)
+    if not channel_id:
+        logger.warning(
+            "bot.feedback_loop_monitor.not_available",
+            reason="alert_channel_id not configured — feedback error-rate alerts disabled",
+        )
+        return
+
+    channel = bot.get_channel(int(channel_id))
+    if channel is None:
+        logger.warning(
+            "bot.feedback_loop_monitor.channel_not_found",
+            channel_id=channel_id,
+        )
+        return
+
+    get_feedback_monitor().set_alert_channel(channel)
+    logger.info("bot.feedback_loop_monitor.wired", channel_id=channel_id)
 
 
 def _start_eod_portfolio_snapshot_scheduler(bot: commands.Bot) -> None:
