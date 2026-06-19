@@ -64,8 +64,8 @@ from typing import TYPE_CHECKING, Any
 from src.platform.event_bus import get_event_bus
 from src.platform.events import RecommendationReadyEvent, SignalDetectedEvent
 from src.platform.logging import get_logger
-from src.ai.prompts.proactive_alert import SPEC as _ALERT_SPEC,\
-     (
+from src.ai.prompts.proactive_alert import (
+    SPEC as _ALERT_SPEC,
     ProactiveAlertOutput,
     SYSTEM_PROMPT,
     build_user_prompt,
