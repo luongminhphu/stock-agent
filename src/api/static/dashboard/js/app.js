@@ -58,7 +58,7 @@ let _lazyLeaderboardSort = null;
 let _lazyDecisionTabs    = null;
 let _lazyMemory          = null;
 let _lazyTodayLoop       = null;
-let _lazyRecommendations = null;
+// _lazyRecommendations removed — recommendations panel consolidated into #intelligencePanel
 
 async function _getDecisionLoader() {
   if (!_lazyDecisionLoader) _lazyDecisionLoader = import('./modules/decision/decision-loader.js');
@@ -84,10 +84,7 @@ async function _getTodayLoop() {
   if (!_lazyTodayLoop) _lazyTodayLoop = import('./modules/today-loop/today-loop-loader.js');
   return _lazyTodayLoop;
 }
-async function _getRecommendations() {
-  if (!_lazyRecommendations) _lazyRecommendations = import('./modules/recommendations/recommendations-panel.js');
-  return _lazyRecommendations;
-}
+// _getRecommendations() removed — use loadIntelligencePanel() instead
 
 // Public wrappers — called from event wires below
 async function loadLeaderboard(...args) {
@@ -114,10 +111,7 @@ async function loadTodayLoop(...args) {
   const m = await _getTodayLoop();
   return m.loadTodayLoop(...args);
 }
-async function loadRecommendations() {
-  const m = await _getRecommendations();
-  return m.loadRecommendations();
-}
+// loadRecommendations() removed — consolidated into loadIntelligencePanel()
 
 // ---------------------------------------------------------------------------
 // Event wires — decision loop
@@ -379,7 +373,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   //   loadLeaderboard()      → #leaderboardStrip
   //   loadMemory()           → #memoryKpiStrip
   //   loadTodayLoop()        → #todayDuoRow
-  //   loadRecommendations()  → #recommendationsSection
+  //   (recommendations consolidated into #intelligencePanel)
 
   // Tier A — critical, run now
   await Promise.allSettled([
@@ -404,11 +398,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // start auto-refresh after first load
     _getTodayLoop().then(m => m.startTodayLoopAutoRefresh()).catch(() => null);
   });
-  _observeLazy('#recommendationsSection', () => {
-    loadRecommendations().catch(() => null);
-    // start auto-refresh after first load
-    _getRecommendations().then(m => m.startRecommendationsAutoRefresh()).catch(() => null);
-  });
+  // #recommendationsSection removed — intelligence panel already loaded via dashboard-loader
 
   // ── Misc post-load init ──────────────────────────────────────────────────────
   initKpiClickable();
