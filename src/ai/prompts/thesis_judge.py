@@ -79,6 +79,7 @@ SPEC = PromptSpec(
     agent_name="ThesisJudgeAgent",
     system_prompt=SYSTEM_PROMPT,
     output_schema=ThesisJudgeOutput,
+    max_tokens=900,
 )
 
 

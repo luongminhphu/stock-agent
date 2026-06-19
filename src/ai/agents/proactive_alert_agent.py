@@ -64,7 +64,8 @@ from typing import TYPE_CHECKING, Any
 from src.platform.event_bus import get_event_bus
 from src.platform.events import RecommendationReadyEvent, SignalDetectedEvent
 from src.platform.logging import get_logger
-from src.ai.prompts.proactive_alert import (
+from src.ai.prompts.proactive_alert import SPEC as _ALERT_SPEC,\
+     (
     ProactiveAlertOutput,
     SYSTEM_PROMPT,
     build_user_prompt,
@@ -215,7 +216,7 @@ class ProactiveAlertAgent:
                 user_prompt=user_prompt,
                 response_schema=ProactiveAlertOutput,
                 temperature=0.2,
-                max_tokens=1024,
+                max_tokens=900,   # calibrated: ProactiveAlertOutput ~7 fields
             )
             logger.info(
                 "proactive_alert_agent.analysis_complete",

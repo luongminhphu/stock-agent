@@ -65,6 +65,7 @@ SPEC = PromptSpec(
     agent_name="WatchdogAgent",
     system_prompt=SYSTEM_PROMPT,
     output_schema=WatchdogOutput,
+    max_tokens=800,
 )
 
 

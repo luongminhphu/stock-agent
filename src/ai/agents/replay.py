@@ -102,6 +102,7 @@ class ReplayAgent:
                 user_prompt=build_user_prompt(ctx),
                 response_schema=ReplayOutput,
                 temperature=0.2,
+                max_tokens=1200,
             )
             result = DecisionReplayResult(output=output, decision_id=ctx.decision_id)
             logger.info(

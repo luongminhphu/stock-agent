@@ -53,6 +53,7 @@ SPEC = PromptSpec(
     agent_name="SignalCredibilityAgent",
     system_prompt=SYSTEM_PROMPT,
     output_schema=SignalCredibilityOutput,
+    max_tokens=700,
 )
 
 

@@ -20,7 +20,14 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from src.ai.client import AIClient
+from src.ai.prompt_cache import PromptCache
 from src.ai.prompts.watchdog import WatchdogContext, build_user_prompt, SYSTEM_PROMPT
+
+# Module-level cache: watchdog runs every cycle per thesis; skip if unchanged
+_watchdog_cache: PromptCache[ThesisHealthScore] = PromptCache(
+    ttl_seconds=600,  # 10 min: thesis health rarely changes faster
+    agent_name="WatchdogAgent",
+)
 from src.platform.logging import get_logger
 
 if TYPE_CHECKING:
@@ -113,16 +120,24 @@ class WatchdogAgent:
         try:
             investor_profile = await self._build_investor_profile(session, user_id)
             user_prompt = build_user_prompt(ctx, investor_profile=investor_profile)
+
+            # Cache guard: skip AI call if same thesis context unchanged
+            cached = _watchdog_cache.get(SYSTEM_PROMPT, user_prompt, ThesisHealthScore)
+            if cached is not None:
+                return cached
+
             api_resp = await self._client.chat_completion(
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user",   "content": user_prompt},
                 ],
                 temperature=0.2,
+                max_tokens=800,  # calibrated: WatchdogOutput ~9 fields
             )
             raw = self._client.extract_text(api_resp)
             data = json.loads(raw)
             result = ThesisHealthScore(**data)
+            _watchdog_cache.set(SYSTEM_PROMPT, user_prompt, result)
             logger.info(
                 "watchdog.assessed",
                 thesis_id=ctx.thesis_id,

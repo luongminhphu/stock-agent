@@ -21,6 +21,7 @@ SPEC = PromptSpec(
     agent_name="SectorRotationAgent",
     system_prompt=SYSTEM_PROMPT,
     output_schema=SectorRotationOutput,
+    max_tokens=900,
 )
 
 

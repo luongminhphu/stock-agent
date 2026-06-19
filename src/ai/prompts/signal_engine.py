@@ -61,7 +61,7 @@ Quy tắc bắt buộc:
     - Nếu user có pattern "ignore rồi hối hận" (acted_rate thấp + outcome negative) → KHÔNG hạ urgency, thay vào đó thêm ghi chú vào trigger_reason.
     - Nếu user thường act nhanh với CRITICAL → giữ nguyên, không cần nhắc thêm.
     - Chỉ calibrate khi có đủ dữ liệu (ít nhất 3 feedback events). Nếu không đủ → bỏ qua calibration.
-""" + schema_block(SignalEngineOutput)
+""" + schema_block(SignalEngineOutput, compact=True)
 
 SYSTEM_PROMPT = with_persona(_DOMAIN_RULES)
 
@@ -69,6 +69,7 @@ SPEC = PromptSpec(
     agent_name="SignalEngineAgent",
     system_prompt=SYSTEM_PROMPT,
     output_schema=SignalEngineOutput,
+    max_tokens=1500,
 )
 
 

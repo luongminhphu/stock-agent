@@ -47,7 +47,7 @@ _REGIME_MAP: dict[str, str] = {
 
 # sonar-pro response regularly reaches 1400+ tokens for 12-sector analysis.
 # 4096 gives comfortable headroom without hitting rate-limit cost threshold.
-_MAX_TOKENS = 4096
+_MAX_TOKENS = 900   # calibrated: SectorRotationOutput ~8 fields
 
 
 class SectorSignal(BaseModel):

@@ -260,6 +260,8 @@ class StressTestAgent:
                 user_prompt=user_prompt,
                 response_schema=StressTestOutput,
                 temperature=0.2,
+            
+                max_tokens=2000,
             )
         except AIError:
             logger.error("stress_test_agent.run.api_error", ticker=ticker)

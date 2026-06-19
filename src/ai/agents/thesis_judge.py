@@ -31,7 +31,7 @@ Memory logging (Wave 6):
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Required, TypedDict
 
 from src.ai.client import AIClient, AIError
@@ -77,6 +77,8 @@ class ThesisJudgeTrigger(TypedDict, total=False):
     signal_context: dict[str, Any]
     conviction_history: list[dict[str, Any]] | None
     days_since_written: int | None
+    last_reviewed_at: str | None   # ISO 8601 — from thesis.last_reviewed_at
+    last_judged_at: str | None     # ISO 8601 — from previous ThesisJudgeOutput.judged_at
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +111,84 @@ def _derive_fallback_verdict(
     if is_high:
         return ThesisJudgeVerdict.WEAKENING, -0.2, "reduce"
     return ThesisJudgeVerdict.ON_TRACK, 0.0, "hold"
+
+
+# ---------------------------------------------------------------------------
+# Batch dedup helpers
+# ---------------------------------------------------------------------------
+
+_DEDUP_WINDOW_SECONDS = 1800  # 30 minutes
+
+
+def _parse_iso_dt(ts: str | None) -> datetime | None:
+    """Parse ISO 8601 string to UTC-aware datetime. Returns None on failure."""
+    if not ts:
+        return None
+    try:
+        dt = datetime.fromisoformat(ts)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return dt
+    except (ValueError, TypeError):
+        return None
+
+
+def _dedup_triggers(
+    triggers: list[ThesisJudgeTrigger],
+    window_seconds: int = _DEDUP_WINDOW_SECONDS,
+) -> tuple[list[ThesisJudgeTrigger], list[ThesisJudgeTrigger]]:
+    """Split triggers into (active, skipped) based on recency + signal presence.
+
+    Skip rule: skip a trigger when ALL of the following are true:
+      1. last_reviewed_at OR last_judged_at is within window_seconds of now.
+      2. signal_context is empty (no new event since last review).
+
+    Rationale:
+      - If there's a non-empty signal_context, BriefingService found a real
+        new event — always re-judge.
+      - If the thesis was judged/reviewed very recently (< 30 min) with no
+        new signal, re-calling AI returns the same answer at token cost.
+
+    Args:
+        triggers:       Full list from run_batch caller.
+        window_seconds: Freshness window. Default = 1800 (30 min).
+
+    Returns:
+        Tuple of (active_triggers, skipped_triggers).
+        active: will be sent to AI.
+        skipped: will receive rule-based fallback.
+    """
+    now = datetime.now(UTC)
+    cutoff = now - timedelta(seconds=window_seconds)
+
+    active: list[ThesisJudgeTrigger] = []
+    skipped: list[ThesisJudgeTrigger] = []
+
+    for t in triggers:
+        signal_context = t.get("signal_context", {})
+        has_new_signal = bool(signal_context)  # non-empty = new event present
+
+        if has_new_signal:
+            # New signal — always judge
+            active.append(t)
+            continue
+
+        # Check recency: use the more recent of last_reviewed_at / last_judged_at
+        ts_reviewed = _parse_iso_dt(t.get("last_reviewed_at"))
+        ts_judged = _parse_iso_dt(t.get("last_judged_at"))
+
+        # Take the most recent timestamp available
+        candidates = [ts for ts in (ts_reviewed, ts_judged) if ts is not None]
+        most_recent = max(candidates) if candidates else None
+
+        if most_recent is not None and most_recent >= cutoff:
+            # Recently reviewed/judged, no new signal — skip
+            skipped.append(t)
+        else:
+            # No recent review OR stale (> 30 min) — always judge
+            active.append(t)
+
+    return active, skipped
 
 
 # ---------------------------------------------------------------------------
@@ -333,6 +413,31 @@ class ThesisJudgeAgent:
         if not triggers:
             return []
 
+        # Dedup: skip re-judging theses reviewed/judged recently with no new signal.
+        # A non-empty signal_context means BriefingService found a new trigger event
+        # for this thesis — always re-judge in that case.
+        active_triggers, skipped = _dedup_triggers(triggers)
+        if skipped:
+            logger.info(
+                "ThesisJudge batch: skipped %d/%d triggers (reviewed < 30 min, no new signal)",
+                len(skipped),
+                len(triggers),
+            )
+
+        # Build a lookup for skipped theses so we can return fallback for them
+        # using rule-based output instead of calling AI.
+        skipped_outputs = [
+            self._fallback(
+                thesis_id=t["thesis_id"],
+                ticker=t["ticker"],
+                signal_context=t.get("signal_context", {}),
+            )
+            for t in skipped
+        ]
+
+        # Map thesis_id → position in original triggers list for result ordering
+        id_to_idx = {t["thesis_id"]: i for i, t in enumerate(triggers)}
+
         sem = asyncio.Semaphore(_JUDGE_CONCURRENCY)
 
         async def _run_one(t: ThesisJudgeTrigger) -> ThesisJudgeOutput:
@@ -368,12 +473,25 @@ class ThesisJudgeAgent:
                         signal_context=t.get("signal_context", {}),
                     )
 
-        results = await asyncio.gather(*[_run_one(t) for t in triggers])
+        active_results = await asyncio.gather(*[_run_one(t) for t in active_triggers])
+
+        # Merge active + skipped results back in original trigger order.
+        # Build a dict keyed by thesis_id for O(1) lookup.
+        result_map: dict[Any, ThesisJudgeOutput] = {}
+        for t, r in zip(active_triggers, active_results):
+            result_map[t["thesis_id"]] = r
+        for t, r in zip(skipped, skipped_outputs):
+            result_map[t["thesis_id"]] = r
+
+        ordered = [result_map[t["thesis_id"]] for t in triggers]
+
         logger.info(
-            "ThesisJudge batch complete: %d theses processed",
-            len(results),
+            "ThesisJudge batch complete: %d AI calls, %d skipped (dedup), %d total",
+            len(active_results),
+            len(skipped_outputs),
+            len(ordered),
         )
-        return list(results)
+        return ordered
 
     def _fallback(
         self,

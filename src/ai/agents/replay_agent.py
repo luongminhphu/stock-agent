@@ -101,6 +101,7 @@ class ReplayAgent:
                 system_prompt=REPLAY_SPEC.system_prompt,
                 user_prompt=build_user_prompt(ctx),
                 response_schema=REPLAY_SPEC.output_schema,
+                max_tokens=REPLAY_SPEC.max_tokens,
             )
         except Exception as exc:
             logger.warning(

@@ -19,6 +19,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from src.ai.client import AIClient
+from src.ai.prompt_cache import PromptCache
 from src.ai.schemas import VerdictOutput  # canonical location — no circular import
 from src.ai.prompts.intelligence_verdict import SPEC, build_user_prompt
 from src.platform.logging import get_logger
@@ -72,15 +73,22 @@ class IntelligenceVerdictAgent:
         investor_context = await _fetch_investor_context(session, user_id)
         user_prompt = build_user_prompt(snapshot, ranked_signals, investor_context=investor_context)
 
+        # Cache guard: skip AI if same prompt seen within TTL
+        cached = _verdict_cache.get(SPEC.system_prompt, user_prompt, VerdictOutput)
+        if cached is not None:
+            return cached
+
         try:
             result: VerdictOutput = await self._client.structured_call(
                 spec=SPEC,
                 user_prompt=user_prompt,
             )
+            _verdict_cache.set(SPEC.system_prompt, user_prompt, result)
             logger.info(
                 "intelligence_verdict_agent.success",
                 verdict=result.verdict,
                 confidence=result.confidence,
+                cache_stats=_verdict_cache.stats,
             )
 
             # Log to episodic memory (fire-and-forget)

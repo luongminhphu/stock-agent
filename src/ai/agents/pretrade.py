@@ -91,7 +91,7 @@ class PreTradeAgent:
             system_prompt=SYSTEM_PROMPT,
             user_prompt=prompt,
             response_schema=PreTradeCheckOutput,
-            max_tokens=AIClient.COMPLEX_MAX_TOKENS,
+            max_tokens=1200,  # calibrated: PreTradeCheckOutput ~13 fields
         )
         logger.info(
             "pretrade_agent.check.done",

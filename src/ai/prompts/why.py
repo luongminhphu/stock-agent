@@ -23,6 +23,7 @@ SPEC = PromptSpec(
     agent_name="WhyAgent",
     system_prompt=SYSTEM_PROMPT,
     output_schema=WhyOutput,
+    max_tokens=700,
 )
 
 

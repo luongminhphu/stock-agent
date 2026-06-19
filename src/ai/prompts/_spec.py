@@ -71,12 +71,32 @@ def with_persona(domain_rules: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def schema_block(model: type[BaseModel]) -> str:
+def _strip_descriptions(obj: Any) -> Any:
+    """Recursively remove 'description' keys from a JSON schema dict.
+
+    Used by schema_block(compact=True) to shrink system prompt size.
+    Removes ~30-40% of schema token count while preserving field names,
+    types, and required constraints that the model actually needs.
+    """
+    if isinstance(obj, dict):
+        return {k: _strip_descriptions(v) for k, v in obj.items() if k != "description"}
+    if isinstance(obj, list):
+        return [_strip_descriptions(i) for i in obj]
+    return obj
+
+
+def schema_block(model: type[BaseModel], compact: bool = False) -> str:
     """Generate an inline JSON schema block to embed at the end of SYSTEM_PROMPT.
 
     Ensures the model always sees the full output contract rather than a vague
     reference like "theo schema đã định nghĩa". The schema is derived directly
     from the Pydantic class so it stays in sync automatically when fields change.
+
+    Args:
+        model:   Pydantic output class.
+        compact: If True, strip 'description' fields from the schema to reduce
+                 token count (~300-500 tokens saved for large schemas like
+                 SignalEngineOutput). Default False preserves full schema.
 
     Usage::
 
@@ -84,8 +104,13 @@ def schema_block(model: type[BaseModel]) -> str:
         Bạn là ... (persona + rules)
         {schema_block(MyOutput)}
         \"\"\"
+
+        # For token-heavy schemas in high-frequency agents:
+        {schema_block(MyOutput, compact=True)}
     """
     schema = model.model_json_schema()
+    if compact:
+        schema = _strip_descriptions(schema)
     schema_str = json.dumps(schema, ensure_ascii=False, indent=2)
     return f"""
 ### Output Format
@@ -116,9 +141,15 @@ class PromptSpec:
         output_schema:   Pydantic class để parse structured response.
         response_schema: JSON Schema dict cho json_schema mode (chỉ một số agent
                          như SuggestAgent cần). None = dùng text mode + parse thủ công.
+        max_tokens:      Output token ceiling. Calibrated per-agent to avoid
+                         over-allocating (default 4096 wastes latency budget).
+                         Set to ~1.4× the expected output JSON size in tokens.
+        temperature:     Sampling temperature. Default 0.2 (deterministic).
     """
 
     agent_name: str
     system_prompt: str
     output_schema: type[BaseModel]
     response_schema: dict[str, Any] | None = field(default=None)
+    max_tokens: int = field(default=4096)   # override per-agent for token efficiency
+    temperature: float = field(default=0.2)

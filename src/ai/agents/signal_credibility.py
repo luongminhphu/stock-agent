@@ -18,7 +18,9 @@ import json
 from pydantic import BaseModel, Field
 
 from src.ai.client import AIClient
+from src.ai.prompt_cache import PromptCache
 from src.ai.prompts.signal_credibility import (
+    SPEC,
     SYSTEM_PROMPT,
     SignalCredibilityContext,
     build_user_prompt,
@@ -26,6 +28,13 @@ from src.ai.prompts.signal_credibility import (
 from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
+
+# Module-level cache — TTL 300s (5 min). Signal credibility for the same
+# ticker + signal_type is stable within a scan cycle.
+_credibility_cache: PromptCache[SignalCredibilityResult] = PromptCache(
+    ttl_seconds=300,
+    agent_name="SignalCredibilityAgent",
+)
 
 
 class SignalCredibilityResult(BaseModel):  # noqa: D101
@@ -64,16 +73,24 @@ class SignalCredibilityAgent:
         """Score the signal. Returns None on any failure (graceful degrade)."""
         try:
             user_prompt = build_user_prompt(ctx)
+
+            # Cache check — skip AI if same prompt seen within TTL (300s)
+            cached = _credibility_cache.get(SYSTEM_PROMPT, user_prompt, SignalCredibilityResult)
+            if cached is not None:
+                return cached
+
             api_resp = await self._client.chat_completion(
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user",   "content": user_prompt},
                 ],
-                temperature=0.2,
+                temperature=SPEC.temperature,
+                max_tokens=SPEC.max_tokens,
             )
             raw = self._client.extract_text(api_resp)
             data = json.loads(raw)
             result = SignalCredibilityResult(**data)
+            _credibility_cache.set(SYSTEM_PROMPT, user_prompt, result)
             logger.info(
                 "signal_credibility.evaluated",
                 ticker=ctx.ticker,

@@ -46,6 +46,7 @@ SPEC = PromptSpec(
     agent_name="PreTradeAgent",
     system_prompt=SYSTEM_PROMPT,
     output_schema=PreTradeCheckOutput,
+    max_tokens=1200,
 )
 
 

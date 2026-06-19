@@ -76,6 +76,7 @@ SPEC = PromptSpec(
     agent_name="ReplayAgent",
     system_prompt=SYSTEM_PROMPT,
     output_schema=ReplayOutput,
+    max_tokens=1200,
 )
 
 

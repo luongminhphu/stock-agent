@@ -40,6 +40,7 @@ SPEC = PromptSpec(
     agent_name="ProactiveAlertAgent",
     system_prompt=SYSTEM_PROMPT,
     output_schema=ProactiveAlertOutput,
+    max_tokens=900,
 )
 
 
