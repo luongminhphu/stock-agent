@@ -47,29 +47,32 @@ logger = get_logger(__name__)
 
 # ── system prompt ─────────────────────────────────────────────────────────────
 
-_SYSTEM_PROMPT = """You are an AI investment analyst for a Vietnamese stock investor.
+_SYSTEM_PROMPT = """Bạn là AI phân tích đầu tư cho nhà đầu tư chứng khoán Việt Nam.
 
-Your task: cross-check a list of market-screened candidates against the
-investor's current watchlist and active theses. Identify which candidates
-are most relevant to the investor's existing positions and convictions.
+Nhiệm vụ: Cross-check danh sách cơ hội từ market screen với:
+  1. Watchlist của nhà đầu tư — phát hiện overlap.
+  2. Thesis đang hoạt động — xem candidate có liên quan đến luận điểm nào không.
+  3. Danh mục hiện tại — phát hiện vị thế đã nắm và rủi ro tập trung ngành.
 
-Output MUST be valid JSON with this exact schema:
+Output PHẢI là JSON hợp lệ theo schema sau:
 {
-  "verdict": "string — 1 sentence summary (e.g. '2 candidates overlap with your watchlist')",
-  "ranked_tickers": ["list of tickers, most relevant first, max 5"],
-  "watchlist_overlap": ["tickers that appear in the investor's watchlist"],
-  "thesis_relevant": ["tickers with an active thesis"],
-  "action": "string — concrete next step (e.g. 'Review VHM momentum before EOD')",
-  "reasoning_summary": "string — 2-3 sentences explaining the cross-check logic",
+  "verdict": "string — 1 câu tóm tắt bằng Tiếng Việt",
+  "ranked_tickers": ["list ticker liên quan nhất, tối đa 5"],
+  "watchlist_overlap": ["ticker có trong watchlist"],
+  "thesis_relevant": ["ticker có thesis đang hoạt động"],
+  "portfolio_overlap": ["ticker đã có vị thế mở trong danh mục"],
+  "concentration_warnings": ["cảnh báo tập trung ngành nếu có, e.g. 'Thêm VCB: Banking lên 65%'"],
+  "action": "string — hành động cụ thể bằng Tiếng Việt",
+  "reasoning_summary": "string — 2-3 câu giải thích logic bằng Tiếng Việt",
   "confidence": 0.0
 }
 
-Rules:
-- Only include tickers from the provided candidate list.
-- confidence: 0.0–1.0 (how confident you are in the relevance assessment).
-- If no candidates are relevant to the investor's context, say so clearly in verdict.
-- Keep action specific and actionable, not generic advice.
-- Do not invent tickers not present in the candidates list.
+Quy tắc:
+- Chỉ dùng ticker từ danh sách candidates cung cấp.
+- confidence: 0.0–1.0.
+- Nếu không có overlap hay rủi ro, nêu rõ trong verdict.
+- action phải cụ thể, không chung chung.
+- Toàn bộ string values phải bằng Tiếng Việt.
 """
 
 
@@ -79,25 +82,32 @@ def _build_user_prompt(
     watchlist_tickers: list[str],
     thesis_context: str,
     trading_date: str,
+    portfolio_context_text: str = "",
 ) -> str:
     """Build the user prompt for AI cross-check analysis."""
-    candidates_block = "\n".join(candidates_payload) if candidates_payload else "(none)"
-    watchlist_block = ", ".join(watchlist_tickers) if watchlist_tickers else "(empty)"
+    candidates_block = "\n".join(candidates_payload) if candidates_payload else "(không có candidate)"
+    watchlist_block = ", ".join(watchlist_tickers) if watchlist_tickers else "(trống)"
 
-    return f"""Trading date: {trading_date or "today"}
-Screen criteria used: {screen_criteria or "standard"}
+    portfolio_section = (
+        f"\n=== DANH MỤC HIỆN TẠI ===\n{portfolio_context_text}"
+        if portfolio_context_text
+        else "\n=== DANH MỤC HIỆN TẠI ===\nChưa có vị thế nào đang mở."
+    )
 
-=== MARKET SCREEN CANDIDATES (ranked by composite score) ===
+    return f"""Ngày giao dịch: {trading_date or "hôm nay"}
+Tiêu chí screen: {screen_criteria or "tiêu chuẩn"}
+
+=== CÁC CƠ HỘI TỪ MARKET SCREEN (xếp theo composite score) ===
 {candidates_block}
 
-=== INVESTOR WATCHLIST ===
+=== WATCHLIST ===
 {watchlist_block}
 
-=== ACTIVE THESES ===
-{thesis_context or "No active theses."}
+=== THESIS ĐANG HOẠT ĐỘNG ===
+{thesis_context or "Không có thesis nào đang hoạt động."}
+{portfolio_section}
 
-Cross-check the candidates against the investor's watchlist and theses.
-Return JSON as specified."""
+Cross-check candidates với watchlist, thesis và danh mục hiện tại. Trả về JSON theo schema đã cho."""
 
 
 def _parse_output(raw: str) -> dict[str, Any]:
@@ -163,9 +173,10 @@ class OpportunityAnalysisHandler:
             return
 
         try:
-            # Step 1: Fetch investor context (watchlist + theses)
+            # Step 1: Fetch investor context (watchlist + theses + portfolio)
             watchlist_tickers = await self._fetch_watchlist(event.user_id)
             thesis_context = await self._fetch_thesis_context(event.user_id)
+            portfolio_context_text = await self._fetch_portfolio_context(event.user_id)
 
             # Step 2: AI cross-check
             user_prompt = _build_user_prompt(
@@ -174,6 +185,7 @@ class OpportunityAnalysisHandler:
                 watchlist_tickers=watchlist_tickers,
                 thesis_context=thesis_context,
                 trading_date=event.trading_date,
+                portfolio_context_text=portfolio_context_text,
             )
             api_resp = await self._client.chat_completion(
                 messages=[
@@ -187,7 +199,7 @@ class OpportunityAnalysisHandler:
             # Step 3: Parse output
             data = _parse_output(raw)
 
-            # Step 4: Emit completed event
+            # Step 4: Emit completed event (with portfolio cross-check fields)
             completed = OpportunityAnalysisCompletedEvent(
                 user_id=event.user_id,
                 verdict=str(data.get("verdict", "")),
@@ -198,6 +210,8 @@ class OpportunityAnalysisHandler:
                 reasoning_summary=str(data.get("reasoning_summary", "")),
                 confidence=float(data.get("confidence", 0.0)),
                 trading_date=event.trading_date,
+                portfolio_overlap=tuple(data.get("portfolio_overlap", [])),
+                concentration_warnings=tuple(data.get("concentration_warnings", [])),
             )
             await get_event_bus().publish(completed)
             logger.info(
@@ -217,6 +231,26 @@ class OpportunityAnalysisHandler:
             )
 
     # ── private helpers ──────────────────────────────────────────────────────
+
+    async def _fetch_portfolio_context(self, user_id: str) -> str:
+        """Fetch portfolio context as formatted string for prompt injection.
+
+        Returns PortfolioContext.format_for_prompt() — includes open positions,
+        sector weights, and concentration flags. Returns empty string on failure.
+        """
+        try:
+            from src.portfolio import get_portfolio_context
+
+            async with self._session_factory() as session:
+                ctx = await get_portfolio_context(session, user_id)
+            return ctx.format_for_prompt() if ctx.has_positions else ""
+        except Exception as exc:
+            logger.warning(
+                "opportunity_analysis_handler.portfolio_context_failed",
+                user_id=user_id,
+                error=str(exc),
+            )
+            return ""
 
     async def _fetch_watchlist(self, user_id: str) -> list[str]:
         """Fetch watchlist tickers for user. Returns [] on failure."""

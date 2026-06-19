@@ -292,6 +292,9 @@ class OpportunityAnalysisCompletedEvent(DomainEvent):
     reasoning_summary: str = ""
     confidence: float = 0.0
     trading_date: str = ""
+    # Wave 3 — portfolio cross-check additions
+    portfolio_overlap: tuple[str, ...] = field(default_factory=tuple)
+    concentration_warnings: tuple[str, ...] = field(default_factory=tuple)
 
 
 # ─── trend shift ────────────────────────────────────────────────────────────

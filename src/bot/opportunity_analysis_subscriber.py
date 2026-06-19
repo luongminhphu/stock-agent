@@ -59,6 +59,20 @@ def _build_opportunity_embed(event: OpportunityAnalysisCompletedEvent) -> discor
             inline=True,
         )
 
+    if event.portfolio_overlap:
+        embed.add_field(
+            name="📂 Đã nắm trong danh mục",
+            value=", ".join(f"**{t}**" for t in event.portfolio_overlap),
+            inline=True,
+        )
+
+    if event.concentration_warnings:
+        embed.add_field(
+            name="⚠️ Rủi ro tập trung ngành",
+            value="\n".join(event.concentration_warnings),
+            inline=False,
+        )
+
     if event.action:
         embed.add_field(
             name="⚡ Hành động",

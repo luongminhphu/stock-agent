@@ -275,6 +275,10 @@ class IntelligenceEngine:
         from src.ai.agents.invalidation_detector import ThesisInvalidationDetector
         from src.ai.agents.next_action_suggester import NextActionSuggester
         from src.ai.agents.portfolio_risk_narrator import PortfolioRiskNarrator
+        from src.ai.agents.opportunity_screen_agent import (
+            OpportunityScreenAgent,
+            build_opportunity_screen_context,
+        )
 
         tasks: list[tuple[str, Any]] = []
 
@@ -323,6 +327,32 @@ class IntelligenceEngine:
             )))
         else:
             logger.debug("orchestrator.skip_portfolio_risk", reason="no_positions")
+
+        # 5. OpportunityScreenAgent — run when market screen found candidates
+        #    Cross-checks candidates vs open portfolio positions + sector weights.
+        #    Runs parallel to other agents; failure is non-blocking.
+        if snapshot.market.opportunity_count > 0:
+            opp_ctx = build_opportunity_screen_context(
+                snapshot_market_opportunity_count=snapshot.market.opportunity_count,
+                snapshot_market_top_tickers=snapshot.market.top_opportunity_tickers,
+                candidates_payload=tuple(snapshot.market.top_opportunity_tickers),
+                screen_criteria="opportunity_screen",
+                trading_date=snapshot.captured_at.strftime("%Y-%m-%d"),
+                portfolio_context=snapshot.portfolio_context,
+            )
+            if opp_ctx is not None:
+                opp_agent = OpportunityScreenAgent(self._ai_client)
+                tasks.append(("opportunity_screen", opp_agent.run(opp_ctx)))
+            else:
+                logger.debug(
+                    "orchestrator.skip_opportunity_screen",
+                    reason="no_candidates_in_context",
+                )
+        else:
+            logger.debug(
+                "orchestrator.skip_opportunity_screen",
+                reason="no_opportunity_signals",
+            )
 
         return tasks
 
