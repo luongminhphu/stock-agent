@@ -192,6 +192,20 @@ Watchlist cần theo dõi: {ticker_str}
             " Điền portfolio_summary dựa trên dữ liệu portfolio ở trên:"
             " nhận xét alignment với market sentiment hôm nay, position nào cần chú ý."
         )
+    # Sector allocation guidance — only injected when portfolio_context contains
+    # a 'Phân bổ ngành' block (added by BriefingService._build_sector_allocation_context)
+    if portfolio_context and "Phân bổ ngành" in portfolio_context:
+        prompt += (
+            " Phân tích rủi ro tập trung từ 'Phân bổ ngành danh mục':"
+            " nếu một ngành chiếm ≥50% danh mục và có kèm thông báo '⚠ Rủi ro tập trung'"
+            " → bắt buộc xuất ít nhất 1 prioritized_action với urgency='soon' hoặc 'now'"
+            " yêu cầu xem lại tỷ trọng ngành đó;"
+            " đề cập đến ticker cụ thể trong ngành tập trung;"
+            " cross-check với Risk Summary trong market_context."
+            " Nếu có '→ Ngành dẫn đầu' và ngành đó có tín hiệu rủi ro từ market_context"
+            " (risk_context / thesis_judge / trend) → tăng urgency lên 'now', viết rõ"
+            " reason gồm: ngành, tỷ trọng, tín hiệu rủi ro, action cụ thể (cắt giảm bao nhiêu %)."
+        )
     if thesis_context:
         prompt += (
             " Điền prioritized_actions dựa trên thesis data:"
@@ -296,6 +310,15 @@ Watchlist cần review: {ticker_str}
         prompt += (
             " Điền portfolio_summary: nhận xét alignment portfolio với market sentiment cuối phiên,"
             " position nào cần chú ý hoặc cân nhắc điều chỉnh cho phiên tới."
+        )
+    # Sector allocation guidance — EOD: same logic as morning, focus on overnight rebalance
+    if portfolio_context and "Phân bổ ngành" in portfolio_context:
+        prompt += (
+            " Phân tích rủi ro tập trung từ 'Phân bổ ngành danh mục':"
+            " nếu có ngành chiếm ≥50% và kèm '⚠ Rủi ro tập trung'"
+            " → xuất prioritized_action cho phiên tới với urgency='soon' hoặc 'now'"
+            " đề nghị tái cân bằng (cắt giảm vị thế hoặc phân tán);"
+            " dẫn cụ thể ticker, tỷ trọng hiện tại và mục tiêu sau tái cân bằng."
         )
     if thesis_context:
         prompt += (

@@ -385,12 +385,159 @@ class BriefingService:
     # ------------------------------------------------------------------
 
     async def _build_pnl_context(self, user_id: str) -> str:
-        if not self._pnl_service:
-            return ""
+        """Build portfolio P&L context string.
+
+        Calls PnLService.get_portfolio_pnl → formats positions, then appends
+        sector allocation block from _build_sector_allocation_context().
+        The two blocks are joined so BriefingAgent receives a single
+        portfolio_context string with both P&L detail and sector breakdown.
+        """
+        parts: list[str] = []
+
+        # --- P&L detail (existing path) ---
+        if self._pnl_service:
+            try:
+                pnl = await self._pnl_service.get_portfolio_pnl(user_id)
+                if pnl:
+                    rendered = self._render_pnl(pnl)
+                    if rendered:
+                        parts.append(rendered)
+            except Exception as exc:
+                logger.warning("briefing.pnl_context.failed", error=str(exc))
+
+        # --- Sector allocation block (Wave 2) ---
         try:
-            return await self._pnl_service.get_portfolio_pnl(user_id) or ""
+            sector_block = await self._build_sector_allocation_context(user_id)
+            if sector_block:
+                parts.append(sector_block)
         except Exception as exc:
-            logger.warning("briefing.pnl_context.failed", error=str(exc))
+            logger.warning("briefing.sector_allocation.failed", error=str(exc))
+
+        return "\n\n".join(parts) if parts else ""
+
+    def _render_pnl(self, pnl: Any) -> str:
+        """Render PortfolioPnl object to a human-readable string.
+
+        PortfolioPnl.positions is list[PositionPnl] each with:
+          ticker, qty, avg_cost, current_price, unrealized_pnl, unrealized_pnl_pct
+        Falls back to str(pnl) for unknown structures.
+        """
+        try:
+            positions = getattr(pnl, "positions", None)
+            if not positions:
+                return ""
+            lines = ["P&L vị thế mở:"]
+            for p in positions:
+                ticker = getattr(p, "ticker", "?")
+                qty    = getattr(p, "qty", 0)
+                cost   = getattr(p, "avg_cost", 0) or getattr(p, "cost_price", 0)
+                price  = getattr(p, "current_price", None)
+                upnl   = getattr(p, "unrealized_pnl", None)
+                upct   = getattr(p, "unrealized_pnl_pct", None)
+                line   = f"  {ticker}: {qty:,.0f} cp @ {cost:,.0f}"
+                if price:
+                    line += f" | giá hiện tại: {price:,.0f}"
+                if upnl is not None:
+                    sign = "+" if upnl >= 0 else ""
+                    line += f" | lãi/lỗ TT: {sign}{upnl:,.0f}"
+                    if upct is not None:
+                        line += f" ({sign}{upct:.1f}%)"
+                lines.append(line)
+            return "\n".join(lines)
+        except Exception:
+            return str(pnl) if pnl else ""
+
+    async def _build_sector_allocation_context(self, user_id: str) -> str:
+        """Build a sector allocation + concentration-risk block for morning brief.
+
+        Reads PortfolioContext directly (no quote enrichment — cost-basis fallback
+        is sufficient for weight calculation in briefing context).
+
+        Output block example::
+
+            Phân bổ ngành danh mục:
+              Bất động sản: 48.2% (VHM)
+              Ngân hàng:    31.5% (HCM)
+              Không phân loại: 20.3% (DGC, TCX)
+            ⚠ Rủi ro tập trung: Bất động sản chiếm 48.2% danh mục
+              → Cross-ref: VHM trong risk signals — cần ưu tiên xem lại
+
+        Soft-fail: always returns "" on error — never blocks brief generation.
+        Owner: briefing segment (reads from portfolio segment public API only).
+        """
+        try:
+            from src.portfolio import get_portfolio_context
+
+            port_ctx = await get_portfolio_context(self._session, user_id)
+            if not port_ctx.has_positions:
+                return ""
+
+            sector_weights = port_ctx.sector_weights
+            if not sector_weights:
+                return ""
+
+            # Build per-sector ticker index
+            sector_tickers: dict[str, list[str]] = {}
+            for pos in port_ctx.open_positions:
+                key = pos.sector or "không phân loại"
+                sector_tickers.setdefault(key, []).append(pos.ticker)
+
+            lines = ["Phân bổ ngành danh mục:"]
+            for sector, weight in sector_weights.items():
+                tickers_in_sector = sector_tickers.get(sector, [])
+                ticker_str = f" ({', '.join(tickers_in_sector)})" if tickers_in_sector else ""
+                lines.append(f"  {sector}: {weight:.1f}%{ticker_str}")
+
+            # --- Concentration flags ---
+            _CONCENTRATION_THRESHOLD = 50.0  # single sector > 50% = concentrated
+            _UNLABELLED_THRESHOLD    = 30.0  # >30% unlabelled = data quality warning
+
+            concentration_flags: list[str] = []
+            for sector, weight in sector_weights.items():
+                if weight >= _CONCENTRATION_THRESHOLD:
+                    concentration_flags.append(
+                        f"⚠ Rủi ro tập trung: {sector} chiếm {weight:.1f}% danh mục"
+                    )
+            if sector_weights.get("không phân loại", 0) >= _UNLABELLED_THRESHOLD:
+                pct = sector_weights["không phân loại"]
+                concentration_flags.append(
+                    f"⚠ {pct:.1f}% danh mục chưa được phân loại ngành — "
+                    "nên cập nhật sector cho các vị thế này"
+                )
+
+            if concentration_flags:
+                lines.extend(concentration_flags)
+
+            # --- Cross-reference: which positions are in risk signals ---
+            # Extract tickers mentioned in risk_context (built earlier in gather).
+            # We don't have risk_context here, so cross-ref against position tickers
+            # appearing in watchlist alerts — use sector_tickers for all positions
+            # and flag concentrated sectors that contain risk-flagged tickers.
+            # The actual cross-ref with live risk_signals happens at prompt level
+            # via the market_context already injected. Here we only flag by weight.
+            top_sector = max(sector_weights, key=lambda k: sector_weights[k])
+            top_weight = sector_weights[top_sector]
+            top_tickers = sector_tickers.get(top_sector, [])
+            if top_tickers and top_weight >= 35.0:  # soft flag at 35%+
+                lines.append(
+                    f"→ Ngành dẫn đầu: {top_sector} ({top_weight:.1f}%) — "
+                    f"vị thế liên quan: {', '.join(top_tickers)}"
+                    f" — Ưu tiên cross-check với tín hiệu rủi ro phiên hôm nay."
+                )
+
+            block = "\n".join(lines)
+            logger.info(
+                "briefing.sector_allocation.built",
+                user_id=user_id,
+                sector_count=len(sector_weights),
+                top_sector=top_sector,
+                top_weight=top_weight,
+                has_concentration=bool(concentration_flags),
+            )
+            return block
+
+        except Exception as exc:
+            logger.warning("briefing.sector_allocation.failed", error=str(exc))
             return ""
 
     async def _build_thesis_context(self, user_id: str) -> str:
