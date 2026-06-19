@@ -194,14 +194,21 @@ class IntelligenceSnapshotStore:
         """Return (report, is_stale) or None if no report exists yet.
 
         is_stale=False  — hot cache hit (report is fresh, <= 300s old)
-        is_stale=True   — hot cache miss but warm layer has a previous
-                          report; caller should schedule a background
-                          refresh but can still render the stale data.
+        is_stale=True   — hot cache miss; refreshed from DB (cross-process support)
         Returns None only if no report has ever been generated for user.
         """
         hot = self._cache.get(_NAMESPACE, user_id)
         if hot is not None:
             return hot, False
+
+        # Hot cache miss — pull latest from DB so API process sees updates
+        # written by the bot process without requiring a shared event bus.
+        db_result = await self._try_load_from_db(user_id)
+        if db_result is not None:
+            # Refresh warm layer + hot cache so next call hits hot
+            self._warm[user_id] = (db_result, datetime.now(UTC))
+            self._cache.set(_NAMESPACE, user_id, db_result)
+            return db_result, False
 
         warm_entry = self._warm.get(user_id)
         if warm_entry is not None:
@@ -209,6 +216,60 @@ class IntelligenceSnapshotStore:
             return report, True
 
         return None
+
+    async def _try_load_from_db(
+        self,
+        user_id: str,
+    ) -> "IntelligenceReport | None":
+        """Load the latest snapshot for user_id directly from DB (single-row query).
+        Returns None if no row exists or DB is unavailable.
+        Called on every hot-cache miss to keep cross-process data fresh.
+        """
+        if self._session_factory is None:
+            return None
+        try:
+            import json as _json  # noqa: PLC0415
+            from sqlalchemy import select  # noqa: PLC0415
+            from src.readmodel.models import IntelligenceSnapshot  # noqa: PLC0415
+
+            async with self._session_factory() as session:
+                stmt = (
+                    select(IntelligenceSnapshot)
+                    .where(IntelligenceSnapshot.user_id == user_id)
+                    .limit(1)
+                )
+                result = await session.execute(stmt)
+                row = result.scalars().first()
+                if row is None:
+                    return None
+
+                raw_json = row.report_json
+                if isinstance(raw_json, str):
+                    data = _json.loads(raw_json)
+                elif isinstance(raw_json, dict):
+                    data = raw_json
+                else:
+                    return None
+
+                # Update last_updated_at from DB row
+                if row.captured_at is not None:
+                    self._warm_ts = getattr(self, "_warm_ts", {})
+                    self._warm_ts[user_id] = row.captured_at
+
+                from src.ai.schemas.intelligence_report import IntelligenceReport  # noqa: PLC0415
+                try:
+                    return IntelligenceReport.model_validate(data)
+                except Exception:
+                    return _DictBackedReport(data)  # type: ignore[return-value]
+
+        except Exception as exc:
+            from src.platform.logging import get_logger as _gl  # noqa: PLC0415
+            _gl(__name__).debug(
+                "intelligence_snapshot_store.db_refresh_miss",
+                user_id=user_id,
+                error=str(exc),
+            )
+            return None
 
     async def get_or_none(
         self,
@@ -226,7 +287,15 @@ class IntelligenceSnapshotStore:
     # ------------------------------------------------------------------
 
     def last_updated_at(self, user_id: str) -> datetime | None:
-        """Return the timestamp when the report was last upserted, or None."""
+        """Return the timestamp when the report was last upserted, or None.
+
+        Prefers _warm_ts[user_id] (set from DB captured_at on cross-process
+        refresh) over warm-layer stored_at (which reflects local upsert time).
+        """
+        # DB-sourced timestamp takes priority (reflects actual engine run time)
+        warm_ts = getattr(self, "_warm_ts", {})
+        if user_id in warm_ts:
+            return warm_ts[user_id]
         entry = self._warm.get(user_id)
         if entry is None:
             return None
