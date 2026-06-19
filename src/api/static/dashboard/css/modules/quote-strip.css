@@ -31,7 +31,7 @@
 }
 .quote-unavailable-label {
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: var(--text-base);
   font-style: italic;
 }
 
@@ -45,7 +45,7 @@
 }
 
 .quote-price {
-  font-size: 1.25rem;
+  font-size: var(--text-xl);
   font-weight: 700;
   line-height: 1;
   letter-spacing: -0.01em;
@@ -67,7 +67,7 @@
 
 /* Change line */
 .quote-change {
-  font-size: 0.88rem;
+  font-size: var(--text-base);
   font-weight: 600;
   display: flex;
   align-items: center;
@@ -80,7 +80,7 @@
 .quote-change-abs {
   font-weight: 400;
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: var(--text-base);
 }
 
 /* Ceiling / Floor badge */
@@ -88,7 +88,7 @@
   display: inline-block;
   padding: 2px 7px;
   border-radius: var(--radius-tag);
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.04em;
   background: rgba(249, 115, 22, 0.15);
@@ -99,7 +99,7 @@
   display: inline-block;
   padding: 2px 7px;
   border-radius: var(--radius-tag);
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.04em;
   background: rgba(167, 139, 250, 0.15);
@@ -135,14 +135,14 @@
 .quote-chip--thesis.thesis-down { border-color: rgba(248, 113, 113, 0.22); }
 
 .qc-label {
-  font-size: 0.68rem;
+  font-size: var(--text-xs);
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   line-height: 1;
 }
 .qc-val {
-  font-size: 0.84rem;
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--text);
   line-height: 1.2;
@@ -175,5 +175,5 @@
   }
   .quote-strip-meta { gap: 4px; }
   .quote-chip { min-width: 50px; }
-  .quote-price { font-size: 1.1rem; }
+  .quote-price { font-size: var(--text-lg); }
 }

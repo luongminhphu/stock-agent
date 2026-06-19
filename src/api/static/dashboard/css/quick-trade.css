@@ -43,7 +43,7 @@
   height:          28px;
   border-radius:   5px;
   border:          none;
-  font-size:       12px;
+  font-size:       var(--text-sm);
   font-weight:     700;
   line-height:     1;
   cursor:          pointer;
@@ -130,7 +130,7 @@
 }
 
 .qt-modal-title {
-  font-size:      1.05rem;
+  font-size:      var(--text-lg);
   font-weight:    600;
   color:          var(--text);
   letter-spacing: -0.02em;
@@ -145,7 +145,7 @@
   border:        1px solid var(--line);
   border-radius: 10px;
   color:         var(--muted);
-  font-size:     1rem;
+  font-size:     var(--text-md);
   cursor:        pointer;
   flex-shrink:   0;
   transition:    border-color 0.15s, color 0.15s;
@@ -175,7 +175,7 @@
   display:        inline-block;
   padding:        4px 12px;
   border-radius:  6px;
-  font-size:      0.72rem;
+  font-size:      var(--text-sm);
   font-weight:    700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -192,7 +192,7 @@
 }
 
 .qt-ticker-label {
-  font-size:      1.2rem;
+  font-size:      var(--text-xl);
   font-weight:    700;
   color:          var(--text);
   letter-spacing: 0.04em;
@@ -200,7 +200,7 @@
 
 /* Field labels */
 .qt-label {
-  font-size:      0.72rem;
+  font-size:      var(--text-sm);
   font-weight:    600;
   color:          var(--muted);
   text-transform: uppercase;
@@ -214,7 +214,7 @@
   border:        1px solid var(--line-strong);
   border-radius: var(--radius-sm);
   color:         var(--text);
-  font-size:     0.88rem;
+  font-size:     var(--text-base);
   font-family:   var(--font-body);
   padding:       9px 13px;
   width:         100%;
@@ -239,7 +239,7 @@
 
 /* Summary line dưới input */
 .qt-summary {
-  font-size:  0.78rem;
+  font-size:  var(--text-base);
   color:      var(--muted);
   min-height: 18px;
   margin-top: 2px;
@@ -247,7 +247,7 @@
 
 /* Inline error */
 .qt-error {
-  font-size:     0.78rem;
+  font-size:     var(--text-base);
   color:         var(--danger);
   background:    var(--danger-bg);
   border:        1px solid color-mix(in srgb, var(--danger) 28%, transparent);
@@ -268,7 +268,7 @@
 .qt-btn {
   padding:       9px 20px;
   border-radius: var(--radius-sm);
-  font-size:     0.84rem;
+  font-size:     var(--text-base);
   font-weight:   600;
   border:        none;
   cursor:        pointer;
@@ -314,7 +314,7 @@
   border:        1px solid var(--line-strong);
   border-radius: var(--radius-sm);
   color:         var(--text);
-  font-size:     0.82rem;
+  font-size:     var(--text-base);
   padding:       10px 16px;
   box-shadow:    var(--shadow);
   max-width:     420px;

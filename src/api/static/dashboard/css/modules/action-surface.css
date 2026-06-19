@@ -79,7 +79,7 @@
 }
 
 .attn-panel__count {
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   font-weight: 700;
   background: rgba(251, 191, 36, 0.18);
   color: #fbbf24;
@@ -92,7 +92,7 @@
 
 .attn-panel__ts {
   margin-left: auto;
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   color: var(--faint);
   letter-spacing: 0.02em;
   flex-shrink: 0;
@@ -122,7 +122,7 @@
 }
 
 .attn-group__label {
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.07em;
@@ -130,7 +130,7 @@
 }
 
 .attn-group__count {
-  font-size: 0.6rem;
+  font-size: var(--text-2xs);
   font-weight: 600;
   color: var(--faint);
   background: rgba(148, 163, 184, 0.1);
@@ -198,7 +198,7 @@
 /* ── Icon ────────────────────────────────────────────────────────────────── */
 
 .attn-item__icon {
-  font-size: 0.95rem;
+  font-size: var(--text-md);
   flex-shrink: 0;
   width: 22px;
   text-align: center;
@@ -242,7 +242,7 @@
 }
 
 .attn-item__meta {
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   color: var(--faint);
   letter-spacing: 0.02em;
   white-space: nowrap;
@@ -261,7 +261,7 @@
 }
 
 .attn-item__time {
-  font-size: 0.6rem;
+  font-size: var(--text-2xs);
   color: var(--faint);
   letter-spacing: 0.02em;
   white-space: nowrap;
@@ -272,7 +272,7 @@
 .attn-badge {
   display: inline-flex;
   align-items: center;
-  font-size: 0.6rem;
+  font-size: var(--text-2xs);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -314,7 +314,7 @@
 }
 
 .attn-empty__icon {
-  font-size: 1.5rem;
+  font-size: var(--text-2xl);
   margin-bottom: var(--space-2);
   opacity: 0.7;
 }
@@ -327,7 +327,7 @@
 }
 
 .attn-empty__hint {
-  font-size: 0.68rem;
+  font-size: var(--text-xs);
   color: var(--faint);
   max-width: 42ch;
   margin: 0 auto;
@@ -407,7 +407,7 @@
 .as-item--danger { border-left: 3px solid var(--danger);  }
 .as-item--info   { border-left: 3px solid var(--brand);   }
 
-.as-icon { font-size: 1.1rem; flex-shrink: 0; }
+.as-icon { font-size: var(--text-lg); flex-shrink: 0; }
 
 .as-text {
   flex: 1;

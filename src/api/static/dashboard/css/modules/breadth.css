@@ -146,6 +146,6 @@
     gap: var(--space-1);
   }
   .breadth-chip {
-    font-size: 0.65rem;
+    font-size: var(--text-xs);
   }
 }

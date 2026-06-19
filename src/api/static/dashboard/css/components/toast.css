@@ -19,7 +19,7 @@
   border: 1px solid var(--line-strong);
   box-shadow: 0 16px 48px rgba(2, 6, 23, 0.48);
   color: var(--text);
-  font-size: 0.82rem;
+  font-size: var(--text-base);
   font-weight: 500;
   z-index: 9999;
   max-width: 320px;

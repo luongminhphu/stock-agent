@@ -94,7 +94,7 @@
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  font-size: .72rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);

@@ -42,7 +42,7 @@ mark.it-ticker {
   flex-wrap: wrap;
 }
 
-.intel-icon       { font-size: 1rem; line-height: 1; flex-shrink: 0; }
+.intel-icon       { font-size: var(--text-md); line-height: 1; flex-shrink: 0; }
 .intel-title {
   font-size: var(--text-sm);
   font-weight: 700;

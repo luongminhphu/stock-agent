@@ -36,7 +36,7 @@
   align-items: center;
   gap: 6px;
   padding: 9px 14px;
-  font-size: .78rem;
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--muted);
   background: none;
@@ -75,7 +75,7 @@
   border: 1px solid var(--line);
   border-radius: 10px;
   overflow: hidden;
-  font-size: .82rem;
+  font-size: var(--text-base);
   color: var(--text);
   line-height: 1.55;
 }
@@ -96,14 +96,14 @@
 }
 
 .brief-phase-icon {
-  font-size: 1.15rem;
+  font-size: var(--text-lg);
   line-height: 1;
   flex-shrink: 0;
   margin-top: 2px;
 }
 
 .brief-phase-label {
-  font-size: .78rem;
+  font-size: var(--text-base);
   font-weight: 700;
   color: var(--text);
   line-height: 1.2;
@@ -118,7 +118,7 @@
 }
 
 .brief-date {
-  font-size: .72rem;
+  font-size: var(--text-sm);
   color: var(--muted);
   line-height: 1.3;
 }
@@ -126,7 +126,7 @@
 /* ── Age badge ──────────────────────────────────────────────────────────────── */
 
 .brief-age-badge {
-  font-size: .62rem;
+  font-size: var(--text-2xs);
   padding: 1px 7px;
   border-radius: 999px;
   font-weight: 700;
@@ -154,7 +154,7 @@
   gap: 4px;
   padding: 3px 10px;
   border-radius: 9999px;
-  font-size: .68rem;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: .04em;
   text-transform: uppercase;
@@ -181,14 +181,14 @@
 }
 
 .brief-headline {
-  font-size: .9rem;
+  font-size: var(--text-md);
   font-weight: 700;
   color: var(--text);
   line-height: 1.3;
 }
 
 .brief-summary {
-  font-size: .82rem;
+  font-size: var(--text-base);
   color: var(--muted);
   line-height: 1.6;
 }
@@ -202,7 +202,7 @@
 }
 
 .brief-section-title {
-  font-size: .65rem;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: .07em;
   text-transform: uppercase;
@@ -213,7 +213,7 @@
 
 /* Generic item row */
 .brief-item {
-  font-size: .8rem;
+  font-size: var(--text-base);
   color: var(--muted);
   padding: 4px 0;
   line-height: 1.5;
@@ -244,7 +244,7 @@
   gap: 4px;
   padding: 3px 10px;
   border-radius: 9999px;
-  font-size: .75rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   border: 1px solid transparent;
 }
@@ -259,7 +259,7 @@
   border-color: rgba(248,113,113,.28);
   color: var(--danger);
 }
-.mover-pill .chg { font-size: .7rem; opacity: .85; }
+.mover-pill .chg { font-size: var(--text-xs); opacity: .85; }
 
 /* ── Ticker summary table ────────────────────────────────────────────────────── */
 
@@ -289,8 +289,8 @@
 .brief-ticker-table tr:last-child td { border-bottom: none; }
 
 .bt-ticker { font-weight: 700; color: var(--brand); }
-.bt-note   { font-size: .72rem; color: var(--muted); line-height: 1.35; margin-top: 1px; }
-.bt-chg    { text-align: right; font-variant-numeric: tabular-nums; font-size: .8rem; }
+.bt-note   { font-size: var(--text-sm); color: var(--muted); line-height: 1.35; margin-top: 1px; }
+.bt-chg    { text-align: right; font-variant-numeric: tabular-nums; font-size: var(--text-base); }
 .bt-chg.pos { color: var(--success); }
 .bt-chg.neg { color: var(--danger);  }
 
@@ -298,7 +298,7 @@
   display: inline-block;
   padding: 1px 7px;
   border-radius: 4px;
-  font-size: .65rem;
+  font-size: var(--text-xs);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .04em;
@@ -320,7 +320,7 @@
 }
 
 .fb-prompt {
-  font-size: .72rem;
+  font-size: var(--text-sm);
   color: var(--muted);
   margin-right: 4px;
 }
@@ -331,7 +331,7 @@
   gap: 4px;
   padding: 4px 12px;
   border-radius: 6px;
-  font-size: .72rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   border: 1px solid var(--line);
   background: rgba(148,163,184,.06);
@@ -346,7 +346,7 @@
 }
 
 .fb-confirmed {
-  font-size: .75rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--muted);
 }
@@ -364,14 +364,14 @@
 
 .brief-empty {
   padding: 24px 14px;
-  font-size: .82rem;
+  font-size: var(--text-base);
   color: var(--muted);
   text-align: center;
 }
 
 /* legacy label (kept for compat) */
 .brief-section-label {
-  font-size: .65rem;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: .07em;
   text-transform: uppercase;
@@ -391,7 +391,7 @@
 }
 .brief-actions li,
 .brief-alerts li {
-  font-size: .78rem;
+  font-size: var(--text-base);
   color: var(--muted);
   padding: 3px 0;
   border-bottom: 1px solid var(--line);
@@ -411,7 +411,7 @@
   border-bottom: 1px solid var(--line);
 }
 .brief-card-title {
-  font-size: .8rem;
+  font-size: var(--text-base);
   font-weight: 700;
   color: var(--text);
   display: flex;
@@ -420,7 +420,7 @@
 }
 .brief-card-body {
   padding: 10px 14px 12px;
-  font-size: .82rem;
+  font-size: var(--text-base);
   color: var(--text);
   line-height: 1.55;
 }
@@ -429,7 +429,7 @@
    SCAN DIGEST
 ─────────────────────────────────────────────────────────────────────────── */
 
-.scan-text { font-size: .82rem; line-height: 1.5; }
+.scan-text { font-size: var(--text-base); line-height: 1.5; }
 .scan-text .up   { color: var(--success); }
 .scan-text .down { color: var(--danger);  }
 
@@ -444,7 +444,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  font-size: .76rem;
+  font-size: var(--text-sm);
   color: var(--muted);
 }
 
@@ -459,7 +459,7 @@
   gap: 3px;
   padding: 2px 8px;
   border-radius: 9999px;
-  font-size: .72rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   letter-spacing: .02em;
 }
@@ -477,7 +477,7 @@
 }
 
 .scan-headline {
-  font-size: .82rem;
+  font-size: var(--text-base);
   color: var(--text);
   line-height: 1.45;
 }
@@ -489,7 +489,7 @@
 }
 
 .scan-picks-label {
-  font-size: .65rem;
+  font-size: var(--text-xs);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .06em;
@@ -509,7 +509,7 @@
   gap: 4px;
   padding: 4px 11px;
   border-radius: 9999px;
-  font-size: .8rem;
+  font-size: var(--text-base);
   font-weight: 700;
   letter-spacing: .02em;
   border: 1px solid var(--line);
@@ -538,7 +538,7 @@
 .scan-pick-pill .down { color: inherit; font-weight: 700; }
 
 .scan-pick-more {
-  font-size: .76rem;
+  font-size: var(--text-sm);
   padding: 4px 6px;
   color: var(--faint);
 }
@@ -553,7 +553,7 @@
   gap: 8px;
   flex-wrap: wrap;
   padding: 4px 0;
-  font-size: .76rem;
+  font-size: var(--text-sm);
 }
 
 .fb-sep {
@@ -565,7 +565,7 @@
   font-weight: 700;
   padding: 2px 9px;
   border-radius: 999px;
-  font-size: .7rem;
+  font-size: var(--text-xs);
 }
 .fb-rate-good {
   background: rgba(74,222,128,.12);
@@ -576,9 +576,9 @@
   color: var(--warning);
 }
 
-.fb-outcome { font-size: .72rem; }
+.fb-outcome { font-size: var(--text-sm); }
 .fb-acted    { color: var(--success); }
 .fb-watching { color: var(--brand);   }
 .fb-skipped  { color: var(--muted);   }
 
-.fb-total { font-size: .7rem; color: var(--faint); }
+.fb-total { font-size: var(--text-xs); color: var(--faint); }

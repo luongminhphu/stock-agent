@@ -225,7 +225,7 @@
   align-items: center;
   padding: 1px 6px;
   border-radius: var(--radius-pill);
-  font-size: 0.58rem;
+  font-size: var(--text-2xs);
   font-weight: 700;
   letter-spacing: 0.04em;
   line-height: 1.7;
@@ -289,9 +289,9 @@
 
 /* ── Responsive: very narrow panels ──────────────────────────────────────── */
 @media (max-width: 300px) {
-  .cc-cal-month-label { font-size: 0.65rem; }
-  .cc-cal-wday        { font-size: 0.55rem; }
-  .cc-cal-day-num     { font-size: 0.6rem;  }
+  .cc-cal-month-label { font-size: var(--text-xs); }
+  .cc-cal-wday        { font-size: var(--text-2xs); }
+  .cc-cal-day-num     { font-size: var(--text-2xs);  }
   .cc-cal-dot         { width: 4px; height: 4px; }
 }
 
