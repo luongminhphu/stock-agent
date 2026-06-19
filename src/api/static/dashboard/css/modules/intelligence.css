@@ -117,7 +117,7 @@ mark.it-ticker {
 }
 
 .ivb-icon  { font-size: 1em; line-height: 1; }
-.ivb-label { }
+
 
 /* Verdict colour variants */
 .iv--buy    { background: rgba(74,222,128,.15);   color: var(--success);  border-color: rgba(74,222,128,.30);  }
@@ -523,7 +523,7 @@ mark.it-ticker {
 .ir-sev--low    { background: var(--surface-3);      color: var(--faint);   border-color: var(--line-strong);    }
 
 .ir-sev-icon { line-height: 1; font-size: 0.6em; }
-.ir-sev-label { }
+
 
 .ir-text {
   margin: 0;

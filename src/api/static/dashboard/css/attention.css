@@ -1,3 +1,9 @@
+/* ─── DEPRECATED — DO NOT USE ──────────────────────────────────────────────────
+   This file is NOT imported by dashboard.css.
+   All attn-* rules have been consolidated into modules/action-surface.css.
+   This file is kept only as reference and will be deleted in a future cleanup.
+─────────────────────────────────────────────────────────────────────────── */
+
 /* ── AttentionPanel styles — v2 redesign ─────────────────────────────────
    Segment: readmodel / dashboard
    Consumed by: #actionSurface (Cluster A — "Hôm nay cần làm gì?")
