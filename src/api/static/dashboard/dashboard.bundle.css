@@ -7630,6 +7630,34 @@ main#main-content {
   letter-spacing:  0.5px;
 }
 
+.qt-btn-buy {
+  background: var(--success);
+  color:      var(--bg);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--success) 40%, transparent);
+}
+.qt-btn-buy:hover {
+  filter:    brightness(1.12);
+  transform: translateY(-1px);
+}
+.qt-btn-buy:active {
+  filter:    brightness(0.88);
+  transform: scale(0.93);
+}
+
+.qt-btn-sell {
+  background: var(--danger);
+  color:      var(--bg);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--danger) 40%, transparent);
+}
+.qt-btn-sell:hover {
+  filter:    brightness(1.12);
+  transform: translateY(-1px);
+}
+.qt-btn-sell:active {
+  filter:    brightness(0.88);
+  transform: scale(0.93);
+}
+
 .qt-backdrop {
   position:        fixed;
   inset:           0;
