@@ -33,6 +33,13 @@ __all__ = ["IntelligenceVerdictAgent", "VerdictOutput"]
 
 logger = get_logger(__name__)
 
+# Module-level cache — TTL 300s (5 min). Verdict for the same snapshot+signals
+# is stable within one engine cycle; skip AI if prompt hash unchanged.
+_verdict_cache: PromptCache[VerdictOutput] = PromptCache(
+    ttl_seconds=300,
+    agent_name="IntelligenceVerdictAgent",
+)
+
 
 _FALLBACK = VerdictOutput(
     verdict="NO_ACTION",
