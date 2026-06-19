@@ -138,6 +138,20 @@ class Thesis(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+    # last_reviewed_at: timestamp of the latest ThesisReview for this thesis.
+    # Source of truth: MAX(thesis_reviews.reviewed_at). Maintained by:
+    #   - ThesisService.touch_reviewed_at() (MARK_REVIEWED events)
+    #   - ThesisReviewService.create_review() (AI review completion)
+    # Used by: snapshot stale detection, Wave 4 dedup guard.
+    last_reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    # last_judged_at: timestamp of the latest ThesisJudgeAgent verdict.
+    # Maintained by: ai._log_thesis_judge_interaction().
+    # Used by: Wave 4 dedup guard in ThesisJudgeAgent.run_batch().
+    last_judged_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     assumptions: Mapped[list[Assumption]] = relationship(
         back_populates="thesis", cascade="all, delete-orphan"

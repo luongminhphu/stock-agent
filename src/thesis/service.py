@@ -241,9 +241,12 @@ class ThesisService:
             )
             return None
 
-        # Trigger updated_at refresh via a no-op attribute touch.
-        # SQLAlchemy detects the flush and updates the server-side onupdate.
-        thesis.updated_at = datetime.now(UTC)  # type: ignore[assignment]
+        # Refresh updated_at and last_reviewed_at.
+        # last_reviewed_at is the persistent source-of-truth for the Wave 4
+        # dedup guard and snapshot stale detection.
+        now = datetime.now(UTC)
+        thesis.updated_at = now  # type: ignore[assignment]
+        thesis.last_reviewed_at = now  # type: ignore[assignment]
         await self._repo.save(thesis)
         logger.info(
             "thesis.touch_reviewed_at.done",

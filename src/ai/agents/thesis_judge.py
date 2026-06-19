@@ -571,6 +571,22 @@ class ThesisJudgeAgent:
                     "thesis_title":   getattr(t, "title", ""),
                     "thesis_summary": getattr(t, "summary", "") or "",
                     "signal_context": {},
+                    # Populate timestamp fields for Wave 4 dedup guard.
+                    # last_reviewed_at: from Thesis.last_reviewed_at (persisted column,
+                    #   migration 0041). Falls back gracefully to None when column not yet
+                    #   present (older DB) — dedup guard treats None as stale = always judge.
+                    "last_reviewed_at": (
+                        getattr(t, "last_reviewed_at", None).isoformat()
+                        if getattr(t, "last_reviewed_at", None) is not None
+                        else None
+                    ),
+                    # last_judged_at: from Thesis.last_judged_at (persisted column,
+                    #   migration 0041, written by _log_thesis_judge_interaction).
+                    "last_judged_at": (
+                        getattr(t, "last_judged_at", None).isoformat()
+                        if getattr(t, "last_judged_at", None) is not None
+                        else None
+                    ),
                 }
                 for t in theses
             ]
@@ -640,6 +656,27 @@ async def _log_thesis_judge_interaction(
             ),
         )
         await MemoryService.log_interaction(session, entry)
+
+        # Persist last_judged_at on the Thesis row so Wave 4 dedup guard
+        # can read it without relying on in-memory ThesisJudgeOutput.judged_at
+        # (which is lost on process restart).
+        thesis_id_val = getattr(result, "thesis_id", None)
+        if thesis_id_val and str(thesis_id_val).isdigit():
+            try:
+                from sqlalchemy import text as _text
+                await session.execute(
+                    _text(
+                        "UPDATE theses SET last_judged_at = :ts "
+                        "WHERE id = :thesis_id"
+                    ),
+                    {"ts": datetime.now(UTC), "thesis_id": int(thesis_id_val)},
+                )
+            except Exception as db_exc:
+                logger.warning(
+                    "thesis_judge.last_judged_at_update_failed",
+                    thesis_id=thesis_id_val,
+                    error=str(db_exc),
+                )
     except Exception as exc:
         logger.warning("thesis_judge.memory_log_failed", error=str(exc))
 

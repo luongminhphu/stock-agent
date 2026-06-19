@@ -420,6 +420,7 @@ class ReviewService:
         and `key_risks` (not `risk_signals`) and `summary` (not `reasoning`).
         `next_watch_items` is not a schema field — default to empty list.
         """
+        review_ts = datetime.now(UTC)
         review = ThesisReview(
             thesis_id=thesis.id,
             verdict=ReviewVerdict(output.overall_verdict.value),
@@ -427,10 +428,15 @@ class ReviewService:
             reasoning=output.summary,
             risk_signals=json.dumps(output.key_risks, ensure_ascii=False),
             next_watch_items=json.dumps([], ensure_ascii=False),
-            reviewed_at=datetime.now(UTC),
+            reviewed_at=review_ts,
             reviewed_price=reviewed_price,
         )
         await self._repo.save_review(review)
+
+        # Propagate last_reviewed_at up to Thesis row so:
+        #  - snapshot stale detection reads from column (no subquery)
+        #  - Wave 4 dedup guard in ThesisJudgeAgent.run_batch() fires correctly
+        thesis.last_reviewed_at = review_ts  # type: ignore[assignment]
 
         # W5C: log verdict_flip event if direction changed from previous review.
         # Skipped on first-ever review (prev_verdict is None).
