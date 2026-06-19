@@ -265,3 +265,28 @@ tr.search-hidden {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
 }
+
+/* ── Mobile compact: 430px (iPhone 17 Pro Max portrait) ─────────────────── */
+@media (max-width: 480px) {
+  /* Thu gọn search bar — max-width hẹp hơn để toolbar vừa màn hình */
+  .topbar-search {
+    max-width: 180px;
+  }
+
+  /* Engine heartbeat: ẩn text, chỉ giữ dot */
+  .engine-heartbeat .heartbeat-label {
+    display: none;
+  }
+
+  .engine-heartbeat {
+    padding: 4px 7px;
+    gap: 0;
+  }
+}
+
+@media (max-width: 380px) {
+  /* Ẩn hẳn search bar trên màn hình rất hẹp */
+  .topbar-search {
+    display: none;
+  }
+}

@@ -177,3 +177,14 @@
   .quote-chip { min-width: 50px; }
   .quote-price { font-size: var(--text-lg); }
 }
+
+/* ── Mobile: quote strip horizontal scroll ──────────────────────────── */
+@media (max-width: 480px) {
+  .quote-strip {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-wrap: nowrap;
+  }
+  .quote-strip::-webkit-scrollbar { display: none; }
+}

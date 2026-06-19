@@ -394,3 +394,12 @@
 .hm-refreshed .hm-cell {
   animation: hm-flash 800ms ease-out forwards;
 }
+
+/* ── Mobile: heatmap container scroll thay vì fixed width ───────────── */
+@media (max-width: 480px) {
+  .heatmap-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* width: 380px đã khai báo ở trên — giữ nguyên nhưng cho scroll ngang */
+}

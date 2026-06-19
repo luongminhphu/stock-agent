@@ -397,3 +397,11 @@ td.cell-missing {
 .col-pct.neutral {
   color: var(--muted);
 }
+
+/* ── Mobile: 430-480px ──────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  /* Portfolio table: ẩn một số cột ít cần trên mobile nhỏ */
+  .port-col--hide-mobile {
+    display: none;
+  }
+}

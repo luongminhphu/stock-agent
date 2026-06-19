@@ -46,11 +46,13 @@
   position: sticky;
   top: 0;
   z-index: 80;
-  height: 48px;
+  min-height: 48px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 var(--space-5);
+  /* Safe area top: Dynamic Island / status bar trên iPhone */
+  padding-top: env(safe-area-inset-top, 0px);
   gap: var(--space-4);
   background: rgba(8, 17, 31, 0.88);
   border-bottom: 1px solid var(--line);
@@ -118,31 +120,16 @@ main#main-content {
       "main";
   }
 
+  /* Sidebar: ẩn hoàn toàn trên mobile — không drawer, không toggle */
   .sidebar {
-    position: fixed;
-    top: 0;
-    left: -260px;
-    width: 240px;
-    height: 100dvh;
-    z-index: 200;
-    transition: left var(--transition-base);
-    box-shadow: 4px 0 32px rgba(2, 6, 23, 0.5);
-  }
-
-  .sidebar.is-open {
-    left: 0;
-  }
-
-  .sidebar-overlay {
     display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(2, 6, 23, 0.6);
-    z-index: 199;
-    backdrop-filter: blur(2px);
   }
 
-  .sidebar.is-open ~ .sidebar-overlay { display: block; }
+  /* Ẩn sidebar toggle và overlay — không cần nữa */
+  .sidebar-toggle,
+  .sidebar-overlay {
+    display: none !important;
+  }
 
   .topbar {
     grid-column: 1 / -1;
@@ -150,11 +137,15 @@ main#main-content {
 
   main#main-content {
     padding: var(--space-3) var(--space-4) var(--space-8);
+    /* Safe area bottom cho Dynamic Island / home bar */
+    padding-bottom: calc(var(--space-8) + env(safe-area-inset-bottom, 0px));
   }
 }
 
+/* ── 430px — iPhone 17 Pro Max portrait ─────────────────────────── */
 @media (max-width: 480px) {
   main#main-content {
-    padding: var(--space-3) var(--space-3) var(--space-6);
+    padding: var(--space-2) var(--space-3) var(--space-6);
+    padding-bottom: calc(var(--space-6) + env(safe-area-inset-bottom, 0px));
   }
 }

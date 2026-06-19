@@ -821,3 +821,18 @@
   .rrg-summary-pills { gap: 2px; }
   .rrg-detail        { padding: var(--space-2); }
 }
+
+/* ── Mobile 430px: leaderboard compact ─────────────────────────────── */
+@media (max-width: 480px) {
+  /* RRG chart container: allow horizontal scroll */
+  .rrg-container,
+  .rrg-chart-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Leaderboard table: ẩn cột ít ưu tiên */
+  .lb-col--hide-mobile {
+    display: none;
+  }
+}
