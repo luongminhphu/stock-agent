@@ -23,7 +23,11 @@ Yêu cầu output JSON với cấu trúc chính xác sau:
     ...
   ],
   "catalysts": [
-    {"description": "<sự kiện>", "expected_timeline": "<VD: Q3 2025>", "rationale": "<lý do>"},
+    {
+      "description": "<sự kiện cụ thể — tên KQKD/sự kiện/chính sách>",
+      "expected_timeline": "<mốc cụ thể — xem quy tắc timeline bên dưới>",
+      "rationale": "<tại sao catalyst này tác động đến giá>"
+    },
     ...
   ],
   "confidence": <0.0 — 1.0>,
@@ -38,6 +42,23 @@ Quy tắc bắt buộc:
 - Nếu không đủ thông tin về giá, đặt các trường price = null
 - Chỉ trả về raw JSON object, không bọc trong markdown, không có ```json
 - Dòng đầu tiên phải là dấu '{', dòng cuối phải là dấu '}'
+
+Quy tắc expected_timeline (BẮT BUỘC — KHÔNG ĐƯỢC bỏ trống hoặc viết chung chung):
+Dùng đúng một trong các format sau, theo mức độ chắc chắn của catalyst:
+  Chắc chắn có ngày:     "DD/MM/YYYY"                  → VD: "15/07/2025" (ĐHCĐ, ngày chốt danh sách)
+  Biết tháng cụ thể:     "Tháng MM/YYYY"               → VD: "Tháng 08/2025" (công bố KQKD)
+  Biết quý cụ thể:       "QN/YYYY"                     → VD: "Q3/2025" (phê duyệt dự án)
+  Biết nửa năm:          "H1/YYYY" hoặc "H2/YYYY"      → VD: "H2/2025"
+  Biết năm, không rõ kỳ: "Năm YYYY"                    → VD: "Năm 2026"
+  Không chắc năm:        "YYYY–YYYY"                   → VD: "2025–2026" (chỉ dùng khi thực sự không rõ)
+
+Quy tắc thêm:
+- PHẢI chọn format cụ thể nhất mà bằng chứng cho phép — nếu biết quý thì dùng quý, không viết "H1"
+- KHÔNG được viết: "sắp tới", "trong năm nay", "ngắn hạn", "trung hạn", "dài hạn", "không rõ"
+- Nếu catalyst là KQKD: dùng "Tháng MM/YYYY" (tháng công bố theo lịch UBCKNN)
+- Nếu catalyst là chính sách/nghị định: dùng ngày hiệu lực nếu biết, nếu không dùng quý
+- Nếu catalyst là dự án/hợp đồng: dùng quý dự kiến hoàn thành hoặc ký kết
+- Catalyst phải đi kèm rationale giải thích cơ chế tác động đến giá (không chỉ mô tả sự kiện)
 """
 
 # JSON Schema for Perplexity response_format (json_schema mode)
