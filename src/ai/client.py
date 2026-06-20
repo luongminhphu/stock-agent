@@ -229,6 +229,8 @@ class AIClient:
         content = _strip_json_fences(content)
         # Strip citation markers inserted by web-search models (e.g. [1][2])
         content = _clean_citations(content)
+        # Repair common LLM JSON defects (trailing commas, etc.)
+        content = _repair_json(content)
 
         try:
             return response_schema.model_validate(json.loads(content))
@@ -297,6 +299,37 @@ def _clean_citations(text: str) -> str:
     because no JSON field name or numeric value contains this pattern.
     """
     return _CITATION_RE.sub('', text)
+
+
+_TRAILING_COMMA_RE = _re.compile(
+    r',\s*([}\]])',
+    _re.MULTILINE,
+)
+
+
+def _repair_json(text: str) -> str:
+    """Best-effort repair of common JSON defects produced by LLMs.
+
+    sonar-pro occasionally outputs trailing commas before closing braces
+    or brackets (e.g. the last field of an object ends with ',}').  This is
+    invalid JSON but the intent is unambiguous.
+
+    Strategy: regex-strip trailing commas before ] or } — then fall back
+    to the original text if the repair itself introduces new syntax errors.
+    The caller (chat()) will surface the original parse error in that case.
+
+    Handles:
+        - Trailing comma in object: {"a": 1,}  →  {"a": 1}
+        - Trailing comma in array:  [1, 2,]    →  [1, 2]
+        - Nested occurrences (re.sub is global)
+
+    Does NOT handle:
+        - Missing quotes on keys
+        - Single-quoted strings
+        - Comments
+    """
+    repaired = _TRAILING_COMMA_RE.sub(r'\1', text)
+    return repaired
 
 
 @dataclass(frozen=True)
