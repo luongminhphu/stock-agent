@@ -417,10 +417,14 @@ class InvestorProfileService:
         try:
             from src.portfolio.models import Position
 
+            # Position.is_open is a Python @property (closed_at IS NULL AND qty > 0)
+            # — not a mapped column, so it cannot be used in a WHERE clause.
+            # Expand the predicate explicitly using the underlying columns.
             result = await self._session.execute(
                 select(Position).where(
                     Position.user_id == user_id,
-                    Position.is_open.is_(True),
+                    Position.closed_at.is_(None),
+                    Position.qty > 0,
                 )
             )
             positions = result.scalars().all()
