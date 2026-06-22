@@ -18,7 +18,11 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
+import logging as _logging
+
 from pydantic import BaseModel, Field, field_validator
+
+_log = _logging.getLogger(__name__)
 
 
 class VerdictOutput(BaseModel):
@@ -154,3 +158,49 @@ class VerdictOutput(BaseModel):
     @classmethod
     def _clamp_thesis_alignment(cls, v: float) -> float:
         return max(0.0, min(1.0, float(v)))
+
+    # ------------------------------------------------------------------
+    # Graceful truncation for string fields with max_length constraints.
+    # LLMs occasionally exceed the limit — truncating is always better than
+    # raising a ValidationError that discards the entire verdict.
+    # A warning is logged so we can track frequency and tune the prompt.
+    # ------------------------------------------------------------------
+    @field_validator("key_risk", mode="before")
+    @classmethod
+    def _truncate_key_risk(cls, v: str) -> str:
+        limit = 200
+        if isinstance(v, str) and len(v) > limit:
+            _log.warning("VerdictOutput.key_risk truncated %d → %d chars", len(v), limit)
+            return v[:limit]
+        return v
+
+    @field_validator("invalidation_trigger", mode="before")
+    @classmethod
+    def _truncate_invalidation_trigger(cls, v: str) -> str:
+        limit = 200
+        if isinstance(v, str) and len(v) > limit:
+            _log.warning(
+                "VerdictOutput.invalidation_trigger truncated %d → %d chars", len(v), limit
+            )
+            return v[:limit]
+        return v
+
+    @field_validator("action", mode="before")
+    @classmethod
+    def _truncate_action(cls, v: str) -> str:
+        limit = 300
+        if isinstance(v, str) and len(v) > limit:
+            _log.warning("VerdictOutput.action truncated %d → %d chars", len(v), limit)
+            return v[:limit]
+        return v
+
+    @field_validator("reasoning_summary", mode="before")
+    @classmethod
+    def _truncate_reasoning_summary(cls, v: str) -> str:
+        limit = 600
+        if isinstance(v, str) and len(v) > limit:
+            _log.warning(
+                "VerdictOutput.reasoning_summary truncated %d → %d chars", len(v), limit
+            )
+            return v[:limit]
+        return v

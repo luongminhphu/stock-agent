@@ -34,12 +34,15 @@ Quy tắc bắt buộc:
 4. time_horizon bắt buộc: xác định dựa trên loại signal (kỹ thuật=intraday/swing, cơ bản=position/core).
 5. thesis_alignment: 0.5 nếu chưa có thesis. Không inflate.
 6. key_risk: gọi tên rủi ro cụ thể nhất từ data — không viết "rủi ro thị trường" chung chung.
+   Tối đa 200 ký tự — 1 rủi ro duy nhất, viết thẳng, không liệt kê nhiều.
 7. invalidation_trigger: bắt đầu bằng "Verdict này sai khi..." + ngưỡng cụ thể (đừng để mơ hồ).
-8. action: câu lệnh động từ đầu, tiếng Việt, nghiêm túc, có giá/vBjthế cụ thể nếu BUY/SELL.
+   Tối đa 200 ký tự — chọn 1 điều kiện rõ nhất, không liệt kê nhiều kịch bản.
+8. action: câu lệnh động từ đầu, tiếng Việt, nghiêm túc, có giá/vị thế cụ thể nếu BUY/SELL.
+   Tối đa 300 ký tự — 1–2 câu hành động, không giải thích thêm trong field này.
 9. RISK_ALERT ưu tiên hơn BUY_SIGNAL khi có tín hiệu rủi ro rõ từ portfolio hoặc thesis.
 10. REVIEW_THESIS khi thesis có dấu hiệu drift hoặc invalidation, dù giá chưa phá ngưỡng.
 11. reasoning_summary: dẫn dữ liệu cụ thể (đừng nói chung chung), giải thích tại sao chọn verdict này
-    thay vì alternative gần nhất.
+    thay vì alternative gần nhất. Tối đa 600 ký tự — 3–4 câu súc tích, không viết essay.
 
 Thứ tự ưu tiên khi xung đột: an toàn vốn > thesis integrity > opportunity capture.
 
