@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
+from src.market.registry_types import Exchange
 from src.platform.logging import get_logger
 
 if TYPE_CHECKING:
@@ -124,9 +125,13 @@ class ScreenResult:
 class OpportunityScreenService:
     """Scan market registry tickers against live quotes and rank opportunities.
 
+    By default only HOSE tickers are scanned. Pass exchange=None to scan
+    the full registry (all three exchanges).
+
     Usage::
 
-        svc = OpportunityScreenService(quote_service)
+        svc = OpportunityScreenService(quote_service)              # HOSE only
+        svc = OpportunityScreenService(quote_service, exchange=None)  # all
         result = await svc.run()
         for candidate in result.candidates:
             print(candidate.format_for_prompt())
@@ -142,6 +147,7 @@ class OpportunityScreenService:
         volume_surge_ratio: float = DEFAULT_VOLUME_SURGE_RATIO,
         reversal_max_pct: float = DEFAULT_REVERSAL_MAX_PCT,
         reversal_volume_ratio: float = DEFAULT_REVERSAL_VOLUME_RATIO,
+        exchange: Exchange | None = Exchange.HOSE,
     ) -> None:
         self._quote_service = quote_service
         self._top_n = top_n
@@ -151,6 +157,9 @@ class OpportunityScreenService:
         self._volume_surge_ratio = volume_surge_ratio
         self._reversal_max_pct = reversal_max_pct
         self._reversal_volume_ratio = reversal_volume_ratio
+        # Restrict scan universe to a single exchange (default HOSE).
+        # None = scan all three exchanges (legacy behaviour).
+        self._exchange = exchange
 
     async def run(self) -> ScreenResult:
         """Fetch quotes for all registry tickers and return ranked candidates.
@@ -164,9 +173,17 @@ class OpportunityScreenService:
         now = datetime.now(timezone.utc)
         trading_date = now.strftime("%Y-%m-%d")
 
-        tickers = registry.all_tickers()
+        # Apply exchange filter — default HOSE only, None = full registry.
+        if self._exchange is not None:
+            tickers = [s.ticker for s in registry.list_by_exchange(self._exchange)]
+        else:
+            tickers = registry.all_tickers()
+
         if not tickers:
-            logger.warning("opportunity_screen.no_tickers_in_registry")
+            logger.warning(
+                "opportunity_screen.no_tickers_in_registry",
+                exchange=self._exchange.value if self._exchange else "ALL",
+            )
             return ScreenResult(
                 scanned_at=now,
                 candidates=[],
@@ -175,7 +192,11 @@ class OpportunityScreenService:
                 trading_date=trading_date,
             )
 
-        logger.info("opportunity_screen.start", total_tickers=len(tickers))
+        logger.info(
+            "opportunity_screen.start",
+            exchange=self._exchange.value if self._exchange else "ALL",
+            total_tickers=len(tickers),
+        )
 
         # Bulk fetch — single round-trip
         try:
