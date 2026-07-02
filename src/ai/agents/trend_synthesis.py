@@ -21,14 +21,14 @@ Boundary rules:
 from __future__ import annotations
 
 import json
-import logging
 from typing import Any
 
 from src.ai.client import AIClient, AIError
 from src.ai.prompt_cache import PromptCache
 from src.ai.schemas.trend_synthesis import TrendSynthesisOutput
+from src.platform.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _MAX_TOKENS = 700
 
