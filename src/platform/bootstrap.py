@@ -103,10 +103,15 @@ async def bootstrap() -> None:
         from src.market.adapters.factory import build_adapter
         from src.market.quote_service import QuoteService, TradingHoursGuard
         from src.platform.config import get_settings
+        from src.platform.db import AsyncSessionLocal as _QS_SessionLocal
 
         _settings = get_settings()
         _guard = TradingHoursGuard.from_settings(_settings)
-        _quote_service = QuoteService(build_adapter(), guard=_guard)
+        _quote_service = QuoteService(
+            build_adapter(),
+            guard=_guard,
+            session_factory=_QS_SessionLocal,
+        )
         logger.info("platform.bootstrap.quote_service_ready")
 
     # ── SymbolRegistry: dynamic engine init (HTTP + DB, async) ────────────────
@@ -616,6 +621,15 @@ async def _warm_up_persisted_stores(
     from src.platform.db import AsyncSessionLocal
 
     sf = session_factory or AsyncSessionLocal
+
+    # QuoteService — warm _last_known from DB (chống N/A sau restart)
+    try:
+        qs = get_quote_service()
+        if hasattr(qs, "warm_load"):
+            n = await qs.warm_load()
+            logger.info("bootstrap.warm_up.quote_cache", loaded=n)
+    except Exception as exc:
+        logger.warning("bootstrap.warm_up.quote_cache_failed", error=str(exc))
 
     # TrendSnapshotStore
     try:

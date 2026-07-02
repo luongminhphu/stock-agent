@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import (
     ARRAY,
+    BigInteger,
     Date,
     DateTime,
     Float,
@@ -183,4 +184,46 @@ class DailyAgenda(Base):
         DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(UTC),
+    )
+
+
+class MarketQuoteCache(Base):
+    """Persisted last-known quote per ticker — QuoteService warm-load on restart.
+
+    Owner: readmodel segment (market segment writes via QuoteService).
+    Strategy: upsert — 1 row per ticker, always the most recent successful fetch.
+
+    Used by QuoteService to warm _last_known from DB on startup so the dashboard
+    does not show N/A after a process restart outside trading hours.
+    """
+
+    __tablename__ = "market_quote_cache"
+
+    ticker: Mapped[str] = mapped_column(String(20), primary_key=True)
+    price: Mapped[float] = mapped_column(Float, nullable=False)
+    change: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    change_pct: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    volume: Mapped[int] = mapped_column(
+        # BigInt để tránh overflow với CP ngàn tỷ
+        BigInteger,
+        nullable=False,
+        default=0,
+    )
+    value: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    open: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    high: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    low: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    ref_price: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    ceiling: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    floor: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    quote_ts: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        comment="Timestamp of the original quote from adapter",
+    )
+    saved_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        comment="Last time this row was upserted",
     )

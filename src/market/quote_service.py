@@ -9,8 +9,12 @@ import asyncio
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
-from typing import TYPE_CHECKING
+from datetime import UTC, datetime, timezone, timedelta
+from typing import TYPE_CHECKING, Any
+
+from src.platform.logging import get_logger
+
+_log = get_logger(__name__)
 
 if TYPE_CHECKING:
     from src.platform.config import Settings
@@ -250,6 +254,105 @@ class _QuoteCache:
         return self._last_known.get(ticker)
 
 
+# ---------------------------------------------------------------------------
+# DB persistence helpers (quote cache — survives restart)
+# ---------------------------------------------------------------------------
+
+async def _persist_quotes_to_db(session_factory: Any, quotes: list["Quote"]) -> None:
+    """Upsert a batch of quotes into market_quote_cache. Fire-and-forget — never raises."""
+    if session_factory is None or not quotes:
+        return
+    try:
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+        from src.readmodel.models import MarketQuoteCache
+
+        now = datetime.now(UTC)
+        rows = [
+            {
+                "ticker": q.ticker.upper(),
+                "price": q.price,
+                "change": q.change,
+                "change_pct": q.change_pct,
+                "volume": q.volume,
+                "value": q.value,
+                "open": q.open,
+                "high": q.high,
+                "low": q.low,
+                "ref_price": q.ref_price,
+                "ceiling": q.ceiling,
+                "floor": q.floor,
+                "quote_ts": q.timestamp,
+                "saved_at": now,
+            }
+            for q in quotes
+        ]
+        async with session_factory() as session:
+            stmt = pg_insert(MarketQuoteCache).values(rows).on_conflict_do_update(
+                index_elements=["ticker"],
+                set_={
+                    "price": pg_insert(MarketQuoteCache).excluded.price,
+                    "change": pg_insert(MarketQuoteCache).excluded.change,
+                    "change_pct": pg_insert(MarketQuoteCache).excluded.change_pct,
+                    "volume": pg_insert(MarketQuoteCache).excluded.volume,
+                    "value": pg_insert(MarketQuoteCache).excluded.value,
+                    "open": pg_insert(MarketQuoteCache).excluded.open,
+                    "high": pg_insert(MarketQuoteCache).excluded.high,
+                    "low": pg_insert(MarketQuoteCache).excluded.low,
+                    "ref_price": pg_insert(MarketQuoteCache).excluded.ref_price,
+                    "ceiling": pg_insert(MarketQuoteCache).excluded.ceiling,
+                    "floor": pg_insert(MarketQuoteCache).excluded.floor,
+                    "quote_ts": pg_insert(MarketQuoteCache).excluded.quote_ts,
+                    "saved_at": pg_insert(MarketQuoteCache).excluded.saved_at,
+                },
+            )
+            await session.execute(stmt)
+            await session.commit()
+    except Exception as exc:
+        _log.warning("quote_service.persist_cache_failed", error=str(exc))
+
+
+async def _load_quotes_from_db(session_factory: Any) -> list["Quote"]:
+    """Load all rows from market_quote_cache and reconstruct Quote objects.
+
+    Returns empty list on any error (warm-load is best-effort).
+    """
+    if session_factory is None:
+        return []
+    try:
+        from sqlalchemy import select
+        from src.readmodel.models import MarketQuoteCache
+
+        async with session_factory() as session:
+            rows = (await session.execute(select(MarketQuoteCache))).scalars().all()
+            quotes = []
+            for row in rows:
+                try:
+                    quotes.append(
+                        Quote(
+                            ticker=row.ticker,
+                            price=row.price,
+                            change=row.change,
+                            change_pct=row.change_pct,
+                            volume=row.volume,
+                            value=row.value,
+                            open=row.open,
+                            high=row.high,
+                            low=row.low,
+                            ref_price=row.ref_price,
+                            ceiling=row.ceiling,
+                            floor=row.floor,
+                            timestamp=row.quote_ts,
+                        )
+                    )
+                except Exception:
+                    pass
+            _log.info("quote_service.warm_load_from_db", count=len(quotes))
+            return quotes
+    except Exception as exc:
+        _log.warning("quote_service.warm_load_failed", error=str(exc))
+        return []
+
+
 class QuoteServiceNotConfiguredError(Exception):
     """Raised when QuoteService is called without an adapter (Wave 1 stub)."""
 
@@ -277,10 +380,25 @@ class QuoteService:
         self,
         adapter: MarketDataAdapter | None = None,
         guard: TradingHoursGuard | None = None,
+        session_factory: Any = None,
     ) -> None:
         self._adapter = adapter
         self._cache   = _QuoteCache()
         self._guard   = guard or TradingHoursGuard()  # default: standard HOSE hours
+        self._session_factory = session_factory  # None → no DB persistence
+
+    async def warm_load(self) -> int:
+        """Load last-known quotes from DB into _cache._last_known.
+
+        Called once at bootstrap (_warm_up_persisted_stores) before any scheduler
+        fires. Ensures dashboard shows last session's closing prices after restart.
+
+        Returns number of tickers loaded. Safe to call multiple times.
+        """
+        quotes = await _load_quotes_from_db(self._session_factory)
+        for q in quotes:
+            self._cache._last_known[q.ticker.upper()] = q
+        return len(quotes)
 
     def _ttl_for_now(self) -> float:
         """Short TTL during trading hours, long TTL outside."""
@@ -368,6 +486,11 @@ class QuoteService:
             ttl = self._ttl_for_now()
             quotes = await self._require_adapter().fetch_bulk_quotes(syms)
             self._cache.set_bulk_ttl(syms, quotes, ttl)
+            # Persist last-known to DB — fire-and-forget, never blocks caller
+            asyncio.create_task(
+                _persist_quotes_to_db(self._session_factory, quotes),
+                name="quote_cache_persist",
+            )
             fut.set_result(quotes)
             return quotes
         except Exception as exc:
