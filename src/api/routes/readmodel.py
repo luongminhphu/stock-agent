@@ -109,8 +109,14 @@ async def _build_price_map(tickers: list[str]) -> dict[str, float]:
             # Ngoài giờ: im lặng, caller sẽ fallback sang avg_cost
             pass
         else:
+            # structlog BoundLogger không hỗ trợ printf-style positional args.
+            # Phải dùng keyword args: logger.warning(event, key=value)
             from src.platform.logging import get_logger as _gl
-            _gl(__name__).warning("readmodel.price_map.fetch_failed error=%s", str(exc))
+            _gl(__name__).warning(
+                "readmodel.price_map.fetch_failed",
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
         return {}
 
 
