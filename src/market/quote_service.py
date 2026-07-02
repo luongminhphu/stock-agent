@@ -442,6 +442,11 @@ class QuoteService:
             ttl = self._ttl_for_now()
             quote = await self._require_adapter().fetch_quote(sym)
             self._cache.set_single_ttl(sym, quote, ttl)
+            # Persist last-known to DB — fire-and-forget, never blocks caller
+            asyncio.create_task(
+                _persist_quotes_to_db(self._session_factory, [quote]),
+                name="quote_cache_persist_single",
+            )
             fut.set_result(quote)
             return quote
         except Exception as exc:
