@@ -17,6 +17,7 @@ import { esc, fmtDate } from '../../utils/format.js';
 import { thesisApiBase, getJson, sendJson } from '../../api/client.js';
 import { state } from '../../state/dashboard-state.js';
 import { renderThesisDetailHTML, emptyDetailHTML, wireTabNav } from './render-thesis-table.js';
+import { loadTrendPanel } from './trend-panel.js';
 import { wireDetailActions } from './thesis-form.js';
 import { renderReviewRecommendResult, wireReviewQuickTrade } from './render-ai-review.js';
 import { fetchQuote, renderQuoteStrip } from './market-quote.js';
@@ -285,6 +286,12 @@ export async function loadThesisDetail(thesisId) {
 
     scheduleIdle(async () => {
       await loadThesisTimeline(thesisId, wrap);
+    });
+
+    scheduleIdle(async () => {
+      const slot = wrap.querySelector(`#trendPanelSlot-${thesisId}`);
+      if (!slot) return;
+      await loadTrendPanel(thesis.ticker, thesisId, wrap);
     });
 
   } catch (err) {

@@ -129,6 +129,7 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
         Catalysts <span class="dtab-count ${catExpired > 0 ? 'dtab-count--danger' : catPending > 0 ? 'dtab-count--warn' : ''}">${catList.length}</span>
       </button>
       <button class="dtab"        role="tab" aria-selected="false" data-tab="reviews"      aria-controls="dtab-reviews">🔍 Reviews</button>
+      <button class="dtab"        role="tab" aria-selected="false" data-tab="trend"        aria-controls="dtab-trend">📈 Trend</button>
       <button class="dtab"        role="tab" aria-selected="false" data-tab="history"      aria-controls="dtab-history">📅 History</button>
       <div class="dtab-nav-actions" role="none">
         <button class="ghost-btn ghost-btn--sm" id="detailEditBtn" type="button">✏️ Sửa</button>
@@ -225,6 +226,13 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
         <div id="convictionTimelineSlot-${t.id}" class="conviction-slot">
           <div class="skel skel-text" style="width:40%;margin-bottom:6px;"></div>
           <div class="skel skel-text" style="width:60%;"></div>
+        </div>
+      </div>
+
+      <!-- TREND ANALYSIS -->
+      <div id="dtab-trend" class="dtab-panel" role="tabpanel">
+        <div id="trendPanelSlot-${t.id}" data-ticker="${esc(t.ticker)}">
+          <div class="skel-line" style="height:80px;border-radius:8px;"></div>
         </div>
       </div>
 

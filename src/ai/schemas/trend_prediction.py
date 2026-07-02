@@ -89,6 +89,24 @@ class SignalScore(BaseModel):
         return max(0.0, min(1.0, f))
 
 
+class RawIndicators(BaseModel):
+    """Raw technical indicator values for trend synthesis and dashboard display.
+
+    Populated by TrendSignalComposer.compute() — optional for backward compat.
+    Consumers: TrendSynthesisAgent, trend analysis dashboard panel.
+    """
+    rsi: float = Field(default=50.0, description="RSI-14, 0-100")
+    macd_line: float = Field(default=0.0)
+    macd_signal: float = Field(default=0.0)
+    macd_hist: float = Field(default=0.0)
+    macd_cross: str = Field(default="bearish_cross",
+                            description="bullish_cross | bearish_cross")
+    cmf: float = Field(default=0.0, description="Chaikin Money Flow -1 to +1")
+    adx: float = Field(default=0.0, description="ADX 0-100")
+    adx_plus_di: float = Field(default=0.0)
+    adx_minus_di: float = Field(default=0.0)
+
+
 class TechnicalSignalBundle(BaseModel):
     """Structured technical context fed into TrendReasoningAgent.
 
@@ -108,6 +126,12 @@ class TechnicalSignalBundle(BaseModel):
     # Weighted composite (0–1) and regime label
     composite: float = Field(ge=0.0, le=1.0)
     regime: TrendRegime
+
+    # Raw indicator values — optional (populated by Wave 2 TrendSignalComposer)
+    raw_indicators: RawIndicators | None = Field(
+        default=None,
+        description="Raw MACD/RSI/CMF/ADX values for trend synthesis panel",
+    )
 
 
 # ---------------------------------------------------------------------------

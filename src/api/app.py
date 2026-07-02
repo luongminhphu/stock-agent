@@ -46,6 +46,7 @@ from src.api.routes.readmodel import router as readmodel_router
 from src.api.routes.thesis import router as thesis_router
 from src.api.routes.today_loop import router as today_loop_router
 from src.api.routes.rrg import router as rrg_router
+from src.api.routes.trend import router as trend_router
 from src.api.routes.watchlist import router as watchlist_router
 from src.platform.bootstrap import bootstrap, shutdown
 from src.platform.config import settings
@@ -199,6 +200,7 @@ def create_app() -> FastAPI:
     app.include_router(portfolio_router, prefix="/api/v1")    # Wave 11 — Quick Trade
     app.include_router(today_loop_router, prefix="/api/v1")   # Daily investor loop
     app.include_router(rrg_router, prefix="/api/v1")           # RRG chart
+    app.include_router(trend_router, prefix="/api/v1")         # Trend Analysis panel
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request, exc: Exception) -> JSONResponse:

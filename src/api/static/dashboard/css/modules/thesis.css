@@ -880,3 +880,175 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
 .badge-warn    { background: rgba(245, 158, 11, 0.18);  color: #fcd34d; border-radius: var(--radius-xs); padding: 2px 6px; }
 .badge-info    { background: rgba(96, 165, 250, 0.18);  color: #93c5fd; border-radius: var(--radius-xs); padding: 2px 6px; }
 .badge-muted   { background: rgba(120, 120, 140, 0.18); color: #a0a0b0; border-radius: var(--radius-xs); padding: 2px 6px; }
+
+/* ============================================================
+   TREND ANALYSIS PANEL  (dtab-trend)
+   ============================================================ */
+
+.trend-panel {
+  padding: 12px 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Verdict row */
+.trend-verdict-row   { display: flex; flex-direction: column; gap: 6px; }
+.trend-verdict-main  { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.trend-verdict-badge { font-size: var(--text-sm); font-weight: 800; padding: 2px 10px; }
+.trend-action-chip   { font-size: var(--text-xs); font-weight: 700; }
+.trend-action--success { border-color: var(--success); color: var(--success); }
+.trend-action--danger  { border-color: var(--danger);  color: var(--danger);  }
+.trend-action--warning { border-color: var(--warning); color: var(--warning); }
+.trend-conf-chip     { font-size: var(--text-xs); opacity: .7; }
+.trend-signal-summary {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0;
+  padding: 6px 10px;
+  background: rgba(148,163,184,.06);
+  border-left: 2px solid var(--brand);
+  border-radius: 0 4px 4px 0;
+}
+
+/* Section */
+.trend-section {
+  background: rgba(148,163,184,.04);
+  border: 1px solid rgba(148,163,184,.1);
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.trend-section--watch { border-color: rgba(251,191,36,.3); }
+.trend-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.trend-section-title {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  min-width: 70px;
+}
+.trend-ind-value {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  margin-left: auto;
+}
+.trend-val--bull { color: var(--success); }
+.trend-val--bear { color: var(--danger); }
+.trend-ind-note {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* RRG metrics */
+.trend-rrg-quad  { }
+.trend-rrg-metrics { display: flex; gap: 12px; flex-wrap: wrap; }
+.trend-metric    { font-size: var(--text-xs); color: var(--text-muted); }
+.trend-metric strong { color: var(--text); }
+
+/* RSI gauge */
+.trend-gauge       { display: flex; flex-direction: column; gap: 2px; }
+.trend-gauge-track {
+  position: relative;
+  height: 6px;
+  background: rgba(148,163,184,.15);
+  border-radius: 3px;
+  overflow: visible;
+}
+.trend-gauge-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width .3s ease;
+}
+.trend-bar--bullish    { background: var(--success); }
+.trend-bar--bearish    { background: var(--danger); }
+.trend-bar--neutral    { background: var(--text-muted); }
+.trend-bar--overbought { background: var(--warning); }
+.trend-bar--oversold   { background: var(--brand); }
+
+/* OB/OS zone markers */
+.trend-gauge-zone {
+  position: absolute;
+  top: -2px;
+  width: 2px;
+  height: 10px;
+  background: rgba(148,163,184,.4);
+}
+.trend-gauge-zone--ob { left: 70%; }
+.trend-gauge-zone--os { left: 30%; }
+.trend-gauge-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: var(--text-muted);
+  opacity: .6;
+}
+.trend-gauge-label--mid { text-align: center; flex: 1; }
+
+/* MACD */
+.trend-macd {
+  position: relative;
+  height: 8px;
+  background: rgba(148,163,184,.1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.trend-macd-bar {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border-radius: 4px;
+  transition: width .3s ease;
+}
+.trend-macd-bar--bull { background: var(--success); opacity: .8; }
+.trend-macd-bar--bear { background: var(--danger);  opacity: .8; }
+.trend-macd-cross {
+  display: block;
+  font-size: var(--text-xs);
+  margin-top: 3px;
+  font-weight: 600;
+}
+.trend-cross--bull { color: var(--success); }
+.trend-cross--bear { color: var(--danger); }
+
+/* CMF */
+.trend-cmf {
+  position: relative;
+  height: 6px;
+  background: rgba(148,163,184,.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.trend-cmf-bar {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border-radius: 3px;
+}
+.trend-cmf-bar--bull { background: var(--success); opacity: .8; }
+.trend-cmf-bar--bear { background: var(--danger);  opacity: .8; }
+.trend-cmf-zero {
+  position: absolute;
+  left: 50%;
+  top: -1px;
+  width: 1px;
+  height: 8px;
+  background: rgba(148,163,184,.5);
+}
+
+/* ADX */
+.trend-adx-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.trend-adx-dir { font-size: var(--text-xs); color: var(--text-muted); }
+.trend-adx--up   { color: var(--success); }
+.trend-adx--down { color: var(--danger); }

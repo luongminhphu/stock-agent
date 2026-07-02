@@ -54,6 +54,7 @@ class DashboardTTLCache:
         "thesis_detail":   15,
         "rrg":             600,   # 10 min — weekly OHLCV data; no point re-fetching intraday
         "attention":       30,
+        "trend":           300,   # 5 min — daily OHLCV indicators; stable within a session
     }
 
     # Evict expired entries after this many set() calls (amortised O(1) per call).

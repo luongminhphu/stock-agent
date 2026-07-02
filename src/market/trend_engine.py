@@ -193,6 +193,115 @@ def _atr_expansion_ratio(
     return max(0.0, min(1.0, normalised))
 
 
+def _cmf(highs: list[float], lows: list[float], closes: list[float],
+         volumes: list[float], period: int = 20) -> float:
+    """Chaikin Money Flow over `period` bars. Returns -1.0 to +1.0.
+
+    Formula:
+        MFM[i] = ((close - low) - (high - close)) / (high - low)
+        MFV[i] = MFM[i] * volume[i]
+        CMF    = sum(MFV[-period:]) / sum(volume[-period:])
+
+    Positive CMF → buying pressure, negative → selling pressure.
+    Returns 0.0 when insufficient data or zero volume.
+    """
+    n = min(len(highs), len(lows), len(closes), len(volumes))
+    if n < period:
+        return 0.0
+    mfv_sum = 0.0
+    vol_sum = 0.0
+    for i in range(n - period, n):
+        hl = highs[i] - lows[i]
+        if hl == 0:
+            continue
+        mfm = ((closes[i] - lows[i]) - (highs[i] - closes[i])) / hl
+        mfv_sum += mfm * volumes[i]
+        vol_sum += volumes[i]
+    if vol_sum == 0:
+        return 0.0
+    return max(-1.0, min(1.0, mfv_sum / vol_sum))
+
+
+def _adx(highs: list[float], lows: list[float], closes: list[float],
+         period: int = 14) -> tuple[float, float, float]:
+    """Wilder's ADX. Returns (adx, plus_di, minus_di) all in 0-100 range.
+
+    ADX < 20: no trend / ranging
+    ADX 20-40: trending
+    ADX > 40: strong trend
+    +DI > -DI: uptrend; +DI < -DI: downtrend
+
+    Returns (0.0, 0.0, 0.0) when insufficient data.
+    """
+    n = min(len(highs), len(lows), len(closes))
+    if n < period + 1:
+        return 0.0, 0.0, 0.0
+
+    plus_dms: list[float] = []
+    minus_dms: list[float] = []
+    trs: list[float] = []
+    for i in range(1, n):
+        up   = highs[i] - highs[i - 1]
+        down = lows[i - 1] - lows[i]
+        plus_dms.append(up   if up > down and up > 0 else 0.0)
+        minus_dms.append(down if down > up and down > 0 else 0.0)
+        tr = max(
+            highs[i] - lows[i],
+            abs(highs[i] - closes[i - 1]),
+            abs(lows[i] - closes[i - 1]),
+        )
+        trs.append(tr)
+
+    # Wilder smoothing (RMA)
+    def _rma(values: list[float], p: int) -> list[float]:
+        if len(values) < p:
+            return [0.0]
+        result = [sum(values[:p]) / p]
+        for v in values[p:]:
+            result.append(result[-1] * (p - 1) / p + v)
+        return result
+
+    atr_s    = _rma(trs, period)
+    plus_s   = _rma(plus_dms, period)
+    minus_s  = _rma(minus_dms, period)
+
+    dx_series: list[float] = []
+    for a, p, m in zip(atr_s, plus_s, minus_s):
+        if a == 0:
+            dx_series.append(0.0)
+            continue
+        pdi = 100 * p / a
+        mdi = 100 * m / a
+        denom = pdi + mdi
+        dx_series.append(100 * abs(pdi - mdi) / denom if denom else 0.0)
+
+    adx_s = _rma(dx_series, period)
+    last_atr   = atr_s[-1] or 1.0
+    plus_di  = 100 * plus_s[-1]  / last_atr
+    minus_di = 100 * minus_s[-1] / last_atr
+    adx_val  = adx_s[-1]
+    return (
+        max(0.0, min(100.0, adx_val)),
+        max(0.0, min(100.0, plus_di)),
+        max(0.0, min(100.0, minus_di)),
+    )
+
+
+def _macd_raw(closes: list[float]) -> tuple[float, float, float]:
+    """Return (macd_line, signal_line, histogram) using 12/26/9 EMA.
+
+    Returns (0.0, 0.0, 0.0) when insufficient data.
+    """
+    if len(closes) < 35:
+        return 0.0, 0.0, 0.0
+    ema12 = _ema(closes, 12)
+    ema26 = _ema(closes, 26)
+    macd_line = [e12 - e26 for e12, e26 in zip(ema12, ema26)]
+    signal_line = _ema(macd_line, 9)
+    hist = macd_line[-1] - signal_line[-1]
+    return macd_line[-1], signal_line[-1], hist
+
+
 def _classify_label(value: float) -> str:
     if value >= 0.60:
         return "BULLISH"
@@ -259,7 +368,7 @@ class TrendSignalComposer:
             }
 
         rsi = _rsi(closes)
-        macd_hist = _macd_histogram(closes)
+        macd_line, macd_signal, macd_hist = _macd_raw(closes)
         momentum_val = self._compute_momentum(rsi, macd_hist)
 
         ema_cross = _ema_cross_signal(closes)
@@ -272,6 +381,9 @@ class TrendSignalComposer:
 
         volatility_val = _atr_expansion_ratio(highs, lows, closes)
 
+        cmf_val = _cmf(highs, lows, closes, volumes)
+        adx_val, plus_di, minus_di = _adx(highs, lows, closes)
+
         w = self.WEIGHTS
         composite = (
             structure_val * w["structure"]
@@ -283,6 +395,9 @@ class TrendSignalComposer:
 
         regime = _classify_regime(structure_val, momentum_val, volatility_val)
 
+        # MACD crossover signal: bullish when macd_line > signal_line, bearish otherwise
+        macd_cross = "bullish_cross" if macd_line > macd_signal else "bearish_cross"
+
         return {
             "symbol": symbol,
             "as_of": datetime.now(UTC).isoformat(),
@@ -292,6 +407,18 @@ class TrendSignalComposer:
             "volatility": {"value": volatility_val, "label": _classify_label(volatility_val)},
             "composite": composite,
             "regime": regime,
+            # Raw indicator values — exposed for TrendSynthesisAgent and dashboard
+            "raw_indicators": {
+                "rsi": round(rsi, 2),
+                "macd_line": round(macd_line, 4),
+                "macd_signal": round(macd_signal, 4),
+                "macd_hist": round(macd_hist, 4),
+                "macd_cross": macd_cross,
+                "cmf": round(cmf_val, 4),
+                "adx": round(adx_val, 2),
+                "adx_plus_di": round(plus_di, 2),
+                "adx_minus_di": round(minus_di, 2),
+            },
         }
 
     def _compute_momentum(self, rsi: float, macd_hist: float) -> float:
