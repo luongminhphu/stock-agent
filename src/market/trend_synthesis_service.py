@@ -19,14 +19,14 @@ Boundary:
 
 from __future__ import annotations
 
-import logging
 from dataclasses import asdict
 from typing import Any
 
 from src.market.rrg_service import RRGService
 from src.market.trend_engine import TrendEngine
+from src.platform.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # OHLCV lookback for indicator computation (90 trading days ≈ 4.5 months)
 _OHLCV_DAYS = 90
@@ -123,7 +123,8 @@ class TrendSynthesisService:
     async def _run(self, ticker: str) -> dict[str, Any]:
         import asyncio
 
-        # 1. Compute TrendEngine bundle + RRG in parallel
+        # 1. Compute TrendEngine bundle + RRG in parallel.
+        # return_exceptions=True: partial 429 → degrade gracefully instead of crash.
         engine_task = asyncio.create_task(
             self._engine.run_for_symbol(ticker)
         )
@@ -135,20 +136,44 @@ class TrendSynthesisService:
                 trail_points=_RRG_TRAIL_POINTS,
             )
         )
-        bundle_obj, rrg_response = await asyncio.gather(engine_task, rrg_task)
+        results = await asyncio.gather(engine_task, rrg_task, return_exceptions=True)
+        bundle_obj, rrg_response = results[0], results[1]
+
+        # If both fail (e.g. full 429 outage) → raise so run() returns error dict
+        bundle_failed = isinstance(bundle_obj, BaseException)
+        rrg_failed    = isinstance(rrg_response, BaseException)
+        if bundle_failed and rrg_failed:
+            raise bundle_obj  # type: ignore[misc]
+
+        if bundle_failed:
+            logger.warning(
+                "trend_synthesis.engine_failed",
+                ticker=ticker,
+                error=str(bundle_obj),
+            )
+        if rrg_failed:
+            logger.warning(
+                "trend_synthesis.rrg_failed",
+                ticker=ticker,
+                error=str(rrg_response),
+            )
 
         # 2. Extract indicator values — TechnicalSignalBundle is a Pydantic model
-        # raw_indicators is stored as a sub-dict in the bundle
-        bundle_dict = bundle_obj.model_dump() if hasattr(bundle_obj, "model_dump") else dict(bundle_obj)
+        if not bundle_failed:
+            bundle_dict = bundle_obj.model_dump() if hasattr(bundle_obj, "model_dump") else dict(bundle_obj)  # type: ignore[union-attr]
+        else:
+            bundle_dict = {}
         raw_indicators = bundle_dict.get("raw_indicators") or {}
         regime = bundle_dict.get("regime", "UNKNOWN")
         composite = float(bundle_dict.get("composite", 0.5))
 
-        # 3. Extract RRG position
-        rrg_ticker = next(
-            (t for t in rrg_response.tickers if t.ticker == ticker and not t.error),
-            None,
-        )
+        # 3. Extract RRG position (graceful when RRG fetch failed)
+        rrg_ticker = None
+        if not rrg_failed:
+            rrg_ticker = next(
+                (t for t in rrg_response.tickers if t.ticker == ticker and not t.error),  # type: ignore[union-attr]
+                None,
+            )
         rrg_data: dict[str, Any] = {}
         if rrg_ticker:
             trail_pattern = _detect_trail_pattern(rrg_ticker.trail)
