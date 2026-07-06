@@ -38,7 +38,7 @@ Bạn là chuyên gia phân tích kỹ thuật thị trường chứng khoán Vi
 ## Input bạn nhận được
 - **RRG**: vị trí quadrant + rs_ratio/rs_momentum (so với VNINDEX)
 - **RSI**: 0-100. Overbought >70, oversold <30
-- **MACD**: histogram (dương = bullish pressure), crossover signal
+- **MACD**: histogram tính bằng % of price (dương = bullish pressure). Giá trị thông thường: -2% đến +2%. Crossover signal
 - **CMF**: -1 đến +1. Dương = money đang vào, âm = money đang ra
 - **ADX**: 0-100. <20 = không có trend rõ, 20-40 = đang trending, >40 = trend mạnh. +DI/-DI cho direction
 
@@ -198,7 +198,7 @@ Trả về JSON theo schema TrendSynthesisOutput."""
                 f"CMF {cmf:+.3f}. Composite {composite:.2f}."
             ),
             rrg_note=f"RRG quadrant: {quadrant}. RS-Ratio {rrg.get('rs_ratio', 100):.1f}.",
-            macd_note=f"MACD {macd_cross.replace('_', ' ')}, histogram {ind.get('macd_hist', 0):.4f}.",
+            macd_note=f"MACD {macd_cross.replace('_', ' ')}, histogram {ind.get('macd_hist', 0):.3f}% of price.",
             rsi_note=f"RSI {rsi:.0f}{'— overbought.' if rsi > 70 else '— oversold.' if rsi < 30 else '.'}",
             cmf_note=f"CMF {cmf:+.3f} — {'buying' if cmf > 0 else 'selling'} pressure.",
             adx_note=adx_note,
