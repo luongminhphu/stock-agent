@@ -252,13 +252,13 @@ def _adx(highs: list[float], lows: list[float], closes: list[float],
         )
         trs.append(tr)
 
-    # Wilder smoothing (RMA)
+    # Wilder smoothing (RMA) — correct formula: RMA[i] = RMA[i-1]*(p-1)/p + v[i]/p
     def _rma(values: list[float], p: int) -> list[float]:
         if len(values) < p:
             return [0.0]
         result = [sum(values[:p]) / p]
         for v in values[p:]:
-            result.append(result[-1] * (p - 1) / p + v)
+            result.append(result[-1] * (p - 1) / p + v / p)
         return result
 
     atr_s    = _rma(trs, period)
