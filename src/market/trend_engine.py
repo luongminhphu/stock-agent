@@ -297,24 +297,19 @@ def _adx(highs: list[float], lows: list[float], closes: list[float],
 def _macd_raw(closes: list[float]) -> tuple[float, float, float]:
     """Return (macd_line, signal_line, histogram) using 12/26/9 EMA.
 
-    Values are normalised as % of last close price so that stocks at
-    different price levels (e.g. 5,000đ vs 100,000đ) are comparable.
+    Values are in raw price units (same currency as closes).
+    Crossover signal (bullish/bearish) is determined by sign of histogram.
 
     Returns (0.0, 0.0, 0.0) when insufficient data.
     """
     if len(closes) < 35:
         return 0.0, 0.0, 0.0
-    last_close = closes[-1] or 1.0
     ema12 = _ema(closes, 12)
     ema26 = _ema(closes, 26)
-    macd_line_raw = [e12 - e26 for e12, e26 in zip(ema12, ema26)]
-    signal_line_raw = _ema(macd_line_raw, 9)
-    # Normalise to % of price — makes histogram scale-invariant across tickers
-    scale = 100.0 / last_close
-    macd_val   = macd_line_raw[-1]   * scale
-    signal_val = signal_line_raw[-1] * scale
-    hist_val   = macd_val - signal_val
-    return round(macd_val, 4), round(signal_val, 4), round(hist_val, 4)
+    macd_line = [e12 - e26 for e12, e26 in zip(ema12, ema26)]
+    signal_line = _ema(macd_line, 9)
+    hist = macd_line[-1] - signal_line[-1]
+    return round(macd_line[-1], 4), round(signal_line[-1], 4), round(hist, 4)
 
 
 def _classify_label(value: float) -> str:

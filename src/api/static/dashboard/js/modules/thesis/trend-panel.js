@@ -176,7 +176,7 @@ function renderTrendPanel(data) {
     <div class="trend-section-header">
       <span class="trend-section-title">MACD (12/26/9)</span>
       <strong class="trend-ind-value ${macd.histogram >= 0 ? 'trend-val--bull' : 'trend-val--bear'}"
-              title="Histogram (% of price)">Hist ${(macd.histogram || 0).toFixed(3)}%</strong>
+              title="Histogram">Hist ${(macd.histogram || 0).toFixed(2)}</strong>
     </div>
     ${macdBar(macd.histogram || 0, macd.cross || '')}
     ${s.macd_note ? `<p class="trend-ind-note">${esc(s.macd_note)}</p>` : ''}
