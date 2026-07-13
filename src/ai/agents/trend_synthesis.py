@@ -60,9 +60,13 @@ Bạn là chuyên gia phân tích kỹ thuật thị trường chứng khoán Vi
 - Luôn trả về JSON hợp lệ, không giải thích ngoài JSON
 """
 
-# Module-level cache — TTL 300s (indicators ổn định trong session giao dịch)
+# Module-level cache — TTL 1800s (30 min).
+# Daily OHLCV-based indicators don’t change within a trading session.
+# Route-level DashboardTTLCache is the primary hit path (ticker-keyed).
+# This PromptCache acts as secondary guard against repeated AI calls
+# when route cache misses (e.g. after process restart).
 _cache: PromptCache[TrendSynthesisOutput] = PromptCache(
-    ttl_seconds=300,
+    ttl_seconds=1800,
     agent_name="trend_synthesis",
 )
 

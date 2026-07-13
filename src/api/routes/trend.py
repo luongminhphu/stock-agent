@@ -5,12 +5,15 @@ Endpoint: GET /api/v1/trend/ticker/{ticker}
 
 Flow:
     1. Resolve ticker (uppercase)
-    2. Build TrendSynthesisService (lazy, request-scoped — no singleton needed,
-       service itself has no state; agents/engine are singletons from deps)
+    2. Build TrendSynthesisService (lazy, request-scoped)
     3. Call TrendSynthesisService.run(ticker)
     4. Return JSON response
 
-Cache: module-level TTL 5min per ticker (indicators don't change tick-by-tick).
+Cache strategy (ticker-keyed, no user_id):
+    - OHLCV daily candles don’t change within a trading session
+    - In market hours  : TTL 30 min (price moves but daily OHLCV stable)
+    - Out of market    : TTL 4 h   (data static until next session open)
+    - Error responses  : not cached
 """
 
 from __future__ import annotations
@@ -25,6 +28,20 @@ from src.readmodel.cache import DashboardTTLCache
 router = APIRouter(prefix="/trend", tags=["trend"])
 
 _cache: DashboardTTLCache = DashboardTTLCache()
+
+# TTL constants (seconds)
+_TTL_MARKET_OPEN  = 30 * 60   # 30 min — daily OHLCV stable within session
+_TTL_MARKET_CLOSE = 4  * 60 * 60  # 4 h  — data static until next open
+
+
+def _trend_ttl() -> int:
+    """Return cache TTL based on current market hours."""
+    try:
+        from src.platform.bootstrap import get_quote_service
+        guard = get_quote_service()._guard
+        return _TTL_MARKET_OPEN if guard.is_market_open() else _TTL_MARKET_CLOSE
+    except Exception:
+        return _TTL_MARKET_OPEN  # safe default
 
 
 @router.get("/ticker/{ticker}")
@@ -87,5 +104,5 @@ async def get_trend_analysis(
 
     result = await service.run(sym)
     if "error" not in result:
-        _cache.set("trend", sym, result)
+        _cache.set("trend", sym, result, ttl=_trend_ttl())
     return result
