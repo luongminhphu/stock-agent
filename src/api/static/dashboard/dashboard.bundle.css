@@ -3164,12 +3164,6 @@ tr.row--critical:hover { background: rgba(248, 113, 113, 0.09); }
   color: var(--warning);
 }
 
-.scan-headline {
-  font-size: var(--text-base);
-  color: var(--text);
-  line-height: 1.45;
-}
-
 .scan-picks-row {
   display: flex;
   flex-direction: column;

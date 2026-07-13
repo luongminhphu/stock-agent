@@ -128,14 +128,9 @@ function renderScanDigest(scan) {
         </div>`;
     }
 
-    const headlineHtml = headline
-      ? `<div class="scan-headline">${esc(headline)}</div>`
-      : '';
-
     return `
       <div class="scan-digest">
         ${metaParts.length ? `<div class="scan-meta">${metaParts.join('<span class="scan-sep">\u00b7</span>')}</div>` : ''}
-        ${headlineHtml}
         ${picksHtml}
       </div>`;
   }
