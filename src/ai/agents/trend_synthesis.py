@@ -20,7 +20,6 @@ Boundary rules:
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from src.ai.client import AIClient, AIError
@@ -91,13 +90,11 @@ class TrendSynthesisAgent:
 
         try:
             result = await self._client.chat(
-                system=_SYSTEM_PROMPT,
-                user=user_prompt,
-                schema=TrendSynthesisOutput,
+                system_prompt=_SYSTEM_PROMPT,
+                user_prompt=user_prompt,
+                response_schema=TrendSynthesisOutput,
                 max_tokens=_MAX_TOKENS,
             )
-            if not isinstance(result, TrendSynthesisOutput):
-                result = TrendSynthesisOutput(**result)
             _cache.set(_SYSTEM_PROMPT, user_prompt, result)
             return result
 
