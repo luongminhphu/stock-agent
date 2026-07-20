@@ -17,6 +17,7 @@ Callers:
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -34,6 +35,10 @@ logger = get_logger(__name__)
 
 # Max episodes rendered into the prompt context block.
 _PROMPT_EPISODE_CAP = 10
+
+# Auto-consolidation: synthesize after every N new interactions.
+# Keeps memory fresh without waiting for the weekly Sunday scheduler.
+_AUTO_CONSOLIDATE_EVERY = 10
 
 # Valid user_signal values — mirrors UserBehaviorLog.signal
 VALID_USER_SIGNALS = frozenset({"bought", "sold", "watched", "ignored", "flagged"})
@@ -156,13 +161,23 @@ class MemoryService:
 
         The `session` param is retained for backward compatibility.
         Fire-and-forget: all exceptions are swallowed.
+
+        Auto-consolidation: every _AUTO_CONSOLIDATE_EVERY interactions, trigger
+        MemoryConsolidator.run() as a background task so memory snapshot stays
+        fresh without waiting for the weekly Sunday scheduler.
         """
         try:
             from src.platform.db import AsyncSessionLocal  # noqa: PLC0415
 
             async with AsyncSessionLocal() as log_session:
                 async with log_session.begin():
-                    return await MemoryService._do_log(log_session, entry)
+                    saved = await MemoryService._do_log(log_session, entry)
+
+            # Auto-consolidation check — fire-and-forget, never raises
+            asyncio.ensure_future(
+                MemoryService._maybe_consolidate(entry.user_id)
+            )
+            return saved
         except Exception as exc:
             logger.warning(
                 "memory_service.log_interaction.failed",
@@ -171,6 +186,50 @@ class MemoryService:
                 error=str(exc),
             )
             return None
+
+    @staticmethod
+    async def _maybe_consolidate(user_id: str) -> None:
+        """Trigger MemoryConsolidator.run() every N interactions.
+
+        Checks total interaction count for user mod _AUTO_CONSOLIDATE_EVERY.
+        Fire-and-forget: all exceptions are swallowed.
+        """
+        try:
+            from src.platform.db import AsyncSessionLocal  # noqa: PLC0415
+            from src.platform.bootstrap import get_ai_client  # noqa: PLC0415
+            from src.ai.memory.consolidator import MemoryConsolidator  # noqa: PLC0415
+
+            async with AsyncSessionLocal() as session:
+                repo = InteractionLogRepository(session)
+                count = await repo.count_by_user(user_id)
+
+            if count % _AUTO_CONSOLIDATE_EVERY != 0:
+                return  # not yet at threshold
+
+            logger.info(
+                "memory_service.auto_consolidate.triggered",
+                user_id=user_id,
+                interaction_count=count,
+            )
+            ai_client = get_ai_client()
+            if ai_client is None:
+                return
+
+            consolidator = MemoryConsolidator(client=ai_client, user_id=user_id)
+            async with AsyncSessionLocal() as session:
+                await consolidator.run(session)
+
+            logger.info(
+                "memory_service.auto_consolidate.done",
+                user_id=user_id,
+                interaction_count=count,
+            )
+        except Exception as exc:
+            logger.warning(
+                "memory_service.auto_consolidate.failed",
+                user_id=user_id,
+                error=str(exc),
+            )
 
     @staticmethod
     async def _do_log(

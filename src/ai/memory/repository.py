@@ -144,6 +144,15 @@ class InteractionLogRepository:
         return list(result.scalars().all())
 
 
+    async def count_by_user(self, user_id: str) -> int:
+        """Return total interaction count for a user (used for auto-consolidation)."""
+        from sqlalchemy import func, select  # noqa: PLC0415
+
+        stmt = select(func.count()).where(AIInteractionLog.user_id == user_id)
+        result = await self._session.execute(stmt)
+        return result.scalar_one() or 0
+
+
 class MemorySnapshotRepository:
     """Persistence for MemorySnapshot (Layer 3 — Semantic Memory)."""
 
