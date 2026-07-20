@@ -29,6 +29,20 @@ export async function triggerMemoryRefresh() {
 }
 
 /**
+ * Fetch BehavioralDNA profile.
+ * Returns null on 404 (no data yet).
+ * @returns {Promise<object|null>}
+ */
+export async function fetchBehavioralDNA() {
+  try {
+    return await getJson(`${memoryApiBase()}/behavioral-dna`);
+  } catch (err) {
+    if (err.message.startsWith('404')) return null;
+    throw err;
+  }
+}
+
+/**
  * Wire [data-memory-refresh] button → POST /api/v1/memory/refresh.
  * On success: re-render panel with new data via onSuccess(result) callback.
  * @param {(result: object) => void} onSuccess

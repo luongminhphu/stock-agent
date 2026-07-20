@@ -4,7 +4,7 @@
 // Rule: đừng chứa business logic — fetch qua memory-api.js, render inline helpers
 // Segment: ai/memory (data) + dashboard (adapter)
 
-import { fetchMemorySnapshot, bindRefreshButton } from './memory-api.js';
+import { fetchMemorySnapshot, fetchBehavioralDNA, bindRefreshButton } from './memory-api.js';
 import { esc } from '../../utils/format.js';
 
 let _refreshWired = false;
@@ -23,19 +23,26 @@ export async function loadMemory() {
     _refreshWired = true;
   }
 
-  try {
-    const data = await fetchMemorySnapshot();
-    if (!data) {
-      _renderEmpty();
-    } else {
+  // Load memory snapshot and behavioral DNA in parallel
+  const [snapshotResult, dnaResult] = await Promise.allSettled([
+    fetchMemorySnapshot(),
+    fetchBehavioralDNA(),
+  ]);
+
+  const data = snapshotResult.status === 'fulfilled' ? snapshotResult.value : null;
+  const dna  = dnaResult.status  === 'fulfilled' ? dnaResult.value  : null;
+
+  if (!data && !dna) {
+    _renderEmpty();
+  } else {
+    if (data) {
       _renderKpis(data);
       _renderContextSummary(data);
       _renderEpisodic(data);
       _renderPatterns(data);
       _renderBias(data);
     }
-  } catch (err) {
-    _renderError(err.message);
+    _renderBehavioralDNA(dna);
   }
 }
 
@@ -251,6 +258,106 @@ function _renderEmpty() {
   _setKpi('memKpiConfidence', '.mem-kpi-value', '\u2014');
   _setKpi('memKpiBias',       '.mem-kpi-value', '0');
   document.getElementById('memContextSummary')?.classList.add('hidden');
+}
+
+// ---------------------------------------------------------------------------
+// Private: Behavioral DNA
+// ---------------------------------------------------------------------------
+
+function _renderBehavioralDNA(dna) {
+  const wrap = document.getElementById('behavioralDnaPanel');
+  if (!wrap) return;
+
+  // Skeleton clear
+  wrap.querySelectorAll('.dna-skel').forEach(el => el.remove());
+
+  if (!dna || !dna.has_data) {
+    wrap.innerHTML = `
+      <div class="dna-empty">
+        <div class="dna-empty-icon">🧬</div>
+        <div class="dna-empty-title">Chưa đủ dữ liệu</div>
+        <div class="dna-empty-desc">AI cần ít nhất 3 quyết định đã đánh giá để xây dựng hồ sơ hành vi của bạn. Hồ sơ sẽ tự cập nhật sau 15:15 mỗi ngày.</div>
+      </div>`;
+    return;
+  }
+
+  const pct = v => v != null ? `${Math.round(v * 100)}%` : '—';
+  const days = v => v != null ? `${v.toFixed(1)} ngày` : '—';
+  const winClass = v => v == null ? '' : v >= 0.55 ? 'dna-val--good' : v <= 0.4 ? 'dna-val--bad' : '';
+
+  // Hold duration ratio
+  let holdRatioNote = '';
+  if (dna.avg_hold_days_winners != null && dna.avg_hold_days_losers != null) {
+    const ratio = dna.avg_hold_days_losers / Math.max(dna.avg_hold_days_winners, 0.1);
+    if (ratio > 1.5) holdRatioNote = `<span class="dna-warn">⚠ Giữ loser lâu hơn winner ${ratio.toFixed(1)}x</span>`;
+    else if (ratio < 0.7) holdRatioNote = `<span class="dna-good">✓ Cắt loser nhanh hơn winner</span>`;
+  }
+
+  // Top patterns
+  const patternHtml = (dna.top_patterns || []).slice(0, 5).map(p => `
+    <div class="dna-pattern-row">
+      <span class="dna-pattern-name">${esc(p.pattern.replace(/_/g, ' '))}</span>
+      <span class="dna-pattern-count">×${p.count}</span>
+    </div>`).join('') || '<div class="dna-pattern-row dna-empty-row">Chưa có pattern</div>';
+
+  // Day win rates
+  const dayMap = dna.day_win_rates || {};
+  const dayOrder = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
+  const dayLabel = { Monday:'T2', Tuesday:'T3', Wednesday:'T4', Thursday:'T5', Friday:'T6' };
+  const dayBars = dayOrder.filter(d => dayMap[d] != null).map(d => {
+    const w = Math.round(dayMap[d] * 100);
+    const best  = dna.best_decision_day  === d ? 'dna-day--best'  : '';
+    const worst = dna.worst_decision_day === d ? 'dna-day--worst' : '';
+    return `
+      <div class="dna-day-col ${best} ${worst}">
+        <div class="dna-day-bar-wrap">
+          <div class="dna-day-bar" style="height:${w}%"></div>
+        </div>
+        <div class="dna-day-label">${dayLabel[d]}</div>
+        <div class="dna-day-pct">${w}%</div>
+      </div>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <div class="dna-header">
+      <span class="dna-title">🧬 Behavioral DNA</span>
+      <span class="dna-meta">${dna.lookback_days} ngày · ${dna.total_evaluated} giao dịch đánh giá</span>
+    </div>
+
+    <div class="dna-kpi-row">
+      <div class="dna-kpi">
+        <div class="dna-kpi-label">Win rate</div>
+        <div class="dna-kpi-value ${winClass(dna.win_rate_overall)}">${pct(dna.win_rate_overall)}</div>
+        <div class="dna-kpi-sub">BUY ${pct(dna.win_rate_buy)} · SELL ${pct(dna.win_rate_sell)}</div>
+      </div>
+      <div class="dna-kpi">
+        <div class="dna-kpi-label">Hold winners</div>
+        <div class="dna-kpi-value">${days(dna.avg_hold_days_winners)}</div>
+        <div class="dna-kpi-sub">Losers ${days(dna.avg_hold_days_losers)}</div>
+      </div>
+      <div class="dna-kpi">
+        <div class="dna-kpi-label">Bán sớm winner</div>
+        <div class="dna-kpi-value ${dna.early_exit_winner_rate > 0.5 ? 'dna-val--bad' : ''}">${pct(dna.early_exit_winner_rate)}</div>
+        <div class="dna-kpi-sub">Giữ loser quá lâu ${pct(dna.late_exit_loser_rate)}</div>
+      </div>
+    </div>
+
+    ${holdRatioNote ? `<div class="dna-ratio-note">${holdRatioNote}</div>` : ''}
+
+    <div class="dna-section-row">
+      <div class="dna-section dna-section--patterns">
+        <div class="dna-section-title">Hành vi lặp lại</div>
+        ${patternHtml}
+      </div>
+
+      <div class="dna-section dna-section--timing">
+        <div class="dna-section-title">Win rate theo thứ</div>
+        ${dayBars
+          ? `<div class="dna-day-chart">${dayBars}</div>`
+          : '<div class="dna-empty-row">Chưa đủ dữ liệu</div>'}
+      </div>
+    </div>
+  `;
 }
 
 function _renderError(message) {

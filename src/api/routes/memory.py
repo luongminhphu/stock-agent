@@ -291,3 +291,110 @@ def _truncate(s: str, max_len: int = 80) -> str | None:
     if not s:
         return None
     return s if len(s) <= max_len else s[: max_len - 1] + "…"
+
+
+# ── BEHAVIORAL DNA ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/behavioral-dna")
+async def get_behavioral_dna(
+    user_id: str = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_db),
+    lookback_days: int = 365,
+) -> dict:
+    """Return BehavioralDNA profile for the current investor.
+
+    Aggregates DecisionLog history into win rates, hold duration patterns,
+    exit discipline metrics, and top recurring behavioral patterns.
+
+    Returns 200 with has_data=False when fewer than _MIN_SAMPLE_SIZE evaluated
+    decisions exist — dashboard should render an empty/onboarding state.
+    """
+    from src.thesis.behavioral_dna_service import BehavioralDNAService
+
+    svc = BehavioralDNAService(session)
+    dna = await svc.analyze(user_id, lookback_days=lookback_days)
+
+    if dna.total_evaluated == 0:
+        return {
+            "has_data": False,
+            "total_decisions": dna.total_decisions,
+            "total_evaluated": 0,
+            "lookback_days": lookback_days,
+        }
+
+    return {
+        "has_data": True,
+        "lookback_days": dna.lookback_days,
+        "total_decisions": dna.total_decisions,
+        "total_evaluated": dna.total_evaluated,
+        "generated_at": dna.generated_at,
+        # Win rates
+        "win_rate_overall": dna.win_rate_overall,
+        "win_rate_buy": dna.win_rate_buy,
+        "win_rate_sell": dna.win_rate_sell,
+        # Hold duration
+        "avg_hold_days_winners": dna.avg_hold_days_winners,
+        "avg_hold_days_losers": dna.avg_hold_days_losers,
+        # Exit discipline
+        "early_exit_winner_rate": dna.early_exit_winner_rate,
+        "late_exit_loser_rate": dna.late_exit_loser_rate,
+        # Timing
+        "best_decision_day": dna.best_decision_day,
+        "worst_decision_day": dna.worst_decision_day,
+        "day_win_rates": dna.day_win_rates,
+        # Recurring patterns
+        "top_patterns": [
+            {"pattern": p, "count": c} for p, c in (dna.top_patterns or [])
+        ],
+    }
+
+
+# ── BEHAVIORAL DNA ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/behavioral-dna")
+async def get_behavioral_dna(
+    user_id: str = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_db),
+    lookback_days: int = 365,
+) -> dict:
+    """Return BehavioralDNA profile for the current investor.
+
+    Aggregates DecisionLog history into win rates, hold duration patterns,
+    exit discipline metrics, and top recurring behavioral patterns.
+
+    Returns 200 with has_data=False when fewer than _MIN_SAMPLE_SIZE evaluated
+    decisions exist — dashboard should render an empty/onboarding state.
+    """
+    from src.thesis.behavioral_dna_service import BehavioralDNAService
+
+    svc = BehavioralDNAService(session)
+    dna = await svc.analyze(user_id, lookback_days=lookback_days)
+
+    if dna.total_evaluated == 0:
+        return {
+            "has_data": False,
+            "total_decisions": dna.total_decisions,
+            "total_evaluated": 0,
+            "lookback_days": lookback_days,
+        }
+
+    return {
+        "has_data": True,
+        "lookback_days": dna.lookback_days,
+        "total_decisions": dna.total_decisions,
+        "total_evaluated": dna.total_evaluated,
+        "generated_at": dna.generated_at,
+        "win_rate_overall": dna.win_rate_overall,
+        "win_rate_buy": dna.win_rate_buy,
+        "win_rate_sell": dna.win_rate_sell,
+        "avg_hold_days_winners": dna.avg_hold_days_winners,
+        "avg_hold_days_losers": dna.avg_hold_days_losers,
+        "early_exit_winner_rate": dna.early_exit_winner_rate,
+        "late_exit_loser_rate": dna.late_exit_loser_rate,
+        "best_decision_day": dna.best_decision_day,
+        "worst_decision_day": dna.worst_decision_day,
+        "day_win_rates": dna.day_win_rates,
+        "top_patterns": [
+            {"pattern": p, "count": c} for p, c in (dna.top_patterns or [])
+        ],
+    }

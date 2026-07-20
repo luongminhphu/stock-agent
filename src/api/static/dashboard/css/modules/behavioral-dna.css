@@ -1,0 +1,205 @@
+/* behavioral-dna.css — Behavioral DNA panel
+   Owner: dashboard adapter
+   Surface: Memory section → #behavioralDnaPanel
+*/
+
+/* ── Panel container ─────────────────────────────────────────────────────── */
+#behavioralDnaPanel {
+  padding: 1.25rem 1.5rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* ── Skeleton ────────────────────────────────────────────────────────────── */
+.dna-skel {
+  background: linear-gradient(90deg,
+    var(--surface-2, rgba(255,255,255,.06)) 25%,
+    var(--surface-3, rgba(255,255,255,.12)) 50%,
+    var(--surface-2, rgba(255,255,255,.06)) 75%);
+  background-size: 200% 100%;
+  animation: dna-shimmer 1.6s infinite;
+  border-radius: 6px;
+}
+.dna-skel--header { height: 1.4rem; width: 55%; }
+.dna-skel--kpis   { height: 4rem;  width: 100%; }
+.dna-skel--body   { height: 7rem;  width: 100%; }
+
+@keyframes dna-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+.dna-header {
+  display: flex;
+  align-items: baseline;
+  gap: .75rem;
+  flex-wrap: wrap;
+}
+.dna-title {
+  font-size: .875rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  color: var(--text-primary, #f1f5f9);
+}
+.dna-meta {
+  font-size: .72rem;
+  color: var(--text-muted, #94a3b8);
+}
+
+/* ── KPI strip ───────────────────────────────────────────────────────────── */
+.dna-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: .75rem;
+}
+.dna-kpi {
+  background: var(--surface-2, rgba(255,255,255,.05));
+  border-radius: 8px;
+  padding: .7rem .9rem;
+  display: flex;
+  flex-direction: column;
+  gap: .15rem;
+}
+.dna-kpi-label {
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-muted, #94a3b8);
+}
+.dna-kpi-value {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--text-primary, #f1f5f9);
+  line-height: 1.2;
+}
+.dna-kpi-value.dna-val--good { color: var(--green, #4ade80); }
+.dna-kpi-value.dna-val--bad  { color: var(--red,   #f87171); }
+.dna-kpi-sub {
+  font-size: .68rem;
+  color: var(--text-muted, #94a3b8);
+  margin-top: .1rem;
+}
+
+/* ── Hold ratio warning ──────────────────────────────────────────────────── */
+.dna-ratio-note {
+  font-size: .78rem;
+  padding: .45rem .75rem;
+  border-radius: 6px;
+  background: rgba(248,113,113,.1);
+}
+.dna-warn { color: var(--yellow, #fbbf24); }
+.dna-good { color: var(--green,  #4ade80); }
+
+/* ── Section row: patterns + timing ─────────────────────────────────────── */
+.dna-section-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .75rem;
+}
+.dna-section {
+  background: var(--surface-2, rgba(255,255,255,.05));
+  border-radius: 8px;
+  padding: .75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+}
+.dna-section-title {
+  font-size: .7rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-muted, #94a3b8);
+  margin-bottom: .15rem;
+}
+
+/* ── Patterns list ───────────────────────────────────────────────────────── */
+.dna-pattern-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: .2rem 0;
+  border-bottom: 1px solid rgba(255,255,255,.04);
+  gap: .5rem;
+}
+.dna-pattern-row:last-child { border-bottom: none; }
+.dna-pattern-name {
+  font-size: .78rem;
+  color: var(--text-secondary, #cbd5e1);
+  text-transform: capitalize;
+}
+.dna-pattern-count {
+  font-size: .72rem;
+  font-weight: 600;
+  color: var(--text-muted, #94a3b8);
+  flex-shrink: 0;
+}
+.dna-empty-row {
+  font-size: .75rem;
+  color: var(--text-muted, #94a3b8);
+  font-style: italic;
+}
+
+/* ── Day-of-week bar chart ───────────────────────────────────────────────── */
+.dna-day-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: .4rem;
+  height: 5rem;
+}
+.dna-day-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .2rem;
+  height: 100%;
+}
+.dna-day-bar-wrap {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(255,255,255,.04);
+  border-radius: 3px 3px 0 0;
+  overflow: hidden;
+}
+.dna-day-bar {
+  width: 100%;
+  background: var(--blue, #60a5fa);
+  border-radius: 3px 3px 0 0;
+  min-height: 2px;
+  transition: height .3s ease;
+}
+.dna-day-col.dna-day--best  .dna-day-bar { background: var(--green,  #4ade80); }
+.dna-day-col.dna-day--worst .dna-day-bar { background: var(--red,    #f87171); }
+.dna-day-label {
+  font-size: .65rem;
+  color: var(--text-muted, #94a3b8);
+  text-align: center;
+}
+.dna-day-pct {
+  font-size: .6rem;
+  color: var(--text-muted, #94a3b8);
+}
+
+/* ── Empty state ─────────────────────────────────────────────────────────── */
+.dna-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .5rem;
+  padding: 1.5rem 1rem;
+  text-align: center;
+}
+.dna-empty-icon  { font-size: 2rem; opacity: .5; }
+.dna-empty-title { font-size: .85rem; font-weight: 600; color: var(--text-secondary, #cbd5e1); }
+.dna-empty-desc  { font-size: .75rem; color: var(--text-muted, #94a3b8); max-width: 28rem; line-height: 1.5; }
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .dna-kpi-row    { grid-template-columns: repeat(2, 1fr); }
+  .dna-section-row { grid-template-columns: 1fr; }
+  .dna-kpi:last-child { grid-column: 1 / -1; }
+}

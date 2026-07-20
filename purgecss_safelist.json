@@ -1,5 +1,5 @@
 {
-  "_comment": "PurgeCSS safelist for stock-agent dashboard. KEEP THIS MINIMAL — only add classes that are built dynamically via string concatenation from API/DB values. Static HTML/JS classes are found automatically by PurgeCSS content scanning. Rebuild: python build_bundle.py",
+  "_comment": "PurgeCSS safelist for stock-agent dashboard. KEEP THIS MINIMAL \u2014 only add classes that are built dynamically via string concatenation from API/DB values. Static HTML/JS classes are found automatically by PurgeCSS content scanning. Rebuild: python build_bundle.py",
   "safelist": {
     "standard": [
       "action-btns",
@@ -153,5 +153,8 @@
     "^bd-",
     "^is-",
     "^has-"
+  ],
+  "patterns": [
+    "dna-.*"
   ]
 }
