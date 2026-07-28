@@ -71,18 +71,36 @@ def _ema(values: list[float], period: int) -> list[float]:
 
 
 def _rsi(closes: list[float], period: int = 14) -> float:
-    """RSI over last `period` bars. Returns 0-100."""
-    if len(closes) < period + 1:
+    """RSI-14 using Wilder's Smoothed Moving Average (RMA).
+
+    Matches the standard used by TradingView, VCI, SSI and most charting
+    platforms. The previous implementation used a simple average (Cutler's
+    RSI) which diverges noticeably in mid-range values.
+
+    Requires period*2 + 1 bars minimum for a reliable seed.
+    Returns 50.0 (neutral) when insufficient data.
+    """
+    min_bars = period * 2 + 1
+    if len(closes) < min_bars:
         return 50.0
+
     deltas = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
-    gains = [max(d, 0.0) for d in deltas[-period:]]
-    losses = [abs(min(d, 0.0)) for d in deltas[-period:]]
-    avg_gain = sum(gains) / period
-    avg_loss = sum(losses) / period
+    gains  = [max(d, 0.0)        for d in deltas]
+    losses = [abs(min(d, 0.0))   for d in deltas]
+
+    # Seed: simple average of first `period` values
+    avg_gain = sum(gains[:period]) / period
+    avg_loss = sum(losses[:period]) / period
+
+    # Wilder RMA: smoothing factor = 1/period
+    for g, l in zip(gains[period:], losses[period:]):
+        avg_gain = (avg_gain * (period - 1) + g) / period
+        avg_loss = (avg_loss * (period - 1) + l) / period
+
     if avg_loss == 0:
         return 100.0
     rs = avg_gain / avg_loss
-    return 100.0 - (100.0 / (1 + rs))
+    return round(100.0 - (100.0 / (1 + rs)), 2)
 
 
 def _macd_histogram(closes: list[float]) -> float:
