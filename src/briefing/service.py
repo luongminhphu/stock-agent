@@ -71,6 +71,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -208,6 +209,19 @@ class BriefingService:
             next_action_context=contexts.get("next_action_context", ""),
             trend_pred_context=contexts.get("trend_pred_context", ""),
         )
+        # Wave 3: agenda reconciliation — compare morning DECIDE vs actual actions.
+        # Runs here (not in _collect_contexts gather) because it queries Trade +
+        # DecisionLog on the same AsyncSession; the gather uses parallel coroutines
+        # which are unsafe against the shared session for this read pattern.
+        agenda_reconciliation = await self._build_agenda_reconciliation_context(user_id)
+        eod_agenda_context = contexts.get("agenda_context", "")
+        if agenda_reconciliation:
+            eod_agenda_context = (
+                (eod_agenda_context + "\n\n" + agenda_reconciliation)
+                if eod_agenda_context
+                else agenda_reconciliation
+            )
+
         output = await self._agent.eod_brief(
             market_context=market_context,
             watchlist_tickers=tickers,
@@ -216,7 +230,7 @@ class BriefingService:
             past_lessons=contexts.get("lessons_context", ""),
             investor_profile=contexts.get("investor_profile_context", ""),
             feedback_summary=contexts.get("feedback_summary", ""),
-            agenda_context=contexts.get("agenda_context", ""),
+            agenda_context=eod_agenda_context,
             portfolio_note=contexts.get("portfolio_note"),
             session=self._session,
             user_id=user_id,
@@ -753,6 +767,74 @@ class BriefingService:
             return cached.summary or ""
         except Exception as exc:
             logger.warning("briefing.agenda_context.failed", error=str(exc))
+            return ""
+
+    async def _build_agenda_reconciliation_context(self, user_id: str) -> str:
+        """Wave 3: compare this morning's DECIDE bucket vs actual user actions today.
+
+        Reads the cached agenda (in-memory, zero DB) and queries today's
+        Trade + DecisionLog rows to determine follow-through. Renders a
+        compact block for the EOD brief so the AI can call out missed or
+        completed agenda items.
+
+        Returns "" when no agenda was cached today (scheduler path) or when
+        the DECIDE bucket is empty — the EOD brief then runs without the
+        reconciliation block.
+        """
+        try:
+            from src.briefing.agenda_cache import get_agenda  # noqa: PLC0415
+
+            cached = get_agenda(user_id)
+            if cached is None or cached.buckets is None or not cached.buckets.decide:
+                return ""
+
+            decide_tickers = [t.upper() for t in cached.buckets.decide]
+
+            # Actual actions today: trades executed + non-PRETRADE decisions logged
+            from sqlalchemy import select  # noqa: PLC0415
+            from src.portfolio.models import Trade  # noqa: PLC0415
+            from src.thesis.models import DecisionLog  # noqa: PLC0415
+
+            today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+
+            trade_rows = (
+                await self._session.execute(
+                    select(Trade.ticker, Trade.trade_type)
+                    .where(Trade.user_id == user_id, Trade.traded_at >= today_start)
+                )
+            ).all()
+            decision_rows = (
+                await self._session.execute(
+                    select(DecisionLog.ticker, DecisionLog.decision_type)
+                    .where(
+                        DecisionLog.user_id == user_id,
+                        DecisionLog.decision_at >= today_start,
+                        DecisionLog.decision_type != "PRETRADE_ADVICE",
+                    )
+                )
+            ).all()
+
+            acted: dict[str, list[str]] = {}
+            for ticker, ttype in trade_rows:
+                acted.setdefault(ticker.upper(), []).append(ttype.value if hasattr(ttype, "value") else str(ttype))
+            for ticker, dtype in decision_rows:
+                acted.setdefault(ticker.upper(), []).append(str(dtype))
+
+            done = [t for t in decide_tickers if t in acted]
+            missed = [t for t in decide_tickers if t not in acted]
+
+            if not done and not missed:
+                return ""
+
+            lines = ["Agenda sáng nay → thực tế:"]
+            for t in done:
+                actions = ", ".join(acted[t])
+                lines.append(f"  {t}: ĐÃ HÀNH ĐỘNG ({actions})")
+            for t in missed:
+                lines.append(f"  {t}: CHƯA HÀNH ĐỘNG — cần giải thích hoặc defer có chủ đích")
+            return "\n".join(lines)
+        except Exception as exc:
+            logger.warning("briefing.agenda_reconciliation.failed", error=str(exc))
             return ""
 
     async def _build_lessons_context(self, user_id: str) -> str:
