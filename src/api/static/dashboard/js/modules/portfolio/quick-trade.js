@@ -73,6 +73,8 @@ function _ensureModal() {
           <input class="qt-input" id="qt-note" type="text" maxlength="200" placeholder="" />
 
           <div class="qt-summary" id="qt-summary"></div>
+          <!-- Wave 5b: sizing preview — hiện khi lệnh MUA, fetch /portfolio/sizing-preview -->
+          <div id="qt-sizing" class="qt-sizing" hidden aria-live="polite"></div>
           <div class="qt-error" id="qt-error" hidden></div>
         </div>
         <div class="qt-modal-footer">
@@ -133,6 +135,8 @@ export function openModal(ticker, type, thesisId, opts) {
   document.getElementById('qt-note').value      = '';
   document.getElementById('qt-summary').textContent = '';
   _hideError();
+  _resetSizing();
+  _loadSizing();
 
   const dropdownWrap = document.getElementById('qt-thesis-dropdown-wrap');
   const badgeWrap    = document.getElementById('qt-thesis-badge-wrap');
@@ -205,6 +209,12 @@ function _bindModalEvents() {
   ['qt-qty', 'qt-price'].forEach(id =>
     document.getElementById(id).addEventListener('input', _updateSummary),
   );
+  // Wave 5b: sizing — debounce khi giá thay đổi
+  let _sizingTimer = null;
+  document.getElementById('qt-price').addEventListener('input', () => {
+    clearTimeout(_sizingTimer);
+    _sizingTimer = setTimeout(_loadSizing, 350);
+  });
   document.getElementById('qt-thesis-select').addEventListener('change', function () {
     _updateRationaleHint(!!this.value);
   });
@@ -218,6 +228,62 @@ function _updateSummary() {
   el.textContent = (qty > 0 && price > 0)
     ? `Tổng giá trị: ${(qty * price).toLocaleString('vi-VN')} ₫  (${qty.toLocaleString('vi-VN')} cp × ${price.toLocaleString('vi-VN')} ₫)`
     : '';
+}
+
+// ---------------------------------------------------------------------------
+// Wave 5b — Sizing preview (advisory, from GET /portfolio/sizing-preview)
+// ---------------------------------------------------------------------------
+function _resetSizing() {
+  const el = document.getElementById('qt-sizing');
+  if (el) { el.setAttribute('hidden', ''); el.innerHTML = ''; }
+}
+
+async function _loadSizing() {
+  const el = document.getElementById('qt-sizing');
+  if (!el) return;
+  if (_currentType !== 'buy') { _resetSizing(); return; }
+  if (!_currentTicker)        { _resetSizing(); return; }
+
+  const price = parseFloat(document.getElementById('qt-price').value) || 0;
+  const qs = price > 0
+    ? `?ticker=${encodeURIComponent(_currentTicker)}&entry_price=${price}`
+    : `?ticker=${encodeURIComponent(_currentTicker)}`;
+  try {
+    const res = await fetch(`/api/v1/portfolio/sizing-preview${qs}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    el.innerHTML = _sizingHTML(await res.json());
+    el.removeAttribute('hidden');
+  } catch {
+    _resetSizing();
+  }
+}
+
+function _fmtVnd(v) {
+  if (v >= 1e9) return (v / 1e9).toFixed(2).replace(/\.?0+$/, '') + ' tỷ';
+  if (v >= 1e6) return Math.round(v / 1e6) + 'tr';
+  return Math.round(v).toLocaleString('vi-VN') + 'đ';
+}
+
+function _escQt(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function _sizingHTML(d) {
+  const warn = (d.warnings ?? [])
+    .map(w => `<div class="qt-sizing-warn">⚠ ${_escQt(w)}</div>`).join('');
+  const stopLabel = d.stop_source === 'thesis' ? 'thesis' : 'mặc định';
+  const cashNote  = d.cash_known
+    ? ''
+    : '<div class="qt-sizing-note">Cash ước tính — size có thể thấp hơn thực tế.</div>';
+  return `
+    <div class="qt-sizing-title">Position sizing (tham khảo)</div>
+    <div class="qt-sizing-main">Tối đa <strong>${_escQt(d.max_qty.toLocaleString('vi-VN'))} cp</strong>
+      (~${_fmtVnd(d.max_value_vnd)}, ${_escQt(String(d.portfolio_pct_after))}% NAV)</div>
+    <div class="qt-sizing-sub">Stop ${_escQt(d.stop_price.toLocaleString('vi-VN'))}đ (${_escQt(stopLabel)})
+      · Risk budget ${_fmtVnd(d.risk_budget_vnd)} (${(d.risk_per_trade_pct * 100).toFixed(1)}% NAV)
+      · Giới hạn bởi: ${_escQt(d.cap_reason)}</div>
+    ${cashNote}${warn}`;
 }
 
 function _showError(msg) {

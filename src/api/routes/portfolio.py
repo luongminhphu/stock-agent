@@ -217,3 +217,77 @@ async def sell_stock(
         position_closed=result.position_closed,
         decision_logged=result.decision_logged,
     )
+
+
+# ---------------------------------------------------------------------------
+# Wave 5a — Position sizing preview
+# ---------------------------------------------------------------------------
+
+class SizingPreviewResponse(BaseModel):
+    """Quantitative sizing for a prospective entry — advisory, not a gate."""
+
+    ticker: str
+    entry_price: float
+    stop_price: float
+    stop_source: str              # "thesis" | "fallback_default"
+    equity_vnd: float
+    cash_known: bool              # False → cash estimated, size is conservative
+    risk_per_trade_pct: float
+    risk_budget_vnd: float
+    max_qty: int
+    max_value_vnd: float
+    portfolio_pct_after: float
+    cap_reason: str               # "risk" | "concentration" | "cash" | "invalid"
+    warnings: list[str]
+
+
+@router.get(
+    "/portfolio/sizing-preview",
+    response_model=SizingPreviewResponse,
+    summary="Quantitative position sizing preview for a prospective BUY",
+)
+async def get_sizing_preview(
+    ticker: str,
+    user_id: Annotated[str, Depends(get_current_user_id)],
+    session: AsyncSession = Depends(get_db),
+    quote_svc: object = Depends(get_quote_service),
+    entry_price: float | None = None,
+) -> SizingPreviewResponse:
+    """Return max position size from PositionSizingService (Wave 2).
+
+    entry_price: when omitted, uses the live quote (falls back to last-known
+    price off-hours). Dashboard calls this when the user opens the quick-trade
+    form so the sizing number appears at decision time — the same math the
+    Discord /pretrade command shows.
+    """
+    from src.portfolio.position_sizing_service import PositionSizingService
+
+    ticker = ticker.upper().strip()
+    price = entry_price
+    if price is None or price <= 0:
+        try:
+            quote = await quote_svc.get_quote(ticker)  # type: ignore[attr-defined]
+            price = float(getattr(quote, "price", 0) or 0)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Không lấy được giá {ticker}: {exc}",
+            ) from exc
+
+    svc = PositionSizingService(session)
+    result = await svc.size_for_entry(user_id=user_id, ticker=ticker, entry_price=price)
+    return SizingPreviewResponse(
+        ticker=result.ticker,
+        entry_price=result.entry_price,
+        stop_price=result.stop_price,
+        stop_source=result.stop_source,
+        equity_vnd=result.equity_vnd,
+        cash_known=result.cash_known,
+        risk_per_trade_pct=result.risk_per_trade_pct,
+        risk_budget_vnd=result.risk_budget_vnd,
+        max_qty=result.max_qty,
+        max_value_vnd=result.max_value_vnd,
+        portfolio_pct_after=result.portfolio_pct_after,
+        cap_reason=result.cap_reason,
+        warnings=result.warnings,
+    )

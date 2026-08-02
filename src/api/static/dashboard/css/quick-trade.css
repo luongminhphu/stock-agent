@@ -326,3 +326,27 @@
   opacity:   1;
   transform: translateY(0);
 }
+
+/* ── Wave 5b: Position sizing preview strip ─────────────────────────────── */
+.qt-sizing {
+  margin: var(--space-2, 8px) 0 var(--space-3, 12px);
+  padding: var(--space-3, 12px);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--brand);
+  border-radius: var(--radius-sm, 14px);
+  background: var(--brand-bg);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+.qt-sizing-title {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.qt-sizing-main { font-weight: 600; color: var(--text); }
+.qt-sizing-main strong { color: var(--brand-strong); }
+.qt-sizing-sub { color: var(--muted); margin-top: 2px; }
+.qt-sizing-note { color: var(--warning); margin-top: 4px; font-size: 0.78rem; }
+.qt-sizing-warn { color: var(--danger); margin-top: 4px; font-size: 0.78rem; }
