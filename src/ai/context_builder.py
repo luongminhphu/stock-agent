@@ -115,6 +115,9 @@ class InvestorContext:
     # From ai.agents.replay_agent via LessonService — exit pattern warnings (Wave 9)
     replay_pattern_block: str = ""
 
+    # From thesis.behavioral_dna_service — aggregated DecisionLog profile (Wave 3)
+    behavioral_dna_block: str = ""
+
 
 class ContextBuilder:
     """Assembles InvestorContext by querying domain segment read-APIs.
@@ -149,6 +152,7 @@ class ContextBuilder:
             (self._fetch_portfolio_bias,   _apply_portfolio),
             (self._fetch_memory_context,   _apply_memory),
             (self._fetch_replay_pattern,   _apply_replay_pattern),  # Wave 9
+            (self._fetch_behavioral_dna,   _apply_behavioral_dna),  # Wave 3
         ]
         for fetch_fn, apply_fn in fetch_apply_pairs:
             try:
@@ -506,6 +510,33 @@ class ContextBuilder:
             )
             return ""
 
+    async def _fetch_behavioral_dna(self, user_id: str | None) -> str:
+        """Fetch Behavioral DNA prompt block from thesis segment (Wave 3).
+
+        BehavioralDNAService aggregates DecisionLog history (win rates, hold
+        duration, exit discipline, recurring patterns) into a compact block
+        for prompt injection. Returns "" when fewer than _MIN_SAMPLE_SIZE
+        evaluated decisions exist — agents simply run without DNA context.
+
+        Owner of the data: thesis segment. This fetch is a read-only
+        consumer call; no domain logic lives here.
+        """
+        if not user_id:
+            return ""
+        try:
+            from src.thesis.behavioral_dna_service import BehavioralDNAService  # noqa: PLC0415
+
+            svc = BehavioralDNAService(self._session)
+            dna = await svc.analyze(user_id)
+            return dna.format_for_prompt()
+        except Exception as exc:
+            logger.warning(
+                "context_builder.behavioral_dna_failed",
+                user_id=user_id,
+                error=str(exc),
+            )
+            return ""
+
 
 # ---------------------------------------------------------------------------
 # Apply helpers — each applies one result slot into InvestorContext
@@ -557,6 +588,12 @@ def _apply_replay_pattern(ctx: InvestorContext, result: object) -> None:
     """Apply replay exit pattern block into InvestorContext (Wave 9)."""
     if isinstance(result, str) and result:
         ctx.replay_pattern_block = result
+
+
+def _apply_behavioral_dna(ctx: InvestorContext, result: object) -> None:
+    """Apply Behavioral DNA block into InvestorContext (Wave 3)."""
+    if isinstance(result, str) and result:
+        ctx.behavioral_dna_block = result
 
 
 # ---------------------------------------------------------------------------
@@ -613,6 +650,11 @@ def render_for_agent(ctx: InvestorContext) -> str:
     # Patterns — synthesized patterns + bias_warnings (Wave 8)
     if ctx.pattern_synthesis_block:
         parts.append(ctx.pattern_synthesis_block)
+
+    # Behavioral DNA — aggregated DecisionLog profile (Wave 3).
+    # Before exit-pattern warnings: long-window stats first, recent exits after.
+    if ctx.behavioral_dna_block:
+        parts.append(f"[Behavioral DNA]\n{ctx.behavioral_dna_block}")
 
     # Exit pattern warnings — from ReplayAgent post-trade feedback (Wave 9)
     # Positioned last: freshest behavioral signal, read immediately before verdict.
