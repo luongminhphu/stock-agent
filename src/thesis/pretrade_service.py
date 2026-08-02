@@ -79,6 +79,13 @@ class PreTradeService:
             past_lessons=past_lessons,
             session=self._session,
         )
+        # 6b. Quantitative sizing gate (Wave 2) — portfolio segment owns the
+        # math; thesis segment attaches the result to the advisory output.
+        # Best-effort: sizing failure never blocks the pre-trade answer.
+        sizing_block = await self._build_sizing_block(ticker=ticker, user_id=user_id, price=price)
+        if sizing_block:
+            result.sizing_note = sizing_block
+
         # 7. Persist the advice for later reconciliation (Wave 1).
         # Best-effort: persistence failure must never block the user-facing
         # answer. Uses flush (not commit) so the caller's transaction boundary
@@ -161,6 +168,31 @@ class PreTradeService:
             return f"[Brief {brief.phase} {brief.created_at.date()}] ...{snippet}..."
         except Exception as exc:
             logger.warning("pretrade_service.brief_context_error", ticker=ticker, error=str(exc))
+            return ""
+
+    async def _build_sizing_block(self, *, ticker: str, user_id: str, price: float) -> str:
+        """Quantitative position sizing from PositionSizingService. Never raises.
+
+        Overrides the LLM-written sizing_note with hard numbers computed by
+        Python (fixed-fractional risk model). The LLM narrative remains in
+        the persisted rationale; the user-facing sizing note is always the
+        quantitative one when available.
+        """
+        try:
+            from src.portfolio.position_sizing_service import PositionSizingService
+
+            svc = PositionSizingService(self._session)
+            result = await svc.size_for_entry(
+                user_id=user_id, ticker=ticker, entry_price=price
+            )
+            return result.to_note()
+        except Exception as exc:
+            logger.warning(
+                "pretrade_service.sizing_failed",
+                ticker=ticker,
+                user_id=user_id,
+                error=str(exc),
+            )
             return ""
 
     async def _persist_advice(

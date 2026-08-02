@@ -85,6 +85,17 @@ class Settings(BaseSettings):
     sell_tax_pct: float = 0.001    # 0.1% personal income tax on SELL proceeds
 
     # ------------------------------------------------------------------
+    # Position sizing (Wave 2) — fixed-fractional risk model.
+    # max_qty = (equity × risk_per_trade_pct) / (entry − stop), capped by
+    # max_position_pct of equity and available cash.
+    # ------------------------------------------------------------------
+
+    risk_per_trade_pct: float = 0.01    # risk 1% NAV per trade (fixed-fractional)
+    max_position_pct: float = 0.20      # one position ≤ 20% NAV (khớp risk_appetite text)
+    default_stop_loss_pct: float = 0.07 # fallback stop khi thesis không có stop_loss
+    portfolio_cash_vnd: float = 0.0     # tiền mặt hiện có; 0 = ước tính từ realized PnL
+
+    # ------------------------------------------------------------------
     # Investor Static Profile — Wave 1 Blueprint V2
     # Edit these in .env when your investment style changes.
     # Consumed by InvestorProfileService.StaticProfile.from_settings()
