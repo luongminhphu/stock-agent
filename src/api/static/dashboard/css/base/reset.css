@@ -6,7 +6,7 @@
 ──────────────────────────────────────────────────────────────────────────── */
 
 /* ── Google Fonts: Roboto ─────────────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap');
+/* Fonts loaded via <link> in index.html (Wave 5d) — không @import blocking ở đây */
 
 /* ── Font tokens (single source of truth cho font-family) ────────────────── */
 :root {

@@ -136,10 +136,12 @@ main {
   flex-direction: column;
 }
 
+/* Wave 5e: bỏ backdrop-filter khỏi panel body — blur trên toàn bộ panel gây
+   jank khi scroll trên Safari/mobile (compositing cost theo diện tích panel).
+   Visual gần như không đổi vì --surface đã alpha 0.82 trên nền tối.
+   Blur vẫn giữ ở overlay/modal/toast (vùng nhỏ, chi phí thấp). */
 .glass {
   background: var(--surface);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
 }
 
 .panel-header {
