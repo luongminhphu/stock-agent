@@ -117,12 +117,19 @@ _MARKET_CLOSE_UTC = datetime.time(hour=8, minute=0)   # 15:00 ICT
 
 
 def _in_market_hours(now_utc: datetime.datetime) -> bool:
-    """Return True if now_utc falls within Vietnamese market hours (Mon–Fri)."""
+    """Return True if now_utc falls within Vietnamese tradable market hours.
+
+    Wave 4: delegates to VNTradingCalendar so the scan/drift schedulers skip
+    the 11:30–13:00 lunch break and public holidays — previously they polled
+    every 5/15 min into a closed session.
+    """
+    from src.market.trading_calendar import VNTradingCalendar  # noqa: PLC0415
+
     if now_utc.weekday() >= 5:
         return False
-    now_naive = now_utc.utctimetuple()
-    now_time = datetime.time(hour=now_naive.tm_hour, minute=now_naive.tm_min)
-    return _MARKET_OPEN_UTC <= now_time <= _MARKET_CLOSE_UTC
+    # Calendar works in ICT; convert the UTC tick first.
+    now_ict = now_utc.astimezone(datetime.timezone(datetime.timedelta(hours=7)))
+    return VNTradingCalendar.is_trading_now(now_ict)
 
 
 # ---------------------------------------------------------------------------
