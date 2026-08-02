@@ -90,7 +90,11 @@ from discord.ext import tasks
 
 from src.bot.commands.decision_embeds import build_replay_embed
 from src.bot.commands.reminder_embeds import build_reminder_embed
-from src.bot.commands.thesis_embeds import build_drift_embed, build_maintenance_embed
+from src.bot.commands.thesis_embeds import (
+    build_drift_embed,
+    build_maintenance_embed,
+    build_stop_breach_embed,
+)
 from src.bot.commands.watchlist_embeds import build_scan_embed
 from src.platform.config import settings
 from src.platform.db import AsyncSessionLocal
@@ -559,7 +563,7 @@ class ThesisMaintenanceScheduler:
 
         # -- Step 2: AI review for stale theses --
         try:
-            from src.platform.bootstrap import get_quote_service, get_thesis_review_agent
+            from src.platform.bootstrap import get_ai_client, get_quote_service, get_thesis_review_agent
             from src.thesis.review_service import ReviewService
 
             async with AsyncSessionLocal() as session:
@@ -722,7 +726,35 @@ class ThesisDriftScheduler:
             except Exception as exc:
                 logger.warning("scheduler.drift.conviction_detect_failed", error=str(exc))
 
-            if not signals and not conviction_signals:
+            # Wave 6c: stop-breach auto-invalidation scan — cùng tick 15 phút.
+            # Rule trong thesis.StopBreachService; scheduler chỉ wire + notify.
+            breach_outcomes = []
+            try:
+                from src.ai.agents.invalidation_detector import ThesisInvalidationDetector
+                from src.thesis.stop_breach_service import StopBreachService
+
+                async with AsyncSessionLocal() as session:
+                    breach_svc = StopBreachService(
+                        session=session,
+                        quote_service=get_quote_service(),
+                        detector=ThesisInvalidationDetector(get_ai_client()),
+                        cooldown_hours=settings.auto_invalidate_cooldown_hours,
+                        min_confidence=settings.auto_invalidate_min_confidence,
+                        enabled=settings.auto_invalidate_enabled,
+                    )
+                    breach_result = await breach_svc.scan(str(user_id))
+                    await session.commit()
+                    breach_outcomes = breach_result.outcomes
+                    if breach_result.invalidated:
+                        logger.info(
+                            "scheduler.drift.stop_breach_auto_invalidated",
+                            count=len(breach_result.invalidated),
+                            tickers=[o.ticker for o in breach_result.invalidated],
+                        )
+            except Exception as exc:
+                logger.warning("scheduler.drift.stop_breach_failed", error=str(exc))
+
+            if not signals and not conviction_signals and not breach_outcomes:
                 await self._monitor.record_success(task_name)
                 return
 
@@ -763,6 +795,11 @@ class ThesisDriftScheduler:
                 now_utc=now_utc,
             )
             await channel.send(embed=embed)  # type: ignore[union-attr]
+
+            # Wave 6c: notify riêng cho stop-breach outcomes — đây là tín hiệu
+            # hành động (invalidate xảy ra hoặc cần xử lý), không gộp drift embed.
+            if breach_outcomes:
+                await channel.send(embed=build_stop_breach_embed(breach_outcomes, now_utc))  # type: ignore[union-attr]
             logger.info(
                 "scheduler.drift.notified",
                 price_signals=len(reviewed_signals),

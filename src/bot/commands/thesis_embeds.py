@@ -328,3 +328,51 @@ def build_drift_embed(
         )
     )
     return embed
+
+
+def build_stop_breach_embed(outcomes: list, now_utc: datetime.datetime) -> discord.Embed:
+    """Wave 6c: embed cho stop-breach auto-invalidation outcomes.
+
+    Mỗi outcome là StopBreachOutcome từ thesis.stop_breach_service.
+    Nhóm: invalidated (đã xử lý) trước, observed/ai_not_confirmed/ai_failed sau.
+    """
+    invalidated = [o for o in outcomes if o.action == "invalidated"]
+    others      = [o for o in outcomes if o.action != "invalidated"]
+
+    color = discord.Color.red() if invalidated else discord.Color.orange()
+    title = "🛑 Stop-breach auto-invalidation" if invalidated else "🛑 Stop-breach detected"
+    embed = discord.Embed(title=title, color=color, timestamp=now_utc)
+
+    if invalidated:
+        lines = []
+        for o in invalidated:
+            conf = f"{o.ai_confidence:.0%}" if o.ai_confidence is not None else "—"
+            lines.append(
+                f"**{o.ticker}** — giá {o.current_price:,.0f} xuyên stop {o.stop_loss:,.0f} "
+                f"({o.overshoot_pct:.1f}%)\n"
+                f"→ Thesis #{o.thesis_id} đã INVALIDATE (AI: {o.ai_verdict} {conf}, "
+                f"action: {o.ai_action or '—'})"
+            )
+        embed.add_field(name="Đã invalidate", value="\n\n".join(lines)[:1024], inline=False)
+
+    if others:
+        lines = []
+        label = {
+            "observed":          "quan sát (auto-invalidate tắt)",
+            "ai_not_confirmed":  "AI chưa xác nhận",
+            "ai_failed":         "AI confirm thất bại — cần xem tay",
+        }
+        for o in others:
+            extra = ""
+            if o.action == "ai_not_confirmed" and o.ai_verdict:
+                conf = f"{o.ai_confidence:.0%}" if o.ai_confidence is not None else "—"
+                extra = f" (AI: {o.ai_verdict} {conf})"
+            lines.append(
+                f"**{o.ticker}** — giá {o.current_price:,.0f} xuyên stop {o.stop_loss:,.0f} "
+                f"({o.overshoot_pct:.1f}%) → {label.get(o.action, o.action)}{extra} — "
+                f"thesis #{o.thesis_id} cần xem xét"
+            )
+        embed.add_field(name="Cần xem xét thủ công", value="\n".join(lines)[:1024], inline=False)
+
+    embed.set_footer(text="StopBreachService · rule + AI confirmation · 15-min drift tick")
+    return embed
