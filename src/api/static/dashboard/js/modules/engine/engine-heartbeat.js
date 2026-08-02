@@ -13,6 +13,7 @@
  */
 
 import { coreApiBase, getJson } from '../../api/client.js';
+import { RefreshScheduler } from '../../utils/refresh-scheduler.js';
 
 const POLL_INTERVAL_MS    = 60_000;  // 1 phút
 const STALE_THRESHOLD_MIN = 35;      // > 35 phút không có cycle → STALE
@@ -22,7 +23,8 @@ export async function initEngineHeartbeat() {
   if (!el) return;
 
   await _fetchAndRender(el);
-  setInterval(() => _fetchAndRender(el), POLL_INTERVAL_MS);
+  // Wave 5c: qua RefreshScheduler — pause khi tab hidden, resume + catch-up khi visible
+  RefreshScheduler.register('engine-heartbeat', () => _fetchAndRender(el), POLL_INTERVAL_MS);
 }
 
 async function _fetchAndRender(el) {

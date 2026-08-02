@@ -22,6 +22,7 @@ import {
   updateMarketMoodKpi,
   updateSignalsBadge,
 } from './today-loop-renderer.js';
+import { RefreshScheduler } from '../../utils/refresh-scheduler.js';
 
 const TODAY_LOOP_URL = '/api/v1/today-loop';
 const REFRESH_INTERVAL_MS = 10 * 60 * 1000;
@@ -76,6 +77,6 @@ export async function loadTodayLoop({ silent = false } = {}) {
 }
 
 export function startTodayLoopAutoRefresh() {
-  if (_refreshTimer) clearInterval(_refreshTimer);
-  _refreshTimer = setInterval(() => loadTodayLoop({ silent: true }), REFRESH_INTERVAL_MS);
+  // Wave 5c: RefreshScheduler thay setInterval — pause khi tab hidden
+  RefreshScheduler.register('today-loop', () => loadTodayLoop({ silent: true }), REFRESH_INTERVAL_MS);
 }

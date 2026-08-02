@@ -18,6 +18,7 @@
  */
 
 import { readmodelApiBase, getJson } from '../../api/client.js';
+import { RefreshScheduler } from '../../utils/refresh-scheduler.js';
 
 const _API_URL       = `${readmodelApiBase()}/dashboard/recommendations`;
 const _POLL_MS       = 5 * 60 * 1000;  // 5 phút
@@ -94,7 +95,8 @@ export async function loadRecommendations() {
 }
 
 export function startRecommendationsAutoRefresh() {
-  setInterval(loadRecommendations, _POLL_MS);
+  // Wave 5c: RefreshScheduler thay setInterval — pause khi tab hidden
+  RefreshScheduler.register('recommendations', loadRecommendations, _POLL_MS);
 }
 
 // ── Render ─────────────────────────────────────────────────────────────────────

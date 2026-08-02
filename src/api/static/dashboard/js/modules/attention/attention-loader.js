@@ -9,6 +9,7 @@
  */
 
 import { apiBase } from '../../api/client.js';
+import { RefreshScheduler } from '../../utils/refresh-scheduler.js';
 
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000; // 5 phút
 let _refreshTimer = null;
@@ -235,6 +236,6 @@ export async function loadAttentionPanel() {
  * Tự refresh mỗi 5 phút để attention items luôn current.
  */
 export function startAttentionAutoRefresh() {
-  if (_refreshTimer) clearInterval(_refreshTimer);
-  _refreshTimer = setInterval(loadAttentionPanel, REFRESH_INTERVAL_MS);
+  // Wave 5c: RefreshScheduler thay setInterval — pause khi tab hidden
+  RefreshScheduler.register('attention', loadAttentionPanel, REFRESH_INTERVAL_MS);
 }
