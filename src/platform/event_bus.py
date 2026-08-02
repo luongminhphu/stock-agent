@@ -187,7 +187,14 @@ class EventBus:
     async def _dispatch(self, event: DomainEvent) -> None:
         handlers = self._handlers.get(type(event), [])
         if not handlers:
-            logger.debug("No handlers for %s — event dropped.", type(event).__name__)
+            # WARNING (was DEBUG): a published event with zero subscribers is
+            # almost always a wiring bug — e.g. ProactiveWatchRequestedEvent
+            # fired 3x/day for months while ProactiveWatchListener was never
+            # instantiated, and nobody noticed because this was a debug log.
+            logger.warning(
+                "No handlers for %s — event dropped (check bootstrap wiring).",
+                type(event).__name__,
+            )
             return
 
         for handler in handlers:
