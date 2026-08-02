@@ -35,6 +35,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.platform.config import get_settings
 from src.platform.logging import get_logger
 from src.portfolio.models import DividendRecord, DividendType, Position, Trade, TradeType
 from src.portfolio.repository import PortfolioRepository
@@ -62,9 +63,19 @@ class InvalidOperationError(Exception):
 
 
 class PortfolioService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        trade_fee_pct: float | None = None,
+        sell_tax_pct: float | None = None,
+    ) -> None:
         self._session = session
         self._repo = PortfolioRepository(session)
+        # Wave 1: VN trading costs. Default from settings; injectable in tests.
+        _s = get_settings()
+        self._trade_fee_pct = trade_fee_pct if trade_fee_pct is not None else _s.trade_fee_pct
+        self._sell_tax_pct = sell_tax_pct if sell_tax_pct is not None else _s.sell_tax_pct
 
     # ------------------------------------------------------------------
     # Buy
@@ -108,20 +119,25 @@ class PortfolioService:
         ticker = ticker.upper()
         position = await self._repo.get_open_position(user_id, ticker)
 
+        # Wave 1: buy fee is folded into cost basis so that realized PnL
+        # (sell) and unrealized PnL (pnl_service) are net of acquisition
+        # cost. effective_price = price * (1 + fee_pct).
+        effective_price = price * (1 + self._trade_fee_pct)
+
         if position is None:
             position = Position(
                 user_id=user_id,
                 ticker=ticker,
                 qty=qty,
-                avg_cost=price,
+                avg_cost=effective_price,
                 sector=sector,
                 thesis_id=thesis_id,
                 note=note,
                 opened_at=datetime.now(UTC),
             )
         else:
-            # Recalculate VWAP avg_cost
-            total_cost = position.qty * position.avg_cost + qty * price
+            # Recalculate VWAP avg_cost (net of buy fees on both legs)
+            total_cost = position.qty * position.avg_cost + qty * effective_price
             position.qty += qty
             position.avg_cost = total_cost / position.qty
             if thesis_id is not None:
@@ -240,7 +256,11 @@ class PortfolioService:
                 f"Cannot sell {qty} of {ticker} — only {position.qty} held"
             )
 
+        # Wave 1: net proceeds — sell fee + 0.1% sell tax deducted from
+        # realized PnL so the number matches what the broker statement shows.
         realized_pnl = (price - position.avg_cost) * qty
+        sell_costs = price * qty * (self._trade_fee_pct + self._sell_tax_pct)
+        realized_pnl -= sell_costs
         position.realized_pnl += realized_pnl
         position.qty -= qty
 

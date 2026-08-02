@@ -31,6 +31,7 @@ from typing import Protocol, runtime_checkable
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.platform.config import get_settings
 from src.platform.event_bus import get_event_bus
 from src.platform.events import PositionRiskBreachedEvent
 from src.platform.logging import get_logger
@@ -171,7 +172,14 @@ class TradeSnapshot:
 class PnlService:
     """Read-side P&L calculations. No DB writes."""
 
-    def __init__(self, session: AsyncSession, quote_service: QuoteServiceProtocol) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        quote_service: QuoteServiceProtocol,
+        *,
+        trade_fee_pct: float | None = None,
+        sell_tax_pct: float | None = None,
+    ) -> None:
         if quote_service is None:
             raise ValueError(
                 "PnlService requires a QuoteServiceProtocol instance. "
@@ -185,6 +193,10 @@ class PnlService:
         self._session = session
         self._repo = PortfolioRepository(session)
         self._quote_service = quote_service
+        # Wave 1: VN trading costs for net-of-fee unrealized PnL.
+        _s = get_settings()
+        self._trade_fee_pct = trade_fee_pct if trade_fee_pct is not None else _s.trade_fee_pct
+        self._sell_tax_pct = sell_tax_pct if sell_tax_pct is not None else _s.sell_tax_pct
 
     async def get_portfolio_pnl(self, user_id: str) -> PortfolioPnl:
         positions = await self._repo.list_open_positions(user_id)
@@ -322,7 +334,15 @@ class PnlService:
                 )
             else:
                 raise  # re-raise với lỗi khác (network, DB, ...) để get_portfolio_pnl log đúng
+        # Wave 1: report PnL net of round-trip costs — avg_cost already
+        # includes the buy fee (folded in by PortfolioService.buy), so here
+        # we deduct the estimated exit costs (sell fee + sell tax) the
+        # investor would pay if closing at current_price right now.
         unrealized_pnl = (current_price - position.avg_cost) * position.qty
+        exit_costs = current_price * position.qty * (
+            self._trade_fee_pct + self._sell_tax_pct
+        )
+        unrealized_pnl -= exit_costs
         cost_basis = position.avg_cost * position.qty
         unrealized_pct = (unrealized_pnl / cost_basis * 100) if cost_basis else 0.0
 

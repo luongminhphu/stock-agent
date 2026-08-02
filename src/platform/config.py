@@ -73,6 +73,18 @@ class Settings(BaseSettings):
     alert_reactivate_cooldown_hours: int = 4
 
     # ------------------------------------------------------------------
+    # Trading costs (VN market) — Wave 1
+    # Applied to PnL so realized/unrealized numbers reflect what actually
+    # lands in the investor's account. AI agents learn from these numbers
+    # via outcome evaluation — gross-of-fee data systematically teaches
+    # the system an overly optimistic version of the past.
+    # Override in .env to match your broker (e.g. TRADE_FEE_PCT=0.0015).
+    # ------------------------------------------------------------------
+
+    trade_fee_pct: float = 0.0025  # 0.25% brokerage fee per side (buy AND sell)
+    sell_tax_pct: float = 0.001    # 0.1% personal income tax on SELL proceeds
+
+    # ------------------------------------------------------------------
     # Investor Static Profile — Wave 1 Blueprint V2
     # Edit these in .env when your investment style changes.
     # Consumed by InvestorProfileService.StaticProfile.from_settings()
