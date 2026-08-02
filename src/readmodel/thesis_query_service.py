@@ -238,6 +238,18 @@ class ThesisQueryService:
                 )
                 score_breakdown = None
 
+            # --- stop-loss breach: giá đã xuyên stop theo direction ---
+            # BULLISH: current <= stop_loss. BEARISH: current >= stop_loss.
+            # None khi thiếu stop_loss hoặc chưa có giá — dashboard chỉ hiện
+            # badge khi True, không hiện gì khi None/False.
+            stop_breached: bool | None = None
+            if t.stop_loss and current_price and current_price > 0:
+                _dir_upper = str(getattr(t.direction, "value", t.direction) or "").upper()
+                if _dir_upper == "BEARISH":
+                    stop_breached = bool(current_price >= t.stop_loss)
+                else:
+                    stop_breached = bool(current_price <= t.stop_loss)
+
             # --- direction: map StrEnum → plain string safely ---
             direction: str | None = None
             if t.direction is not None:
@@ -264,6 +276,7 @@ class ThesisQueryService:
                     "pnl_pct": pnl_pct,
                     "pnl_abs": pnl_abs,
                     "pnl_status": _pnl_status(pnl_pct),
+                    "stop_breached": stop_breached,
                     "quantity": quantity,
                     "has_position": bool(quantity and quantity > 0),
                     "created_at": t.created_at.isoformat() if t.created_at else None,

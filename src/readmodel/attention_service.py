@@ -283,6 +283,7 @@ class AttentionService:
                                 Thesis.ticker,
                                 Thesis.title,
                                 Thesis.stop_loss,
+                                Thesis.direction,
                                 Thesis.created_at,
                             )
                             .where(
@@ -295,6 +296,38 @@ class AttentionService:
                         current = price_map.get(row.ticker)
                         if current is None or row.stop_loss is None or row.stop_loss <= 0:
                             continue
+
+                        # Stop BREACH (Wave 6): giá đã xuyên stop theo direction —
+                        # thesis đã chết theo chính điều kiện của nó; ưu tiên cao
+                        # nhất, thay cho proximity warning (không còn "sắp chạm").
+                        _dir = str(getattr(row.direction, "value", row.direction) or "").upper()
+                        breached = (
+                            current >= row.stop_loss if _dir == "BEARISH"
+                            else current <= row.stop_loss
+                        )
+                        if breached:
+                            overshoot_pct = abs(current - row.stop_loss) / row.stop_loss * 100
+                            _add(AttentionItem(
+                                kind="stop_loss_breach",
+                                ticker=row.ticker,
+                                thesis_id=row.id,
+                                message=(
+                                    f"{row.ticker}: giá đã XUYÊN stop_loss "
+                                    f"{overshoot_pct:.1f}% "
+                                    f"(giá: {current:,.0f} | SL: {row.stop_loss:,.0f}) "
+                                    f"— thesis #{row.id} cần invalidate hoặc điều chỉnh"
+                                ),
+                                urgency=AttentionUrgency.CRITICAL,
+                                ts=now,
+                                metadata={
+                                    "current_price": current,
+                                    "stop_loss": row.stop_loss,
+                                    "overshoot_pct": round(overshoot_pct, 2),
+                                    "stop_breached": True,
+                                },
+                            ))
+                            continue
+
                         distance_pct = abs(current - row.stop_loss) / row.stop_loss * 100
                         if distance_pct <= _STOP_LOSS_PROXIMITY_PCT:
                             _add(AttentionItem(
