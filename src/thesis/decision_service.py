@@ -33,7 +33,7 @@ from src.thesis.repository import ThesisRepository
 
 logger = get_logger(__name__)
 
-_VALID_DECISION_TYPES = {"BUY", "SELL", "HOLD", "ADD", "REDUCE"}
+_VALID_DECISION_TYPES = {"BUY", "SELL", "HOLD", "ADD", "REDUCE", "PRETRADE_ADVICE"}
 _VALID_OUTCOME_VERDICTS = {"CORRECT", "INCORRECT", "MIXED"}
 _DEFAULT_REVIEW_HORIZON_DAYS = 30
 
@@ -137,6 +137,64 @@ class DecisionService:
             active_signal=source,
         )
 
+    async def log_pretrade_advice(
+        self,
+        *,
+        user_id: str,
+        ticker: str,
+        verdict: str,
+        confidence: float,
+        rationale: str,
+        price_at_decision: float | None = None,
+        review_horizon_days: int = _DEFAULT_REVIEW_HORIZON_DAYS,
+    ) -> DecisionLog:
+        """Persist an AI pre-trade advisory verdict as an auditable DecisionLog.
+
+        Owner: thesis segment (same aggregate as execution decisions).
+
+        Closes the last gap in the learning loop: until now /pretrade output
+        was fire-and-forget, so when AI said AVOID and the user bought anyway
+        (and lost), nothing recorded it. With this row, OutcomeFiller and
+        DecisionReplay evaluate the advice exactly like a real decision.
+
+        Links the active thesis for (user_id, ticker) when one exists;
+        thesis_id stays NULL otherwise (the most common /pretrade usage).
+        """
+        ticker = ticker.upper().strip()
+        thesis = await self._repo.get_active_by_user_and_ticker(
+            user_id=user_id, ticker=ticker
+        )
+
+        thesis_score = self._infer_current_thesis_score(thesis) if thesis else None
+        thesis_health_score = self._infer_current_health_score(thesis) if thesis else None
+
+        row = DecisionLog(
+            thesis_id=thesis.id if thesis else None,
+            user_id=user_id,
+            ticker=ticker,
+            decision_type="PRETRADE_ADVICE",
+            decision_at=datetime.now(UTC),
+            price_at_decision=price_at_decision,
+            thesis_score_at_decision=thesis_score,
+            thesis_health_score_at_decision=thesis_health_score,
+            active_signal=verdict,
+            rationale=rationale,
+            review_horizon_days=review_horizon_days,
+        )
+        self._session.add(row)
+        await self._session.flush()
+        await self._session.refresh(row)
+        logger.info(
+            "decision.pretrade_advice_logged",
+            decision_id=row.id,
+            user_id=user_id,
+            ticker=ticker,
+            verdict=verdict,
+            confidence=confidence,
+            thesis_id=thesis.id if thesis else None,
+        )
+        return row
+
     async def log_decision(
         self,
         *,
@@ -160,6 +218,11 @@ class DecisionService:
         decision_type = decision_type.upper().strip()
         if decision_type not in _VALID_DECISION_TYPES:
             raise ValueError(f"Unsupported decision_type={decision_type}")
+        if decision_type == "PRETRADE_ADVICE":
+            raise ValueError(
+                "PRETRADE_ADVICE must go through log_pretrade_advice() "
+                "(thesis may not exist yet at pre-trade time)"
+            )
 
         thesis = await self._repo.get_by_id(thesis_id)
         if thesis is None:
@@ -316,7 +379,9 @@ class DecisionService:
             )
 
         pnl_pct = (outcome_price - row.price_at_decision) / row.price_at_decision * 100
-        verdict = self._infer_outcome_verdict(row.decision_type, pnl_pct)
+        verdict = self._infer_outcome_verdict(
+            row.decision_type, pnl_pct, active_signal=row.active_signal
+        )
 
         row.outcome_price = outcome_price
         row.outcome_pnl_pct = pnl_pct
@@ -535,7 +600,13 @@ class DecisionService:
             return None
         return max(0, min(100, int(round(latest.conviction_score * 100))))
 
-    def _infer_outcome_verdict(self, decision_type: str, pnl_pct: float) -> str:
+    def _infer_outcome_verdict(
+        self,
+        decision_type: str,
+        pnl_pct: float,
+        *,
+        active_signal: str | None = None,
+    ) -> str:
         """Map price movement % to an outcome verdict given the decision type.
 
         Semantics per type:
@@ -554,6 +625,24 @@ class DecisionService:
         means the hold decision was wrong.
         """
         t = _VERDICT_THRESHOLD_PCT
+
+        # Wave 1: PRETRADE_ADVICE — judge the price move against the AI's
+        # directional view stored in active_signal ("BULLISH"/"BEARISH").
+        if decision_type == "PRETRADE_ADVICE":
+            signal = (active_signal or "").upper()
+            if signal == "BEARISH":
+                if pnl_pct <= -t:
+                    return "CORRECT"
+                if pnl_pct >= t:
+                    return "INCORRECT"
+                return "MIXED"
+            # "BULLISH" and neutral/unknown share the bullish-bias rule
+            # (neutral advice that precedes a crash was still bad advice).
+            if pnl_pct >= t:
+                return "CORRECT"
+            if pnl_pct <= -t:
+                return "INCORRECT"
+            return "MIXED"
 
         if decision_type in {"BUY", "ADD", "HOLD"}:
             if pnl_pct >= t:
