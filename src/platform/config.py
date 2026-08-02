@@ -95,6 +95,10 @@ class Settings(BaseSettings):
     default_stop_loss_pct: float = 0.07 # fallback stop khi thesis không có stop_loss
     portfolio_cash_vnd: float = 0.0     # tiền mặt hiện có; 0 = ước tính từ realized PnL
 
+    # Alert digest (Wave 4b) — cap signals per scan notification to avoid
+    # Discord noise when the whole watchlist moves at once (open/close bursts).
+    scan_alert_digest_top_n: int = 5    # top-N signals shown; rest collapsed to a summary line
+
     # ------------------------------------------------------------------
     # Investor Static Profile — Wave 1 Blueprint V2
     # Edit these in .env when your investment style changes.

@@ -407,7 +407,10 @@ class WatchlistScanScheduler:
                 )
                 return
 
-            embed = build_scan_embed(result, now_utc)
+            # Wave 4b: digest top-N signals (settings.scan_alert_digest_top_n)
+            embed = build_scan_embed(
+                result, now_utc, top_n=settings.scan_alert_digest_top_n
+            )
             await channel.send(embed=embed)  # type: ignore[union-attr]
             logger.info(
                 "scheduler.scan.notified",
