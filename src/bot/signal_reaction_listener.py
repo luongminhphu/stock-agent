@@ -175,6 +175,14 @@ class SignalReactionListener:
                 source_message_id=event.message_id,
             )
 
+        # Step 4: Wave 3 — publish IGNORE_ALERT UserActionEvent so the
+        # UserActionFeedbackListener can mute the alert + snooze the watchlist
+        # item. Before this patch the ⏭️ reaction was logged to memory and
+        # recorded on the alert (cooldown), but the IGNORE_ALERT branch of the
+        # feedback listener had zero producers — dead wiring.
+        if signal == "ignored" and ticker:
+            _emit_ignore_alert_action(user_id=user_id, ticker=ticker, alert_id=alert_id)
+
 
 def _extract_ticker(message: discord.Message) -> str | None:
     """Extract ticker symbol from a bot message.
@@ -321,5 +329,66 @@ async def _forward_execution_to_thesis(
             user_id=user_id,
             ticker=ticker,
             action=action,
+            error=str(exc),
+        )
+
+
+def _emit_ignore_alert_action(
+    user_id: str, ticker: str, alert_id: int | None
+) -> None:
+    """Publish UserActionEvent(IGNORE_ALERT). Fire-and-forget, never raises.
+
+    Wave 3: closes the dead IGNORE_ALERT wiring. The ⏭️ reaction on an
+    alert/scan message now triggers the full feedback path:
+      watchlist.mute_alert (when alert_id known) + watchlist.snooze
+      + memory.record_action for pattern learning.
+
+    Uses the same asyncio.create_task pattern as trade_usecase._emit_user_action.
+    """
+    import asyncio  # noqa: PLC0415
+
+    try:
+        from src.platform.event_bus import get_event_bus  # noqa: PLC0415
+        from src.platform.events import UserActionEvent    # noqa: PLC0415
+
+        event = UserActionEvent(
+            user_id=user_id,
+            action_type="IGNORE_ALERT",
+            ticker=ticker,
+            alert_id=alert_id,
+            note="discord reaction ⏭️",
+        )
+
+        async def _publish() -> None:
+            try:
+                await get_event_bus().publish(event)
+                logger.info(
+                    "signal_reaction_listener.ignore_alert_published",
+                    user_id=user_id,
+                    ticker=ticker,
+                    alert_id=alert_id,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "signal_reaction_listener.ignore_alert_publish_failed",
+                    user_id=user_id,
+                    ticker=ticker,
+                    error=str(exc),
+                )
+
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.create_task(_publish())
+        else:
+            logger.debug(
+                "signal_reaction_listener.ignore_alert_skipped_no_loop",
+                user_id=user_id,
+                ticker=ticker,
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "signal_reaction_listener.ignore_alert_emit_failed",
+            user_id=user_id,
+            ticker=ticker,
             error=str(exc),
         )
