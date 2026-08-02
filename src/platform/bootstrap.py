@@ -62,6 +62,7 @@ _global_risk_subscriber: object | None = None        # readmodel: GlobalRiskSubs
 _intelligence_snapshot_subscriber: object | None = None  # readmodel: IntelligenceSnapshotSubscriber (Gap 2)
 _portfolio_snapshot_listener: object | None = None
 _trend_snapshot_store: object | None = None  # Wave D.1: persisted TrendSnapshotStore   # portfolio: PortfolioSnapshotListener singleton
+_proactive_watch_listener: object | None = None  # watchlist: ProactiveWatchListener singleton
 
 _pnl_service_class: type | None = None
 
@@ -98,6 +99,7 @@ async def bootstrap() -> None:
     global _intelligence_snapshot_subscriber
     global _portfolio_snapshot_listener
     global _trend_snapshot_store
+    global _proactive_watch_listener
 
     if _quote_service is None:
         from src.market.adapters.factory import build_adapter
@@ -594,6 +596,21 @@ watchlist_query=WatchlistQueryService(session_factory=AsyncSessionLocal),
         _user_action_listener = UserActionFeedbackListener()
         _user_action_listener.register()  # type: ignore[union-attr]
         logger.info("platform.bootstrap.user_action_listener_ready")
+
+    # ── watchlist: ProactiveWatchListener — closes the proactive watch chain ─
+    # ProactiveWatchScheduler (bot) fires ProactiveWatchRequestedEvent 3x/day
+    # (09:15 / 11:15 / 14:15 ICT). Without this registration the event bus
+    # silently drops every request and no intraday proactive alert is ever sent.
+    if _proactive_watch_listener is None:
+        from src.watchlist.proactive_watch_listener import ProactiveWatchListener
+        from src.platform.db import AsyncSessionLocal
+
+        _proactive_watch_listener = ProactiveWatchListener(
+            quote_service=_quote_service,
+            session_factory=AsyncSessionLocal,
+        )
+        _proactive_watch_listener.register()
+        logger.info("platform.bootstrap.proactive_watch_listener_ready")
 
     # ── portfolio: PortfolioSnapshotListener — aggregates P&L on request ────
     if _portfolio_snapshot_listener is None:

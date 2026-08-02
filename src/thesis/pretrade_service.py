@@ -79,6 +79,12 @@ class PreTradeService:
             past_lessons=past_lessons,
             session=self._session,
         )
+        # 7. Persist the advice for later reconciliation (Wave 1).
+        # Best-effort: persistence failure must never block the user-facing
+        # answer. Uses flush (not commit) so the caller's transaction boundary
+        # is preserved.
+        await self._persist_advice(ticker=ticker, user_id=user_id, price=price, result=result)
+
         logger.info(
             "pretrade_service.done",
             ticker=ticker,
@@ -156,6 +162,45 @@ class PreTradeService:
         except Exception as exc:
             logger.warning("pretrade_service.brief_context_error", ticker=ticker, error=str(exc))
             return ""
+
+    async def _persist_advice(
+        self,
+        *,
+        ticker: str,
+        user_id: str,
+        price: float,
+        result: PreTradeCheckOutput,
+    ) -> None:
+        """Write the AI verdict to DecisionLog (PRETRADE_ADVICE). Never raises."""
+        try:
+            from src.thesis.decision_service import DecisionService
+
+            rationale_parts = [
+                f"verdict={result.verdict} action={result.intended_action} "
+                f"confidence={result.confidence:.2f} proceed={result.proceed_recommendation}",
+                result.summary,
+            ]
+            if result.blocking_issues:
+                rationale_parts.append(
+                    "blocking: " + "; ".join(result.blocking_issues[:3])
+                )
+
+            svc = DecisionService(self._session, quote_service=self._quote_service)
+            await svc.log_pretrade_advice(
+                user_id=user_id,
+                ticker=ticker,
+                verdict=str(result.verdict),
+                confidence=result.confidence,
+                rationale="\n".join(p for p in rationale_parts if p),
+                price_at_decision=price,
+            )
+        except Exception as exc:
+            logger.warning(
+                "pretrade_service.persist_advice_failed",
+                ticker=ticker,
+                user_id=user_id,
+                error=str(exc),
+            )
 
     async def _build_lesson_context(self, ticker: str, user_id: str) -> str:
         """Fetch ticker-specific past decision lessons for AI personalisation.

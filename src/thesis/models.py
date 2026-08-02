@@ -87,6 +87,9 @@ class DecisionType(enum.StrEnum):
     HOLD = "HOLD"
     ADD = "ADD"
     REDUCE = "REDUCE"
+    # Wave 1: AI pre-trade advisory verdict, persisted so the system can later
+    # answer "khi AI khuyên AVOID mà user vẫn vào lệnh thì kết quả thế nào?".
+    PRETRADE_ADVICE = "PRETRADE_ADVICE"
 
 
 class OutcomeVerdict(enum.StrEnum):
@@ -303,8 +306,11 @@ class DecisionLog(Base):
     __tablename__ = "decision_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    thesis_id: Mapped[int] = mapped_column(
-        ForeignKey("theses.id", ondelete="CASCADE"), index=True
+    # Nullable since Wave 1: PRETRADE_ADVICE rows may exist for a ticker the
+    # user has no thesis on yet (the most common /pretrade usage). Execution
+    # decisions (BUY/SELL/...) always carry a real thesis_id.
+    thesis_id: Mapped[int | None] = mapped_column(
+        ForeignKey("theses.id", ondelete="CASCADE"), index=True, nullable=True
     )
     user_id: Mapped[str] = mapped_column(String(64), index=True)
     ticker: Mapped[str] = mapped_column(String(20), index=True)

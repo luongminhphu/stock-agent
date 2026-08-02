@@ -107,7 +107,9 @@ class OutcomeFillerService:
                 log.outcome_price = close_price
                 log.outcome_pnl_pct = pnl_pct
                 log.outcome_evaluated_at = now
-                log.outcome_verdict = _classify_verdict(pnl_pct, log.decision_type)
+                log.outcome_verdict = _classify_verdict(
+                    pnl_pct, log.decision_type, active_signal=log.active_signal
+                )
                 filled += 1
 
                 logger.info(
@@ -132,7 +134,12 @@ class OutcomeFillerService:
         return filled
 
 
-def _classify_verdict(pnl_pct: float, decision_type: DecisionType) -> OutcomeVerdict:
+def _classify_verdict(
+    pnl_pct: float,
+    decision_type: DecisionType,
+    *,
+    active_signal: str | None = None,
+) -> OutcomeVerdict:
     """Classify outcome verdict based on pnl_pct and decision direction.
 
     BUY / ADD  — long side: positive pnl = CORRECT, negative = INCORRECT.
@@ -140,6 +147,13 @@ def _classify_verdict(pnl_pct: float, decision_type: DecisionType) -> OutcomeVer
     HOLD       — direction-neutral: use absolute magnitude.
     Within ±_VERDICT_THRESHOLD_PCT → MIXED.
     """
+    # Wave 1: PRETRADE_ADVICE rows store the AI's directional view in
+    # active_signal ("BULLISH" | "BEARISH" | anything else = neutral).
+    # The price movement after the advice is compared against that view, so
+    # the system can finally measure whether pre-trade advice was any good.
+    if decision_type == DecisionType.PRETRADE_ADVICE:
+        return _classify_pretrade_advice_verdict(pnl_pct, active_signal)
+
     buy_side = decision_type in (DecisionType.BUY, DecisionType.ADD)
     sell_side = decision_type in (DecisionType.SELL, DecisionType.REDUCE)
 
@@ -154,6 +168,38 @@ def _classify_verdict(pnl_pct: float, decision_type: DecisionType) -> OutcomeVer
         if pnl_pct >= _VERDICT_THRESHOLD_PCT:
             return OutcomeVerdict.INCORRECT
     else:  # HOLD
+        if pnl_pct >= _VERDICT_THRESHOLD_PCT:
+            return OutcomeVerdict.CORRECT
+        if pnl_pct <= -_VERDICT_THRESHOLD_PCT:
+            return OutcomeVerdict.INCORRECT
+
+    return OutcomeVerdict.MIXED
+
+
+def _classify_pretrade_advice_verdict(
+    pnl_pct: float, active_signal: str | None
+) -> OutcomeVerdict:
+    """Verdict for PRETRADE_ADVICE rows, judged against the AI's stored view.
+
+    active_signal carries the AI directional view at advice time:
+      "BULLISH" → price rising confirms the advice (same side as BUY).
+      "BEARISH" → price falling confirms the advice (same side as SELL).
+      anything else (incl. "NEUTRAL" / None) → treated like HOLD:
+        a big move either way means the neutral call missed it.
+    """
+    signal = (active_signal or "").upper()
+
+    if signal == "BULLISH":
+        if pnl_pct >= _VERDICT_THRESHOLD_PCT:
+            return OutcomeVerdict.CORRECT
+        if pnl_pct <= -_VERDICT_THRESHOLD_PCT:
+            return OutcomeVerdict.INCORRECT
+    elif signal == "BEARISH":
+        if pnl_pct <= -_VERDICT_THRESHOLD_PCT:
+            return OutcomeVerdict.CORRECT
+        if pnl_pct >= _VERDICT_THRESHOLD_PCT:
+            return OutcomeVerdict.INCORRECT
+    else:
         if pnl_pct >= _VERDICT_THRESHOLD_PCT:
             return OutcomeVerdict.CORRECT
         if pnl_pct <= -_VERDICT_THRESHOLD_PCT:
