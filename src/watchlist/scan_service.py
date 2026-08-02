@@ -73,6 +73,28 @@ _WEAK_SCORE_THRESHOLD = 50.0   # score < 50 → lower threshold to 2%
 _SENSITIVE_STRONG_MOVE_PCT = 2.0
 
 
+def _risk_appetite_threshold_multiplier(risk_appetite: str) -> float:
+    """Map free-text investor risk appetite to a signal-threshold multiplier.
+
+    Wave 4c. The settings field `investor_risk_appetite` is free text
+    (e.g. "medium — max drawdown 15%..."). Scan thresholds need a number.
+    Keyword matching on the leading appetite word:
+
+      conservative / thận trọng / low  → 0.7  (more signals, tighter watch)
+      aggressive / mạo hiểm / high     → 1.5  (fewer signals, only big moves)
+      anything else / empty            → 1.0  (unchanged default)
+
+    Applied to BOTH the default and sensitive strong-move thresholds so the
+    weak-thesis sensitivity ratio is preserved.
+    """
+    text = (risk_appetite or "").lower()
+    if any(k in text for k in ("conservative", "thận trọng", "than trong", "low risk")):
+        return 0.7
+    if any(k in text for k in ("aggressive", "mạo hiểm", "mao hiem", "high risk")):
+        return 1.5
+    return 1.0
+
+
 @dataclass
 class ScanSignal:
     """A signal produced by ScanService for a single ticker.
@@ -271,6 +293,12 @@ class ScanService:
         self._thesis_score_query = thesis_score_query
         # Default engine with HOSE/HNX-appropriate thresholds
         self._signal_engine = signal_engine or SignalEngine()
+        # Wave 4c: scale strong-move thresholds by investor risk appetite.
+        from src.platform.config import get_settings  # noqa: PLC0415
+
+        self._threshold_multiplier = _risk_appetite_threshold_multiplier(
+            get_settings().investor_risk_appetite
+        )
 
     async def scan_user(self, user_id: str) -> ScanResult:
         if self._quote_service is None:
@@ -346,11 +374,13 @@ class ScanService:
 
                 # Wave E: determine effective strong_move threshold for this ticker
                 thesis_score = thesis_score_map.get(ticker)
-                strong_move_threshold = (
+                base_threshold = (
                     _SENSITIVE_STRONG_MOVE_PCT
                     if thesis_score is not None and thesis_score < _WEAK_SCORE_THRESHOLD
                     else _DEFAULT_STRONG_MOVE_PCT
                 )
+                # Wave 4c: risk-appetite scaling (1.0 = unchanged)
+                strong_move_threshold = base_threshold * self._threshold_multiplier
 
                 if signal.has_alerts or abs(signal.change_pct) >= strong_move_threshold:
                     # Legacy classification field for adapters that still rely on
