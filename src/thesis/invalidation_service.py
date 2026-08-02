@@ -161,6 +161,8 @@ class InvalidationService:
         current_price: float | None = None,
         watchdog_verdict: str | None = None,
         watchdog_urgency: str | None = None,
+        session: object | None = None,
+        user_id: str | None = None,
     ) -> tuple[InvalidationCheckResult, InvalidationSignal | None]:
         """Rule check + optional AI confirmation layer.
 
@@ -209,6 +211,8 @@ class InvalidationService:
                 score=rule_result.score,
                 watchdog_verdict=watchdog_verdict,
                 watchdog_urgency=watchdog_urgency,
+                session=session,
+                user_id=user_id,
             )
             logger.info(
                 "invalidation.ai_confirmation_done",

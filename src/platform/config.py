@@ -67,6 +67,15 @@ class Settings(BaseSettings):
     thesis_drift_threshold_pct: float = 5.0   # Trigger review khi |drift| >= threshold
     thesis_drift_cooldown_hours: float = 4.0  # Không re-trigger trong N giờ sau lần review gần nhất
 
+    # Auto-invalidation on stop-loss breach (Wave 6c)
+    # Chạy trong drift scheduler tick (15 phút, giờ giao dịch): rule check
+    # (InvalidationService.check_with_price) → AI confirm (ThesisInvalidationDetector)
+    # → invalidate khi CONFIRMED với confidence đủ cao. Cứu HPG-style case:
+    # giá xuyên stop nhưng score vẫn Strong vì không luồng nào check breach.
+    auto_invalidate_enabled: bool = True        # False = chỉ log, không invalidate
+    auto_invalidate_min_confidence: float = 0.7 # CONFIRMED + confidence >= ngưỡng mới invalidate
+    auto_invalidate_cooldown_hours: float = 24.0 # 1 lần scan breach/thesis/ngày
+
     # Alert auto-reactivation cooldown
     # Alerts with auto_reactivate=True will be reset to ACTIVE after this many hours
     # following their triggered_at timestamp. Set to 0 to disable.
