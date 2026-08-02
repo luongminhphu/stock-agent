@@ -135,12 +135,22 @@ class TradingHoursGuard:
         )
 
     def is_market_open(self, now: datetime | None = None) -> bool:
-        """Return True if live fetch is appropriate right now."""
+        """Return True if live fetch is appropriate right now.
+
+        Wave 4: delegates session rules to VNTradingCalendar (lunch break
+        11:30–13:00 + public holidays), then applies the configured
+        open/close bounds. The calendar owns weekday/holiday/lunch logic;
+        this guard only narrows the window further when settings override
+        the default 09:00–15:00.
+        """
         if self._always:
             return True
-        t = (now or datetime.now(_ICT)).astimezone(_ICT)
-        if t.weekday() >= 5:     # 5=Saturday, 6=Sunday
+        from src.market.trading_calendar import VNTradingCalendar  # noqa: PLC0415
+
+        if not VNTradingCalendar.is_trading_now(now):
             return False
+        # Settings may narrow (never widen) the calendar window.
+        t = (now or datetime.now(_ICT)).astimezone(_ICT)
         minutes = t.hour * 60 + t.minute
         return self._open <= minutes <= self._close
 
