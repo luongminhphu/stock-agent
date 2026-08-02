@@ -33,6 +33,7 @@ async function fetchAttentionPanel(limit = 20) {
 const KIND_META = {
   triggered_alert:    { icon: '🔔', label: 'Alert kích hoạt' },
   stop_loss_proximity:{ icon: '🛑', label: 'Stop-loss gần' },
+  stop_loss_breach:   { icon: '🛑', label: 'Xuyên stop-loss' },
   overdue_review:     { icon: '📋', label: 'Cần review' },
   upcoming_catalyst:  { icon: '📅', label: 'Catalyst sắp tới' },
 };
@@ -57,6 +58,7 @@ function renderMeta(item) {
   const parts = [];
   if (item.metadata?.days_overdue)    parts.push(`quá hạn ${item.metadata.days_overdue} ngày`);
   if (item.metadata?.distance_pct != null) parts.push(`cách stop ${item.metadata.distance_pct.toFixed(1)}%`);
+  if (item.metadata?.overshoot_pct != null) parts.push(`vượt stop ${item.metadata.overshoot_pct.toFixed(1)}%`);
   if (item.metadata?.hours_until != null)  parts.push(`còn ${item.metadata.hours_until}h`);
   return parts.join(' · ');
 }

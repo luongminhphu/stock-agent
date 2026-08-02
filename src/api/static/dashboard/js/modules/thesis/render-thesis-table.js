@@ -301,14 +301,20 @@ export function renderThesesTable(list, callbacks = {}) {
       <tbody>
         ${list.map(t => {
           const tier = t.score_tier ?? '';
+          const breached = t.stop_breached === true;
           const rowClass = [
             t.id === state.selectedThesisId ? 'is-selected' : '',
+            breached          ? 'row--stop-breach' : '',
             tier === 'AT_RISK'  ? 'row--at-risk'  : '',
             tier === 'CRITICAL' ? 'row--critical' : '',
           ].filter(Boolean).join(' ');
 
+          // Wave 6: stop-breach override — score "Strong" vẫn phải nhường chỗ
+          // cho cảnh báo giá đã xuyên stop (thesis chết theo điều kiện của nó).
           let tierBadge = '';
-          if (tier === 'CRITICAL') {
+          if (breached) {
+            tierBadge = `<span class="badge badge--stop-breach" style="font-size:.72rem;" title="Giá hiện tại đã xuyên stop_loss — thesis cần invalidate hoặc điều chỉnh">🛑 STOP BREACH</span>`;
+          } else if (tier === 'CRITICAL') {
             tierBadge = `<span class="badge score-low" style="font-size:.72rem;">🔴 CRITICAL</span>`;
           } else if (tier === 'AT_RISK') {
             tierBadge = `<span class="badge score-mid" style="font-size:.72rem;">⚠ AT_RISK</span>`;
