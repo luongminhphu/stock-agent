@@ -694,7 +694,7 @@ class ThesisDriftScheduler:
             return
 
         try:
-            from src.platform.bootstrap import get_quote_service, get_thesis_review_agent
+            from src.platform.bootstrap import get_ai_client, get_quote_service, get_thesis_review_agent
             from src.thesis.conviction_drift_detector import ConvictionDriftDetector
             from src.thesis.drift_service import DriftService
             from src.thesis.review_service import ReviewService
