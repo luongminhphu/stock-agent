@@ -93,6 +93,17 @@ class PretradeCog(BaseCog):
         await interaction.followup.send(embed=embed, ephemeral=False)
 
 
+def _clamp(text: str, limit: int = 1000) -> str:
+    """Clamp embed field value dưới Discord 1024-char limit, cắt theo dòng cuối."""
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    last_nl = cut.rfind("\n")
+    if last_nl > limit - 200:
+        cut = cut[:last_nl]
+    return cut.rstrip() + "…"
+
+
 def _build_pretrade_embed(result) -> discord.Embed:
     """Build Discord embed from PreTradeCheckOutput (current schema)."""
     # intended_action: TradeDecision (BUY/SELL/REDUCE/HOLD)
@@ -104,7 +115,7 @@ def _build_pretrade_embed(result) -> discord.Embed:
 
     embed = discord.Embed(
         title=f"{meta['emoji']} Pre-trade {result.ticker}: {meta['label']} ({verdict_str})",
-        description=result.risk_summary,
+        description=_clamp(result.risk_summary, 4000),
         color=meta["color"],
     )
 
@@ -120,7 +131,7 @@ def _build_pretrade_embed(result) -> discord.Embed:
     if result.blocking_issues:
         embed.add_field(
             name="\u26a0\ufe0f V\u1ea5n \u0111\u1ec1 c\u1ea7n x\u1eed l\u00fd",
-            value="\n".join(f"\u2022 {c}" for c in result.blocking_issues),
+            value=_clamp("\n".join(f"\u2022 {c}" for c in result.blocking_issues)),
             inline=False,
         )
 
@@ -142,7 +153,7 @@ def _build_pretrade_embed(result) -> discord.Embed:
             )
         embed.add_field(
             name="\U0001f5fa\ufe0f L\u1ed9 tr\u00ecnh \u2192 GO",
-            value="\n".join(lines),
+            value=_clamp("\n".join(lines)),
             inline=False,
         )
 
@@ -150,7 +161,7 @@ def _build_pretrade_embed(result) -> discord.Embed:
     if result.thesis_alignment_note:
         embed.add_field(
             name="\U0001f4cb Thesis",
-            value=result.thesis_alignment_note[:1000],
+            value=_clamp(result.thesis_alignment_note),
             inline=False,
         )
 
@@ -158,7 +169,7 @@ def _build_pretrade_embed(result) -> discord.Embed:
     if result.sizing_note:
         embed.add_field(
             name="\U0001f4b0 Sizing",
-            value=result.sizing_note[:500],
+            value=_clamp(result.sizing_note, 500),
             inline=False,
         )
 
