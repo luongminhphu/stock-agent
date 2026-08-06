@@ -512,6 +512,23 @@ class PortfolioService:
             position.avg_cost = avg_cost
         await self._repo.save_position(position)
 
+        # Audit trail: PositionEdit lưu cả giá trị cũ lẫn mới để truy vết.
+        # GET /portfolio/trades merge records này vào timeline cùng trades.
+        from src.portfolio.models import PositionEdit
+
+        await self._repo.save_position_edit(
+            PositionEdit(
+                user_id=user_id,
+                ticker=ticker,
+                position_id=position.id,
+                old_qty=old_qty,
+                new_qty=position.qty,
+                old_avg_cost=old_avg,
+                new_avg_cost=position.avg_cost,
+                edited_at=datetime.now(UTC),
+            )
+        )
+
         logger.info(
             "portfolio.position_edited",
             user_id=user_id,

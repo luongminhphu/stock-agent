@@ -11,7 +11,7 @@ from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.portfolio.models import DividendRecord, Position, Trade, TradeType
+from src.portfolio.models import DividendRecord, Position, PositionEdit, Trade, TradeType
 
 
 class PortfolioRepository:
@@ -124,6 +124,29 @@ class PortfolioRepository:
     # ------------------------------------------------------------------
     # DividendRecord
     # ------------------------------------------------------------------
+
+    async def save_position_edit(self, edit: PositionEdit) -> None:
+        """Persist a PositionEdit audit record (flushes; caller commits)."""
+        self._session.add(edit)
+        await self._session.flush()
+
+    async def list_position_edits(
+        self,
+        user_id: str,
+        ticker: str | None = None,
+        limit: int = 100,
+    ) -> list[PositionEdit]:
+        """Return position edit audit records, most recent first."""
+        stmt = (
+            select(PositionEdit)
+            .where(PositionEdit.user_id == user_id)
+            .order_by(PositionEdit.edited_at.desc())
+            .limit(limit)
+        )
+        if ticker:
+            stmt = stmt.where(PositionEdit.ticker == ticker.upper())
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
 
     async def save_dividend(self, record: DividendRecord) -> None:
         self._session.add(record)

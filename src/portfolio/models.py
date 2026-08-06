@@ -387,3 +387,42 @@ class PortfolioContext:
             lines.append(f"  Realized P&L: {sign}{self.total_realized_pnl:,.0f}")
 
         return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# PositionEdit — audit trail cho sửa trực tiếp (nút ✎ trên dashboard)
+# ---------------------------------------------------------------------------
+
+
+class PositionEdit(Base):
+    """Audit record cho PortfolioService.edit_position() — sửa thẳng qty/avg_cost.
+
+    Khác Trade(ADJUST): ADJUST là sự kiện thị trường (cổ tức/split) với rule
+    cost-preserving; PositionEdit là thao tác tay của user, lưu cả giá trị
+    cũ lẫn mới để truy vết. GET /portfolio/trades merge 2 nguồn này thành
+    một timeline duy nhất.
+    """
+
+    __tablename__ = "position_edits"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    ticker: Mapped[str] = mapped_column(String(10), nullable=False)
+    position_id: Mapped[int] = mapped_column(ForeignKey("positions.id"), nullable=False)
+
+    old_qty: Mapped[float] = mapped_column(Float, nullable=False)
+    new_qty: Mapped[float] = mapped_column(Float, nullable=False)
+    old_avg_cost: Mapped[float] = mapped_column(Float, nullable=False)
+    new_avg_cost: Mapped[float] = mapped_column(Float, nullable=False)
+
+    edited_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+    position: Mapped["Position"] = relationship()
+
+    def __repr__(self) -> str:
+        return (
+            f"<PositionEdit {self.ticker} qty {self.old_qty}->{self.new_qty} "
+            f"avg {self.old_avg_cost}->{self.new_avg_cost}>"
+        )
