@@ -11,9 +11,9 @@
  *   watchlist:scan-complete — sau scan thành công → AttentionPanel refresh
  */
 
-import { el, showToast }         from '../../utils/dom.js';
-import { getJson, sendJson }     from '../../api/client.js';
-import { renderWatchlist }       from './watchlist-renderer.js';
+import { el, showToast }         from '../../utils/dom.js?v=1';
+import { getJson, sendJson }     from '../../api/client.js?v=1';
+import { renderWatchlist }       from './watchlist-renderer.js?v=1';
 
 const WATCHLIST_BASE = '/api/v1/watchlist';
 const MARKET_BASE    = '/api/v1/market';

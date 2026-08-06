@@ -4,8 +4,8 @@
 // Rule: đừng chứa business logic — fetch qua memory-api.js, render inline helpers
 // Segment: ai/memory (data) + dashboard (adapter)
 
-import { fetchMemorySnapshot, fetchBehavioralDNA, bindRefreshButton } from './memory-api.js';
-import { esc } from '../../utils/format.js';
+import { fetchMemorySnapshot, fetchBehavioralDNA, bindRefreshButton } from './memory-api.js?v=1';
+import { esc } from '../../utils/format.js?v=1';
 
 let _refreshWired = false;
 

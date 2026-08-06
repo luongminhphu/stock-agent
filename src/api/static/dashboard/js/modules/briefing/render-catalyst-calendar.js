@@ -13,8 +13,8 @@
  * Urgency dots: red ≤3 days, amber ≤7 days, blue otherwise
  */
 
-import { el } from '../../utils/dom.js';
-import { esc } from '../../utils/format.js';
+import { el } from '../../utils/dom.js?v=1';
+import { esc } from '../../utils/format.js?v=1';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 

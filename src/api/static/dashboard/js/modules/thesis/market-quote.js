@@ -10,8 +10,8 @@
  *   quoteStripSkeletonHTML()         → string
  */
 
-import { getJson } from '../../api/client.js';
-import { fmt, esc } from '../../utils/format.js';
+import { getJson } from '../../api/client.js?v=1';
+import { fmt, esc } from '../../utils/format.js?v=1';
 
 // ─── API ─────────────────────────────────────────────────────────────────────
 

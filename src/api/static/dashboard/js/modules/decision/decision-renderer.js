@@ -6,7 +6,7 @@
  *       nhận callbacks từ loader thông qua options object.
  */
 
-import { esc, fmt, fmtDate, badge } from '../../utils/format.js';
+import { esc, fmt, fmtDate, badge } from '../../utils/format.js?v=1';
 
 // ── Decision type display map ─────────────────────────────────────────────────
 const TYPE_LABEL = {

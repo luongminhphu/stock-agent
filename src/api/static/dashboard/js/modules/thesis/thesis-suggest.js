@@ -7,10 +7,10 @@
  * - bindSuggestEvents — đăng ký tất cả AI suggest buttons, gọi 1 lần từ app.js
  */
 
-import { el, showToast } from '../../utils/dom.js';
-import { esc, fmt } from '../../utils/format.js';
-import { thesisApiBase, sendJson } from '../../api/client.js';
-import { makeAssumptionRow, makeCatalystRow, clearFormRows, seedBlankFormRows } from './thesis-form.js';
+import { el, showToast } from '../../utils/dom.js?v=1';
+import { esc, fmt } from '../../utils/format.js?v=1';
+import { thesisApiBase, sendJson } from '../../api/client.js?v=1';
+import { makeAssumptionRow, makeCatalystRow, clearFormRows, seedBlankFormRows } from './thesis-form.js?v=1';
 
 // ---------------------------------------------------------------------------
 // Render helpers

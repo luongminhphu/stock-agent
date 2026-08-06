@@ -3,8 +3,8 @@
  * Owner: modules/thesis (market segment)
  */
 
-import { getJson } from '../../api/client.js';
-import { fmt }     from '../../utils/format.js';
+import { getJson } from '../../api/client.js?v=1';
+import { fmt }     from '../../utils/format.js?v=1';
 
 // ─── Instance registry ────────────────────────────────────────────────────────────────────────
 const _chartInstances = new Map();

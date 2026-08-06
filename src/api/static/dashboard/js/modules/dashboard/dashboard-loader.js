@@ -3,26 +3,26 @@
  * Owner: modules/dashboard
  */
 
-import { el }               from '../../utils/dom.js';
-import { apiBase, briefingApiBase, getJson } from '../../api/client.js';
-import { state }            from '../../state/dashboard-state.js';
-import { renderThesesTable, thesisTableSkeletonHTML, emptyDetailHTML } from '../thesis/render-thesis-table.js';
-import { loadThesisDetail }    from '../thesis/thesis-service.js';
-import { openEditThesisModal } from '../thesis/thesis-form.js';
+import { el }               from '../../utils/dom.js?v=1';
+import { apiBase, briefingApiBase, getJson } from '../../api/client.js?v=1';
+import { state }            from '../../state/dashboard-state.js?v=1';
+import { renderThesesTable, thesisTableSkeletonHTML, emptyDetailHTML } from '../thesis/render-thesis-table.js?v=1';
+import { loadThesisDetail }    from '../thesis/thesis-service.js?v=1';
+import { openEditThesisModal } from '../thesis/thesis-form.js?v=1';
 import {
   renderVerdicts,
   renderAccuracy,
   renderWorstCalls,
   renderBestCalls,
   initCallsTabs,
-} from '../backtesting/render-backtesting.js';
-import { renderCatalystCalendar, renderSnapshots } from '../briefing/render-brief.js';
-import { renderCatalystUrgentStrip }              from '../market/catalyst-urgent.js';
-import { loadIntelligencePanel } from '../intelligence/intelligence-panel.js';
-import { loadLeaderboard } from '../leaderboard/leaderboard-service.js';
-import { loadRRG }          from '../leaderboard/rrg-chart.js';
-import { renderHealthHeatmap, refreshHeatmapCell } from './render-heatmap.js';
-import { countUp, flashValue } from '../../utils/animate.js';
+} from '../backtesting/render-backtesting.js?v=1';
+import { renderCatalystCalendar, renderSnapshots } from '../briefing/render-brief.js?v=1';
+import { renderCatalystUrgentStrip }              from '../market/catalyst-urgent.js?v=1';
+import { loadIntelligencePanel } from '../intelligence/intelligence-panel.js?v=1';
+import { loadLeaderboard } from '../leaderboard/leaderboard-service.js?v=1';
+import { loadRRG }          from '../leaderboard/rrg-chart.js?v=1';
+import { renderHealthHeatmap, refreshHeatmapCell } from './render-heatmap.js?v=1';
+import { countUp, flashValue } from '../../utils/animate.js?v=1';
 
 function wireDeleteThesis(id) {
   const msg = el('deleteModalMsg');

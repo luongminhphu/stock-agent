@@ -12,7 +12,7 @@
  *   5. Next watch conditions
  */
 
-import { getJson } from '../../api/client.js';
+import { getJson } from '../../api/client.js?v=1';
 
 const _apiBase = () => {
   const m = window.location.pathname.match(/^(\/[^/]+)?\/dashboard/);

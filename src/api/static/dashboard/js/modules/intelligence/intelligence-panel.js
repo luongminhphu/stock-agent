@@ -9,9 +9,9 @@
  * Handle 204 gracefully: hide panel, không báo lỗi.
  */
 
-import { el, showToast } from '../../utils/dom.js';
-import { esc }           from '../../utils/format.js';
-import { getJson, sendJson, coreApiBase } from '../../api/client.js';
+import { el, showToast } from '../../utils/dom.js?v=1';
+import { esc }           from '../../utils/format.js?v=1';
+import { getJson, sendJson, coreApiBase } from '../../api/client.js?v=1';
 
 const PANEL_ID = 'intelligencePanel';
 

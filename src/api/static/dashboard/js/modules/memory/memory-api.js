@@ -2,8 +2,8 @@
 // Owner: api segment (adapter only)
 // Responsibility: fetch /api/v1/memory/* — no render logic here
 
-import { memoryApiBase, getJson, sendJson } from '../../api/client.js';
-import { showToast } from '../../utils/dom.js';
+import { memoryApiBase, getJson, sendJson } from '../../api/client.js?v=1';
+import { showToast } from '../../utils/dom.js?v=1';
 
 /**
  * Fetch latest MemorySnapshot + MemoryContext.

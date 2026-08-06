@@ -4,7 +4,7 @@
  * Responsibility: Chart.js lazy loader, canvas helpers, dual-axis chart builder.
  */
 
-import { TIER, tierColor } from './constants.js';
+import { TIER, tierColor } from './constants.js?v=1';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Lazy CDN loader

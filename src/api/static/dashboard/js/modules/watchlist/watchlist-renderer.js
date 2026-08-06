@@ -6,7 +6,7 @@
  *       nhận callbacks từ loader thông qua options object.
  */
 
-import { esc, fmt, fmtDate } from '../../utils/format.js';
+import { esc, fmt, fmtDate } from '../../utils/format.js?v=1';
 
 /**
  * Human-readable labels cho signal_type từ SignalEngine.

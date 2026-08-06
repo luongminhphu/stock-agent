@@ -7,8 +7,8 @@
  *   loadLeaderboard()  — fetch + render, idempotent
  */
 
-import { getJson } from '../../api/client.js';
-import { esc } from '../../utils/format.js';
+import { getJson } from '../../api/client.js?v=1';
+import { esc } from '../../utils/format.js?v=1';
 
 const SCORE_CLS = score =>
   score >= 75 ? 'lb-score-high'

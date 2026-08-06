@@ -9,8 +9,8 @@
  *   loadReviewTimeline(thesisId)       — fetch + render vào slot
  */
 
-import { esc, fmtDate } from '../../utils/format.js';
-import { readmodelApiBase, getJson } from '../../api/client.js';
+import { esc, fmtDate } from '../../utils/format.js?v=1';
+import { readmodelApiBase, getJson } from '../../api/client.js?v=1';
 
 // ---------------------------------------------------------------------------
 // Verdict helpers

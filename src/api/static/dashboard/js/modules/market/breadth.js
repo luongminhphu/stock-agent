@@ -11,7 +11,7 @@
  *   - All 3 exchanges return empty: container hidden.
  */
 
-import { marketApiBase, getJson } from '../../api/client.js';
+import { marketApiBase, getJson } from '../../api/client.js?v=1';
 
 const ELEMENT_ID  = 'marketBreadthBar';
 const EXCHANGES   = ['HOSE', 'HNX', 'UPCOM'];

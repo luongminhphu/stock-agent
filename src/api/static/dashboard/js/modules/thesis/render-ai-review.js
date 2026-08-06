@@ -1,5 +1,5 @@
-import { esc } from '../../utils/format.js';
-import { state } from '../../state/dashboard-state.js';
+import { esc } from '../../utils/format.js?v=1';
+import { state } from '../../state/dashboard-state.js?v=1';
 
 /**
  * Render vùng chứa AI Review (nút Verify + loading + result placeholder).

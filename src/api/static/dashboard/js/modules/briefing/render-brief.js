@@ -5,9 +5,9 @@
  *                 Brief Feedback KPI strip.
  */
 
-import { el } from '../../utils/dom.js';
-import { esc, fmtDate } from '../../utils/format.js';
-import { renderCatalystCalendar } from './render-catalyst-calendar.js';
+import { el } from '../../utils/dom.js?v=1';
+import { esc, fmtDate } from '../../utils/format.js?v=1';
+import { renderCatalystCalendar } from './render-catalyst-calendar.js?v=1';
 
 // Re-export renderCatalystCalendar so existing callers using render-brief.js
 // as entry point keep working without import changes.

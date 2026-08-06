@@ -6,8 +6,8 @@
 // Events dispatched:
 //   briefing:generated  — after generate succeeds → AttentionPanel refresh
 
-import { briefingApiBase, sendJson } from '../../api/client.js';
-import { showToast } from '../../utils/dom.js';
+import { briefingApiBase, sendJson } from '../../api/client.js?v=1';
+import { showToast } from '../../utils/dom.js?v=1';
 
 /**
  * Delegates click trên [data-generate-brief="morning|eod"]

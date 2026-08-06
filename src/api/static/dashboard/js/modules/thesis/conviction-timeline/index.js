@@ -7,7 +7,7 @@
  *
  *   import { loadConvictionTimeline, convictionTimelineSlotHTML,
  *            loadSparkChart, destroySpark, renderSparkChart }
- *     from './conviction-timeline/index.js';
+ *     from './conviction-timeline/index.js?v=1';
  *
  * Backward-compatible: thay thế hoàn toàn cho import từ ./render-conviction-timeline.js
  */
@@ -17,13 +17,13 @@ export {
   renderConvictionTimeline,
   loadConvictionTimeline,
   parsePoints,
-} from './renderer.js';
+} from './renderer.js?v=1';
 
 export {
   destroySpark,
   renderSparkChart,
   loadSparkChart,
-} from './spark.js';
+} from './spark.js?v=1';
 
 export {
   TIER,
@@ -32,7 +32,7 @@ export {
   VERDICT_CLS,
   EVENT_KIND_ICON,
   tierColor,
-} from './constants.js';
+} from './constants.js?v=1';
 
 export {
   ensureChartJs,
@@ -41,4 +41,4 @@ export {
   destroyCharts,
   hexToRgba,
   cssVar,
-} from './chart-utils.js';
+} from './chart-utils.js?v=1';

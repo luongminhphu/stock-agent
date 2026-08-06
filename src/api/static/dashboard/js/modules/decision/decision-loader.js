@@ -27,12 +27,12 @@
  *     — thesisId is null when no thesis is linked; listeners should guard.
  */
 
-import { getJson, sendJson, thesisApiBase } from '../../api/client.js';
+import { getJson, sendJson, thesisApiBase } from '../../api/client.js?v=1';
 import {
   renderDecisionsTable,
   renderLessonsCards,
   renderReplayPanel,
-} from './decision-renderer.js';
+} from './decision-renderer.js?v=1';
 
 let lessonsLoaded = false;
 

@@ -12,8 +12,8 @@
  * Poll interval: 60s. Graceful degradation: badge ẩn nếu element không tồn tại.
  */
 
-import { coreApiBase, getJson } from '../../api/client.js';
-import { RefreshScheduler } from '../../utils/refresh-scheduler.js';
+import { coreApiBase, getJson } from '../../api/client.js?v=1';
+import { RefreshScheduler } from '../../utils/refresh-scheduler.js?v=1';
 
 const POLL_INTERVAL_MS    = 60_000;  // 1 phút
 const STALE_THRESHOLD_MIN = 35;      // > 35 phút không có cycle → STALE

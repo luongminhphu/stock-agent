@@ -17,8 +17,8 @@
  *   - Stale badge: #recStaleBadge
  */
 
-import { readmodelApiBase, getJson } from '../../api/client.js';
-import { RefreshScheduler } from '../../utils/refresh-scheduler.js';
+import { readmodelApiBase, getJson } from '../../api/client.js?v=1';
+import { RefreshScheduler } from '../../utils/refresh-scheduler.js?v=1';
 
 const _API_URL       = `${readmodelApiBase()}/dashboard/recommendations`;
 const _POLL_MS       = 5 * 60 * 1000;  // 5 phút

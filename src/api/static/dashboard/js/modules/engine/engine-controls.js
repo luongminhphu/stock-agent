@@ -10,8 +10,8 @@
  * Dùng CustomEvent 'engine:run-complete' → app.js lắng nghe và gọi loadDashboard.
  */
 
-import { coreApiBase, sendJson } from '../../api/client.js';
-import { showToast }             from '../../utils/dom.js';
+import { coreApiBase, sendJson } from '../../api/client.js?v=1';
+import { showToast }             from '../../utils/dom.js?v=1';
 
 export function initEngineControls() {
   const btn = document.getElementById('engineRunBtn');

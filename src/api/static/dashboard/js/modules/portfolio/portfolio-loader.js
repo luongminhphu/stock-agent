@@ -11,13 +11,13 @@
  *     trước khi injectTradeButtons() chạy bên trong renderer
  */
 
-import { el }                          from '../../utils/dom.js';
-import { readmodelApiBase, getJson }   from '../../api/client.js';
-import { renderPortfolio }             from './portfolio-renderer.js';
+import { el }                          from '../../utils/dom.js?v=1';
+import { readmodelApiBase, getJson }   from '../../api/client.js?v=1';
+import { renderPortfolio }             from './portfolio-renderer.js?v=1';
 import { init as qtInit,
-         injectTradeButtons }          from './quick-trade.js';
+         injectTradeButtons }          from './quick-trade.js?v=1';
 import { init as adjInit,
-         injectAdjustButtons }         from './adjust-position.js';
+         injectAdjustButtons }         from './adjust-position.js?v=1';
 
 // Wave 4: Skeleton screen — hiển thị ngay trước khi fetch complete
 function portfolioSkeletonHTML() {

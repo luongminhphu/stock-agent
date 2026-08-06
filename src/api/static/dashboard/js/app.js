@@ -62,27 +62,27 @@ let _lazyTodayLoop       = null;
 // _lazyRecommendations removed — recommendations panel consolidated into #intelligencePanel
 
 async function _getDecisionLoader() {
-  if (!_lazyDecisionLoader) _lazyDecisionLoader = import('./modules/decision/decision-loader.js');
+  if (!_lazyDecisionLoader) _lazyDecisionLoader = import('./modules/decision/decision-loader.js?v=1');
   return _lazyDecisionLoader;
 }
 async function _getLeaderboard() {
-  if (!_lazyLeaderboard) _lazyLeaderboard = import('./modules/leaderboard/leaderboard-service.js');
+  if (!_lazyLeaderboard) _lazyLeaderboard = import('./modules/leaderboard/leaderboard-service.js?v=1');
   return _lazyLeaderboard;
 }
 async function _getLeaderboardSort() {
-  if (!_lazyLeaderboardSort) _lazyLeaderboardSort = import('./modules/leaderboard/leaderboard-sort.js');
+  if (!_lazyLeaderboardSort) _lazyLeaderboardSort = import('./modules/leaderboard/leaderboard-sort.js?v=1');
   return _lazyLeaderboardSort;
 }
 async function _getDecisionTabs() {
-  if (!_lazyDecisionTabs) _lazyDecisionTabs = import('./modules/decision/decision-tabs.js');
+  if (!_lazyDecisionTabs) _lazyDecisionTabs = import('./modules/decision/decision-tabs.js?v=1');
   return _lazyDecisionTabs;
 }
 async function _getMemory() {
-  if (!_lazyMemory) _lazyMemory = import('./modules/memory/memory-loader.js');
+  if (!_lazyMemory) _lazyMemory = import('./modules/memory/memory-loader.js?v=1');
   return _lazyMemory;
 }
 async function _getTodayLoop() {
-  if (!_lazyTodayLoop) _lazyTodayLoop = import('./modules/today-loop/today-loop-loader.js');
+  if (!_lazyTodayLoop) _lazyTodayLoop = import('./modules/today-loop/today-loop-loader.js?v=1');
   return _lazyTodayLoop;
 }
 // _getRecommendations() removed — use loadIntelligencePanel() instead
@@ -289,12 +289,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── Form row add buttons ─────────────────────────────────────────────────────
   el('addFormAssumptionBtn')?.addEventListener('click', () => {
-    import('./modules/thesis/thesis-form.js').then(({ makeAssumptionRow }) => {
+    import('./modules/thesis/thesis-form.js?v=1').then(({ makeAssumptionRow }) => {
       el('thesisFormAssumptionRows')?.appendChild(makeAssumptionRow());
     });
   });
   el('addFormCatalystBtn')?.addEventListener('click', () => {
-    import('./modules/thesis/thesis-form.js').then(({ makeCatalystRow }) => {
+    import('./modules/thesis/thesis-form.js?v=1').then(({ makeCatalystRow }) => {
       el('thesisFormCatalystRows')?.appendChild(makeCatalystRow());
     });
   });
@@ -313,7 +313,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       await state.deleteCallback();
     } catch (err) {
-      const { showToast } = await import('./utils/dom.js');
+      const { showToast } = await import('./utils/dom.js?v=1');
       showToast(`Xóa thất bại: ${err.message}`, 'error');
     } finally {
       btn.disabled = false;
@@ -323,7 +323,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   el('aiApplyConfirmBtn')?.addEventListener('click', async () => {
-    const { thesisApiBase, sendJson } = await import('./api/client.js');
+    const { thesisApiBase, sendJson } = await import('./api/client.js?v=1');
     if (!state.aiApplyThesisId || !state.aiSelectedRecIds.length) return;
     const btn = el('aiApplyConfirmBtn');
     btn.disabled = true;
@@ -335,11 +335,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         { recommendation_ids: state.aiSelectedRecIds },
       );
       closeModal('aiApplyModal');
-      const { showToast } = await import('./utils/dom.js');
+      const { showToast } = await import('./utils/dom.js?v=1');
       showToast('✅ Đã áp dụng gợi ý AI');
       await loadThesisDetail(state.aiApplyThesisId);
     } catch (err) {
-      const { showToast } = await import('./utils/dom.js');
+      const { showToast } = await import('./utils/dom.js?v=1');
       showToast(`Áp dụng thất bại: ${err.message}`, 'error');
     } finally {
       btn.disabled = false;

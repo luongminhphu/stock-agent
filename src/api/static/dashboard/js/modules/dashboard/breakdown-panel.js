@@ -22,7 +22,7 @@
  *   Cache cleared on panel close.
  */
 
-import { thesisApiBase } from '../../api/client.js';
+import { thesisApiBase } from '../../api/client.js?v=1';
 
 const PANEL_ID = 'bd-panel';
 

@@ -23,8 +23,8 @@
  *                                       called after breakdown:review-done event
  */
 
-import { thesisApiBase } from '../../api/client.js';
-import { openBreakdownPanel } from './breakdown-panel.js';
+import { thesisApiBase } from '../../api/client.js?v=1';
+import { openBreakdownPanel } from './breakdown-panel.js?v=1';
 
 const DIMENSIONS = [
   { key: 'assumption_health',  max: 40, label: 'Assumptions' },

@@ -24,7 +24,7 @@
  *   - Khi query rỗng: restore toàn bộ (remove hidden, remove marks)
  */
 
-import { debounce } from '../../utils/debounce.js';
+import { debounce } from '../../utils/debounce.js?v=1';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 

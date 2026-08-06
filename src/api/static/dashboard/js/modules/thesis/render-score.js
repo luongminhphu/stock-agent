@@ -1,4 +1,4 @@
-import { scoreClass, fmtScore, pct } from '../../utils/format.js';
+import { scoreClass, fmtScore, pct } from '../../utils/format.js?v=1';
 
 /**
  * Render score breakdown bar chart cho thesis detail.

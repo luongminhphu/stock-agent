@@ -1,11 +1,11 @@
-import { esc, fmtDate, fmtScore, badge, fmt, scoreClass } from '../../utils/format.js';
-import { renderScoreBreakdown } from './render-score.js';
-import { renderReviewRecommendSection } from './render-ai-review.js';
-import { convictionTimelineSlotHTML, loadSparkChart, destroySpark } from './conviction-timeline/index.js';
-import { reviewTimelineSlotHTML } from './review-timeline.js';
-import { quoteStripSkeletonHTML } from './market-quote.js';
-import { priceMiniChartSlotHTML } from './render-price-chart.js';
-import { state } from '../../state/dashboard-state.js';
+import { esc, fmtDate, fmtScore, badge, fmt, scoreClass } from '../../utils/format.js?v=1';
+import { renderScoreBreakdown } from './render-score.js?v=1';
+import { renderReviewRecommendSection } from './render-ai-review.js?v=1';
+import { convictionTimelineSlotHTML, loadSparkChart, destroySpark } from './conviction-timeline/index.js?v=1';
+import { reviewTimelineSlotHTML } from './review-timeline.js?v=1';
+import { quoteStripSkeletonHTML } from './market-quote.js?v=1';
+import { priceMiniChartSlotHTML } from './render-price-chart.js?v=1';
+import { state } from '../../state/dashboard-state.js?v=1';
 
 export function emptyDetailHTML() {
   return `<div class="empty-detail"><div class="empty-detail-copy"><h3>Chọn một thesis</h3><p>Xem assumptions, catalysts và review history.</p></div></div>`;

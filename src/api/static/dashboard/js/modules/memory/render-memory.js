@@ -3,8 +3,8 @@
 // Responsibility: render Memory panel UI into #memory-panel
 // Rule: không fetch, không chứa business logic — chỉ render HTML
 
-import { fetchMemorySnapshot } from './memory-api.js';
-import { bindRefreshButton } from './memory-api.js';
+import { fetchMemorySnapshot } from './memory-api.js?v=1';
+import { bindRefreshButton } from './memory-api.js?v=1';
 
 const PANEL_ID = 'memory-panel';
 

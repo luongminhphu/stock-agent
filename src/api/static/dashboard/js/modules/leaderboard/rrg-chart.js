@@ -32,8 +32,8 @@
  *  - Legend listeners are delegated to the legend container, not per-item.
  */
 
-import { getJson, readmodelApiBase } from '../../api/client.js';
-import { loadThesisDetail }          from '../thesis/thesis-service.js';
+import { getJson, readmodelApiBase } from '../../api/client.js?v=1';
+import { loadThesisDetail }          from '../thesis/thesis-service.js?v=1';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Config

@@ -13,8 +13,8 @@
  *   loadLeaderboard(sortBy?)  — fetch + render, wires sort buttons on first call
  */
 
-import { getJson } from '../../api/client.js';
-import { loadThesisDetail } from '../thesis/thesis-service.js';
+import { getJson } from '../../api/client.js?v=1';
+import { loadThesisDetail } from '../thesis/thesis-service.js?v=1';
 
 const LIMIT        = 5;
 let   _wired       = false;

@@ -6,7 +6,7 @@
  *   2. Load brief feedback summary → KPI card #briefActedRate.
  */
 
-import { briefingApiBase } from '../../api/client.js';
+import { briefingApiBase } from '../../api/client.js?v=1';
 
 // Session-scoped availability flag.
 // null  = not probed yet

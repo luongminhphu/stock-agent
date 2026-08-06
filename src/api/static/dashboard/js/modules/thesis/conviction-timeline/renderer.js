@@ -10,12 +10,12 @@
  *   loadConvictionTimeline(thesisId)
  */
 
-import { esc, fmtDate } from '../../../utils/format.js';
-import { readmodelApiBase, getJson } from '../../../api/client.js';
+import { esc, fmtDate } from '../../../utils/format.js?v=1';
+import { readmodelApiBase, getJson } from '../../../api/client.js?v=1';
 import {
   TIER, TREND_META, BD_META, VERDICT_CLS, EVENT_KIND_ICON, tierColor,
-} from './constants.js';
-import { ensureChartJs, destroyCharts, buildDualChart, hexToRgba } from './chart-utils.js';
+} from './constants.js?v=1';
+import { ensureChartJs, destroyCharts, buildDualChart, hexToRgba } from './chart-utils.js?v=1';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Data parser

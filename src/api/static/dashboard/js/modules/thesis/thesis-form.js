@@ -12,10 +12,10 @@
  * - bindThesisFormEvents (bind global form submit + delete confirm)
  */
 
-import { el, showToast, openModal, closeModal } from '../../utils/dom.js';
-import { esc } from '../../utils/format.js';
-import { thesisApiBase, getJson, sendJson } from '../../api/client.js';
-import { state } from '../../state/dashboard-state.js';
+import { el, showToast, openModal, closeModal } from '../../utils/dom.js?v=1';
+import { esc } from '../../utils/format.js?v=1';
+import { thesisApiBase, getJson, sendJson } from '../../api/client.js?v=1';
+import { state } from '../../state/dashboard-state.js?v=1';
 import {
   confirmDeleteThesis,
   confirmDeleteAssumption,
@@ -23,7 +23,7 @@ import {
   loadThesisDetail,
   triggerAiReview,
   openApplyAiReviewModal,
-} from './thesis-service.js';
+} from './thesis-service.js?v=1';
 
 // ---------------------------------------------------------------------------
 // Form row builders

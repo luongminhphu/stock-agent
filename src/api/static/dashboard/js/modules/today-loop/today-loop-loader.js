@@ -21,8 +21,8 @@ import {
   renderThesisDigest,
   updateMarketMoodKpi,
   updateSignalsBadge,
-} from './today-loop-renderer.js';
-import { RefreshScheduler } from '../../utils/refresh-scheduler.js';
+} from './today-loop-renderer.js?v=1';
+import { RefreshScheduler } from '../../utils/refresh-scheduler.js?v=1';
 
 const TODAY_LOOP_URL = '/api/v1/today-loop';
 const REFRESH_INTERVAL_MS = 10 * 60 * 1000;
