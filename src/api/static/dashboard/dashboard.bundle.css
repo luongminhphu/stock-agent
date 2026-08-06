@@ -6307,10 +6307,10 @@ td.cell-missing {
 .portfolio-pane .data-table td:nth-child(6) { width: 10%; }
 
 .portfolio-pane .data-table th:nth-child(7),
-.portfolio-pane .data-table td:nth-child(7) { width: 16%; }
+.portfolio-pane .data-table td:nth-child(7) { width: 12%; }
 
 .portfolio-pane .data-table th:nth-child(8),
-.portfolio-pane .data-table td:nth-child(8) { width:  9%; }
+.portfolio-pane .data-table td:nth-child(8) { width: 14%; }
 
 .portfolio-pane .data-table th {
   padding: var(--space-2) var(--space-3);
@@ -6479,6 +6479,13 @@ td.cell-missing {
   .port-col--hide-mobile {
     display: none;
   }
+}
+
+.portfolio-pane .data-table td.col-action,
+.portfolio-pane .data-table td:has(> .action-btns) {
+  overflow:    visible;
+  text-overflow: clip;
+  white-space: nowrap;
 }
 
 /* ── signals-alerts.css ────────────────────────────────── */

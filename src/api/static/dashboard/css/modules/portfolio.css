@@ -178,8 +178,8 @@ td.cell-missing {
    col 4 Thị giá : 14%  right currency
    col 5 P&L (₫) : 16%  right currency
    col 6 P&L (%) : 10%  right num
-   col 7 Thesis  : 16%  center
-   col 8 Action  :  9%  center
+   col 7 Thesis  : 12%  center
+   col 8 Action  : 14%  center
 ─────────────────────────────────────────────────────────────────────────── */
 
 .portfolio-pane .data-table th:nth-child(1),
@@ -208,10 +208,10 @@ td.cell-missing {
 .portfolio-pane .data-table td:nth-child(6) { width: 10%; }
 
 .portfolio-pane .data-table th:nth-child(7),
-.portfolio-pane .data-table td:nth-child(7) { width: 16%; }
+.portfolio-pane .data-table td:nth-child(7) { width: 12%; }
 
 .portfolio-pane .data-table th:nth-child(8),
-.portfolio-pane .data-table td:nth-child(8) { width:  9%; }
+.portfolio-pane .data-table td:nth-child(8) { width: 14%; }
 
 /* ── Cell base ──────────────────────────────────────────────────────────── */
 
@@ -404,4 +404,12 @@ td.cell-missing {
   .port-col--hide-mobile {
     display: none;
   }
+}
+
+/* Cell action (col 8): chứa nút B/S/± — không clip, không ellipsis, fit-content */
+.portfolio-pane .data-table td.col-action,
+.portfolio-pane .data-table td:has(> .action-btns) {
+  overflow:    visible;
+  text-overflow: clip;
+  white-space: nowrap;
 }
