@@ -92,6 +92,10 @@ function _injectTradeButtons(wrap) {
   const thesisTbody = wrap.querySelector('[data-holdings-tbody="thesis"]');
   if (tradesTbody) window.QuickTrade.injectTradeButtons(tradesTbody, { fromThesisTab: false });
   if (thesisTbody) window.QuickTrade.injectTradeButtons(thesisTbody, { fromThesisTab: true  });
+  // Nút [±] điều chỉnh cổ tức/split — chạy sau quick-trade để .action-btns đã tồn tại
+  if (window.AdjustPosition?.injectAdjustButtons) {
+    if (tradesTbody) window.AdjustPosition.injectAdjustButtons(tradesTbody);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -122,10 +126,12 @@ function _buildTradesRows(data) {
       ? ` <span class="badge-thesis-warning" title="Thesis ${thesisSt}">⚠️</span>` : '';
     const thesisAttr = thesisId ? ` data-thesis-id="${thesisId}"` : '';
     const thesisRef  = thesisId ? `<span class="thesis-tag">#${thesisId}</span>` : '<span class="muted">—</span>';
+    // data-qty / data-avg-cost: adjust-position modal đọc để preview qty/avg mới
+    const posAttrs = `${qty != null ? ` data-qty="${qty}"` : ''}${avgCost != null ? ` data-avg-cost="${avgCost}"` : ''}`;
 
     return {
       hasError: errors.length > 0,
-      html: `<tr data-ticker="${_esc(ticker)}"${thesisAttr}${rowClass}>
+      html: `<tr data-ticker="${_esc(ticker)}"${thesisAttr}${posAttrs}${rowClass}>
         <td class="col-left"><strong>${_esc(ticker)}</strong>${warnBadge}${errors.includes('ticker') ? ' <span class="cell-error" title="Thiếu ticker">⚠</span>' : ''}</td>
         <td class="num">${qty != null ? _fmtNum(qty) : '<span class="cell-error" title="Thiếu qty">⚠</span>'}</td>
         <td class="currency">${avgCost != null ? _fmtNum(avgCost) : '<span class="cell-error" title="Thiếu avg_cost">⚠</span>'}</td>

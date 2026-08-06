@@ -16,6 +16,8 @@ import { readmodelApiBase, getJson }   from '../../api/client.js';
 import { renderPortfolio }             from './portfolio-renderer.js';
 import { init as qtInit,
          injectTradeButtons }          from './quick-trade.js';
+import { init as adjInit,
+         injectAdjustButtons }         from './adjust-position.js';
 
 // Wave 4: Skeleton screen — hiển thị ngay trước khi fetch complete
 function portfolioSkeletonHTML() {
@@ -55,7 +57,11 @@ export async function loadPortfolio(userId) {
   if (!window.QuickTrade) {
     window.QuickTrade = { init: qtInit, injectTradeButtons };
   }
+  if (!window.AdjustPosition) {
+    window.AdjustPosition = { init: adjInit, injectAdjustButtons };
+  }
   qtInit();
+  adjInit();
 
   // Wave 4: show skeleton immediately
   section.innerHTML = portfolioSkeletonHTML();

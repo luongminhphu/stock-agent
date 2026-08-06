@@ -8703,6 +8703,60 @@ main#main-content {
 .qt-sizing-note { color: var(--warning); margin-top: 4px; font-size: 0.78rem; }
 .qt-sizing-warn { color: var(--danger); margin-top: 4px; font-size: 0.78rem; }
 
+.adj-btn-inline {
+  background: color-mix(in srgb, var(--warning) 16%, transparent);
+  color:      var(--warning);
+  border:     1px solid color-mix(in srgb, var(--warning) 40%, transparent);
+  font-weight: 700;
+}
+.adj-btn-inline:hover {
+  filter:    brightness(1.15);
+  transform: translateY(-1px);
+}
+.adj-btn-inline:active {
+  filter:    brightness(0.9);
+  transform: scale(0.93);
+}
+
+.qt-badge-adjust {
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  color:      var(--warning);
+  border:     1px solid color-mix(in srgb, var(--warning) 32%, transparent);
+}
+
+.adj-current {
+  font-size:   0.85rem;
+  color:       var(--muted);
+  padding:     8px 10px;
+  background:  color-mix(in srgb, var(--surface-3) 60%, transparent);
+  border:      1px solid var(--line);
+  border-radius: var(--radius-sm);
+  margin-bottom: 10px;
+}
+.adj-current strong { color: var(--text); }
+
+.adj-reason-row {
+  display: flex;
+  gap:     16px;
+  margin:  6px 0 12px;
+  flex-wrap: wrap;
+}
+.adj-radio {
+  display:     flex;
+  align-items: center;
+  gap:         6px;
+  font-size:   0.85rem;
+  color:       var(--text);
+  cursor:      pointer;
+}
+.adj-radio input { accent-color: var(--warning); }
+
+.adj-ratio-hint {
+  font-size: 0.75rem;
+  color:     var(--faint);
+  margin-top: 4px;
+}
+
 /* ── heatmap.css ───────────────────────────────────────── */
 .health-heatmap {
   display: inline-flex;
