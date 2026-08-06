@@ -225,6 +225,47 @@ class EodSnapshotService:
         )
         return True
 
+    async def refresh_after_trade(
+        self,
+        user_id: str,
+        ticker: str,
+        position_closed: bool = False,
+    ) -> bool:
+        """Refresh snapshot hôm nay sau buy/sell — dashboard phản ánh ngay.
+
+        - position_closed=True (full sell) → XOÁ snapshot hôm nay của ticker
+          để dashboard không còn hiển thị vị thế đã đóng.
+        - Ngược lại → re-fetch position hiện tại và upsert snapshot.
+
+        Returns True nếu snapshot bị thay đổi. Never raises — lỗi chỉ log,
+        trade vẫn thành công (snapshot sẽ được EOD job sửa lại 15:20).
+        """
+        ticker = ticker.upper()
+        today = _today_ict()
+        try:
+            if position_closed:
+                await self._session.execute(
+                    delete(PositionDailySnapshot).where(
+                        PositionDailySnapshot.user_id == user_id,
+                        PositionDailySnapshot.ticker == ticker,
+                        PositionDailySnapshot.snapshot_date == today,
+                    )
+                )
+                logger.info("eod_snapshot.removed_closed", ticker=ticker, date=str(today))
+                return True
+
+            position = await self._repo.get_open_position(user_id, ticker)
+            if position is None:
+                return False
+            return await self.refresh_today_snapshot(position)
+        except Exception as exc:
+            logger.warning(
+                "eod_snapshot.refresh_after_trade_failed",
+                ticker=ticker,
+                error=str(exc),
+            )
+            return False
+
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------

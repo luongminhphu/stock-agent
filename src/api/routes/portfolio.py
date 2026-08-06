@@ -163,6 +163,29 @@ class TradeResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+async def _refresh_snapshot_after_trade(
+    session: AsyncSession,
+    quote_svc: object,
+    user_id: str,
+    ticker: str,
+    position_closed: bool = False,
+) -> None:
+    """Refresh EOD snapshot hôm nay sau buy/sell/adjust — dashboard cập nhật ngay.
+
+    Dashboard đọc position_daily_snapshots làm primary source; nếu không
+    refresh, thay đổi position trong ngày sẽ stale tới EOD job 15:20.
+    Never raises — lỗi chỉ log bên trong service.
+    """
+    from src.portfolio.eod_snapshot_service import EodSnapshotService
+
+    eod_svc = EodSnapshotService(session=session, quote_service=quote_svc)
+    await eod_svc.refresh_after_trade(user_id, ticker, position_closed=position_closed)
+
+
+# ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
 
@@ -200,6 +223,7 @@ async def buy_stock(
             note=body.note,
             source="dashboard",
         )
+        await _refresh_snapshot_after_trade(session, quote_svc, user_id, result.ticker)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except Exception as exc:
@@ -256,6 +280,10 @@ async def sell_stock(
             note=body.note,
             source="dashboard",
         )
+        await _refresh_snapshot_after_trade(
+            session, quote_svc, user_id, result.ticker,
+            position_closed=result.position_closed,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except PositionNotFoundError as exc:
@@ -294,6 +322,7 @@ async def adjust_position(
     body: AdjustRequest,
     user_id: Annotated[str, Depends(get_current_user_id)],
     session: AsyncSession = Depends(get_db),
+    quote_svc: object = Depends(get_quote_service),
 ) -> AdjustResponse:
     """Áp dụng stock dividend / split lên vị thế đang mở.
 
@@ -324,6 +353,7 @@ async def adjust_position(
             reason=body.reason,
             note=body.note,
         )
+        await _refresh_snapshot_after_trade(session, quote_svc, user_id, position.ticker)
         await session.commit()
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
@@ -375,12 +405,8 @@ async def edit_position(
         position = await svc.edit_position(
             user_id=user_id, ticker=ticker, qty=body.qty, avg_cost=body.avg_cost,
         )
-        # Refresh snapshot hôm nay để dashboard (đọc position_daily_snapshots)
-        # phản ánh giá trị mới ngay, không chờ EOD job 15:20.
-        from src.portfolio.eod_snapshot_service import EodSnapshotService
-
-        eod_svc = EodSnapshotService(session=session, quote_service=get_quote_service())
-        await eod_svc.refresh_today_snapshot(position)
+        # Refresh snapshot hôm nay để dashboard phản ánh giá trị mới ngay.
+        await _refresh_snapshot_after_trade(session, get_quote_service(), user_id, position.ticker)
         await session.commit()
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
