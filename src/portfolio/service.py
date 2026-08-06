@@ -367,6 +367,102 @@ class PortfolioService:
         return position, trade
 
     # ------------------------------------------------------------------
+    # Stock split / stock dividend adjustment
+    # ------------------------------------------------------------------
+
+    async def apply_stock_split(
+        self,
+        user_id: str,
+        ticker: str,
+        ratio: float,
+        reason: str = "split",
+        note: str | None = None,
+    ) -> tuple[Position, Trade]:
+        """Apply a stock dividend / split: qty × (1 + ratio), avg_cost ÷ (1 + ratio).
+
+        Cost-preserving: total cost basis (qty × avg_cost) không đổi — investor
+        không giàu hơn hay nghèo đi sau sự kiện, chỉ có số lượng và giá vốn
+        danh nghĩa thay đổi. Nếu không điều chỉnh, avg_cost cũ sẽ làm sai
+        unrealized P&L, sizing, và stop-breach check sau ngày chốt quyền.
+
+        VD: giữ 1,000 HPG avg 25,000 → chia cổ tức 15% → qty 1,150,
+        avg_cost 21,739. Tổng vốn 25,000,000 không đổi.
+
+        Audit trail: Trade(ADJUST, qty=bonus_shares, price=0, realized_pnl=None).
+        reason: "stock_dividend" (thưởng cổ phiếu) | "split" (chia tách).
+        Với stock_dividend, ghi kèm DividendRecord(STOCK) để dividend history
+        phản ánh đúng sự kiện.
+
+        Raises:
+            ValueError: ratio <= 0.
+            PositionNotFoundError: không có vị thế mở cho ticker.
+
+        Returns:
+            (position, adjust_trade) — flushed, caller must commit.
+        """
+        if ratio <= 0:
+            raise ValueError(f"ratio phải lớn hơn 0, nhận được: {ratio}")
+        if reason not in ("stock_dividend", "split"):
+            raise ValueError(f"reason phải là 'stock_dividend' hoặc 'split', nhận được: {reason}")
+
+        ticker = ticker.upper()
+        position = await self._repo.get_open_position(user_id, ticker)
+        if position is None:
+            raise PositionNotFoundError(f"No open position for {ticker}")
+
+        old_qty = position.qty
+        old_avg = position.avg_cost
+        bonus_qty = old_qty * ratio
+        position.qty = old_qty + bonus_qty
+        position.avg_cost = old_avg / (1 + ratio)
+        await self._repo.save_position(position)
+
+        auto_note = (
+            f"{'Cổ tức cổ phiếu' if reason == 'stock_dividend' else 'Chia tách'} "
+            f"{ratio:.0%}: {old_qty:,.0f} → {position.qty:,.0f} cp, "
+            f"giá vốn {old_avg:,.0f} → {position.avg_cost:,.0f}"
+        )
+        trade = Trade(
+            user_id=user_id,
+            ticker=ticker,
+            position_id=position.id,
+            trade_type=TradeType.ADJUST,
+            qty=bonus_qty,
+            price=0.0,          # không phải giao dịch tiền — price=0 để không nhiễu VWAP
+            realized_pnl=None,
+            note=f"{auto_note}{(' — ' + note) if note else ''}",
+            traded_at=datetime.now(UTC),
+        )
+        await self._repo.save_trade(trade)
+
+        if reason == "stock_dividend":
+            dividend = DividendRecord(
+                user_id=user_id,
+                ticker=ticker,
+                position_id=position.id,
+                qty=old_qty,
+                dividend_per_share=ratio,   # tỷ lệ, VD 0.15 = 15%
+                total_amount=bonus_qty,     # số cp thưởng nhận được
+                dividend_type=DividendType.STOCK,
+                note=note,
+                paid_at=datetime.now(UTC),
+            )
+            await self._repo.save_dividend(dividend)
+
+        logger.info(
+            "portfolio.stock_split_applied",
+            user_id=user_id,
+            ticker=ticker,
+            reason=reason,
+            ratio=ratio,
+            old_qty=old_qty,
+            new_qty=position.qty,
+            old_avg_cost=old_avg,
+            new_avg_cost=position.avg_cost,
+        )
+        return position, trade
+
+    # ------------------------------------------------------------------
     # Dividend
     # ------------------------------------------------------------------
 

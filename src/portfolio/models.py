@@ -43,6 +43,7 @@ _values = lambda x: [e.value for e in x]  # noqa: E731
 class TradeType(enum.StrEnum):
     BUY = "buy"
     SELL = "sell"
+    ADJUST = "adjust"  # stock dividend / split — qty đổi, avg_cost đổi, không phải giao dịch tiền
 
 
 class DividendType(enum.StrEnum):

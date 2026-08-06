@@ -37,6 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.deps import get_current_user_id, get_db, get_quote_service
 from src.portfolio.service import (
     InsufficientQtyError,
+    PortfolioService,
     PositionNotFoundError,
 )
 from src.portfolio.trade_usecase import TradeUseCase
@@ -82,6 +83,36 @@ class SellRequest(BaseModel):
             "Nếu để trống nhưng thesis_id có giá trị, backend tự điền rationale mặc định."
         ),
     )
+
+
+class AdjustRequest(BaseModel):
+    ticker: str = Field(..., min_length=1, max_length=10, description="Mã cổ phiếu, VD: HPG")
+    ratio: float = Field(
+        ..., gt=0, le=10,
+        description=(
+            "Tỷ lệ thưởng/tách. VD: 0.15 = cổ tức cổ phiếu 15% (1,000 cp → 1,150 cp); "
+            "1.0 = split 1:2 (1,000 cp → 2,000 cp)"
+        ),
+    )
+    reason: str = Field(
+        "stock_dividend",
+        pattern="^(stock_dividend|split)$",
+        description="stock_dividend = thưởng cổ phiếu (ghi kèm DividendRecord); split = chia tách",
+    )
+    note: str | None = Field(None, max_length=500)
+
+
+class AdjustResponse(BaseModel):
+    trade_id: int
+    position_id: int
+    ticker: str
+    ratio: float
+    reason: str
+    old_qty: float
+    new_qty: float
+    old_avg_cost: float
+    new_avg_cost: float
+    bonus_qty: float = Field(description="Số cp tăng thêm từ sự kiện")
 
 
 class TradeResponse(BaseModel):
@@ -216,6 +247,73 @@ async def sell_stock(
         realized_pnl=result.realized_pnl,
         position_closed=result.position_closed,
         decision_logged=result.decision_logged,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Stock dividend / split adjustment
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/portfolio/adjust",
+    response_model=AdjustResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Điều chỉnh vị thế theo cổ tức cổ phiếu / chia tách — qty tăng, giá vốn TB giảm",
+)
+async def adjust_position(
+    body: AdjustRequest,
+    user_id: Annotated[str, Depends(get_current_user_id)],
+    session: AsyncSession = Depends(get_db),
+) -> AdjustResponse:
+    """Áp dụng stock dividend / split lên vị thế đang mở.
+
+    Cost-preserving: qty × (1 + ratio), avg_cost ÷ (1 + ratio) — tổng giá vốn
+    không đổi. Cần chạy sau ngày chốt quyền để P&L, sizing và stop-breach
+    check không bị lệch khi giá tham chiếu điều chỉnh xuống.
+
+    Audit trail: Trade(ADJUST, price=0) + DividendRecord(STOCK) khi
+    reason=stock_dividend.
+
+    Raises 404 khi không có position mở cho ticker.
+    Raises 422 khi ratio không hợp lệ.
+    """
+    svc = PortfolioService(session=session)
+    # capture old values cho response — pre-check để 404 sớm trước khi mutate
+    existing = await svc._repo.get_open_position(user_id, body.ticker.upper())
+    if existing is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Không có vị thế mở cho {body.ticker.upper()}",
+        )
+    old_qty, old_avg = existing.qty, existing.avg_cost
+    try:
+        position, trade = await svc.apply_stock_split(
+            user_id=user_id,
+            ticker=body.ticker,
+            ratio=body.ratio,
+            reason=body.reason,
+            note=body.note,
+        )
+        await session.commit()
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except PositionNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except Exception as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+
+    return AdjustResponse(
+        trade_id=trade.id,
+        position_id=position.id,
+        ticker=position.ticker,
+        ratio=body.ratio,
+        reason=body.reason,
+        old_qty=old_qty,
+        new_qty=position.qty,
+        old_avg_cost=old_avg,
+        new_avg_cost=position.avg_cost,
+        bonus_qty=position.qty - old_qty,
     )
 
 
