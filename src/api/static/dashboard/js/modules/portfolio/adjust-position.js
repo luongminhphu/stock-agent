@@ -81,6 +81,9 @@ function _ensureModal() {
           <input class="qt-input" id="adj-note" type="text" maxlength="500"
             placeholder="VD: Cổ tức 2025, chốt quyền 01/08" />
 
+          <!-- History mode: timeline trades của ticker — chỉ hiện khi mode='history' -->
+          <div id="adj-history-list" hidden></div>
+
           <div class="qt-summary" id="adj-summary"></div>
           <div class="qt-error" id="adj-error" hidden></div>
         </div>
@@ -101,7 +104,7 @@ function _ensureModal() {
 let _currentTicker = '';
 let _currentQty    = 0;
 let _currentAvg    = 0;
-let _currentMode   = 'adjust';   // 'adjust' (cổ tức/split) | 'edit' (sửa trực tiếp)
+let _currentMode   = 'adjust';   // 'adjust' | 'edit' | 'history'
 
 // ---------------------------------------------------------------------------
 // Open / close
@@ -110,12 +113,14 @@ export function openAdjustModal(ticker, opts) {
   _currentTicker = ticker.toUpperCase();
   _currentQty    = Number(opts?.currentQty) || 0;
   _currentAvg    = Number(opts?.currentAvg) || 0;
-  _currentMode   = opts?.mode === 'edit' ? 'edit' : 'adjust';
+  _currentMode   = ['edit', 'history'].includes(opts?.mode) ? opts.mode : 'adjust';
 
-  const isEdit = _currentMode === 'edit';
+  const isEdit    = _currentMode === 'edit';
+  const isHistory = _currentMode === 'history';
   document.getElementById('adj-ticker-display').textContent = _currentTicker;
   document.getElementById('adj-title').textContent =
-    (isEdit ? 'Sửa trực tiếp vị thế — ' : 'Điều chỉnh vị thế — ') + _currentTicker;
+    (isEdit ? 'Sửa trực tiếp vị thế — ' : isHistory ? 'Lịch sử vị thế — ' : 'Điều chỉnh vị thế — ')
+    + _currentTicker;
 
   // Toggle adjust-only vs edit-only field groups
   const reasonRow = document.querySelector('.adj-reason-row');
@@ -124,9 +129,19 @@ export function openAdjustModal(ticker, opts) {
   const ratioHint = document.getElementById('adj-ratio-hint');
   const noteLbl   = document.getElementById('adj-note').previousElementSibling;
   const noteIn    = document.getElementById('adj-note');
+  const currentRow = document.getElementById('adj-current');
+  const summaryEl  = document.getElementById('adj-summary');
   [reasonRow, ratioLbl, ratioIn, ratioHint, noteLbl, noteIn]
-    .forEach(el => { if (el) el.hidden = isEdit; });
-  document.getElementById('adj-edit-fields').hidden = !isEdit;
+    .forEach(el => { if (el) el.hidden = isEdit || isHistory; });
+  document.getElementById('adj-edit-fields').hidden  = !isEdit;
+  document.getElementById('adj-history-list').hidden = !isHistory;
+  if (currentRow) currentRow.hidden = isHistory;
+  if (summaryEl)  summaryEl.hidden  = isHistory;
+  // Footer: history mode chỉ cần nút Đóng
+  const confirmBtn = document.getElementById('adj-confirm-btn');
+  const cancelBtn  = document.getElementById('adj-cancel-btn');
+  if (confirmBtn) confirmBtn.hidden = isHistory;
+  if (cancelBtn)  cancelBtn.textContent = isHistory ? 'Đóng' : 'Huỷ';
 
   document.getElementById('adj-ratio').value = '';
   document.getElementById('adj-note').value  = '';
@@ -135,7 +150,11 @@ export function openAdjustModal(ticker, opts) {
   document.querySelector('input[name="adj-reason"][value="stock_dividend"]').checked = true;
   _hideError();
   _renderPreview();
-  setTimeout(() => document.getElementById(isEdit ? 'adj-new-qty' : 'adj-ratio').focus(), 0);
+  if (isHistory) {
+    _loadHistory();
+  } else {
+    setTimeout(() => document.getElementById(isEdit ? 'adj-new-qty' : 'adj-ratio').focus(), 0);
+  }
 
   document.getElementById(MODAL_ID).removeAttribute('hidden');
   document.getElementById('adj-ratio').focus();
@@ -288,6 +307,58 @@ async function _handleEditConfirm() {
 }
 
 // ---------------------------------------------------------------------------
+// History mode — GET /portfolio/trades?ticker=…
+// ---------------------------------------------------------------------------
+const _HIST_META = {
+  buy:    { icon: '🟢', label: 'MUA',    cls: 'hist-buy'    },
+  sell:   { icon: '🔴', label: 'BÁN',    cls: 'hist-sell'   },
+  adjust: { icon: '⚖️', label: 'ĐIỀU CHỈNH', cls: 'hist-adjust' },
+};
+
+async function _loadHistory() {
+  const listEl = document.getElementById('adj-history-list');
+  listEl.innerHTML = '<div class="hist-loading">Đang tải…</div>';
+  try {
+    const res = await fetch(`/api/v1/portfolio/trades?ticker=${encodeURIComponent(_currentTicker)}&limit=50`);
+    if (!res.ok) {
+      listEl.innerHTML = `<div class="hist-empty">Lỗi tải lịch sử (${res.status})</div>`;
+      return;
+    }
+    const data = await res.json();
+    if (!data.items?.length) {
+      listEl.innerHTML = '<div class="hist-empty">Chưa có giao dịch nào cho mã này.</div>';
+      return;
+    }
+    listEl.innerHTML = data.items.map(t => {
+      const meta = _HIST_META[t.trade_type] || { icon: '•', label: t.trade_type.toUpperCase(), cls: '' };
+      const when = t.traded_at ? new Date(t.traded_at).toLocaleString('vi-VN', {
+        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+      }) : '—';
+      const qtyStr  = t.qty.toLocaleString('vi-VN');
+      const mainLine = t.trade_type === 'adjust'
+        ? `+${qtyStr} cp`
+        : `${qtyStr} cp @ ${t.price.toLocaleString('vi-VN')} ₫`;
+      const pnl = (t.trade_type === 'sell' && t.realized_pnl != null)
+        ? `<span class="hist-pnl ${t.realized_pnl >= 0 ? 'positive' : 'negative'}">P&L ${t.realized_pnl >= 0 ? '+' : ''}${t.realized_pnl.toLocaleString('vi-VN')} ₫</span>`
+        : '';
+      const note = t.note ? `<div class="hist-note">${t.note}</div>` : '';
+      return `<div class="hist-item ${meta.cls}">
+        <div class="hist-row">
+          <span class="hist-icon">${meta.icon}</span>
+          <span class="hist-label">${meta.label}</span>
+          <span class="hist-main">${mainLine}</span>
+          ${pnl}
+          <span class="hist-when">${when}</span>
+        </div>
+        ${note}
+      </div>`;
+    }).join('');
+  } catch {
+    listEl.innerHTML = '<div class="hist-empty">Không thể kết nối server.</div>';
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Events / helpers
 // ---------------------------------------------------------------------------
 function _bindModalEvents() {
@@ -392,6 +463,24 @@ export function injectAdjustButtons(tbody) {
         });
       });
       wrap.appendChild(editBtn);
+    }
+
+    // Nút ≡ xem lịch sử thay đổi vị thế (GET /portfolio/trades)
+    if (!wrap.querySelector('.hist-btn-inline')) {
+      const histBtn = document.createElement('button');
+      histBtn.className   = 'qt-btn-inline hist-btn-inline';
+      histBtn.textContent = '\u2261';
+      histBtn.title       = 'Lịch sử thay đổi vị thế';
+      histBtn.setAttribute('aria-label', `Lịch sử ${row.dataset.ticker}`);
+      histBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        openAdjustModal(row.dataset.ticker, {
+          currentQty: parseFloat(row.dataset.qty) || 0,
+          currentAvg: parseFloat(row.dataset.avgCost) || 0,
+          mode: 'history',
+        });
+      });
+      wrap.appendChild(histBtn);
     }
   });
 }

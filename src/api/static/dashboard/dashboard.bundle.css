@@ -8778,6 +8778,51 @@ main#main-content {
   transform: scale(0.93);
 }
 
+.hist-btn-inline {
+  background: color-mix(in srgb, var(--muted, #94a3b8) 14%, transparent);
+  color:      var(--muted, #94a3b8);
+  border:     1px solid color-mix(in srgb, var(--muted, #94a3b8) 35%, transparent);
+}
+.hist-btn-inline:hover { filter: brightness(1.15); transform: translateY(-1px); }
+.hist-btn-inline:active { filter: brightness(0.9); transform: scale(0.93); }
+
+#adj-history-list {
+  max-height: 380px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.hist-item {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+}
+.hist-item:hover { background: color-mix(in srgb, var(--surface-3) 60%, transparent); }
+.hist-item.hist-buy    { border-left: 3px solid var(--success); }
+.hist-item.hist-sell   { border-left: 3px solid var(--danger); }
+.hist-item.hist-adjust { border-left: 3px solid var(--warning); }
+
+.hist-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 0.85rem;
+  flex-wrap: wrap;
+}
+.hist-icon  { flex: 0 0 auto; }
+.hist-label { font-weight: 700; font-size: 0.72rem; letter-spacing: 0.05em; }
+.hist-buy .hist-label    { color: var(--success); }
+.hist-sell .hist-label   { color: var(--danger); }
+.hist-adjust .hist-label { color: var(--warning); }
+.hist-main { color: var(--text); }
+.hist-pnl  { font-size: 0.78rem; font-weight: 600; }
+.hist-pnl.positive { color: var(--success); }
+.hist-pnl.negative { color: var(--danger); }
+.hist-when { margin-left: auto; color: var(--faint); font-size: 0.75rem; }
+.hist-note { color: var(--muted); font-size: 0.78rem; margin: 4px 0 0 26px; }
+.hist-loading, .hist-empty { color: var(--muted); text-align: center; padding: 20px 0; font-size: 0.85rem; }
+
 /* ── heatmap.css ───────────────────────────────────────── */
 .health-heatmap {
   display: inline-flex;
