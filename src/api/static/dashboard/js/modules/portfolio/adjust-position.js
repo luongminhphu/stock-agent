@@ -63,6 +63,20 @@ function _ensureModal() {
             15 = nhận thêm 15 cp cho mỗi 100 cp đang giữ · 100 = split 1:2
           </div>
 
+          <!-- Edit mode: sửa trực tiếp qty/avg — chỉ hiện khi _currentMode='edit' -->
+          <div id="adj-edit-fields" hidden>
+            <label class="qt-label" for="adj-new-qty">Số lượng mới (cp)</label>
+            <input class="qt-input" id="adj-new-qty" type="number" min="0" step="100"
+              placeholder="VD: 1500" />
+            <label class="qt-label" for="adj-new-avg">Giá vốn TB mới (₫)</label>
+            <input class="qt-input" id="adj-new-avg" type="number" min="0" step="100"
+              placeholder="VD: 23500" />
+            <div class="adj-ratio-hint">
+              Sửa thẳng, không audit trail — dùng để sync với tài khoản thật.
+              Để trống ô nào nếu không muốn đổi.
+            </div>
+          </div>
+
           <label class="qt-label" for="adj-note">Ghi chú (tuỳ chọn)</label>
           <input class="qt-input" id="adj-note" type="text" maxlength="500"
             placeholder="VD: Cổ tức 2025, chốt quyền 01/08" />
@@ -87,6 +101,7 @@ function _ensureModal() {
 let _currentTicker = '';
 let _currentQty    = 0;
 let _currentAvg    = 0;
+let _currentMode   = 'adjust';   // 'adjust' (cổ tức/split) | 'edit' (sửa trực tiếp)
 
 // ---------------------------------------------------------------------------
 // Open / close
@@ -95,14 +110,32 @@ export function openAdjustModal(ticker, opts) {
   _currentTicker = ticker.toUpperCase();
   _currentQty    = Number(opts?.currentQty) || 0;
   _currentAvg    = Number(opts?.currentAvg) || 0;
+  _currentMode   = opts?.mode === 'edit' ? 'edit' : 'adjust';
 
+  const isEdit = _currentMode === 'edit';
   document.getElementById('adj-ticker-display').textContent = _currentTicker;
-  document.getElementById('adj-title').textContent = `Điều chỉnh vị thế — ${_currentTicker}`;
+  document.getElementById('adj-title').textContent =
+    (isEdit ? 'Sửa trực tiếp vị thế — ' : 'Điều chỉnh vị thế — ') + _currentTicker;
+
+  // Toggle adjust-only vs edit-only field groups
+  const reasonRow = document.querySelector('.adj-reason-row');
+  const ratioIn   = document.getElementById('adj-ratio');
+  const ratioLbl  = ratioIn.previousElementSibling;   // <label> "Tỷ lệ..."
+  const ratioHint = document.getElementById('adj-ratio-hint');
+  const noteLbl   = document.getElementById('adj-note').previousElementSibling;
+  const noteIn    = document.getElementById('adj-note');
+  [reasonRow, ratioLbl, ratioIn, ratioHint, noteLbl, noteIn]
+    .forEach(el => { if (el) el.hidden = isEdit; });
+  document.getElementById('adj-edit-fields').hidden = !isEdit;
+
   document.getElementById('adj-ratio').value = '';
   document.getElementById('adj-note').value  = '';
+  document.getElementById('adj-new-qty').value = '';
+  document.getElementById('adj-new-avg').value = '';
   document.querySelector('input[name="adj-reason"][value="stock_dividend"]').checked = true;
   _hideError();
   _renderPreview();
+  setTimeout(() => document.getElementById(isEdit ? 'adj-new-qty' : 'adj-ratio').focus(), 0);
 
   document.getElementById(MODAL_ID).removeAttribute('hidden');
   document.getElementById('adj-ratio').focus();
@@ -117,14 +150,32 @@ function _closeModal() {
 // ---------------------------------------------------------------------------
 function _renderPreview() {
   const currentEl = document.getElementById('adj-current');
-  const ratioPct  = parseFloat(document.getElementById('adj-ratio').value);
+  const summaryEl = document.getElementById('adj-summary');
 
   const qtyStr = _currentQty > 0 ? _currentQty.toLocaleString('vi-VN') : '—';
   const avgStr = _currentAvg > 0 ? _currentAvg.toLocaleString('vi-VN') : '—';
   currentEl.innerHTML =
     `Hiện tại: <strong>${qtyStr} cp</strong> · giá vốn TB <strong>${avgStr} ₫</strong>`;
 
-  const summaryEl = document.getElementById('adj-summary');
+  if (_currentMode === 'edit') {
+    const newQty = parseFloat(document.getElementById('adj-new-qty').value);
+    const newAvg = parseFloat(document.getElementById('adj-new-avg').value);
+    if ((!newQty || newQty <= 0) && (!newAvg || newAvg <= 0)) { summaryEl.textContent = ''; return; }
+    const effQty = (newQty && newQty > 0) ? newQty : _currentQty;
+    const effAvg = (newAvg && newAvg > 0) ? newAvg : _currentAvg;
+    const deltaVon = effQty * effAvg - _currentQty * _currentAvg;
+    const sign = deltaVon >= 0 ? '+' : '−';
+    summaryEl.innerHTML =
+      `Sau sửa: <strong>${effQty.toLocaleString('vi-VN')} cp</strong> @ ` +
+      `<strong>${effAvg.toLocaleString('vi-VN')} ₫</strong> · tổng vốn ` +
+      `${sign}${Math.abs(deltaVon).toLocaleString('vi-VN', { maximumFractionDigits: 0 })} ₫`;
+    return;
+  }
+
+  const ratioPct  = parseFloat(document.getElementById('adj-ratio').value);
+
+  const qtyStr = _currentQty > 0 ? _currentQty.toLocaleString('vi-VN') : '—';
+  const avgStr = _currentAvg > 0 ? _currentAvg.toLocaleString('vi-VN') : '—';
   if (!ratioPct || ratioPct <= 0 || _currentQty <= 0) {
     summaryEl.textContent = '';
     return;
@@ -145,6 +196,7 @@ function _renderPreview() {
 // ---------------------------------------------------------------------------
 async function _handleConfirm() {
   _hideError();
+  if (_currentMode === 'edit') return _handleEditConfirm();
   const ratioPct = parseFloat(document.getElementById('adj-ratio').value);
   const reason   = document.querySelector('input[name="adj-reason"]:checked')?.value || 'stock_dividend';
   const note     = document.getElementById('adj-note').value.trim() || null;
@@ -188,6 +240,53 @@ async function _handleConfirm() {
   }
 }
 
+async function _handleEditConfirm() {
+  const qtyRaw = document.getElementById('adj-new-qty').value.trim();
+  const avgRaw = document.getElementById('adj-new-avg').value.trim();
+  const qty = qtyRaw ? parseFloat(qtyRaw) : null;
+  const avg = avgRaw ? parseFloat(avgRaw) : null;
+
+  if (qty === null && avg === null) { _showError('Nhập ít nhất một giá trị mới (số lượng hoặc giá vốn).'); return; }
+  if (qty !== null && (isNaN(qty) || qty <= 0)) { _showError('Số lượng mới phải lớn hơn 0.'); return; }
+  if (avg !== null && (isNaN(avg) || avg <= 0)) { _showError('Giá vốn mới phải lớn hơn 0.'); return; }
+
+  const btn = document.getElementById('adj-confirm-btn');
+  btn.disabled    = true;
+  btn.textContent = 'Đang xử lý…';
+
+  try {
+    const payload = {};
+    if (qty !== null) payload.qty = qty;
+    if (avg !== null) payload.avg_cost = avg;
+    const res = await fetch(`/api/v1/portfolio/positions/${encodeURIComponent(_currentTicker)}`, {
+      method:  'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      _showError(data?.detail ?? `Lỗi ${res.status}`);
+      return;
+    }
+    const result = await res.json();
+    _closeModal();
+    _showToast(
+      `✏️ Đã sửa ${result.ticker}: ${result.qty.toLocaleString('vi-VN')} cp @ ` +
+      `${result.avg_cost.toLocaleString('vi-VN', { maximumFractionDigits: 0 })} ₫`,
+    );
+
+    if (typeof window.__qtRefreshHoldings === 'function') window.__qtRefreshHoldings();
+    document.dispatchEvent(new CustomEvent('trade:confirmed', {
+      detail: { ticker: result.ticker, trade_type: 'edit' },
+    }));
+  } catch {
+    _showError('Không thể kết nối server. Kiểm tra lại kết nối.');
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = 'Xác nhận';
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Events / helpers
 // ---------------------------------------------------------------------------
@@ -196,6 +295,8 @@ function _bindModalEvents() {
   document.getElementById('adj-cancel-btn').addEventListener('click', _closeModal);
   document.getElementById('adj-confirm-btn').addEventListener('click', _handleConfirm);
   document.getElementById('adj-ratio').addEventListener('input', _renderPreview);
+  document.getElementById('adj-new-qty').addEventListener('input', _renderPreview);
+  document.getElementById('adj-new-avg').addEventListener('input', _renderPreview);
   document.getElementById(MODAL_ID).addEventListener('click', e => {
     if (e.target.id === MODAL_ID) _closeModal();
   });
@@ -274,5 +375,23 @@ export function injectAdjustButtons(tbody) {
       });
     });
     wrap.appendChild(btn);
+
+    // Nút ✏️ sửa trực tiếp qty/giá vốn (PUT /positions/{ticker})
+    if (!wrap.querySelector('.edit-btn-inline')) {
+      const editBtn = document.createElement('button');
+      editBtn.className   = 'qt-btn-inline edit-btn-inline';
+      editBtn.textContent = '\u270e';
+      editBtn.title       = 'Sửa trực tiếp số lượng / giá vốn';
+      editBtn.setAttribute('aria-label', `Sửa trực tiếp ${row.dataset.ticker}`);
+      editBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        openAdjustModal(row.dataset.ticker, {
+          currentQty: parseFloat(row.dataset.qty) || 0,
+          currentAvg: parseFloat(row.dataset.avgCost) || 0,
+          mode: 'edit',
+        });
+      });
+      wrap.appendChild(editBtn);
+    }
   });
 }

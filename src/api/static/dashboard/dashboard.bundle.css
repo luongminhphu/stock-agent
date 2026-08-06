@@ -8764,6 +8764,20 @@ main#main-content {
   margin-top: 4px;
 }
 
+.edit-btn-inline {
+  background: color-mix(in srgb, var(--info, #60a5fa) 16%, transparent);
+  color:      var(--info, #60a5fa);
+  border:     1px solid color-mix(in srgb, var(--info, #60a5fa) 40%, transparent);
+}
+.edit-btn-inline:hover {
+  filter:    brightness(1.15);
+  transform: translateY(-1px);
+}
+.edit-btn-inline:active {
+  filter:    brightness(0.9);
+  transform: scale(0.93);
+}
+
 /* ── heatmap.css ───────────────────────────────────────── */
 .health-heatmap {
   display: inline-flex;
