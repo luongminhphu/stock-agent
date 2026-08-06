@@ -30,7 +30,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -125,6 +125,24 @@ class PositionEditResponse(BaseModel):
     ticker: str
     qty: float
     avg_cost: float
+
+
+class TradeHistoryItem(BaseModel):
+    trade_id: int
+    position_id: int
+    ticker: str
+    trade_type: str = Field(description="buy | sell | adjust")
+    qty: float
+    price: float
+    realized_pnl: float | None
+    note: str | None
+    traded_at: str
+
+
+class TradeHistoryResponse(BaseModel):
+    ticker: str | None
+    count: int
+    items: list[TradeHistoryItem]
 
 
 class TradeResponse(BaseModel):
@@ -371,6 +389,49 @@ async def edit_position(
         ticker=position.ticker,
         qty=position.qty,
         avg_cost=position.avg_cost,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Trade history
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/portfolio/trades",
+    response_model=TradeHistoryResponse,
+    summary="Lịch sử thay đổi vị thế: BUY / SELL / ADJUST (cổ tức-split)",
+)
+async def get_trade_history(
+    user_id: Annotated[str, Depends(get_current_user_id)],
+    session: AsyncSession = Depends(get_db),
+    ticker: str | None = None,
+    limit: int = Query(50, ge=1, le=200),
+) -> TradeHistoryResponse:
+    """Trả lịch sử trades mới nhất trước, lọc theo ticker nếu có.
+
+    Bao gồm cả ADJUST records (cổ tức cổ phiếu / split, price=0, note mô tả
+    qty/avg trước-sau). Lưu ý: sửa trực tiếp qua PUT /positions/{ticker} cố
+    ý không ghi record — các lần sửa tay đó không xuất hiện ở đây.
+    """
+    svc = PortfolioService(session=session)
+    trades = await svc._repo.list_trades(user_id, ticker=ticker, limit=limit)
+    return TradeHistoryResponse(
+        ticker=ticker.upper() if ticker else None,
+        count=len(trades),
+        items=[
+            TradeHistoryItem(
+                trade_id=t.id,
+                position_id=t.position_id,
+                ticker=t.ticker,
+                trade_type=str(t.trade_type).lower(),
+                qty=t.qty,
+                price=t.price,
+                realized_pnl=t.realized_pnl,
+                note=t.note,
+                traded_at=t.traded_at.isoformat() if t.traded_at else "",
+            )
+            for t in trades
+        ],
     )
 
 
