@@ -115,6 +115,18 @@ class AdjustResponse(BaseModel):
     bonus_qty: float = Field(description="Số cp tăng thêm từ sự kiện")
 
 
+class PositionEditRequest(BaseModel):
+    qty: float | None = Field(None, gt=0, description="Số lượng mới — None = giữ nguyên")
+    avg_cost: float | None = Field(None, gt=0, description="Giá vốn TB mới — None = giữ nguyên")
+
+
+class PositionEditResponse(BaseModel):
+    position_id: int
+    ticker: str
+    qty: float
+    avg_cost: float
+
+
 class TradeResponse(BaseModel):
     trade_id: int
     position_id: int
@@ -314,6 +326,51 @@ async def adjust_position(
         old_avg_cost=old_avg,
         new_avg_cost=position.avg_cost,
         bonus_qty=position.qty - old_qty,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Direct position edit (manual correction)
+# ---------------------------------------------------------------------------
+
+@router.put(
+    "/portfolio/positions/{ticker}",
+    response_model=PositionEditResponse,
+    summary="Sửa trực tiếp qty / giá vốn của vị thế — không audit trail",
+)
+async def edit_position(
+    ticker: str,
+    body: PositionEditRequest,
+    user_id: Annotated[str, Depends(get_current_user_id)],
+    session: AsyncSession = Depends(get_db),
+) -> PositionEditResponse:
+    """Sửa thẳng qty và/hoặc avg_cost của position đang mở.
+
+    Dùng cho nhập sai / sync với tài khoản thật. Không ghi Trade record,
+    không kiểm cost-preserving — người dùng chịu trách nhiệm giá trị nhập.
+
+    Raises 404 khi không có position mở.
+    Raises 422 khi không truyền trường nào hoặc giá trị <= 0.
+    """
+    svc = PortfolioService(session=session)
+    try:
+        position = await svc.edit_position(
+            user_id=user_id, ticker=ticker, qty=body.qty, avg_cost=body.avg_cost,
+        )
+        await session.commit()
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except PositionNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except Exception as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+
+    return PositionEditResponse(
+        position_id=position.id,
+        ticker=position.ticker,
+        qty=position.qty,
+        avg_cost=position.avg_cost,
     )
 
 

@@ -463,6 +463,67 @@ class PortfolioService:
         return position, trade
 
     # ------------------------------------------------------------------
+    # Direct position edit (manual correction)
+    # ------------------------------------------------------------------
+
+    async def edit_position(
+        self,
+        user_id: str,
+        ticker: str,
+        qty: float | None = None,
+        avg_cost: float | None = None,
+    ) -> Position:
+        """Sửa trực tiếp qty và/hoặc giá vốn của vị thế đang mở — không audit trail.
+
+        Dùng cho: nhập sai lúc đầu, sync với tài khoản chứng khoán thật,
+        hoặc điều chỉnh tay ngoài luồng buy/sell/adjust chuẩn.
+
+        Khác với apply_stock_split(): ở đây người dùng tự chịu trách nhiệm
+        về tính đúng đắn của cặp (qty, avg_cost) mới — hệ thống không kiểm
+        cost-preserving, không ghi Trade record, không tính realized P&L.
+
+        Args:
+            qty:      số lượng mới (None = giữ nguyên). Phải > 0.
+            avg_cost: giá vốn mới (None = giữ nguyên). Phải > 0.
+
+        Raises:
+            ValueError: không có trường nào được sửa, hoặc giá trị <= 0.
+            PositionNotFoundError: không có vị thế mở cho ticker.
+
+        Returns:
+            Position đã update (flushed; caller must commit).
+        """
+        if qty is None and avg_cost is None:
+            raise ValueError("Phải truyền ít nhất một trong qty hoặc avg_cost")
+        if qty is not None and qty <= 0:
+            raise ValueError(f"qty phải lớn hơn 0, nhận được: {qty}")
+        if avg_cost is not None and avg_cost <= 0:
+            raise ValueError(f"avg_cost phải lớn hơn 0, nhận được: {avg_cost}")
+
+        ticker = ticker.upper()
+        position = await self._repo.get_open_position(user_id, ticker)
+        if position is None:
+            raise PositionNotFoundError(f"No open position for {ticker}")
+
+        old_qty, old_avg = position.qty, position.avg_cost
+        if qty is not None:
+            position.qty = qty
+        if avg_cost is not None:
+            position.avg_cost = avg_cost
+        await self._repo.save_position(position)
+
+        logger.info(
+            "portfolio.position_edited",
+            user_id=user_id,
+            ticker=ticker,
+            old_qty=old_qty,
+            new_qty=position.qty,
+            old_avg_cost=old_avg,
+            new_avg_cost=position.avg_cost,
+        )
+        return position
+
+    # ------------------------------------------------------------------
     # Dividend
     # ------------------------------------------------------------------
 
