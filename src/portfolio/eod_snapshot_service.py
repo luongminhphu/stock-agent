@@ -178,6 +178,53 @@ class EodSnapshotService:
         rows = await self._session.execute(stmt)
         return list(rows.scalars().all())
 
+    async def refresh_today_snapshot(self, position: Position) -> bool:
+        """Cập nhật snapshot HÔM NAY của 1 ticker sau khi position thay đổi ngoài EOD.
+
+        Dùng khi user buy/sell/edit/adjust position trong ngày: dashboard đọc
+        position_daily_snapshots làm primary source, nên nếu không refresh,
+        số liệu sẽ stale tới lần snapshot 15:20 tiếp theo.
+
+        - Có snapshot hôm nay → upsert qty/avg_cost mới (giữ close_price cũ,
+          P&L sẽ được route overlay realtime).
+        - Chưa có (ngày mới chưa chạy EOD job) → route fallback sang
+          PnlService on-the-fly, không cần ghi.
+        - Không có quote realtime → dùng close_price của snapshot cũ.
+
+        Returns True nếu đã cập nhật, False nếu chưa có snapshot hôm nay.
+        Never raises — lỗi quote chỉ log, vẫn cập nhật qty/avg với giá cũ.
+        """
+        today = _today_ict()
+        existing = await self._session.execute(
+            select(PositionDailySnapshot).where(
+                PositionDailySnapshot.user_id == position.user_id,
+                PositionDailySnapshot.ticker == position.ticker,
+                PositionDailySnapshot.snapshot_date == today,
+            )
+        )
+        snap = existing.scalar_one_or_none()
+        if snap is None:
+            return False
+
+        close_price = snap.close_price
+        try:
+            close_price = await self._fetch_close_price(position)
+        except Exception as exc:
+            logger.warning(
+                "eod_snapshot.refresh_quote_failed",
+                ticker=position.ticker,
+                error=str(exc),
+            )
+
+        await self._upsert_snapshot(position, close_price, today)
+        logger.info(
+            "eod_snapshot.refreshed",
+            ticker=position.ticker,
+            qty=position.qty,
+            avg_cost=position.avg_cost,
+        )
+        return True
+
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------

@@ -375,6 +375,12 @@ async def edit_position(
         position = await svc.edit_position(
             user_id=user_id, ticker=ticker, qty=body.qty, avg_cost=body.avg_cost,
         )
+        # Refresh snapshot hôm nay để dashboard (đọc position_daily_snapshots)
+        # phản ánh giá trị mới ngay, không chờ EOD job 15:20.
+        from src.portfolio.eod_snapshot_service import EodSnapshotService
+
+        eod_svc = EodSnapshotService(session=session, quote_service=get_quote_service())
+        await eod_svc.refresh_today_snapshot(position)
         await session.commit()
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
