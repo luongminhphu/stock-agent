@@ -131,7 +131,7 @@ class TradeHistoryItem(BaseModel):
     trade_id: int
     position_id: int
     ticker: str
-    trade_type: str = Field(description="buy | sell | adjust")
+    trade_type: str = Field(description="buy | sell | adjust | edit")
     qty: float
     price: float
     realized_pnl: float | None
@@ -409,29 +409,54 @@ async def get_trade_history(
 ) -> TradeHistoryResponse:
     """Trả lịch sử trades mới nhất trước, lọc theo ticker nếu có.
 
-    Bao gồm cả ADJUST records (cổ tức cổ phiếu / split, price=0, note mô tả
-    qty/avg trước-sau). Lưu ý: sửa trực tiếp qua PUT /positions/{ticker} cố
-    ý không ghi record — các lần sửa tay đó không xuất hiện ở đây.
+    Bao gồm ADJUST records (cổ tức/split) và EDIT audit records (sửa trực
+    tiếp qua PUT /positions/{ticker}) — merge thành một timeline duy nhất,
+    sort theo thời gian mới nhất trước.
     """
     svc = PortfolioService(session=session)
     trades = await svc._repo.list_trades(user_id, ticker=ticker, limit=limit)
+    edits = await svc._repo.list_position_edits(user_id, ticker=ticker, limit=limit)
+
+    items = [
+        TradeHistoryItem(
+            trade_id=t.id,
+            position_id=t.position_id,
+            ticker=t.ticker,
+            trade_type=str(t.trade_type).lower(),
+            qty=t.qty,
+            price=t.price,
+            realized_pnl=t.realized_pnl,
+            note=t.note,
+            traded_at=t.traded_at.isoformat() if t.traded_at else "",
+        )
+        for t in trades
+    ]
+    # Merge edit audit records vào cùng timeline — edit có note mô tả old→new
+    items += [
+        TradeHistoryItem(
+            trade_id=e.id,
+            position_id=e.position_id,
+            ticker=e.ticker,
+            trade_type="edit",
+            qty=e.new_qty,
+            price=e.new_avg_cost,
+            realized_pnl=None,
+            note=(
+                f"Sửa trực tiếp: {e.old_qty:,.0f} → {e.new_qty:,.0f} cp · "
+                f"giá vốn {e.old_avg_cost:,.0f} → {e.new_avg_cost:,.0f}"
+            ),
+            traded_at=e.edited_at.isoformat() if e.edited_at else "",
+        )
+        for e in edits
+    ]
+    # Sort lại theo thời gian desc sau khi merge 2 nguồn
+    items.sort(key=lambda i: i.traded_at, reverse=True)
+    items = items[:limit]
+
     return TradeHistoryResponse(
         ticker=ticker.upper() if ticker else None,
-        count=len(trades),
-        items=[
-            TradeHistoryItem(
-                trade_id=t.id,
-                position_id=t.position_id,
-                ticker=t.ticker,
-                trade_type=str(t.trade_type).lower(),
-                qty=t.qty,
-                price=t.price,
-                realized_pnl=t.realized_pnl,
-                note=t.note,
-                traded_at=t.traded_at.isoformat() if t.traded_at else "",
-            )
-            for t in trades
-        ],
+        count=len(items),
+        items=items,
     )
 
 

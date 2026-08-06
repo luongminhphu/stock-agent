@@ -313,6 +313,7 @@ const _HIST_META = {
   buy:    { icon: '🟢', label: 'MUA',    cls: 'hist-buy'    },
   sell:   { icon: '🔴', label: 'BÁN',    cls: 'hist-sell'   },
   adjust: { icon: '⚖️', label: 'ĐIỀU CHỈNH', cls: 'hist-adjust' },
+  edit:   { icon: '\u270e',  label: 'SỬA TAY',  cls: 'hist-edit'   },
 };
 
 async function _loadHistory() {
@@ -337,7 +338,9 @@ async function _loadHistory() {
       const qtyStr  = t.qty.toLocaleString('vi-VN');
       const mainLine = t.trade_type === 'adjust'
         ? `+${qtyStr} cp`
-        : `${qtyStr} cp @ ${t.price.toLocaleString('vi-VN')} ₫`;
+        : t.trade_type === 'edit'
+          ? `${qtyStr} cp @ ${t.price.toLocaleString('vi-VN')} ₫`
+          : `${qtyStr} cp @ ${t.price.toLocaleString('vi-VN')} ₫`;
       const pnl = (t.trade_type === 'sell' && t.realized_pnl != null)
         ? `<span class="hist-pnl ${t.realized_pnl >= 0 ? 'positive' : 'negative'}">P&L ${t.realized_pnl >= 0 ? '+' : ''}${t.realized_pnl.toLocaleString('vi-VN')} ₫</span>`
         : '';

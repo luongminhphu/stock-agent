@@ -8823,6 +8823,9 @@ main#main-content {
 .hist-note { color: var(--muted); font-size: 0.78rem; margin: 4px 0 0 26px; }
 .hist-loading, .hist-empty { color: var(--muted); text-align: center; padding: 20px 0; font-size: 0.85rem; }
 
+.hist-item.hist-edit   { border-left: 3px solid var(--info, #60a5fa); }
+.hist-edit .hist-label { color: var(--info, #60a5fa); }
+
 /* ── heatmap.css ───────────────────────────────────────── */
 .health-heatmap {
   display: inline-flex;
