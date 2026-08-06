@@ -416,7 +416,7 @@ class PositionEdit(Base):
     new_avg_cost: Mapped[float] = mapped_column(Float, nullable=False)
 
     edited_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=False), nullable=False, default=lambda: datetime.now(UTC)
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
 
     position: Mapped["Position"] = relationship()
