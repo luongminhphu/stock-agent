@@ -193,8 +193,6 @@ function _renderPreview() {
 
   const ratioPct  = parseFloat(document.getElementById('adj-ratio').value);
 
-  const qtyStr = _currentQty > 0 ? _currentQty.toLocaleString('vi-VN') : '—';
-  const avgStr = _currentAvg > 0 ? _currentAvg.toLocaleString('vi-VN') : '—';
   if (!ratioPct || ratioPct <= 0 || _currentQty <= 0) {
     summaryEl.textContent = '';
     return;

@@ -17,7 +17,7 @@ import { renderPortfolio }             from './portfolio-renderer.js?v=1';
 import { init as qtInit,
          injectTradeButtons }          from './quick-trade.js?v=1';
 import { init as adjInit,
-         injectAdjustButtons }         from './adjust-position.js?v=1';
+         injectAdjustButtons }         from './adjust-position.js?v=2';
 
 // Wave 4: Skeleton screen — hiển thị ngay trước khi fetch complete
 function portfolioSkeletonHTML() {
