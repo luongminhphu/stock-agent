@@ -296,6 +296,10 @@ async def _persist_quotes_to_db(session_factory: Any, quotes: list["Quote"]) -> 
             }
             for q in quotes
         ]
+        # Deadlock guard: sort theo ticker để mọi concurrent writer (api, bot)
+        # lock các row theo CÙNG thứ tự. Không sort → 2 batch upsert chéo
+        # thứ tự → PostgreSQL deadlock (ShareLock) → rollback cả batch.
+        rows.sort(key=lambda r: r["ticker"])
         async with session_factory() as session:
             stmt = pg_insert(MarketQuoteCache).values(rows).on_conflict_do_update(
                 index_elements=["ticker"],
