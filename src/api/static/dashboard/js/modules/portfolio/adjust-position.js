@@ -428,60 +428,75 @@ export function init() {
  *
  * @param {HTMLElement} tbody
  */
+// Wave 6: secondary actions (±, ✎, ≡) gom vào overflow menu "⋯" — giảm
+// clutter cột Action (B/S là primary, luôn hiển thị). Menu đóng khi click
+// ra ngoài hoặc chọn 1 item.
+function _closeAllOverflows() {
+  document.querySelectorAll('.action-overflow.open').forEach(m => m.classList.remove('open'));
+}
+document.addEventListener('click', _closeAllOverflows);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') _closeAllOverflows(); });
+
+function _overflowItem(label, icon, ariaLabel, onClick) {
+  const item = document.createElement('button');
+  item.className = 'action-overflow-item';
+  item.type = 'button';
+  item.innerHTML = `<span class="aoi-icon" aria-hidden="true">${icon}</span>${label}`;
+  item.setAttribute('aria-label', ariaLabel);
+  item.addEventListener('click', e => {
+    e.stopPropagation();
+    _closeAllOverflows();
+    onClick();
+  });
+  return item;
+}
+
 export function injectAdjustButtons(tbody) {
   if (!tbody) return;
   tbody.querySelectorAll('tr[data-ticker]').forEach(row => {
     const wrap = row.querySelector('.action-btns');
-    if (!wrap || wrap.querySelector('.adj-btn-inline')) return; // idempotent
+    if (!wrap || wrap.querySelector('.action-overflow-btn')) return; // idempotent
 
-    const btn = document.createElement('button');
-    btn.className   = 'qt-btn-inline adj-btn-inline';
-    btn.textContent = '±';
-    btn.title       = 'Điều chỉnh theo cổ tức/split';
-    btn.setAttribute('aria-label', `Điều chỉnh ${row.dataset.ticker}`);
-    btn.addEventListener('click', e => {
+    const qty = () => parseFloat(row.dataset.qty) || 0;
+    const avg = () => parseFloat(row.dataset.avgCost) || 0;
+    const ticker = row.dataset.ticker;
+
+    // Nút ⋯ mở overflow menu
+    const moreBtn = document.createElement('button');
+    moreBtn.className = 'qt-btn-inline action-overflow-btn';
+    moreBtn.textContent = '\u22ef';   // ⋯
+    moreBtn.title = 'Thao tác khác: điều chỉnh, sửa, lịch sử';
+    moreBtn.setAttribute('aria-label', `Thao tác khác cho ${ticker}`);
+    moreBtn.setAttribute('aria-haspopup', 'menu');
+
+    const menu = document.createElement('div');
+    menu.className = 'action-overflow';
+    menu.setAttribute('role', 'menu');
+
+    menu.appendChild(_overflowItem(
+      'Điều chỉnh cổ tức / split', '\u00b1', `Điều chỉnh ${ticker}`,
+      () => openAdjustModal(ticker, { currentQty: qty(), currentAvg: avg() }),
+    ));
+    menu.appendChild(_overflowItem(
+      'Sửa trực tiếp số lượng / giá vốn', '\u270e', `Sửa trực tiếp ${ticker}`,
+      () => openAdjustModal(ticker, { currentQty: qty(), currentAvg: avg(), mode: 'edit' }),
+    ));
+    menu.appendChild(_overflowItem(
+      'Lịch sử thay đổi vị thế', '\u2261', `Lịch sử ${ticker}`,
+      () => openAdjustModal(ticker, { currentQty: qty(), currentAvg: avg(), mode: 'history' }),
+    ));
+
+    moreBtn.addEventListener('click', e => {
       e.stopPropagation();
-      openAdjustModal(row.dataset.ticker, {
-        currentQty: parseFloat(row.dataset.qty) || 0,
-        currentAvg: parseFloat(row.dataset.avgCost) || 0,
-      });
+      const wasOpen = menu.classList.contains('open');
+      _closeAllOverflows();
+      if (!wasOpen) menu.classList.add('open');
     });
-    wrap.appendChild(btn);
 
-    // Nút ✏️ sửa trực tiếp qty/giá vốn (PUT /positions/{ticker})
-    if (!wrap.querySelector('.edit-btn-inline')) {
-      const editBtn = document.createElement('button');
-      editBtn.className   = 'qt-btn-inline edit-btn-inline';
-      editBtn.textContent = '\u270e';
-      editBtn.title       = 'Sửa trực tiếp số lượng / giá vốn';
-      editBtn.setAttribute('aria-label', `Sửa trực tiếp ${row.dataset.ticker}`);
-      editBtn.addEventListener('click', e => {
-        e.stopPropagation();
-        openAdjustModal(row.dataset.ticker, {
-          currentQty: parseFloat(row.dataset.qty) || 0,
-          currentAvg: parseFloat(row.dataset.avgCost) || 0,
-          mode: 'edit',
-        });
-      });
-      wrap.appendChild(editBtn);
-    }
-
-    // Nút ≡ xem lịch sử thay đổi vị thế (GET /portfolio/trades)
-    if (!wrap.querySelector('.hist-btn-inline')) {
-      const histBtn = document.createElement('button');
-      histBtn.className   = 'qt-btn-inline hist-btn-inline';
-      histBtn.textContent = '\u2261';
-      histBtn.title       = 'Lịch sử thay đổi vị thế';
-      histBtn.setAttribute('aria-label', `Lịch sử ${row.dataset.ticker}`);
-      histBtn.addEventListener('click', e => {
-        e.stopPropagation();
-        openAdjustModal(row.dataset.ticker, {
-          currentQty: parseFloat(row.dataset.qty) || 0,
-          currentAvg: parseFloat(row.dataset.avgCost) || 0,
-          mode: 'history',
-        });
-      });
-      wrap.appendChild(histBtn);
-    }
+    const holder = document.createElement('span');
+    holder.className = 'action-overflow-holder';
+    holder.appendChild(moreBtn);
+    holder.appendChild(menu);
+    wrap.appendChild(holder);
   });
 }
