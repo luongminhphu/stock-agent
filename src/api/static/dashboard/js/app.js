@@ -18,34 +18,34 @@
 // CRITICAL IMPORTS — needed before first paint / event wiring
 // (no lazy here — these are tiny or required for immediate interaction)
 // ---------------------------------------------------------------------------
-import { el, openModal, closeModal } from './utils/dom.js';
-import { loadDashboard, loadBacktesting } from './modules/dashboard/dashboard-loader.js';
-import { loadThesisDetail }              from './modules/thesis/thesis-service.js';
-import { bindLessonPersistedEvent }       from './modules/thesis/thesis-service.js';
+import { el, openModal, closeModal } from './utils/dom.js?v=1';
+import { loadDashboard, loadBacktesting } from './modules/dashboard/dashboard-loader.js?v=1';
+import { loadThesisDetail }              from './modules/thesis/thesis-service.js?v=1';
+import { bindLessonPersistedEvent }       from './modules/thesis/thesis-service.js?v=1';
 import {
   openNewThesisModal,
   bindThesisFormEvents,
-} from './modules/thesis/thesis-form.js';
-import { bindSuggestEvents }             from './modules/thesis/thesis-suggest.js';
-import { loadPortfolio }                 from './modules/portfolio/portfolio-loader.js';
-import { loadWatchlist, handleAddTicker } from './modules/watchlist/watchlist-loader.js';
-import { bindFeedbackEvents }            from './modules/briefing/brief-feedback.js';
-import { bindGenerateBriefButtons }      from './modules/briefing/brief-generate.js';
-import { bindBriefTabs, initBriefAutoOpen } from './modules/briefing/brief-tabs.js';
-import { bindBriefTickerClick }          from './modules/briefing/brief-ticker.js';
-import { loadAttentionPanel, startAttentionAutoRefresh } from './modules/attention/attention-loader.js';
-import { loadMarketBreadth }             from './modules/market/breadth.js';
-import { debounce }                      from './utils/debounce.js';
-import { initMobileNav }                 from './modules/mobile-nav.js';
-import { state }                         from './state/dashboard-state.js';
-import { initEngineHeartbeat }           from './modules/engine/engine-heartbeat.js';
-import { initEngineControls }            from './modules/engine/engine-controls.js';
+} from './modules/thesis/thesis-form.js?v=1';
+import { bindSuggestEvents }             from './modules/thesis/thesis-suggest.js?v=1';
+import { loadPortfolio, startPortfolioAutoRefresh } from './modules/portfolio/portfolio-loader.js?v=1';
+import { loadWatchlist, handleAddTicker } from './modules/watchlist/watchlist-loader.js?v=1';
+import { bindFeedbackEvents }            from './modules/briefing/brief-feedback.js?v=1';
+import { bindGenerateBriefButtons }      from './modules/briefing/brief-generate.js?v=1';
+import { bindBriefTabs, initBriefAutoOpen } from './modules/briefing/brief-tabs.js?v=1';
+import { bindBriefTickerClick }          from './modules/briefing/brief-ticker.js?v=1';
+import { loadAttentionPanel, startAttentionAutoRefresh } from './modules/attention/attention-loader.js?v=1';
+import { loadMarketBreadth }             from './modules/market/breadth.js?v=1';
+import { debounce }                      from './utils/debounce.js?v=1';
+import { initMobileNav }                 from './modules/mobile-nav.js?v=1';
+import { state }                         from './state/dashboard-state.js?v=1';
+import { initEngineHeartbeat }           from './modules/engine/engine-heartbeat.js?v=1';
+import { initEngineControls }            from './modules/engine/engine-controls.js?v=1';
 import {
   bindWatchlistThesisNavigate,
   bindWatchlistAddModal,
-} from './modules/watchlist/watchlist-nav.js';
-import { initKpiClickable }             from './modules/dashboard/kpi-clickable.js';
-import { initTopbarSearch, reapplySearch } from './modules/search/topbar-search.js';
+} from './modules/watchlist/watchlist-nav.js?v=1';
+import { initKpiClickable }             from './modules/dashboard/kpi-clickable.js?v=1';
+import { initTopbarSearch, reapplySearch } from './modules/search/topbar-search.js?v=1';
 
 // ---------------------------------------------------------------------------
 // Wave 2 — Lazy module loader helpers
@@ -185,6 +185,15 @@ function _observeLazy(selector, loader) {
   obs.observe(target);
 }
 
+// Wave 6: timestamp "Cập nhật HH:MM" cho KPI strip
+function _stampKpiUpdatedAt() {
+  const stamp = document.getElementById('kpiUpdatedAt');
+  if (!stamp) return;
+  const now = new Date();
+  stamp.textContent = `Cập nhật ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  stamp.title = now.toLocaleString('vi-VN');
+}
+
 // ---------------------------------------------------------------------------
 // Main bootstrap
 // ---------------------------------------------------------------------------
@@ -273,15 +282,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   el('reloadBtn')?.addEventListener('click', async () => {
     await Promise.allSettled([
       loadDashboard(),
-      loadBacktesting(),
       loadPortfolio(),
       loadWatchlist(),
       loadDecisions(),
       loadMarketBreadth(),
     ]);
     loadLeaderboard();
-    loadMemory();
     loadAttentionPanel();
+    // Wave 6: backtesting/memory chỉ reload nếu panel đang mở
+    if (document.getElementById('backtestDetails')?.open) loadBacktesting().catch(() => null);
+    if (document.getElementById('memoryDetails')?.open) loadMemory().catch(() => null);
   });
 
   el('addWatchlistBtn')?.addEventListener('click', () => openModal('watchlistAddModal'));
@@ -381,22 +391,41 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Tier A — critical, run now
   await Promise.allSettled([
-    loadDashboard(),
+    loadDashboard().then(_stampKpiUpdatedAt),
     loadPortfolio(),
     loadWatchlist(),
     loadMarketBreadth(),
   ]);
 
+  // Wave 6: portfolio auto-refresh (60s giờ giao dịch / 10 phút ngoài giờ)
+  startPortfolioAutoRefresh();
+
   // Tier B — deferred 100ms
   setTimeout(() => {
-    loadBacktesting().catch(() => null);
     loadAttentionPanel();
     loadDecisions().catch(() => null);
   }, 100);
 
   // Tier C — lazy IntersectionObserver (below-fold, heavy)
   _observeLazy('#leaderboardStrip',       () => loadLeaderboard().catch(() => null));
-  _observeLazy('#memoryKpiStrip',         () => loadMemory().catch(() => null));
+
+  // Wave 6: memory + RRG collapsed mặc định — chỉ fetch khi user mở lần đầu
+  const _lazyOnOpen = (detailsId, loader) => {
+    const det = document.getElementById(detailsId);
+    if (!det) return;
+    let loaded = false;
+    det.addEventListener('toggle', () => {
+      if (det.open && !loaded) {
+        loaded = true;
+        loader();
+      }
+    });
+    // Nếu mặc định open (pref/localStorage sau này) thì load ngay
+    if (det.open) { loaded = true; loader(); }
+  };
+  _lazyOnOpen('memoryDetails',   () => loadMemory().catch(() => null));
+  _lazyOnOpen('rrgPanel',        () => import('./modules/leaderboard/rrg-chart.js?v=1').then(m => m.loadRRG()).catch(() => null));
+  _lazyOnOpen('backtestDetails', () => loadBacktesting().catch(() => null));
   _observeLazy('#todayDuoRow',            () => {
     loadTodayLoop().catch(() => null);
     // start auto-refresh after first load
@@ -410,6 +439,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Re-apply search query after each data reload
   document.addEventListener('dashboard:rendered',  reapplySearch);
+  // Wave 6: KPI strip timestamp mỗi lần dashboard render xong
+  document.addEventListener('dashboard:rendered',  _stampKpiUpdatedAt);
   document.addEventListener('watchlist:rendered',  reapplySearch);
 
   startAttentionAutoRefresh();

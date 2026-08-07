@@ -8826,6 +8826,98 @@ main#main-content {
 .hist-item.hist-edit   { border-left: 3px solid var(--info, #60a5fa); }
 .hist-edit .hist-label { color: var(--info, #60a5fa); }
 
+.updated-at {
+  font-size: 0.72rem;
+  color: var(--faint);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+.updated-at--kpi {
+  position: absolute;
+  top: 6px;
+  right: 12px;
+}
+.command-strip.kpi-strip { position: relative; }
+
+.action-overflow-holder {
+  position: relative;
+  display: inline-flex;
+}
+.action-overflow-btn {
+  background: color-mix(in srgb, var(--muted, #94a3b8) 14%, transparent);
+  color:      var(--muted, #94a3b8);
+  border:     1px solid color-mix(in srgb, var(--muted, #94a3b8) 35%, transparent);
+}
+.action-overflow-btn:hover { filter: brightness(1.15); transform: translateY(-1px); }
+
+.action-overflow {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 60;
+  min-width: 240px;
+  display: none;
+  flex-direction: column;
+  padding: 4px;
+  background: var(--surface-2, #1e293b);
+  border: 1px solid var(--border, #334155);
+  border-radius: var(--radius-sm, 8px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.action-overflow.open { display: flex; }
+
+.action-overflow-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.85rem;
+  text-align: left;
+  border-radius: 6px;
+  cursor: pointer;
+  min-height: 40px;   
+}
+.action-overflow-item:hover {
+  background: color-mix(in srgb, var(--accent, #60a5fa) 14%, transparent);
+}
+.aoi-icon {
+  flex: 0 0 18px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.collapsible-panel > .collapsible-summary {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.collapsible-panel > .collapsible-summary::-webkit-details-marker { display: none; }
+.collapsible-panel > .collapsible-summary::after {
+  content: '▸';
+  margin-left: auto;
+  color: var(--faint);
+  transition: transform 0.15s ease;
+  font-size: 0.9rem;
+}
+.collapsible-panel[open] > .collapsible-summary::after { transform: rotate(90deg); }
+
+.collapsible-summary--cluster {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  border: 1px dashed var(--border, #334155);
+  border-radius: var(--radius-sm, 8px);
+  background: color-mix(in srgb, var(--surface-2, #1e293b) 50%, transparent);
+}
+.collapse-hint { color: var(--muted); font-size: 0.85rem; }
+
+details.backtesting-panel > summary.panel-header { padding: inherit; }
+
 /* ── heatmap.css ───────────────────────────────────────── */
 .health-heatmap {
   display: inline-flex;
