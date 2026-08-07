@@ -20,7 +20,6 @@ import { renderCatalystCalendar, renderSnapshots } from '../briefing/render-brie
 import { renderCatalystUrgentStrip }              from '../market/catalyst-urgent.js?v=1';
 import { loadIntelligencePanel } from '../intelligence/intelligence-panel.js?v=1';
 import { loadLeaderboard } from '../leaderboard/leaderboard-service.js?v=1';
-import { loadRRG }          from '../leaderboard/rrg-chart.js?v=1';
 import { renderHealthHeatmap, refreshHeatmapCell } from './render-heatmap.js?v=1';
 import { countUp, flashValue } from '../../utils/animate.js?v=1';
 
@@ -414,8 +413,7 @@ export async function loadDashboard() {
     renderVerdicts(accuracyRows);
     renderAccuracy(accuracyRows);
 
-    loadLeaderboard().catch(() => null);
-    loadRRG().catch(() => null);
+    // Wave 6: leaderboard + RRG lazy (observer / on-open) — không eager fetch
     // Intelligence snapshot: lazy — không block main render
     loadIntelligencePanel().catch(() => null);
 
@@ -485,8 +483,6 @@ export function renderSummary(s, portfolio, briefFeedback) {
 
   const kpis = [
     { id: 'openTheses',   raw: s.open_theses           ?? s.open_thesis_count  },
-    { id: 'pausedTheses', raw: s.paused_theses          ?? 0                   },
-    { id: 'riskyTheses',  raw: s.risky_theses          ?? s.risky_thesis_count },
     { id: 'upcoming7d',   raw: s.upcoming_catalysts_7d ?? s.upcoming_7d        },
   ];
 
@@ -498,25 +494,32 @@ export function renderSummary(s, portfolio, briefFeedback) {
     flashValue(node);
   });
 
+  // Wave 6: "Cần xử lý" = risky theses + stale reviews — 1 số duy nhất
+  const riskyCount = parseInt(s.risky_theses ?? s.risky_thesis_count ?? 0, 10);
+  const staleCountKpi = parseInt(s.stale_review_count ?? 0, 10);
+  const attentionTotal = riskyCount + staleCountKpi;
+  const attnEl  = el('attentionKpi');
+  const attnSub = el('attentionKpiSub');
+  const attnCard = el('attentionKpiCard');
+  if (attnEl) {
+    countUp(attnEl, attentionTotal, { duration: 600 });
+    flashValue(attnEl);
+  }
+  if (attnSub) {
+    const parts = [];
+    if (riskyCount > 0) parts.push(`${riskyCount} risky`);
+    if (staleCountKpi > 0) parts.push(`${staleCountKpi} chưa review`);
+    attnSub.textContent = parts.join(' · ') || 'không có gì cần xử lý';
+  }
+  if (attnCard) {
+    attnCard.classList.toggle('signal-card--ok',   attentionTotal === 0);
+    attnCard.classList.toggle('signal-card--risk', attentionTotal > 0);
+  }
+
   const reviewsTodayRaw = parseInt(s.reviews_today ?? s.review_count_today ?? 0, 10);
   const reviewsTodayEl  = el('reviewsToday');
   if (reviewsTodayEl) {
     reviewsTodayEl.textContent = reviewsTodayRaw > 0 ? `${reviewsTodayRaw} cần review hôm nay` : '';
-  }
-
-  const staleCount = parseInt(s.stale_review_count ?? 0, 10);
-  const staleDays  = s.stale_review_days ?? 14;
-  const staleEl    = el('staleReview');
-  const staleSubEl = el('staleReviewSub');
-  const staleCard  = el('staleReviewCard');
-  if (staleEl) {
-    countUp(staleEl, staleCount, { duration: 600 });
-    flashValue(staleEl);
-  }
-  if (staleSubEl) staleSubEl.textContent = `chưa review ${staleDays}d`;
-  if (staleCard) {
-    staleCard.classList.toggle('signal-card--ok',   staleCount === 0);
-    staleCard.classList.toggle('signal-card--risk', staleCount > 0);
   }
 
   const positions     = portfolio?.positions ?? (Array.isArray(portfolio) ? portfolio : []);

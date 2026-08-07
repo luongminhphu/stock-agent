@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap" />
     <!-- CSS bundle: link thẳng bundle (1 request, bỏ @import hop) — Wave 5d -->
-    <link rel="stylesheet" href="/static/dashboard/dashboard.bundle.css?v=33" />
+    <link rel="stylesheet" href="/static/dashboard/dashboard.bundle.css?v=34" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">Bỏ qua điều hướng</a>
@@ -207,87 +207,7 @@
             aria-label="Catalyst sắp đến"
           ></div>
 
-          <!-- ── 2. KPI STRIP — 5 cols, 2 rows ─────────────────────────────────── -->
-          <section class="command-strip kpi-strip" aria-label="Tổng quan danh mục">
-
-            <!-- ── Row 1: 5 cards ── -->
-            <article class="signal-card signal-card--portfolio">
-              <span class="signal-label">Portfolio value</span>
-              <strong class="signal-value" id="portfolioValue">—</strong>
-              <span class="signal-sub" id="portfolioValueSub"></span>
-            </article>
-
-            <article class="signal-card signal-card--pnl">
-              <span class="signal-label">Unrealized P&amp;L</span>
-              <strong class="signal-value" id="unrealizedPnl">—</strong>
-              <span class="signal-sub kpi-trend" id="unrealizedPnlPct"></span>
-            </article>
-
-            <article class="signal-card signal-card--risk">
-              <span class="signal-label">Risky theses</span>
-              <strong class="signal-value" id="riskyTheses">—</strong>
-              <span class="signal-sub">score &lt; 40</span>
-            </article>
-
-            <article class="signal-card">
-              <span class="signal-label">Open theses</span>
-              <strong class="signal-value" id="openTheses">—</strong>
-              <span class="signal-sub" id="reviewsToday"></span>
-            </article>
-
-            <article class="signal-card">
-              <span class="signal-label">Paused theses</span>
-              <strong class="signal-value" id="pausedTheses">—</strong>
-              <span class="signal-sub">Tạm dừng theo dõi</span>
-            </article>
-
-            <!-- ── Row divider ── -->
-            <div class="kpi-row-divider" aria-hidden="true"></div>
-
-            <!-- ── Row 2: 3×(span 1) + 1×(span 2) = 5 cols ── -->
-            <article class="signal-card">
-              <span class="signal-label">Upcoming 7d</span>
-              <strong class="signal-value" id="upcoming7d">—</strong>
-              <span class="signal-sub">catalysts</span>
-            </article>
-
-            <article class="signal-card signal-card--risk" id="staleReviewCard">
-              <span class="signal-label">Cần review gấp</span>
-              <strong class="signal-value" id="staleReview">—</strong>
-              <span class="signal-sub" id="staleReviewSub">thesis chưa review</span>
-            </article>
-
-            <article class="signal-card" id="briefFeedbackCard">
-              <span class="signal-label">Brief acted</span>
-              <strong class="signal-value" id="briefActedRate">—</strong>
-              <span class="signal-sub" id="briefActedSub">acted / total</span>
-            </article>
-
-            <!-- Latest Scan: span 2 — cùng dòng với Upcoming/Review/Brief -->
-            <article class="signal-card signal-card--scan" id="latestScanCard">
-              <span class="signal-label">Latest scan</span>
-              <strong class="signal-value" id="latestScanAt">—</strong>
-              <span class="signal-sub" id="latestScanSummary">Chưa có scan snapshot.</span>
-            </article>
-
-          </section>
-
-          <!-- ── 3. TIER BREAKDOWN ────────────────────────────────────────────── -->
-          <div
-            id="tierBreakdown"
-            class="tier-bar hidden"
-            aria-label="Phân bổ tier thesis"
-          ></div>
-
-          <!-- ── 4. SIGNALS FEED ─────────────────────────────────────────────── -->
-          <div
-            id="signalsFeed"
-            class="signals-feed hidden"
-            aria-live="polite"
-            aria-label="Tín hiệu kỹ thuận gần đây"
-          ></div>
-
-          <!-- ── 5. ACTION SURFACE + THESIS DIGEST — same row ──────────────── -->
+          <!-- ── 2. ACTION SURFACE + THESIS DIGEST ──────────────── -->
           <div id="todayDuoRow" class="today-duo-row">
             <div
               id="actionSurface"
@@ -315,7 +235,75 @@
             <!-- #thesisDigestStrip injected here by today-loop-renderer.js -->
           </div>
 
-          <!-- ── 5b. INTELLIGENCE SNAPSHOT ──────────────────────────────────────── -->
+          <!-- ── 3. KPI STRIP — 2 rows ─────────────────────────────────── -->
+          <section class="command-strip kpi-strip" aria-label="Tổng quan danh mục">
+
+            <!-- ── Row 1: 5 cards ── -->
+            <article class="signal-card signal-card--portfolio">
+              <span class="signal-label">Portfolio value</span>
+              <strong class="signal-value" id="portfolioValue">—</strong>
+              <span class="signal-sub" id="portfolioValueSub"></span>
+            </article>
+
+            <article class="signal-card signal-card--pnl">
+              <span class="signal-label">Unrealized P&amp;L</span>
+              <strong class="signal-value" id="unrealizedPnl">—</strong>
+              <span class="signal-sub kpi-trend" id="unrealizedPnlPct"></span>
+            </article>
+
+            <article class="signal-card signal-card--risk" id="attentionKpiCard">
+              <span class="signal-label">Cần xử lý</span>
+              <strong class="signal-value" id="attentionKpi">—</strong>
+              <span class="signal-sub" id="attentionKpiSub">risky + chưa review</span>
+            </article>
+
+            <article class="signal-card">
+              <span class="signal-label">Open theses</span>
+              <strong class="signal-value" id="openTheses">—</strong>
+              <span class="signal-sub" id="reviewsToday"></span>
+            </article>
+
+            <!-- ── Row divider ── -->
+            <div class="kpi-row-divider" aria-hidden="true"></div>
+
+            <!-- ── Row 2: 3×(span 1) + 1×(span 2) = 5 cols ── -->
+            <article class="signal-card">
+              <span class="signal-label">Upcoming 7d</span>
+              <strong class="signal-value" id="upcoming7d">—</strong>
+              <span class="signal-sub">catalysts</span>
+            </article>
+
+            <article class="signal-card" id="briefFeedbackCard">
+              <span class="signal-label">Brief acted</span>
+              <strong class="signal-value" id="briefActedRate">—</strong>
+              <span class="signal-sub" id="briefActedSub">acted / total</span>
+            </article>
+
+            <!-- Latest Scan: span 2 — cùng dòng với Upcoming/Review/Brief -->
+            <article class="signal-card signal-card--scan" id="latestScanCard">
+              <span class="signal-label">Latest scan</span>
+              <strong class="signal-value" id="latestScanAt">—</strong>
+              <span class="signal-sub" id="latestScanSummary">Chưa có scan snapshot.</span>
+            </article>
+
+          </section>
+
+          <!-- ── 3b. TIER BREAKDOWN ────────────────────────────────────────────── -->
+          <div
+            id="tierBreakdown"
+            class="tier-bar hidden"
+            aria-label="Phân bổ tier thesis"
+          ></div>
+
+          <!-- ── 4. SIGNALS FEED ─────────────────────────────────────────────── -->
+          <div
+            id="signalsFeed"
+            class="signals-feed hidden"
+            aria-live="polite"
+            aria-label="Tín hiệu kỹ thuận gần đây"
+          ></div>
+
+          <!-- ── 5. INTELLIGENCE SNAPSHOT ──────────────────────────────────────── -->
           <div
             id="intelligencePanel"
             class="intelligence-panel hidden"
@@ -363,35 +351,11 @@
             </div>
           </details>
 
-          <!-- ── 7. WATCHLIST + CATALYST ──────────────────────────────────────────── -->
-          <div class="panel-duo panel-duo--watchlist">
-            <section class="panel glass watchlist-layer" aria-labelledby="watchlistTitle">
-              <div class="panel-header split-header">
-                <div>
-                  <p class="eyebrow">① Watchlist &amp; Tín hiệu</p>
-                  <h2 id="watchlistTitle">👁 Mã đang theo dõi</h2>
-                </div>
-                <div class="panel-actions"></div>
-              </div>
-              <div id="watchlistSection">Đang tải…</div>
-            </section>
-
-            <section class="panel glass watchlist-layer" aria-labelledby="catalystPanelTitle">
-              <div class="panel-header split-header">
-                <div>
-                  <p class="eyebrow">② Catalyst Calendar</p>
-                  <h2 id="catalystPanelTitle">Upcoming catalysts</h2>
-                </div>
-              </div>
-              <div id="catalystList" class="list empty-state">Chưa tải dữ liệu…</div>
-            </section>
-          </div>
-
-          <!-- ── 8. PORTFOLIO ─────────────────────────────────────────────────────────────── -->
+          <!-- ── 7. PORTFOLIO ─────────────────────────────────────────────────────────────── -->
           <section class="panel glass portfolio-layer" aria-labelledby="portfolioTitle">
             <div class="panel-header split-header">
               <div>
-                <p class="eyebrow">③ Danh mục đầu tư</p>
+                <p class="eyebrow">① Danh mục đầu tư</p>
                 <h2 id="portfolioTitle">Holdings &amp; P&amp;L realtime</h2>
               </div>
               <p class="muted panel-hint">
@@ -403,6 +367,30 @@
               <div id="portfolioSection">Đang tải…</div>
             </div>
           </section>
+
+          <!-- ── 8. WATCHLIST + CATALYST ──────────────────────────────────────────── -->
+          <div class="panel-duo panel-duo--watchlist">
+            <section class="panel glass watchlist-layer" aria-labelledby="watchlistTitle">
+              <div class="panel-header split-header">
+                <div>
+                  <p class="eyebrow">② Watchlist &amp; Tín hiệu</p>
+                  <h2 id="watchlistTitle">👁 Mã đang theo dõi</h2>
+                </div>
+                <div class="panel-actions"></div>
+              </div>
+              <div id="watchlistSection">Đang tải…</div>
+            </section>
+
+            <section class="panel glass watchlist-layer" aria-labelledby="catalystPanelTitle">
+              <div class="panel-header split-header">
+                <div>
+                  <p class="eyebrow">③ Catalyst Calendar</p>
+                  <h2 id="catalystPanelTitle">Upcoming catalysts</h2>
+                </div>
+              </div>
+              <div id="catalystList" class="list empty-state">Chưa tải dữ liệu…</div>
+            </section>
+          </div>
 
         </div><!-- /cluster-a -->
 
@@ -471,14 +459,14 @@
               </ol>
             </section>
 
-            <section class="panel glass validation-layer backtesting-panel" aria-labelledby="backtestTitle">
-              <div class="panel-header split-header">
+            <details class="panel glass validation-layer backtesting-panel collapsible-panel" id="backtestDetails">
+              <summary class="panel-header split-header collapsible-summary">
                 <div>
                   <p class="eyebrow">⑥ Backtesting</p>
                   <h2 id="backtestTitle">Review accuracy &amp; thesis performance</h2>
                 </div>
                 <p class="muted panel-hint">Verdict quality · Worst &amp; Best calls theo avg PnL snapshot.</p>
-              </div>
+              </summary>
               <div class="panel-body">
                 <div class="backtesting-grid">
                   <div class="subpanel">
@@ -505,7 +493,7 @@
                   </div>
                 </div>
               </div>
-            </section>
+            </details>
           </div>
 
         </div><!-- /cluster-b -->
@@ -580,6 +568,10 @@
             </div>
           </div>
 
+          <details class="collapsible-panel cluster-collapse" id="memoryDetails">
+            <summary class="collapsible-summary collapsible-summary--cluster">
+              <span class="collapse-hint">Nhấn để xem: Episodic memory · Patterns · Bias · Behavioral DNA</span>
+            </summary>
           <div class="memory-kpi-strip" id="memoryKpiStrip" aria-label="Memory overview">
             <article class="mem-kpi-card" id="memKpiEpisodes">
               <span class="mem-kpi-label">Episodes ghi nhận</span>
@@ -734,6 +726,8 @@
             <div class="dna-skel dna-skel--body"></div>
           </section>
 
+          </details>
+
         </div><!-- /cluster-d -->
 
         <!-- ══════════════════════════════════════════════════════════════════
@@ -748,7 +742,10 @@
             </div>
           </div>
 
-          <section id="rrgPanel" class="panel glass" aria-labelledby="rrgPanelTitle">
+          <details id="rrgPanel" class="panel glass collapsible-panel">
+            <summary class="collapsible-summary collapsible-summary--cluster">
+              <span class="collapse-hint">Nhấn để xem: Relative Rotation Graph (VNINDEX benchmark)</span>
+            </summary>
             <div class="panel-header split-header">
               <div>
                 <p class="eyebrow">⑦ 📡 RRG</p>
@@ -761,7 +758,7 @@
                 <p id="rrgStatus" class="rrg-status">Đang tải…</p>
               </div>
             </div>
-          </section>
+          </details>
 
         </div><!-- /cluster-e -->
 
@@ -1129,7 +1126,7 @@
 
     <!-- quick-trade.js đã được chuyển thành ES module tại modules/portfolio/quick-trade.js -->
     <!-- và được import trực tiếp bởi portfolio-loader.js + portfolio-renderer.js          -->
-    <script type="module" src="/static/dashboard/js/app.js?v=24" data-cfasync="false"></script>
+    <script type="module" src="/static/dashboard/js/app.js?v=25" data-cfasync="false"></script>
     <script>
       /* ── Sidebar toggle (mobile) ─────────────────────────────────────── */
       (function () {

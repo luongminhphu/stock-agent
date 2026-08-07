@@ -10,21 +10,9 @@
 
 const KPI_MAP = [
   {
-    cardId:   'riskyTheses',
-    targetId: 'thesisBoardTitle',
-    label:    'Xem thesis rủi ro',
-    onEnter:  () => {
-      const filter = document.getElementById('statusFilter');
-      if (filter && filter.value !== 'active') {
-        filter.value = 'active';
-        filter.dispatchEvent(new Event('change'));
-      }
-    },
-  },
-  {
-    cardId:   'staleReviewCard',
-    targetId: 'thesesTableWrap',
-    label:    'Xem thesis cần review',
+    cardId:   'attentionKpiCard',
+    targetId: 'actionSurface',
+    label:    'Xem việc cần làm hôm nay',
   },
   {
     cardId:   'upcoming7d',
