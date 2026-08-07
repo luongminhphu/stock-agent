@@ -589,7 +589,10 @@ class PortfolioCog(BaseCog):
         lines: list[str] = []
         for t in trades:
             is_buy = _is_buy(t.trade_type)
-            if is_buy:
+            is_adjust = str(t.trade_type).lower() == "adjust"
+            if is_adjust:
+                icon = "⚖️"
+            elif is_buy:
                 icon = "🟢"
             else:
                 icon = "🟢" if (t.realized_pnl or 0) >= 0 else "🔴"
@@ -600,10 +603,17 @@ class PortfolioCog(BaseCog):
             )
             date_str = t.traded_at.strftime("%d/%m %H:%M") if t.traded_at else "?"
             trade_id_hint = f" `#{t.id}`" if is_buy else ""
-            lines.append(
-                f"{icon} `{date_str}`{trade_id_hint} **{t.ticker}** {str(t.trade_type).upper()} "
-                f"{t.qty:,.0f} cổ @ {self.fmt_vnd(t.price)}{pnl_str}"
-            )
+            if is_adjust:
+                # ADJUST: qty = cp thưởng, price = 0 — hiển thị note thay giá
+                lines.append(
+                    f"{icon} `{date_str}` **{t.ticker}** ADJUST +{t.qty:,.0f} cổ"
+                    f"{f' — {t.note}' if t.note else ''}"
+                )
+            else:
+                lines.append(
+                    f"{icon} `{date_str}`{trade_id_hint} **{t.ticker}** {str(t.trade_type).upper()} "
+                    f"{t.qty:,.0f} cổ @ {self.fmt_vnd(t.price)}{pnl_str}"
+                )
 
         body, footer_hint = self.paginate_lines(lines)
 
