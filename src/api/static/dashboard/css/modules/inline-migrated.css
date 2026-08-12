@@ -6,9 +6,13 @@
 ──────────────────────────────────────────────────────────────────────────── */
 /* ── Wave-1 layout additions ────────────────────────────────── */
 
+/* Wave 4 fix: repeat(5,1fr) là số cột của layout 9-card cũ. Sau khi gộp
+   KPI 9→6 (Wave 2), row 1 chỉ còn 4 card thật → grid 5 cột làm card không
+   giãn đều hết chiều rộng (dư 1 cột trắng, "chỗ to chỗ nhỏ"). Đặt đúng
+   4 cột khớp với row 1 (4 card) và row 2 (1 card + 1 card + scan span-2 = 4). */
 .kpi-strip {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: var(--gap, 12px);
 }
 .kpi-strip .kpi-row-divider {
@@ -30,14 +34,9 @@
     grid-column: span 2;
   }
 }
-@media (max-width: 540px) {
-  .kpi-strip {
-    grid-template-columns: 1fr 1fr;
-  }
-  .kpi-strip .signal-card--scan {
-    grid-column: 1 / -1;
-  }
-}
+/* Wave 5 fix: xoa block 540px cua .kpi-strip - trung lap 100% voi block
+   900px ben tren (repeat(2,1fr) == 1fr 1fr; span 2 == 1/-1 khi chi co 2 cot).
+   Day la dead/redundant CSS, khong doi hanh vi hien thi. */
 
 .panel-duo {
   display: grid;
@@ -45,7 +44,10 @@
   gap: var(--gap, 12px);
   align-items: stretch; /* panels trên cùng row luôn bằng chiều cao nhau */
 }
-@media (max-width: 860px) {
+/* Wave 5 fix: 860 -> 900, khop voi topbar/mobile-nav/kpi-strip cung la
+   "major reflow" tier -> panel 2 cot chuyen 1 cot dong loat cung 1 diem,
+   khong con canh "1 khoi da xep doc, 1 khoi con nam ngang" khi resize. */
+@media (max-width: 900px) {
   .panel-duo { grid-template-columns: 1fr; }
 }
 
@@ -74,7 +76,8 @@
 .brief-collapsible summary::after {
   content: '›';
   margin-left: auto;
-  font-size: 1.1rem;
+  /* Wave 5 fix: 1.1rem hardcode → var(--text-lg), token gần nhật */
+  font-size: var(--text-lg);
   transition: transform .2s;
 }
 .brief-collapsible[open] summary {
@@ -173,7 +176,9 @@
 }
 .mem-kpi-value {
   display: block;
-  font-size: 1.35rem;
+  /* Wave 5 fix: 1.35rem hardcode → var(--text-xl), khớp với
+     .signal-value và .dna-kpi-value cùng vai trò “số liệu lớn” */
+  font-size: var(--text-xl);
   font-weight: 700;
   color: var(--text);
   font-variant-numeric: tabular-nums;
@@ -360,8 +365,9 @@
   font-size: .82rem;
   line-height: 1.6;
 }
+/* Wave 5 fix: 1.8rem hardcode → var(--text-2xl), đồng bộ với .dna-empty-icon */
 .mem-empty-icon {
-  font-size: 1.8rem;
+  font-size: var(--text-2xl);
   margin-bottom: 8px;
   opacity: .5;
 }

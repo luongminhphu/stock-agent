@@ -496,11 +496,14 @@
 }
 .action-overflow-btn:hover { filter: brightness(1.15); transform: translateY(-1px); }
 
+/* Wave 4 fix: menu trước đây position:absolute + nằm trong holder → bị
+   .port-table-wrap { overflow-x: auto } cắt trên mobile khi bảng cuộn ngang.
+   Giờ menu được append trực tiếp vào <body> (xem adjust-position.js), dùng
+   position:fixed + toạ độ tính bằng JS nên không còn bị overflow ancestor
+   nào cắt/che nữa. */
 .action-overflow {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  z-index: 60;
+  position: fixed;
+  z-index: 500;
   min-width: 240px;
   display: none;
   flex-direction: column;

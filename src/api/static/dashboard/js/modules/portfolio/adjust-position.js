@@ -436,6 +436,37 @@ function _closeAllOverflows() {
 }
 document.addEventListener('click', _closeAllOverflows);
 document.addEventListener('keydown', e => { if (e.key === 'Escape') _closeAllOverflows(); });
+// Wave 4 fix: đóng menu khi scroll/resize — vị trí fixed sẽ lệch nếu không
+// đóng, và bảng portfolio thường cuộn ngang trên mobile.
+window.addEventListener('scroll', _closeAllOverflows, { passive: true, capture: true });
+window.addEventListener('resize', _closeAllOverflows);
+
+// Wave 4 fix: menu ⋯ trước đây position:absolute NẰM TRONG .port-table-wrap
+// (overflow-x:auto) → bị cắt/che trên mobile khi bảng cuộn ngang. Giờ menu
+// được append trực tiếp vào <body> + position:fixed, toạ độ tính bằng JS
+// dựa trên vị trí nút ⋯ thực tế, clamp trong viewport để không tràn màn hình.
+function _positionOverflowMenu(menu, btn) {
+  menu.style.visibility = 'hidden';
+  menu.classList.add('open');
+  const btnRect  = btn.getBoundingClientRect();
+  const menuRect = menu.getBoundingClientRect();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const margin = 8;
+
+  let left = btnRect.right - menuRect.width;
+  left = Math.max(margin, Math.min(left, vw - menuRect.width - margin));
+
+  let top = btnRect.bottom + 4;
+  if (top + menuRect.height > vh - margin) {
+    top = btnRect.top - menuRect.height - 4; // không đủ chỗ dưới → mở lên trên
+  }
+  top = Math.max(margin, top);
+
+  menu.style.left = `${left}px`;
+  menu.style.top  = `${top}px`;
+  menu.style.visibility = '';
+}
 
 function _overflowItem(label, icon, ariaLabel, onClick) {
   const item = document.createElement('button');
@@ -453,6 +484,11 @@ function _overflowItem(label, icon, ariaLabel, onClick) {
 
 export function injectAdjustButtons(tbody) {
   if (!tbody) return;
+  // Wave 4 fix: menu ⋯ giờ append vào <body> (không phải holder) — khi
+  // portfolio table re-render (auto-refresh 60s từ Wave 1), tbody cũ bị
+  // thay bằng innerHTML mới nên menu cũ KHÔNG tự mất theo → xóa sạch
+  // trước khi tạo lại, tránh leak DOM sau nhiều lần refresh.
+  document.body.querySelectorAll('.action-overflow').forEach(m => m.remove());
   tbody.querySelectorAll('tr[data-ticker]').forEach(row => {
     const wrap = row.querySelector('.action-btns');
     if (!wrap || wrap.querySelector('.action-overflow-btn')) return; // idempotent
@@ -486,17 +522,20 @@ export function injectAdjustButtons(tbody) {
       () => openAdjustModal(ticker, { currentQty: qty(), currentAvg: avg(), mode: 'history' }),
     ));
 
+    // Wave 4 fix: append menu vào <body> (không phải holder) để position:fixed
+    // không bị .port-table-wrap { overflow-x: auto } cắt trên mobile.
+    document.body.appendChild(menu);
+
     moreBtn.addEventListener('click', e => {
       e.stopPropagation();
       const wasOpen = menu.classList.contains('open');
       _closeAllOverflows();
-      if (!wasOpen) menu.classList.add('open');
+      if (!wasOpen) _positionOverflowMenu(menu, moreBtn);
     });
 
     const holder = document.createElement('span');
     holder.className = 'action-overflow-holder';
     holder.appendChild(moreBtn);
-    holder.appendChild(menu);
     wrap.appendChild(holder);
   });
 }

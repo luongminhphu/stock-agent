@@ -27,7 +27,7 @@ import {
   bindThesisFormEvents,
 } from './modules/thesis/thesis-form.js?v=1';
 import { bindSuggestEvents }             from './modules/thesis/thesis-suggest.js?v=1';
-import { loadPortfolio, startPortfolioAutoRefresh } from './modules/portfolio/portfolio-loader.js?v=1';
+import { loadPortfolio, startPortfolioAutoRefresh } from './modules/portfolio/portfolio-loader.js?v=2';
 import { loadWatchlist, handleAddTicker } from './modules/watchlist/watchlist-loader.js?v=1';
 import { bindFeedbackEvents }            from './modules/briefing/brief-feedback.js?v=1';
 import { bindGenerateBriefButtons }      from './modules/briefing/brief-generate.js?v=1';
