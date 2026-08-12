@@ -146,7 +146,8 @@
 }
 
 /* Responsive */
-@media (max-width: 600px) {
+/* Wave 5 fix: 600 -> 640 */
+@media (max-width: 640px) {
   .signal-row {
     grid-template-columns: 2.8rem 1fr auto;
     gap: 8px;
@@ -266,7 +267,8 @@
 }
 
 /* Responsive */
-@media (max-width: 600px) {
+/* Wave 5 fix: 600 -> 640 */
+@media (max-width: 640px) {
   .alerts-strip {
     gap: 5px 6px;
     padding: 6px 10px;

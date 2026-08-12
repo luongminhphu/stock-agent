@@ -8,6 +8,14 @@
  * .hm-legend       — legend strip above the table
  * .bd-panel        — slide-in breakdown drawer
  * .bd-backdrop     — click-to-close overlay
+ *
+ * Wave 5 note: file này có nhiều font-size hardcode nhỏ (10-18px) cho
+ * legend/cell/badge trong RRG-style heatmap. Không đổi sang var(--text-*)
+ * trong Wave 5 vì đây là tỉ lệ nội bộ của một chart component (kích thước
+ * tương đối giữa cell/label/legend quan trọng hơn khớp global KPI scale),
+ * và panel này đã collapse/lazy-load theo Wave 3 nên ít hiển thị ngay khi
+ * mở dashboard. Cân nhắc token hoá riêng trong 1 wave UI khác nếu heatmap
+ * trở thành khu vực hay bị phản hồi lệch cỡ chữ.
  */
 
 /* ── Container ─────────────────────────────────────────────────── */

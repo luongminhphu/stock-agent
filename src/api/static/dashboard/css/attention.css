@@ -360,7 +360,8 @@
 }
 
 /* ── Responsive: compact on narrow screens ────────────────────────── */
-@media (max-width: 540px) {
+/* Wave 5 fix: 540 -> 640 */
+@media (max-width: 640px) {
   .attn-item {
     gap: 7px;
     padding: 8px 10px;

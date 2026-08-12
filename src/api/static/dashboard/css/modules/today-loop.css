@@ -31,8 +31,12 @@
   grid-column: 1 / -1;
 }
 
-/* Responsive: stack thành 1 cột trên mobile */
-@media (max-width: 768px) {
+/* Wave 5 fix: 768 -> 900. today-duo-row la major reflow (giong panel-duo)
+   nam ngay tren kpi-strip trong cung cluster A; truoc day lech breakpoint
+   (768 vs 900) nen o khoang 768-900px kpi-strip da vao mobile-mode nhung
+   today-duo-row van 2 cot -> "cho to cho nho" trong cung cluster.
+   Responsive: stack thành 1 cột trên mobile */
+@media (max-width: 900px) {
   .today-duo-row {
     grid-template-columns: 1fr;
   }

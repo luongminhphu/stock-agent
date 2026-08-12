@@ -69,7 +69,9 @@
   color: var(--text-muted, #94a3b8);
 }
 .dna-kpi-value {
-  font-size: 1.3rem;
+  /* Wave 5 fix: 1.3rem hardcode → var(--text-xl), khớp với
+     .signal-value (KPI strip) cùng vai trò “số liệu lớn” */
+  font-size: var(--text-xl);
   font-weight: 700;
   color: var(--text-primary, #f1f5f9);
   line-height: 1.2;
@@ -193,7 +195,9 @@
   padding: 1.5rem 1rem;
   text-align: center;
 }
-.dna-empty-icon  { font-size: 2rem; opacity: .5; }
+/* Wave 5 fix: 2rem hardcode → var(--text-2xl), đồng bộ với
+   .mem-empty-icon (cổng empty-state icon khác) */
+.dna-empty-icon  { font-size: var(--text-2xl); opacity: .5; }
 .dna-empty-title { font-size: .85rem; font-weight: 600; color: var(--text-secondary, #cbd5e1); }
 .dna-empty-desc  { font-size: .75rem; color: var(--text-muted, #94a3b8); max-width: 28rem; line-height: 1.5; }
 

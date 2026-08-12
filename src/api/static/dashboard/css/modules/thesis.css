@@ -362,7 +362,8 @@ tr.row--stop-breach:hover { background: rgba(248, 113, 113, 0.14); }
 .dsb-upside   { font-size: var(--text-sm); font-weight: 700; color: var(--success); background: var(--success-bg); padding: 1px 5px; border-radius: var(--radius-tag); }
 .dsb-downside { font-size: var(--text-sm); font-weight: 700; color: var(--danger); background: var(--danger-bg); padding: 1px 5px; border-radius: var(--radius-tag); }
 .dsb-actions  { display: flex; gap: 6px; flex-shrink: 0; }
-@media (max-width: 540px) {
+/* Wave 5 fix: 540 -> 640 */
+@media (max-width: 640px) {
   .dsb-kpis    { justify-content: flex-start; gap: 10px; }
   .dsb-actions { margin-left: auto; }
 }
@@ -1007,7 +1008,8 @@ tr.row--stop-breach:hover { background: rgba(248, 113, 113, 0.14); }
 .trend-gauge-labels {
   display: flex;
   justify-content: space-between;
-  font-size: 9px;
+  /* Wave 5 fix: 9px hardcode → var(--text-2xs) (10px), token nhỏ nhất */
+  font-size: var(--text-2xs);
   color: var(--text-muted);
   opacity: .6;
 }

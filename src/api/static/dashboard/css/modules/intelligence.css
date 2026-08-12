@@ -641,7 +641,8 @@ mark.it-ticker {
 /* ══════════════════════════════════════════════════════════════════════════
    RESPONSIVE
 ══════════════════════════════════════════════════════════════════════════ */
-@media (max-width: 540px) {
+/* Wave 5 fix: 540 -> 640 */
+@media (max-width: 640px) {
   .intelligence-panel { padding: var(--space-3); }
   .intel-hero         { flex-direction: column; align-items: flex-start; }
   .intel-conf-block   { flex-direction: row; align-items: center; }
