@@ -44,18 +44,16 @@
   margin-bottom: var(--space-4);
 }
 
+/* Wave 6 fix: chuẩn hoá về panel language chung của dashboard.
+   Trước đây attn-panel dùng navy gradient + viền amber + glow shadow,
+   lệch hẳn với .panel (var(--surface) + var(--line)) nên 2 ô duo-row
+   trông "khác biệt so với phần còn lại". Accent amber giờ chỉ giữ ở
+   icon ⚡ và count pill — đủ nhận diện urgency, không phá consistency. */
 .attn-panel {
-  background: linear-gradient(135deg,
-    rgba(10, 20, 38, 0.96) 0%,
-    rgba(14, 26, 46, 0.98) 100%
-  );
-  border: 1px solid rgba(251, 191, 36, 0.22);
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: var(--radius-md, 10px);
   overflow: hidden;
-  box-shadow:
-    0 0 0 1px rgba(251, 191, 36, 0.06),
-    0 4px 20px rgba(0, 0, 0, 0.45),
-    0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 /* ── Header ─────────────────────────────────────────────────────────────── */
@@ -65,8 +63,8 @@
   align-items: center;
   gap: var(--space-2);
   padding: 11px var(--space-4);
-  background: rgba(251, 191, 36, 0.06);
-  border-bottom: 1px solid rgba(251, 191, 36, 0.14);
+  /* Wave 6 fix: bỏ nền + viền amber, dùng divider chuẩn như panel khác */
+  border-bottom: 1px solid var(--line);
 }
 
 .attn-panel__title {
@@ -74,7 +72,9 @@
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--warning);
+  /* Wave 6 fix: warning amber -> var(--text), đồng bộ với .tds-title
+     và section title chung; urgency vẫn thể hiện qua icon ⚡ + count pill */
+  color: var(--text);
   flex-shrink: 0;
 }
 

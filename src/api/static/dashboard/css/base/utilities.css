@@ -111,15 +111,3 @@ td.currency, th.currency {
   font-size: var(--text-base);
 }
 
-.footer-note {
-  margin-top: var(--space-4);     /* 16px */
-  color: var(--muted);
-  font-size: var(--text-sm);
-}
-.footer-note code {
-  color: #dff5ff;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(148, 163, 184, 0.12);
-  padding: 2px var(--space-2);    /* 2px 8px */
-  border-radius: var(--radius-xs);
-}

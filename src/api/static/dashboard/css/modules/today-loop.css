@@ -46,29 +46,41 @@
 }
 
 /* ── Strip container ─────────────────────────────────────────────────────────────────── */
+/* Wave 6 fix: chuẩn hoá về panel language chung.
+   Trước đây strip dùng nền + viền orange tint khác hẳn .panel, và header
+   không có divider nên lệch baseline với .attn-panel bên cạnh. Giờ dùng
+   var(--surface) + var(--line) + radius-md giống .panel/.attn-panel;
+   accent orange chỉ giữ ở icon ⚠️ và count pill. */
 .thesis-digest-strip {
   margin-bottom: var(--layer-gap, 16px);
-  background: rgba(251, 146, 60, 0.04);
-  border: 1px solid rgba(251, 146, 60, 0.15);
-  border-radius: var(--radius-sm);
-  padding: 10px 14px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 8px;
 }
 .thesis-digest-strip.hidden { display: none; }
 
 /* ── Strip header ───────────────────────────────────────────────────────────────────── */
+/* Wave 6 fix: header có padding + border-bottom giống .attn-panel__header
+   (11px 16px) để 2 ô duo-row ngang hàng, text không lệch */
 .tds-header {
   display: flex;
   align-items: center;
   gap: 8px;
+  padding: 11px var(--space-4);
+  border-bottom: 1px solid var(--line);
 }
+/* Wave 6 fix: typography khớp .attn-panel__title (sm/700/uppercase) —
+   trước đây base/600 normal-case nên 2 ô cùng row có 2 kiểu tiêu đề khác nhau */
 .tds-title {
-  font-size: var(--text-base);
-  font-weight: 600;
+  font-size: var(--text-sm);
+  font-weight: 700;
   color: var(--text);
-  letter-spacing: 0.02em;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 .tds-count {
   font-size: var(--text-sm);
@@ -85,10 +97,13 @@
 }
 
 /* ── Items list ────────────────────────────────────────────────────────────────────────── */
+/* Wave 6 fix: container không còn padding bao ngoài (đã chuyển lên header),
+   items cần padding riêng; canh lề trái 4+12=16px khớp .attn-item (16px) */
 .tds-items {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  padding: var(--space-2) var(--space-1);
 }
 
 /* ── Single digest item ─────────────────────────────────────────────────────────────────── */
@@ -96,7 +111,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 10px;
+  padding: 7px 12px;
   border-radius: var(--radius-btn);
   cursor: pointer;
   transition: background 0.12s;

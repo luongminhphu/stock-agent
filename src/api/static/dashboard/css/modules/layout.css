@@ -185,15 +185,6 @@ main {
   flex-wrap: wrap;
 }
 
-/* ── Footer ──────────────────────────────────────────────────────── */
-.footer-note {
-  padding: 12px 20px;
-  font-size: var(--text-sm);
-  color: var(--faint);
-  border-top: 1px solid var(--line);
-  text-align: center;
-}
-
 /* ── Form primitives ─────────────────────────────────────────────── */
 .form-grid {
   display: flex;
