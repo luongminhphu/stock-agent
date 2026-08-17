@@ -142,7 +142,7 @@ class SignalEventRepository:
 
     Owner: watchlist segment.
     Called only by ScanService._emit_events() — no other writer.
-    Reader: ProactiveAlertAgent (ai segment) via list_pending / mark_processed.
+    Reader: WatchlistService.mark_signal_processed() — ai never imports this.
     """
 
     def __init__(self, session: AsyncSession) -> None:
@@ -170,6 +170,14 @@ class SignalEventRepository:
         )
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
+
+    async def get_by_event_id(self, event_id: str) -> "SignalEvent | None":
+        """Lookup one signal_events row by public event_id. None if unknown."""
+        from src.watchlist.models import SignalEvent
+
+        stmt = select(SignalEvent).where(SignalEvent.event_id == event_id)
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
 
     async def mark_processed(self, event: "SignalEvent") -> None:
         """Stamp processed_at = now(UTC) and flush."""

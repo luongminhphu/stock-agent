@@ -6,6 +6,8 @@ No real DB, no real session.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -265,3 +267,52 @@ async def test_list_active_alerts(mock_repo):
     result = await svc.list_active_alerts(user_id="user-A")
     assert len(result) == 2
     mock_repo.list_active_alerts.assert_awaited_once_with("user-A")
+
+
+# ---------------------------------------------------------------------------
+# mark_signal_processed — public API for ProactiveAlertAgent
+# ---------------------------------------------------------------------------
+
+
+def _make_service_with_signal_repo(mock_signal_repo: AsyncMock) -> WatchlistService:
+    svc = WatchlistService.__new__(WatchlistService)
+    svc._signal_repo = mock_signal_repo
+    return svc
+
+
+@pytest.mark.asyncio
+async def test_mark_signal_processed_found():
+    event = SimpleNamespace(event_id="evt-1", processed_at=None)
+    mock_signal_repo = AsyncMock()
+    mock_signal_repo.get_by_event_id.return_value = event
+    svc = _make_service_with_signal_repo(mock_signal_repo)
+
+    found = await svc.mark_signal_processed("evt-1")
+
+    assert found is True
+    mock_signal_repo.mark_processed.assert_awaited_once_with(event)
+
+
+@pytest.mark.asyncio
+async def test_mark_signal_processed_not_found():
+    mock_signal_repo = AsyncMock()
+    mock_signal_repo.get_by_event_id.return_value = None
+    svc = _make_service_with_signal_repo(mock_signal_repo)
+
+    found = await svc.mark_signal_processed("missing")
+
+    assert found is False
+    mock_signal_repo.mark_processed.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_mark_signal_processed_already_processed_is_idempotent():
+    event = SimpleNamespace(event_id="evt-1", processed_at=datetime.now(UTC))
+    mock_signal_repo = AsyncMock()
+    mock_signal_repo.get_by_event_id.return_value = event
+    svc = _make_service_with_signal_repo(mock_signal_repo)
+
+    found = await svc.mark_signal_processed("evt-1")
+
+    assert found is True
+    mock_signal_repo.mark_processed.assert_not_awaited()

@@ -75,6 +75,23 @@ class WatchlistService:
         self._signal_repo = SignalEventRepository(session)
         self._session = session
 
+    async def mark_signal_processed(self, event_id: str) -> bool:
+        """Stamp signal_events.processed_at = now(UTC).
+
+        Public API for ProactiveAlertAgent (ai segment) — Wave 4 contract.
+        Agent must not import watchlist.models / repository.
+
+        Returns True if the row exists (idempotent when already processed).
+        Returns False if event_id is unknown.
+        Caller owns the transaction (commit).
+        """
+        event = await self._signal_repo.get_by_event_id(event_id)
+        if event is None:
+            return False
+        if event.processed_at is None:
+            await self._signal_repo.mark_processed(event)
+        return True
+
     async def add(self, inp: AddToWatchlistInput) -> WatchlistItem:
         existing = await self._repo.get_item(inp.user_id, inp.ticker)
         if existing:
