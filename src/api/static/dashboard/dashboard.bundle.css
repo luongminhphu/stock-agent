@@ -5651,7 +5651,7 @@ tr.row--stop-breach:hover { background: rgba(248, 113, 113, 0.14); }
 }
 
 .tds-ticker {
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   font-weight: 700;
   color: var(--brand);
   letter-spacing: 0.04em;
@@ -5691,8 +5691,9 @@ tr.row--stop-breach:hover { background: rgba(248, 113, 113, 0.14); }
   flex-shrink: 0;
   margin-left: auto;
 }
+
 .tds-pnl {
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }

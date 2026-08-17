@@ -127,8 +127,11 @@
 }
 
 /* ── Ticker ────────────────────────────────────────────────────────────────────────────────────── */
+/* Wave 6.1 fix: text-base -> text-sm, khớp .attn-item__ticker (cũng sm/700)
+   ở ô bên cạnh — trước đây ticker 2 ô cùng row có 2 cỡ chữ khác nhau (base
+   vs sm) khiến font chữ trông "lệch". Giữ brand color vì đây là mã CK. */
 .tds-ticker {
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   font-weight: 700;
   color: var(--brand);
   letter-spacing: 0.04em;
@@ -170,8 +173,11 @@
   flex-shrink: 0;
   margin-left: auto;
 }
+/* Wave 6.1 fix: text-base -> text-sm, khớp typography data nhỏ của
+   .attn-item ở ô bên cạnh — trước đây % ở ô phải to hơn rõ so với
+   nội dung ô trái, gây cảm giác font lệch. Giữ semantic color pos/neg. */
 .tds-pnl {
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
