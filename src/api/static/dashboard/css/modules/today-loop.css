@@ -116,6 +116,7 @@
   cursor: pointer;
   transition: background 0.12s;
   border: 1px solid transparent;
+  min-width: 0;
 }
 .tds-item:hover {
   background: rgba(251, 146, 60, 0.06);
@@ -223,8 +224,11 @@
   white-space: nowrap;
 }
 
-/* ── Mobile: stack flags, hide score ────────────────────────────────────────────────────── */
-@media (max-width: 480px) {
+/* Wave 6.2: 480 → 640 (secondary tier). Giữ margin-left:auto để row 1
+   là TICKER -------- PNL VERDICT, flags xuống dòng 2 full-width.
+   Trước đây margin-left:0 làm ticker+pnl+verdict dồn trái, flags wrap
+   lệch — trông như "vỡ chữ / scale" trên iPhone. */
+@media (max-width: 640px) {
   .tds-item {
     flex-wrap: wrap;
     gap: 6px;
@@ -234,7 +238,7 @@
     width: 100%;
   }
   .tds-aside {
-    margin-left: 0;
+    margin-left: auto;
   }
   .tds-score {
     display: none;

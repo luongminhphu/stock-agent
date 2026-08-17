@@ -164,6 +164,10 @@
   align-items: center;
   gap: var(--space-3);
   padding: 9px var(--space-4);
+  /* Wave 6.2: min-width:0 để flex item co được trong cột — nếu không,
+     nội dung nowrap làm item tràn, bị .attn-panel { overflow:hidden } cắt
+     chữ mà không hiện ellipsis. */
+  min-width: 0;
   transition:
     background var(--transition-fast, 0.15s ease),
     border-color var(--transition-fast, 0.15s ease);
@@ -239,6 +243,29 @@
   text-overflow: ellipsis;
   min-width: 0;
   line-height: 1.4;
+}
+
+/* Wave 6.2: mobile — message là thông tin quyết định (giá / SL), không
+   được cắt. Ấn aside badge (trùng group header KHẨN) để nhường chỗ.
+   Ticker xếp trên, message xuống dòng đủ chữ. */
+@media (max-width: 640px) {
+  .attn-item {
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+  .attn-item__aside {
+    display: none;
+  }
+  .attn-item__top {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+  .attn-item__msg {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+  }
 }
 
 .attn-item__meta {

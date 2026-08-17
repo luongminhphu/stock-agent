@@ -67,6 +67,20 @@ function renderMeta(item) {
 // Render
 // ---------------------------------------------------------------------------
 
+// Wave 6.2: message backend thường bắt đầu bằng "FPT: ..." trong khi ticker
+// đã hiển thị ở span riêng → trên mobile thành "FPT FPT: giá đã..." và ăn
+// thêm chiều ngang. Chỉ cắt prefix trùng, không đổi nội dung quyết định.
+function displayMessage(item) {
+  const ticker = (item.ticker || '').trim();
+  const msg    = item.message || '';
+  if (!ticker) return msg;
+  const head = `${ticker}:`;
+  if (msg.toUpperCase().startsWith(head.toUpperCase())) {
+    return msg.slice(head.length).replace(/^\s+/, '');
+  }
+  return msg;
+}
+
 function renderItem(item) {
   const { icon, label } = KIND_META[item.kind] ?? { icon: '⚡', label: item.kind };
   const urgency = URGENCY_LABEL[item.urgency] ?? { text: item.urgency, cls: 'attn-badge--medium' };
@@ -74,6 +88,7 @@ function renderItem(item) {
   const relTime = fmtRelTime(item.ts);
   const thesisAttr = item.thesis_id ? `data-thesis-id="${item.thesis_id}"` : '';
   const clickable   = item.thesis_id ? 'attn-item--clickable' : '';
+  const msg         = displayMessage(item);
 
   return `
     <li class="attn-item ${clickable}" data-urgency="${item.urgency}" ${thesisAttr}
@@ -83,7 +98,7 @@ function renderItem(item) {
       <div class="attn-item__body">
         <div class="attn-item__top">
           <span class="attn-item__ticker">${item.ticker}</span>
-          <span class="attn-item__msg">${item.message}</span>
+          <span class="attn-item__msg">${msg}</span>
         </div>
         ${meta ? `<div class="attn-item__meta">${meta}</div>` : ''}
       </div>

@@ -33,7 +33,7 @@ import { bindFeedbackEvents }            from './modules/briefing/brief-feedback
 import { bindGenerateBriefButtons }      from './modules/briefing/brief-generate.js?v=1';
 import { bindBriefTabs, initBriefAutoOpen } from './modules/briefing/brief-tabs.js?v=1';
 import { bindBriefTickerClick }          from './modules/briefing/brief-ticker.js?v=1';
-import { loadAttentionPanel, startAttentionAutoRefresh } from './modules/attention/attention-loader.js?v=1';
+import { loadAttentionPanel, startAttentionAutoRefresh } from './modules/attention/attention-loader.js?v=2';
 import { loadMarketBreadth }             from './modules/market/breadth.js?v=1';
 import { debounce }                      from './utils/debounce.js?v=1';
 import { initMobileNav }                 from './modules/mobile-nav.js?v=1';
