@@ -1298,7 +1298,11 @@ tr.search-hidden {
 @media (max-width: 480px) {
   
   .topbar-search {
-    max-width: 180px;
+    max-width: none;
+    min-width: 0;
+  }
+  #topbarSearch::placeholder {
+    font-size: var(--text-xs);
   }
 
   
@@ -5266,6 +5270,10 @@ tr.row--stop-breach:hover { background: rgba(248, 113, 113, 0.14); }
   .attn-item__aside {
     display: none;
   }
+  
+  .attn-item__icon {
+    display: none;
+  }
   .attn-item__top {
     flex-direction: column;
     align-items: flex-start;
@@ -7834,7 +7842,9 @@ mark.it-ticker {
   font-size: var(--text-xl);
   font-weight: 700;
   color: var(--text);
-  line-height: 1.15;
+  
+  line-height: 1.3;
+  overflow: visible;
   letter-spacing: -0.02em;
 }
 
@@ -7989,10 +7999,9 @@ mark.it-ticker {
   
   padding-top: env(safe-area-inset-top, 0px);
   gap: var(--space-4);
-  background: rgba(8, 17, 31, 0.88);
+  
+  background: var(--bg);
   border-bottom: 1px solid var(--line);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
 }
 
 main#main-content {
@@ -8060,6 +8069,8 @@ main#main-content {
     padding: var(--space-3) var(--space-4) var(--space-8);
     
     padding-bottom: calc(var(--space-8) + env(safe-area-inset-bottom, 0px));
+    
+    scroll-padding-top: var(--space-3);
   }
 }
 

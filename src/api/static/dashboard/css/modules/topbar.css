@@ -268,9 +268,15 @@ tr.search-hidden {
 
 /* ── Mobile compact: 430px (iPhone 17 Pro Max portrait) ─────────────────── */
 @media (max-width: 480px) {
-  /* Thu gọn search bar — max-width hẹp hơn để toolbar vừa màn hình */
+  /* Wave 6.3: bỏ max-width:180px — trước đây kẹp placeholder
+     "Tìm mã, thesis, quyết định…" thành "quyết địr". Để flex:1 lấy phần
+     còn lại sau Reload + Thesis. Placeholder nhỏ hơn 1 bậc cho khớp. */
   .topbar-search {
-    max-width: 180px;
+    max-width: none;
+    min-width: 0;
+  }
+  #topbarSearch::placeholder {
+    font-size: var(--text-xs);
   }
 
   /* Engine heartbeat: ẩn text, chỉ giữ dot */

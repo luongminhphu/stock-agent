@@ -54,10 +54,10 @@
   /* Safe area top: Dynamic Island / status bar trên iPhone */
   padding-top: env(safe-area-inset-top, 0px);
   gap: var(--space-4);
-  background: rgba(8, 17, 31, 0.88);
+  /* Wave 6.3: opaque --bg thay vì rgba(...,0.88). Nền mờ làm chữ UPCOM
+     cuộn lên dưới sticky topbar trông như bị cắt đầu chữ trên iPhone. */
+  background: var(--bg);
   border-bottom: 1px solid var(--line);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
 }
 
 /* ── Main content area ───────────────────────────────────────────────────── */
@@ -129,6 +129,8 @@ main#main-content {
     padding: var(--space-3) var(--space-4) var(--space-8);
     /* Safe area bottom cho Dynamic Island / home bar */
     padding-bottom: calc(var(--space-8) + env(safe-area-inset-bottom, 0px));
+    /* Wave 6.3: khi cuộn, section không chui dưới sticky topbar */
+    scroll-padding-top: var(--space-3);
   }
 }
 
