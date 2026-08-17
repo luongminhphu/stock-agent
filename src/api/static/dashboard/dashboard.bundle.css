@@ -242,7 +242,8 @@ th.status {
 /* ── reset.css ─────────────────────────────────────────── */
 :root {
   --font-body: 'Roboto', 'Inter', 'Helvetica Neue', sans-serif;
-  --font-mono: 'Roboto Mono', 'Fira Code', 'Cascadia Code', monospace;
+  
+  --font-mono: 'IBM Plex Mono', 'ui-monospace', 'Cascadia Code', monospace;
 }
 
 * { box-sizing: border-box; }

@@ -11,7 +11,9 @@
 /* ── Font tokens (single source of truth cho font-family) ────────────────── */
 :root {
   --font-body: 'Roboto', 'Inter', 'Helvetica Neue', sans-serif;
-  --font-mono: 'Roboto Mono', 'Fira Code', 'Cascadia Code', monospace;
+  /* Wave 6.4: IBM Plex Mono thay Roboto Mono — file gstatic v31 thiếu
+     .notdef, Firefox spam "empty gid 1 used as component". */
+  --font-mono: 'IBM Plex Mono', 'ui-monospace', 'Cascadia Code', monospace;
 }
 
 * { box-sizing: border-box; }

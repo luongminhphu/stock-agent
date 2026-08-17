@@ -8,9 +8,13 @@
     <!-- Fonts: preconnect + <link> (tránh @import blocking trong CSS) — Wave 5d -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap" />
+    <!-- Wave 6.4: Roboto Mono (gstatic v31) trigger Firefox
+         "glyf: empty gid 1 used as component" — bug .notdef rỗng
+         https://github.com/google/fonts/issues/8722
+         Đổi IBM Plex Mono (có Vietnamese, tabular nums). -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" />
     <!-- CSS bundle: link thẳng bundle (1 request, bỏ @import hop) — Wave 5d -->
-    <link rel="stylesheet" href="/static/dashboard/dashboard.bundle.css?v=39" />
+    <link rel="stylesheet" href="/static/dashboard/dashboard.bundle.css?v=40" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">Bỏ qua điều hướng</a>

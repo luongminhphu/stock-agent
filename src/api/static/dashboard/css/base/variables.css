@@ -22,7 +22,7 @@
    COLOR       Xanh lá = --success. Đỏ/âm = --danger. Cam = --orange (chỉ semantic).
 
    NOTE: --font-body và --font-mono được định nghĩa duy nhất trong reset.css
-         (Roboto + Roboto Mono via Google Fonts). Không override ở đây.
+         (Roboto + IBM Plex Mono via Google Fonts). Không override ở đây.
 ──────────────────────────────────────────────────────────────────────────── */
 
 :root {
