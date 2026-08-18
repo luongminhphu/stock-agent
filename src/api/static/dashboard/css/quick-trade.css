@@ -350,6 +350,18 @@
 .qt-sizing-sub { color: var(--muted); margin-top: 2px; }
 .qt-sizing-note { color: var(--warning); margin-top: 4px; font-size: 0.78rem; }
 .qt-sizing-warn { color: var(--danger); margin-top: 4px; font-size: 0.78rem; }
+/* Wave 8.3/8.4 — Livermore advisory nudges (pyramiding, sector concentration):
+   amber like qt-sizing-note, never blocks, distinct from qt-sizing-warn's red. */
+.qt-sizing-livermore { color: var(--warning); margin-top: 4px; font-size: 0.78rem; }
+/* Wave 8.2 hard block (averaging-down): full-width danger banner, replaces
+   the normal main/sub lines entirely instead of stacking under them. */
+.qt-sizing-blocked {
+  color: var(--danger);
+  font-weight: 600;
+  margin-top: 2px;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
 
 /* ── Adjust (cổ tức cổ phiếu / split) — warning amber ───────────────────── */
 .adj-btn-inline {

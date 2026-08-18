@@ -8629,6 +8629,16 @@ main#main-content {
 .qt-sizing-note { color: var(--warning); margin-top: 4px; font-size: 0.78rem; }
 .qt-sizing-warn { color: var(--danger); margin-top: 4px; font-size: 0.78rem; }
 
+.qt-sizing-livermore { color: var(--warning); margin-top: 4px; font-size: 0.78rem; }
+
+.qt-sizing-blocked {
+  color: var(--danger);
+  font-weight: 600;
+  margin-top: 2px;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
 .adj-btn-inline {
   background: color-mix(in srgb, var(--warning) 16%, transparent);
   color:      var(--warning);

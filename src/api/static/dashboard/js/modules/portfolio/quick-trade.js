@@ -270,8 +270,34 @@ function _escQt(s) {
 }
 
 function _sizingHTML(d) {
+  // Wave 8.5 — hard-block case (Wave 8.2 averaging-down guard): mirror
+  // backend's own SizingResult.to_note() special-case exactly — don't render
+  // the normal max_qty/stop/risk lines at all (they're all zero/meaningless
+  // here), just the ⛔ blocked banner with the full Livermore explanation
+  // already built into d.warnings[0] by _check_averaging_down().
+  if (d.cap_reason === 'averaging_down_blocked') {
+    const msg = (d.warnings ?? []).join('; ');
+    return `
+      <div class="qt-sizing-title">Position sizing (tham khảo)</div>
+      <div class="qt-sizing-blocked">⛔ ${_escQt(msg)}</div>`;
+  }
+
+  const capLabel = {
+    risk: 'rủi ro (stop loss)',
+    concentration: 'ngưỡng tập trung 1 mã',
+    cash: 'tiền mặt khả dụng',
+    invalid: 'dữ liệu không hợp lệ',
+  }[d.cap_reason] ?? d.cap_reason;
+
   const warn = (d.warnings ?? [])
     .map(w => `<div class="qt-sizing-warn">⚠ ${_escQt(w)}</div>`).join('');
+  // Wave 8.3 + 8.4 — advisory-only Livermore nudges (pyramiding discipline,
+  // sector concentration). Never block sizing, so styled as amber advisory
+  // (qt-sizing-livermore) rather than qt-sizing-warn's danger red, which is
+  // reserved for invalid-data warnings.
+  const livermoreNotes = [d.pyramiding_note, d.sector_note]
+    .filter(Boolean)
+    .map(n => `<div class="qt-sizing-livermore">⚠️ ${_escQt(n)}</div>`).join('');
   const stopLabel = d.stop_source === 'thesis' ? 'thesis' : 'mặc định';
   const cashNote  = d.cash_known
     ? ''
@@ -282,8 +308,8 @@ function _sizingHTML(d) {
       (~${_fmtVnd(d.max_value_vnd)}, ${_escQt(String(d.portfolio_pct_after))}% NAV)</div>
     <div class="qt-sizing-sub">Stop ${_escQt(d.stop_price.toLocaleString('vi-VN'))}đ (${_escQt(stopLabel)})
       · Risk budget ${_fmtVnd(d.risk_budget_vnd)} (${(d.risk_per_trade_pct * 100).toFixed(1)}% NAV)
-      · Giới hạn bởi: ${_escQt(d.cap_reason)}</div>
-    ${cashNote}${warn}`;
+      · Giới hạn bởi: ${_escQt(capLabel)}</div>
+    ${cashNote}${warn}${livermoreNotes}`;
 }
 
 function _showError(msg) {
