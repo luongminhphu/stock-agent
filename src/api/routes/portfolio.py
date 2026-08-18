@@ -35,12 +35,16 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_current_user_id, get_db, get_quote_service
+from src.platform.db import AsyncSessionLocal
+from src.platform.logging import get_logger
 from src.portfolio.service import (
     InsufficientQtyError,
     PortfolioService,
     PositionNotFoundError,
 )
 from src.portfolio.trade_usecase import TradeUseCase
+
+logger = get_logger(__name__)
 
 router = APIRouter(tags=["portfolio"])
 
@@ -183,6 +187,37 @@ async def _refresh_snapshot_after_trade(
 
     eod_svc = EodSnapshotService(session=session, quote_service=quote_svc)
     await eod_svc.refresh_after_trade(user_id, ticker, position_closed=position_closed)
+
+
+async def _refresh_snapshot_after_edit(
+    quote_svc: object,
+    user_id: str,
+    ticker: str,
+) -> None:
+    """Refresh snapshot hôm nay sau EDIT — isolated session, best-effort.
+
+    Khác _refresh_snapshot_after_trade (dùng chung request session, trước
+    commit): hàm này chạy SAU khi edit đã commit, trên session riêng, nên:
+      - đọc được position vừa commit (read committed),
+      - lỗi snapshot (quote hang / DB error) KHÔNG poison transaction của
+        edit — trước đây upsert snapshot fail trên shared session khiến
+        commit edit fail theo → user thấy lỗi dù edit đã đúng.
+    Never raises.
+    """
+    from src.portfolio.eod_snapshot_service import EodSnapshotService
+
+    try:
+        async with AsyncSessionLocal() as snap_session:
+            eod_svc = EodSnapshotService(session=snap_session, quote_service=quote_svc)
+            await eod_svc.refresh_after_trade(user_id, ticker)
+            await snap_session.commit()
+    except Exception as exc:
+        logger.warning(
+            "portfolio.edit_position.snapshot_refresh_failed",
+            ticker=ticker,
+            error=str(exc),
+            exc_info=True,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -405,8 +440,8 @@ async def edit_position(
         position = await svc.edit_position(
             user_id=user_id, ticker=ticker, qty=body.qty, avg_cost=body.avg_cost,
         )
-        # Refresh snapshot hôm nay để dashboard phản ánh giá trị mới ngay.
-        await _refresh_snapshot_after_trade(session, get_quote_service(), user_id, position.ticker)
+        # Commit edit TRƯỚC — positions là source of truth. Snapshot refresh
+        # chạy sau, trên session riêng: lỗi snapshot không rollback edit.
         await session.commit()
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
@@ -415,6 +450,10 @@ async def edit_position(
     except Exception as exc:
         await session.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+
+    # Refresh snapshot hôm nay SAU commit — dashboard phản ánh giá mới ngay.
+    # Isolated session + never-raises: edit đã commit an toàn dù bước này lỗi.
+    await _refresh_snapshot_after_edit(get_quote_service(), user_id, position.ticker)
 
     return PositionEditResponse(
         position_id=position.id,
