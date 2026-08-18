@@ -170,38 +170,24 @@ class TradeResponse(BaseModel):
 # Helpers
 # ---------------------------------------------------------------------------
 
-async def _refresh_snapshot_after_trade(
-    session: AsyncSession,
+async def _refresh_snapshot_after_commit(
     quote_svc: object,
     user_id: str,
     ticker: str,
     position_closed: bool = False,
 ) -> None:
-    """Refresh EOD snapshot hôm nay sau buy/sell/adjust — dashboard cập nhật ngay.
+    """Refresh snapshot hôm nay sau khi trade/edit ĐÃ commit — isolated session.
 
-    Dashboard đọc position_daily_snapshots làm primary source; nếu không
-    refresh, thay đổi position trong ngày sẽ stale tới EOD job 15:20.
-    Never raises — lỗi chỉ log bên trong service.
-    """
-    from src.portfolio.eod_snapshot_service import EodSnapshotService
-
-    eod_svc = EodSnapshotService(session=session, quote_service=quote_svc)
-    await eod_svc.refresh_after_trade(user_id, ticker, position_closed=position_closed)
-
-
-async def _refresh_snapshot_after_edit(
-    quote_svc: object,
-    user_id: str,
-    ticker: str,
-) -> None:
-    """Refresh snapshot hôm nay sau EDIT — isolated session, best-effort.
-
-    Khác _refresh_snapshot_after_trade (dùng chung request session, trước
-    commit): hàm này chạy SAU khi edit đã commit, trên session riêng, nên:
-      - đọc được position vừa commit (read committed),
-      - lỗi snapshot (quote hang / DB error) KHÔNG poison transaction của
-        edit — trước đây upsert snapshot fail trên shared session khiến
-        commit edit fail theo → user thấy lỗi dù edit đã đúng.
+    Pattern bắt buộc cho mọi route thay đổi position (buy/sell/adjust/edit):
+      1. session.commit() TRƯỚC — positions/trades là source of truth.
+      2. Hàm này chạy SAU, trên AsyncSessionLocal riêng, nên:
+         - đọc được position vừa commit (read committed),
+         - lỗi snapshot (quote hang / DB error) KHÔNG poison transaction của
+           trade — trước đây refresh chạy trên shared session trước commit,
+           upsert snapshot fail khiến commit trade fail theo → user mất lệnh
+           dù lệnh đã đúng.
+    Dashboard đọc live positions (Wave 7.1) nên snapshot chỉ là close_price
+    fallback; nếu bước này fail, EOD job 15:20 tự sửa.
     Never raises.
     """
     from src.portfolio.eod_snapshot_service import EodSnapshotService
@@ -209,12 +195,15 @@ async def _refresh_snapshot_after_edit(
     try:
         async with AsyncSessionLocal() as snap_session:
             eod_svc = EodSnapshotService(session=snap_session, quote_service=quote_svc)
-            await eod_svc.refresh_after_trade(user_id, ticker)
+            await eod_svc.refresh_after_trade(
+                user_id, ticker, position_closed=position_closed,
+            )
             await snap_session.commit()
     except Exception as exc:
         logger.warning(
-            "portfolio.edit_position.snapshot_refresh_failed",
+            "portfolio.snapshot_refresh_after_commit_failed",
             ticker=ticker,
+            position_closed=position_closed,
             error=str(exc),
             exc_info=True,
         )
@@ -258,11 +247,16 @@ async def buy_stock(
             note=body.note,
             source="dashboard",
         )
-        await _refresh_snapshot_after_trade(session, quote_svc, user_id, result.ticker)
+        # Commit trade TRƯỚC — trades/positions là source of truth.
+        # Snapshot refresh chạy sau, trên session riêng: lỗi snapshot
+        # không bao giờ rollback lệnh mua đã commit.
+        await session.commit()
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+
+    await _refresh_snapshot_after_commit(quote_svc, user_id, result.ticker)
 
     return TradeResponse(
         trade_id=result.trade_id,
@@ -315,10 +309,8 @@ async def sell_stock(
             note=body.note,
             source="dashboard",
         )
-        await _refresh_snapshot_after_trade(
-            session, quote_svc, user_id, result.ticker,
-            position_closed=result.position_closed,
-        )
+        # Commit trade TRƯỚC — snapshot refresh chạy sau trên session riêng.
+        await session.commit()
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except PositionNotFoundError as exc:
@@ -327,6 +319,12 @@ async def sell_stock(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+
+    # Full sell → position_closed=True để xoá snapshot hôm nay của ticker.
+    await _refresh_snapshot_after_commit(
+        quote_svc, user_id, result.ticker,
+        position_closed=result.position_closed,
+    )
 
     return TradeResponse(
         trade_id=result.trade_id,
@@ -388,7 +386,7 @@ async def adjust_position(
             reason=body.reason,
             note=body.note,
         )
-        await _refresh_snapshot_after_trade(session, quote_svc, user_id, position.ticker)
+        # Commit TRƯỚC — snapshot refresh chạy sau trên session riêng.
         await session.commit()
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
@@ -397,6 +395,9 @@ async def adjust_position(
     except Exception as exc:
         await session.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+
+    # Refresh snapshot SAU commit — isolated session, never-raises.
+    await _refresh_snapshot_after_commit(quote_svc, user_id, position.ticker)
 
     return AdjustResponse(
         trade_id=trade.id,
@@ -453,7 +454,7 @@ async def edit_position(
 
     # Refresh snapshot hôm nay SAU commit — dashboard phản ánh giá mới ngay.
     # Isolated session + never-raises: edit đã commit an toàn dù bước này lỗi.
-    await _refresh_snapshot_after_edit(get_quote_service(), user_id, position.ticker)
+    await _refresh_snapshot_after_commit(get_quote_service(), user_id, position.ticker)
 
     return PositionEditResponse(
         position_id=position.id,

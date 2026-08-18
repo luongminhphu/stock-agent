@@ -89,7 +89,7 @@ async def test_refresh_after_edit_never_raises():
         side_effect=RuntimeError("session factory broken"),
     ):
         # Không được raise
-        await portfolio_route._refresh_snapshot_after_edit(_FakeQuoteSvc(), "u1", "HCM")
+        await portfolio_route._refresh_snapshot_after_commit(_FakeQuoteSvc(), "u1", "HCM")
 
 
 @pytest.mark.asyncio
@@ -115,7 +115,7 @@ async def test_refresh_after_edit_commits_isolated_session():
             refresh,
         ),
     ):
-        await portfolio_route._refresh_snapshot_after_edit(_FakeQuoteSvc(), "u1", "HCM")
+        await portfolio_route._refresh_snapshot_after_commit(_FakeQuoteSvc(), "u1", "HCM")
 
     refresh.assert_awaited_once()
     assert refresh.await_args.args[1] == "HCM"
