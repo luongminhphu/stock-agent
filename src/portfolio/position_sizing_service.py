@@ -19,8 +19,18 @@ Stop price resolution order:
     1. thesis.stop_loss of the active thesis for (user, ticker)
     2. fallback: entry_price × (1 − default_stop_loss_pct)
 
+Also enforces two Livermore risk invariants (read-only lookups against
+portfolio's own Position table + watchlist's SignalEvent table):
+  - Wave 8.2: averaging-down guard — HARD block (max_qty=0) when entry_price
+    is below the open position's avg_cost. Never rescue a loser by buying more.
+  - Wave 8.3: pyramiding discipline — ADVISORY only (pyramiding_note) when
+    adding to a WINNING position without a recent BREAKOUT signal to justify
+    the add. Warns, does not block — confidence-driven adds aren't a hard
+    financial risk the way averaging down is, so this stays a nudge.
+
 Does NOT:
-  - execute or block trades (advisory gate only — verdict text owns GO/AVOID)
+  - execute or block trades beyond the averaging-down hard gate above
+    (verdict text otherwise owns GO/AVOID)
   - own risk_appetite parsing beyond the numeric knobs in settings
   - fetch quotes itself (caller passes current price)
 
@@ -61,6 +71,7 @@ class SizingResult:
     portfolio_pct_after: float    # max_value_vnd / equity × 100
     cap_reason: str               # which cap bound the size: "risk" | "concentration" | "cash" | "invalid" | "averaging_down_blocked"
     warnings: list[str] = field(default_factory=list)
+    pyramiding_note: str = ""     # Wave 8.3 — advisory only, never blocks sizing
 
     def to_note(self) -> str:
         """Render compact Vietnamese block for embed/prompt consumption."""
@@ -80,6 +91,8 @@ class SizingResult:
             lines.append("Bị giới hạn bởi tiền mặt khả dụng")
         if not self.cash_known:
             lines.append("_(tiền mặt ước tính — set PORTFOLIO_CASH_VND trong .env để chính xác)_")
+        if self.pyramiding_note:
+            lines.append(f"⚠️ {self.pyramiding_note}")
         return "\n".join(lines)
 
 
@@ -141,6 +154,13 @@ class PositionSizingService:
         if avg_down_block is not None:
             return avg_down_block
 
+        # 0b. Pyramiding discipline check (Wave 8.3 — Livermore: pyramid only
+        # at NEW pivotal points, never out of confidence from an existing
+        # gain). Advisory only — never blocks, only annotates the note.
+        pyramiding_note = await self._check_pyramiding_discipline(
+            user_id=user_id, ticker=ticker, entry_price=entry_price
+        )
+
         # 1. Stop price: thesis stop_loss → fallback default %
         stop_price, stop_source = await self._resolve_stop(user_id, ticker, entry_price)
 
@@ -201,6 +221,7 @@ class PositionSizingService:
             portfolio_pct_after=(max_value / equity * 100) if equity > 0 else 0.0,
             cap_reason=cap_reason,
             warnings=warnings,
+            pyramiding_note=pyramiding_note,
         )
         logger.info(
             "position_sizing.computed",
@@ -262,6 +283,48 @@ class PositionSizingService:
                 "bằng cách mua thêm, hãy cắt lỗ hoặc chờ giá vượt lại giá vốn."
             ],
         )
+
+    async def _check_pyramiding_discipline(
+        self, *, user_id: str, ticker: str, entry_price: float
+    ) -> str:
+        """Warn (never block) when adding to a WINNING position without a
+        fresh breakout signal to justify it.
+
+        Livermore rule: pyramid only at NEW pivotal points, never just
+        because a position is already up and it feels safe to add. Returns
+        "" when there's no open position, the position isn't winning yet,
+        a recent BREAKOUT signal justifies the add, or any lookup fails
+        (fail-open — this is advisory text only, must never block a valid
+        entry the way _check_averaging_down does).
+        """
+        try:
+            from src.portfolio.repository import PortfolioRepository
+            from src.watchlist.repository import WatchlistRepository
+            from src.watchlist.signal_engine import SignalType
+
+            position = await PortfolioRepository(self._session).get_open_position(
+                user_id, ticker
+            )
+            if position is None or position.avg_cost <= 0 or entry_price <= position.avg_cost:
+                return ""
+
+            has_breakout = await WatchlistRepository(self._session).has_recent_signal(
+                ticker, SignalType.BREAKOUT, hours=48, user_id=user_id
+            )
+            if has_breakout:
+                return ""
+
+            return (
+                f"Mua thêm {ticker} khi đang lãi (giá {entry_price:,.0f}đ > vốn TB "
+                f"{position.avg_cost:,.0f}đ) nhưng không có tín hiệu breakout mới trong "
+                "48h — kiểm tra lại đây có phải pivotal point thật hay chỉ vì đang lãi nên tự tin mua thêm."
+            )
+        except Exception as exc:
+            logger.warning(
+                "position_sizing.pyramiding_check_failed",
+                ticker=ticker, user_id=user_id, error=str(exc),
+            )
+            return ""
 
     async def _resolve_stop(
         self, user_id: str, ticker: str, entry_price: float

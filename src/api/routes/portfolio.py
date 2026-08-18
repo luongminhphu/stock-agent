@@ -552,6 +552,7 @@ class SizingPreviewResponse(BaseModel):
     portfolio_pct_after: float
     cap_reason: str               # "risk" | "concentration" | "cash" | "invalid" | "averaging_down_blocked"
     warnings: list[str]
+    pyramiding_note: str = ""     # Wave 8.3 — advisory: adding to a winner without a fresh breakout
 
 
 @router.get(
@@ -603,4 +604,5 @@ async def get_sizing_preview(
         portfolio_pct_after=result.portfolio_pct_after,
         cap_reason=result.cap_reason,
         warnings=result.warnings,
+        pyramiding_note=result.pyramiding_note,
     )
