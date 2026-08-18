@@ -10,7 +10,9 @@ dialog {
   position: fixed;
   inset: 0;
   margin: auto;
-  width: min(640px, calc(100vw - 32px));
+  /* Mobile (<480px) → full-bleed đúng chuẩn mobile modal; desktop rộng hơn
+     1 bậc (720px) cho form thoáng. 100% thay 100vw để không đếm scrollbar. */
+  width: min(720px, calc(100% - 32px));
   max-height: calc(100dvh - 48px);
   overflow-y: auto;
   /* Dùng token surface-3 → bg-2 để khớp hệ màu navy của dashboard */
@@ -33,7 +35,7 @@ dialog::backdrop {
 .modal-inner {
   padding: var(--space-6);
   display: grid;
-  gap: var(--form-gap);
+  gap: var(--space-4); /* 16px — thoáng hơn --form-gap (12px) giữa các block */
 }
 .modal-header {
   display: flex;
@@ -377,8 +379,29 @@ dialog select option {
   background: rgba(125, 211, 252, 0.06);
 }
 
-/* ── Mobile: modal full-screen trên 430px ───────────────────────────── */
+/* ── Mobile: form-row xếp dọc (grid 2 cột nhét vào màn hẹp làm input
+   trông chật chội — đây là cảm giác "lấn rìa" trên điện thoại) ─────────── */
+@media (max-width: 640px) {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Mobile ≤480px: dialog full-bleed sát 2 rìa (đúng chuẩn mobile),
+   bo góc trên, tránh safe-area. Rule .modal-backdrop/.modal bên dưới là
+   legacy cho modal class-based (giữ lại). ────────────────────────────── */
 @media (max-width: 480px) {
+  dialog {
+    width: 100%;
+    max-width: 100%;
+    max-height: 94dvh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    /* inset: 0 + margin: auto giữ modal giữa màn hình; kéo xuống đáy:
+       margin-top tự động hấp thụ hết khoảng thừa */
+    margin-bottom: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
   .modal-backdrop {
     align-items: flex-end; /* modal slide up từ bottom */
   }
