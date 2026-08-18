@@ -6,6 +6,13 @@ Responsibilities:
 - Fetch latest scan snapshot for ticker (watchlist segment via repo).
 - Extract brief mention for ticker from latest briefing (briefing context).
 - Fetch past evaluated decisions for user (thesis segment via LessonService).
+- Fetch general market regime (market segment, read-only via injected
+  MarketRegimeService — Wave 8.1: never fight the general market).
+- Deterministically override the AI verdict when position sizing detects an
+  averaging-down entry (portfolio segment, Wave 8.2 — Livermore: don't
+  rescue a losing position by buying more of it). This is enforced in code,
+  not left to the LLM, because sizing is only known after the AI already
+  answered.
 - Call PreTradeAgent with assembled context + session for investor profile.
 - Return PreTradeCheckOutput to caller (bot command).
 
@@ -18,15 +25,20 @@ Does NOT own:
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.ai.agents.pretrade import PreTradeAgent
-from src.ai.schemas import PreTradeCheckOutput
+from src.ai.schemas import PreTradeCheckOutput, TradeDecision
 from src.market.quote_service import QuoteService
 from src.platform.logging import get_logger
 from src.thesis.lesson_service import LessonService
 from src.thesis.repository import ThesisRepository
 from src.watchlist.repository import WatchlistRepository
+
+if TYPE_CHECKING:
+    from src.portfolio.position_sizing_service import SizingResult
 
 logger = get_logger(__name__)
 
@@ -39,10 +51,14 @@ class PreTradeService:
         session: AsyncSession,
         quote_service: QuoteService,
         pretrade_agent: PreTradeAgent,
+        market_regime_service: object | None = None,
     ) -> None:
         self._session = session
         self._quote_service = quote_service
         self._agent = pretrade_agent
+        # Optional (Wave 8.1) — None keeps existing callers backward-compatible;
+        # market context block is simply omitted (empty string) when not wired.
+        self._market_regime_service = market_regime_service
         self._thesis_repo = ThesisRepository(session)
         self._watchlist_repo = WatchlistRepository(session)
         self._lesson_service = LessonService(session)
@@ -68,6 +84,9 @@ class PreTradeService:
         # 5. Past lessons — ticker-specific, best-effort, never blocks
         past_lessons = await self._build_lesson_context(ticker, user_id)
 
+        # 5b. Market regime — general market gate (Wave 8.1), best-effort, never blocks
+        market_context = await self._build_market_context()
+
         # 6. AI check — session forwarded so ContextBuilder can inject investor profile
         result = await self._agent.check(
             ticker=ticker,
@@ -77,14 +96,39 @@ class PreTradeService:
             signal_context=signal_context,
             brief_context=brief_context,
             past_lessons=past_lessons,
+            market_context=market_context,
             session=self._session,
         )
         # 6b. Quantitative sizing gate (Wave 2) — portfolio segment owns the
         # math; thesis segment attaches the result to the advisory output.
         # Best-effort: sizing failure never blocks the pre-trade answer.
-        sizing_block = await self._build_sizing_block(ticker=ticker, user_id=user_id, price=price)
-        if sizing_block:
-            result.sizing_note = sizing_block
+        sizing_result = await self._compute_sizing(ticker=ticker, user_id=user_id, price=price)
+        if sizing_result is not None:
+            result.sizing_note = sizing_result.to_note()
+
+            # 6c. Averaging-down hard gate (Wave 8.2 — Livermore rule 2).
+            # Deterministic override, NOT a prompt rule: sizing runs AFTER the
+            # AI verdict above, so the AI never sees this signal beforehand.
+            # A hard risk invariant like "don't rescue a loser" must not
+            # depend on the LLM noticing it after the fact — thesis segment
+            # enforces it directly. intended_action=SELL is this codebase's
+            # existing convention for the "AVOID" verdict on a prospective
+            # entry (see bot/commands/pretrade.py _DECISION_META).
+            if (
+                sizing_result.cap_reason == "averaging_down_blocked"
+                and result.intended_action == TradeDecision.BUY
+            ):
+                result.intended_action = TradeDecision.SELL
+                result.proceed_recommendation = False
+                result.blocking_issues.append(
+                    "Bình quân giá xuống bị chặn: giá hiện tại thấp hơn giá vốn "
+                    "trung bình của vị thế đang mở (Livermore: không mua thêm để "
+                    "cứu một vị thế đang thua)."
+                )
+                logger.info(
+                    "pretrade_service.averaging_down_override",
+                    ticker=ticker, user_id=user_id,
+                )
 
         # 7. Persist the advice for later reconciliation (Wave 1).
         # Best-effort: persistence failure must never block the user-facing
@@ -98,6 +142,7 @@ class PreTradeService:
             decision=result.intended_action,
             confidence=result.confidence,
             has_lessons=bool(past_lessons),
+            has_market_context=bool(market_context),
         )
         return result
 
@@ -170,22 +215,41 @@ class PreTradeService:
             logger.warning("pretrade_service.brief_context_error", ticker=ticker, error=str(exc))
             return ""
 
-    async def _build_sizing_block(self, *, ticker: str, user_id: str, price: float) -> str:
+    async def _build_market_context(self) -> str:
+        """Return MarketRegime.format_for_prompt() string (Wave 8.1).
+
+        Read-only from market segment via injected MarketRegimeService.
+        Returns empty string when the service was not wired (None) or on any
+        fetch error — pretrade must never be blocked by market data.
+        """
+        if self._market_regime_service is None:
+            return ""
+        try:
+            regime = await self._market_regime_service.get_regime()
+            return regime.format_for_prompt()
+        except Exception as exc:
+            logger.warning("pretrade_service.market_context_error", error=str(exc))
+            return ""
+
+    async def _compute_sizing(
+        self, *, ticker: str, user_id: str, price: float
+    ) -> "SizingResult | None":
         """Quantitative position sizing from PositionSizingService. Never raises.
 
-        Overrides the LLM-written sizing_note with hard numbers computed by
-        Python (fixed-fractional risk model). The LLM narrative remains in
-        the persisted rationale; the user-facing sizing note is always the
-        quantitative one when available.
+        Returns the raw SizingResult (not just its rendered note) so callers
+        can inspect cap_reason — e.g. the averaging-down hard gate (Wave 8.2)
+        needs the structured reason, not just display text. Overrides the
+        LLM-written sizing_note with hard numbers computed by Python
+        (fixed-fractional risk model); the LLM narrative remains in the
+        persisted rationale.
         """
         try:
             from src.portfolio.position_sizing_service import PositionSizingService
 
             svc = PositionSizingService(self._session)
-            result = await svc.size_for_entry(
+            return await svc.size_for_entry(
                 user_id=user_id, ticker=ticker, entry_price=price
             )
-            return result.to_note()
         except Exception as exc:
             logger.warning(
                 "pretrade_service.sizing_failed",
@@ -193,7 +257,7 @@ class PreTradeService:
                 user_id=user_id,
                 error=str(exc),
             )
-            return ""
+            return None
 
     async def _persist_advice(
         self,

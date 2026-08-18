@@ -9,7 +9,11 @@ from discord import app_commands
 
 from src.ai.schemas import AlignmentStatus, ResolutionCategory, TradeDecision
 from src.bot.commands.base import BaseCog
-from src.platform.bootstrap import get_pretrade_agent, get_quote_service
+from src.platform.bootstrap import (
+    get_market_regime_service,
+    get_pretrade_agent,
+    get_quote_service,
+)
 from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
@@ -78,6 +82,7 @@ class PretradeCog(BaseCog):
                     session=session,
                     quote_service=get_quote_service(),
                     pretrade_agent=get_pretrade_agent(),
+                    market_regime_service=get_market_regime_service(),
                 )
                 result = await svc.check(ticker=ticker, user_id=user_id)
         except Exception as exc:

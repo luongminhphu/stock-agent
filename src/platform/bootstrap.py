@@ -21,6 +21,7 @@ logger = get_logger(__name__)
 
 _quote_service: object | None = None
 _ohlcv_service: object | None = None
+_market_regime_service: object | None = None  # Wave 8.1: pretrade market-regime gate
 _ai_client: object | None = None
 _thesis_review_agent: object | None = None
 _thesis_debate_agent: object | None = None
@@ -75,7 +76,7 @@ async def bootstrap() -> None:
     """Initialise all application singletons. Idempotent."""
     configure_logging()
 
-    global _quote_service, _ohlcv_service, _ai_client, _thesis_review_agent
+    global _quote_service, _ohlcv_service, _market_regime_service, _ai_client, _thesis_review_agent
     global _thesis_debate_agent
     global _thesis_suggest_agent, _briefing_agent, _why_agent, _pretrade_agent
     global _stress_test_agent, _replay_agent, _snapshot_scheduler
@@ -115,6 +116,15 @@ async def bootstrap() -> None:
             session_factory=_QS_SessionLocal,
         )
         logger.info("platform.bootstrap.quote_service_ready")
+
+    if _market_regime_service is None:
+        from src.market.market_regime import MarketRegimeService
+
+        # Singleton so the 3-minute TTL cache in MarketRegimeService is
+        # actually shared across /pretrade calls instead of being rebuilt
+        # (and re-fetched) on every command invocation.
+        _market_regime_service = MarketRegimeService(_quote_service)
+        logger.info("platform.bootstrap.market_regime_service_ready")
 
     # ── SymbolRegistry: dynamic engine init (HTTP + DB, async) ────────────────
     # Always runs on first bootstrap — idempotent within TTL window.
@@ -733,6 +743,12 @@ def get_ohlcv_service():
     if _ohlcv_service is None:
         raise RuntimeError("bootstrap() has not been called")
     return _ohlcv_service
+
+
+def get_market_regime_service():
+    if _market_regime_service is None:
+        raise RuntimeError("bootstrap() has not been called")
+    return _market_regime_service
 
 
 def get_ai_client():

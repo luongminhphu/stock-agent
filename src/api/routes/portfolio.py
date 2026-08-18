@@ -550,7 +550,7 @@ class SizingPreviewResponse(BaseModel):
     max_qty: int
     max_value_vnd: float
     portfolio_pct_after: float
-    cap_reason: str               # "risk" | "concentration" | "cash" | "invalid"
+    cap_reason: str               # "risk" | "concentration" | "cash" | "invalid" | "averaging_down_blocked"
     warnings: list[str]
 
 

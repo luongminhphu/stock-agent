@@ -28,6 +28,16 @@ Quy tắc resolution_path (BẮT BUỘC khi decision = WAIT hoặc AVOID):
   ✓ "VCB giữ trên 85,000 qua 2 phiên liên tiếp với volume > TB20"
   ✗ "Chờ thị trường ổn định hơn"
 
+Quy tắc thị trường chung (BẮT BUỘC — không đánh ngược xu hướng chung):
+- Nếu được cung cấp THỊ TRƯỜNG CHUNG với trạng thái RISK_OFF hoặc VOLATILE:
+  action BUY chỉ được decision = GO khi CẢ 3/3 nguồn (thesis/signal/brief) đều
+  SUPPORT và không có conflict nào — nâng bar so với mức 2/3 thông thường.
+  Nếu không đạt 3/3 → decision = WAIT, ghi rõ trong risk_flags lý do
+  "thị trường chung đang {state}, chưa đủ bằng chứng để đi ngược dòng".
+- Trạng thái thị trường KHÔNG áp dụng để chặn SELL/REDUCE — cắt lỗ hoặc giảm
+  vị thế không cần chờ thị trường thuận lợi.
+- Trạng thái RISK_ON hoặc NEUTRAL: áp dụng bar thông thường (2/3 nguồn).
+
 Nếu được cung cấp PROFILE NHÀ ĐẦU TƯ:
 - Kiểm tra action có vi phạm risk_appetite không (drawdown tối đa, position size).
 - Nếu ticker thuộc avoid list → bắt buộc decision = AVOID, ghi rõ lý do trong risk_flags.
@@ -59,6 +69,7 @@ def build_pretrade_prompt(
     brief_context: str,
     past_lessons: str = "",
     investor_profile: str = "",
+    market_context: str = "",
 ) -> str:
     """Build pre-trade check prompt.
 
@@ -73,6 +84,10 @@ def build_pretrade_prompt(
         investor_profile: Optional pre-rendered investor profile block from
             ContextBuilder.render_for_agent(). When provided, AI cross-checks
             the trade against risk_appetite, avoid list, and known patterns.
+        market_context: Optional MarketRegime.format_for_prompt() string
+            (VN-Index/VN30 state). When provided, AI raises the evidence bar
+            for BUY when market state is RISK_OFF/VOLATILE (Wave 8.1 —
+            never fight the general market).
     """
     prompt = f"""\
 Kiểm tra trước lệnh: **{ticker}**
@@ -86,6 +101,12 @@ Giá hiện tại: {price:,.0f} ({change_pct:+.2f}%)
 
 === BRIEF HÔM NAY ===
 {brief_context or "Brief hôm nay không đề cập mã này."}
+"""
+
+    if market_context:
+        prompt += f"""
+=== THỊ TRƯỜNG CHUNG ===
+{market_context}
 """
 
     if investor_profile:

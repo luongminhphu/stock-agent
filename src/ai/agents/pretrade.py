@@ -44,6 +44,7 @@ class PreTradeAgent:
         signal_context: str,
         brief_context: str,
         past_lessons: str = "",
+        market_context: str = "",
         session: AsyncSession | None = None,
         user_id: str | None = None,
         trigger: str = "pretrade_check",
@@ -58,6 +59,9 @@ class PreTradeAgent:
             signal_context: Watchlist scan signal context from WatchlistService.
             brief_context:  Today's brief mention for this ticker from BriefingService.
             past_lessons:   Optional formatted decision history from LessonService.
+            market_context: Optional MarketRegime.format_for_prompt() string from
+                            thesis.PreTradeService (Wave 8.1). Empty string skips
+                            the market-regime gate entirely (backward compat).
             session:        Optional AsyncSession. When provided, ContextBuilder builds
                             an investor profile block and memory context is injected.
                             Pass None to skip (existing behaviour — backward compat).
@@ -74,6 +78,7 @@ class PreTradeAgent:
             brief_context=brief_context,
             past_lessons=past_lessons,
             investor_profile=investor_profile,
+            market_context=market_context,
         )
         logger.debug(
             "pretrade_agent.check.calling_ai",
@@ -84,6 +89,7 @@ class PreTradeAgent:
             has_brief=bool(brief_context),
             has_lessons=bool(past_lessons),
             has_investor_profile=bool(investor_profile),
+            has_market_context=bool(market_context),
         )
         # PreTradeCheckOutput has many long-form fields; use COMPLEX_MAX_TOKENS
         # (8192) to avoid mid-JSON truncation on verbose tickers.

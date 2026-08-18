@@ -59,11 +59,13 @@ class SizingResult:
     max_qty: int                  # final answer after all caps, lot-rounded
     max_value_vnd: float          # max_qty × entry_price
     portfolio_pct_after: float    # max_value_vnd / equity × 100
-    cap_reason: str               # which cap bound the size: "risk" | "concentration" | "cash" | "invalid"
+    cap_reason: str               # which cap bound the size: "risk" | "concentration" | "cash" | "invalid" | "averaging_down_blocked"
     warnings: list[str] = field(default_factory=list)
 
     def to_note(self) -> str:
         """Render compact Vietnamese block for embed/prompt consumption."""
+        if self.cap_reason == "averaging_down_blocked":
+            return "\u26d4 " + "; ".join(self.warnings)
         if self.cap_reason == "invalid":
             return "Không tính được sizing — " + "; ".join(self.warnings)
         lines = [
@@ -128,6 +130,16 @@ class PositionSizingService:
                 cap_reason="invalid",
                 warnings=[f"entry_price={entry_price} không hợp lệ"],
             )
+
+        # 0. Averaging-down guard (Wave 8.2 — Livermore: don't rescue a losing
+        # position by buying more of it). Short-circuits before risk/stop math
+        # since there is nothing to size — the entry itself is blocked.
+        avg_down_block = await self._check_averaging_down(
+            user_id=user_id, ticker=ticker, entry_price=entry_price,
+            risk_per_trade_pct=risk_per_trade_pct,
+        )
+        if avg_down_block is not None:
+            return avg_down_block
 
         # 1. Stop price: thesis stop_loss → fallback default %
         stop_price, stop_source = await self._resolve_stop(user_id, ticker, entry_price)
@@ -200,6 +212,56 @@ class PositionSizingService:
         return result
 
     # ------------------------------------------------------------------
+
+    async def _check_averaging_down(
+        self, *, user_id: str, ticker: str, entry_price: float, risk_per_trade_pct: float,
+    ) -> SizingResult | None:
+        """Block sizing when this BUY would average down an open losing position.
+
+        Livermore rule 2: never add to a losing position hoping it recovers.
+        Returns None when there is no open position, avg_cost is unusable, or
+        entry_price is at/above avg_cost (adding to a WINNING position is fine
+        and stays subject to the normal risk/concentration/cash caps below).
+        Read-only lookup via PortfolioRepository (portfolio's own segment) —
+        never raises; any lookup failure is treated as "no position found"
+        so a transient error never blocks a legitimate first-time entry.
+        """
+        try:
+            from src.portfolio.repository import PortfolioRepository
+
+            position = await PortfolioRepository(self._session).get_open_position(
+                user_id, ticker
+            )
+        except Exception as exc:
+            logger.warning(
+                "position_sizing.averaging_down_lookup_failed",
+                ticker=ticker, user_id=user_id, error=str(exc),
+            )
+            return None
+
+        if position is None or position.avg_cost <= 0 or entry_price >= position.avg_cost:
+            return None
+
+        return SizingResult(
+            ticker=ticker,
+            entry_price=entry_price,
+            stop_price=0.0,
+            stop_source="averaging_down_blocked",
+            equity_vnd=0.0,
+            cash_known=False,
+            risk_per_trade_pct=risk_per_trade_pct,
+            risk_budget_vnd=0.0,
+            max_qty=0,
+            max_value_vnd=0.0,
+            portfolio_pct_after=0.0,
+            cap_reason="averaging_down_blocked",
+            warnings=[
+                f"Đang giữ {position.qty:,.0f} {ticker} với giá vốn TB "
+                f"{position.avg_cost:,.0f}đ, giá hiện tại {entry_price:,.0f}đ thấp hơn — "
+                "mua thêm là bình quân giá xuống. Livermore: đừng cứu vị thế thua "
+                "bằng cách mua thêm, hãy cắt lỗ hoặc chờ giá vượt lại giá vốn."
+            ],
+        )
 
     async def _resolve_stop(
         self, user_id: str, ticker: str, entry_price: float
