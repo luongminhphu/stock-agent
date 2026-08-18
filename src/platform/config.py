@@ -104,6 +104,13 @@ class Settings(BaseSettings):
     default_stop_loss_pct: float = 0.07 # fallback stop khi thesis không có stop_loss
     portfolio_cash_vnd: float = 0.0     # tiền mặt hiện có; 0 = ước tính từ realized PnL
 
+    # Wave 8.4 — sector concentration warning (advisory, KHÔNG hạn chế qty).
+    # Khớp đúng ngưỡng đang dùng ở briefing/service.py::_CONCENTRATION_THRESHOLD
+    # để hai điểm trong loop (briefing passive + pretrade active) thống nhất 1 số.
+    # Không hard-block vì investor_preferred_sectors cho thấy tập trung ngành
+    # có thể là chiến lược chủ đích, không phải lỗi.
+    sector_concentration_warn_pct: float = 0.50
+
     # Alert digest (Wave 4b) — cap signals per scan notification to avoid
     # Discord noise when the whole watchlist moves at once (open/close bursts).
     scan_alert_digest_top_n: int = 5    # top-N signals shown; rest collapsed to a summary line

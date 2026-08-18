@@ -19,14 +19,22 @@ Stop price resolution order:
     1. thesis.stop_loss of the active thesis for (user, ticker)
     2. fallback: entry_price × (1 − default_stop_loss_pct)
 
-Also enforces two Livermore risk invariants (read-only lookups against
-portfolio's own Position table + watchlist's SignalEvent table):
+Also enforces three Livermore/portfolio-risk invariants (read-only lookups
+against portfolio's own Position table, watchlist's SignalEvent table, and
+market's SymbolRegistry):
   - Wave 8.2: averaging-down guard — HARD block (max_qty=0) when entry_price
     is below the open position's avg_cost. Never rescue a loser by buying more.
   - Wave 8.3: pyramiding discipline — ADVISORY only (pyramiding_note) when
     adding to a WINNING position without a recent BREAKOUT signal to justify
     the add. Warns, does not block — confidence-driven adds aren't a hard
     financial risk the way averaging down is, so this stays a nudge.
+  - Wave 8.4: sector concentration warning — ADVISORY only (sector_note) when
+    this BUY would push total exposure to the ticker's sector past
+    sector_concentration_warn_pct of NAV. Advisory because
+    investor_preferred_sectors shows concentration can be a deliberate
+    strategy, not a mistake. Mirrors the threshold briefing already narrates
+    once a day (briefing/service.py::_CONCENTRATION_THRESHOLD) but at the
+    actual pretrade decision point.
 
 Does NOT:
   - execute or block trades beyond the averaging-down hard gate above
@@ -72,6 +80,7 @@ class SizingResult:
     cap_reason: str               # which cap bound the size: "risk" | "concentration" | "cash" | "invalid" | "averaging_down_blocked"
     warnings: list[str] = field(default_factory=list)
     pyramiding_note: str = ""     # Wave 8.3 — advisory only, never blocks sizing
+    sector_note: str = ""         # Wave 8.4 — advisory only, never blocks sizing
 
     def to_note(self) -> str:
         """Render compact Vietnamese block for embed/prompt consumption."""
@@ -93,6 +102,8 @@ class SizingResult:
             lines.append("_(tiền mặt ước tính — set PORTFOLIO_CASH_VND trong .env để chính xác)_")
         if self.pyramiding_note:
             lines.append(f"⚠️ {self.pyramiding_note}")
+        if self.sector_note:
+            lines.append(f"⚠️ {self.sector_note}")
         return "\n".join(lines)
 
 
@@ -106,7 +117,7 @@ class PositionSizingService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    def _knobs(self) -> tuple[float, float, float, float, float]:
+    def _knobs(self) -> tuple[float, float, float, float, float, float]:
         """Read settings at call time (not __init__) so tests and runtime
         .env overrides apply without reconstructing the service."""
         s = get_settings()
@@ -116,6 +127,7 @@ class PositionSizingService:
             s.default_stop_loss_pct,
             s.portfolio_cash_vnd,
             s.trade_fee_pct,
+            s.sector_concentration_warn_pct,
         )
 
     async def size_for_entry(
@@ -132,6 +144,7 @@ class PositionSizingService:
             default_stop_loss_pct,
             portfolio_cash_vnd,
             trade_fee_pct,
+            sector_concentration_warn_pct,
         ) = self._knobs()
 
         if entry_price <= 0:
@@ -207,6 +220,14 @@ class PositionSizingService:
         max_qty = int(qty // _LOT_SIZE * _LOT_SIZE)
         max_value = max_qty * entry_price
 
+        # 6. Sector concentration check (Wave 8.4) — advisory only, runs after
+        # qty is known so the warning can state the ACTUAL projected weight
+        # this trade would create, not just today's pre-trade weight.
+        sector_note = await self._check_sector_concentration(
+            user_id=user_id, ticker=ticker, equity=equity, added_value=max_value,
+            warn_pct=sector_concentration_warn_pct,
+        )
+
         result = SizingResult(
             ticker=ticker,
             entry_price=entry_price,
@@ -222,6 +243,7 @@ class PositionSizingService:
             cap_reason=cap_reason,
             warnings=warnings,
             pyramiding_note=pyramiding_note,
+            sector_note=sector_note,
         )
         logger.info(
             "position_sizing.computed",
@@ -326,6 +348,72 @@ class PositionSizingService:
             )
             return ""
 
+    async def _check_sector_concentration(
+        self, *, user_id: str, ticker: str, equity: float, added_value: float,
+        warn_pct: float,
+    ) -> str:
+        """Advisory only — warn (never block) when this BUY would push total
+        sector exposure past `warn_pct` of NAV.
+
+        Mirrors the concentration warning briefing already narrates once a
+        day (briefing/service.py::_build_sector_allocation_context,
+        _CONCENTRATION_THRESHOLD=50.0) — this closes the loop by surfacing
+        the same risk at the actual pretrade decision point instead of only
+        in a passive daily narrative that may already be stale by the time
+        the investor acts on it.
+
+        Deliberately advisory, not a hard cap: investor_preferred_sectors
+        (config.py) shows sector concentration can be a deliberate strategy,
+        not a mistake — a hard block here could fight an intentional bet the
+        way max_position_pct correctly fights an unintentional one.
+
+        Sector resolution: prefer market.registry (SymbolRegistry) since it
+        works even for a ticker with no existing Position row (new sector
+        entry); fall back to the stored Position.sector free-text field.
+        Fail-open on any lookup error — this is advisory text only.
+        """
+        if added_value <= 0 or equity <= 0:
+            return ""
+        try:
+            from src.market.registry import registry as symbol_registry
+            from src.portfolio.repository import PortfolioRepository
+
+            def _resolve_sector(tk: str, stored: str | None) -> str:
+                try:
+                    info = symbol_registry.get(tk.upper())
+                    if info and info.sector:
+                        return str(info.sector.value)
+                except Exception:
+                    pass
+                return stored or "không phân loại"
+
+            target_sector = _resolve_sector(ticker, None)
+
+            positions = await PortfolioRepository(self._session).list_open_positions(user_id)
+            current_sector_value = sum(
+                p.avg_cost * p.qty
+                for p in positions
+                if _resolve_sector(p.ticker, p.sector) == target_sector
+            )
+
+            projected_pct = (current_sector_value + added_value) / equity * 100
+            threshold_pct = warn_pct * 100
+            if projected_pct < threshold_pct:
+                return ""
+
+            return (
+                f"Mua {ticker} ({target_sector}) sẽ đẩy tỷ trọng ngành này lên "
+                f"~{projected_pct:.1f}% NAV (ngưỡng cảnh báo {threshold_pct:.0f}%) — "
+                "kiểm tra lại đây có phải tập trung chủ đích (investor_preferred_sectors) "
+                "hay đang gom quá tay vào 1 nhóm ngành tương quan cao."
+            )
+        except Exception as exc:
+            logger.warning(
+                "position_sizing.sector_concentration_check_failed",
+                ticker=ticker, user_id=user_id, error=str(exc),
+            )
+            return ""
+
     async def _resolve_stop(
         self, user_id: str, ticker: str, entry_price: float
     ) -> tuple[float, str]:
@@ -343,7 +431,7 @@ class PositionSizingService:
                 "position_sizing.thesis_stop_lookup_failed",
                 ticker=ticker, error=str(exc),
             )
-        _, _, default_stop_loss_pct, _, _ = self._knobs()
+        _, _, default_stop_loss_pct, _, _, _ = self._knobs()
         return entry_price * (1 - default_stop_loss_pct), "fallback_default"
 
     async def _estimate_equity_and_cash(
@@ -375,7 +463,7 @@ class PositionSizingService:
                 "position_sizing.dividend_total_failed", user_id=user_id, error=str(exc)
             )
 
-        _, _, _, portfolio_cash_vnd, _ = self._knobs()
+        _, _, _, portfolio_cash_vnd, _, _ = self._knobs()
         if portfolio_cash_vnd > 0:
             cash = portfolio_cash_vnd
             cash_known = True
