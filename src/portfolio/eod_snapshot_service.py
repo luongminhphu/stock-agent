@@ -182,17 +182,16 @@ class EodSnapshotService:
         """Cập nhật snapshot HÔM NAY của 1 ticker sau khi position thay đổi ngoài EOD.
 
         Dùng khi user buy/sell/edit/adjust position trong ngày: dashboard đọc
-        position_daily_snapshots làm primary source, nên nếu không refresh,
-        số liệu sẽ stale tới lần snapshot 15:20 tiếp theo.
+        get_latest_snapshots() (max date / ticker). Nếu chỉ update khi ĐÃ có
+        row hôm nay thì trước 15:20 dashboard vẫn hiện snapshot hôm qua —
+        sửa qty/avg_cost "thành công" nhưng bảng không đổi.
 
-        - Có snapshot hôm nay → upsert qty/avg_cost mới (giữ close_price cũ,
-          P&L sẽ được route overlay realtime).
-        - Chưa có (ngày mới chưa chạy EOD job) → route fallback sang
-          PnlService on-the-fly, không cần ghi.
-        - Không có quote realtime → dùng close_price của snapshot cũ.
+        - Có snapshot hôm nay → upsert qty/avg_cost (giữ close_price nếu quote fail).
+        - Chưa có row hôm nay → TẠO mới (close_price từ quote, hoặc snapshot
+          gần nhất, hoặc avg_cost). Không còn return False im lặng.
+        - Không có quote realtime → fallback close_price như trên.
 
-        Returns True nếu đã cập nhật, False nếu chưa có snapshot hôm nay.
-        Never raises — lỗi quote chỉ log, vẫn cập nhật qty/avg với giá cũ.
+        Returns True nếu đã ghi snapshot. Never raises — lỗi quote chỉ log.
         """
         today = _today_ict()
         existing = await self._session.execute(
@@ -203,10 +202,8 @@ class EodSnapshotService:
             )
         )
         snap = existing.scalar_one_or_none()
-        if snap is None:
-            return False
 
-        close_price = snap.close_price
+        close_price = snap.close_price if snap is not None else None
         try:
             close_price = await self._fetch_close_price(position)
         except Exception as exc:
@@ -215,13 +212,18 @@ class EodSnapshotService:
                 ticker=position.ticker,
                 error=str(exc),
             )
+            if close_price is None:
+                close_price = await self._latest_close_price(position)
+            if close_price is None:
+                close_price = float(position.avg_cost)
 
-        await self._upsert_snapshot(position, close_price, today)
+        await self._upsert_snapshot(position, float(close_price), today)
         logger.info(
             "eod_snapshot.refreshed",
             ticker=position.ticker,
             qty=position.qty,
             avg_cost=position.avg_cost,
+            created=snap is None,
         )
         return True
 
@@ -269,6 +271,20 @@ class EodSnapshotService:
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
+
+    async def _latest_close_price(self, position: Position) -> float | None:
+        """close_price của snapshot gần nhất cho ticker — None nếu chưa từng snapshot."""
+        result = await self._session.execute(
+            select(PositionDailySnapshot.close_price)
+            .where(
+                PositionDailySnapshot.user_id == position.user_id,
+                PositionDailySnapshot.ticker == position.ticker,
+            )
+            .order_by(PositionDailySnapshot.snapshot_date.desc())
+            .limit(1)
+        )
+        value = result.scalar_one_or_none()
+        return float(value) if value is not None else None
 
     async def _fetch_close_price(self, position: Position) -> float:
         """Fetch closing price from QuoteService. Raises on failure."""
