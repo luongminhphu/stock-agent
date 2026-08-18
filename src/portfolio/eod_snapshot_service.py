@@ -17,6 +17,7 @@ Design rules:
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from typing import Protocol, runtime_checkable
@@ -32,6 +33,10 @@ from src.portfolio.repository import PortfolioRepository
 logger = get_logger(__name__)
 
 _ICT = timedelta(hours=7)
+
+# Timeout cho moi lan fetch quote. vnstock khong co timeout built-in —
+# neu adapter hang, khong de caller (PUT edit/buy/sell, EOD job) treo vo han.
+_QUOTE_TIMEOUT_SECS = 8.0
 
 
 def _today_ict() -> date:
@@ -287,8 +292,15 @@ class EodSnapshotService:
         return float(value) if value is not None else None
 
     async def _fetch_close_price(self, position: Position) -> float:
-        """Fetch closing price from QuoteService. Raises on failure."""
-        quote = await self._quote_service.get_quote(position.ticker)
+        """Fetch closing price from QuoteService. Raises on failure/timeout.
+
+        asyncio.TimeoutError sau _QUOTE_TIMEOUT_SECS — caller bat nhu moi
+        loi quote khac (fallback close cu / skip ticker), khong bao gio treo.
+        """
+        quote = await asyncio.wait_for(
+            self._quote_service.get_quote(position.ticker),
+            timeout=_QUOTE_TIMEOUT_SECS,
+        )
         return float(quote.price)  # type: ignore[union-attr]
 
     async def _upsert_snapshot(

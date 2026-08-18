@@ -7,6 +7,7 @@ yesterday's qty/avg on screen.
 
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -96,3 +97,23 @@ async def test_refresh_falls_back_to_avg_cost_when_no_snapshot_and_no_quote():
     assert ok is True
     _, close_price, _ = svc._upsert_snapshot.await_args.args
     assert close_price == 81_200.0
+
+
+class _HangingQuoteSvc:
+    async def get_quote(self, ticker: str) -> object:
+        await asyncio.sleep(60)  # hang nhu vnstock bi treo
+        return SimpleNamespace(price=1.0)
+
+
+@pytest.mark.asyncio
+async def test_fetch_close_price_times_out_instead_of_hanging(monkeypatch):
+    """Wave 7.2: quote hang (vnstock khong timeout) phai raise TimeoutError
+    sau _QUOTE_TIMEOUT_SECS — caller fallback, khong treo request vô han."""
+    import src.portfolio.eod_snapshot_service as mod
+
+    monkeypatch.setattr(mod, "_QUOTE_TIMEOUT_SECS", 0.05)
+    session = AsyncMock()
+    svc = EodSnapshotService(session=session, quote_service=_HangingQuoteSvc())
+
+    with pytest.raises(asyncio.TimeoutError):
+        await svc._fetch_close_price(_pos())
