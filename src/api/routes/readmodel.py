@@ -39,8 +39,8 @@ from src.readmodel.schemas import (
 )
 from src.readmodel.timeline_service import ThesisTimelineService
 from src.readmodel.today_loop_query_service import TodayLoopQueryService
-from src.portfolio.pnl_service import PnlService
 from src.portfolio.eod_snapshot_service import EodSnapshotService
+from src.portfolio.repository import PortfolioRepository
 from src.readmodel.intelligence_read_service import IntelligenceReadService
 from src.watchlist.scan_service import ScanService
 
@@ -635,89 +635,57 @@ async def get_price_snapshots_single_user(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/dashboard/{user_id}/portfolio/trades")
-async def get_portfolio_trades(
-    user_id: str,
-    session: Annotated[AsyncSession, Depends(get_db)],
+def _build_trades_payload(
+    live_positions: list[Any],
+    snap_close: dict[str, tuple[float, str]],
+    price_map: dict[str, float],
+    market_open: bool,
 ) -> dict[str, Any]:
-    """Portfolio trades — snapshot primary source + realtime overlay.
+    """Pure composition: live positions × snapshot close × realtime prices.
 
-    Priority:
-      1. Load latest EOD snapshot per ticker from position_daily_snapshots.
-      2. If market is open: enrich current_price realtime via QuoteService.
-      3. If no snapshot exists yet (first day): fallback to PnlService on-the-fly.
+    Tách khỏi route để unit-test không cần DB. Không I/O, không side-effect.
+    ``live_positions`` items cần attrs: ticker, qty, avg_cost, thesis_id.
+    ``snap_close``: ticker → (close_price, snapshot_date ISO string).
     """
-    quote_svc = get_quote_service()
-    eod_svc = EodSnapshotService(session=session, quote_service=quote_svc)
-    snapshots = await eod_svc.get_latest_snapshots(user_id)
-
-    # Fallback to on-the-fly PnlService if no snapshot written yet
-    if not snapshots:
-        pnl = await PnlService(session=session, quote_service=quote_svc).get_portfolio_pnl(user_id)
-        return {
-            "positions": [
-                {
-                    "ticker": p.ticker,
-                    "qty": p.qty,
-                    "avg_cost": p.avg_cost,
-                    "current_price": p.current_price,
-                    "cost_basis": p.cost_basis,
-                    "market_value": p.market_value,
-                    "unrealized_pnl": p.unrealized_pnl,
-                    "unrealized_pct": p.unrealized_pct,
-                    "thesis_id": p.thesis_id,
-                    "price_stale": p.price_stale,
-                }
-                for p in pnl.positions
-            ],
-            "total_unrealized_pnl": pnl.total_unrealized_pnl,
-            "total_unrealized_pct": pnl.total_unrealized_pct,
-            "total_cost_basis": pnl.total_cost_basis,
-            "total_market_value": pnl.total_market_value,
-            "errors": pnl.errors,
-            "source": "pnl_live",
-        }
-
-    # Build price map: start from snapshot close_price, overlay realtime if market open
-    market_open = quote_svc.is_market_open()
-    price_map: dict[str, float] = {}
-    price_stale_map: dict[str, bool] = {}
-
-    if market_open:
-        tickers = [s.ticker for s in snapshots]
-        for ticker in tickers:
-            try:
-                quote = await quote_svc.get_quote(ticker)
-                price_map[ticker] = quote.price  # type: ignore[union-attr]
-                price_stale_map[ticker] = False
-            except Exception:
-                # Fallback to snapshot close_price on individual ticker error
-                pass
-
     positions_out = []
     total_cost = 0.0
     total_mkt = 0.0
-    for snap in snapshots:
-        current_price = price_map.get(snap.ticker, snap.close_price)
-        stale = price_stale_map.get(snap.ticker, True)  # stale unless overridden by realtime
-        cost_basis = snap.avg_cost * snap.qty
-        market_value = current_price * snap.qty
-        unrealized_pnl = (current_price - snap.avg_cost) * snap.qty
-        unrealized_pct = (unrealized_pnl / cost_basis * 100) if cost_basis else 0.0
+    for pos in live_positions:
+        if pos.ticker in price_map:
+            current_price: float | None = price_map[pos.ticker]
+            # Off-hours QuoteService trả last_known (giá cuối phiên) → vẫn stale
+            stale = not market_open
+        else:
+            snap = snap_close.get(pos.ticker)
+            current_price = snap[0] if snap else None
+            stale = True
+
+        cost_basis = pos.avg_cost * pos.qty
+        market_value = current_price * pos.qty if current_price is not None else None
+        unrealized_pnl = (
+            (current_price - pos.avg_cost) * pos.qty
+            if current_price is not None else None
+        )
+        unrealized_pct = (
+            (unrealized_pnl / cost_basis * 100)
+            if (unrealized_pnl is not None and cost_basis)
+            else None
+        )
         total_cost += cost_basis
-        total_mkt += market_value
+        total_mkt += market_value if market_value is not None else 0.0
+        snap = snap_close.get(pos.ticker)
         positions_out.append({
-            "ticker": snap.ticker,
-            "qty": snap.qty,
-            "avg_cost": snap.avg_cost,
+            "ticker": pos.ticker,
+            "qty": pos.qty,
+            "avg_cost": pos.avg_cost,
             "current_price": current_price,
             "cost_basis": cost_basis,
             "market_value": market_value,
-            "unrealized_pnl": round(unrealized_pnl, 2),
-            "unrealized_pct": round(unrealized_pct, 4),
-            "thesis_id": snap.thesis_id,
+            "unrealized_pnl": round(unrealized_pnl, 2) if unrealized_pnl is not None else None,
+            "unrealized_pct": round(unrealized_pct, 4) if unrealized_pct is not None else None,
+            "thesis_id": pos.thesis_id,
             "price_stale": stale,
-            "snapshot_date": str(snap.snapshot_date),
+            "snapshot_date": snap[1] if snap else None,
         })
 
     total_pnl = total_mkt - total_cost
@@ -729,8 +697,54 @@ async def get_portfolio_trades(
         "total_cost_basis": total_cost,
         "total_market_value": total_mkt,
         "errors": {},
-        "source": "eod_snapshot" + ("+realtime" if market_open and price_map else ""),
+        "source": "positions_live" + ("+realtime" if market_open and price_map else ""),
     }
+
+
+@router.get("/dashboard/{user_id}/portfolio/trades")
+async def get_portfolio_trades(
+    user_id: str,
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> dict[str, Any]:
+    """Portfolio trades — live positions là source of truth cho qty/avg_cost.
+
+    Priority:
+      1. qty/avg_cost/thesis_id từ bảng positions (live, đã commit).
+      2. Giá: QuoteService (market mở → realtime; đóng cửa → last_known cache),
+         fallback close_price của snapshot gần nhất per ticker.
+      3. Snapshot KHÔNG còn là nguồn qty/avg_cost — loại trừ stale khi snapshot
+         chưa/miss ghi (edit trước khi snapshot-refresh deploy, write fail im
+         lặng) và loại vị thế đã đóng (snapshot cũ không bao giờ bị xoá).
+    """
+    quote_svc = get_quote_service()
+    repo = PortfolioRepository(session)
+    live_positions = [
+        p for p in await repo.list_open_positions(user_id) if p.qty > 0
+    ]
+
+    if not live_positions:
+        return _build_trades_payload([], {}, {}, market_open=False)
+
+    # Snapshot gần nhất per ticker — CHỈ còn vai trò close_price fallback
+    eod_svc = EodSnapshotService(session=session, quote_service=quote_svc)
+    snapshots = await eod_svc.get_latest_snapshots(user_id)
+    snap_close: dict[str, tuple[float, str]] = {
+        s.ticker: (s.close_price, str(s.snapshot_date)) for s in snapshots
+    }
+
+    # Giá hiện tại: market mở → realtime; đóng cửa → get_quote trả last_known
+    # cache (guard chặn network off-hours — chỉ đọc cache, không tốn fetch).
+    # Ticker quote fail → rơi về snapshot close trong builder.
+    market_open = quote_svc.is_market_open()
+    price_map: dict[str, float] = {}
+    for pos in live_positions:
+        try:
+            quote = await quote_svc.get_quote(pos.ticker)
+            price_map[pos.ticker] = quote.price  # type: ignore[union-attr]
+        except Exception:
+            pass
+
+    return _build_trades_payload(live_positions, snap_close, price_map, market_open)
 
 
 @router.get("/dashboard/portfolio/trades")
