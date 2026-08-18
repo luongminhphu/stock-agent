@@ -117,3 +117,20 @@ async def test_fetch_close_price_times_out_instead_of_hanging(monkeypatch):
 
     with pytest.raises(asyncio.TimeoutError):
         await svc._fetch_close_price(_pos())
+
+
+@pytest.mark.asyncio
+async def test_full_sell_deletes_snapshots_across_all_dates():
+    """Wave 7.5: position_closed=True phai xoa MOI snapshot cua ticker,
+    khong chi row hom nay — row cu cua vi the da dong la nguon bug
+    'hoi sinh' cho bat ky consumer nao doc get_latest_snapshots."""
+    svc, session = _make_svc()
+
+    changed = await svc.refresh_after_trade("u1", "FPT", position_closed=True)
+
+    assert changed is True
+    stmt = session.execute.call_args.args[0]
+    sql = str(stmt.compile(compile_kwargs={"literal_binds": False}))
+    assert "position_daily_snapshots" in sql
+    assert "user_id" in sql and "ticker" in sql
+    assert "snapshot_date" not in sql  # khong con filter theo ngay

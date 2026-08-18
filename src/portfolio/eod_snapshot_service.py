@@ -240,25 +240,27 @@ class EodSnapshotService:
     ) -> bool:
         """Refresh snapshot hôm nay sau buy/sell — dashboard phản ánh ngay.
 
-        - position_closed=True (full sell) → XOÁ snapshot hôm nay của ticker
-          để dashboard không còn hiển thị vị thế đã đóng.
+        - position_closed=True (full sell) → XOÁ MỌI snapshot của ticker
+          (mọi ngày, không chỉ hôm nay). Snapshot là derived read-model —
+          source of truth là positions + trades; giữ row cũ của vị thế đã
+          đóng chỉ tạo rủi ro "hồi sinh" ở bất kỳ consumer nào đọc
+          get_latest_snapshots. EOD job chỉ ghi position đang mở nên ticker
+          đã đóng không bao giờ có row mới lại.
         - Ngược lại → re-fetch position hiện tại và upsert snapshot.
 
         Returns True nếu snapshot bị thay đổi. Never raises — lỗi chỉ log,
         trade vẫn thành công (snapshot sẽ được EOD job sửa lại 15:20).
         """
         ticker = ticker.upper()
-        today = _today_ict()
         try:
             if position_closed:
                 await self._session.execute(
                     delete(PositionDailySnapshot).where(
                         PositionDailySnapshot.user_id == user_id,
                         PositionDailySnapshot.ticker == ticker,
-                        PositionDailySnapshot.snapshot_date == today,
                     )
                 )
-                logger.info("eod_snapshot.removed_closed", ticker=ticker, date=str(today))
+                logger.info("eod_snapshot.removed_closed_all_dates", ticker=ticker)
                 return True
 
             position = await self._repo.get_open_position(user_id, ticker)
