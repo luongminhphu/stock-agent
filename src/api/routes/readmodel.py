@@ -732,17 +732,16 @@ async def get_portfolio_trades(
         s.ticker: (s.close_price, str(s.snapshot_date)) for s in snapshots
     }
 
-    # Giá hiện tại: market mở → realtime; đóng cửa → get_quote trả last_known
-    # cache (guard chặn network off-hours — chỉ đọc cache, không tốn fetch).
-    # Ticker quote fail → rơi về snapshot close trong builder.
+    # Gia hien tai: market mo -> realtime; dong cua -> get_bulk_quotes tra
+    # last_known cache (guard chan network off-hours - chi doc cache, khong
+    # ton fetch). Wave 8.6: dung _build_price_map (1 bulk call, dung chung
+    # voi cac route khac) thay cho loop get_quote() tuan tu per-ticker -
+    # giam so round-trip network va be mat loi (truoc day N ticker = N
+    # fetch doc lap, 1 fetch loi thoang qua la roi luon ve snapshot close,
+    # khong co retry).
+    # Ticker quote fail/thieu trong batch -> roi ve snapshot close trong builder.
     market_open = quote_svc.is_market_open()
-    price_map: dict[str, float] = {}
-    for pos in live_positions:
-        try:
-            quote = await quote_svc.get_quote(pos.ticker)
-            price_map[pos.ticker] = quote.price  # type: ignore[union-attr]
-        except Exception:
-            pass
+    price_map = await _build_price_map([pos.ticker for pos in live_positions])
 
     return _build_trades_payload(live_positions, snap_close, price_map, market_open)
 

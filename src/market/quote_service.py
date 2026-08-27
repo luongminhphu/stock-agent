@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timezone, timedelta
 from typing import TYPE_CHECKING, Any
 
+from tenacity import retry, stop_after_attempt, wait_fixed
+
 from src.platform.logging import get_logger
 
 _log = get_logger(__name__)
@@ -425,6 +427,20 @@ class QuoteService:
             )
         return self._adapter
 
+    # Wave 8.6 - mot lan retry ngan cho fetch gia live truoc khi coi la
+    # fail han va roi ve gia cu (price_stale=True). ChainedAdapter da thu
+    # primary roi secondary 1 luot, nhung khong retry khi loi thoang qua
+    # (timeout/5xx) - decorator nay cho ca chuoi (ca 2 provider) thu lai
+    # them 1 lan truoc khi raise thuc su. KHONG bao guard/cache/dedup o
+    # tren - chi bao loi goi adapter thuan tuy.
+    @retry(stop=stop_after_attempt(2), wait=wait_fixed(0.4), reraise=True)
+    async def _fetch_quote_retrying(self, sym: str) -> Quote:
+        return await self._require_adapter().fetch_quote(sym)
+
+    @retry(stop=stop_after_attempt(2), wait=wait_fixed(0.4), reraise=True)
+    async def _fetch_bulk_retrying(self, syms: list[str]) -> list[Quote]:
+        return await self._require_adapter().fetch_bulk_quotes(syms)
+
     async def get_quote(self, ticker: str) -> Quote:
         sym = ticker.upper()
 
@@ -454,7 +470,7 @@ class QuoteService:
         self._cache.set_inflight_single(sym, fut)
         try:
             ttl = self._ttl_for_now()
-            quote = await self._require_adapter().fetch_quote(sym)
+            quote = await self._fetch_quote_retrying(sym)
             self._cache.set_single_ttl(sym, quote, ttl)
             # Persist last-known to DB — fire-and-forget, never blocks caller
             asyncio.create_task(
@@ -503,7 +519,7 @@ class QuoteService:
         self._cache.set_inflight_bulk(syms, fut)
         try:
             ttl = self._ttl_for_now()
-            quotes = await self._require_adapter().fetch_bulk_quotes(syms)
+            quotes = await self._fetch_bulk_retrying(syms)
             self._cache.set_bulk_ttl(syms, quotes, ttl)
             # Persist last-known to DB — fire-and-forget, never blocks caller
             asyncio.create_task(
