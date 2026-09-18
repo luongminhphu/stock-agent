@@ -100,6 +100,9 @@ async def get_portfolio_context(
                 avg_cost=pos.avg_cost,
                 sector=pos.sector,
                 thesis_id=pos.thesis_id,
+                locked_qty=pos.locked_qty,
+                locked_reason=pos.locked_reason,
+                locked_until=pos.locked_until,
             )
         )
 

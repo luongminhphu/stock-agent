@@ -30,7 +30,7 @@ record_dividend():
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -472,50 +472,108 @@ class PortfolioService:
         ticker: str,
         qty: float | None = None,
         avg_cost: float | None = None,
+        locked_qty: float | None = None,
+        locked_reason: str | None = None,
+        locked_until: date | None = None,
     ) -> Position:
-        """Sửa trực tiếp qty và/hoặc giá vốn của vị thế đang mở — không audit trail.
+        """Sua truc tiep qty / gia von / lock cua vi the dang mo.
 
-        Dùng cho: nhập sai lúc đầu, sync với tài khoản chứng khoán thật,
-        hoặc điều chỉnh tay ngoài luồng buy/sell/adjust chuẩn.
+        Dung cho: nhap sai luc dau, sync voi tai khoan chung khoan that,
+        danh dau ESOP/phat hanh them khong ban duoc (Wave 9.1), hoac dieu
+        chinh tay ngoai luong buy/sell/adjust chuan.
 
-        Khác với apply_stock_split(): ở đây người dùng tự chịu trách nhiệm
-        về tính đúng đắn của cặp (qty, avg_cost) mới — hệ thống không kiểm
-        cost-preserving, không ghi Trade record, không tính realized P&L.
+        Khac voi apply_stock_split(): o day nguoi dung tu chiu trach nhiem
+        ve tinh dung dan cua cac gia tri moi — he thong khong kiem
+        cost-preserving, khong ghi Trade record, khong tinh realized P&L.
 
         Args:
-            qty:      số lượng mới (None = giữ nguyên). Phải > 0.
-            avg_cost: giá vốn mới (None = giữ nguyên). Phải > 0.
+            qty:           so luong moi (None = giu nguyen). Phai > 0.
+            avg_cost:      gia von moi (None = giu nguyen). Phai > 0.
+            locked_qty:    so cp KHONG ban duoc (None = giu nguyen).
+                           Trong khoang [0, qty hieu luc sau khi sua].
+                           0 = mo khoa toan bo — tu clear locked_reason/until.
+            locked_reason: esop | private_placement | pending_settlement |
+                           pledged | odd_lot | core_hold | free text ngan
+                           (None = giu nguyen). Normalize: strip + lower.
+            locked_until:  ngay du kien mo khoa (None = giu nguyen).
+                           Chi y nghia khi locked_qty > 0.
 
         Raises:
-            ValueError: không có trường nào được sửa, hoặc giá trị <= 0.
-            PositionNotFoundError: không có vị thế mở cho ticker.
+            ValueError: khong co truong nao duoc sua; qty/avg_cost <= 0;
+                        locked_qty am hoac vuot qua qty hieu luc (tinh ca
+                        qty moi trong cung lenh edit).
+            PositionNotFoundError: khong co vi the mo cho ticker.
 
         Returns:
-            Position đã update (flushed; caller must commit).
+            Position da update (flushed; caller must commit).
         """
-        if qty is None and avg_cost is None:
-            raise ValueError("Phải truyền ít nhất một trong qty hoặc avg_cost")
+        if (
+            qty is None
+            and avg_cost is None
+            and locked_qty is None
+            and locked_reason is None
+            and locked_until is None
+        ):
+            raise ValueError(
+                "Phai truyen it nhat mot trong qty, avg_cost, locked_qty, "
+                "locked_reason, locked_until"
+            )
         if qty is not None and qty <= 0:
-            raise ValueError(f"qty phải lớn hơn 0, nhận được: {qty}")
+            raise ValueError(f"qty phai lon hon 0, nhan duoc: {qty}")
         if avg_cost is not None and avg_cost <= 0:
-            raise ValueError(f"avg_cost phải lớn hơn 0, nhận được: {avg_cost}")
+            raise ValueError(f"avg_cost phai lon hon 0, nhan duoc: {avg_cost}")
+        if locked_qty is not None and locked_qty < 0:
+            raise ValueError(f"locked_qty phai >= 0, nhan duoc: {locked_qty}")
+
+        if locked_reason is not None:
+            locked_reason = locked_reason.strip().lower() or None
+            if locked_reason is not None and len(locked_reason) > 64:
+                raise ValueError("locked_reason toi da 64 ky tu")
 
         ticker = ticker.upper()
         position = await self._repo.get_open_position(user_id, ticker)
         if position is None:
             raise PositionNotFoundError(f"No open position for {ticker}")
 
+        # Validate locked_qty chong lai qty HIEU LUC (ke ca khi qty cung duoc
+        # sua trong cung mot lenh edit) — chan case locked > so cp dang nam.
+        effective_qty = qty if qty is not None else position.qty
+        if locked_qty is not None and locked_qty > effective_qty:
+            raise ValueError(
+                f"locked_qty ({locked_qty}) khong the lon hon qty ({effective_qty})"
+            )
+
         old_qty, old_avg = position.qty, position.avg_cost
+        old_locked_qty = position.locked_qty
+        old_locked_reason = position.locked_reason
+        old_locked_until = position.locked_until
+
         if qty is not None:
             position.qty = qty
         if avg_cost is not None:
             position.avg_cost = avg_cost
+        if locked_qty is not None:
+            position.locked_qty = locked_qty
+        if locked_reason is not None or locked_qty == 0:
+            # locked_qty == 0 (mo khoa toan bo) => xoa reason/until ve sach
+            position.locked_reason = None if locked_qty == 0 else locked_reason
+        if locked_until is not None or locked_qty == 0:
+            position.locked_until = None if locked_qty == 0 else locked_until
         await self._repo.save_position(position)
 
-        # Audit trail: PositionEdit lưu cả giá trị cũ lẫn mới để truy vết.
-        # GET /portfolio/trades merge records này vào timeline cùng trades.
+        # Audit trail: PositionEdit luu ca gia tri cu lan moi de truy vet.
+        # GET /portfolio/trades merge records nay vao timeline cung trades.
+        # Wave 9.1: locked_* chi ghi old/new khi lenh edit dung toi lock
+        # (it nhat 1 trong 3 locked_* duoc truyen) — edit qty/avg thuan thi
+        # de NULL. Ngu nghia: NULL = "edit do khong dung toi lock", khong
+        # phai "lock da bi xoa".
         from src.portfolio.models import PositionEdit
 
+        lock_touched = (
+            locked_qty is not None
+            or locked_reason is not None
+            or locked_until is not None
+        )
         await self._repo.save_position_edit(
             PositionEdit(
                 user_id=user_id,
@@ -525,6 +583,12 @@ class PortfolioService:
                 new_qty=position.qty,
                 old_avg_cost=old_avg,
                 new_avg_cost=position.avg_cost,
+                old_locked_qty=old_locked_qty if lock_touched else None,
+                new_locked_qty=position.locked_qty if lock_touched else None,
+                old_locked_reason=old_locked_reason if lock_touched else None,
+                new_locked_reason=position.locked_reason if lock_touched else None,
+                old_locked_until=old_locked_until if lock_touched else None,
+                new_locked_until=position.locked_until if lock_touched else None,
                 edited_at=datetime.now(UTC),
             )
         )
@@ -537,6 +601,8 @@ class PortfolioService:
             new_qty=position.qty,
             old_avg_cost=old_avg,
             new_avg_cost=position.avg_cost,
+            old_locked_qty=old_locked_qty if lock_touched else None,
+            new_locked_qty=position.locked_qty if lock_touched else None,
         )
         return position
 

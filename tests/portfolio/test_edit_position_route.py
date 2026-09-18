@@ -27,6 +27,7 @@ def _fake_position(ticker: str = "HCM") -> SimpleNamespace:
     return SimpleNamespace(
         id=1, ticker=ticker, qty=57_500.0, avg_cost=14_900.0,
         thesis_id=None, closed_at=None,
+        locked_qty=0.0, locked_reason=None, locked_until=None,
     )
 
 
@@ -120,3 +121,78 @@ async def test_refresh_after_edit_commits_isolated_session():
     refresh.assert_awaited_once()
     assert refresh.await_args.args[1] == "HCM"
     fake_session.commit.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# Wave 9.1 — locked position qua PUT /portfolio/positions/{ticker}
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_edit_with_locked_fields_returns_them_in_response():
+    """Lock payload duoc pass xuong service va phan hoi day du locked_*."""
+    from datetime import date as _date
+
+    locked_pos = _fake_position()
+    locked_pos.locked_qty = 10_000.0
+    locked_pos.locked_reason = "esop"
+    locked_pos.locked_until = _date(2026, 12, 15)
+
+    app = create_app()
+    app.dependency_overrides[get_db] = _override_db
+    app.dependency_overrides[get_current_user_id] = lambda: "user-test-001"
+    app.dependency_overrides[get_quote_service] = lambda: object()
+
+    with (
+        patch(
+            "src.portfolio.service.PortfolioService.edit_position",
+            new_callable=AsyncMock,
+            return_value=locked_pos,
+        ) as svc_mock,
+        patch.object(
+            portfolio_route, "get_quote_service", return_value=_FakeQuoteSvc(),
+        ),
+        patch(
+            "src.portfolio.eod_snapshot_service.EodSnapshotService.refresh_after_trade",
+            new_callable=AsyncMock,
+        ),
+    ):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test",
+        ) as client:
+            r = await client.put(
+                "/api/v1/portfolio/positions/HCM",
+                json={
+                    "locked_qty": 10_000,
+                    "locked_reason": "ESOP",
+                    "locked_until": "2026-12-15",
+                },
+            )
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["locked_qty"] == 10_000.0
+    assert body["locked_reason"] == "esop"
+    assert body["locked_until"] == "2026-12-15"
+    # body duoc day xuong service (route la thin adapter — khong logic)
+    kwargs = svc_mock.await_args.kwargs
+    assert kwargs["locked_qty"] == 10_000.0
+    assert kwargs["locked_reason"] == "ESOP"
+
+
+@pytest.mark.asyncio
+async def test_edit_rejects_negative_locked_qty_422():
+    """Pydantic ge=0 chan som, khong can cham toi service."""
+    app = create_app()
+    app.dependency_overrides[get_db] = _override_db
+    app.dependency_overrides[get_current_user_id] = lambda: "user-test-001"
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test",
+    ) as client:
+        r = await client.put(
+            "/api/v1/portfolio/positions/HCM",
+            json={"locked_qty": -100},
+        )
+
+    assert r.status_code == 422

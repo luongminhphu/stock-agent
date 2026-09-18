@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy import Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy import Enum as SAEnum
@@ -87,6 +87,15 @@ class Position(Base):
     sector is an optional free-text label (e.g. "tài chính", "nguyên vật liệu").
     Used by ContextBuilder._fetch_portfolio_bias() to compute sector weights.
     Nullable — positions created before this field existed remain valid.
+
+    locked_* (Wave 9.1): vị thế hiện hữu trong tài khoản nhưng một phần
+    không bán được (ESOP, phát hành riêng lẻ, CP thưởng/quyền mua đang chờ
+    về, cầm cố, lô lẻ) hoặc không muốn hệ thống khuyến nghị bán (core_hold).
+    locked_qty = 0 (default) = toàn bộ bán được → positions cũ hợp lệ.
+    locked_reason chuẩn gợi ý: esop | private_placement | pending_settlement
+    | pledged | odd_lot | core_hold — free-text, không enum cứng.
+    locked_until = ngày dự kiến mở khóa (None = không rõ hạn). Hệ thống
+    KHÔNG tự unlock khi quá hạn — chỉ nhắc (wave 9.5), investor xác nhận.
     """
 
     __tablename__ = "positions"
@@ -99,6 +108,11 @@ class Position(Base):
     sector: Mapped[str | None] = mapped_column(String(64), nullable=True)
     thesis_id: Mapped[int | None] = mapped_column(Integer, index=True)
     note: Mapped[str | None] = mapped_column(Text)
+    locked_qty: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.0, server_default="0"
+    )
+    locked_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    locked_until: Mapped[date | None] = mapped_column(Date, nullable=True)
     opened_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
@@ -115,6 +129,15 @@ class Position(Base):
     @property
     def is_open(self) -> bool:
         return self.closed_at is None and self.qty > 0
+
+    @property
+    def sellable_qty(self) -> float:
+        """Số cp thực sự bán được = tổng qty trừ phần bị khóa, floor 0."""
+        return max(0.0, self.qty - (self.locked_qty or 0.0))
+
+    @property
+    def has_lock(self) -> bool:
+        return (self.locked_qty or 0.0) > 0
 
     def __repr__(self) -> str:
         return f"<Position user={self.user_id} ticker={self.ticker} qty={self.qty} avg={self.avg_cost}>"
@@ -298,6 +321,14 @@ class PositionSummary:
     market_value: float | None = None   # filled by get_portfolio_context() if prices available
     unrealized_pnl: float | None = None
     unrealized_pnl_pct: float | None = None
+    # Wave 9.1 — locked position (ESOP/phát hành thêm không bán được...)
+    locked_qty: float = 0.0
+    locked_reason: str | None = None
+    locked_until: date | None = None
+
+    @property
+    def sellable_qty(self) -> float:
+        return max(0.0, self.qty - self.locked_qty)
 
 
 @dataclass
@@ -368,6 +399,16 @@ class PortfolioContext:
                 base += f" | lãi/lỗ TT: {sign}{p.unrealized_pnl:,.0f}"
             if p.sector:
                 base += f" [{p.sector}]"
+            # Wave 9.2 — cho AI biết phần không bán được: ngăn khuyến nghị
+            # exit/reduce trên vị thế ESOP/phát hành thêm bị khóa.
+            if p.locked_qty > 0:
+                lock_note = f"KHÔNG BÁN ĐƯỢC {p.locked_qty:,.0f} cp"
+                if p.locked_reason:
+                    lock_note += f" ({p.locked_reason})"
+                if p.locked_until:
+                    lock_note += f" — mở khóa {p.locked_until}"
+                lock_note += f"; chỉ bán được {p.sellable_qty:,.0f} cp"
+                base += f" | {lock_note}"
             lines.append(base)
 
         if self.sector_weights:
@@ -414,6 +455,16 @@ class PositionEdit(Base):
     new_qty: Mapped[float] = mapped_column(Float, nullable=False)
     old_avg_cost: Mapped[float] = mapped_column(Float, nullable=False)
     new_avg_cost: Mapped[float] = mapped_column(Float, nullable=False)
+
+    # Wave 9.1 — locked fields cùng audit (nullable: edit cũ trước wave 9.1
+    # chỉ sửa qty/avg). NULL nghĩa là edit đó không đụng tới lock, không phải
+    # lock bị xóa.
+    old_locked_qty: Mapped[float | None] = mapped_column(Float, nullable=True)
+    new_locked_qty: Mapped[float | None] = mapped_column(Float, nullable=True)
+    old_locked_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    new_locked_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    old_locked_until: Mapped[date | None] = mapped_column(Date, nullable=True)
+    new_locked_until: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     edited_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)

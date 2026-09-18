@@ -28,6 +28,7 @@ Error mapping:
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -122,6 +123,17 @@ class AdjustResponse(BaseModel):
 class PositionEditRequest(BaseModel):
     qty: float | None = Field(None, gt=0, description="Số lượng mới — None = giữ nguyên")
     avg_cost: float | None = Field(None, gt=0, description="Giá vốn TB mới — None = giữ nguyên")
+    locked_qty: float | None = Field(
+        None, ge=0,
+        description="Số cp KHÔNG bán được (ESOP/phát hành thêm...) — 0 = mở khóa toàn bộ",
+    )
+    locked_reason: str | None = Field(
+        None, max_length=64,
+        description="esop | private_placement | pending_settlement | pledged | odd_lot | core_hold | text ngắn",
+    )
+    locked_until: date | None = Field(
+        None, description="Ngày dự kiến mở khóa (chỉ ý nghĩa khi locked_qty > 0)",
+    )
 
 
 class PositionEditResponse(BaseModel):
@@ -129,6 +141,9 @@ class PositionEditResponse(BaseModel):
     ticker: str
     qty: float
     avg_cost: float
+    locked_qty: float
+    locked_reason: str | None
+    locked_until: date | None
 
 
 class TradeHistoryItem(BaseModel):
@@ -440,6 +455,9 @@ async def edit_position(
     try:
         position = await svc.edit_position(
             user_id=user_id, ticker=ticker, qty=body.qty, avg_cost=body.avg_cost,
+            locked_qty=body.locked_qty,
+            locked_reason=body.locked_reason,
+            locked_until=body.locked_until,
         )
         # Commit edit TRƯỚC — positions là source of truth. Snapshot refresh
         # chạy sau, trên session riêng: lỗi snapshot không rollback edit.
@@ -461,6 +479,9 @@ async def edit_position(
         ticker=position.ticker,
         qty=position.qty,
         avg_cost=position.avg_cost,
+        locked_qty=getattr(position, "locked_qty", 0.0) or 0.0,
+        locked_reason=getattr(position, "locked_reason", None),
+        locked_until=getattr(position, "locked_until", None),
     )
 
 
