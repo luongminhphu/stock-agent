@@ -67,3 +67,26 @@
   color: var(--muted);
   font-size: var(--text-sm);
 }
+
+
+/* ─── HSC Tag — word-sized status label (spec: tinted alpha + hairline,
+   radius 2px, Caption type 12/16. Never pill — pill là Badge.) ─────────── */
+.hsc-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: var(--hsc-radius-tag);
+  font-size: var(--hsc-fs-caption);
+  line-height: var(--hsc-lh-caption);
+  font-weight: var(--hsc-fw-semibold);
+  white-space: nowrap;
+  cursor: default;
+}
+.hsc-tag-neutral {
+  background: var(--hsc-neutral-a12);
+  color: var(--hsc-text-secondary);
+  border: var(--hsc-hairline) var(--hsc-neutral-a24);
+}
+/* Số trong tag dùng tabular figures */
+.hsc-tag .hsc-num { font-variant-numeric: var(--hsc-numeric); }

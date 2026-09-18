@@ -646,6 +646,9 @@ def _build_trades_payload(
     Tách khỏi route để unit-test không cần DB. Không I/O, không side-effect.
     ``live_positions`` items cần attrs: ticker, qty, avg_cost, thesis_id.
     ``snap_close``: ticker → (close_price, snapshot_date ISO string).
+    Wave 9.3: đọc thêm locked_* (positions cũ chưa có attrs này — dùng
+    getattr fallback 0/None) để dashboard render badge "Khóa bán" và
+    quick-trade cảnh báo khi SELL vượt sellable_qty.
     """
     positions_out = []
     total_cost = 0.0
@@ -674,6 +677,8 @@ def _build_trades_payload(
         total_cost += cost_basis
         total_mkt += market_value if market_value is not None else 0.0
         snap = snap_close.get(pos.ticker)
+        locked_qty = getattr(pos, "locked_qty", 0.0) or 0.0
+        locked_until = getattr(pos, "locked_until", None)
         positions_out.append({
             "ticker": pos.ticker,
             "qty": pos.qty,
@@ -686,6 +691,11 @@ def _build_trades_payload(
             "thesis_id": pos.thesis_id,
             "price_stale": stale,
             "snapshot_date": snap[1] if snap else None,
+            # Wave 9.3 — locked position surfaces cho dashboard
+            "locked_qty": locked_qty,
+            "locked_reason": getattr(pos, "locked_reason", None),
+            "locked_until": locked_until.isoformat() if locked_until else None,
+            "sellable_qty": max(0.0, pos.qty - locked_qty),
         })
 
     total_pnl = total_mkt - total_cost

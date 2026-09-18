@@ -114,6 +114,11 @@ function _buildTradesRows(data) {
     const thesisId  = p.thesis_id    ?? null;
     const thesisSt  = p.thesis_status ?? null;
     const priceStale = p.price_stale  ?? false;
+    // Wave 9.3 — locked position (ESOP/phát hành thêm không bán được)
+    const lockedQty    = p.locked_qty    ?? 0;
+    const sellableQty  = p.sellable_qty  ?? (qty ?? 0);
+    const lockedReason = p.locked_reason ?? null;
+    const lockedUntil  = p.locked_until  ?? null;  // ISO date
 
     if (!ticker)           errors.push('ticker');
     if (qty       == null) errors.push('qty');
@@ -127,12 +132,31 @@ function _buildTradesRows(data) {
     const thesisAttr = thesisId ? ` data-thesis-id="${thesisId}"` : '';
     const thesisRef  = thesisId ? `<span class="thesis-tag">#${thesisId}</span>` : '<span class="muted">—</span>';
     // data-qty / data-avg-cost: adjust-position modal đọc để preview qty/avg mới
-    const posAttrs = `${qty != null ? ` data-qty="${qty}"` : ''}${avgCost != null ? ` data-avg-cost="${avgCost}"` : ''}`;
+    // data-sellable-qty / data-locked-*: quick-trade SELL cảnh báo vượt phần khả dụng (9.3)
+    const posAttrs = `${qty != null ? ` data-qty="${qty}"` : ''}${avgCost != null ? ` data-avg-cost="${avgCost}"` : ''}`
+      + ` data-sellable-qty="${sellableQty}"`
+      + (lockedQty > 0 ? ` data-locked-qty="${lockedQty}" data-locked-reason="${_esc(lockedReason || '')}" data-locked-until="${_esc(lockedUntil || '')}"` : '');
+
+    // HSC Tag "Khóa bán" — tinted alpha + hairline, radius 2px (badge.css)
+    const _REASON_VI = {
+      esop: 'ESOP', private_placement: 'Phát hành riêng lẻ',
+      pending_settlement: 'CP chờ về', pledged: 'Cầm cố',
+      odd_lot: 'Lô lẻ', core_hold: 'Nắm giữ lõi',
+    };
+    let lockTag = '';
+    if (lockedQty > 0) {
+      const rTxt  = _REASON_VI[lockedReason] || lockedReason || 'Hạn chế chuyển nhượng';
+      const dTxt  = lockedUntil ? lockedUntil.split('-').reverse().join('/') : null;
+      const tip   = `Không bán được ${_fmtNum(lockedQty)} cp — ${rTxt}`
+                  + (dTxt ? ` — mở khóa ${dTxt}` : '')
+                  + `. Chỉ bán được ${_fmtNum(sellableQty)} cp`;
+      lockTag = ` <span class="hsc-tag hsc-tag-neutral" title="${_esc(tip)}">Khóa bán</span>`;
+    }
 
     return {
       hasError: errors.length > 0,
       html: `<tr data-ticker="${_esc(ticker)}"${thesisAttr}${posAttrs}${rowClass}>
-        <td class="col-left"><strong>${_esc(ticker)}</strong>${warnBadge}${errors.includes('ticker') ? ' <span class="cell-error" title="Thiếu ticker">⚠</span>' : ''}</td>
+        <td class="col-left"><strong>${_esc(ticker)}</strong>${warnBadge}${lockTag}${errors.includes('ticker') ? ' <span class="cell-error" title="Thiếu ticker">⚠</span>' : ''}</td>
         <td class="num">${qty != null ? _fmtNum(qty) : '<span class="cell-error" title="Thiếu qty">⚠</span>'}</td>
         <td class="currency">${avgCost != null ? _fmtNum(avgCost) : '<span class="cell-error" title="Thiếu avg_cost">⚠</span>'}</td>
         <td class="currency">${currPrice != null

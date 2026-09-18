@@ -13,9 +13,9 @@
 
 import { el }                          from '../../utils/dom.js?v=1';
 import { readmodelApiBase, getJson }   from '../../api/client.js?v=1';
-import { renderPortfolio }             from './portfolio-renderer.js?v=1';
+import { renderPortfolio }             from './portfolio-renderer.js?v=2';
 import { init as qtInit,
-         injectTradeButtons }          from './quick-trade.js?v=2';
+         injectTradeButtons }          from './quick-trade.js?v=3';
 import { init as adjInit,
          injectAdjustButtons }         from './adjust-position.js?v=4';
 import { RefreshScheduler }              from '../../utils/refresh-scheduler.js?v=1';

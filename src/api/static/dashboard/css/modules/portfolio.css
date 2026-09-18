@@ -382,20 +382,24 @@ td.cell-missing {
   }
 }
 
-/* ── P&L color rules (Trades + Thesis tables) ──────────────────────────── */
+/* ── P&L color rules (Trades + Thesis tables) ────────────────────────────
+   Wave 9.3 (HSC): chuyển sang price-movement convention của HSC.
+   Dương → --hsc-price-increase (#00FF11), Âm → --hsc-price-reduced (#FF0011).
+   Hòa vốn → --hsc-price-reference (#FFD400): thị trường VN đọc vàng
+   là "tham chiếu", trung lập theo movement. */
 .col-pnl.positive,
 .col-pct.positive {
-  color: var(--success);
+  color: var(--hsc-price-increase);
 }
 
 .col-pnl.negative,
 .col-pct.negative {
-  color: var(--danger);
+  color: var(--hsc-price-reduced);
 }
 
 .col-pnl.neutral,
 .col-pct.neutral {
-  color: var(--muted);
+  color: var(--hsc-price-reference);
 }
 
 /* ── Mobile: 430-480px ──────────────────────────────────────────────── */

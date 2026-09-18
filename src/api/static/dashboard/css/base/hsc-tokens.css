@@ -1,0 +1,54 @@
+/* ============================================
+   HSC TOKENS — namespaced (--hsc-*) subset.
+   Source: hsc-design-system @ tokens.css (verbatim values).
+   Ý đồ: chuẩn hoá màu giá (VN convention: xanh=tăng, đỏ=giảm,
+   vàng=tham chiếu, tím=trần, cyan=sàn) và component tint cho
+   các surface mới của dashboard, KHÔNG đổi hệ token hiện có.
+   Đặt sau variables.css; các file dưới dùng trực tiếp var(--hsc-*).
+   ============================================ */
+
+:root {
+  /* Grounds (dark-first, direct từ HSC primitives) */
+  --hsc-n10: #000000;
+  --hsc-n20: #14171A;
+  --hsc-n30: #222629;
+  --hsc-n50: #2F353D;
+  --hsc-n80: #4D545C;
+
+  /* Price movement — NON-NEGOTIABLE, không dùng trang trí */
+  --hsc-price-increase:  #00FF11; /* tăng */
+  --hsc-price-reduced:   #FF0011; /* giảm */
+  --hsc-price-reference: #FFD400; /* tham chiếu */
+  --hsc-price-ceil:      #B729FE; /* trần */
+  --hsc-price-floor:     #5ACEE0; /* sàn */
+
+  /* Ink trên dark ground */
+  --hsc-text-primary:   #FFFFFF;
+  --hsc-text-secondary: rgba(214, 231, 255, 0.52);
+  --hsc-text-tertiary:  rgba(214, 231, 255, 0.32);
+
+  /* Tag/component tints (alpha palette verbatim) */
+  --hsc-neutral-a8:  rgba(214, 231, 255, 0.08);
+  --hsc-neutral-a12: rgba(214, 231, 255, 0.12);
+  --hsc-neutral-a16: rgba(214, 231, 255, 0.16);
+  --hsc-neutral-a24: rgba(214, 231, 255, 0.24);
+  --hsc-neutral-a52: rgba(214, 231, 255, 0.52);
+  --hsc-yellow-a12:  rgba(255, 212, 0, 0.12);
+  --hsc-yellow-a24:  rgba(255, 212, 0, 0.24);
+  --hsc-yellow:      #FFD400;
+  --hsc-red-a12:     rgba(255, 0, 17, 0.12);
+
+  /* Type */
+  --hsc-fs-caption: 12px;
+  --hsc-lh-caption: 16px;
+  --hsc-fw-semibold: 600;
+  --hsc-numeric: tabular-nums lining-nums;
+
+  /* Shape */
+  --hsc-radius-tag: 2px;  /* Tag/chip: 2px — KHÔNG pill */
+  --hsc-hairline:   1px solid;
+
+  /* Motion */
+  --hsc-motion-fast: 120ms;
+  --hsc-ease-out: cubic-bezier(0.2, 0, 0, 1);
+}

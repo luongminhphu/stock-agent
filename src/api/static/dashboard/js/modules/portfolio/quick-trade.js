@@ -76,6 +76,8 @@ function _ensureModal() {
           <!-- Wave 5b: sizing preview — hiện khi lệnh MUA, fetch /portfolio/sizing-preview -->
           <div id="qt-sizing" class="qt-sizing" hidden aria-live="polite"></div>
           <div class="qt-error" id="qt-error" hidden></div>
+          <!-- Wave 9.3: cảnh báo SELL vượt phần khả dụng (soft — không chặn) -->
+          <div class="qt-lock-warn" id="qt-lock-warn" hidden></div>
         </div>
         <div class="qt-modal-footer">
           <button class="qt-btn qt-btn-secondary" id="qt-cancel-btn">Huỷ</button>
@@ -96,9 +98,48 @@ let _currentType     = 'buy';
 let _currentThesisId = null;
 let _fromThesisTab   = false;
 
+// Wave 9.3: lock context của ticker đang mở modal (từ data-attrs row)
+let _lockCtx = { sellableQty: null, lockedQty: 0, lockedReason: '', lockedUntil: '' };
+
 // ---------------------------------------------------------------------------
 // Rationale hint
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Wave 9.3 — lock warning (HSC Tag style; soft — không chặn submit)
+// ---------------------------------------------------------------------------
+function _renderLockWarn() {
+  const el = document.getElementById('qt-lock-warn');
+  if (!el) return;
+  const { sellableQty, lockedQty, lockedReason, lockedUntil } = _lockCtx;
+  if (_currentType !== 'sell' || lockedQty <= 0) {
+    el.hidden = true; el.textContent = ''; return;
+  }
+  const reasonVi = {
+    esop: 'ESOP', private_placement: 'ph\u00e1t h\u00e0nh ri\u00eang l\u1ebb',
+    pending_settlement: 'CP ch\u1edd v\u1ec1', pledged: 'c\u1ea7m c\u1ed1',
+    odd_lot: 'l\u00f4 l\u1ebb', core_hold: 'n\u1eafm gi\u1eef l\u00f5i',
+  }[lockedReason] || 'b\u1ecb h\u1ea1n ch\u1ebf chuy\u1ec3n nh\u01b0\u1ee3ng';
+  const untilTxt = lockedUntil
+    ? ' \u2014 d\u1ef1 ki\u1ebfn m\u1edf kho\u00e1 ' + lockedUntil.split('-').reverse().join('/')
+    : '';
+  el.textContent = lockedQty.toLocaleString('vi-VN') + ' cp \u0111ang kho\u00e1 ('
+    + reasonVi + untilTxt + '). '
+    + 'Ch\u1ec9 b\u00e1n \u0111\u01b0\u1ee3c t\u1ed1i \u0111a '
+    + (sellableQty ?? 0).toLocaleString('vi-VN') + ' cp.';
+  el.hidden = false;
+
+  const qtyInput = document.getElementById('qt-qty');
+  const refresh = () => {
+    const qty = parseFloat(qtyInput.value) || 0;
+    const over = sellableQty != null && qty > sellableQty;
+    el.classList.toggle('qt-lock-warn--over', over);
+  };
+  if (_renderLockWarn._handler) qtyInput.removeEventListener('input', _renderLockWarn._handler);
+  _renderLockWarn._handler = refresh;
+  qtyInput.addEventListener('input', refresh);
+  refresh();
+}
+
 function _updateRationaleHint(thesisSelected) {
   const hint = document.getElementById('qt-rationale-hint');
   if (!hint) return;
@@ -122,6 +163,14 @@ export function openModal(ticker, type, thesisId, opts) {
   _currentThesisId = thesisId || null;
   _fromThesisTab   = !!(opts && opts.fromThesisTab);
 
+  // Wave 9.3
+  _lockCtx = {
+    sellableQty:  opts?.sellableQty  != null ? Number(opts.sellableQty)  : null,
+    lockedQty:    opts?.lockedQty    != null ? Number(opts.lockedQty)    : 0,
+    lockedReason: opts?.lockedReason || '',
+    lockedUntil:  opts?.lockedUntil  || '',
+  };
+
   const badge = document.getElementById('qt-type-badge');
   badge.textContent = type === 'buy' ? 'MUA' : 'BÁN';
   badge.className   = 'qt-badge ' + (type === 'buy' ? 'qt-badge-buy' : 'qt-badge-sell');
@@ -129,6 +178,7 @@ export function openModal(ticker, type, thesisId, opts) {
   document.getElementById('qt-ticker-display').textContent = _currentTicker;
   document.getElementById('qt-title').textContent =
     (type === 'buy' ? 'Lệnh MUA — ' : 'Lệnh BÁN — ') + _currentTicker;
+  _renderLockWarn();
   document.getElementById('qt-qty').value       = '';
   document.getElementById('qt-price').value     = '';
   document.getElementById('qt-rationale').value = '';
@@ -449,6 +499,14 @@ export function injectTradeButtons(tbody, opts) {
     const thesisId = row.dataset.thesisId ? parseInt(row.dataset.thesisId, 10) : null;
     if (!ticker) return;
 
+    // Wave 9.3: lock context từ data-attrs renderer ghi sẵn lên row
+    const lockOpts = {
+      sellableQty:  row.dataset.sellableQty  != null ? parseFloat(row.dataset.sellableQty)  : null,
+      lockedQty:    row.dataset.lockedQty    != null ? parseFloat(row.dataset.lockedQty)    : 0,
+      lockedReason: row.dataset.lockedReason || '',
+      lockedUntil:  row.dataset.lockedUntil  || '',
+    };
+
     const actionCell = row.querySelector('td.col-action');
     const targetCell = actionCell || row.querySelector('td:first-child');
     if (!targetCell) return;
@@ -466,7 +524,7 @@ export function injectTradeButtons(tbody, opts) {
       btn.setAttribute('aria-label', `${ariaLabel} ${ticker}`);
       btn.addEventListener('click', e => {
         e.stopPropagation();
-        openModal(ticker, type, thesisId, { fromThesisTab });
+        openModal(ticker, type, thesisId, { fromThesisTab, ...lockOpts });
       });
       return btn;
     };

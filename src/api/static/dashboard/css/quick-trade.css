@@ -580,3 +580,21 @@
 
 /* Backtesting summary giữ layout panel-header */
 details.backtesting-panel > summary.panel-header { padding: inherit; }
+
+/* ─── Wave 9.3 — Lock warning (HSC tone: cảnh báo = yellow, caption type) ── */
+.qt-lock-warn {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: var(--hsc-radius-tag);
+  font-size: var(--hsc-fs-caption);
+  line-height: var(--hsc-lh-caption);
+  font-variant-numeric: var(--hsc-numeric);
+  color: var(--hsc-yellow);
+  background: var(--hsc-yellow-a12);
+  border: var(--hsc-hairline) var(--hsc-yellow-a24);
+}
+/* over state: qty nhập vượt sellable → tint đậm hơn, vẫn không chặn */
+.qt-lock-warn--over {
+  background: var(--hsc-yellow-a24);
+  font-weight: var(--hsc-fw-semibold);
+}

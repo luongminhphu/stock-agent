@@ -123,3 +123,43 @@ class TestTotals:
         assert out["total_cost_basis"] == 0.0
         assert out["total_unrealized_pct"] == 0.0
         assert out["source"] == "positions_live"
+
+
+class TestLockedPositionFields:
+    """Wave 9.3: payload phải expose locked_* + sellable_qty cho dashboard."""
+
+    def test_locked_position_surfaces_sellable(self):
+        from datetime import date
+
+        live = [SimpleNamespace(
+            ticker="HPG", qty=5000, avg_cost=25000, thesis_id=None,
+            locked_qty=2000, locked_reason="esop", locked_until=date(2026, 12, 15),
+        )]
+        out = _build_trades_payload(live, {}, price_map={}, market_open=False)
+
+        row = out["positions"][0]
+        assert row["locked_qty"] == 2000
+        assert row["locked_reason"] == "esop"
+        assert row["locked_until"] == "2026-12-15"
+        assert row["sellable_qty"] == 3000
+
+    def test_default_zero_when_no_locked_attrs(self):
+        """Position cũ (SimpleNamespace thiếu attrs) → fallback 0/None, không vỡ."""
+        live = [SimpleNamespace(ticker="VNM", qty=1000, avg_cost=62000, thesis_id=None)]
+        out = _build_trades_payload(live, {}, price_map={}, market_open=False)
+
+        row = out["positions"][0]
+        assert row["locked_qty"] == 0.0
+        assert row["locked_reason"] is None
+        assert row["locked_until"] is None
+        assert row["sellable_qty"] == 1000
+
+    def test_fully_locked_position_sellable_zero(self):
+        live = [SimpleNamespace(
+            ticker="FPT", qty=800, avg_cost=95000, thesis_id=None,
+            locked_qty=800, locked_reason="private_placement", locked_until=None,
+        )]
+        out = _build_trades_payload(live, {}, price_map={}, market_open=False)
+
+        row = out["positions"][0]
+        assert row["sellable_qty"] == 0.0
