@@ -347,12 +347,35 @@ def build_stop_breach_embed(outcomes: list, now_utc: datetime.datetime) -> disco
         lines = []
         for o in invalidated:
             conf = f"{o.ai_confidence:.0%}" if o.ai_confidence is not None else "—"
-            lines.append(
+            head = (
                 f"**{o.ticker}** — giá {o.current_price:,.0f} xuyên stop {o.stop_loss:,.0f} "
-                f"({o.overshoot_pct:.1f}%)\n"
-                f"→ Thesis #{o.thesis_id} đã INVALIDATE (AI: {o.ai_verdict} {conf}, "
-                f"action: {o.ai_action or '—'})"
+                f"({o.overshoot_pct:.1f}%)"
             )
+            # Wave 9.4: vị thế khóa hoàn toàn (sellable == 0) → exit_signal
+            # vô nghĩa; đổi messaging thành "theo dõi mở khóa" thay vì
+            # khuyến nghị thoát lặp lại mỗi ngày.
+            locked_qty = getattr(o, "locked_qty", 0.0) or 0.0
+            sellable = getattr(o, "sellable_qty", None)
+            if locked_qty > 0 and sellable is not None and sellable <= 0:
+                reason = getattr(o, "locked_reason", None) or "khóa bán"
+                until = getattr(o, "locked_until", None)
+                if isinstance(until, datetime.datetime):
+                    until = until.date()
+                until_txt = (
+                    f", mở khóa dự kiến {until:%d/%m/%Y}" if until else ""
+                )
+                lines.append(
+                    f"{head}\n"
+                    f"→ Thesis #{o.thesis_id} vô hiệu, nhưng vị thế bị khóa "
+                    f"({locked_qty:,.0f} cp — {reason}{until_txt}). Không thể bán — "
+                    f"đặt nhắc xem lại khi mở khóa."
+                )
+            else:
+                lines.append(
+                    f"{head}\n"
+                    f"→ Thesis #{o.thesis_id} đã INVALIDATE (AI: {o.ai_verdict} {conf}, "
+                    f"action: {o.ai_action or '—'})"
+                )
         embed.add_field(name="Đã invalidate", value="\n\n".join(lines)[:1024], inline=False)
 
     if others:

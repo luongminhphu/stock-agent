@@ -57,6 +57,13 @@ class StopBreachOutcome:
     ai_confidence: float | None = None
     ai_action: str | None = None   # exit_signal / review / reduce / hold
     reason: str = ""
+    # Wave 9.4 — vị thế khóa (ESOP/phát hành thêm): khi sellable == 0,
+    # exit_signal vô nghĩa → caller đổi messaging thành "theo dõi mở khóa"
+    # thay vì khuyến nghị thoát lặp lại mỗi ngày.
+    locked_qty: float = 0.0
+    sellable_qty: float | None = None
+    locked_reason: str | None = None
+    locked_until: object | None = None  # date
 
 
 @dataclass
@@ -117,12 +124,14 @@ class StopBreachService:
                     "stop_breach.quote_fetch_failed", ticker=ticker, error=str(exc)
                 )
 
+        lock_map = await self._load_position_locks(user_id, tickers)
+
         result = StopBreachScanResult()
         for thesis in theses:
             price = price_map.get(thesis.ticker)
             if price is None:
                 continue
-            outcome = await self._process(thesis, price)
+            outcome = await self._process(thesis, price, lock_map.get(thesis.ticker))
             if outcome is not None:
                 result.outcomes.append(outcome)
         return result
@@ -130,6 +139,26 @@ class StopBreachService:
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
+
+    async def _load_position_locks(
+        self, user_id: str, tickers: list[str]
+    ) -> dict[str, object]:
+        """Wave 9.4: map ticker → Position cho vị thế đang khóa bán.
+
+        Cross-segment read (portfolio) — đọc thuần, không logic portfolio
+        ở đây; kết quả chỉ dùng để enrich outcome messaging.
+        """
+        from src.portfolio.models import Position
+
+        rows = await self._session.execute(
+            select(Position).where(
+                Position.user_id == user_id,
+                Position.ticker.in_(tickers),
+                Position.closed_at.is_(None),
+                Position.locked_qty > 0,
+            )
+        )
+        return {p.ticker: p for p in rows.scalars().all()}
 
     async def _load_candidates(self, user_id: str) -> list[Thesis]:
         # selectinload: InvalidationService đọc thesis.assumptions trong rule
@@ -158,7 +187,13 @@ class StopBreachService:
             updated = updated.replace(tzinfo=UTC)
         return (datetime.now(UTC) - updated) < self._cooldown
 
-    async def _process(self, thesis: Thesis, price: float) -> StopBreachOutcome | None:
+    async def _process(
+        self,
+        thesis: Thesis,
+        price: float,
+        lock: object | None = None,
+    ) -> StopBreachOutcome | None:
+        """lock = Position (có locked_* attrs) hoặc None."""
         rule = self._invalidation_svc.check_with_price(
             thesis, current_score=float(thesis.score or 0), current_price=price
         )
@@ -181,6 +216,13 @@ class StopBreachService:
             overshoot_pct=round(overshoot, 2),
             reason=rule.reason,
         )
+        if lock is not None:
+            locked_qty = float(getattr(lock, "locked_qty", 0.0) or 0.0)
+            base["locked_qty"] = locked_qty
+            base["locked_reason"] = getattr(lock, "locked_reason", None)
+            base["locked_until"] = getattr(lock, "locked_until", None)
+            total_qty = float(getattr(lock, "qty", 0.0) or 0.0)
+            base["sellable_qty"] = max(0.0, total_qty - locked_qty)
 
         logger.info(
             "stop_breach.detected",
