@@ -52,3 +52,15 @@
   --hsc-motion-fast: 120ms;
   --hsc-ease-out: cubic-bezier(0.2, 0, 0, 1);
 }
+
+
+/* ── Legacy alias — tokens dashboard cũ trỏ vào đây để đổi màu đồng loạt ── */
+:root {
+  --brand:        #2681FF; /* sb50 */
+  --brand-strong: #165AB8; /* sb40 — slightly deeper, solid hover */
+  --success:      #00FF11; /* sg50 */
+  --warning:      #FFD400; /* sy50 */
+  --danger:       #FF0011; /* sr50 */
+  --orange:       #FFB020; /* chart-index — giữ nguyên cho warm/caution */
+  --violet:       #B729FE; /* sm50 = ceil */
+}

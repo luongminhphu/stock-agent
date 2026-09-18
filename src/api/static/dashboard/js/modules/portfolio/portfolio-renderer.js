@@ -128,7 +128,7 @@ function _buildTradesRows(data) {
     const pnlClass = pnlAbs == null ? '' : pnlAbs > 0 ? 'positive' : pnlAbs < 0 ? 'negative' : 'neutral';
     const rowClass = (thesisSt === 'invalidated' || thesisSt === 'closed') ? ' class="row-thesis-warning"' : '';
     const warnBadge = (thesisSt === 'invalidated' || thesisSt === 'closed')
-      ? ` <span class="badge-thesis-warning" title="Thesis ${thesisSt}">⚠️</span>` : '';
+      ? ` <span class="badge-thesis-warning" title="Thesis ${thesisSt}">!</span>` : '';
     const thesisAttr = thesisId ? ` data-thesis-id="${thesisId}"` : '';
     const thesisRef  = thesisId ? `<span class="thesis-tag">#${thesisId}</span>` : '<span class="muted">—</span>';
     // data-qty / data-avg-cost: adjust-position modal đọc để preview qty/avg mới
@@ -156,12 +156,12 @@ function _buildTradesRows(data) {
     return {
       hasError: errors.length > 0,
       html: `<tr data-ticker="${_esc(ticker)}"${thesisAttr}${posAttrs}${rowClass}>
-        <td class="col-left"><strong>${_esc(ticker)}</strong>${warnBadge}${lockTag}${errors.includes('ticker') ? ' <span class="cell-error" title="Thiếu ticker">⚠</span>' : ''}</td>
-        <td class="num">${qty != null ? _fmtNum(qty) : '<span class="cell-error" title="Thiếu qty">⚠</span>'}</td>
-        <td class="currency">${avgCost != null ? _fmtNum(avgCost) : '<span class="cell-error" title="Thiếu avg_cost">⚠</span>'}</td>
+        <td class="col-left"><strong>${_esc(ticker)}</strong>${warnBadge}${lockTag}${errors.includes('ticker') ? ' <span class="cell-error" title="Thiếu ticker">!</span>' : ''}</td>
+        <td class="num">${qty != null ? _fmtNum(qty) : '<span class="cell-error" title="Thiếu qty">!</span>'}</td>
+        <td class="currency">${avgCost != null ? _fmtNum(avgCost) : '<span class="cell-error" title="Thiếu avg_cost">!</span>'}</td>
         <td class="currency">${currPrice != null
           ? `<span class="price-val">${_fmtNum(currPrice)}</span>${priceStale ? '<span class="price-stale-badge" title="Gi\u00e1 cu\u1ed1i phi\u00ean \u2014 ch\u01b0a c\u1eadp nh\u1eadt realtime">Cu\u1ed1i phi\u00ean</span>' : ''}`
-          : '<span class="cell-error" title="Thi\u1ebfu curr_price">\u26a0</span>'}</td>
+          : '<span class="cell-error" title="Thi\u1ebfu curr_price">!</span>'}</td>
         <td class="currency col-pnl ${pnlClass}">${_fmtNum(pnlAbs)}</td>
         <td class="num col-pct ${pnlClass}">${_fmtPct(pnlPct)}</td>
         <td class="col-center">${thesisRef}</td>

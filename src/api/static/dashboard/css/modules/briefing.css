@@ -11,7 +11,7 @@
    ─────────────────────────────────────────────────────────────────────────── */
 
 /* ── up/down helpers (used everywhere in this file and scan text) ────────── */
-/* success token (#4ade80 sky-green) for up; danger (#f87171) for down        */
+/* success token (#00FF11 sky-green) for up; danger (#FF0011) for down        */
 .up   { color: var(--success); }
 .down { color: var(--danger);  }
 
@@ -81,8 +81,8 @@
 }
 
 /* Phase accent: top border uses semi-transparent token color */
-.brief-card.phase-morning { border-top: 2px solid rgba(251,191,36,.5);  } /* --warning */
-.brief-card.phase-eod     { border-top: 2px solid rgba(125,211,252,.4); } /* --brand   */
+.brief-card.phase-morning { border-top: 2px solid rgba(255, 212, 0, .5);  } /* --warning */
+.brief-card.phase-eod     { border-top: 2px solid rgba(38, 129, 255, .4); } /* --brand   */
 
 /* ── Header ──────────────────────────────────────────────────────────────────── */
 
@@ -136,13 +136,13 @@
 }
 
 /* fresh  → success green */
-.age-fresh  { background: rgba(74,222,128,.12);  color: var(--success); }
+.age-fresh  { background: rgba(0, 255, 17, .12);  color: var(--success); }
 /* recent  → brand sky */
-.age-recent { background: rgba(125,211,252,.12); color: var(--brand); }
+.age-recent { background: rgba(38, 129, 255, .12); color: var(--brand); }
 /* today   → warning amber */
-.age-today  { background: rgba(251,191,36,.12);  color: var(--warning); }
+.age-today  { background: rgba(255, 212, 0, .12);  color: var(--warning); }
 /* stale   → danger red */
-.age-stale  { background: rgba(248,113,113,.12); color: var(--danger); }
+.age-stale  { background: rgba(255, 0, 17, .12); color: var(--danger); }
 
 /* ── Sentiment badge ─────────────────────────────────────────────────────────── */
 
@@ -163,13 +163,13 @@
 }
 
 /* RISK_ON  → success green */
-.sent-risk-on   { background: rgba(74,222,128,.13);  color: var(--success); }
+.sent-risk-on   { background: rgba(0, 255, 17, .13);  color: var(--success); }
 /* RISK_OFF → danger red */
-.sent-risk-off  { background: rgba(248,113,113,.13); color: var(--danger);  }
+.sent-risk-off  { background: rgba(255, 0, 17, .13); color: var(--danger);  }
 /* MIXED    → warning amber */
-.sent-mixed     { background: rgba(251,191,36,.13);  color: var(--warning); }
+.sent-mixed     { background: rgba(255, 212, 0, .13);  color: var(--warning); }
 /* UNCERTAIN → faint grey */
-.sent-uncertain { background: rgba(148,163,184,.10); color: var(--muted);   }
+.sent-uncertain { background: rgba(214, 231, 255, .10); color: var(--muted);   }
 
 /* ── Body ──────────────────────────────────────────────────────────────────────── */
 
@@ -250,13 +250,13 @@
 }
 
 .mover-pill.up {
-  background: rgba(74,222,128,.12);
-  border-color: rgba(74,222,128,.28);
+  background: rgba(0, 255, 17, .12);
+  border-color: rgba(0, 255, 17, .28);
   color: var(--success);
 }
 .mover-pill.down {
-  background: rgba(248,113,113,.12);
-  border-color: rgba(248,113,113,.28);
+  background: rgba(255, 0, 17, .12);
+  border-color: rgba(255, 0, 17, .28);
   color: var(--danger);
 }
 .mover-pill .chg { font-size: var(--text-xs); opacity: .85; }
@@ -334,13 +334,13 @@
   font-size: var(--text-sm);
   font-weight: 600;
   border: 1px solid var(--line);
-  background: rgba(148,163,184,.06);
+  background: rgba(214, 231, 255, .06);
   color: var(--muted);
   cursor: pointer;
   transition: background .15s, color .15s, border-color .15s;
 }
 .fb-btn:hover {
-  background: rgba(148,163,184,.12);
+  background: rgba(214, 231, 255, .12);
   color: var(--text);
   border-color: var(--line-strong);
 }
@@ -466,13 +466,13 @@
 
 /* signal badge → brand sky */
 .scan-badge--signal {
-  background: rgba(125,211,252,.12);
+  background: rgba(38, 129, 255, .12);
   color: var(--brand);
 }
 
 /* alert badge → warning amber */
 .scan-badge--alert {
-  background: rgba(251,191,36,.12);
+  background: rgba(255, 212, 0, .12);
   color: var(--warning);
 }
 
@@ -521,15 +521,15 @@
 
 /* up pill → success tint */
 .scan-pick-pill:has(.up) {
-  background: rgba(74,222,128,.10);
-  border-color: rgba(74,222,128,.28);
+  background: rgba(0, 255, 17, .10);
+  border-color: rgba(0, 255, 17, .28);
   color: var(--success);
 }
 
 /* down pill → danger tint */
 .scan-pick-pill:has(.down) {
-  background: rgba(248,113,113,.10);
-  border-color: rgba(248,113,113,.28);
+  background: rgba(255, 0, 17, .10);
+  border-color: rgba(255, 0, 17, .28);
   color: var(--danger);
 }
 
@@ -568,11 +568,11 @@
   font-size: var(--text-xs);
 }
 .fb-rate-good {
-  background: rgba(74,222,128,.12);
+  background: rgba(0, 255, 17, .12);
   color: var(--success);
 }
 .fb-rate-low {
-  background: rgba(251,191,36,.12);
+  background: rgba(255, 212, 0, .12);
   color: var(--warning);
 }
 

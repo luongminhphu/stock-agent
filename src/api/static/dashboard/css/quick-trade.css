@@ -4,21 +4,21 @@
    KHÔNG có hardcode hex nào ở đây — nếu token thiếu → sửa variables.css.
 
    Token reference (variables.css):
-     --bg            #08111f       nền sâu nhất
-     --bg-2          #0d1728       nền panel
-     --surface       rgba(13,23,40,.82)
-     --surface-2     rgba(15,28,48,.92)
-     --surface-3     rgba(20,37,63,.92)
-     --text          #ecf3ff
-     --muted         #96a7c6
-     --faint         #61718f
-     --line          rgba(148,163,184,.18)
-     --line-strong   rgba(148,163,184,.28)
-     --brand         #7dd3fc       sky-blue
-     --brand-strong  #38bdf8
-     --success       #4ade80
-     --danger        #f87171
-     --warning       #fbbf24
+     --bg            #000000       nền sâu nhất
+     --bg-2          #14171A       nền panel
+     --surface       #14171A
+     --surface-2     #222629
+     --surface-3     #2F353D
+     --text          #FFFFFF
+     --muted         rgba(214, 231, 255, 0.52)
+     --faint         rgba(214, 231, 255, 0.32)
+     --line          rgba(214, 231, 255, .18)
+     --line-strong   rgba(214, 231, 255, .28)
+     --brand         #2681FF       sky-blue
+     --brand-strong  #2681FF
+     --success       #00FF11
+     --danger        #FF0011
+     --warning       #FFD400
      --shadow        0 24px 70px rgba(2,6,23,.36)
      --radius-lg     24px
      --radius-md     18px
@@ -210,7 +210,7 @@
 
 /* ── Inputs — đồng bộ với dialog input trong modal.css ───────────────────── */
 .qt-input {
-  background:    rgba(13, 23, 40, 0.9);   /* tương đương --bg-2 + opacity */
+  background:    #14171A;   /* tương đương --bg-2 + opacity */
   border:        1px solid var(--line-strong);
   border-radius: var(--radius-sm);
   color:         var(--text);
@@ -233,7 +233,7 @@
 }
 /* Select option items */
 .qt-input option {
-  background: #0d1728; /* --bg-2 literal — browser không hỗ trợ var() trong option */
+  background: #14171A; /* --bg-2 literal — browser không hỗ trợ var() trong option */
   color:      var(--text);
 }
 

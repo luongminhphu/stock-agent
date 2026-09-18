@@ -72,8 +72,8 @@
 /* ── Error banner ────────────────────────────────────────────────── */
 .error-banner {
   padding: 10px 20px;
-  background: rgba(248,113,113,.12);
-  border-bottom: 1px solid rgba(248,113,113,.25);
+  background: rgba(255, 0, 17, .12);
+  border-bottom: 1px solid rgba(255, 0, 17, .25);
   color: var(--danger);
   font-size: var(--text-base);
   font-weight: 500;
@@ -233,7 +233,7 @@ main {
 .form-field textarea:focus {
   outline: none;
   border-color: var(--brand);
-  box-shadow: 0 0 0 2px rgba(125,211,252,.12);
+  box-shadow: 0 0 0 2px rgba(38, 129, 255, .12);
 }
 
 .form-stack {
@@ -295,8 +295,8 @@ main {
   align-items: center;
   gap: 6px;
   padding: 7px 14px;
-  background: rgba(125,211,252,.1);
-  border: 1px solid rgba(125,211,252,.2);
+  background: rgba(38, 129, 255, .1);
+  border: 1px solid rgba(38, 129, 255, .2);
   border-radius: var(--radius-tag);
   color: var(--brand);
   font-size: var(--text-base);
@@ -308,8 +308,8 @@ main {
 }
 
 .suggest-btn:hover {
-  background: rgba(125,211,252,.18);
-  border-color: rgba(125,211,252,.35);
+  background: rgba(38, 129, 255, .18);
+  border-color: rgba(38, 129, 255, .35);
 }
 
 .suggest-loading {
@@ -343,7 +343,7 @@ main {
 
 .error-text {
   font-size: var(--text-base);
-  color: var(--red, #f87171);
+  color: var(--red, #FF0011);
   padding: 12px 0;
 }
 

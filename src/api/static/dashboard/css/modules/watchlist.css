@@ -71,7 +71,7 @@
 }
 .wl-card:hover {
   background: var(--brand-bg);
-  border-color: rgba(125, 211, 252, 0.2);
+  border-color: rgba(38, 129, 255, 0.2);
 }
 
 /* ── Card header row ──────────────────────────────────────────────────────────── */
@@ -156,7 +156,7 @@
   text-align: right;
 }
 .wl-change.up   { color: var(--success); }
-.wl-change.down { color: var(--danger);  }   /* negative price change → --danger (#f87171) */
+.wl-change.down { color: var(--danger);  }   /* negative price change → --danger (#FF0011) */
 .wl-change.flat { color: var(--muted);   }
 
 .wl-ceil-badge,
@@ -221,7 +221,7 @@
   font-size: var(--text-base);
   line-height: 1.55;
   background: var(--brand-bg);
-  border: 1px solid rgba(125, 211, 252, 0.15);
+  border: 1px solid rgba(38, 129, 255, 0.15);
   color: var(--muted);
 }
 .wl-scan-result.hidden { display: none; }

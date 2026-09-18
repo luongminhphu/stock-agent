@@ -52,7 +52,7 @@
 #topbarSearch {
   width: 100%;
   height: 32px;
-  background: rgba(148, 163, 184, 0.06);
+  background: rgba(214, 231, 255, 0.06);
   border: 1px solid var(--line);
   border-radius: var(--radius-xs);
   padding: 0 var(--space-4) 0 32px;
@@ -68,9 +68,9 @@
 
 #topbarSearch:focus {
   outline: none;
-  border-color: rgba(125, 211, 252, 0.4);
-  background: rgba(125, 211, 252, 0.04);
-  box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.08);
+  border-color: rgba(38, 129, 255, 0.4);
+  background: rgba(38, 129, 255, 0.04);
+  box-shadow: 0 0 0 2px rgba(38, 129, 255, 0.08);
 }
 
 /* ── Toolbar (right side) ────────────────────────────────────────────────── */
@@ -121,21 +121,21 @@
 
 /* ── State: ok ── */
 .heartbeat-ok .heartbeat-dot {
-  background: var(--green, #4ade80);
+  background: var(--green, #00FF11);
   animation: hb-pulse 2.4s ease-in-out infinite;
 }
-.heartbeat-ok { color: var(--green, #4ade80); border-color: rgba(74,222,128,.3); }
+.heartbeat-ok { color: var(--green, #00FF11); border-color: rgba(0, 255, 17, .3); }
 
 /* ── State: stale ── */
-.heartbeat-stale .heartbeat-dot { background: var(--yellow, #fbbf24); }
-.heartbeat-stale { color: var(--yellow, #fbbf24); border-color: rgba(251,191,36,.3); }
+.heartbeat-stale .heartbeat-dot { background: var(--yellow, #FFD400); }
+.heartbeat-stale { color: var(--yellow, #FFD400); border-color: rgba(255, 212, 0, .3); }
 
 /* ── State: error ── */
 .heartbeat-error .heartbeat-dot {
-  background: var(--red, #f87171);
+  background: var(--red, #FF0011);
   animation: hb-blink 1s step-end infinite;
 }
-.heartbeat-error { color: var(--red, #f87171); border-color: rgba(248,113,113,.3); }
+.heartbeat-error { color: var(--red, #FF0011); border-color: rgba(255, 0, 17, .3); }
 
 /* ── Animations ── */
 @keyframes hb-pulse {
@@ -160,8 +160,8 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   color: var(--brand);
-  background: rgba(125, 211, 252, 0.1);
-  border: 1px solid rgba(125, 211, 252, 0.18);
+  background: rgba(38, 129, 255, 0.1);
+  border: 1px solid rgba(38, 129, 255, 0.18);
   border-radius: var(--radius-pill);
   padding: 1px 6px;
   white-space: nowrap;
@@ -176,7 +176,7 @@
 
 .search-result-badge.search-badge--empty {
   color: var(--muted);
-  background: rgba(148, 163, 184, 0.08);
+  background: rgba(214, 231, 255, 0.08);
   border-color: var(--line);
 }
 
@@ -200,7 +200,7 @@
 
 .search-clear-btn:hover {
   color: var(--text);
-  background: rgba(148, 163, 184, 0.1);
+  background: rgba(214, 231, 255, 0.1);
 }
 
 .search-clear-btn.search-clear-btn--hidden {
@@ -214,7 +214,7 @@
 
 /* ── Search: highlight match ────────────────────────────────────────────── */
 mark.search-hl {
-  background: rgba(251, 191, 36, 0.22);  /* --warning tint */
+  background: rgba(255, 212, 0, 0.22);  /* --warning tint */
   color: var(--warning);
   border-radius: var(--radius-xs);
   padding: 0 1px;
@@ -238,14 +238,14 @@ tr.search-hidden {
 .engine-run-btn {
   /* Kế thừa .quick-action-btn; override màu brand — giờ nằm trong sidebar-quick-actions */
   color: var(--brand);
-  border-color: rgba(125,211,252,.25);
-  background: rgba(125,211,252,.05);
+  border-color: rgba(38, 129, 255, .25);
+  background: rgba(38, 129, 255, .05);
   width: 100%;
 }
 
 .engine-run-btn:hover:not(:disabled) {
-  background: rgba(125,211,252,.12);
-  border-color: rgba(125,211,252,.40);
+  background: rgba(38, 129, 255, .12);
+  border-color: rgba(38, 129, 255, .40);
 }
 
 .engine-run-btn:disabled {

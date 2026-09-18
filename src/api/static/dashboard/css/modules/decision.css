@@ -23,7 +23,7 @@
   display: flex;
   gap: var(--space-1);
   margin-bottom: var(--space-4);
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  border-bottom: 1px solid rgba(214, 231, 255, 0.1);
   padding-bottom: var(--space-1);
 }
 .dec-tab {
@@ -77,16 +77,16 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted);
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  border-bottom: 1px solid rgba(214, 231, 255, 0.1);
   white-space: nowrap;
 }
 .dec-table td {
   padding: var(--tbl-td-pad);
-  border-bottom: 1px solid rgba(148, 163, 184, 0.06);
+  border-bottom: 1px solid rgba(214, 231, 255, 0.06);
   vertical-align: middle;
 }
 .dec-row:hover td {
-  background: rgba(125, 211, 252, 0.03);
+  background: rgba(38, 129, 255, 0.03);
 }
 .dec-row:last-child td { border-bottom: none; }
 
@@ -111,10 +111,10 @@
   letter-spacing: 0.04em;
   white-space: nowrap;
 }
-.dec-type-buy  { background: rgba(74, 222, 128, 0.15); color: var(--success); }
-.dec-type-sell { background: rgba(251, 146, 60,  0.15); color: var(--orange); }
-.dec-type-hold { background: rgba(125, 211, 252, 0.12); color: #7dd3fc; }
-.dec-type-skip { background: rgba(148, 163, 184, 0.1);  color: var(--muted); }
+.dec-type-buy  { background: rgba(0, 255, 17, 0.15); color: var(--success); }
+.dec-type-sell { background: rgba(255, 176, 32, 0.15); color: var(--orange); }
+.dec-type-hold { background: rgba(38, 129, 255, 0.12); color: #2681FF; }
+.dec-type-skip { background: rgba(214, 231, 255, 0.1);  color: var(--muted); }
 
 /* ── Verdict badges ───────────────────────────────────────────────────────────────────────────── */
 .dec-verdict {
@@ -125,8 +125,8 @@
   font-weight: 600;
   white-space: nowrap;
 }
-.dec-verdict-correct   { background: rgba(74, 222, 128, 0.12); color: var(--success); }
-.dec-verdict-incorrect { background: rgba(251, 146, 60,  0.15); color: var(--orange); }
+.dec-verdict-correct   { background: rgba(0, 255, 17, 0.12); color: var(--success); }
+.dec-verdict-incorrect { background: rgba(255, 176, 32, 0.15); color: var(--orange); }
 .dec-verdict-mixed     { background: rgba(250, 204, 21,  0.12); color: var(--warning); }
 .dec-verdict.muted     { font-size: var(--text-sm); }
 
@@ -178,8 +178,8 @@
 
 /* ── Replay panel ──────────────────────────────────────────────────────────────────────────────────────── */
 .replay-panel {
-  background: rgba(125, 211, 252, 0.04);
-  border: 1px solid rgba(125, 211, 252, 0.12);
+  background: rgba(38, 129, 255, 0.04);
+  border: 1px solid rgba(38, 129, 255, 0.12);
   border-radius: var(--radius-btn);
   padding: 14px 16px;
   font-size: var(--text-base);
@@ -252,7 +252,7 @@
 }
 .lesson-card {
   background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(148, 163, 184, 0.12);
+  border: 1px solid rgba(214, 231, 255, 0.12);
   border-radius: var(--radius-sm);
   padding: 14px 16px;
   display: flex;
@@ -261,8 +261,8 @@
   transition: border-color 0.15s, background 0.15s;
 }
 .lesson-card:hover {
-  background: rgba(125, 211, 252, 0.04);
-  border-color: rgba(125, 211, 252, 0.18);
+  background: rgba(38, 129, 255, 0.04);
+  border-color: rgba(38, 129, 255, 0.18);
 }
 .lesson-card-head {
   display: flex;
@@ -339,8 +339,8 @@
   font-size: var(--text-base);
   color: var(--text);
   padding: 7px 10px;
-  background: rgba(125, 211, 252, 0.05);
-  border-left: 2px solid rgba(125, 211, 252, 0.25);
+  background: rgba(38, 129, 255, 0.05);
+  border-left: 2px solid rgba(38, 129, 255, 0.25);
   border-radius: 0 var(--radius-tag) var(--radius-tag) 0;
   line-height: 1.5;
   margin-top: 2px;

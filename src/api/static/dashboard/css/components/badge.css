@@ -12,13 +12,13 @@
   font-size: var(--text-xs);
   font-weight: 700;
   white-space: nowrap;
-  background: rgba(148, 163, 184, 0.16);
+  background: rgba(214, 231, 255, 0.16);
   color: #dbeafe;
 }
-.badge.bullish, .badge.valid, .badge.triggered, .badge.active { background: rgba(74, 222, 128, 0.14); color: #bbf7d0; }
-.badge.bearish, .badge.invalid, .badge.invalidated, .badge.cancelled { background: rgba(248, 113, 113, 0.14); color: #fecaca; }
-.badge.neutral, .badge.pending, .badge.paused { background: rgba(251, 191, 36, 0.14); color: #fde68a; }
-.badge.watchlist, .badge.uncertain, .badge.expired, .badge.closed { background: rgba(167, 139, 250, 0.14); color: #ddd6fe; }
+.badge.bullish, .badge.valid, .badge.triggered, .badge.active { background: rgba(0, 255, 17, 0.14); color: #85D695; }
+.badge.bearish, .badge.invalid, .badge.invalidated, .badge.cancelled { background: rgba(255, 0, 17, 0.14); color: #FF8F94; }
+.badge.neutral, .badge.pending, .badge.paused { background: rgba(255, 212, 0, 0.14); color: #E4D59A; }
+.badge.watchlist, .badge.uncertain, .badge.expired, .badge.closed { background: rgba(183, 41, 254, 0.14); color: #E0BAF3; }
 
 /* Price stale badge — hiển thị khi giá là giá cuối phiên (ngoài giờ giao dịch) */
 /* Block-level: nằm dưới số giá, không phá text-align: right của td.currency */
@@ -30,9 +30,9 @@
   font-size: var(--text-2xs);
   font-weight: 600;
   white-space: nowrap;
-  background: rgba(148, 163, 184, 0.10);
+  background: rgba(214, 231, 255, 0.10);
   color: var(--muted);
-  border: 1px solid rgba(148, 163, 184, 0.20);
+  border: 1px solid rgba(214, 231, 255, 0.20);
   cursor: default;
   text-align: right;
   letter-spacing: 0.02em;

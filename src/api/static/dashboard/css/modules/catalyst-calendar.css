@@ -121,8 +121,8 @@
   font-weight: 800;
 }
 .cc-cal-cell--today {
-  border-color: rgba(125, 211, 252, 0.35);
-  background: rgba(125, 211, 252, 0.06);
+  border-color: rgba(38, 129, 255, 0.35);
+  background: rgba(38, 129, 255, 0.06);
 }
 
 /* Cells with catalysts: interactive */
@@ -141,7 +141,7 @@
 /* Selected state */
 .cc-cal-cell--selected {
   background: var(--surface-3);
-  border-color: rgba(125, 211, 252, 0.45);
+  border-color: rgba(38, 129, 255, 0.45);
 }
 .cc-cal-cell--selected .cc-cal-day-num {
   color: var(--accent, var(--brand));
@@ -354,12 +354,12 @@
 .cu-chip__day    { font-weight: 600; flex-shrink: 0; }
 .cu-chip__desc   { color: inherit; opacity: 0.75; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
-.cu-chip--today    { background: rgba(248,113,113,.12); color: var(--danger);  border-color: rgba(248,113,113,.30); }
-.cu-chip--today:hover    { background: rgba(248,113,113,.20); }
-.cu-chip--tomorrow { background: rgba(251,191,36,.10);  color: var(--warning); border-color: rgba(251,191,36,.28);  }
-.cu-chip--tomorrow:hover { background: rgba(251,191,36,.18);  }
-.cu-chip--soon     { background: rgba(125,211,252,.10); color: var(--brand);   border-color: rgba(125,211,252,.22); }
-.cu-chip--soon:hover     { background: rgba(125,211,252,.18); }
+.cu-chip--today    { background: rgba(255, 0, 17, .12); color: var(--danger);  border-color: rgba(255, 0, 17, .30); }
+.cu-chip--today:hover    { background: rgba(255, 0, 17, .20); }
+.cu-chip--tomorrow { background: rgba(255, 212, 0, .10);  color: var(--warning); border-color: rgba(255, 212, 0, .28);  }
+.cu-chip--tomorrow:hover { background: rgba(255, 212, 0, .18);  }
+.cu-chip--soon     { background: rgba(38, 129, 255, .10); color: var(--brand);   border-color: rgba(38, 129, 255, .22); }
+.cu-chip--soon:hover     { background: rgba(38, 129, 255, .18); }
 
 @media (max-width: 480px) {
   .cu-chip__desc { display: none; }

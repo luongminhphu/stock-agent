@@ -5,15 +5,17 @@
    Utilities (.hidden, .spinner, .empty-state, …) → utilities.css
 ──────────────────────────────────────────────────────────────────────────── */
 
-/* ── Google Fonts: Roboto ─────────────────────────────────────────────────── */
+/* ── Google Fonts: Inter ─────────────────────────────────────────────────── */
 /* Fonts loaded via <link> in index.html (Wave 5d) — không @import blocking ở đây */
 
 /* ── Font tokens (single source of truth cho font-family) ────────────────── */
 :root {
-  --font-body: 'Roboto', 'Inter', 'Helvetica Neue', sans-serif;
-  /* Wave 6.4: IBM Plex Mono thay Roboto Mono — file gstatic v31 thiếu
-     .notdef, Firefox spam "empty gid 1 used as component". */
-  --font-mono: 'IBM Plex Mono', 'ui-monospace', 'Cascadia Code', monospace;
+  /* HSC fonts: Inter Body / Inter Display headings */
+  --font-display: 'Inter Display', 'Inter', 'Helvetica Neue', sans-serif;
+  --font-body:    'Inter', 'Helvetica Neue', sans-serif;
+  --font-numeric: var(--font-body);
+  /* Numeric giá VND: IBM Plex Mono (lining + tabular figures) */
+  --font-mono:    'IBM Plex Mono', 'ui-monospace', monospace;
 }
 
 * { box-sizing: border-box; }
@@ -28,10 +30,8 @@ body {
   color: var(--text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background:
-    radial-gradient(circle at top left,  rgba(56,  189, 248, 0.16), transparent 30%),
-    radial-gradient(circle at top right, rgba(167, 139, 250, 0.14), transparent 24%),
-    linear-gradient(180deg, #08111f 0%, #0a1322 48%, #0b1220 100%);
+  /* HSC: one dark field — no decorative gradients */
+  background: var(--hsc-n10, #000000);
 }
 
 a { color: inherit; }
@@ -40,6 +40,7 @@ button, input, select { font: inherit; }
 h1, h2, h3, p { margin: 0; }
 
 /* Heading scale — dùng var(--text-*) từ variables.css */
+h1, h2, h3 { font-family: var(--font-display); }
 h1 {
   font-size: var(--text-2xl);   /* ~26px dashboard, fluid via token */
   font-weight: 700;
@@ -123,7 +124,7 @@ input, select, textarea {
   min-height: 40px;
   border-radius: var(--radius-sm);           /* 14px via token */
   border: 1px solid var(--line);
-  background: rgba(7, 15, 28, 0.72);
+  background: #2F353D;
   color: var(--text);
   padding: 0 var(--space-3);                 /* 12px via token */
   min-width: 138px;
@@ -136,8 +137,8 @@ textarea {
   line-height: 1.5;
 }
 input:focus, select:focus, textarea:focus {
-  border-color: rgba(125, 211, 252, 0.48);
-  box-shadow: 0 0 0 var(--space-1) rgba(56, 189, 248, 0.12);
+  border-color: rgba(38, 129, 255, 0.48);
+  box-shadow: 0 0 0 var(--space-1) rgba(38, 129, 255, 0.12);
 }
 
 /* ── Mobile touch targets: iOS 44px minimum ─────────────────────────── */

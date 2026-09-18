@@ -55,7 +55,7 @@
 .bt-table td {
   padding: var(--space-1) var(--space-2);
   vertical-align: middle;
-  border-bottom: 1px solid rgba(148,163,184,.06);
+  border-bottom: 1px solid rgba(214, 231, 255, .06);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

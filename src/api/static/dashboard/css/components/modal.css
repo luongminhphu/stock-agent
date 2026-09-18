@@ -16,7 +16,7 @@ dialog {
   max-height: calc(100dvh - 48px);
   overflow-y: auto;
   /* Dùng token surface-3 → bg-2 để khớp hệ màu navy của dashboard */
-  background: linear-gradient(180deg, var(--surface-3), var(--bg-2));
+  background: var(--bg-2);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-lg);
   box-shadow: 0 32px 80px rgba(2, 6, 23, 0.72),
@@ -116,7 +116,7 @@ dialog::backdrop {
 dialog input,
 dialog select,
 dialog textarea {
-  background: rgba(13, 23, 40, 0.9);
+  background: #14171A;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-btn);
   color: var(--text);
@@ -138,7 +138,7 @@ dialog select:focus,
 dialog textarea:focus {
   outline: none;
   border-color: var(--brand);
-  box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.14);
+  box-shadow: 0 0 0 3px rgba(38, 129, 255, 0.14);
 }
 dialog input:disabled,
 dialog select:disabled,
@@ -149,7 +149,7 @@ dialog textarea:disabled {
 
 /* Dropdown options — browser default hay render trắng trên nền tối */
 dialog select option {
-  background: #0d1728;
+  background: #14171A;
   color: var(--text);
 }
 
@@ -160,17 +160,17 @@ dialog select option {
   align-items: flex-end;
   padding: var(--space-3);
   border-radius: var(--radius-btn);
-  background: rgba(125, 211, 252, 0.05);
-  border: 1px solid rgba(125, 211, 252, 0.16);
+  background: rgba(38, 129, 255, 0.05);
+  border: 1px solid rgba(38, 129, 255, 0.16);
 }
 .suggest-bar .form-field { flex: 1; }
 
 .suggest-btn {
   min-height: 36px;
   padding: 0 14px;
-  border: 1px solid rgba(125, 211, 252, 0.36);
+  border: 1px solid rgba(38, 129, 255, 0.36);
   border-radius: var(--radius-btn);
-  background: rgba(125, 211, 252, 0.1);
+  background: rgba(38, 129, 255, 0.1);
   color: var(--brand);
   font-weight: 700;
   cursor: pointer;
@@ -181,7 +181,7 @@ dialog select option {
   font-size: var(--text-sm);
   transition: background 0.15s;
 }
-.suggest-btn:hover { background: rgba(125, 211, 252, 0.18); }
+.suggest-btn:hover { background: rgba(38, 129, 255, 0.18); }
 .suggest-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .suggest-loading {
@@ -195,8 +195,8 @@ dialog select option {
 
 .suggest-result {
   border-radius: var(--radius-btn);
-  background: rgba(125, 211, 252, 0.04);
-  border: 1px solid rgba(125, 211, 252, 0.18);
+  background: rgba(38, 129, 255, 0.04);
+  border: 1px solid rgba(38, 129, 255, 0.18);
   overflow: hidden;
 }
 .suggest-result-header {
@@ -205,8 +205,8 @@ dialog select option {
   align-items: center;
   gap: 10px;
   padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid rgba(125, 211, 252, 0.12);
-  background: rgba(125, 211, 252, 0.06);
+  border-bottom: 1px solid rgba(38, 129, 255, 0.12);
+  background: rgba(38, 129, 255, 0.06);
 }
 .suggest-result-header strong {
   font-size: var(--text-sm);
@@ -215,16 +215,16 @@ dialog select option {
 .apply-suggest-btn {
   min-height: var(--btn-h-sm);
   padding: 0 var(--space-3);
-  border: 1px solid rgba(74, 222, 128, 0.3);
+  border: 1px solid rgba(0, 255, 17, 0.3);
   border-radius: var(--radius-btn);
-  background: rgba(74, 222, 128, 0.08);
+  background: rgba(0, 255, 17, 0.08);
   color: var(--success);
   font-size: var(--text-sm);
   font-weight: 700;
   cursor: pointer;
   transition: background 0.15s;
 }
-.apply-suggest-btn:hover { background: rgba(74, 222, 128, 0.16); }
+.apply-suggest-btn:hover { background: rgba(0, 255, 17, 0.16); }
 
 .suggest-body {
   padding: var(--space-3) var(--space-4);
@@ -266,13 +266,13 @@ dialog select option {
 .confidence-bar {
   flex: 1;
   height: 5px;
-  background: rgba(148, 163, 184, 0.14);
+  background: rgba(214, 231, 255, 0.14);
   border-radius: 99px;
   overflow: hidden;
 }
 .confidence-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--brand-strong), var(--success));
+  background: var(--brand);
   border-radius: 99px;
   transition: width 0.4s ease;
 }
@@ -304,8 +304,8 @@ dialog select option {
   align-items: end;
   padding: var(--space-3) var(--space-3);
   border-radius: var(--radius-sm);
-  background: rgba(125, 211, 252, 0.05);
-  border: 1px solid rgba(125, 211, 252, 0.14);
+  background: rgba(38, 129, 255, 0.05);
+  border: 1px solid rgba(38, 129, 255, 0.14);
 }
 .ai-bar__label {
   font-size: var(--text-xs);
@@ -375,8 +375,8 @@ dialog select option {
 }
 .ghost-btn--compact:hover {
   color: var(--brand);
-  border-color: rgba(125, 211, 252, 0.35);
-  background: rgba(125, 211, 252, 0.06);
+  border-color: rgba(38, 129, 255, 0.35);
+  background: rgba(38, 129, 255, 0.06);
 }
 
 /* ── Mobile: form-row xếp dọc (grid 2 cột nhét vào màn hẹp làm input

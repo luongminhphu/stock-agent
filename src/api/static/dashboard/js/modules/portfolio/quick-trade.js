@@ -441,8 +441,8 @@ function _buildSuccessMsg(result) {
     ? ` | Realized P&L: ${result.realized_pnl >= 0 ? '+' : ''}${result.realized_pnl.toLocaleString('vi-VN')} ₫`
     : '';
   const closed   = result.position_closed  ? ' | Vị thế đã đóng'       : '';
-  const decision = result.decision_logged  ? ' | 📋 Decision logged' : '';
-  return (result.trade_type === 'buy' ? '✅ Đã mua ' : '✅ Đã bán ')
+  const decision = result.decision_logged  ? ' | Decision logged' : '';
+  return (result.trade_type === 'buy' ? 'Đã mua ' : 'Đã bán ')
     + `${result.qty.toLocaleString('vi-VN')} cp ${result.ticker} @ ${result.price.toLocaleString('vi-VN')} ₫`
     + pnl + closed + decision;
 }
@@ -463,8 +463,8 @@ function _showToast(msg) {
   const toast = document.createElement('div');
   toast.textContent = msg;
   toast.style.cssText =
-    'background:var(--color-surface,#fff);color:var(--color-text,#111);' +
-    'border:1px solid var(--color-border,#ddd);border-radius:8px;' +
+    'background:var(--hsc-n80,#4D545C);color:#FFFFFF;' +
+    'border:1px solid var(--hsc-neutral-a24,rgba(214,231,255,.24));border-radius:var(--hsc-radius-tag,2px);' +
     'padding:.75rem 1rem;font-size:.875rem;box-shadow:0 4px 16px rgba(0,0,0,.1);' +
     'pointer-events:auto;opacity:0;transform:translateY(8px);' +
     'transition:opacity .2s,transform .2s';

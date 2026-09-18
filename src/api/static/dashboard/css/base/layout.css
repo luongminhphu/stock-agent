@@ -78,8 +78,8 @@ main#main-content {
 .error-banner {
   grid-column: 2 / -1;
   padding: var(--space-3) var(--space-5);
-  background: rgba(248,113,113,.1);
-  border-bottom: 1px solid rgba(248,113,113,.22);
+  background: rgba(255, 0, 17, .1);
+  border-bottom: 1px solid rgba(255, 0, 17, .22);
   color: var(--danger);
   font-size: var(--text-sm);
   font-weight: 500;

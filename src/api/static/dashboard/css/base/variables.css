@@ -6,13 +6,13 @@
    ════ DESIGN CONTRACT ════════════════════════════════════════════════════════
 
    SPACING     Dùng var(--space-*). Không hardcode px trong margin/padding/gap.
-   RADIUS      Dùng var(--radius-*). Mapping:
-               panel/dialog  → --radius-lg (24px) / --radius-md (18px)
-               input/toast   → --radius-sm (14px)
-               button        → --radius-btn (9px)
-               badge/tag     → --radius-tag (6px)
-               micro bar     → --radius-xs (4px)
-               pill/chip     → --radius-pill (9999px)
+   RADIUS      Dùng var(--radius-*). Mapping (HSC hard stops):
+               panel/dialog  → --radius-lg (12px) / --radius-md (8px)
+               input/toast   → --radius-sm (4px)
+               button        → --radius-btn (4px)
+               badge/tag     → --radius-tag (2px)
+               micro bar     → --radius-xs (2px)
+               pill/chip     → --radius-pill (100px)
    TYPOGRAPHY  Dùng var(--text-*). Không hardcode rem/px trong font-size.
    TABLE       Dùng --tbl-th-pad / --tbl-td-pad (standard) hoặc
                --tbl-th-pad-sm / --tbl-td-pad-sm (compact).
@@ -27,44 +27,44 @@
 
 :root {
   /* ── Surfaces ── */
-  --bg: #08111f;
-  --bg-2: #0d1728;
-  --surface: rgba(13, 23, 40, 0.82);
-  --surface-2: rgba(15, 28, 48, 0.92);
-  --surface-3: rgba(20, 37, 63, 0.92);
+  --bg: #000000;
+  --bg-2: #14171A;
+  --surface: #14171A;
+  --surface-2: #222629;
+  --surface-3: #2F353D;
 
   /* ── Text ── */
-  --text: #ecf3ff;
-  --muted: #96a7c6;
-  --faint: #61718f;
+  --text: #FFFFFF;
+  --muted: rgba(214, 231, 255, 0.52);
+  --faint: rgba(214, 231, 255, 0.32);
 
   /* ── Borders ── */
-  --line: rgba(148, 163, 184, 0.18);
-  --line-strong: rgba(148, 163, 184, 0.28);
+  --line: rgba(214, 231, 255, 0.18);
+  --line-strong: rgba(214, 231, 255, 0.28);
 
   /* ── Brand & semantic colours ── */
-  --brand: #7dd3fc;
-  --brand-strong: #38bdf8;
-  --success: #4ade80;
-  --warning: #fbbf24;
-  --danger: #f87171;
-  --violet: #a78bfa;
+  --brand: #2681FF;
+  --brand-strong: #2681FF;
+  --success: #00FF11;
+  --warning: #FFD400;
+  --danger: #FF0011;
+  --violet: #B729FE;
 
   /* ── Extended semantic colours ── */
   /* --orange: dùng cho wl-change.down, ceil-badge, bất kỳ trạng thái "caution/warm"  */
-  --orange: #fb923c;
+  --orange: #FFB020;
   /* --rank-*: màu thứ hạng leaderboard — không dùng ngoài context ranking */
   --rank-gold:   #f59e0b;
   --rank-silver: #94a3b8;
   --rank-bronze: #b45309;
 
   /* ── Semantic bg tints (alpha) ── */
-  --warning-bg:  rgba(251, 191,  36, 0.08);
-  --danger-bg:   rgba(248, 113, 113, 0.08);
-  --success-bg:  rgba( 74, 222, 128, 0.08);
-  --orange-bg:   rgba(251, 146,  60, 0.10);
-  --brand-bg:    rgba(125, 211, 252, 0.08);
-  --violet-bg:   rgba(167, 139, 250, 0.10);
+  --warning-bg:  rgba(255, 212, 0, 0.08);
+  --danger-bg:   rgba(255, 0, 17, 0.08);
+  --success-bg:  rgba(0, 255, 17, 0.08);
+  --orange-bg:   rgba(255, 176, 32, 0.10);
+  --brand-bg:    rgba(38, 129, 255, 0.08);
+  --violet-bg:   rgba(183, 41, 254, 0.10);
 
   /* ── Spacing (4px grid) ─────────────────────────────────────────────────
      Dùng thay thế hardcode px trong mọi module.
@@ -95,9 +95,9 @@
   /* ── Transitions ────────────────────────────────────────────────────────
      Thay 0.15s ease / 0.18s ease rải rác bằng var() chuẩn.
   ── */
-  --transition-fast: 0.15s ease;
-  --transition-base: 0.18s ease;
-  --transition-slow: 0.3s ease;
+  --transition-fast: 120ms cubic-bezier(0.2, 0, 0, 1);
+  --transition-base: 160ms cubic-bezier(0.2, 0, 0, 1);
+  --transition-slow: 200ms cubic-bezier(0.2, 0, 0, 1);
 
   /* ── Layout rhythm ── */
   /* --panel-pad qua spacing token: giữ nguyên 16px nhưng tham chiếu rõ ràng */
@@ -113,17 +113,18 @@
      --radius-xs   4px  micro: progress bar, nano-indicator, heatmap cell
      --radius-pill 9999px tag/chip dạng pill, avatar, score badge tròn
   */
-  --radius-lg:   24px;
-  --radius-md:   18px;
-  --radius-sm:   14px;
-  --radius-btn:   9px;
-  --radius-tag:   6px;
-  --radius-xs:    4px;
+  --radius-lg:   12px;
+  --radius-md:    8px;
+  --radius-sm:    4px;
+  --radius-btn:   4px;
+  --radius-tag:   2px;
+  --radius-xs:    2px;
   --radius-pill: 9999px;
 
   /* ── Shadow ── */
-  --shadow: 0 24px 70px rgba(2, 6, 23, 0.36);
-  --shadow-sm: 0 4px 16px rgba(2, 6, 23, 0.24);
+  /* HSC: shadow z200/z300 = low-opacity cool steps. Panel dùng border. */
+  --shadow:    0 16px 32px rgba(214, 231, 255, 0.06), 0 0 1px rgba(55, 66, 77, 0.40);
+  --shadow-sm: 0 2px 4px rgba(9, 30, 66, 0.08), 0 0 1px rgba(55, 66, 77, 0.40);
 
   /* ── Table anatomy (SSOT cho tất cả data-table trong dashboard) ──────────
      Mọi module PHẢI dùng các token này. Không define th/td padding riêng
@@ -190,7 +191,7 @@
   --border:                var(--line);
   --divider:               var(--line);
   --primary:               var(--brand);
-  --primary-hl:            rgba(125, 211, 252, 0.15);
+  --primary-hl:            rgba(38, 129, 255, 0.15);
   --accent:                var(--brand-strong);
   --error:                 var(--danger);
   --error-hl:              var(--danger-bg);
@@ -225,8 +226,8 @@
   100% { color: inherit; }
 }
 
-.flash-up   { animation: flash-up   0.8s ease forwards; }
-.flash-down { animation: flash-down 0.8s ease forwards; }
+.flash-up   { animation: flash-up   0.4s cubic-bezier(0.2, 0, 0, 1) forwards; }
+.flash-down { animation: flash-down 0.4s cubic-bezier(0.2, 0, 0, 1) forwards; }
 
 /* Respect prefers-reduced-motion */
 @media (prefers-reduced-motion: reduce) {
@@ -255,14 +256,14 @@
 ───────────────────────────────────────────────────────────────────────────── */
 
 .signal-card--alert {
-  border-color: rgba(248, 113, 113, 0.35) !important;
-  box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.15), var(--shadow);
+  border-color: rgba(255, 0, 17, 0.35) !important;
+  box-shadow: 0 0 0 1px rgba(255, 0, 17, 0.15), var(--shadow);
 }
 
 /* signal-card--alert variant cho warning (stale review) */
 .signal-card--alert-warn {
-  border-color: rgba(251, 191, 36, 0.35) !important;
-  box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.15), var(--shadow);
+  border-color: rgba(255, 212, 0, 0.35) !important;
+  box-shadow: 0 0 0 1px rgba(255, 212, 0, 0.15), var(--shadow);
   background: var(--warning-bg) !important;
 }
 
@@ -273,24 +274,19 @@
 
 .kpi--clickable {
   cursor: pointer;
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
   user-select: none;
 }
 
 .kpi--clickable:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 24px rgba(2, 6, 23, 0.5), 0 0 0 1px rgba(125, 211, 252, 0.18);
+  box-shadow: var(--shadow-sm);
 }
 
 .kpi--clickable:active {
-  transform: translateY(0);
-  box-shadow: var(--shadow);
+  box-shadow: none;
 }
 
-.kpi--clickable:focus-visible {
-  outline: 2px solid var(--brand);
-  outline-offset: 2px;
-}
+*:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 
 @media (prefers-reduced-motion: reduce) {
   .kpi--clickable,

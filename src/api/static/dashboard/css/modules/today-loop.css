@@ -86,7 +86,7 @@
   font-size: var(--text-sm);
   font-weight: 700;
   color: var(--orange);
-  background: rgba(251, 146, 60, 0.12);
+  background: rgba(255, 176, 32, 0.12);
   padding: 1px 7px;
   border-radius: var(--radius-pill);
 }
@@ -119,11 +119,11 @@
   min-width: 0;
 }
 .tds-item:hover {
-  background: rgba(251, 146, 60, 0.06);
-  border-color: rgba(251, 146, 60, 0.15);
+  background: rgba(255, 176, 32, 0.06);
+  border-color: rgba(255, 176, 32, 0.15);
 }
 .tds-item:focus-visible {
-  outline: 2px solid rgba(125, 211, 252, 0.5);
+  outline: 2px solid rgba(38, 129, 255, 0.5);
   outline-offset: 2px;
 }
 
@@ -154,11 +154,11 @@
   padding: 2px 7px;
   border-radius: var(--radius-pill);
   white-space: nowrap;
-  background: rgba(148, 163, 184, 0.1);
+  background: rgba(214, 231, 255, 0.1);
   color: var(--muted);
 }
 .tds-flag--conviction {
-  background: rgba(251, 146, 60, 0.12);
+  background: rgba(255, 176, 32, 0.12);
   color: var(--orange);
 }
 .tds-flag--overdue {
@@ -201,9 +201,9 @@
   border-radius: var(--radius-pill);
   white-space: nowrap;
 }
-.tds-verdict--buy  { background: rgba(74,  222, 128, 0.13); color: var(--success); }
-.tds-verdict--hold { background: rgba(125, 211, 252, 0.1);  color: var(--brand); }
-.tds-verdict--sell { background: rgba(251, 146, 60,  0.13); color: var(--orange); }
+.tds-verdict--buy  { background: rgba(0, 255, 17, 0.13); color: var(--success); }
+.tds-verdict--hold { background: rgba(38, 129, 255, 0.1);  color: var(--brand); }
+.tds-verdict--sell { background: rgba(255, 176, 32, 0.13); color: var(--orange); }
 .tds-verdict--watch { background: rgba(250, 204, 21,  0.1);  color: var(--warning); }
 
 /* ── ⚡ Top-N signal badge injected into #signalsFeed header ─────────────────────────── */

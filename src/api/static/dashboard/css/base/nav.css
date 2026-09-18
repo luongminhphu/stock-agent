@@ -35,8 +35,8 @@
   font-size: var(--text-2xs);
   font-weight: 600;
   color: var(--brand);
-  background: rgba(125, 211, 252, 0.1);
-  border: 1px solid rgba(125, 211, 252, 0.18);
+  background: rgba(38, 129, 255, 0.1);
+  border: 1px solid rgba(38, 129, 255, 0.18);
   border-radius: var(--radius-xs);
   padding: 1px 5px;
   letter-spacing: 0.04em;
@@ -91,12 +91,12 @@
 
 .nav-item:hover {
   color: var(--text);
-  background: rgba(125, 211, 252, 0.05);
+  background: rgba(38, 129, 255, 0.05);
 }
 
 .nav-item.active {
   color: var(--brand);
-  background: rgba(125, 211, 252, 0.08);
+  background: rgba(38, 129, 255, 0.08);
   font-weight: 600;
 }
 
@@ -119,7 +119,7 @@
   width: 16px;
   height: 16px;
   border-radius: 4px;
-  background: rgba(125, 211, 252, 0.12);
+  background: rgba(38, 129, 255, 0.12);
   color: var(--brand);
   font-size: var(--text-2xs);
   font-weight: 800;
@@ -171,7 +171,7 @@
   font-size: var(--text-sm);
   font-weight: 600;
   color: var(--muted);
-  background: rgba(148, 163, 184, 0.05);
+  background: rgba(214, 231, 255, 0.05);
   border: 1px solid var(--line);
   border-radius: var(--radius-xs);
   cursor: pointer;
@@ -185,8 +185,8 @@
 
 .quick-action-btn:hover {
   color: var(--brand);
-  background: rgba(125, 211, 252, 0.07);
-  border-color: rgba(125, 211, 252, 0.2);
+  background: rgba(38, 129, 255, 0.07);
+  border-color: rgba(38, 129, 255, 0.2);
 }
 
 .quick-action-btn svg {
