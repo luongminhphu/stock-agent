@@ -13,7 +13,6 @@ No business logic here — all computation lives in market.rrg_service.
 
 from __future__ import annotations
 
-from dataclasses import asdict
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
