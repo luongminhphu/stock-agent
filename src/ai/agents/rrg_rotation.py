@@ -19,9 +19,7 @@ Boundary rules:
 
 from __future__ import annotations
 
-import json
 import logging
-from typing import Any
 
 from src.ai.client import AIClient, AIError
 from src.ai.schemas.rrg_rotation import RRGRotationSignal

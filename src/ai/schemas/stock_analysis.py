@@ -6,7 +6,7 @@ Owner: ai segment.
 
 from pydantic import BaseModel, Field
 
-from src.ai.schemas._base import RiskLevel, Verdict, _coerce_confidence
+from src.ai.schemas._base import RiskLevel, Verdict
 
 
 class StockAnalysisOutput(BaseModel):

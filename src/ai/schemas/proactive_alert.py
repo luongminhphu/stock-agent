@@ -7,9 +7,8 @@ Consumed by: ProactiveAlertAgent -> RecommendationReadyEvent -> bot/api.
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
-from src.ai.schemas._base import _coerce_confidence
 
 
 class RiskSignal(BaseModel):

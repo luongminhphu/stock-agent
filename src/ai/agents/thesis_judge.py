@@ -37,7 +37,6 @@ from typing import Any, Required, TypedDict
 from src.ai.client import AIClient, AIError
 from src.ai.prompts.thesis_judge import SPEC, build_user_prompt
 from src.ai.schemas import (
-    ChallengedAssumption,
     ThesisJudgeOutput,
     ThesisJudgeVerdict,
 )

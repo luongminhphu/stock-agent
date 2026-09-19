@@ -32,7 +32,6 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
     from src.ai.agents.portfolio_risk_narrator import (
         PortfolioRiskNarratorAgent,
-        PortfolioRiskNarratorContext,
     )
     from src.ai.schemas.signal_engine import RankedSignal, RiskAlert
 
