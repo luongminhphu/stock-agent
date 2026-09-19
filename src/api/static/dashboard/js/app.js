@@ -27,7 +27,7 @@ import {
   bindThesisFormEvents,
 } from './modules/thesis/thesis-form.js?v=1';
 import { bindSuggestEvents }             from './modules/thesis/thesis-suggest.js?v=1';
-import { loadPortfolio, startPortfolioAutoRefresh } from './modules/portfolio/portfolio-loader.js?v=4';
+import { loadPortfolio, startPortfolioAutoRefresh } from './modules/portfolio/portfolio-loader.js?v=5';
 import { loadWatchlist, handleAddTicker } from './modules/watchlist/watchlist-loader.js?v=1';
 import { bindFeedbackEvents }            from './modules/briefing/brief-feedback.js?v=1';
 import { bindGenerateBriefButtons }      from './modules/briefing/brief-generate.js?v=1';
@@ -436,6 +436,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Misc post-load init ──────────────────────────────────────────────────────
   initKpiClickable();
   initTopbarSearch();
+  initThemeToggle();
 
   // Re-apply search query after each data reload
   document.addEventListener('dashboard:rendered',  reapplySearch);
@@ -447,3 +448,34 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Note: startTodayLoopAutoRefresh and startRecommendationsAutoRefresh
   // are called inside _observeLazy handlers above (after first load completes)
 });
+
+// ── Theme toggle (Wave 11) ─────────────────────────────────────────────────
+// Mặc định: light. Bootstrap inline trong <head> set data-theme trước paint;
+// hàm này chỉ bind nút toggle + đồng bộ icon/label.
+function initThemeToggle() {
+  const btn = document.getElementById('themeToggle');
+  if (!btn) return;
+  const iconLight = btn.querySelector('[data-theme-icon="light"]');
+  const iconDark  = btn.querySelector('[data-theme-icon="dark"]');
+  const label     = btn.querySelector('[data-theme-label]');
+
+  const sync = () => {
+    const t = document.documentElement.getAttribute('data-theme') || 'light';
+    const isDark = t === 'dark';
+    // Đang tối → icon mặt trời + nhãn "Nền sáng" (hành động kế tiếp)
+    if (iconLight) iconLight.style.display = isDark ? '' : 'none';
+    if (iconDark)  iconDark.style.display  = isDark ? 'none' : '';
+    if (label)     label.textContent       = isDark ? 'Nền sáng' : 'Nền tối';
+    btn.setAttribute('aria-pressed', String(isDark));
+  };
+
+  btn.addEventListener('click', () => {
+    const cur = document.documentElement.getAttribute('data-theme') || 'light';
+    const next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('sa-theme', next); } catch (e) { /* ignore */ }
+    sync();
+  });
+
+  sync();
+}

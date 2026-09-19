@@ -139,7 +139,7 @@
   font-size: var(--text-2xs);
   font-weight: 500;
   color: var(--muted);
-  background: rgba(214, 231, 255, 0.08);
+  background: rgba(var(--ink-rgb), 0.08);
   border: 1px solid var(--line);
   border-radius: 4px;
   padding: 1px 5px;
@@ -157,7 +157,7 @@
 .sig-bar-track {
   flex: 1;
   height: 3px;
-  background: rgba(214, 231, 255, 0.12);
+  background: rgba(var(--ink-rgb), 0.12);
   border-radius: 999px;
   overflow: hidden;
 }

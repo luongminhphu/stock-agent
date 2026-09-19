@@ -124,7 +124,7 @@ input, select, textarea {
   min-height: 40px;
   border-radius: var(--radius-sm);           /* 14px via token */
   border: 1px solid var(--line);
-  background: #2F353D;
+  background: var(--hsc-n50);
   color: var(--text);
   padding: 0 var(--space-3);                 /* 12px via token */
   min-width: 138px;

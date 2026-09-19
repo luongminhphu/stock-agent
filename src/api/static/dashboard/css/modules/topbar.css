@@ -52,7 +52,7 @@
 #topbarSearch {
   width: 100%;
   height: 32px;
-  background: rgba(214, 231, 255, 0.06);
+  background: rgba(var(--ink-rgb), 0.06);
   border: 1px solid var(--line);
   border-radius: var(--radius-xs);
   padding: 0 var(--space-4) 0 32px;
@@ -121,21 +121,21 @@
 
 /* ── State: ok ── */
 .heartbeat-ok .heartbeat-dot {
-  background: var(--green, #00FF11);
+  background: var(--green, var(--hsc-price-increase));
   animation: hb-pulse 2.4s ease-in-out infinite;
 }
-.heartbeat-ok { color: var(--green, #00FF11); border-color: rgba(0, 255, 17, .3); }
+.heartbeat-ok { color: var(--green, var(--hsc-price-increase)); border-color: rgba(var(--up-rgb), .3); }
 
 /* ── State: stale ── */
-.heartbeat-stale .heartbeat-dot { background: var(--yellow, #FFD400); }
-.heartbeat-stale { color: var(--yellow, #FFD400); border-color: rgba(255, 212, 0, .3); }
+.heartbeat-stale .heartbeat-dot { background: var(--yellow, var(--hsc-price-reference)); }
+.heartbeat-stale { color: var(--yellow, var(--hsc-price-reference)); border-color: rgba(var(--ref-rgb), .3); }
 
 /* ── State: error ── */
 .heartbeat-error .heartbeat-dot {
-  background: var(--red, #FF0011);
+  background: var(--red, var(--hsc-price-reduced));
   animation: hb-blink 1s step-end infinite;
 }
-.heartbeat-error { color: var(--red, #FF0011); border-color: rgba(255, 0, 17, .3); }
+.heartbeat-error { color: var(--red, var(--hsc-price-reduced)); border-color: rgba(var(--down-rgb), .3); }
 
 /* ── Animations ── */
 @keyframes hb-pulse {
@@ -176,7 +176,7 @@
 
 .search-result-badge.search-badge--empty {
   color: var(--muted);
-  background: rgba(214, 231, 255, 0.08);
+  background: rgba(var(--ink-rgb), 0.08);
   border-color: var(--line);
 }
 
@@ -200,7 +200,7 @@
 
 .search-clear-btn:hover {
   color: var(--text);
-  background: rgba(214, 231, 255, 0.1);
+  background: rgba(var(--ink-rgb), 0.1);
 }
 
 .search-clear-btn.search-clear-btn--hidden {
@@ -214,7 +214,7 @@
 
 /* ── Search: highlight match ────────────────────────────────────────────── */
 mark.search-hl {
-  background: rgba(255, 212, 0, 0.22);  /* --warning tint */
+  background: rgba(var(--ref-rgb), 0.22);  /* --warning tint */
   color: var(--warning);
   border-radius: var(--radius-xs);
   padding: 0 1px;

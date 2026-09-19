@@ -58,7 +58,7 @@ mark.it-ticker {
   font-weight: 700;
   color: var(--warning);
   background: var(--warning-bg);
-  border: 1px solid rgba(255, 212, 0, .30);
+  border: 1px solid rgba(var(--ref-rgb), .30);
   border-radius: var(--radius-pill);
   padding: 1px var(--space-2);
   white-space: nowrap;
@@ -120,10 +120,10 @@ mark.it-ticker {
 
 
 /* Verdict colour variants */
-.iv--buy    { background: rgba(0, 255, 17, .15);   color: var(--success);  border-color: rgba(0, 255, 17, .30);  }
-.iv--sell   { background: rgba(255, 0, 17, .15);  color: var(--danger);   border-color: rgba(255, 0, 17, .30); }
-.iv--risk   { background: rgba(255, 212, 0, .14);   color: var(--warning);  border-color: rgba(255, 212, 0, .35);  }
-.iv--review { background: rgba(183, 41, 254, .14);  color: var(--violet);   border-color: rgba(183, 41, 254, .30); }
+.iv--buy    { background: rgba(var(--up-rgb), .15);   color: var(--success);  border-color: rgba(var(--up-rgb), .30);  }
+.iv--sell   { background: rgba(var(--down-rgb), .15);  color: var(--danger);   border-color: rgba(var(--down-rgb), .30); }
+.iv--risk   { background: rgba(var(--ref-rgb), .14);   color: var(--warning);  border-color: rgba(var(--ref-rgb), .35);  }
+.iv--review { background: rgba(var(--ceil-rgb), .14);  color: var(--violet);   border-color: rgba(var(--ceil-rgb), .30); }
 .iv--hold   { background: rgba(38, 129, 255, .10);  color: var(--brand);    border-color: rgba(38, 129, 255, .25); }
 .iv--none   { background: var(--surface-3);       color: var(--muted);    border-color: var(--line-strong);    }
 
@@ -139,9 +139,9 @@ mark.it-ticker {
   border: 1px solid transparent;
   width: fit-content;
 }
-.ic--high   { background: rgba(0, 255, 17, .10);  color: var(--success); border-color: rgba(0, 255, 17, .20); }
-.ic--medium { background: rgba(255, 212, 0, .10);  color: var(--warning); border-color: rgba(255, 212, 0, .20); }
-.ic--low    { background: rgba(214, 231, 255, .08); color: var(--muted);   border-color: rgba(214, 231, 255, .15);}
+.ic--high   { background: rgba(var(--up-rgb), .10);  color: var(--success); border-color: rgba(var(--up-rgb), .20); }
+.ic--medium { background: rgba(var(--ref-rgb), .10);  color: var(--warning); border-color: rgba(var(--ref-rgb), .20); }
+.ic--low    { background: rgba(var(--ink-rgb), .08); color: var(--muted);   border-color: rgba(var(--ink-rgb), .15);}
 
 /* ── Confidence arc (ring using conic-gradient) ─────────────────────── */
 .intel-conf-block {
@@ -230,9 +230,9 @@ mark.it-ticker {
 .isb--active .isb-val { color: var(--brand); }
 .isb--active           { border-color: rgba(38, 129, 255, .22); background: rgba(38, 129, 255, .05); }
 .isb--risk   .isb-val { color: var(--danger); }
-.isb--risk             { border-color: rgba(255, 0, 17, .22); background: rgba(255, 0, 17, .04); }
+.isb--risk             { border-color: rgba(var(--down-rgb), .22); background: rgba(var(--down-rgb), .04); }
 .isb--watch  .isb-val { color: var(--warning); }
-.isb--watch            { border-color: rgba(255, 212, 0, .22);  background: rgba(255, 212, 0, .04);  }
+.isb--watch            { border-color: rgba(var(--ref-rgb), .22);  background: rgba(var(--ref-rgb), .04);  }
 
 /* ══════════════════════════════════════════════════════════════════════════
    NARRATIVE SUMMARY
@@ -314,9 +314,9 @@ mark.it-ticker {
   border-radius: var(--radius-pill);
   font-size: var(--text-2xs);
   font-weight: 800;
-  background: rgba(255, 0, 17, .12);
+  background: rgba(var(--down-rgb), .12);
   color: var(--danger);
-  border: 1px solid rgba(255, 0, 17, .25);
+  border: 1px solid rgba(var(--down-rgb), .25);
   white-space: nowrap;
 }
 
@@ -431,9 +431,9 @@ mark.it-ticker {
   align-items: center;
   padding: 1px 6px;
   border-radius: var(--radius-pill);
-  background: rgba(255, 0, 17, .12);
+  background: rgba(var(--down-rgb), .12);
   color: var(--danger);
-  border: 1px solid rgba(255, 0, 17, .22);
+  border: 1px solid rgba(var(--down-rgb), .22);
   font-size: var(--text-2xs);
   font-weight: 800;
   white-space: nowrap;
@@ -441,9 +441,9 @@ mark.it-ticker {
 }
 
 .ia-num--high {
-  background: rgba(255, 0, 17, .12);
+  background: rgba(var(--down-rgb), .12);
   color: var(--danger);
-  border: 1px solid rgba(255, 0, 17, .20);
+  border: 1px solid rgba(var(--down-rgb), .20);
 }
 
 .ia-expand-icon {
@@ -462,7 +462,7 @@ mark.it-ticker {
   color: var(--muted);
   line-height: 1.5;
   border-top: 1px solid var(--line);
-  background: #222629;
+  background: var(--hsc-n30);
 }
 
 .ia-reasoning-label {
@@ -496,8 +496,8 @@ mark.it-ticker {
   border: 1px solid transparent;
 }
 
-.ir--high   { background: rgba(255, 0, 17, .07); border-color: rgba(255, 0, 17, .18); border-left: 3px solid var(--danger);  }
-.ir--medium { background: rgba(255, 212, 0, .06);  border-color: rgba(255, 212, 0, .18);  border-left: 3px solid var(--warning); }
+.ir--high   { background: rgba(var(--down-rgb), .07); border-color: rgba(var(--down-rgb), .18); border-left: 3px solid var(--danger);  }
+.ir--medium { background: rgba(var(--ref-rgb), .06);  border-color: rgba(var(--ref-rgb), .18);  border-left: 3px solid var(--warning); }
 .ir--low    { background: var(--surface-2);      border-color: var(--line);           border-left: 3px solid var(--line-strong); }
 
 .ir-header {
@@ -518,8 +518,8 @@ mark.it-ticker {
   text-transform: uppercase;
   border: 1px solid transparent;
 }
-.ir-sev--high   { background: rgba(255, 0, 17, .12); color: var(--danger);  border-color: rgba(255, 0, 17, .22); }
-.ir-sev--medium { background: rgba(255, 212, 0, .12);  color: var(--warning); border-color: rgba(255, 212, 0, .22);  }
+.ir-sev--high   { background: rgba(var(--down-rgb), .12); color: var(--danger);  border-color: rgba(var(--down-rgb), .22); }
+.ir-sev--medium { background: rgba(var(--ref-rgb), .12);  color: var(--warning); border-color: rgba(var(--ref-rgb), .22);  }
 .ir-sev--low    { background: var(--surface-3);      color: var(--faint);   border-color: var(--line-strong);    }
 
 .ir-sev-icon { line-height: 1; font-size: 0.6em; }

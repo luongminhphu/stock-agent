@@ -27,44 +27,44 @@
 
 :root {
   /* ── Surfaces ── */
-  --bg: #000000;
-  --bg-2: #14171A;
-  --surface: #14171A;
-  --surface-2: #222629;
-  --surface-3: #2F353D;
+  --bg: var(--hsc-n10);
+  --bg-2: var(--hsc-n20);
+  --surface: var(--hsc-n20);
+  --surface-2: var(--hsc-n30);
+  --surface-3: var(--hsc-n50);
 
   /* ── Text ── */
-  --text: #FFFFFF;
-  --muted: rgba(214, 231, 255, 0.52);
-  --faint: rgba(214, 231, 255, 0.32);
+  --text: var(--hsc-text-primary);
+  --muted: rgba(var(--ink-rgb), 0.52);
+  --faint: rgba(var(--ink-rgb), 0.32);
 
   /* ── Borders ── */
-  --line: rgba(214, 231, 255, 0.18);
-  --line-strong: rgba(214, 231, 255, 0.28);
+  --line: rgba(var(--ink-rgb), 0.18);
+  --line-strong: rgba(var(--ink-rgb), 0.28);
 
   /* ── Brand & semantic colours ── */
   --brand: #2681FF;
   --brand-strong: #2681FF;
-  --success: #00FF11;
-  --warning: #FFD400;
-  --danger: #FF0011;
-  --violet: #B729FE;
+  --success: var(--hsc-price-increase);
+  --warning: var(--hsc-price-reference);
+  --danger: var(--hsc-price-reduced);
+  --violet: var(--hsc-price-ceil);
 
   /* ── Extended semantic colours ── */
   /* --orange: dùng cho wl-change.down, ceil-badge, bất kỳ trạng thái "caution/warm"  */
-  --orange: #FFB020;
+  --orange: rgb(var(--orange-rgb));
   /* --rank-*: màu thứ hạng leaderboard — không dùng ngoài context ranking */
   --rank-gold:   #f59e0b;
   --rank-silver: #94a3b8;
   --rank-bronze: #b45309;
 
   /* ── Semantic bg tints (alpha) ── */
-  --warning-bg:  rgba(255, 212, 0, 0.08);
-  --danger-bg:   rgba(255, 0, 17, 0.08);
-  --success-bg:  rgba(0, 255, 17, 0.08);
+  --warning-bg:  rgba(var(--ref-rgb), 0.08);
+  --danger-bg:   rgba(var(--down-rgb), 0.08);
+  --success-bg:  rgba(var(--up-rgb), 0.08);
   --orange-bg:   rgba(255, 176, 32, 0.10);
   --brand-bg:    rgba(38, 129, 255, 0.08);
-  --violet-bg:   rgba(183, 41, 254, 0.10);
+  --violet-bg:   rgba(var(--ceil-rgb), 0.10);
 
   /* ── Spacing (4px grid) ─────────────────────────────────────────────────
      Dùng thay thế hardcode px trong mọi module.
@@ -123,7 +123,7 @@
 
   /* ── Shadow ── */
   /* HSC: shadow z200/z300 = low-opacity cool steps. Panel dùng border. */
-  --shadow:    0 16px 32px rgba(214, 231, 255, 0.06), 0 0 1px rgba(55, 66, 77, 0.40);
+  --shadow:    0 16px 32px rgba(var(--ink-rgb), 0.06), 0 0 1px rgba(55, 66, 77, 0.40);
   --shadow-sm: 0 2px 4px rgba(9, 30, 66, 0.08), 0 0 1px rgba(55, 66, 77, 0.40);
 
   /* ── Table anatomy (SSOT cho tất cả data-table trong dashboard) ──────────
@@ -256,14 +256,14 @@
 ───────────────────────────────────────────────────────────────────────────── */
 
 .signal-card--alert {
-  border-color: rgba(255, 0, 17, 0.35) !important;
-  box-shadow: 0 0 0 1px rgba(255, 0, 17, 0.15), var(--shadow);
+  border-color: rgba(var(--down-rgb), 0.35) !important;
+  box-shadow: 0 0 0 1px rgba(var(--down-rgb), 0.15), var(--shadow);
 }
 
 /* signal-card--alert variant cho warning (stale review) */
 .signal-card--alert-warn {
-  border-color: rgba(255, 212, 0, 0.35) !important;
-  box-shadow: 0 0 0 1px rgba(255, 212, 0, 0.15), var(--shadow);
+  border-color: rgba(var(--ref-rgb), 0.35) !important;
+  box-shadow: 0 0 0 1px rgba(var(--ref-rgb), 0.15), var(--shadow);
   background: var(--warning-bg) !important;
 }
 

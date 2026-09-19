@@ -76,8 +76,8 @@
   color: var(--text-primary, #f1f5f9);
   line-height: 1.2;
 }
-.dna-kpi-value.dna-val--good { color: var(--green, #00FF11); }
-.dna-kpi-value.dna-val--bad  { color: var(--red,   #FF0011); }
+.dna-kpi-value.dna-val--good { color: var(--green, var(--hsc-price-increase)); }
+.dna-kpi-value.dna-val--bad  { color: var(--red,   var(--hsc-price-reduced)); }
 .dna-kpi-sub {
   font-size: .68rem;
   color: var(--text-muted, #94a3b8);
@@ -89,10 +89,10 @@
   font-size: .78rem;
   padding: .45rem .75rem;
   border-radius: 6px;
-  background: rgba(255, 0, 17, .1);
+  background: rgba(var(--down-rgb), .1);
 }
-.dna-warn { color: var(--yellow, #FFD400); }
-.dna-good { color: var(--green,  #00FF11); }
+.dna-warn { color: var(--yellow, var(--hsc-price-reference)); }
+.dna-good { color: var(--green,  var(--hsc-price-increase)); }
 
 /* ── Section row: patterns + timing ─────────────────────────────────────── */
 .dna-section-row {
@@ -174,8 +174,8 @@
   min-height: 2px;
   transition: height .3s ease;
 }
-.dna-day-col.dna-day--best  .dna-day-bar { background: var(--green,  #00FF11); }
-.dna-day-col.dna-day--worst .dna-day-bar { background: var(--red,    #FF0011); }
+.dna-day-col.dna-day--best  .dna-day-bar { background: var(--green,  var(--hsc-price-increase)); }
+.dna-day-col.dna-day--worst .dna-day-bar { background: var(--red,    var(--hsc-price-reduced)); }
 .dna-day-label {
   font-size: .65rem;
   color: var(--text-muted, #94a3b8);

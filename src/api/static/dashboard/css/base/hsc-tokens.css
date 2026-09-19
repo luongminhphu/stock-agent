@@ -5,9 +5,24 @@
    vàng=tham chiếu, tím=trần, cyan=sàn) và component tint cho
    các surface mới của dashboard, KHÔNG đổi hệ token hiện có.
    Đặt sau variables.css; các file dưới dùng trực tiếp var(--hsc-*).
+
+   Wave 10: theme dark/light. Mọi literal màu trong 32 file CSS đã
+   sweep thành var() trỏ vào file này (chỉ chỗ này chứa giá trị thật).
+   Price colors dựng từ rgb tuple (--*-rgb) để light chọn tone đậm hơn
+   trong CÙNG hue family (sg40/sr50/...) — hue không đổi, chỉ đổi shade.
    ============================================ */
 
 :root {
+  /* ── rgb tuples (cho phép alpha: rgba(var(--up-rgb), .12)) ── */
+  /* Dark dùng tone sáng của mỗi hue — đọc trên nền đen */
+  --up-rgb:    0, 255, 17;   /* sg50 #00FF11 */
+  --down-rgb:  255, 0, 17;   /* sr50 #FF0011 */
+  --ref-rgb:   255, 212, 0;  /* sy50 #FFD400 */
+  --ceil-rgb:  183, 41, 254; /* sm50 #B729FE */
+  --floor-rgb: 90, 206, 224; /* sc50 #5ACEE0 */
+  --orange-rgb: 255, 176, 32; /* chart-index / caution */
+  --ink-rgb:   214, 231, 255; /* ink trắng-lanh trên nền tối */
+
   /* Grounds (dark-first, direct từ HSC primitives) */
   --hsc-n10: #000000;
   --hsc-n20: #14171A;
@@ -15,28 +30,34 @@
   --hsc-n50: #2F353D;
   --hsc-n80: #4D545C;
 
-  /* Price movement — NON-NEGOTIABLE, không dùng trang trí */
-  --hsc-price-increase:  #00FF11; /* tăng */
-  --hsc-price-reduced:   #FF0011; /* giảm */
-  --hsc-price-reference: #FFD400; /* tham chiếu */
-  --hsc-price-ceil:      #B729FE; /* trần */
-  --hsc-price-floor:     #5ACEE0; /* sàn */
+  /* Price movement — NON-NEGOTIABLE hue, chỉ shade đổi theo theme */
+  --hsc-price-increase:  rgb(var(--up-rgb));    /* tăng */
+  --hsc-price-reduced:   rgb(var(--down-rgb));  /* giảm */
+  --hsc-price-reference: rgb(var(--ref-rgb));   /* tham chiếu */
+  --hsc-price-ceil:      rgb(var(--ceil-rgb));  /* trần */
+  --hsc-price-floor:     rgb(var(--floor-rgb)); /* sàn */
 
   /* Ink trên dark ground */
   --hsc-text-primary:   #FFFFFF;
-  --hsc-text-secondary: rgba(214, 231, 255, 0.52);
-  --hsc-text-tertiary:  rgba(214, 231, 255, 0.32);
+  --hsc-text-secondary: rgba(var(--ink-rgb), 0.52);
+  --hsc-text-tertiary:  rgba(var(--ink-rgb), 0.32);
 
-  /* Tag/component tints (alpha palette verbatim) */
-  --hsc-neutral-a8:  rgba(214, 231, 255, 0.08);
-  --hsc-neutral-a12: rgba(214, 231, 255, 0.12);
-  --hsc-neutral-a16: rgba(214, 231, 255, 0.16);
-  --hsc-neutral-a24: rgba(214, 231, 255, 0.24);
-  --hsc-neutral-a52: rgba(214, 231, 255, 0.52);
-  --hsc-yellow-a12:  rgba(255, 212, 0, 0.12);
-  --hsc-yellow-a24:  rgba(255, 212, 0, 0.24);
-  --hsc-yellow:      #FFD400;
-  --hsc-red-a12:     rgba(255, 0, 17, 0.12);
+  /* Tag/component tints */
+  --hsc-neutral-a8:  rgba(var(--ink-rgb), 0.08);
+  --hsc-neutral-a12: rgba(var(--ink-rgb), 0.12);
+  --hsc-neutral-a16: rgba(var(--ink-rgb), 0.16);
+  --hsc-neutral-a24: rgba(var(--ink-rgb), 0.24);
+  --hsc-neutral-a52: rgba(var(--ink-rgb), 0.52);
+  --hsc-yellow-a12:  rgba(var(--ref-rgb), 0.12);
+  --hsc-yellow-a24:  rgba(var(--ref-rgb), 0.24);
+  --hsc-yellow:      rgb(var(--ref-rgb));
+  --hsc-red-a12:     rgba(var(--down-rgb), 0.12);
+
+  /* Chip text (chữ trên tint) — dark: tone pastel của cùng hue */
+  --chip-up-text:   #85D695; /* sg80 */
+  --chip-down-text: #FF8F94; /* sr90 */
+  --chip-ref-text:  #E4D59A; /* sy90 */
+  --chip-ceil-text: #E0BAF3; /* sm80 */
 
   /* Type */
   --hsc-fs-caption: 12px;
@@ -53,14 +74,121 @@
   --hsc-ease-out: cubic-bezier(0.2, 0, 0, 1);
 }
 
+/* ============================================
+   LIGHT THEME — [data-theme="light"] (mặc định của dashboard)
+   Grounds/text/border theo hsc-design-system light semantic layer.
+   Price: cùng hue, tone ĐẬM hơn để đủ tương phản trên nền sáng —
+   đây là interpretation call (skill light layer không list price);
+   hue family giữ nguyên nên ý nghĩa màu không đổi.
+   ============================================ */
+[data-theme="light"] {
+  /* tuples tone đậm (sg40/sr40/sy10/sm40/sc30) */
+  --up-rgb:    33, 163, 59;   /* sg40 #21A33B */
+  --down-rgb:  184, 46, 55;   /* sr40 #B82E37 */
+  --ref-rgb:   143, 118, 17;  /* sy10 #8F7611 — sy50 quá nhạt trên trắng */
+  --ceil-rgb:  153, 24, 217;  /* sm40 #9918D9 */
+  --floor-rgb: 20, 126, 143;  /* sc30 #147E8F */
+  --ink-rgb:   11, 45, 92;    /* navy ink — HSC black-a* ramp */
+
+  /* Grounds — HSC light semantic layer */
+  --hsc-n10: #FFFFFF;  /* bg-app */
+  --hsc-n20: #F4F6F8;  /* bg-surface */
+  --hsc-n30: #EDF1F5;  /* bg-heading */
+  --hsc-n50: #E5EBF2;  /* bg-elevated / input fill */
+  --hsc-n80: #4D545C;  /* toast/tooltip surface — tối trong cả 2 theme */
+
+  --hsc-text-primary: #0B2D5C; /* text-primary light */
+
+  /* Chip text: tone đậm của cùng hue — đọc trên tint sáng */
+  --chip-up-text:   #187A2C; /* sg30 */
+  --chip-down-text: #8F282D; /* sr30 */
+  --chip-ref-text:  #8F7611; /* sy10 */
+  --chip-ceil-text: #7B0BB3; /* sm30 */
+  /* Derived — re-resolve theo theme block nay */
+  --hsc-price-increase:  rgb(var(--up-rgb));
+  --hsc-price-reduced:   rgb(var(--down-rgb));
+  --hsc-price-reference: rgb(var(--ref-rgb));
+  --hsc-price-ceil:      rgb(var(--ceil-rgb));
+  --hsc-price-floor:     rgb(var(--floor-rgb));
+  --hsc-neutral-a8:  rgba(var(--ink-rgb), 0.08);
+  --hsc-neutral-a12: rgba(var(--ink-rgb), 0.12);
+  --hsc-neutral-a16: rgba(var(--ink-rgb), 0.16);
+  --hsc-neutral-a24: rgba(var(--ink-rgb), 0.24);
+  --hsc-neutral-a52: rgba(var(--ink-rgb), 0.52);
+  --hsc-yellow-a12:  rgba(var(--ref-rgb), 0.12);
+  --hsc-yellow-a24:  rgba(var(--ref-rgb), 0.24);
+  --hsc-yellow:      rgb(var(--ref-rgb));
+  --hsc-red-a12:     rgba(var(--down-rgb), 0.12);
+  --hsc-text-secondary: rgba(var(--ink-rgb), 0.52);
+  --hsc-text-tertiary:  rgba(var(--ink-rgb), 0.32);
+
+  /* Legacy aliases */
+  --success:  rgb(var(--up-rgb));
+  --warning:  rgb(var(--ref-rgb));
+  --danger:   rgb(var(--down-rgb));
+  --orange:   rgb(var(--orange-rgb));
+  --violet:   rgb(var(--ceil-rgb));
+
+}
+
+
+/* Dark explicit block — mirrors :root defaults. Bat buoc khi html la [data-theme="light"]
+   vi light cascade override toan bo :root vars cho moi phan tu con. */
+[data-theme="dark"] {
+  --up-rgb:    0, 255, 17;
+  --down-rgb:  255, 0, 17;
+  --ref-rgb:   255, 212, 0;
+  --ceil-rgb:  183, 41, 254;
+  --floor-rgb: 90, 206, 224;
+  --orange-rgb: 255, 176, 32;
+  --ink-rgb:   214, 231, 255;
+
+  --hsc-n10: #000000;
+  --hsc-n20: #14171A;
+  --hsc-n30: #222629;
+  --hsc-n50: #2F353D;
+  --hsc-n80: #4D545C;
+  --hsc-text-primary: #FFFFFF;
+
+  --chip-up-text:   #85D695;
+  --chip-down-text: #FF8F94;
+  --chip-ref-text:  #E4D59A;
+  --chip-ceil-text: #E0BAF3;
+  /* Derived — re-resolve theo theme block nay */
+  --hsc-price-increase:  rgb(var(--up-rgb));
+  --hsc-price-reduced:   rgb(var(--down-rgb));
+  --hsc-price-reference: rgb(var(--ref-rgb));
+  --hsc-price-ceil:      rgb(var(--ceil-rgb));
+  --hsc-price-floor:     rgb(var(--floor-rgb));
+  --hsc-neutral-a8:  rgba(var(--ink-rgb), 0.08);
+  --hsc-neutral-a12: rgba(var(--ink-rgb), 0.12);
+  --hsc-neutral-a16: rgba(var(--ink-rgb), 0.16);
+  --hsc-neutral-a24: rgba(var(--ink-rgb), 0.24);
+  --hsc-neutral-a52: rgba(var(--ink-rgb), 0.52);
+  --hsc-yellow-a12:  rgba(var(--ref-rgb), 0.12);
+  --hsc-yellow-a24:  rgba(var(--ref-rgb), 0.24);
+  --hsc-yellow:      rgb(var(--ref-rgb));
+  --hsc-red-a12:     rgba(var(--down-rgb), 0.12);
+  --hsc-text-secondary: rgba(var(--ink-rgb), 0.52);
+  --hsc-text-tertiary:  rgba(var(--ink-rgb), 0.32);
+
+  /* Legacy aliases */
+  --success:  rgb(var(--up-rgb));
+  --warning:  rgb(var(--ref-rgb));
+  --danger:   rgb(var(--down-rgb));
+  --orange:   rgb(var(--orange-rgb));
+  --violet:   rgb(var(--ceil-rgb));
+
+}
+
 
 /* ── Legacy alias — tokens dashboard cũ trỏ vào đây để đổi màu đồng loạt ── */
 :root {
-  --brand:        #2681FF; /* sb50 */
-  --brand-strong: #165AB8; /* sb40 — slightly deeper, solid hover */
-  --success:      #00FF11; /* sg50 */
-  --warning:      #FFD400; /* sy50 */
-  --danger:       #FF0011; /* sr50 */
-  --orange:       #FFB020; /* chart-index — giữ nguyên cho warm/caution */
-  --violet:       #B729FE; /* sm50 = ceil */
+  --brand:        #2681FF; /* sb50 — giữ nguyên cả 2 theme */
+  --brand-strong: #165AB8; /* sb40 — solid hover */
+  --success:      rgb(var(--up-rgb));
+  --warning:      rgb(var(--ref-rgb));
+  --danger:       rgb(var(--down-rgb));
+  --orange:       rgb(var(--orange-rgb));
+  --violet:       rgb(var(--ceil-rgb));
 }

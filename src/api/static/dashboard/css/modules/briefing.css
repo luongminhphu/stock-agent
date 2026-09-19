@@ -11,7 +11,7 @@
    ─────────────────────────────────────────────────────────────────────────── */
 
 /* ── up/down helpers (used everywhere in this file and scan text) ────────── */
-/* success token (#00FF11 sky-green) for up; danger (#FF0011) for down        */
+/* success token (var(--hsc-price-increase) sky-green) for up; danger (var(--hsc-price-reduced)) for down        */
 .up   { color: var(--success); }
 .down { color: var(--danger);  }
 
@@ -81,7 +81,7 @@
 }
 
 /* Phase accent: top border uses semi-transparent token color */
-.brief-card.phase-morning { border-top: 2px solid rgba(255, 212, 0, .5);  } /* --warning */
+.brief-card.phase-morning { border-top: 2px solid rgba(var(--ref-rgb), .5);  } /* --warning */
 .brief-card.phase-eod     { border-top: 2px solid rgba(38, 129, 255, .4); } /* --brand   */
 
 /* ── Header ──────────────────────────────────────────────────────────────────── */
@@ -136,13 +136,13 @@
 }
 
 /* fresh  → success green */
-.age-fresh  { background: rgba(0, 255, 17, .12);  color: var(--success); }
+.age-fresh  { background: rgba(var(--up-rgb), .12);  color: var(--success); }
 /* recent  → brand sky */
 .age-recent { background: rgba(38, 129, 255, .12); color: var(--brand); }
 /* today   → warning amber */
-.age-today  { background: rgba(255, 212, 0, .12);  color: var(--warning); }
+.age-today  { background: rgba(var(--ref-rgb), .12);  color: var(--warning); }
 /* stale   → danger red */
-.age-stale  { background: rgba(255, 0, 17, .12); color: var(--danger); }
+.age-stale  { background: rgba(var(--down-rgb), .12); color: var(--danger); }
 
 /* ── Sentiment badge ─────────────────────────────────────────────────────────── */
 
@@ -163,13 +163,13 @@
 }
 
 /* RISK_ON  → success green */
-.sent-risk-on   { background: rgba(0, 255, 17, .13);  color: var(--success); }
+.sent-risk-on   { background: rgba(var(--up-rgb), .13);  color: var(--success); }
 /* RISK_OFF → danger red */
-.sent-risk-off  { background: rgba(255, 0, 17, .13); color: var(--danger);  }
+.sent-risk-off  { background: rgba(var(--down-rgb), .13); color: var(--danger);  }
 /* MIXED    → warning amber */
-.sent-mixed     { background: rgba(255, 212, 0, .13);  color: var(--warning); }
+.sent-mixed     { background: rgba(var(--ref-rgb), .13);  color: var(--warning); }
 /* UNCERTAIN → faint grey */
-.sent-uncertain { background: rgba(214, 231, 255, .10); color: var(--muted);   }
+.sent-uncertain { background: rgba(var(--ink-rgb), .10); color: var(--muted);   }
 
 /* ── Body ──────────────────────────────────────────────────────────────────────── */
 
@@ -250,13 +250,13 @@
 }
 
 .mover-pill.up {
-  background: rgba(0, 255, 17, .12);
-  border-color: rgba(0, 255, 17, .28);
+  background: rgba(var(--up-rgb), .12);
+  border-color: rgba(var(--up-rgb), .28);
   color: var(--success);
 }
 .mover-pill.down {
-  background: rgba(255, 0, 17, .12);
-  border-color: rgba(255, 0, 17, .28);
+  background: rgba(var(--down-rgb), .12);
+  border-color: rgba(var(--down-rgb), .28);
   color: var(--danger);
 }
 .mover-pill .chg { font-size: var(--text-xs); opacity: .85; }
@@ -334,13 +334,13 @@
   font-size: var(--text-sm);
   font-weight: 600;
   border: 1px solid var(--line);
-  background: rgba(214, 231, 255, .06);
+  background: rgba(var(--ink-rgb), .06);
   color: var(--muted);
   cursor: pointer;
   transition: background .15s, color .15s, border-color .15s;
 }
 .fb-btn:hover {
-  background: rgba(214, 231, 255, .12);
+  background: rgba(var(--ink-rgb), .12);
   color: var(--text);
   border-color: var(--line-strong);
 }
@@ -472,7 +472,7 @@
 
 /* alert badge → warning amber */
 .scan-badge--alert {
-  background: rgba(255, 212, 0, .12);
+  background: rgba(var(--ref-rgb), .12);
   color: var(--warning);
 }
 
@@ -521,15 +521,15 @@
 
 /* up pill → success tint */
 .scan-pick-pill:has(.up) {
-  background: rgba(0, 255, 17, .10);
-  border-color: rgba(0, 255, 17, .28);
+  background: rgba(var(--up-rgb), .10);
+  border-color: rgba(var(--up-rgb), .28);
   color: var(--success);
 }
 
 /* down pill → danger tint */
 .scan-pick-pill:has(.down) {
-  background: rgba(255, 0, 17, .10);
-  border-color: rgba(255, 0, 17, .28);
+  background: rgba(var(--down-rgb), .10);
+  border-color: rgba(var(--down-rgb), .28);
   color: var(--danger);
 }
 
@@ -568,11 +568,11 @@
   font-size: var(--text-xs);
 }
 .fb-rate-good {
-  background: rgba(0, 255, 17, .12);
+  background: rgba(var(--up-rgb), .12);
   color: var(--success);
 }
 .fb-rate-low {
-  background: rgba(255, 212, 0, .12);
+  background: rgba(var(--ref-rgb), .12);
   color: var(--warning);
 }
 

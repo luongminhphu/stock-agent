@@ -354,10 +354,10 @@
 .cu-chip__day    { font-weight: 600; flex-shrink: 0; }
 .cu-chip__desc   { color: inherit; opacity: 0.75; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
-.cu-chip--today    { background: rgba(255, 0, 17, .12); color: var(--danger);  border-color: rgba(255, 0, 17, .30); }
-.cu-chip--today:hover    { background: rgba(255, 0, 17, .20); }
-.cu-chip--tomorrow { background: rgba(255, 212, 0, .10);  color: var(--warning); border-color: rgba(255, 212, 0, .28);  }
-.cu-chip--tomorrow:hover { background: rgba(255, 212, 0, .18);  }
+.cu-chip--today    { background: rgba(var(--down-rgb), .12); color: var(--danger);  border-color: rgba(var(--down-rgb), .30); }
+.cu-chip--today:hover    { background: rgba(var(--down-rgb), .20); }
+.cu-chip--tomorrow { background: rgba(var(--ref-rgb), .10);  color: var(--warning); border-color: rgba(var(--ref-rgb), .28);  }
+.cu-chip--tomorrow:hover { background: rgba(var(--ref-rgb), .18);  }
 .cu-chip--soon     { background: rgba(38, 129, 255, .10); color: var(--brand);   border-color: rgba(38, 129, 255, .22); }
 .cu-chip--soon:hover     { background: rgba(38, 129, 255, .18); }
 

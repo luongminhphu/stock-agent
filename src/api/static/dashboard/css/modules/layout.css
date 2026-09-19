@@ -72,8 +72,8 @@
 /* ── Error banner ────────────────────────────────────────────────── */
 .error-banner {
   padding: 10px 20px;
-  background: rgba(255, 0, 17, .12);
-  border-bottom: 1px solid rgba(255, 0, 17, .25);
+  background: rgba(var(--down-rgb), .12);
+  border-bottom: 1px solid rgba(var(--down-rgb), .25);
   color: var(--danger);
   font-size: var(--text-base);
   font-weight: 500;
@@ -343,7 +343,7 @@ main {
 
 .error-text {
   font-size: var(--text-base);
-  color: var(--red, #FF0011);
+  color: var(--red, var(--hsc-price-reduced));
   padding: 12px 0;
 }
 

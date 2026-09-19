@@ -29,14 +29,14 @@
 .perr-banner {
   margin-bottom: var(--space-3);
   border-radius: var(--radius-sm);
-  border: 1px solid rgba(255, 212, 0, 0.22);
-  background: rgba(255, 212, 0, 0.04);
+  border: 1px solid rgba(var(--ref-rgb), 0.22);
+  background: rgba(var(--ref-rgb), 0.04);
   overflow: hidden;
 }
 
 .perr-banner:has(.perr-critical) {
-  border-color: rgba(255, 0, 17, 0.28);
-  background: rgba(255, 0, 17, 0.04);
+  border-color: rgba(var(--down-rgb), 0.28);
+  background: rgba(var(--down-rgb), 0.04);
 }
 
 /* ── Toggle button ──────────────────────────────────────────────────────── */
@@ -89,7 +89,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  border-top: 1px solid rgba(214, 231, 255, 0.08);
+  border-top: 1px solid rgba(var(--ink-rgb), 0.08);
 }
 
 .perr-list[hidden] {
@@ -128,7 +128,7 @@
 
 /* ── Row & cell error states ────────────────────────────────────────────── */
 .row-data-error {
-  background: rgba(255, 0, 17, 0.04);
+  background: rgba(var(--down-rgb), 0.04);
 }
 
 td.cell-missing {
@@ -248,11 +248,11 @@ td.cell-missing {
 
 /* Striped rows for readability */
 .portfolio-pane .data-table tbody tr:nth-child(even) {
-  background: rgba(214, 231, 255, 0.03);
+  background: rgba(var(--ink-rgb), 0.03);
 }
 
 .portfolio-pane .data-table tbody tr:hover {
-  background: rgba(214, 231, 255, 0.07);
+  background: rgba(var(--ink-rgb), 0.07);
   transition: background 120ms ease;
 }
 
@@ -279,7 +279,7 @@ td.cell-missing {
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-sm);
   background: var(--surface-2, rgba(255,255,255,0.03));
-  border: 1px solid rgba(214, 231, 255, 0.08);
+  border: 1px solid rgba(var(--ink-rgb), 0.08);
 }
 
 .exposure-bar-header {
@@ -304,8 +304,8 @@ td.cell-missing {
   gap: var(--space-1);
   padding: 2px var(--space-2);
   border-radius: var(--radius-pill);
-  background: rgba(255, 212, 0, 0.12);
-  border: 1px solid rgba(255, 212, 0, 0.28);
+  background: rgba(var(--ref-rgb), 0.12);
+  border: 1px solid rgba(var(--ref-rgb), 0.28);
   color: var(--warning);
   font-size: var(--text-2xs, 10px);
   font-weight: 600;
@@ -319,7 +319,7 @@ td.cell-missing {
   border-radius: var(--radius-pill);
   overflow: hidden;
   gap: 2px;
-  background: rgba(214, 231, 255, 0.08);
+  background: rgba(var(--ink-rgb), 0.08);
   margin-bottom: var(--space-2);
 }
 
@@ -384,8 +384,8 @@ td.cell-missing {
 
 /* ── P&L color rules (Trades + Thesis tables) ────────────────────────────
    Wave 9.3 (HSC): chuyển sang price-movement convention của HSC.
-   Dương → --hsc-price-increase (#00FF11), Âm → --hsc-price-reduced (#FF0011).
-   Hòa vốn → --hsc-price-reference (#FFD400): thị trường VN đọc vàng
+   Dương → --hsc-price-increase (var(--hsc-price-increase)), Âm → --hsc-price-reduced (var(--hsc-price-reduced)).
+   Hòa vốn → --hsc-price-reference (var(--hsc-price-reference)): thị trường VN đọc vàng
    là "tham chiếu", trung lập theo movement. */
 .col-pnl.positive,
 .col-pct.positive {

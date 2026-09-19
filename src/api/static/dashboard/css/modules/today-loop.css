@@ -154,7 +154,7 @@
   padding: 2px 7px;
   border-radius: var(--radius-pill);
   white-space: nowrap;
-  background: rgba(214, 231, 255, 0.1);
+  background: rgba(var(--ink-rgb), 0.1);
   color: var(--muted);
 }
 .tds-flag--conviction {
@@ -201,7 +201,7 @@
   border-radius: var(--radius-pill);
   white-space: nowrap;
 }
-.tds-verdict--buy  { background: rgba(0, 255, 17, 0.13); color: var(--success); }
+.tds-verdict--buy  { background: rgba(var(--up-rgb), 0.13); color: var(--success); }
 .tds-verdict--hold { background: rgba(38, 129, 255, 0.1);  color: var(--brand); }
 .tds-verdict--sell { background: rgba(255, 176, 32, 0.13); color: var(--orange); }
 .tds-verdict--watch { background: rgba(250, 204, 21,  0.1);  color: var(--warning); }

@@ -116,7 +116,7 @@ dialog::backdrop {
 dialog input,
 dialog select,
 dialog textarea {
-  background: #14171A;
+  background: var(--hsc-n20);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-btn);
   color: var(--text);
@@ -149,7 +149,7 @@ dialog textarea:disabled {
 
 /* Dropdown options — browser default hay render trắng trên nền tối */
 dialog select option {
-  background: #14171A;
+  background: var(--hsc-n20);
   color: var(--text);
 }
 
@@ -215,16 +215,16 @@ dialog select option {
 .apply-suggest-btn {
   min-height: var(--btn-h-sm);
   padding: 0 var(--space-3);
-  border: 1px solid rgba(0, 255, 17, 0.3);
+  border: 1px solid rgba(var(--up-rgb), 0.3);
   border-radius: var(--radius-btn);
-  background: rgba(0, 255, 17, 0.08);
+  background: rgba(var(--up-rgb), 0.08);
   color: var(--success);
   font-size: var(--text-sm);
   font-weight: 700;
   cursor: pointer;
   transition: background 0.15s;
 }
-.apply-suggest-btn:hover { background: rgba(0, 255, 17, 0.16); }
+.apply-suggest-btn:hover { background: rgba(var(--up-rgb), 0.16); }
 
 .suggest-body {
   padding: var(--space-3) var(--space-4);
@@ -266,7 +266,7 @@ dialog select option {
 .confidence-bar {
   flex: 1;
   height: 5px;
-  background: rgba(214, 231, 255, 0.14);
+  background: rgba(var(--ink-rgb), 0.14);
   border-radius: 99px;
   overflow: hidden;
 }
