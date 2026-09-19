@@ -201,6 +201,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Mobile nav: bottom tab bar (no-op on desktop) ─────────────────────────
   initMobileNav();
 
+  // Wave 13.1: theme toggle phai bind TRUOC `await` Tier A o duoi.
+  // Nut #themeToggle la markup tinh, khong phu thuoc du lieu — neu de sau
+  // await Promise.allSettled([...]) thi trong luc 4 API dang chay nut khong
+  // co listener nao, user bam khong an gi (bug production).
+  initThemeToggle();
+
   // ── UI / tab init (critical — needed before user interaction) ──────────────
   initBriefAutoOpen();
   bindBriefTabs();
@@ -436,7 +442,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Misc post-load init ──────────────────────────────────────────────────────
   initKpiClickable();
   initTopbarSearch();
-  initThemeToggle();
 
   // Re-apply search query after each data reload
   document.addEventListener('dashboard:rendered',  reapplySearch);
