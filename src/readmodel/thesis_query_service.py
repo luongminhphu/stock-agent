@@ -13,11 +13,10 @@ from __future__ import annotations
 
 import contextlib
 import json
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import Date as SADate
-from sqlalchemy import and_, cast, func, or_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 

@@ -42,7 +42,7 @@ from src.platform.logging import get_logger
 from src.readmodel.backtesting_service import BacktestingService
 from src.readmodel.cache import DashboardTTLCache
 from src.readmodel.portfolio_query_service import PortfolioQueryService
-from src.readmodel.schemas import AttentionItem, AttentionPanelResponse, AttentionUrgency
+from src.readmodel.schemas import AttentionPanelResponse, AttentionUrgency
 from src.readmodel.stats_service import StatsService
 from src.readmodel.thesis_query_service import ThesisQueryService
 

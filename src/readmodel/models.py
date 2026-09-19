@@ -17,7 +17,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from sqlalchemy import (
-    ARRAY,
     BigInteger,
     Date,
     DateTime,
@@ -26,7 +25,6 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.platform.db import Base

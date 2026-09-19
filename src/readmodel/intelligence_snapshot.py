@@ -104,7 +104,6 @@ async def load_intelligence_snapshots_from_db(session_factory) -> dict[str, dict
     if session_factory is None:
         return {}
     try:
-        import json as _json
         from sqlalchemy import select
         from src.readmodel.models import IntelligenceSnapshot
         from src.platform.logging import get_logger as _get_logger

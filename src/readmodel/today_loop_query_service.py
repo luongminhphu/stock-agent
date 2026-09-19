@@ -14,7 +14,7 @@ All sources degrade gracefully — partial failure returns whatever was collecte
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from typing import Literal
 
 from sqlalchemy import select

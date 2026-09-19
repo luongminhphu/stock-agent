@@ -90,7 +90,6 @@ async def load_predictions_from_db(session_factory) -> list[dict]:
     if session_factory is None:
         return []
     try:
-        import json as _json
         from datetime import UTC, datetime as _dt
         from sqlalchemy import select
         from src.readmodel.models import TrendPrediction
