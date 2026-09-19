@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone, timedelta
 
-import discord
 from discord.ext import commands
 
 from src.platform.event_bus import get_event_bus

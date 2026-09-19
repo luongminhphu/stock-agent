@@ -16,7 +16,6 @@ import datetime
 
 import discord
 
-from src.platform.config import settings
 from src.platform.event_bus import get_event_bus
 from src.platform.events import ThesisPostMortemReadyEvent
 from src.platform.logging import get_logger

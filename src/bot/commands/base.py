@@ -34,7 +34,6 @@ from discord.ext import commands
 from src.platform.db import AsyncSessionLocal
 from src.bot.discord_helper import (
     safe_defer,
-    safe_followup,
     send_ok       as _send_ok,
     send_error    as _send_error,
     send_info     as _send_info,

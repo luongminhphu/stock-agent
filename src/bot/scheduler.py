@@ -563,7 +563,7 @@ class ThesisMaintenanceScheduler:
 
         # -- Step 2: AI review for stale theses --
         try:
-            from src.platform.bootstrap import get_ai_client, get_quote_service, get_thesis_review_agent
+            from src.platform.bootstrap import get_quote_service, get_thesis_review_agent
             from src.thesis.review_service import ReviewService
 
             async with AsyncSessionLocal() as session:
@@ -1975,9 +1975,7 @@ class EodPortfolioSnapshotScheduler:
             return
 
         try:
-            from src.portfolio.eod_snapshot_service import EodSnapshotService
             from src.portfolio.models import PositionDailySnapshot
-            from src.platform.bootstrap import get_quote_service
             from src.platform.db import AsyncSessionLocal
             from sqlalchemy import select
 

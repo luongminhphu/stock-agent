@@ -15,7 +15,7 @@ from discord import app_commands
 from src.ai.schemas import BriefOutput, MarketSentiment
 from src.bot.commands.base import BaseCog
 from src.briefing.agenda_cache import get_agenda
-from src.briefing.formatter import build_brief_pages, format_eod_brief, format_morning_brief
+from src.briefing.formatter import build_brief_pages
 from src.briefing.service import BriefingService
 from src.platform.bootstrap import (
     get_agenda_service_factory,
