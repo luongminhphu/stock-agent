@@ -20,7 +20,8 @@
     z-index: 150;
     height: calc(56px + env(safe-area-inset-bottom, 0px));
     padding-bottom: env(safe-area-inset-bottom, 0px);
-    background: rgba(8, 17, 31, 0.96);
+    /* Wave 13: drop dark-only literal — dung surface token, blur van giu */
+    background: var(--surface);
     border-top: 1px solid var(--line);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);

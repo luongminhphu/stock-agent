@@ -1916,7 +1916,8 @@ main {
 /* ── thesis.css ────────────────────────────────────────── */
 .detail-shell {
   padding: 16px;
-  background: linear-gradient(180deg, rgba(8, 16, 29, 0.74), rgba(12, 21, 36, 0.88));
+  
+  background: var(--surface-2);
   border: 1px solid var(--line);
 }
 .empty-detail {
@@ -9688,7 +9689,8 @@ details.backtesting-panel > summary.panel-header { padding: inherit; }
     z-index: 150;
     height: calc(56px + env(safe-area-inset-bottom, 0px));
     padding-bottom: env(safe-area-inset-bottom, 0px);
-    background: rgba(8, 17, 31, 0.96);
+    
+    background: var(--surface);
     border-top: 1px solid var(--line);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);

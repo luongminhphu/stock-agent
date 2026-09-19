@@ -6,7 +6,9 @@
 
 .detail-shell {
   padding: 16px;
-  background: linear-gradient(180deg, rgba(8, 16, 29, 0.74), rgba(12, 21, 36, 0.88));
+  /* Wave 13: drop dark-only gradient — gradient literal khong doi theo theme.
+     Dung surface token de ca light/dark deu co nen tuong phan dung. */
+  background: var(--surface-2);
   border: 1px solid var(--line);
 }
 .empty-detail {
