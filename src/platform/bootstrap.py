@@ -644,7 +644,6 @@ async def _warm_up_persisted_stores(
     Failures are logged and swallowed — warm-up is best-effort; stores fall
     back gracefully to cold-start behaviour if DB is unavailable at boot.
     """
-    from src.platform.config import settings
     from src.platform.db import AsyncSessionLocal
 
     sf = session_factory or AsyncSessionLocal
