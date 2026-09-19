@@ -12,12 +12,16 @@ Commands:
   /portfolio       [ticker] [view]                                 — full portfolio or thesis-view
   /history         [ticker]                                        — realized trade history (shows trade_id)
   /link_thesis     <ticker> <thesis_id>                            — backfill thesis linkage on open position
+  /position_lock   <ticker> <qty> [reason] [until]               — đánh dấu cp không bán được (ESOP, phát hành thêm...)
+  /position_unlock <ticker>                                        — mở khóa toàn bộ phần đang khóa
 
 Buy/sell orchestration (DecisionLog, auto-rationale, auto-wire thesis) lives in:
     src/portfolio/trade_usecase.py  ←  single source of truth
 """
 
 from __future__ import annotations
+
+from datetime import date, datetime
 
 import discord
 from discord import app_commands
@@ -41,6 +45,28 @@ from src.readmodel.dashboard_service import DashboardService
 def _is_buy(trade_type: object) -> bool:
     """Safe comparison: handles both TradeType enum and raw asyncpg string."""
     return str(trade_type).lower() == "buy"
+
+
+_LOCK_REASON_VI = {
+    "esop": "ESOP",
+    "private_placement": "Phát hành riêng lẻ",
+    "pending_settlement": "CP chờ về (T+)",
+    "pledged": "Cầm cố / ký quỹ margin",
+    "odd_lot": "Lô lẻ",
+    "core_hold": "Nắm giữ lõi",
+}
+
+
+def _parse_lock_until(raw: str) -> date:
+    """Accept YYYY-MM-DD hoặc DD/MM/YYYY; raise ValueError với message investor-friendly."""
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(raw.strip(), fmt).date()
+        except ValueError:
+            continue
+    raise ValueError(
+        f"Ngày '{raw}' không hợp lệ — dùng YYYY-MM-DD hoặc DD/MM/YYYY (VD: 2027-06-15 hoặc 15/06/2027)"
+    )
 
 
 class PortfolioCog(BaseCog):
@@ -358,6 +384,137 @@ class PortfolioCog(BaseCog):
         embed.add_field(name="Thesis ID", value=f"#{thesis_id}", inline=True)
         embed.add_field(name="Thesis", value=thesis.title or f"#{thesis_id}", inline=True)
         embed.set_footer(text="Dashboard Trades tab sẽ hiển thị thesis info sau khi reload.")
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    # ------------------------------------------------------------------
+    # /position_lock + /position_unlock — đánh dấu cp bị khóa (Wave 10.2)
+    # ------------------------------------------------------------------
+    # Bot la thin adapter: delegate het ve PortfolioService.edit_position().
+    # Ownership: lock rule va validation nam trong portfolio segment.
+
+    _LOCK_REASON_CHOICES = [
+        app_commands.Choice(name=v, value=k) for k, v in _LOCK_REASON_VI.items()
+    ]
+
+    @app_commands.command(
+        name="position_lock",
+        description="Đánh dấu số cổ phiếu không bán được (ESOP, phát hành thêm...)",
+    )
+    @app_commands.describe(
+        ticker="Mã cổ phiếu (VD: VNM)",
+        qty="Số cp bị khóa (không bán được)",
+        reason="Lý do khóa",
+        until="Ngày dự kiến mở khóa (YYYY-MM-DD hoặc DD/MM/YYYY)",
+    )
+    @app_commands.choices(reason=_LOCK_REASON_CHOICES)
+    async def position_lock(
+        self,
+        interaction: discord.Interaction,
+        ticker: str,
+        qty: float,
+        reason: app_commands.Choice[str] | None = None,
+        until: str | None = None,
+    ) -> None:
+        await self.defer(interaction)
+        user_id = self.user_id(interaction)
+        ticker_clean = ticker.upper().strip()
+
+        if qty <= 0:
+            await self.send_error(interaction, "Số lượng không hợp lệ", "qty phải > 0")
+            return
+
+        until_date: date | None = None
+        if until:
+            try:
+                until_date = _parse_lock_until(until)
+            except ValueError as exc:
+                await self.send_error(interaction, "Ngày không hợp lệ", str(exc))
+                return
+            if until_date < date.today():
+                await self.send_error(
+                    interaction,
+                    "Ngày không hợp lệ",
+                    "Ngày mở khóa phải ở tương lai.",
+                )
+                return
+
+        reason_val = reason.value if isinstance(reason, app_commands.Choice) else reason
+
+        try:
+            async with self.db_session() as session:
+                svc = PortfolioService(session=session)
+                position = await svc.edit_position(
+                    user_id=user_id,
+                    ticker=ticker_clean,
+                    locked_qty=qty,
+                    locked_reason=reason_val,
+                    locked_until=until_date,
+                )
+                await session.commit()
+        except PositionNotFoundError as exc:
+            await self.send_error(interaction, "Không tìm thấy vị thế", str(exc))
+            return
+        except ValueError as exc:
+            await self.send_error(interaction, "Giá trị không hợp lệ", str(exc))
+            return
+        except Exception as exc:
+            await self.send_error(interaction, "Lỗi hệ thống", str(exc))
+            return
+
+        reason_vi = _LOCK_REASON_VI.get(reason_val or "", reason_val or "Hạn chế chuyển nhượng")
+        until_txt = until_date.strftime("%d/%m/%Y") if until_date else "chưa rõ"
+        sellable = max(0.0, position.qty - qty)
+
+        embed = discord.Embed(
+            title=f"🔒 Đã khóa {qty:,.0f} cp {ticker_clean}",
+            color=0xFF8F2E,
+        )
+        embed.add_field(name="Tổng sở hữu", value=f"{position.qty:,.0f} cp", inline=True)
+        embed.add_field(name="Bị khóa", value=f"{qty:,.0f} cp", inline=True)
+        embed.add_field(name="Còn bán được", value=f"{sellable:,.0f} cp", inline=True)
+        embed.add_field(name="Lý do", value=reason_vi, inline=True)
+        embed.add_field(name="Mở khóa dự kiến", value=until_txt, inline=True)
+        embed.set_footer(
+            text="Dashboard sẽ hiển thị tag Khóa bán; quick-trade chặn bán vượt phần bán được."
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @app_commands.command(
+        name="position_unlock",
+        description="Mở khóa toàn bộ phần cổ phiếu đang bị khóa",
+    )
+    @app_commands.describe(ticker="Mã cổ phiếu (VD: VNM)")
+    async def position_unlock(
+        self,
+        interaction: discord.Interaction,
+        ticker: str,
+    ) -> None:
+        await self.defer(interaction)
+        user_id = self.user_id(interaction)
+        ticker_clean = ticker.upper().strip()
+
+        try:
+            async with self.db_session() as session:
+                svc = PortfolioService(session=session)
+                position = await svc.edit_position(
+                    user_id=user_id,
+                    ticker=ticker_clean,
+                    locked_qty=0,
+                )
+                await session.commit()
+        except PositionNotFoundError as exc:
+            await self.send_error(interaction, "Không tìm thấy vị thế", str(exc))
+            return
+        except ValueError as exc:
+            await self.send_error(interaction, "Giá trị không hợp lệ", str(exc))
+            return
+
+        embed = discord.Embed(
+            title=f"🔓 Đã mở khóa {ticker_clean}",
+            color=0x4F98A3,
+        )
+        embed.add_field(name="Tổng sở hữu", value=f"{position.qty:,.0f} cp", inline=True)
+        embed.add_field(name="Bán được", value=f"{position.qty:,.0f} cp", inline=True)
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     # ------------------------------------------------------------------
