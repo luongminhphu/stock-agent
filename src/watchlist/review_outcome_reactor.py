@@ -44,7 +44,6 @@ from src.watchlist.models import (
     AlertStatus,
     WatchlistItem,
 )
-from src.watchlist.service import WatchlistItemNotFoundError
 
 logger = get_logger(__name__)
 
