@@ -15,7 +15,6 @@ No domain logic lives here — all rules stay in DecisionService + ReplayAgent.
 
 from __future__ import annotations
 
-import asyncio
 from typing import TYPE_CHECKING
 
 from src.platform.logging import get_logger

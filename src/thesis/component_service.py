@@ -23,7 +23,6 @@ from src.thesis.dtos import (
 )
 from src.thesis.models import (
     Assumption,
-    AssumptionStatus,
     Catalyst,
     CatalystStatus,
     RecommendationStatus,
@@ -337,7 +336,7 @@ class ComponentService:
             return
 
         # Accept: apply status change
-        from src.thesis.models import Assumption, AssumptionStatus, Catalyst, CatalystStatus
+        from src.thesis.models import AssumptionStatus, CatalystStatus
 
         if rec.target_type == "assumption":
             target = await self._repo.get_assumption_by_id(rec.target_id, thesis_id)

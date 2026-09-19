@@ -7,7 +7,7 @@ Import từ đây thay vì từ service.py để tránh circular deps.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 
 from src.thesis.models import AssumptionStatus, CatalystStatus, ThesisDirection

@@ -145,7 +145,6 @@ class ThesisReviewListener:
         Session is always closed after this call — no leak across events.
         """
         from src.thesis.review_service import ReviewService, ReviewNotAllowedError
-        from src.thesis.service import ThesisNotFoundError
 
         try:
             thesis_id_int = int(event.thesis_id)
