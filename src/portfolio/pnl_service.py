@@ -28,14 +28,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Protocol, runtime_checkable
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.config import get_settings
 from src.platform.event_bus import get_event_bus
 from src.platform.events import PositionRiskBreachedEvent
 from src.platform.logging import get_logger
-from src.portfolio.models import DividendType, Position
+from src.portfolio.models import Position
 from src.portfolio.repository import PortfolioRepository
 
 

@@ -45,9 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.logging import get_logger
 from src.portfolio.service import (
-    InsufficientQtyError,
     PortfolioService,
-    PositionNotFoundError,
 )
 
 logger = get_logger(__name__)
