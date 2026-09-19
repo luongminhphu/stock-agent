@@ -17,7 +17,9 @@ import { renderPortfolio }             from './portfolio-renderer.js?v=2';
 import { init as qtInit,
          injectTradeButtons }          from './quick-trade.js?v=3';
 import { init as adjInit,
-         injectAdjustButtons }         from './adjust-position.js?v=4';
+         injectAdjustButtons }         from './adjust-position.js?v=5';
+import { init as lockInit,
+         openLockModal }               from './lock-position.js?v=1';
 import { RefreshScheduler }              from '../../utils/refresh-scheduler.js?v=1';
 
 // Wave 4: Skeleton screen — hiển thị ngay trước khi fetch complete
@@ -63,8 +65,12 @@ export async function loadPortfolio(userId, opts = {}) {
   if (!window.AdjustPosition) {
     window.AdjustPosition = { init: adjInit, injectAdjustButtons };
   }
+  if (!window.LockPosition) {
+    window.LockPosition = { init: lockInit, openLockModal };
+  }
   qtInit();
   adjInit();
+  lockInit();
 
   // Wave 4: show skeleton immediately (skip khi silent refresh — tránh flicker)
   if (!silent) {

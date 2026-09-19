@@ -518,6 +518,18 @@ export function injectAdjustButtons(tbody) {
       () => openAdjustModal(ticker, { currentQty: qty(), currentAvg: avg(), mode: 'edit' }),
     ));
     menu.appendChild(_overflowItem(
+      'Đánh dấu khóa bán / mở khóa', '\u{1F512}', `Khóa bán ${ticker}`,
+      () => {
+        const locked = parseFloat(row.dataset.lockedQty) || 0;
+        window.LockPosition?.openLockModal(ticker, {
+          qty:          qty(),
+          lockedQty:    locked,
+          lockedReason: row.dataset.lockedReason || '',
+          lockedUntil:  row.dataset.lockedUntil  || '',
+        });
+      },
+    ));
+    menu.appendChild(_overflowItem(
       'Lịch sử thay đổi vị thế', '\u2261', `Lịch sử ${ticker}`,
       () => openAdjustModal(ticker, { currentQty: qty(), currentAvg: avg(), mode: 'history' }),
     ));
