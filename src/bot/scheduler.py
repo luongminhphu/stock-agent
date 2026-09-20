@@ -1205,13 +1205,21 @@ class DecisionReplayScheduler:
             return
 
         try:
-            from src.platform.bootstrap import get_replay_agent
+            from src.platform.bootstrap import get_quote_service, get_replay_agent
+            from src.thesis.decision_replay_scheduler import (
+                DecisionReplayScheduler as _ReplayBatch,
+            )
+            from src.thesis.decision_service import DecisionService
 
+            # Trước đây gọi get_replay_agent().run(user_id=..., session=...) — method
+            # không tồn tại → job đêm luôn fail. Orchestration đúng nằm ở thesis.
             async with AsyncSessionLocal() as session:
-                replay_result = await get_replay_agent().run(
-                    user_id=str(user_id),
+                svc = DecisionService(
                     session=session,
+                    quote_service=get_quote_service(),
+                    replay_agent=get_replay_agent(),
                 )
+                replay_result = await _ReplayBatch(svc).run_pending()
                 await session.commit()
 
             if not replay_result:

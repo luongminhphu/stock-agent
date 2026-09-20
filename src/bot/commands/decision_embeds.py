@@ -33,18 +33,10 @@ _VERDICT_ICON: dict[str, str] = {
 }
 
 
-def _batch_outcome_color(results: list[dict[str, Any]]) -> int:
+def _batch_outcome_color(results: list[Any]) -> int:
     """Derive sidebar color from majority outcome in a batch replay list."""
-    correct = sum(
-        1
-        for i in results
-        if str(getattr(i.get("decision"), "outcome_verdict", "")).upper() == "CORRECT"
-    )
-    incorrect = sum(
-        1
-        for i in results
-        if str(getattr(i.get("decision"), "outcome_verdict", "")).upper() == "INCORRECT"
-    )
+    correct = sum(1 for e in results if str(e.outcome_verdict or "").upper() == "CORRECT")
+    incorrect = sum(1 for e in results if str(e.outcome_verdict or "").upper() == "INCORRECT")
     if correct > incorrect:
         return COLORS.GREEN
     if incorrect > correct:
@@ -58,17 +50,20 @@ def _batch_outcome_color(results: list[dict[str, Any]]) -> int:
 
 
 def build_replay_embed(
-    results: list[dict[str, Any]],
+    results: list[Any],
     now_utc: datetime.datetime,
 ) -> discord.Embed:
-    """Build embed for DecisionReplayScheduler end-of-day summary."""
+    """Build embed for DecisionReplayScheduler end-of-day summary.
+
+    ``results``: list[DecisionReplayEnvelope] (thesis.decision_service).
+    """
     lines: list[str] = []
-    for item in results:
-        d = item["decision"]
-        r = item["replay"]
-        icon = _VERDICT_ICON.get(str(d.outcome_verdict).upper(), "\u26aa")
-        pnl_str = f"{d.outcome_pnl_pct:+.1f}%" if d.outcome_pnl_pct is not None else "N/A"
-        line = f"{icon} **{d.ticker}** {d.decision_type} \u2192 {d.outcome_verdict} ({pnl_str})"
+    for env in results:
+        r = env.replay
+        verdict = str(env.outcome_verdict or "PENDING")
+        icon = _VERDICT_ICON.get(verdict.upper(), "\u26aa")
+        pnl_str = f"{env.outcome_pnl_pct:+.1f}%" if env.outcome_pnl_pct is not None else "N/A"
+        line = f"{icon} **{env.ticker}** {env.decision_type or ''} \u2192 {verdict} ({pnl_str})"
         if r and getattr(r, "key_lesson", None):
             line += f"\n    \U0001f4a1 _{r.key_lesson}_"
         if r and getattr(r, "pattern_detected", None):

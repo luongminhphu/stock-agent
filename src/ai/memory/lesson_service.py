@@ -2,7 +2,7 @@
 
 Owner: ai segment.
 Callers:
-  - ai/agents/replay_agent.py  → persist_replay()
+  - ai/agents/replay.py        → persist_replay()
   - bot/commands (future)      → get_pattern_summary() for /stats command
   - briefing context builder   → get_pattern_summary() for brief personalization
 

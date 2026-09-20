@@ -63,10 +63,14 @@ class DecisionNotFoundError(Exception):
 
 @dataclass
 class DecisionReplayEnvelope:
+    """Kết quả 1 lần replay — contract cho scheduler/bot/api (không lộ ORM)."""
+
     decision_id: int
     ticker: str
     outcome_verdict: str | None
     replay: Any | None
+    decision_type: str | None = None
+    outcome_pnl_pct: float | None = None
 
 
 class DecisionService:
@@ -481,6 +485,8 @@ class DecisionService:
                 ticker=row.ticker,
                 outcome_verdict=str(row.outcome_verdict) if row.outcome_verdict else None,
                 replay=None,
+                decision_type=str(row.decision_type) if row.decision_type else None,
+                outcome_pnl_pct=row.outcome_pnl_pct,
             )
 
         ctx = ReplayContext(
@@ -511,6 +517,8 @@ class DecisionService:
             ticker=row.ticker,
             outcome_verdict=str(row.outcome_verdict) if row.outcome_verdict else None,
             replay=replay,
+            decision_type=str(row.decision_type) if row.decision_type else None,
+            outcome_pnl_pct=row.outcome_pnl_pct,
         )
 
     async def persist_lesson(

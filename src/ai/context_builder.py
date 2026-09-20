@@ -11,7 +11,7 @@ Builds an InvestorContext from:
   - market.registry (sector key_metrics per position ticker)  ← V2-3
   - ai.memory (MemoryContext — episodic + semantic memory)    ← V2
   - ai.memory (PatternSynthesisOutput — synthesized patterns) ← Wave 8
-  - ai.agents.replay_agent (LessonService pattern summary)    ← Wave 9
+  - ai.agents.replay (LessonService pattern summary)          ← Wave 9
 
 Boundary rule:
   ContextBuilder knows ABOUT domain segments but does NOT own their logic.
@@ -113,7 +113,7 @@ class InvestorContext:
     # From ai.memory — synthesized patterns + bias_warnings (Wave 8)
     pattern_synthesis_block: str = ""
 
-    # From ai.agents.replay_agent via LessonService — exit pattern warnings (Wave 9)
+    # From ai.agents.replay via LessonService — exit pattern warnings (Wave 9)
     replay_pattern_block: str = ""
 
     # From thesis.behavioral_dna_service — aggregated DecisionLog profile (Wave 3)
