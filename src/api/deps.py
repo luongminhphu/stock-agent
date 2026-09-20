@@ -36,6 +36,9 @@ from src.platform.bootstrap import (
 from src.platform.bootstrap import (
     get_thesis_suggest_agent as _get_suggest_agent,
 )
+from src.platform.bootstrap import (
+    get_ticker_context_service as _get_tcs,
+)
 from src.platform.db import AsyncSessionLocal
 
 
@@ -209,7 +212,7 @@ async def get_scan_service(
 ) -> ScanService:  # type: ignore[name-defined]  # noqa: F821
     from src.watchlist.scan_service import ScanService
 
-    return ScanService(session=session, quote_service=quote_svc)
+    return ScanService(session=session, quote_service=quote_svc, ticker_context_service=_get_tcs())
 
 
 async def get_timeline_service(

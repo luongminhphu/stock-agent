@@ -19,12 +19,16 @@ import discord
 from discord import app_commands
 
 from src.bot.commands.base import BaseCog
-from src.platform.bootstrap import get_quote_service, get_session_factory
+from src.platform.bootstrap import (
+    get_quote_service,
+    get_session_factory,
+    get_ticker_context_service,
+)
 from src.platform.logging import get_logger
 from src.watchlist.models import AlertConditionType
 from src.watchlist.service import (
-    AddAlertInput,
     AddToWatchlistInput,
+    CreateAlertInput,
     WatchlistItemAlreadyExistsError,
     WatchlistItemNotFoundError,
     WatchlistService,
@@ -243,6 +247,7 @@ class WatchlistCog(BaseCog):
                 svc = ScanService(
                     session=session,
                     quote_service=get_quote_service(),
+                    ticker_context_service=get_ticker_context_service(),
                 )
                 result = await svc.scan_user(user_id)
                 await session.commit()
@@ -329,7 +334,7 @@ class WatchlistCog(BaseCog):
             async with self.db_session() as session:
                 svc = WatchlistService(session)
                 alert = await svc.add_alert(
-                    AddAlertInput(
+                    CreateAlertInput(
                         user_id=user_id,
                         ticker=ticker.upper(),
                         condition_type=condition_type,

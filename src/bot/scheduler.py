@@ -385,7 +385,7 @@ class WatchlistScanScheduler:
 
         # ── Step 1: Scan ─────────────────────────────────────────────────────────────────────────────────
         try:
-            from src.platform.bootstrap import get_quote_service
+            from src.platform.bootstrap import get_quote_service, get_ticker_context_service
             from src.thesis.ticker_direction_query import TickerDirectionQuery
             from src.watchlist.scan_service import ScanService
             from src.watchlist.thesis_score_query import ThesisScoreQuery
@@ -396,6 +396,7 @@ class WatchlistScanScheduler:
                     quote_service=get_quote_service(),
                     ticker_direction_query=TickerDirectionQuery(session),
                     thesis_score_query=ThesisScoreQuery(session),
+                    ticker_context_service=get_ticker_context_service(),
                 )
                 result = await svc.scan_user(str(user_id))
                 await session.commit()

@@ -650,6 +650,7 @@ async def bootstrap() -> None:
         _proactive_watch_listener = ProactiveWatchListener(
             quote_service=_quote_service,
             session_factory=AsyncSessionLocal,
+            ticker_context_service=_ticker_context_service,
         )
         _proactive_watch_listener.register()
         logger.info("platform.bootstrap.proactive_watch_listener_ready")

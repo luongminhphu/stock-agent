@@ -28,7 +28,7 @@ from fastapi import APIRouter, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import DbSession, UserId
-from src.platform.bootstrap import get_quote_service
+from src.platform.bootstrap import get_quote_service, get_ticker_context_service
 from src.platform.db import AsyncSessionLocal
 from src.portfolio.eod_snapshot_service import EodSnapshotService
 from src.portfolio.repository import PortfolioRepository
@@ -88,6 +88,7 @@ async def _ensure_scan_snapshot(
         scan_svc = ScanService(
             session=scan_session,
             quote_service=get_quote_service(),
+            ticker_context_service=get_ticker_context_service(),
         )
         await scan_svc.scan_user_if_stale(user_id=user_id, max_age_minutes=30)
         await scan_session.commit()

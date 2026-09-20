@@ -60,7 +60,14 @@ from src.platform.event_bus import get_event_bus
 from src.platform.events import SignalDetectedEvent, WatchlistScanCompletedEvent
 from src.platform.logging import get_logger
 from src.watchlist.alert_service import AlertService
-from src.watchlist.models import Alert, AlertStatus, Reminder, SignalEvent, WatchlistScan
+from src.watchlist.models import (
+    Alert,
+    AlertConditionType,
+    AlertStatus,
+    Reminder,
+    SignalEvent,
+    WatchlistScan,
+)
 from src.watchlist.reminder_service import ReminderService
 from src.watchlist.repository import SignalEventRepository, WatchlistRepository
 from src.watchlist.signal_engine import SignalEngine, SignalReport
@@ -281,6 +288,7 @@ class ScanService:
         signal_engine: SignalEngine | None = None,
         ticker_direction_query: object | None = None,
         thesis_score_query: object | None = None,
+        ticker_context_service: object | None = None,
     ) -> None:
         self._session = session
         self._repo = WatchlistRepository(session)
@@ -291,6 +299,9 @@ class ScanService:
         self._credibility_agent = credibility_agent
         self._ticker_direction_query = ticker_direction_query
         self._thesis_score_query = thesis_score_query
+        # Wave B3: market.TickerContextService — nguồn vol_ratio_20 thật cho
+        # VOLUME_SPIKE alert (Quote không có volume_ratio → trước đây luôn 1.0).
+        self._ticker_context_service = ticker_context_service
         # Default engine with HOSE/HNX-appropriate thresholds
         self._signal_engine = signal_engine or SignalEngine()
         # Wave 4c: scale strong-move thresholds by investor risk appetite.
@@ -313,13 +324,23 @@ class ScanService:
             await self._persist_snapshot(user_id, result)
             return result
 
-        # Bulk-fetch all quotes in a single call — avoids N serial round-trips.
+        # Wave B3: ưu tiên TickerContext (quote + indicator, OHLCV đã cache theo phiên).
+        # Fallback: bulk quote thuần như trước nếu chưa inject hoặc lỗi.
+        ctx_map: dict[str, object] = {}
         bulk_quote_map: dict[str, object] = {}
-        try:
-            bulk_quotes = await self._quote_service.get_bulk_quotes(tickers)  # type: ignore[union-attr]
-            bulk_quote_map = {q.ticker: q for q in bulk_quotes}
-        except Exception as exc:
-            logger.warning("scan.bulk_quote_failed", tickers=tickers, error=str(exc))
+        if self._ticker_context_service is not None:
+            try:
+                ctx_map = await self._ticker_context_service.get_many(tickers)  # type: ignore[attr-defined]
+                bulk_quote_map = {t: c.quote for t, c in ctx_map.items()}  # type: ignore[attr-defined]
+            except Exception as exc:
+                logger.warning("scan.ticker_context_failed", tickers=tickers, error=str(exc))
+        if not bulk_quote_map:
+            # Bulk-fetch all quotes in a single call — avoids N serial round-trips.
+            try:
+                bulk_quotes = await self._quote_service.get_bulk_quotes(tickers)  # type: ignore[union-attr]
+                bulk_quote_map = {q.ticker: q for q in bulk_quotes}
+            except Exception as exc:
+                logger.warning("scan.bulk_quote_failed", tickers=tickers, error=str(exc))
 
         # ─ Wave 2: bulk-prefetch enrichment data before scan loop ────────────
 
@@ -366,7 +387,7 @@ class ScanService:
 
         for ticker in tickers:
             try:
-                signal = await self._scan_ticker(ticker, items, bulk_quote_map)
+                signal = await self._scan_ticker(ticker, items, bulk_quote_map, ctx_map.get(ticker))
                 price_map[ticker] = signal.current_price
 
                 # Wave E: determine effective strong_move threshold for this ticker
@@ -463,8 +484,13 @@ class ScanService:
         ticker: str,
         items: list,
         bulk_quote_map: dict[str, object],
+        ctx: object | None = None,
     ) -> ScanSignal:
         """Fetch quote (from bulk map or per-ticker fallback) and detect triggered alerts.
+
+        `ctx` là market.TickerContext (tuỳ chọn). Khi có, volume ratio lấy từ
+        `ctx.vol_ratio_20`; khi không, giữ hành vi cũ (mặc định 1.0 → VOLUME_SPIKE
+        không thể trigger — được log để nhìn thấy).
 
         Does NOT mutate alert state.
         """
@@ -477,7 +503,7 @@ class ScanService:
             ticker=ticker,
             current_price=quote.price,  # type: ignore[union-attr]
             change_pct=quote.change_pct,  # type: ignore[union-attr]
-            _volume_ratio=getattr(quote, "volume_ratio", 1.0),
+            _volume_ratio=_resolve_volume_ratio(quote, ctx),
         )
 
         all_alerts: list[Alert] = []
@@ -492,6 +518,18 @@ class ScanService:
                 volume_ratio=signal._volume_ratio,
             ):
                 signal.triggered_alerts.append(alert)
+                if alert.condition_type == AlertConditionType.VOLUME_SPIKE:
+                    logger.info(
+                        "scan.volume_alert_triggered",
+                        ticker=ticker,
+                        volume_ratio=round(signal._volume_ratio, 2),
+                        threshold=alert.threshold,
+                    )
+
+        if ctx is None and any(
+            a.condition_type == AlertConditionType.VOLUME_SPIKE for a in all_alerts
+        ):
+            logger.debug("scan.volume_ratio_unavailable", ticker=ticker)
 
         return signal
 
@@ -681,6 +719,19 @@ class ScanService:
             logger.info("scan.snapshot_staged", user_id=user_id)
         except Exception as exc:
             logger.error("scan.snapshot_stage_failed", user_id=user_id, error=str(exc))
+
+
+def _resolve_volume_ratio(quote: object, ctx: object | None) -> float:
+    """vol_ratio_20 từ TickerContext nếu có; fallback thuộc tính `volume_ratio`
+    trên quote (adapter tuỳ biến / test double); cuối cùng 1.0 (trung tính)."""
+    if ctx is not None:
+        ratio = getattr(ctx, "vol_ratio_20", None)
+        if isinstance(ratio, (int, float)) and ratio > 0:
+            return float(ratio)
+    legacy = getattr(quote, "volume_ratio", None)
+    if isinstance(legacy, (int, float)) and legacy > 0:
+        return float(legacy)
+    return 1.0
 
 
 class ScanServiceNotConfiguredError(Exception):

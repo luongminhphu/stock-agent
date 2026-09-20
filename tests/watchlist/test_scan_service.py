@@ -244,3 +244,97 @@ def test_signal_description_with_alert():
 def test_signal_description_without_alert():
     s = ScanSignal(ticker="HPG", current_price=29000.0, change_pct=3.5)
     assert "+3.5%" in s.description or "3.5" in s.description
+
+
+# ---------------------------------------------------------------------------
+# Wave B3: VOLUME_SPIKE dùng vol_ratio_20 thật từ market.TickerContext
+# ---------------------------------------------------------------------------
+
+
+def _make_ctx(
+    ticker: str, price: float, change_pct: float, vol_ratio_20: float | None
+) -> MagicMock:
+    ctx = MagicMock()
+    ctx.ticker = ticker
+    ctx.quote = _make_quote(price=price, change_pct=change_pct)
+    ctx.quote.ticker = ticker
+    del ctx.quote.volume_ratio  # Quote thật không có volume_ratio
+    ctx.vol_ratio_20 = vol_ratio_20
+    return ctx
+
+
+def _volume_alert(threshold: float = 2.0):
+    alert = make_alert(
+        ticker="HPG", condition_type=AlertConditionType.VOLUME_SPIKE, threshold=threshold
+    )
+    item = make_item(ticker="HPG")
+    item.alerts = [alert]
+    return item, alert
+
+
+@pytest.mark.asyncio
+async def test_volume_spike_fires_with_ticker_context(mock_repo, mock_quote_service):
+    item, alert = _volume_alert(threshold=2.0)
+    mock_repo.list_for_user.return_value = [item]
+    tcs = AsyncMock()
+    tcs.get_many.return_value = {"HPG": _make_ctx("HPG", 29000.0, 0.5, vol_ratio_20=2.7)}
+    svc = _make_service(mock_repo, mock_quote_service)
+    svc._ticker_context_service = tcs
+
+    result = await svc.scan_user(user_id="user-A")
+
+    tcs.get_many.assert_awaited_once_with(["HPG"])
+    mock_quote_service.get_bulk_quotes.assert_not_awaited()  # không fetch quote 2 lần
+    assert len(result.signals) == 1 and result.signals[0].triggered_alerts == [alert]
+    assert result.signals[0]._volume_ratio == pytest.approx(2.7)
+    assert alert.status == AlertStatus.TRIGGERED
+
+
+@pytest.mark.asyncio
+async def test_volume_spike_silent_without_ticker_context(mock_repo, mock_quote_service):
+    """Hành vi cũ giữ nguyên: không có context → ratio 1.0 → không trigger."""
+    item, alert = _volume_alert(threshold=2.0)
+    mock_repo.list_for_user.return_value = [item]
+    q = _make_quote(price=29000.0, change_pct=0.5)
+    del q.volume_ratio
+    mock_quote_service.get_quote.return_value = q
+    svc = _make_service(mock_repo, mock_quote_service)
+
+    result = await svc.scan_user(user_id="user-A")
+
+    assert result.signals == [] and alert.status == AlertStatus.ACTIVE
+
+
+@pytest.mark.asyncio
+async def test_ticker_context_failure_falls_back_to_bulk_quotes(mock_repo, mock_quote_service):
+    item = make_item(ticker="HPG")
+    item.alerts = [make_alert(ticker="HPG", threshold=28000.0)]
+    mock_repo.list_for_user.return_value = [item]
+    q = _make_quote(price=29000.0, change_pct=1.0)
+    q.ticker = "HPG"
+    mock_quote_service.get_bulk_quotes.return_value = [q]
+    tcs = AsyncMock()
+    tcs.get_many.side_effect = RuntimeError("ohlcv down")
+    svc = _make_service(mock_repo, mock_quote_service)
+    svc._ticker_context_service = tcs
+
+    result = await svc.scan_user(user_id="user-A")
+
+    mock_quote_service.get_bulk_quotes.assert_awaited_once()
+    assert len(result.signals) == 1 and result.signals[0].has_alerts
+
+
+def test_resolve_volume_ratio_precedence():
+    from src.watchlist.scan_service import _resolve_volume_ratio
+
+    q = MagicMock()
+    q.volume_ratio = 1.8
+    ctx = MagicMock()
+    ctx.vol_ratio_20 = 3.2
+    assert _resolve_volume_ratio(q, ctx) == 3.2  # context thắng
+    ctx.vol_ratio_20 = None
+    assert _resolve_volume_ratio(q, ctx) == 1.8  # fallback legacy attr
+    del q.volume_ratio
+    assert _resolve_volume_ratio(q, None) == 1.0  # trung tính
+    ctx.vol_ratio_20 = 0.0
+    assert _resolve_volume_ratio(q, ctx) == 1.0  # ratio 0 không hợp lệ

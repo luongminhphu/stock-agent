@@ -39,9 +39,10 @@ class ProactiveWatchListener:
         session_factory — AsyncSessionLocal
     """
 
-    def __init__(self, quote_service, session_factory) -> None:
+    def __init__(self, quote_service, session_factory, ticker_context_service=None) -> None:
         self._quote_service = quote_service
         self._session_factory = session_factory
+        self._ticker_context_service = ticker_context_service
 
     def register(self) -> None:
         """Register handler on the event bus. Called once from bootstrap."""
@@ -77,6 +78,7 @@ class ProactiveWatchListener:
                     session=session,
                     quote_service=self._quote_service,
                     ticker_direction_query=TickerDirectionQuery(session),
+                    ticker_context_service=self._ticker_context_service,
                 )
                 result = await scan_svc.scan_user(user_id)
 
