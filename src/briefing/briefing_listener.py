@@ -4,13 +4,12 @@ Owner: briefing segment.
 Subscribes: BriefingRequestedEvent, DailyAgendaCompletedEvent
 Emits:      BriefingReadyEvent (consumed by readmodel.CacheSubscriber for cache invalidation)
 
-Boundary:
-- Listener nhận event, resolve deps, gọi BriefingService, gửi Discord channel.
+Boundary (boundary fix B5):
+- Listener nhận event, resolve deps, gọi BriefingService, rồi giao kết quả cho
+  ``BriefDelivery`` (protocol dưới đây). briefing quyết định *gửi gì*; adapter
+  (``bot.brief_delivery.DiscordBriefDelivery``) quyết định *gửi ở đâu, dạng gì*.
 - Không chứa logic generate brief — đó là BriefingService / BriefingAgent.
-- Discord delivery nằm ở đây thay vì bot/scheduler vì briefing là domain
-  concern (ai gửi gì, ở đâu) chứ không phải bot timing concern.
-- discord.Client được inject sau khi bot login (set_client) để tránh coupling
-  bootstrap với discord runtime.
+- Không import discord hay src.bot — import-linter contract domain-no-adapters.
 
 Wave B activation:
 - agenda_service_factory injected at construction time (from bootstrap).
@@ -38,10 +37,7 @@ Wave B.1 (AgendaBuckets → BriefingService):
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    import discord
+from typing import Any, Protocol
 
 from src.briefing.agenda_cache import AgendaBuckets, get_agenda, set_agenda
 from src.platform.event_bus import get_event_bus
@@ -55,29 +51,40 @@ from src.platform.logging import get_logger
 logger = get_logger(__name__)
 
 
+class BriefDelivery(Protocol):
+    """Contract adapter gửi brief. Implement bởi bot (Discord); test dùng fake."""
+
+    def is_ready(self, phase: str) -> bool: ...
+
+    async def deliver(
+        self, brief: Any, *, phase: str, agenda_summary: str | None = None
+    ) -> None: ...
+
+
 class BriefingListener:
     """Subscribe BriefingRequestedEvent và execute briefing pipeline."""
 
     def __init__(
         self,
-        morning_channel_id: int | None,
-        eod_channel_id: int | None,
         user_id: str,
-        discord_client: discord.Client | None = None,
+        delivery: BriefDelivery | None = None,
         agenda_service_factory: object | None = None,
     ) -> None:
-        self._client = discord_client
-        self._morning_channel_id = morning_channel_id
-        self._eod_channel_id = eod_channel_id
+        self._delivery = delivery
         self._user_id = user_id
         # Wave B: callable(session) -> AgendaService | None
         # Injected from bootstrap so BriefingService can include agenda context.
         self._agenda_service_factory = agenda_service_factory
 
-    def set_client(self, client: discord.Client) -> None:
-        """Inject discord.Client after bot login (called from bot on_ready)."""
-        self._client = client
-        logger.info("briefing_listener.client_injected")
+    def set_client(self, client: object) -> None:
+        """Compat: chuyển client cho delivery adapter (bot on_ready gọi qua bootstrap getter)."""
+        setter = getattr(self._delivery, "set_client", None)
+        if callable(setter):
+            setter(client)
+        else:
+            logger.warning(
+                "briefing_listener.set_client_ignored", reason="delivery không nhận client"
+            )
 
     def register(self) -> None:
         """Subscribe BriefingRequestedEvent on the global event bus."""
@@ -155,7 +162,6 @@ class BriefingListener:
             )
 
     async def _handle(self, event: BriefingRequestedEvent) -> None:
-        from src.bot.commands.briefing import build_brief_embed
         from src.briefing.service import BriefingService
         from src.platform.bootstrap import (
             get_briefing_agent,
@@ -168,30 +174,8 @@ class BriefingListener:
 
         phase = event.brief_type  # "morning" | "eod"
 
-        if self._client is None:
-            logger.warning(
-                "briefing_listener.no_client",
-                phase=phase,
-                reason="discord_client not injected yet — call set_client() in on_ready",
-            )
-            return
-
-        channel_id = self._morning_channel_id if phase == "morning" else self._eod_channel_id
-        if not channel_id:
-            logger.warning(
-                "briefing_listener.no_channel",
-                phase=phase,
-                reason="channel_id not configured",
-            )
-            return
-
-        channel = self._client.get_channel(channel_id)
-        if channel is None:
-            logger.warning(
-                "briefing_listener.channel_not_found",
-                channel_id=channel_id,
-                phase=phase,
-            )
+        if self._delivery is None or not self._delivery.is_ready(phase):
+            logger.warning("briefing_listener.delivery_not_ready", phase=phase)
             return
 
         try:
@@ -228,23 +212,15 @@ class BriefingListener:
                 has_agenda=agenda_svc is not None,
             )
 
-            embed = build_brief_embed(brief_result.output, phase=phase)
-
-            # P1/P1.5: prepend cached agenda summary to embed description when available.
+            # P1/P1.5: agenda summary (nếu có) được adapter prepend lên brief.
             cached = get_agenda(self._user_id)
-            if cached is not None and cached.summary:
-                original_desc = embed.description or ""
-                # Avoid duplicate blank lines when original_desc is empty.
-                if original_desc:
-                    embed.description = f"{cached.summary}\n\n{original_desc}"
-                else:
-                    embed.description = cached.summary
-
-            await channel.send(embed=embed)  # type: ignore[union-attr]
+            agenda_summary = cached.summary if cached is not None and cached.summary else None
+            await self._delivery.deliver(
+                brief_result.output, phase=phase, agenda_summary=agenda_summary
+            )
             logger.info(
                 "briefing_listener.sent",
                 phase=phase,
-                channel_id=channel_id,
                 event_id=event.event_id,
                 triggered_by=event.triggered_by,
             )

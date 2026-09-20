@@ -375,6 +375,7 @@ async def bootstrap() -> None:
         logger.info("platform.bootstrap.signal_review_trigger_listener_ready")
 
     if container.briefing_listener is None:
+        from src.bot.brief_delivery import DiscordBriefDelivery
         from src.briefing.briefing_listener import BriefingListener
         from src.platform.config import settings
 
@@ -383,9 +384,11 @@ async def bootstrap() -> None:
             morning_id = getattr(settings, "morning_channel_id", None)
             eod_id = getattr(settings, "eod_channel_id", None)
             container.briefing_listener = BriefingListener(
-                morning_channel_id=int(morning_id) if morning_id else None,
-                eod_channel_id=int(eod_id) if eod_id else None,
                 user_id=str(user_id),
+                delivery=DiscordBriefDelivery(
+                    morning_channel_id=int(morning_id) if morning_id else None,
+                    eod_channel_id=int(eod_id) if eod_id else None,
+                ),
                 agenda_service_factory=container.agenda_service_factory,
             )
             container.briefing_listener.register()
