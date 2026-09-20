@@ -25,7 +25,7 @@ from src.platform.bootstrap import (
     get_ticker_context_service,
 )
 from src.platform.logging import get_logger
-from src.thesis.models import ThesisStatus
+from src.thesis import ThesisStatus
 from src.thesis.review_service import ReviewNotAllowedError, ReviewService
 from src.thesis.service import ThesisNotFoundError, ThesisService
 

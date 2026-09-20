@@ -66,22 +66,11 @@ class ConvictionTimelineCog(BaseCog, name="conviction"):
         - (None, None)        → no ACTIVE thesis found for ticker
         - (timeline, id)      → thesis found; timeline may have total == 0
         """
-        from sqlalchemy import select
-
         from src.readmodel.timeline_service import ThesisTimelineService
-        from src.thesis.models import Thesis, ThesisStatus
+        from src.thesis import ThesisRepository
 
         async with self.db_session() as session:
-            result = await session.execute(
-                select(Thesis)
-                .where(
-                    Thesis.ticker == ticker,
-                    Thesis.status == ThesisStatus.ACTIVE,
-                )
-                .order_by(Thesis.created_at.desc())
-                .limit(1)
-            )
-            thesis = result.scalar_one_or_none()
+            thesis = await ThesisRepository(session).latest_active_by_ticker(ticker)
 
             if thesis is None:
                 logger.info("conviction.no_active_thesis", ticker=ticker)

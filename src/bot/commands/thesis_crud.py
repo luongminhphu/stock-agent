@@ -22,7 +22,7 @@ from src.bot.commands.base import BaseCog
 from src.bot.commands.thesis_aggregate_embeds import build_aggregate_embed
 from src.bot.commands.thesis_embeds import STATUS_ICON
 from src.platform.logging import get_logger
-from src.thesis.models import ThesisStatus
+from src.thesis import ThesisRepository, ThesisStatus
 from src.thesis.service import CreateThesisInput, ThesisNotFoundError, ThesisService
 
 logger = get_logger(__name__)
@@ -240,25 +240,10 @@ class ThesisCrudCog(BaseCog):
             position_map: dict[str, tuple[float, float]] = {}
 
             async with self.db_session() as session:
-                from sqlalchemy import select
-
                 from src.readmodel.dashboard_service import DashboardService
-                from src.thesis.models import Thesis, ThesisStatus
 
                 # ── Pre-fetch tickers of active theses ─────────────────
-                tickers_rows = (
-                    (
-                        await session.execute(
-                            select(Thesis.ticker).where(
-                                Thesis.user_id == user_id,
-                                Thesis.status == ThesisStatus.ACTIVE,
-                            )
-                        )
-                    )
-                    .scalars()
-                    .all()
-                )
-                tickers = list(set(tickers_rows))
+                tickers = await ThesisRepository(session).list_active_tickers(user_id)
 
                 # ── Gather prices + positions in parallel ───────────────
                 if tickers:

@@ -21,7 +21,7 @@ from src.bot.discord_helper import (
     fmt_ict,
     truncate,
 )
-from src.thesis.models import ReviewVerdict, ThesisStatus
+from src.thesis import ReviewVerdict, ThesisStatus
 
 logger = logging.getLogger(__name__)
 

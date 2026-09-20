@@ -25,7 +25,7 @@ from src.platform.bootstrap import (
     get_ticker_context_service,
 )
 from src.platform.logging import get_logger
-from src.watchlist.models import AlertConditionType
+from src.watchlist import AlertConditionType
 from src.watchlist.service import (
     AddToWatchlistInput,
     CreateAlertInput,
