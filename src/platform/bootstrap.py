@@ -15,7 +15,7 @@ Lifecycle:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from src.platform.container import AppContainer
 from src.platform.logging import configure_logging, get_logger
@@ -46,11 +46,14 @@ async def bootstrap() -> None:
 
     if container.market_regime_service is None:
         from src.market.market_regime import MarketRegimeService
+        from src.market.quote_service import QuoteService as _QuoteService
 
         # Singleton so the 3-minute TTL cache in MarketRegimeService is
         # actually shared across /pretrade calls instead of being rebuilt
         # (and re-fetched) on every command invocation.
-        container.market_regime_service = MarketRegimeService(container.quote_service)  # type: ignore[arg-type]  # mypy-baseline M3
+        container.market_regime_service = MarketRegimeService(
+            cast(_QuoteService, container.quote_service)
+        )
         logger.info("platform.bootstrap.market_regime_service_ready")
 
     # ── SymbolRegistry: dynamic engine init (HTTP + DB, async) ────────────────
@@ -234,13 +237,14 @@ async def bootstrap() -> None:
 
         user_id = getattr(settings, "scheduler_user_id", None)
         if user_id:
+            from src.ai.agents.agenda_builder import AgendaBuilderAgent as _AgendaAgent
             from src.ai.memory.memory_service import MemoryService
             from src.briefing.agenda_service import AgendaService
 
-            _agent_ref = container.agenda_builder_agent
+            _agent_ref = cast(_AgendaAgent, container.agenda_builder_agent)
             container.agenda_service_factory = lambda session: AgendaService(  # noqa: E731
                 session=session,
-                agenda_agent=_agent_ref,  # type: ignore[arg-type]  # mypy-baseline M3
+                agenda_agent=_agent_ref,
                 memory_service=MemoryService,
             )
             logger.info(

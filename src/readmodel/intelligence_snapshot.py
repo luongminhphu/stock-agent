@@ -54,7 +54,7 @@ from __future__ import annotations
 
 import contextlib
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast, get_args
 
 from src.platform.logging import get_logger
 from src.readmodel.cache import DashboardTTLCache
@@ -447,6 +447,7 @@ from src.platform.events import (  # noqa: E402
 from src.platform.logging import get_logger  # noqa: E402
 
 _sub_logger = get_logger(__name__ + ".subscriber")
+
 _subscriber_registered = False
 
 
@@ -502,10 +503,12 @@ class IntelligenceSnapshotSubscriber:
             # Lazy import to avoid circular dependency at module load time.
             # src.ai.schemas is owned by the ai segment; readmodel only reads it.
             from src.ai.schemas.intelligence_report import (  # noqa: PLC0415
+                TRIGGER_SOURCES,
                 AgentSlot,
                 IntelligenceReport,
                 PriorityAction,
                 RiskFlag,
+                TopVerdict,
             )
 
             # Build AgentSlot list from event — preserve full audit trail.
@@ -534,18 +537,18 @@ class IntelligenceSnapshotSubscriber:
                         error=str(exc),
                     )
 
-            # Map verdict string to IntelligenceReport.top_verdict Literal.
-            # Event.verdict may come from heuristic path (free string) or
-            # from IntelligenceReport (already typed). Normalise defensively.
-            _VALID_VERDICTS = {
-                "BUY_SIGNAL",
-                "SELL_SIGNAL",
-                "HOLD",
-                "REVIEW_THESIS",
-                "RISK_ALERT",
-                "NO_ACTION",
-            }
-            top_verdict = event.verdict if event.verdict in _VALID_VERDICTS else "NO_ACTION"
+            # Event.verdict / trigger_source là str tự do (heuristic path) → ép về
+            # Literal hợp lệ của IntelligenceReport, fallback NO_ACTION / manual.
+            top_verdict: TopVerdict = (
+                cast(TopVerdict, event.verdict)
+                if event.verdict in get_args(TopVerdict)
+                else "NO_ACTION"
+            )
+            trigger_source: TRIGGER_SOURCES = (
+                cast(TRIGGER_SOURCES, event.trigger_source)
+                if event.trigger_source in get_args(TRIGGER_SOURCES)
+                else "manual"
+            )
 
             # Build RiskFlag list from event.risk_signals (string tuple).
             # risk_signals are plain string descriptions — wrap as LOW flags
@@ -570,21 +573,8 @@ class IntelligenceSnapshotSubscriber:
 
             report = IntelligenceReport(
                 user_id=event.user_id,
-                trigger_source=(
-                    event.trigger_source  # type: ignore[arg-type]  # mypy-baseline M3
-                    if event.trigger_source
-                    in (
-                        "scheduler_morning",
-                        "scheduler_eod",
-                        "watchlist_alert",
-                        "user_query",
-                        "thesis_invalidated",
-                        "portfolio_breach",
-                        "manual",
-                    )
-                    else "manual"
-                ),
-                top_verdict=top_verdict,  # type: ignore[arg-type]
+                trigger_source=trigger_source,
+                top_verdict=top_verdict,
                 top_verdict_conviction="medium",
                 overall_confidence=float(event.confidence or 0.5),
                 narrative_summary=str(event.summary or "")[:800],

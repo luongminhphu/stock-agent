@@ -26,7 +26,7 @@ chạy và kết quả được log (OBSERVED), nhưng không AI confirm, không
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -259,29 +259,38 @@ class StopBreachService:
         if not rule.stop_loss_breached:
             return self._maybe_near_stop(thesis, snap, distance_atr)
 
-        overshoot = abs(price - thesis.stop_loss) / thesis.stop_loss * 100  # type: ignore[operator]
+        stop_loss = thesis.stop_loss
+        if stop_loss is None:  # rule không thể breach khi thesis không có stop
+            return None
+        overshoot = abs(price - stop_loss) / stop_loss * 100
 
         if self._in_cooldown(thesis):
             logger.debug("stop_breach.cooldown_skip", thesis_id=thesis.id, ticker=thesis.ticker)
             return None
 
-        base = dict(
+        # Outcome nền (action="observed"); các nhánh dưới dùng dataclasses.replace
+        # để ghi đè action/ai_* — giữ type-safe thay vì **dict[str, object].
+        base = StopBreachOutcome(
             thesis_id=thesis.id,
             ticker=thesis.ticker,
             current_price=price,
-            stop_loss=thesis.stop_loss,
+            stop_loss=stop_loss,
             overshoot_pct=round(overshoot, 2),
+            action="observed",
             reason=rule.reason,
             stop_distance_atr=round(distance_atr, 2) if distance_atr is not None else None,
             source_quality=snap.source_quality,
         )
         if lock is not None:
             locked_qty = float(getattr(lock, "locked_qty", 0.0) or 0.0)
-            base["locked_qty"] = locked_qty
-            base["locked_reason"] = getattr(lock, "locked_reason", None)
-            base["locked_until"] = getattr(lock, "locked_until", None)
             total_qty = float(getattr(lock, "qty", 0.0) or 0.0)
-            base["sellable_qty"] = max(0.0, total_qty - locked_qty)
+            base = replace(
+                base,
+                locked_qty=locked_qty,
+                locked_reason=getattr(lock, "locked_reason", None),
+                locked_until=getattr(lock, "locked_until", None),
+                sellable_qty=max(0.0, total_qty - locked_qty),
+            )
 
         logger.info(
             "stop_breach.detected",
@@ -293,7 +302,7 @@ class StopBreachService:
         )
 
         if not self._enabled:
-            return StopBreachOutcome(action="observed", **base)  # type: ignore[arg-type]  # mypy-baseline M3
+            return base
 
         # AI confirmation layer — non-blocking; session+user_id để detector
         # log episodic memory (boundary: caller owns session, detector chỉ ghi log).
@@ -307,15 +316,15 @@ class StopBreachService:
 
         if signal is None:
             # Detector không được inject hoặc AI fail → không tự ý invalidate
-            return StopBreachOutcome(action="ai_failed", **base)  # type: ignore[arg-type]  # mypy-baseline M3
+            return replace(base, action="ai_failed")
 
         if signal.verdict != "CONFIRMED" or (signal.confidence or 0) < self._min_confidence:
-            return StopBreachOutcome(
+            return replace(
+                base,
                 action="ai_not_confirmed",
                 ai_verdict=signal.verdict,
                 ai_confidence=signal.confidence,
                 ai_action=signal.action,
-                **base,  # type: ignore[arg-type]  # mypy-baseline M3
             )
 
         # CONFIRMED + đủ confidence → invalidate qua cùng path với thủ công
@@ -331,12 +340,12 @@ class StopBreachService:
         )
         await self._emit_closed(thesis)
 
-        return StopBreachOutcome(
+        return replace(
+            base,
             action="invalidated",
             ai_verdict=signal.verdict,
             ai_confidence=signal.confidence,
             ai_action=signal.action,
-            **base,  # type: ignore[arg-type]  # mypy-baseline M3
         )
 
     async def _emit_closed(self, thesis: Thesis) -> None:

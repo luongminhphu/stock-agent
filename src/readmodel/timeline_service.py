@@ -8,6 +8,7 @@ Read-only. No writes. No AI calls.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from datetime import timedelta
 from typing import Any
 
@@ -318,7 +319,7 @@ class ThesisTimelineService:
             breakdown = _parse_breakdown(snap.score_breakdown)
 
             nearest = _nearest_prior_review(
-                reviews,  # type: ignore[arg-type]  # mypy-baseline M3
+                reviews,
                 snap.snapshotted_at,
                 lookahead_secs=_NEAREST_REVIEW_LOOKAHEAD_SECS,
             )
@@ -442,7 +443,7 @@ def _truncate(text: str | None, max_chars: int) -> str | None:
 
 
 def _nearest_prior_review(
-    reviews: list,  # type: ignore[type-arg]
+    reviews: Sequence[Any],
     snapshot_ts: Any,
     lookahead_secs: int = 14400,
 ) -> Any | None:

@@ -671,14 +671,15 @@ def _wire_feedback_loop_monitor(bot: commands.Bot) -> None:
         return
 
     channel = bot.get_channel(int(channel_id))
-    if channel is None:
+    if not isinstance(channel, discord.TextChannel):
         logger.warning(
             "bot.feedback_loop_monitor.channel_not_found",
             channel_id=channel_id,
+            channel_type=type(channel).__name__ if channel is not None else None,
         )
         return
 
-    get_feedback_monitor().set_alert_channel(channel)  # type: ignore[arg-type]  # mypy-baseline M3
+    get_feedback_monitor().set_alert_channel(channel)
     logger.info("bot.feedback_loop_monitor.wired", channel_id=channel_id)
 
 

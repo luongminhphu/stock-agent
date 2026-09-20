@@ -53,6 +53,36 @@ TRIGGER_SOURCES = Literal[
     "manual",  # dev trigger / testing
 ]
 
+# Named aliases (Wave F6) — engine/readmodel gõ kiểu helper thay vì trả str thô.
+PriorityActionType = Literal[
+    "REVIEW_THESIS",
+    "CHECK_STOP_LOSS",
+    "CONSIDER_EXIT",
+    "CONSIDER_ENTRY",
+    "MONITOR",
+    "NO_ACTION",
+]
+PriorityUrgency = Literal["immediate", "today", "this_week"]
+RiskFlagType = Literal[
+    "THESIS_INVALIDATED",
+    "STOP_LOSS_BREACH",
+    "CONCENTRATION_RISK",
+    "SECTOR_ROTATION_ADVERSE",
+    "VOLUME_ANOMALY",
+    "PATTERN_BIAS_WARNING",  # từ replay_agent / memory
+    "MARKET_TREND_REVERSAL",
+]
+RiskSeverity = Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+TopVerdict = Literal[
+    "BUY_SIGNAL",
+    "SELL_SIGNAL",
+    "HOLD",
+    "REVIEW_THESIS",
+    "RISK_ALERT",
+    "NO_ACTION",
+]
+VerdictConviction = Literal["high", "medium", "low"]
+
 AGENT_SLOT_STATUS = Literal[
     "ran",  # agent chạy và có output
     "skipped",  # không đủ signal để chạy
@@ -102,15 +132,8 @@ class PriorityAction(BaseModel):
 
     rank: int = Field(ge=1, le=10, description="Thứ tự ưu tiên, 1 = cao nhất.")
     ticker: str | None = Field(default=None)
-    action_type: Literal[
-        "REVIEW_THESIS",
-        "CHECK_STOP_LOSS",
-        "CONSIDER_EXIT",
-        "CONSIDER_ENTRY",
-        "MONITOR",
-        "NO_ACTION",
-    ]
-    urgency: Literal["immediate", "today", "this_week"]
+    action_type: PriorityActionType
+    urgency: PriorityUrgency
     instruction: str = Field(
         max_length=200,
         description=("Câu lệnh cụ thể. Bắt đầu bằng động từ. VD: 'Kiểm tra SL của VHM tại 44.5k'"),
@@ -127,17 +150,9 @@ class PriorityAction(BaseModel):
 class RiskFlag(BaseModel):
     """Cờ rủi ro đã được cross-validate giữa các agents."""
 
-    flag_type: Literal[
-        "THESIS_INVALIDATED",
-        "STOP_LOSS_BREACH",
-        "CONCENTRATION_RISK",
-        "SECTOR_ROTATION_ADVERSE",
-        "VOLUME_ANOMALY",
-        "PATTERN_BIAS_WARNING",  # từ replay_agent / memory
-        "MARKET_TREND_REVERSAL",
-    ]
+    flag_type: RiskFlagType
     ticker: str | None = None
-    severity: Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+    severity: RiskSeverity
     description: str = Field(max_length=200)
     confirmed_by: list[str] = Field(
         default_factory=list,
@@ -185,21 +200,14 @@ class IntelligenceReport(BaseModel):
     trigger_source: TRIGGER_SOURCES
 
     # --- Top-level verdict ---
-    top_verdict: Literal[
-        "BUY_SIGNAL",
-        "SELL_SIGNAL",
-        "HOLD",
-        "REVIEW_THESIS",
-        "RISK_ALERT",
-        "NO_ACTION",
-    ] = Field(
+    top_verdict: TopVerdict = Field(
         description=(
             "Verdict tổng hợp từ cross-agent synthesis. "
             "Không phải output của một agent đơn lẻ. "
             "engine.py tính dựa trên voting / urgency_score."
         ),
     )
-    top_verdict_conviction: Literal["high", "medium", "low"]
+    top_verdict_conviction: VerdictConviction
     overall_confidence: float = Field(ge=0.0, le=1.0, default=0.5)
 
     # --- Priority actions (render trực tiếp cho user) ---

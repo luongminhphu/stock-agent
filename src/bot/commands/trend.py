@@ -17,7 +17,13 @@ from discord import app_commands
 
 from src.ai.agents.trend_reasoning import TrendReasoningAgent
 from src.ai.client import AIError
-from src.ai.schemas.trend_prediction import TechnicalSignalBundle, TrendPrediction
+from src.ai.schemas.trend_prediction import (
+    TechnicalSignalBundle,
+    TrendDirection,
+    TrendHorizon,
+    TrendPrediction,
+    TrendVerdict,
+)
 from src.bot.commands.base import BaseCog
 from src.market.trend_engine import TrendEngine
 from src.platform.bootstrap import get_ohlcv_service, get_trend_reasoning_agent
@@ -100,18 +106,20 @@ class TrendCog(BaseCog):
 
 def _rule_based_prediction(bundle: TechnicalSignalBundle) -> TrendPrediction:
     c = bundle.composite
+    verdict: TrendVerdict
+    direction: TrendDirection
     if c >= 0.72:
-        verdict, direction = "STRONG_BUY", "UP"
+        verdict, direction = TrendVerdict.STRONG_BUY, TrendDirection.UP
     elif c >= 0.58:
-        verdict, direction = "BUY", "UP"
+        verdict, direction = TrendVerdict.BUY, TrendDirection.UP
     elif c >= 0.45:
-        verdict, direction = "HOLD", "SIDEWAYS"
+        verdict, direction = TrendVerdict.HOLD, TrendDirection.SIDEWAYS
     elif c >= 0.32:
-        verdict, direction = "WATCH", "SIDEWAYS"
+        verdict, direction = TrendVerdict.WATCH, TrendDirection.SIDEWAYS
     elif c >= 0.20:
-        verdict, direction = "REDUCE", "DOWN"
+        verdict, direction = TrendVerdict.REDUCE, TrendDirection.DOWN
     else:
-        verdict, direction = "STRONG_SELL", "DOWN"
+        verdict, direction = TrendVerdict.STRONG_SELL, TrendDirection.DOWN
 
     risks: list[str] = []
     if bundle.momentum.label == "BEARISH":
@@ -120,7 +128,10 @@ def _rule_based_prediction(bundle: TechnicalSignalBundle) -> TrendPrediction:
         risks.append("Volume sụt giảm")
     if bundle.structure.label == "BEARISH":
         risks.append("EMA20 dưới EMA50")
-    if bundle.volatility.label == "BULLISH" and verdict in ("REDUCE", "STRONG_SELL"):
+    if bundle.volatility.label == "BULLISH" and verdict in (
+        TrendVerdict.REDUCE,
+        TrendVerdict.STRONG_SELL,
+    ):
         risks.append("ATR mở rộng — rủi ro biến động cao")
 
     next_watch: list[str] = []
@@ -134,10 +145,10 @@ def _rule_based_prediction(bundle: TechnicalSignalBundle) -> TrendPrediction:
     confidence = min(0.85, abs(c - 0.5) * 2 * 0.85)
     return TrendPrediction(
         symbol=bundle.symbol,
-        verdict=verdict,  # type: ignore[arg-type]  # mypy-baseline M3
-        direction=direction,  # type: ignore[arg-type]  # mypy-baseline M3
+        verdict=verdict,
+        direction=direction,
         confidence=round(confidence, 2),
-        horizon="SHORT_TERM",  # type: ignore[arg-type]  # mypy-baseline M3
+        horizon=TrendHorizon.SHORT_TERM,
         risk_signals=risks[:5],
         next_watch=next_watch[:3],
         reasoning=f"Composite {c:.2f} · Regime {bundle.regime} · Rule-based fallback",

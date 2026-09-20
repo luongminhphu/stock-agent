@@ -548,7 +548,7 @@ class ScanService:
                 recent_news="N/A",
                 has_upcoming_earnings=False,
                 alert_note=(
-                    signal.triggered_alerts[0].note  # type: ignore[arg-type]  # mypy-baseline M3
+                    (signal.triggered_alerts[0].note or "")
                     if signal.triggered_alerts and hasattr(signal.triggered_alerts[0], "note")
                     else ""
                 ),

@@ -241,7 +241,7 @@ class ConvictionDriftDetector:
             .order_by(ThesisSnapshot.recorded_at.asc())
         )
         result = await self._session.execute(stmt)
-        return [float(row) for row in result.scalars().all()]  # type: ignore[arg-type]  # mypy-baseline M3
+        return [float(row) for row in result.scalars().all() if row is not None]
 
     async def _in_cooldown(self, thesis_id: int) -> bool:
         """Return True if thesis has a review within the last cooldown_hours.

@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
-from typing import Any, Required, TypedDict
+from typing import Any, Literal, Required, TypedDict
 
 from src.ai.client import AIClient, AIError
 from src.ai.prompts.thesis_judge import SPEC, build_user_prompt
@@ -90,7 +90,7 @@ class ThesisJudgeTrigger(TypedDict, total=False):
 def _derive_fallback_verdict(
     watchdog_verdict: str | None,
     signal_urgency: str | None,
-) -> tuple[ThesisJudgeVerdict, float, str]:
+) -> tuple[ThesisJudgeVerdict, float, Literal["hold", "reduce", "review", "exit_signal"]]:
     """Rule-based verdict when AI is unavailable.
 
     Issue L fix: normalise inputs to uppercase before comparison to handle
@@ -303,7 +303,7 @@ class ThesisJudgeAgent:
 
         try:
             result: ThesisJudgeOutput = await self._client.structured_call(
-                spec=SPEC,  # type: ignore[arg-type]  # mypy-baseline M3
+                spec=SPEC,
                 user_prompt=user_prompt,
             )
             # Stamp thesis_id on result for downstream consumers
@@ -537,7 +537,7 @@ class ThesisJudgeAgent:
                 if verdict in (ThesisJudgeVerdict.WEAKENING, ThesisJudgeVerdict.INVALIDATED)
                 else []
             ),
-            action=action,  # type: ignore[arg-type]  # mypy-baseline M3
+            action=action,
             reasoning=f"Rule-based fallback — AI unavailable. Derived from: "
             f"watchdog={watchdog_verdict}, urgency={signal_urgency}.",
             confidence=0.3,

@@ -194,7 +194,7 @@ async def create_thesis(
     We map each string → AddCatalystInput here at the route boundary so the
     service layer never has to deal with raw strings.
     """
-    catalyst_inputs: list[AddCatalystInput] = [
+    catalyst_inputs: list[AddCatalystInput | str] = [
         AddCatalystInput(description=desc) for desc in (body.catalysts or [])
     ]
 
@@ -203,14 +203,14 @@ async def create_thesis(
             user_id=user_id,
             ticker=body.ticker,
             title=body.title,
-            summary=body.summary,  # type: ignore[arg-type]  # mypy-baseline M3
+            summary=body.summary or "",
             direction=body.direction,
             entry_price=body.entry_price,
             target_price=body.target_price,
             stop_loss=body.stop_loss,
             time_horizon=body.time_horizon,
             assumptions=list(body.assumptions or []),
-            catalysts=catalyst_inputs,  # type: ignore[arg-type]  # mypy-baseline M3
+            catalysts=catalyst_inputs,
         ),
     )
 

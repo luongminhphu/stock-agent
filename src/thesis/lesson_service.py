@@ -212,7 +212,7 @@ class LessonService:
                 ticker=r.ticker,
                 decision_type=r.decision_type,
                 outcome_verdict=r.outcome_verdict,
-                key_lesson=r.key_lesson,  # type: ignore[arg-type]  # mypy-baseline M3
+                key_lesson=r.key_lesson or "",
                 pattern_detected=r.pattern_detected,
                 decision_at=r.decision_at.isoformat(),
             )
@@ -288,7 +288,9 @@ class LessonService:
                 DecisionLog.decision_at >= cutoff,
             )
         )
-        pattern_rows = (await self._session.execute(pattern_stmt)).scalars().all()
+        pattern_rows = [
+            tag for tag in (await self._session.execute(pattern_stmt)).scalars().all() if tag
+        ]
 
         if not pattern_rows:
             return None
@@ -304,7 +306,7 @@ class LessonService:
         total_sells = len((await self._session.execute(total_stmt)).scalars().all())
 
         # --- Step 3: Count per tag, filter by min_occurrences ---
-        tag_counts: Counter[str] = Counter(pattern_rows)  # type: ignore[arg-type]  # mypy-baseline M3
+        tag_counts: Counter[str] = Counter(pattern_rows)
         qualifying = {tag: count for tag, count in tag_counts.items() if count >= min_occurrences}
 
         if not qualifying:

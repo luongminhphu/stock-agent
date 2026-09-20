@@ -51,6 +51,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from src.thesis.models import Thesis
+
 from src.platform.logging import get_logger
 from src.thesis.price_snapshot import (
     STOP_BREACHED,
@@ -244,7 +246,7 @@ async def build_thesis_health_snapshots(
     ticker_context_service: Any | None = None,
     quote_service: Any | None = None,
     max_theses: int = MAX_THESES,
-    theses: list[Any] | None = None,
+    theses: list[Thesis] | None = None,
 ) -> list[ThesisHealthSnapshot]:
     """
     Build ThesisHealthSnapshot list for a user's active theses.
@@ -307,7 +309,7 @@ async def build_thesis_health_snapshots(
     return snapshots[:max_theses]
 
 
-async def _fetch_score(thesis: object) -> float:
+async def _fetch_score(thesis: Thesis) -> float:
     """Fetch health score for a thesis. Returns 0.5 (neutral) on failure.
 
     ScoringService.compute() is sync and returns 0.0–100.0.
@@ -318,7 +320,7 @@ async def _fetch_score(thesis: object) -> float:
         from src.thesis.scoring_service import ScoringService
 
         svc = ScoringService()
-        raw = svc.compute(thesis)  # type: ignore[arg-type]  # sync 0–100; mypy-baseline M3
+        raw = svc.compute(thesis)  # sync 0–100
         return round(raw / 100.0, 4)  # normalize → 0.0–1.0
     except Exception:
         return 0.5  # neutral fallback — don't penalise for missing score

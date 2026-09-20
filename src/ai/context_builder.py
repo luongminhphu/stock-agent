@@ -282,11 +282,13 @@ class ContextBuilder:
             return ""
 
     async def _fetch_recent_lessons(self, user_id: str | None) -> str:
+        if not user_id:
+            return ""
         try:
             from src.thesis.lesson_service import LessonService
 
             svc = LessonService(self._session)
-            lessons = await svc.get_recent(user_id=user_id, limit=3)  # type: ignore[arg-type]  # mypy-baseline M3
+            lessons = await svc.get_recent(user_id=user_id, limit=3)
             if not lessons:
                 return ""
             lines = []
@@ -310,11 +312,13 @@ class ContextBuilder:
           - Injects sector key_metrics from market.registry per ticker
             (deduped by sector string, capped at 5 distinct sectors).
         """
+        if not user_id:
+            return ""
         try:
             from src.market.registry import registry
             from src.portfolio import get_portfolio_context
 
-            port_ctx = await get_portfolio_context(self._session, user_id)  # type: ignore[arg-type]  # mypy-baseline M3
+            port_ctx = await get_portfolio_context(self._session, user_id)
             if not port_ctx.has_positions:
                 return ""
 

@@ -44,6 +44,14 @@ from src.ai.schemas import (
     PriorityAction,
     RiskFlag,
 )
+from src.ai.schemas.intelligence_report import (
+    TRIGGER_SOURCES,
+    PriorityActionType,
+    PriorityUrgency,
+    RiskFlagType,
+    RiskSeverity,
+    VerdictConviction,
+)
 from src.core.schemas import (
     EngineOutput,
     EngineVerdict,
@@ -135,7 +143,8 @@ class IntelligenceEngine:
     ) -> None:
         self.session = session
         self.user_id = user_id
-        self._ai_client = ai_client  # None → heuristic fallback only
+        # Duck-typed AIClient (Any); None → heuristic fallback only.
+        self._ai_client: Any = ai_client
 
     async def run_cycle(
         self,
@@ -317,7 +326,7 @@ class IntelligenceEngine:
 
         # 3. NextActionSuggester — always run if we have any signals
         if signals:
-            suggester = NextActionSuggester(self._ai_client)  # type: ignore[arg-type]  # mypy-baseline M3
+            suggester = NextActionSuggester(self._ai_client)
             contexts = self._build_next_action_contexts(snapshot, signals)
             tasks.append(
                 (
@@ -349,7 +358,7 @@ class IntelligenceEngine:
                 portfolio_context=snapshot.portfolio_context,
             )
             if opp_ctx is not None:
-                opp_agent = OpportunityScreenAgent(self._ai_client)  # type: ignore[arg-type]  # mypy-baseline M3
+                opp_agent = OpportunityScreenAgent(self._ai_client)
                 tasks.append(("opportunity_screen", opp_agent.run(opp_ctx)))
             else:
                 logger.debug(
@@ -377,7 +386,7 @@ class IntelligenceEngine:
         triggers = [
             {"thesis_id": t.thesis_id, "ticker": t.ticker} for t in snapshot.thesis_due_review[:5]
         ]
-        outputs = await ThesisJudgeAgent(self._ai_client).run_batch(  # type: ignore[arg-type]  # mypy-baseline M3
+        outputs = await ThesisJudgeAgent(self._ai_client).run_batch(
             triggers,  # type: ignore[arg-type]
             session=self.session,
             user_id=self.user_id,
@@ -391,7 +400,7 @@ class IntelligenceEngine:
         """ThesisInvalidationDetector.detect per thesis quá hạn → InvalidationBatchOutput."""
         from src.ai.agents.invalidation_detector import ThesisInvalidationDetector
 
-        detector = ThesisInvalidationDetector(self._ai_client)  # type: ignore[arg-type]  # mypy-baseline M3
+        detector = ThesisInvalidationDetector(self._ai_client)
         signals_out = []
         for ref in overdue[:3]:
             sig = await detector.detect(
@@ -443,7 +452,7 @@ class IntelligenceEngine:
             portfolio_note=note,
             portfolio_date=snapshot.captured_at.strftime("%Y-%m-%d"),
         )
-        return await PortfolioRiskNarratorAgent(self._ai_client).narrate(ctx)  # type: ignore[arg-type]  # mypy-baseline M3
+        return await PortfolioRiskNarratorAgent(self._ai_client).narrate(ctx)
 
     def _build_next_action_contexts(
         self,
@@ -556,9 +565,9 @@ class IntelligenceEngine:
 
         return IntelligenceReport(
             user_id=self.user_id,
-            trigger_source=self._normalize_trigger_source(trigger_source),  # type: ignore[arg-type]  # mypy-baseline M3
-            top_verdict=top_verdict,  # type: ignore[arg-type]  # mypy-baseline M3
-            top_verdict_conviction=self._confidence_to_conviction(overall_confidence),  # type: ignore[arg-type]  # mypy-baseline M3
+            trigger_source=self._normalize_trigger_source(trigger_source),
+            top_verdict=top_verdict,
+            top_verdict_conviction=self._confidence_to_conviction(overall_confidence),
             overall_confidence=overall_confidence,
             priority_actions=priority_actions[:5],
             risk_flags=risk_flags[:10],
@@ -572,9 +581,9 @@ class IntelligenceEngine:
         self,
         heuristic_verdict: EngineVerdict,
         agent_results: dict[str, Any],
-    ) -> str:
+    ) -> VerdictType:
         """Collect verdict signals from all agents; highest priority wins."""
-        candidates: list[str] = [heuristic_verdict.verdict]
+        candidates: list[VerdictType] = [heuristic_verdict.verdict]
 
         # ThesisJudge verdict → map to engine verdict
         judge_output = agent_results.get("thesis_judge")
@@ -596,8 +605,8 @@ class IntelligenceEngine:
         # Pick highest priority
         return max(candidates, key=lambda v: _VERDICT_PRIORITY.get(v, 0))
 
-    def _map_judge_verdict(self, raw: str) -> str | None:
-        mapping = {
+    def _map_judge_verdict(self, raw: str) -> VerdictType | None:
+        mapping: dict[str, VerdictType] = {
             "WEAKENING": "REVIEW_THESIS",
             "INVALIDATED": "RISK_ALERT",
             "CONFIRMED_INVALID": "RISK_ALERT",
@@ -817,7 +826,7 @@ class IntelligenceEngine:
             :5
         ]
         next_watch = [s.description for s in signals if s.source in ("thesis", "market")][:5]
-        sources = list({s.source for s in signals})
+        sources: list[str] = sorted({str(s.source) for s in signals})
 
         summary = " | ".join(f"{s.source}:{s.urgency_score:.2f}" for s in signals[:4])
 
@@ -829,7 +838,7 @@ class IntelligenceEngine:
             next_watch_items=next_watch,
             action=self._derive_action(verdict_type, snap),
             reasoning_summary=summary,
-            sources=sources,  # type: ignore[arg-type]  # mypy-baseline M3
+            sources=sources,
             generated_at=datetime.now(UTC),
         )
 
@@ -854,9 +863,9 @@ class IntelligenceEngine:
 
         return IntelligenceReport(
             user_id=self.user_id,
-            trigger_source=self._normalize_trigger_source(trigger_source),  # type: ignore[arg-type]  # mypy-baseline M3
+            trigger_source=self._normalize_trigger_source(trigger_source),
             top_verdict=verdict.verdict,
-            top_verdict_conviction=self._confidence_to_conviction(verdict.confidence),  # type: ignore[arg-type]  # mypy-baseline M3
+            top_verdict_conviction=self._confidence_to_conviction(verdict.confidence),
             overall_confidence=verdict.confidence,
             priority_actions=priority_actions,
             risk_flags=risk_flags,
@@ -880,14 +889,14 @@ class IntelligenceEngine:
                 )
             ]
 
-        action_type_map = {
+        action_type_map: dict[str, PriorityActionType] = {
             "RISK_ALERT": "CHECK_STOP_LOSS",
             "REVIEW_THESIS": "REVIEW_THESIS",
             "BUY_SIGNAL": "CONSIDER_ENTRY",
             "SELL_SIGNAL": "CONSIDER_EXIT",
             "HOLD": "MONITOR",
         }
-        urgency_map = {
+        urgency_map: dict[str, PriorityUrgency] = {
             "RISK_ALERT": "immediate",
             "REVIEW_THESIS": "today",
             "BUY_SIGNAL": "today",
@@ -898,8 +907,8 @@ class IntelligenceEngine:
             PriorityAction(
                 rank=1,
                 ticker=None,
-                action_type=action_type_map.get(verdict.verdict, "MONITOR"),  # type: ignore[arg-type]  # mypy-baseline M3
-                urgency=urgency_map.get(verdict.verdict, "this_week"),  # type: ignore[arg-type]  # mypy-baseline M3
+                action_type=action_type_map.get(verdict.verdict, "MONITOR"),
+                urgency=urgency_map.get(verdict.verdict, "this_week"),
                 instruction=verdict.action,
                 source_agent="heuristic_engine",
                 reasoning=verdict.reasoning_summary[:150],
@@ -915,9 +924,9 @@ class IntelligenceEngine:
                 continue
             flags.append(
                 RiskFlag(
-                    flag_type=flag_type,  # type: ignore[arg-type]  # mypy-baseline M3
+                    flag_type=flag_type,
                     ticker=None,
-                    severity=severity,  # type: ignore[arg-type]  # mypy-baseline M3
+                    severity=severity,
                     description=signal.description[:200],
                     confirmed_by=[f"signal:{signal.source}"],
                     is_new=True,
@@ -954,8 +963,8 @@ class IntelligenceEngine:
     # Shared helpers
     # ------------------------------------------------------------------
 
-    def _normalize_trigger_source(self, trigger_source: str) -> str:
-        mapping = {
+    def _normalize_trigger_source(self, trigger_source: str) -> TRIGGER_SOURCES:
+        mapping: dict[str, TRIGGER_SOURCES] = {
             "scheduler": "scheduler_morning",
             "scheduler_morning": "scheduler_morning",
             "scheduler_eod": "scheduler_eod",
@@ -968,7 +977,7 @@ class IntelligenceEngine:
         }
         return mapping.get(trigger_source or "manual", "manual")
 
-    def _confidence_to_conviction(self, confidence: float) -> str:
+    def _confidence_to_conviction(self, confidence: float) -> VerdictConviction:
         if confidence >= 0.8:
             return "high"
         if confidence >= 0.55:
@@ -983,7 +992,7 @@ class IntelligenceEngine:
             return 240
         return 60
 
-    def _urgency_to_severity(self, urgency_score: float) -> str:
+    def _urgency_to_severity(self, urgency_score: float) -> RiskSeverity:
         if urgency_score >= 0.85:
             return "CRITICAL"
         if urgency_score >= 0.65:
@@ -992,7 +1001,7 @@ class IntelligenceEngine:
             return "MEDIUM"
         return "LOW"
 
-    def _signal_to_flag_type(self, signal: RankedSignal) -> str | None:
+    def _signal_to_flag_type(self, signal: RankedSignal) -> RiskFlagType | None:
         description = signal.description.lower()
         if signal.source == "portfolio":
             if "breach" in description:

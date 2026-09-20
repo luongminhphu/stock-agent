@@ -226,9 +226,10 @@ class GlobalRiskStore:
         for row in rows:
             user_id = row["user_id"]
             dummy_verdict = _DummyVerdict(row["flagged"])
+            updated_at = row.get("updated_at")
             self._entries[user_id] = _RiskEntry(
                 verdict=dummy_verdict,
-                updated_at=row.get("updated_at"),  # type: ignore[arg-type]  # mypy-baseline M3
+                updated_at=updated_at if isinstance(updated_at, datetime) else datetime.now(UTC),
             )
         return len(rows)
 

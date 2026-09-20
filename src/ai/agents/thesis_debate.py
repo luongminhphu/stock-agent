@@ -167,7 +167,7 @@ class ThesisDebateAgent:
 
         try:
             result: DebateOutput = await self._client.structured_call(
-                spec=SPEC,  # type: ignore[arg-type]  # mypy-baseline M3
+                spec=SPEC,
                 user_prompt=user_prompt,
             )
 

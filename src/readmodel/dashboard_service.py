@@ -632,7 +632,7 @@ class DashboardService:
                     stmt = stmt.where(SignalEvent.ticker == ticker.upper())
 
                 rows = (await self._session.execute(stmt)).scalars().all()
-                result = []
+                result: list[dict[str, Any]] = []
                 for r in rows:
                     try:
                         metadata = json.loads(r.metadata_json) if r.metadata_json else None
@@ -727,8 +727,8 @@ class DashboardService:
                 result = [
                     agg
                     for agg in result
-                    if agg["last_seen"] is not None
-                    and datetime.fromisoformat(agg["last_seen"]) >= stale_cutoff  # type: ignore[arg-type]  # mypy-baseline M3
+                    if isinstance(agg["last_seen"], str)
+                    and datetime.fromisoformat(agg["last_seen"]) >= stale_cutoff
                 ]
             # ------------------------------------------------------
 

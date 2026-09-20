@@ -17,7 +17,10 @@ Boot: call EngineFeedbackListener().register() in platform bootstrap.
 
 from __future__ import annotations
 
+from typing import cast, get_args
+
 from src.core.feedback import FeedbackStore
+from src.core.schemas import FeedbackOutcome
 from src.platform.event_bus import EventBus, get_event_bus
 from src.platform.events import EngineFeedbackSubmittedEvent
 from src.platform.logging import get_logger
@@ -42,12 +45,22 @@ class EngineFeedbackListener:
             outcome=event.outcome,
             user_id=event.user_id,
         )
+        # Event mang str tự do; FeedbackStore chỉ nhận FeedbackOutcome → fallback not_acted.
+        outcome: FeedbackOutcome = (
+            cast(FeedbackOutcome, event.outcome)
+            if event.outcome in get_args(FeedbackOutcome)
+            else "not_acted"
+        )
+        if outcome != event.outcome:
+            logger.warning(
+                "feedback_listener.unknown_outcome", outcome=event.outcome, fallback=outcome
+            )
         try:
             await FeedbackStore.record(
                 verdict_event_id=event.verdict_event_id,
                 user_id=event.user_id,
                 verdict=event.verdict,
-                outcome=event.outcome,  # type: ignore[arg-type]  # mypy-baseline M3
+                outcome=outcome,
                 trigger_source=event.trigger_source,
                 user_note=event.user_note or None,
             )

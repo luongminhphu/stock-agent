@@ -7,7 +7,7 @@ Provides reusable Depends() callables for all routes.
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -204,8 +204,8 @@ async def get_review_service(
 
 async def get_briefing_service(
     session: AsyncSession = Depends(get_db),
-    quote_svc: object = Depends(get_quote_service),
-    briefing_agent: object = Depends(get_briefing_agent),
+    quote_svc: Any = Depends(get_quote_service),
+    briefing_agent: Any = Depends(get_briefing_agent),
 ) -> BriefingService:  # type: ignore[name-defined]  # noqa: F821
     from src.briefing.service import BriefingService
     from src.watchlist.service import WatchlistService
@@ -214,7 +214,7 @@ async def get_briefing_service(
     return BriefingService(
         watchlist_service=watchlist_service,
         quote_service=quote_svc,
-        briefing_agent=briefing_agent,  # type: ignore[arg-type]  # mypy-baseline M3
+        briefing_agent=briefing_agent,
         session=session,
     )
 

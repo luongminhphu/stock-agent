@@ -491,7 +491,7 @@ class DecisionService:
 
         ctx = ReplayContext(
             decision_id=row.id,
-            thesis_id=row.thesis_id,  # type: ignore[arg-type]  # mypy-baseline M3
+            thesis_id=row.thesis_id,
             ticker=row.ticker,
             decision_type=row.decision_type,
             decision_at=row.decision_at.isoformat(),

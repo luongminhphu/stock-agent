@@ -20,7 +20,7 @@ from src.ai.schemas import ReplayOutput
 @dataclass
 class ReplayContext:
     decision_id: int
-    thesis_id: int
+    thesis_id: int | None  # None: PRETRADE_ADVICE chưa gắn thesis
     ticker: str
     decision_type: str  # BUY | SELL | HOLD | ADD | REDUCE
     decision_at: str

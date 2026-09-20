@@ -336,10 +336,19 @@ class SpecLike(Protocol):
     """Structural contract cho structured_call — AISpec (client) và PromptSpec
     (src/ai/prompts/_spec) đều thoả mãn; tránh ép agent import 1 trong 2."""
 
-    system_prompt: str
-    output_schema: type[BaseModel]
-    temperature: float
-    max_tokens: int
+    # Read-only properties: frozen dataclass (AISpec) và PromptSpec đều thoả;
+    # khai báo attribute thường sẽ bị mypy coi là settable → frozen không khớp.
+    @property
+    def system_prompt(self) -> str: ...
+
+    @property
+    def output_schema(self) -> type[BaseModel]: ...
+
+    @property
+    def temperature(self) -> float: ...
+
+    @property
+    def max_tokens(self) -> int: ...
 
 
 @dataclass(frozen=True)

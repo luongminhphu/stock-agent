@@ -29,7 +29,7 @@ Error mapping:
 from __future__ import annotations
 
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -193,7 +193,7 @@ class TradeResponse(BaseModel):
 
 
 async def _refresh_snapshot_after_commit(
-    quote_svc: object,
+    quote_svc: Any,
     user_id: str,
     ticker: str,
     position_closed: bool = False,
@@ -216,7 +216,7 @@ async def _refresh_snapshot_after_commit(
 
     try:
         async with AsyncSessionLocal() as snap_session:
-            eod_svc = EodSnapshotService(session=snap_session, quote_service=quote_svc)  # type: ignore[arg-type]  # mypy-baseline M3
+            eod_svc = EodSnapshotService(session=snap_session, quote_service=quote_svc)
             await eod_svc.refresh_after_trade(
                 user_id,
                 ticker,
