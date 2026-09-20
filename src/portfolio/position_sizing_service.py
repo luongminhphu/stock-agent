@@ -349,14 +349,15 @@ class PositionSizingService:
         """
         try:
             from src.portfolio.repository import PortfolioRepository
-            from src.watchlist.repository import WatchlistRepository
+            from src.watchlist.repository import SignalEventRepository
             from src.watchlist.signal_engine import SignalType
 
             position = await PortfolioRepository(self._session).get_open_position(user_id, ticker)
             if position is None or position.avg_cost <= 0 or entry_price <= position.avg_cost:
                 return ""
 
-            has_breakout = await WatchlistRepository(self._session).has_recent_signal(
+            # has_recent_signal thuộc SignalEventRepository (bản cũ gọi nhầm WatchlistRepository)
+            has_breakout = await SignalEventRepository(self._session).has_recent_signal(
                 ticker, SignalType.BREAKOUT, hours=48, user_id=user_id
             )
             if has_breakout:

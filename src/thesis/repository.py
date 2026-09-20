@@ -375,7 +375,7 @@ class ThesisRepository:
         stmt = (
             select(ThesisSnapshot)
             .where(ThesisSnapshot.thesis_id == thesis_id)
-            .order_by(ThesisSnapshot.snapped_at.desc())
+            .order_by(ThesisSnapshot.snapshotted_at.desc())
             .limit(limit)
         )
         result = await self._session.execute(stmt)
@@ -397,6 +397,16 @@ class ThesisRepository:
         if rec is None:
             return None
         rec.status = status
+        await self._session.flush()
+        return rec
+
+    async def get_recommendation_by_id(self, recommendation_id: int) -> ReviewRecommendation | None:
+        stmt = select(ReviewRecommendation).where(ReviewRecommendation.id == recommendation_id)
+        return (await self._session.execute(stmt)).scalar_one_or_none()
+
+    async def save_recommendation(self, rec: ReviewRecommendation) -> ReviewRecommendation:
+        """Persist một ReviewRecommendation (accept/reject flow của ComponentService)."""
+        self._session.add(rec)
         await self._session.flush()
         return rec
 

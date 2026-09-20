@@ -37,7 +37,8 @@ from typing import TYPE_CHECKING, Any
 from src.platform.logging import get_logger
 
 if TYPE_CHECKING:
-    from src.ai.agents.trend_reasoning import TrendPrediction, TrendReasoningAgent
+    from src.ai.agents.trend_reasoning import TrendReasoningAgent
+    from src.ai.schemas.trend_prediction import TrendPrediction
     from src.market.trend_engine import TrendEngine
     from src.readmodel.trend_prediction_store import TrendPredictionStore
 
@@ -236,15 +237,12 @@ class TrendBatchScheduler:
         symbol does not block the rest. Failed symbols get a technical fallback
         derived from composite score.
         """
-        from src.ai.agents.trend_reasoning import _fallback_prediction
 
+        # TrendReasoningAgent.analyze(bundle, thesis_context) — không nhận session/user_id
+        # và tự fallback rule-based bên trong (bản cũ truyền kwargs sai + import
+        # _fallback_prediction không tồn tại → batch luôn TypeError/ImportError, mypy M2).
         async def _analyze_one(bundle: Any) -> TrendPrediction:
-            return await self._agent.analyze(
-                bundle=bundle,
-                thesis_context=thesis_context,
-                session=session,
-                user_id=user_id,
-            )
+            return await self._agent.analyze(bundle=bundle, thesis_context=thesis_context)
 
         results = await asyncio.gather(
             *[_analyze_one(b) for b in bundles],
@@ -253,13 +251,13 @@ class TrendBatchScheduler:
 
         predictions: list[TrendPrediction] = []
         for bundle, result in zip(bundles, results, strict=False):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 logger.warning(
                     "trend_batch_scheduler.reasoning_failed",
                     symbol=bundle.symbol,
                     error=str(result),
                 )
-                predictions.append(_fallback_prediction(bundle.symbol, bundle.composite))
+                predictions.append(self._agent._rule_based_fallback(bundle))
             else:
                 predictions.append(result)
 

@@ -135,7 +135,7 @@ class SystemSnapshotBuilder:
     async def _fetch_alerts(self) -> list[WatchlistAlert]:
         """Alerts đã trigger, chưa được dismiss, và ticker chưa bị snooze."""
         try:
-            from src.watchlist.models import Alert
+            from src.watchlist.models import Alert, AlertStatus
 
             rows = (
                 (
@@ -144,7 +144,9 @@ class SystemSnapshotBuilder:
                         .where(
                             Alert.user_id == self.user_id,
                             Alert.triggered_at.isnot(None),
-                            Alert.dismissed_at.is_(None),
+                            # Alert không có dismissed_at — trạng thái nằm ở status enum.
+                            # Bản cũ raise AttributeError → alerts_flat luôn rỗng (mypy M2).
+                            Alert.status == AlertStatus.TRIGGERED,
                         )
                         .order_by(Alert.triggered_at.desc())
                         .limit(20)
@@ -182,7 +184,7 @@ class SystemSnapshotBuilder:
             return [
                 WatchlistAlert(
                     ticker=r.ticker,
-                    alert_type=r.alert_type,
+                    alert_type=str(getattr(r.condition_type, "value", r.condition_type)),
                     triggered_at=r.triggered_at,
                     note=getattr(r, "note", None),
                 )
@@ -215,9 +217,9 @@ class SystemSnapshotBuilder:
             for t in theses:
                 last_review = (
                     await self.session.execute(
-                        select(ThesisReview.created_at)
+                        select(ThesisReview.reviewed_at)
                         .where(ThesisReview.thesis_id == t.id)
-                        .order_by(ThesisReview.created_at.desc())
+                        .order_by(ThesisReview.reviewed_at.desc())
                         .limit(1)
                     )
                 ).scalar_one_or_none()
@@ -286,25 +288,30 @@ class SystemSnapshotBuilder:
             if pf.total_unrealized_pnl is not None and pf.total_cost_basis > 0:
                 unrealized_pnl_pct = round(pf.total_unrealized_pnl / pf.total_cost_basis * 100, 2)
 
-            # risk_breach_count: separate query — stop_loss_breached not in public interface
+            # risk_breach_count: số vị thế mở gắn thesis đã INVALIDATED / WEAKENING.
+            # (Position không có cột stop_loss_breached — bản cũ raise rồi nuốt → luôn 0.
+            # Stop-loss breach thật do StopBreachService quét và hạ status thesis.)
             risk_breach = 0
             try:
-                from src.portfolio.models import Position
+                from src.thesis.models import Thesis, ThesisStatus
 
-                breached = (
-                    (
-                        await self.session.execute(
-                            select(Position).where(
-                                Position.user_id == self.user_id,
-                                Position.closed_at.is_(None),
-                                Position.stop_loss_breached.is_(True),
+                thesis_ids = [p.thesis_id for p in pf.open_positions if p.thesis_id is not None]
+                if thesis_ids:
+                    breached_ids = (
+                        (
+                            await self.session.execute(
+                                select(Thesis.id).where(
+                                    Thesis.id.in_(thesis_ids),
+                                    Thesis.status.in_(
+                                        [ThesisStatus.INVALIDATED, ThesisStatus.WEAKENING]
+                                    ),
+                                )
                             )
                         )
+                        .scalars()
+                        .all()
                     )
-                    .scalars()
-                    .all()
-                )
-                risk_breach = len(breached)
+                    risk_breach = len(set(breached_ids))
             except Exception:
                 risk_breach = 0
 

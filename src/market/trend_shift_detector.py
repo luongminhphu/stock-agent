@@ -45,7 +45,8 @@ from src.platform.events import TrendShiftEvent
 from src.platform.logging import get_logger
 
 if TYPE_CHECKING:
-    from src.market.trend_engine import TechnicalSignalBundle, TrendEngine
+    from src.ai.schemas.trend_prediction import TechnicalSignalBundle
+    from src.market.trend_engine import TrendEngine
     from src.market.trend_snapshot_store import TrendSnapshotStore
 
 logger = get_logger(__name__)

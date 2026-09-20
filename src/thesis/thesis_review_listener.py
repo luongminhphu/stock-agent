@@ -22,8 +22,8 @@ Bootstrap contract::
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncGenerator, Callable
-from contextlib import asynccontextmanager
+from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -68,7 +68,7 @@ def _verdict_to_invalidation_score(verdict: str, confidence: float) -> float:
     return round(raw * max(0.0, min(1.0, confidence)), 4)
 
 
-AsyncSessionFactory = Callable[[], AsyncGenerator[AsyncSession, None]]
+AsyncSessionFactory = Callable[[], AbstractAsyncContextManager[AsyncSession]]
 
 
 class ThesisReviewListener:

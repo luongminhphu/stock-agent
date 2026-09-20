@@ -120,7 +120,7 @@ def _build_sector_embed(
 
     embed = discord.Embed(
         title=f"{emoji} Sector Rotation — {result.market_regime}",
-        description=result.macro_summary,
+        description=result.summary or "—",
         color=color,
     )
 
@@ -130,24 +130,42 @@ def _build_sector_embed(
         embed.add_field(name="⬇️ Thoát vị thế", value=", ".join(result.top_rotate_out), inline=True)
 
     # Signals — nếu có watchlist, ưu tiên signals có tickers overlap
+    # Schema thật: SectorFlow(sector, flow, strength, rationale); ticker overlap nằm ở
+    # result.watchlist_crosscheck. Bản cũ đọc key_tickers/momentum_score/signal/macro_summary/
+    # key_risk/next_watch (không tồn tại) → /sector_rotation luôn AttributeError (mypy M2).
     signals = result.sector_signals
+    crosscheck_sectors: set[str] = set()
     if watchlist_filter:
-        filtered = [s for s in signals if any(t in s.key_tickers for t in watchlist_filter)]
+        for cc in result.watchlist_crosscheck:
+            if cc.ticker in watchlist_filter:
+                crosscheck_sectors.add(cc.sector)
+        filtered = [s for s in signals if s.sector in crosscheck_sectors]
         signals = filtered or signals  # fallback full nếu không match
 
     if signals:
         lines = []
         for s in signals[:5]:
-            bar = "█" * round(s.momentum_score * 5) + "░" * (5 - round(s.momentum_score * 5))
-            tickers_str = ", ".join(s.key_tickers[:3]) if s.key_tickers else "—"
-            lines.append(f"**{s.sector}** `{s.signal}` {bar} — {tickers_str}")
+            filled = round(s.strength * 5)
+            bar = "█" * filled + "░" * (5 - filled)
+            rationale = f" — {s.rationale[:60]}" if s.rationale else ""
+            lines.append(f"**{s.sector}** `{s.flow}` {bar}{rationale}")
         embed.add_field(name="📊 Tín hiệu", value="\n".join(lines), inline=False)
 
-    embed.add_field(name="⚠️ Rủi ro chính", value=result.key_risk, inline=False)
-    embed.add_field(name="👀 Cần theo dõi", value=result.next_watch, inline=False)
+    if result.watchlist_crosscheck:
+        cc_lines = [
+            f"**{cc.ticker}** ({cc.sector}) {'✅ thuận chiều' if cc.aligned else '⚠️ ngược chiều'}"
+            for cc in result.watchlist_crosscheck[:5]
+        ]
+        embed.add_field(name="👀 Watchlist", value="\n".join(cc_lines), inline=False)
 
-    conf_label = {"HIGH": "🟢 HIGH", "MEDIUM": "🟡 MEDIUM", "LOW": "🔴 LOW"}.get(
-        result.confidence, result.confidence
-    )
-    embed.set_footer(text=f"Confidence: {conf_label}  ·  stock-agent AI")
+    if result.key_risks:
+        embed.add_field(
+            name="⚠️ Rủi ro chính",
+            value="\n".join(f"• {r}" for r in result.key_risks[:3]),
+            inline=False,
+        )
+
+    conf_pct = round(result.confidence * 100)
+    conf_label = "🟢 HIGH" if conf_pct >= 70 else "🟡 MEDIUM" if conf_pct >= 40 else "🔴 LOW"
+    embed.set_footer(text=f"Confidence: {conf_label} ({conf_pct}%)  ·  stock-agent AI")
     return embed

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+from dataclasses import dataclass
 
 import discord
 
@@ -34,6 +35,44 @@ from src.platform.logging import get_logger
 logger = get_logger(__name__)
 
 _BATCH_WINDOW_SECONDS = 2
+
+
+_PRIORITY_TIER: dict[str, int] = {"CRITICAL": 1, "HIGH": 2, "MEDIUM": 3, "LOW": 4}
+
+
+@dataclass(frozen=True)
+class _EmbedAlert:
+    """Adapter: ProactiveWatchAlertFiredEvent → hình dạng mà proactive_watch_embeds cần.
+
+    Event mang condition_type/priority(str HIGH|MEDIUM|LOW)/label/note/occurred_at; embed
+    builder cần condition/priority(int 1-4)/details/triggered_at. Bản cũ đọc e.condition,
+    e.details, e.triggered_at (không tồn tại) → AttributeError mỗi lần alert bắn (mypy M2).
+    """
+
+    ticker: str
+    condition: str
+    priority: int
+    details: str
+    triggered_at: datetime.datetime
+    phase: str = ""
+
+
+def _to_embed_alert(e: ProactiveWatchAlertFiredEvent) -> _EmbedAlert:
+    parts: list[str] = []
+    if e.label:
+        parts.append(e.label)
+    if e.triggered_price is not None:
+        parts.append(f"Giá {e.triggered_price:,.2f} / ngưỡng {e.threshold:,.2f}")
+    if e.note:
+        parts.append(e.note)
+    return _EmbedAlert(
+        ticker=e.ticker,
+        condition=e.condition_type,
+        priority=_PRIORITY_TIER.get(str(e.priority or "").upper(), 3),
+        details=" · ".join(parts),
+        triggered_at=e.occurred_at,
+        phase=e.phase,
+    )
 
 
 class ProactiveWatchSubscriber:
@@ -97,17 +136,18 @@ class ProactiveWatchSubscriber:
 
         now_utc = datetime.datetime.now(tz=datetime.UTC)
         try:
-            if len(events) == 1:
-                e = events[0]
+            adapted = [_to_embed_alert(e) for e in events]
+            if len(adapted) == 1:
+                a = adapted[0]
                 embed = build_proactive_watch_embed(
-                    ticker=e.ticker,
-                    condition=e.condition,
-                    priority=e.priority,
-                    details=e.details,
-                    triggered_at=e.triggered_at,
+                    ticker=a.ticker,
+                    condition=a.condition,
+                    priority=a.priority,
+                    details=a.details,
+                    triggered_at=a.triggered_at,
                 )
             else:
-                embed = build_proactive_watch_batch_embed(events, now_utc)
+                embed = build_proactive_watch_batch_embed(adapted, now_utc)
 
             await channel.send(embed=embed)  # type: ignore[union-attr]
             logger.info(

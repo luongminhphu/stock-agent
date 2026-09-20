@@ -62,11 +62,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from src.ai.prompts.proactive_alert import (
-    SYSTEM_PROMPT,
-    ProactiveAlertOutput,
-    build_user_prompt,
-)
+from src.ai.prompts.proactive_alert import SYSTEM_PROMPT, build_user_prompt
+from src.ai.schemas import ProactiveAlertOutput
 from src.platform.event_bus import get_event_bus
 from src.platform.events import RecommendationReadyEvent, SignalDetectedEvent
 from src.platform.logging import get_logger

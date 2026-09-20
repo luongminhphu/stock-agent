@@ -92,7 +92,7 @@ class CacheSubscriber:
                     trigger="WatchlistScanCompletedEvent",
                 )
             else:
-                count = cache.invalidate_all("scan_latest")
+                count = cache.invalidate_namespace("scan_latest")
                 logger.debug(
                     "cache.invalidated_all",
                     namespace="scan_latest",
@@ -113,7 +113,7 @@ class CacheSubscriber:
                     trigger="BriefingReadyEvent",
                 )
             else:
-                count = cache.invalidate_all("brief_latest")
+                count = cache.invalidate_namespace("brief_latest")
                 logger.debug(
                     "cache.invalidated_all",
                     namespace="brief_latest",

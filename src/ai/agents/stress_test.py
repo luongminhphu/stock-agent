@@ -40,6 +40,7 @@ from pydantic import BaseModel, Field
 from src.ai.client import AIClient, AIError
 from src.ai.prompts.stress_test import SYSTEM_PROMPT as _SYSTEM_PROMPT_CANONICAL
 from src.ai.prompts.stress_test import build_user_prompt as _build_user_prompt
+from src.ai.schemas.stress_test import StressTestOutput as CanonicalOutput
 from src.platform.logging import get_logger
 
 if TYPE_CHECKING:
@@ -134,7 +135,7 @@ class StressTestAgent:
         macro_context: str = "",
         session: AsyncSession | None = None,
         user_id: str | None = None,
-    ) -> object:
+    ) -> CanonicalOutput:
         """Run adversarial stress-test and return canonical StressTestOutput.
 
         Uses SYSTEM_PROMPT + build_user_prompt() from src.ai.prompts.stress_test.
@@ -142,7 +143,6 @@ class StressTestAgent:
         output format — all required top-level fields are always present.
         Uses COMPLEX_MAX_TOKENS (8192) to prevent JSON truncation on complex theses.
         """
-        from src.ai.schemas import StressTestOutput as CanonicalOutput
 
         investor_profile = await self._build_investor_profile(session, user_id)
 
@@ -206,8 +206,8 @@ class StressTestAgent:
         logger.info(
             "stress_test_agent.stress_test.complete",
             ticker=ticker,
-            verdict=str(result.verdict),
-            invalidation_prob=result.invalidation_probability,
+            overall_threat=str(result.overall_threat),
+            confidence=result.confidence,
         )
 
         await self._log_interaction_canonical(

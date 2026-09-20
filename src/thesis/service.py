@@ -99,6 +99,7 @@ class ThesisService:
     """
 
     def __init__(self, session: AsyncSession) -> None:
+        self._session = session  # dùng bởi list_health_snapshots (bản cũ thiếu → AttributeError)
         self._repo = ThesisRepository(session)
         self._components = ComponentService(session)
 

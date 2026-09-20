@@ -1033,7 +1033,7 @@ class ReminderScheduler:
             return
 
         try:
-            from src.watchlist.models import ReminderFrequency
+            from src.watchlist import ReminderFrequency
             from src.watchlist.reminder_service import ReminderService
 
             # mypy M2: trước đây gọi svc.get_due_reminders(...) — method không tồn tại

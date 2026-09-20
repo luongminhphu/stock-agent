@@ -133,10 +133,13 @@ class AgendaService:
 
             last_reviewed_days_ago = None
             if getattr(t, "reviews", None):
-                valid_reviews = [r for r in t.reviews if getattr(r, "created_at", None) is not None]
+                # ThesisReview dùng reviewed_at (không có created_at) — bản cũ luôn ra None
+                valid_reviews = [
+                    r for r in t.reviews if getattr(r, "reviewed_at", None) is not None
+                ]
                 if valid_reviews:
-                    latest_review = max(valid_reviews, key=lambda r: r.created_at)
-                    last_reviewed_days_ago = (today - latest_review.created_at.date()).days
+                    latest_review = max(valid_reviews, key=lambda r: r.reviewed_at)
+                    last_reviewed_days_ago = (today - latest_review.reviewed_at.date()).days
 
             next_check = self._find_next_assumption_check(t, today)
 

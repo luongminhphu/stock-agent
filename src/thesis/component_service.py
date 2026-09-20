@@ -335,11 +335,11 @@ class ComponentService:
         from src.thesis.models import AssumptionStatus, CatalystStatus
 
         if rec.target_type == "assumption":
-            target = await self._repo.get_assumption_by_id(rec.target_id, thesis_id)
-            if target is not None:
+            assumption = await self._repo.get_assumption_by_id(rec.target_id, thesis_id)
+            if assumption is not None:
                 try:
-                    target.status = AssumptionStatus(rec.recommended_status.lower())
-                    await self._repo.save_assumption(target)
+                    assumption.status = AssumptionStatus(rec.recommended_status.lower())
+                    await self._repo.save_assumption(assumption)
                 except ValueError:
                     logger.warning(
                         "recommendation.apply.invalid_assumption_status",
@@ -347,22 +347,22 @@ class ComponentService:
                         recommendation_id=recommendation_id,
                     )
         elif rec.target_type == "catalyst":
-            target = await self._repo.get_catalyst_by_id(rec.target_id, thesis_id)
-            if target is not None:
+            catalyst = await self._repo.get_catalyst_by_id(rec.target_id, thesis_id)
+            if catalyst is not None:
                 try:
-                    target.status = CatalystStatus(rec.recommended_status.lower())
+                    catalyst.status = CatalystStatus(rec.recommended_status.lower())
                     # Parse updated_timeline → expected_date khi AI suggest DELAYED
                     if rec.updated_timeline:
                         parsed_date = parse_timeline_to_date(rec.updated_timeline)
                         if parsed_date is not None:
-                            target.expected_date = parsed_date
+                            catalyst.expected_date = parsed_date
                             logger.info(
                                 "recommendation.apply.catalyst_date_updated",
                                 catalyst_id=rec.target_id,
                                 updated_timeline=rec.updated_timeline,
                                 parsed_date=parsed_date.isoformat(),
                             )
-                    await self._repo.save_catalyst(target)
+                    await self._repo.save_catalyst(catalyst)
                 except ValueError:
                     logger.warning(
                         "recommendation.apply.invalid_catalyst_status",

@@ -119,6 +119,50 @@ class ReviewService:
     # Public API
     # ------------------------------------------------------------------
 
+    async def apply_bulk_recommendations(
+        self,
+        *,
+        thesis_id: int,
+        user_id: str,
+        applied_recommendation_ids: list[int],
+        verdict: str | None = None,
+        ai_confidence: float | None = None,
+    ) -> int:
+        """Áp dụng (accept) nhiều recommendation cho một thesis — dùng bởi
+        POST /thesis/{id}/ai-review/apply. Trả về số recommendation đã áp dụng.
+
+        Ownership check ở đây (thesis segment), API route chỉ là adapter. Bản cũ API gọi
+        method này nhưng chưa tồn tại → endpoint luôn 500 (mypy M2).
+        """
+        from src.thesis.component_service import ComponentService
+        from src.thesis.dtos import RecommendationNotFoundError
+
+        thesis = await self._repo.get_by_id(thesis_id)
+        if thesis is None or thesis.user_id != user_id:
+            raise ThesisNotFoundError(thesis_id)
+
+        components = ComponentService(self._session)
+        applied = 0
+        for rec_id in applied_recommendation_ids:
+            try:
+                await components.apply_recommendation(thesis_id, rec_id, accept=True)
+                applied += 1
+            except RecommendationNotFoundError:
+                logger.warning(
+                    "review_service.apply_bulk.missing_recommendation",
+                    thesis_id=thesis_id,
+                    recommendation_id=rec_id,
+                )
+        logger.info(
+            "review_service.apply_bulk.done",
+            thesis_id=thesis_id,
+            applied=applied,
+            requested=len(applied_recommendation_ids),
+            verdict=verdict,
+            ai_confidence=ai_confidence,
+        )
+        return applied
+
     async def review_thesis(
         self,
         thesis_id: int,
@@ -655,31 +699,31 @@ class ReviewService:
                 )
             )
 
-        for rec in output.catalyst_recommendations:
-            target_id = rec.catalyst_id
-            target = catalysts_by_id.get(target_id)
-            if target:
+        for crec in output.catalyst_recommendations:
+            target_id = crec.catalyst_id
+            cat = catalysts_by_id.get(target_id)
+            if cat:
                 try:
-                    new_status = CatalystStatus(rec.status.lower())
-                    target.status = new_status
-                    await self._repo.save_catalyst(target)
+                    new_status = CatalystStatus(crec.status.lower())
+                    cat.status = new_status
+                    await self._repo.save_catalyst(cat)
 
                     # W5A: log cancellation event to episodic memory so the
                     # agent knows this catalyst failed and why.
-                    if rec.status.lower() in _CANCELLED_CATALYST_STATUSES:
+                    if crec.status.lower() in _CANCELLED_CATALYST_STATUSES:
                         await self._log_invalidation_event(
                             user_id=user_id,
                             ticker=thesis.ticker,
                             thesis_id=thesis.id,
                             agent_type="catalyst_cancelled",
-                            description=target.description,
-                            evidence=rec.notes or "",
+                            description=cat.description,
+                            evidence=crec.notes or "",
                             target_id=target_id,
                         )
                 except ValueError:
                     logger.warning(
                         "review_service.auto_apply.invalid_catalyst_status",
-                        recommended_status=rec.status,
+                        recommended_status=crec.status,
                         target_id=target_id,
                         review_id=review_id,
                     )
@@ -694,9 +738,9 @@ class ReviewService:
                     review_id=review_id,
                     target_type="catalyst",
                     target_id=target_id,
-                    target_description=rec.updated_timeline or rec.notes,
-                    recommended_status=rec.status,
-                    reason=rec.notes,
+                    target_description=crec.updated_timeline or crec.notes,
+                    recommended_status=crec.status,
+                    reason=crec.notes,
                     status=RecommendationStatus.ACCEPTED,
                     acted_at=now,
                 )

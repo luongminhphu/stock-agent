@@ -120,6 +120,13 @@ class DashboardTTLCache:
         for k in keys_to_drop:
             del self._store[k]
 
+    def invalidate_namespace(self, namespace: str) -> int:
+        """Evict mọi entry của một namespace (mọi user). Trả về số entry đã xoá."""
+        keys_to_drop = [k for k in self._store if k[0] == namespace]
+        for k in keys_to_drop:
+            del self._store[k]
+        return len(keys_to_drop)
+
     def invalidate_all(self) -> None:
         """Nuclear option — clear entire cache."""
         self._store.clear()

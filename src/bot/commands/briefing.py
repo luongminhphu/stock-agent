@@ -111,7 +111,7 @@ class BriefFeedbackView(discord.ui.View):
         label = _OUTCOME_LABEL.get(outcome, outcome)
         await interaction.response.send_message(f"Ghi nh\u1eadn: **{label}**", ephemeral=True)
         for child in self.children:
-            if isinstance(child, discord.ui.Button[Any]):
+            if isinstance(child, discord.ui.Button):
                 child.disabled = True
         await interaction.message.edit(view=self)  # type: ignore[union-attr]
         self.stop()
@@ -190,7 +190,10 @@ class BriefingCog(BaseCog):
         # P1.5: prepend cached Daily Agenda block to first embed when available
         # so manual /morning_brief and scheduler-based Morning Brief share
         # the same visual anchor around DECIDE/WATCH/DEFER.
-        agenda_block = get_agenda(user_id)
+        # get_agenda trả CachedAgenda (summary + buckets), không phải str — bản cũ nhét
+        # object vào f-string → embed hiện repr dataclass thay vì agenda (mypy M2)
+        cached_agenda = get_agenda(user_id)
+        agenda_block = cached_agenda.summary if cached_agenda else None
         if agenda_block and embeds:
             first = embeds[0]
             original_desc = first.description or ""

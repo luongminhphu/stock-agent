@@ -189,7 +189,7 @@ class TodayLoopQueryService:
         # directly here for freshness (snapshot may be up to 300s old).
         # ————————————————————————————————————————————————————
         try:
-            from src.watchlist.models import Alert, WatchlistItem
+            from src.watchlist.models import Alert, AlertStatus, WatchlistItem
 
             today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -220,7 +220,7 @@ class TodayLoopQueryService:
                         .where(
                             Alert.user_id == user_id,
                             Alert.triggered_at >= today_start,
-                            Alert.dismissed_at.is_(None),
+                            Alert.status == AlertStatus.TRIGGERED,
                         )
                         .order_by(Alert.triggered_at.desc())
                         .limit(30)
@@ -233,7 +233,8 @@ class TodayLoopQueryService:
             for idx, row in enumerate(alert_rows):
                 if row.ticker.upper() in snoozed_tickers:
                     continue
-                alert_type = (row.alert_type or "").lower()
+                alert_type_raw = str(getattr(row.condition_type, "value", row.condition_type) or "")
+                alert_type = alert_type_raw.lower()
                 severity: SignalSeverity = (
                     "HIGH"
                     if any(k in alert_type for k in ("breach", "stop", "critical"))
@@ -251,7 +252,7 @@ class TodayLoopQueryService:
                         source="WATCHLIST_SCAN",
                         severity=severity,
                         created_at=triggered_at or now,
-                        headline=f"{row.ticker}: {row.alert_type or 'Alert triggered'}",
+                        headline=f"{row.ticker}: {alert_type_raw or 'Alert triggered'}",
                         details=getattr(row, "note", None),
                         action_hint="Review alert and update watchlist",
                         link_type="watchlist",
@@ -293,9 +294,9 @@ class TodayLoopQueryService:
         engine_status: dict[str, EngineStatus] = {}
         for task in self._SCHEDULER_TASKS:
             try:
-                stats = self._monitor.get_task_stats(task)
+                stats = self._monitor.get_status()[task]
                 engine_status[task.replace(".", "_")] = EngineStatus(
-                    last_run=stats.last_run,
+                    last_run=stats.last_success_at,
                     ok=stats.consecutive_failures == 0,
                     consecutive_failures=stats.consecutive_failures,
                 )

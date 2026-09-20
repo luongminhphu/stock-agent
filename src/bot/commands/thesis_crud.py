@@ -250,11 +250,13 @@ class ThesisCrudCog(BaseCog):
 
                     async def _fetch_prices() -> dict[str, float]:
                         try:
-                            from src.market.quote_service import QuoteService
+                            from src.platform.bootstrap import get_quote_service
 
-                            qs = QuoteService()
-                            quotes = await qs.get_quotes(tickers)
-                            return {q.ticker: q.close for q in quotes if q.close is not None}
+                            # API thật: get_bulk_quotes → Quote(ticker, price); bản cũ gọi
+                            # get_quotes/.close (không tồn tại) → giá luôn rỗng (mypy M2)
+                            qs = get_quote_service()
+                            quotes = await qs.get_bulk_quotes(tickers)
+                            return {q.ticker: q.price for q in quotes if q.price}
                         except Exception as exc:
                             logger.warning("thesis_aggregate.price_fetch_failed", error=str(exc))
                             return {}
@@ -264,11 +266,11 @@ class ThesisCrudCog(BaseCog):
                             from src.portfolio.service import PortfolioService
 
                             ps = PortfolioService(session)
-                            positions = await ps.get_positions(user_id=user_id)
+                            positions = await ps.list_open(user_id=user_id)
                             return {
-                                p.ticker: (p.quantity, p.avg_cost)
+                                p.ticker: (p.qty, p.avg_cost)
                                 for p in positions
-                                if p.quantity and p.quantity > 0
+                                if p.qty and p.qty > 0
                             }
                         except Exception as exc:
                             logger.warning("thesis_aggregate.position_fetch_failed", error=str(exc))

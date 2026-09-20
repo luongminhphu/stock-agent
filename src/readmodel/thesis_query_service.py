@@ -21,9 +21,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.platform.logging import get_logger
-from src.thesis.price_snapshot import PriceSnapshot
+from src.thesis.price_snapshot import NEAR_STOP_ATR, PriceSnapshot
 from src.thesis.scoring_service import ScoringService, score_tier
-from src.thesis.stop_breach_service import NEAR_STOP_ATR
 
 logger = get_logger(__name__)
 

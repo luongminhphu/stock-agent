@@ -105,7 +105,7 @@ def build_stress_test_embed(result: StressTestOutput) -> discord.Embed:
         for a in result.threatened_assumptions:
             emoji = _THREAT_EMOJI.get(a.threat_level, "⚪")
             lines.append(f"{emoji} **{a.threat_level}** — {a.assumption_text[:80]}")
-            lines.append(f"  ↳ _{a.evidence[:120]}_")
+            lines.append(f"  ↳ _{a.explanation[:120]}_")
             if a.probability_of_invalidation > 0:
                 lines.append(f"  📊 Xác suất invalidation: **{a.probability_of_invalidation:.0%}**")
         embed.add_field(

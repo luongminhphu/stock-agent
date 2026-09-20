@@ -71,8 +71,10 @@ class EvolutionScheduler:
 
     async def _run(self) -> None:
         """Core: run advisor → emit event if suggestions found."""
-        from src.ai.client import get_ai_client
         from src.core.evolution import SelfImprovementAdvisor
+        from src.platform.bootstrap import (
+            get_ai_client,  # bản cũ import từ src.ai.client (không có)
+        )
 
         logger.info("evolution_scheduler.run_start")
         try:

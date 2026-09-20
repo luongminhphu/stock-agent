@@ -333,7 +333,7 @@ class WatchlistCog(BaseCog):
         try:
             async with self.db_session() as session:
                 svc = WatchlistService(session)
-                alert = await svc.add_alert(
+                alert = await svc.create_alert(  # bản cũ gọi add_alert (không tồn tại) → /alert luôn lỗi
                     CreateAlertInput(
                         user_id=user_id,
                         ticker=ticker.upper(),
