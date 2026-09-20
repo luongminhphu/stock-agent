@@ -864,12 +864,18 @@ class ThesisWatchdogScheduler:
         self._monitor = monitor or get_monitor()
 
     def start(self) -> None:
+        if not getattr(settings, "thesis_watchdog_enabled", True):
+            logger.info(
+                "scheduler.thesis_watchdog.disabled", reason="thesis_watchdog_enabled=False"
+            )
+            return
         self._monitor.register_task("thesis.watchdog")
         self._watchdog_task.start()
         logger.info("scheduler.thesis_watchdog.started")
 
     def stop(self) -> None:
-        self._watchdog_task.cancel()
+        if self._watchdog_task.is_running():
+            self._watchdog_task.cancel()
         logger.info("scheduler.thesis_watchdog.stopped")
 
     @tasks.loop(time=_WATCHDOG_TIME)
@@ -882,6 +888,9 @@ class ThesisWatchdogScheduler:
     async def run_once(self, now_utc: datetime.datetime) -> None:
         """Một lượt chạy — tách khỏi tasks.loop để test được không cần Discord."""
         task_name = "thesis.watchdog"
+        if not getattr(settings, "thesis_watchdog_enabled", True):
+            logger.info("scheduler.thesis_watchdog.skipped", reason="thesis_watchdog_enabled=False")
+            return
         user_id = getattr(settings, "scheduler_user_id", None)
         if not user_id:
             logger.warning(

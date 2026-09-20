@@ -164,6 +164,28 @@ async def test_routes_urgent_to_alert_and_digest_to_morning(wired) -> None:
 
 
 @pytest.mark.anyio
+async def test_kill_switch_disables_run_and_start(wired, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Wave F4: thesis_watchdog_enabled=False → run_once bỏ qua, start() không đăng ký loop."""
+    monkeypatch.setattr(sched_mod.settings, "thesis_watchdog_enabled", False, raising=False)
+    loop = MagicMock()
+    monkeypatch.setattr(wired.scheduler, "_watchdog_task", loop)
+
+    await wired.scheduler.run_once(_NOW)
+    assert wired.state["ctor_kwargs"] is None
+    wired.monitor.record_success.assert_not_awaited()
+
+    wired.scheduler.start()
+    wired.monitor.register_task.assert_not_called()
+    loop.start.assert_not_called()
+
+
+def test_kill_switch_default_on() -> None:
+    from src.platform.config import Settings
+
+    assert Settings.model_fields["thesis_watchdog_enabled"].default is True
+
+
+@pytest.mark.anyio
 async def test_missing_user_id_skips(wired, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sched_mod.settings, "scheduler_user_id", None, raising=False)
     await wired.scheduler.run_once(_NOW)

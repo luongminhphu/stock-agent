@@ -76,6 +76,11 @@ class Settings(BaseSettings):
     auto_invalidate_min_confidence: float = 0.7  # CONFIRMED + confidence >= ngưỡng mới invalidate
     auto_invalidate_cooldown_hours: float = 24.0  # 1 lần scan breach/thesis/ngày
 
+    # Thesis watchdog (Wave D) — kill-switch (Wave F4)
+    # False = không đăng ký loop 08:25 ICT và run_once() bỏ qua ngay (chỉ log).
+    # Dùng khi AI quota/độ ổn định có vấn đề mà không cần redeploy code.
+    thesis_watchdog_enabled: bool = True
+
     # Alert auto-reactivation cooldown
     # Alerts with auto_reactivate=True will be reset to ACTIVE after this many hours
     # following their triggered_at timestamp. Set to 0 to disable.
