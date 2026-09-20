@@ -257,7 +257,7 @@ class TrendBatchScheduler:
                     symbol=bundle.symbol,
                     error=str(result),
                 )
-                predictions.append(self._agent._rule_based_fallback(bundle))
+                predictions.append(self._agent.fallback(bundle))
             else:
                 predictions.append(result)
 

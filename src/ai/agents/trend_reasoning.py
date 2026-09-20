@@ -158,6 +158,3 @@ class TrendReasoningAgent:
         logger.info("trend_reasoning_agent.fallback_used", symbol=bundle.symbol)
         prediction: TrendPrediction = rule_based_prediction(bundle)
         return prediction
-
-    # Backward-compat alias — không dùng cho code mới.
-    _rule_based_fallback = fallback
