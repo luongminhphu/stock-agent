@@ -9,16 +9,23 @@ from __future__ import annotations
 from httpx import ASGITransport, AsyncClient
 
 from src.market.adapters.mock import MockAdapter
-from src.market.quote_service import QuoteService
+from src.market.quote_service import QuoteService, TradingHoursGuard
+
+# Test chạy ngoài giờ giao dịch → guard phải bypass (như MARKET_FETCH_ALWAYS=true).
+_ALWAYS_OPEN = TradingHoursGuard(always=True)
+
+
+def _mock_quote_service(**adapter_kwargs) -> QuoteService:
+    return QuoteService(MockAdapter(**adapter_kwargs), guard=_ALWAYS_OPEN)
 
 
 def _make_app_with_mock_quote():
-    """Create a FastAPI app with QuoteService injected via bootstrap mock."""
+    """Create a FastAPI app with QuoteService injected via dependency override."""
     from src.api.app import create_app
     from src.api.deps import get_quote_service
 
     app = create_app()
-    mock_svc = QuoteService(MockAdapter())
+    mock_svc = _mock_quote_service()
     app.dependency_overrides[get_quote_service] = lambda: mock_svc
     return app
 
@@ -28,8 +35,9 @@ async def test_quote_returns_200_for_known_ticker() -> None:
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         # Use a ticker that exists in registry; fallback to a known one
         resp = await client.get("/api/v1/market/quote/VNM")
-    # Registry may or may not have VNM seeded yet — accept 200 or 404
-    assert resp.status_code in (200, 404)
+    # VNM nằm trong _STATIC_SEED của registry → luôn 200 với MockAdapter.
+    assert resp.status_code == 200
+    assert resp.json()["ticker"] == "VNM"
 
 
 async def test_quote_404_for_unknown_ticker() -> None:
@@ -45,22 +53,22 @@ async def test_quote_502_when_adapter_fails() -> None:
     from src.market.registry import Exchange, Sector, SymbolInfo, registry
 
     app = create_app()
-    failing_svc = QuoteService(MockAdapter(fail_tickers={"FAIL"}))
+    failing_svc = _mock_quote_service(fail_tickers={"FAIL"})
     app.dependency_overrides[get_quote_service] = lambda: failing_svc
 
     # Temporarily register FAIL ticker so registry passes
     try:
-        registry._symbols["FAIL"] = SymbolInfo(
+        registry._cache["FAIL"] = SymbolInfo(
             ticker="FAIL",
             name="Fail Corp",
             exchange=Exchange.HOSE,
-            sector=Sector.UNKNOWN,
+            sector=Sector.OTHER,
         )
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get("/api/v1/market/quote/FAIL")
         assert resp.status_code == 502
     finally:
-        registry._symbols.pop("FAIL", None)
+        registry._cache.pop("FAIL", None)
         app.dependency_overrides.clear()
 
 
@@ -71,14 +79,14 @@ async def test_quote_response_shape() -> None:
     from src.market.registry import Exchange, Sector, SymbolInfo, registry
 
     app = create_app()
-    mock_svc = QuoteService(MockAdapter())
+    mock_svc = _mock_quote_service()
     app.dependency_overrides[get_quote_service] = lambda: mock_svc
 
-    registry._symbols["TEST"] = SymbolInfo(
+    registry._cache["TEST"] = SymbolInfo(
         ticker="TEST",
         name="Test Corp",
         exchange=Exchange.HOSE,
-        sector=Sector.UNKNOWN,
+        sector=Sector.OTHER,
     )
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -95,5 +103,5 @@ async def test_quote_response_shape() -> None:
         assert "formatted_price" in body
         assert "formatted_change" in body
     finally:
-        registry._symbols.pop("TEST", None)
+        registry._cache.pop("TEST", None)
         app.dependency_overrides.clear()

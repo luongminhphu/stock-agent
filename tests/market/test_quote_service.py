@@ -68,8 +68,8 @@ async def test_quote_service_bulk(quote_service):
 
 
 @pytest.mark.asyncio
-async def test_quote_service_no_adapter_raises():
-    svc = QuoteService(adapter=None)
+async def test_quote_service_no_adapter_raises(always_open_guard):
+    svc = QuoteService(adapter=None, guard=always_open_guard)
     with pytest.raises(QuoteServiceNotConfiguredError):
         await svc.get_quote("HPG")
 

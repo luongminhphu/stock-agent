@@ -9,21 +9,22 @@ from __future__ import annotations
 import pytest
 
 # ---------------------------------------------------------------------------
-# Auth guard
+# Single-user contract: không cần header, user_id = settings.owner_user_id
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_list_watchlist_requires_auth(client):
-    """Without X-User-Id header, returns 401."""
+async def test_list_watchlist_without_header_uses_owner(client):
     r = await client.get("/api/v1/watchlist")
-    assert r.status_code == 401
+    assert r.status_code == 200
+    assert r.json()["items"] == []
 
 
 @pytest.mark.asyncio
-async def test_add_watchlist_requires_auth(client):
+async def test_add_watchlist_without_header_uses_owner(client):
     r = await client.post("/api/v1/watchlist", json={"ticker": "HPG"})
-    assert r.status_code == 401
+    assert r.status_code == 201
+    assert r.json()["ticker"] == "HPG"
 
 
 # ---------------------------------------------------------------------------
@@ -92,8 +93,8 @@ async def test_remove_nonexistent_returns_404(auth_client):
 
 
 @pytest.mark.asyncio
-async def test_multiple_items_independent_per_user(app):
-    """Two users have independent watchlists."""
+async def test_x_user_id_header_ignored_single_user(app):
+    """Single-user app: X-User-Id header không tách watchlist — cả hai client thấy cùng dữ liệu."""
     from httpx import ASGITransport, AsyncClient
 
     async with (
@@ -114,7 +115,6 @@ async def test_multiple_items_independent_per_user(app):
         lst_a = (await client_a.get("/api/v1/watchlist")).json()
         lst_b = (await client_b.get("/api/v1/watchlist")).json()
 
-        assert lst_a["total"] == 1
-        assert lst_a["items"][0]["ticker"] == "HPG"
-        assert lst_b["total"] == 1
-        assert lst_b["items"][0]["ticker"] == "VCB"
+        assert lst_a == lst_b
+        assert lst_a["total"] == 2
+        assert {i["ticker"] for i in lst_a["items"]} == {"HPG", "VCB"}

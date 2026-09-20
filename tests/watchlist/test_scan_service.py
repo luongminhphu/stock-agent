@@ -30,13 +30,18 @@ def _make_quote(price: float = 29000.0, change_pct: float = 2.0) -> MagicMock:
     q = MagicMock()
     q.price = price
     q.change_pct = change_pct
+    q.volume_ratio = 1.0
     return q
 
 
 def _make_service(mock_repo: AsyncMock, mock_qs: AsyncMock | None) -> ScanService:
-    svc = ScanService.__new__(ScanService)
+    session = AsyncMock()
+    session.add = MagicMock()  # sync in SQLAlchemy
+    svc = ScanService(session=session, quote_service=mock_qs)
     svc._repo = mock_repo
-    svc._quote_service = mock_qs
+    svc._signal_event_repo = AsyncMock()
+    svc._signal_event_repo.has_recent_signal.return_value = False
+    svc._persist_snapshot = AsyncMock()  # type: ignore[method-assign]
     return svc
 
 

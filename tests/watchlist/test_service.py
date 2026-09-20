@@ -1,6 +1,6 @@
 """Unit tests for WatchlistService.
 
-Covers: add, remove, list, duplicate guard, add_alert, dismiss_alert.
+Covers: add, remove, list, duplicate guard, create_alert, dismiss_alert.
 All DB ops use the in-memory SQLite fixture from conftest.py.
 """
 
@@ -10,8 +10,8 @@ import pytest
 
 from src.watchlist.models import AlertConditionType, AlertStatus
 from src.watchlist.service import (
-    AddAlertInput,
     AddToWatchlistInput,
+    CreateAlertInput,
     WatchlistItemAlreadyExistsError,
     WatchlistItemNotFoundError,
     WatchlistService,
@@ -72,8 +72,8 @@ async def test_add_alert(session):
     await svc.add(AddToWatchlistInput(user_id=USER, ticker="VIC"))
     await session.flush()
 
-    alert = await svc.add_alert(
-        AddAlertInput(
+    alert = await svc.create_alert(
+        CreateAlertInput(
             user_id=USER,
             ticker="VIC",
             condition_type=AlertConditionType.PRICE_ABOVE,
@@ -90,8 +90,8 @@ async def test_add_alert(session):
 async def test_add_alert_requires_watchlist_item(session):
     svc = WatchlistService(session)
     with pytest.raises(WatchlistItemNotFoundError):
-        await svc.add_alert(
-            AddAlertInput(
+        await svc.create_alert(
+            CreateAlertInput(
                 user_id=USER,
                 ticker="NOTINLIST",
                 condition_type=AlertConditionType.PRICE_BELOW,
@@ -105,8 +105,8 @@ async def test_dismiss_alert(session):
     await svc.add(AddToWatchlistInput(user_id=USER, ticker="MSN"))
     await session.flush()
 
-    alert = await svc.add_alert(
-        AddAlertInput(
+    alert = await svc.create_alert(
+        CreateAlertInput(
             user_id=USER,
             ticker="MSN",
             condition_type=AlertConditionType.CHANGE_PCT_UP,

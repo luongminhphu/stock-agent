@@ -8,11 +8,7 @@ def _make_alert(
     threshold: float,
     status: AlertStatus = AlertStatus.ACTIVE,
 ) -> Alert:
-    a = Alert.__new__(Alert)
-    a.condition_type = condition
-    a.threshold = threshold
-    a.status = status
-    return a
+    return Alert(condition_type=condition, threshold=threshold, status=status)
 
 
 # ---- PRICE_ABOVE ----

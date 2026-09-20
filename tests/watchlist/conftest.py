@@ -89,5 +89,7 @@ def mock_quote_service():
     quote = MagicMock()
     quote.price = 29000.0
     quote.change_pct = 2.0
+    quote.volume_ratio = 1.0
     qs.get_quote.return_value = quote
+    qs.get_bulk_quotes.return_value = []  # force per-ticker fallback in unit tests
     return qs

@@ -39,8 +39,22 @@ async def client(app):
 
 
 @pytest.fixture()
+async def raw_client(app):
+    """Client that converts unhandled app exceptions into HTTP 500 (không re-raise)."""
+    async with AsyncClient(
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://test",
+    ) as ac:
+        yield ac
+
+
+@pytest.fixture()
 async def auth_client(app):
-    """Client with X-User-Id header pre-set."""
+    """Client with X-User-Id header pre-set.
+
+    Single-user app: header KHÔNG được dùng để auth — user_id luôn resolve về
+    settings.owner_user_id (= "user-test-001" trong tests/conftest.py).
+    """
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",

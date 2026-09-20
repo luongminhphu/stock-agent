@@ -1,90 +1,86 @@
 """Integration tests for /api/v1/readmodel/* routes.
 
-Readmodel services (DashboardService, LeaderboardService, ThesisTimelineService)
-are patched with AsyncMock to avoid DB setup complexity.
-Price enrichment is also patched to return input unchanged.
+Chạy trên SQLite in-memory thật (không mock service) để kiểm tra contract
+route ↔ readmodel: shape phân trang {items,total}, 404, 422, alias field
+của timeline (event_type / occurred_at).
+
+Skipped: /dashboard/stats (dùng func.timezone — Postgres-only).
 """
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
-
 import pytest
 
-from src.readmodel.schemas import (
-    DashboardResponse,
-    LeaderboardResponse,
-    ThesisTimelineResponse,
-)
+from src.thesis.dtos import CreateThesisInput
+from src.thesis.service import ThesisService
+
+USER = "user-test-001"
 
 
-def _empty_dashboard(user_id: str = "user-test-001") -> DashboardResponse:
-    return DashboardResponse(
-        user_id=user_id,
-        open_thesis_count=0,
-        closed_thesis_count=0,
-        avg_score=None,
-        watchlist_count=0,
-        watchlist_snapshot=[],
-        top_theses=[],
+async def _create_thesis(session, ticker: str = "HPG") -> int:
+    thesis = await ThesisService(session).create(
+        CreateThesisInput(
+            user_id=USER,
+            ticker=ticker,
+            title=f"{ticker} recovery",
+            summary="Test thesis",
+            assumptions=["Demand holds"],
+        )
     )
-
-
-def _empty_leaderboard(user_id: str = "user-test-001") -> LeaderboardResponse:
-    return LeaderboardResponse(user_id=user_id, sort_by="score", rows=[], total=0)
-
-
-def _empty_timeline(thesis_id: int = 1) -> ThesisTimelineResponse:
-    return ThesisTimelineResponse(thesis_id=thesis_id, ticker="HPG", events=[])
+    await session.commit()
+    return thesis.id
 
 
 # ---------------------------------------------------------------------------
-# GET /readmodel/dashboard/{user_id}
+# GET /readmodel/dashboard/{user_id}/theses
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_dashboard_returns_200(bootstrapped_client):
-    dashboard = _empty_dashboard()
-    with (
-        patch(
-            "src.readmodel.dashboard_service.DashboardService.get_dashboard",
-            new_callable=AsyncMock,
-            return_value=dashboard,
-        ),
-        patch(
-            "src.market.price_enrichment.PriceEnrichmentService.enrich_dashboard",
-            new_callable=AsyncMock,
-            return_value=dashboard,
-        ),
-    ):
-        r = await bootstrapped_client.get("/api/v1/readmodel/dashboard/user-test-001")
+async def test_theses_list_empty(bootstrapped_client):
+    r = await bootstrapped_client.get(f"/api/v1/readmodel/dashboard/{USER}/theses")
+    assert r.status_code == 200
+    assert r.json() == {"items": [], "total": 0}
 
+
+@pytest.mark.asyncio
+async def test_theses_list_single_user_alias_url(bootstrapped_client):
+    """URL không có user_id → resolve về owner_user_id, cùng kết quả."""
+    r = await bootstrapped_client.get("/api/v1/readmodel/dashboard/theses")
+    assert r.status_code == 200
+    assert r.json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_theses_list_returns_created_thesis(bootstrapped_client, session):
+    thesis_id = await _create_thesis(session)
+    r = await bootstrapped_client.get(
+        f"/api/v1/readmodel/dashboard/{USER}/theses", params={"enrich_prices": "false"}
+    )
     assert r.status_code == 200
     body = r.json()
-    assert body["user_id"] == "user-test-001"
-    assert body["open_thesis_count"] == 0
+    assert body["total"] == 1
+    assert body["items"][0]["id"] == thesis_id
+    assert body["items"][0]["ticker"] == "HPG"
 
 
 @pytest.mark.asyncio
-async def test_dashboard_watchlist_snapshot(bootstrapped_client):
-    snapshot = []
-    with (
-        patch(
-            "src.readmodel.dashboard_service.DashboardService.get_watchlist_snapshot",
-            new_callable=AsyncMock,
-            return_value=snapshot,
-        ),
-        patch(
-            "src.market.price_enrichment.PriceEnrichmentService.enrich_watchlist",
-            new_callable=AsyncMock,
-            return_value=snapshot,
-        ),
-    ):
-        r = await bootstrapped_client.get("/api/v1/readmodel/dashboard/user-test-001/watchlist")
+async def test_thesis_detail_404(bootstrapped_client):
+    r = await bootstrapped_client.get(f"/api/v1/readmodel/dashboard/{USER}/theses/999")
+    assert r.status_code == 404
 
+
+@pytest.mark.asyncio
+async def test_thesis_detail_returns_components(bootstrapped_client, session):
+    thesis_id = await _create_thesis(session)
+    r = await bootstrapped_client.get(f"/api/v1/readmodel/dashboard/{USER}/theses/{thesis_id}")
     assert r.status_code == 200
-    assert r.json() == []
+    body = r.json()
+    assert body["thesis"]["id"] == thesis_id
+    assert body["thesis"]["ticker"] == "HPG"
+    assert body["thesis"]["n_assumptions"] == 1
+    assert [a["description"] for a in body["assumptions"]] == ["Demand holds"]
+    assert body["reviews"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -94,38 +90,25 @@ async def test_dashboard_watchlist_snapshot(bootstrapped_client):
 
 @pytest.mark.asyncio
 async def test_leaderboard_returns_200(bootstrapped_client):
-    leaderboard = _empty_leaderboard()
-    with patch(
-        "src.readmodel.leaderboard_service.LeaderboardService.get_leaderboard",
-        new_callable=AsyncMock,
-        return_value=leaderboard,
-    ):
-        r = await bootstrapped_client.get("/api/v1/readmodel/leaderboard/user-test-001")
-
+    r = await bootstrapped_client.get(f"/api/v1/readmodel/leaderboard/{USER}")
     assert r.status_code == 200
     body = r.json()
-    assert body["user_id"] == "user-test-001"
-    assert body["rows"] == []
-    assert body["total"] == 0
+    assert body["user_id"] == USER
+    assert body["sort_by"] == "score"
+    assert body["entries"] == []
 
 
 @pytest.mark.asyncio
 async def test_leaderboard_sort_by_pnl(bootstrapped_client):
-    leaderboard = _empty_leaderboard()
-    leaderboard.sort_by = "pnl"
-    with patch(
-        "src.readmodel.leaderboard_service.LeaderboardService.get_leaderboard",
-        new_callable=AsyncMock,
-        return_value=leaderboard,
-    ):
-        r = await bootstrapped_client.get("/api/v1/readmodel/leaderboard/user-test-001?sort_by=pnl")
+    r = await bootstrapped_client.get(f"/api/v1/readmodel/leaderboard/{USER}?sort_by=pnl")
     assert r.status_code == 200
+    assert r.json()["sort_by"] == "pnl"
 
 
 @pytest.mark.asyncio
 async def test_leaderboard_invalid_sort_by_422(bootstrapped_client):
     """Invalid sort_by value rejected at FastAPI validation layer."""
-    r = await bootstrapped_client.get("/api/v1/readmodel/leaderboard/user-test-001?sort_by=invalid")
+    r = await bootstrapped_client.get(f"/api/v1/readmodel/leaderboard/{USER}?sort_by=invalid")
     assert r.status_code == 422
 
 
@@ -135,28 +118,21 @@ async def test_leaderboard_invalid_sort_by_422(bootstrapped_client):
 
 
 @pytest.mark.asyncio
-async def test_timeline_returns_200(bootstrapped_client):
-    timeline = _empty_timeline(thesis_id=1)
-    with patch(
-        "src.readmodel.timeline_service.ThesisTimelineService.get_timeline",
-        new_callable=AsyncMock,
-        return_value=timeline,
-    ):
-        r = await bootstrapped_client.get("/api/v1/readmodel/thesis/1/timeline")
-
+async def test_timeline_returns_created_event(bootstrapped_client, session):
+    thesis_id = await _create_thesis(session)
+    r = await bootstrapped_client.get(f"/api/v1/readmodel/thesis/{thesis_id}/timeline")
     assert r.status_code == 200
     body = r.json()
-    assert body["thesis_id"] == 1
+    assert body["thesis_id"] == thesis_id
     assert body["ticker"] == "HPG"
-    assert body["events"] == []
+    assert body["events"], "thesis creation must produce at least one timeline event"
+    first = body["events"][0]
+    # serialization_alias contract cho UI
+    assert {"event_type", "occurred_at", "summary"} <= set(first)
+    assert "kind" not in first
 
 
 @pytest.mark.asyncio
 async def test_timeline_not_found_404(bootstrapped_client):
-    with patch(
-        "src.readmodel.timeline_service.ThesisTimelineService.get_timeline",
-        new_callable=AsyncMock,
-        return_value=None,
-    ):
-        r = await bootstrapped_client.get("/api/v1/readmodel/thesis/999/timeline")
+    r = await bootstrapped_client.get("/api/v1/readmodel/thesis/999/timeline")
     assert r.status_code == 404

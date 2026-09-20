@@ -32,20 +32,20 @@ def _make_mock_review(thesis_id: int = 1) -> MagicMock:
 
 
 # ---------------------------------------------------------------------------
-# Auth guard
+# Bootstrap guard — routes cần singleton (ReviewAgent) → 500 nếu chưa bootstrap
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_trigger_review_requires_auth(client):
-    r = await client.post("/api/v1/thesis/1/review")
-    assert r.status_code == 401
+async def test_trigger_review_before_bootstrap_500(raw_client):
+    r = await raw_client.post("/api/v1/thesis/1/review")
+    assert r.status_code == 500
 
 
 @pytest.mark.asyncio
-async def test_list_reviews_requires_auth(client):
-    r = await client.get("/api/v1/thesis/1/reviews")
-    assert r.status_code == 401
+async def test_list_reviews_before_bootstrap_500(raw_client):
+    r = await raw_client.get("/api/v1/thesis/1/reviews")
+    assert r.status_code == 500
 
 
 # ---------------------------------------------------------------------------

@@ -65,18 +65,23 @@ class TestMajorShift:
 
 class TestMinorShift:
     def test_regime_change_with_sufficient_confidence(self):
-        """Regime label changes but composite stays in same zone — MINOR."""
+        """Regime polarity changes but composite stays in the SAME zone — MINOR.
+
+        (RANGING→TRENDING_DOWN với composite 0.50→0.38 là MAJOR vì vừa đổi
+        polarity vừa vượt biên NEUTRAL→BEAR — xem TestMajorShift.)
+        """
         event = detect_shift(
             symbol="HPG",
             prev_regime="RANGING",
-            prev_composite=0.50,
+            prev_composite=0.39,  # đã ở BEAR zone (<= NEUTRAL_BAND_LO 0.40)
             curr_regime="TRENDING_DOWN",
-            curr_composite=0.38,  # below neutral band, delta = -0.12
+            curr_composite=0.36,  # vẫn BEAR zone, delta = -0.03
             scan_phase="midday",
         )
-        # delta = -0.12 < COMPOSITE_DELTA_THRESHOLD (0.15) but regime changed
-        # and curr_composite (0.38) < NEUTRAL_BAND_LO (0.40)
-        # and confidence = |0.38 - 0.5| = 0.12 >= MINOR_CONFIDENCE_FLOOR (0.10)
+        # polarity NEUTRAL→BEARISH nhưng zone không đổi → không MAJOR
+        # delta = -0.03 < COMPOSITE_DELTA_THRESHOLD (0.15) nhưng polarity đổi
+        # curr_composite (0.36) ngoài neutral band
+        # confidence = |0.36 - 0.5| = 0.14 >= MINOR_CONFIDENCE_FLOOR (0.10)
         assert event is not None
         assert event.shift_severity == "MINOR"
         assert event.scan_phase == "midday"

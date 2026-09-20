@@ -376,7 +376,7 @@ class QuoteServiceNotConfiguredError(Exception):
 class MarketClosedError(Exception):
     """Raised when a live fetch is requested outside trading hours.
 
-    Callers (price_enrichment, ChainedAdapter users, readmodel) should catch
+    Callers (readmodel enrichment, ChainedAdapter users) should catch
     this and return stale/cached data gracefully rather than showing an error.
     """
 

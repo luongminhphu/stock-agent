@@ -14,7 +14,7 @@ def _vci_item(
     price: float = 33100,
     change: float = 700,
     change_pct: float = 2.16,
-    volume: int = 12_000_000,
+    volume: int = 120_000,  # đơn vị LÔ (VCI matchVolume) — 1 lô = 100 CP
 ) -> dict:
     return {
         "listingInfo": {
@@ -45,6 +45,7 @@ def test_parse_item_basic() -> None:
     assert quote.ticker == "HPG"
     assert quote.price == 33100
     assert quote.change == 700
+    # Quote.volume contract là số CP: 120_000 lô × 100 = 12_000_000 CP
     assert quote.volume == 12_000_000
     assert isinstance(quote.timestamp, datetime)
 

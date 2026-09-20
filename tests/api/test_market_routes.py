@@ -74,10 +74,10 @@ async def test_get_quote_unknown_ticker_404(bootstrapped_client):
 
 
 @pytest.mark.asyncio
-async def test_get_quote_before_bootstrap_500(client):
+async def test_get_quote_before_bootstrap_500(raw_client):
     """Without bootstrap, get_quote_service() raises RuntimeError → 500."""
-    r = await client.get("/api/v1/market/quote/HPG")
-    assert r.status_code in (500, 502, 503)  # unhandled RuntimeError
+    r = await raw_client.get("/api/v1/market/quote/HPG")
+    assert r.status_code == 500  # unhandled RuntimeError
 
 
 @pytest.mark.asyncio
