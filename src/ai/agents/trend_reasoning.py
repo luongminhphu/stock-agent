@@ -5,10 +5,12 @@ Input:  TechnicalSignalBundle (from market segment, passed as-is)
 Output: TrendPrediction
 
 Boundary:
-  - NEVER imports from market, briefing, thesis, or bot segments.
+  - NEVER imports from briefing, thesis, or bot segments.
   - Receives TechnicalSignalBundle as a typed object (imported from
     ai.schemas.trend_prediction — both live in ai segment).
-  - Falls back to rule-based verdict when LLM call fails.
+  - Falls back to market.trend_engine.rule_based_prediction() when the LLM
+    call fails — the technical rule is owned by market, not by this agent
+    (Wave F8b: gỡ bản rule thứ hai từng lệch ngưỡng với bot /trend).
 
 Prompt design:
   - Bundle labels (BULLISH/NEUTRAL/BEARISH) are sent, not raw prices.
@@ -18,8 +20,9 @@ Prompt design:
   - user_prompt carries per-request signal data (changes every call).
 
 Fallback (non-blocking):
-  When LLM call fails or returns unparseable output, _rule_based_fallback()
-  derives verdict from composite score with confidence=0.3.
+  When LLM call fails or returns unparseable output, fallback() returns
+  market.rule_based_prediction(bundle) — confidence capped at 0.5, reasoning
+  tagged "Rule-based fallback".
   This ensures TrendEngineListener.results never contains Exceptions
   from reasoning failures — only from catastrophic signal failures.
 """
@@ -28,11 +31,7 @@ from __future__ import annotations
 
 from src.ai.schemas.trend_prediction import (
     TechnicalSignalBundle,
-    TrendDirection,
-    TrendHorizon,
     TrendPrediction,
-    TrendRegime,
-    TrendVerdict,
 )
 from src.platform.logging import get_logger
 
@@ -104,7 +103,7 @@ class TrendReasoningAgent:
         """Run LLM reasoning on a TechnicalSignalBundle.
 
         Returns TrendPrediction on success.
-        Falls back to _rule_based_fallback() on any LLM or parse failure.
+        Falls back to fallback() on any LLM or parse failure.
         Never raises — callers can always unpack the result.
 
         Args:
@@ -142,60 +141,23 @@ class TrendReasoningAgent:
                 symbol=bundle.symbol,
                 error=str(exc),
             )
-            return self._rule_based_fallback(bundle)
+            return self.fallback(bundle)
 
     # -----------------------------------------------------------------------
     # Fallback
     # -----------------------------------------------------------------------
 
-    def _rule_based_fallback(self, bundle: TechnicalSignalBundle) -> TrendPrediction:
-        """Derive verdict from composite score when LLM is unavailable.
+    def fallback(self, bundle: TechnicalSignalBundle) -> TrendPrediction:
+        """Non-AI verdict — delegates to market.trend_engine.rule_based_prediction.
 
-        Confidence is fixed at 0.3 to signal low certainty.
-        Direction is inferred from regime label.
-        Used as safety net — NOT a substitute for AI reasoning.
+        Public so briefing.trend_batch_scheduler can call it without reaching
+        into a private method. Lazy import: ai → market only at call time.
         """
-        composite = bundle.composite
+        from src.market.trend_engine import rule_based_prediction  # noqa: PLC0415
 
-        if composite >= 0.70:
-            verdict = TrendVerdict.BUY
-        elif composite >= 0.55:
-            verdict = TrendVerdict.WATCH
-        elif composite >= 0.45:
-            verdict = TrendVerdict.HOLD
-        elif composite >= 0.30:
-            verdict = TrendVerdict.REDUCE
-        else:
-            verdict = TrendVerdict.STRONG_SELL
+        logger.info("trend_reasoning_agent.fallback_used", symbol=bundle.symbol)
+        prediction: TrendPrediction = rule_based_prediction(bundle)
+        return prediction
 
-        direction_map = {
-            TrendRegime.TRENDING_UP: TrendDirection.UP,
-            TrendRegime.TRENDING_DOWN: TrendDirection.DOWN,
-            TrendRegime.RANGING: TrendDirection.SIDEWAYS,
-            TrendRegime.VOLATILE: TrendDirection.SIDEWAYS,
-        }
-        direction = direction_map.get(bundle.regime, TrendDirection.SIDEWAYS)
-
-        horizon = (
-            TrendHorizon.SHORT_TERM
-            if bundle.regime == TrendRegime.VOLATILE
-            else TrendHorizon.MID_TERM
-        )
-
-        logger.info(
-            "trend_reasoning_agent.fallback_used",
-            symbol=bundle.symbol,
-            composite=composite,
-            verdict=verdict.value,
-        )
-
-        return TrendPrediction(
-            symbol=bundle.symbol,
-            verdict=verdict,
-            direction=direction,
-            confidence=0.3,
-            horizon=horizon,
-            risk_signals=["Rule-based fallback — LLM unavailable"],
-            next_watch=[],
-            reasoning=f"Fallback: composite={composite:.2f}, regime={bundle.regime.value}",
-        )
+    # Backward-compat alias — không dùng cho code mới.
+    _rule_based_fallback = fallback
