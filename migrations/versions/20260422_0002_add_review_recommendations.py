@@ -13,6 +13,7 @@ through PENDING → ACCEPTED | REJECTED | EXPIRED.
 The table does NOT carry a direct thesis_id FK — thesis identity is
 reachable via review_id → thesis_reviews.thesis_id, avoiding denormalisation.
 """
+
 from __future__ import annotations
 
 import sqlalchemy as sa

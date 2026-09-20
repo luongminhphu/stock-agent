@@ -8,8 +8,6 @@ Merge-only migration — no schema changes.
 0012/0013 branch removed (orphan, down_revision=None).
 """
 
-from alembic import op
-
 revision = "20260524_0029"
 down_revision = "20260524_0028"
 branch_labels = None

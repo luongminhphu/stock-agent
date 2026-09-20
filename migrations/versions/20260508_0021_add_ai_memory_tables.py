@@ -15,7 +15,6 @@ safe to run against a DB that already has the tables.
 
 from __future__ import annotations
 
-import sqlalchemy as sa
 from alembic import op
 
 revision = "20260508_0021"
@@ -44,9 +43,15 @@ def upgrade() -> None:
             created_at       TIMESTAMPTZ  NOT NULL DEFAULT now()
         )
     """)
-    op.execute("CREATE INDEX IF NOT EXISTS ix_ai_interaction_logs_user_id    ON ai_interaction_logs (user_id)")
-    op.execute("CREATE INDEX IF NOT EXISTS ix_ai_interaction_logs_thesis_id  ON ai_interaction_logs (thesis_id)")
-    op.execute("CREATE INDEX IF NOT EXISTS ix_ai_interaction_logs_created_at ON ai_interaction_logs (created_at)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_ai_interaction_logs_user_id    ON ai_interaction_logs (user_id)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_ai_interaction_logs_thesis_id  ON ai_interaction_logs (thesis_id)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_ai_interaction_logs_created_at ON ai_interaction_logs (created_at)"
+    )
 
     # ------------------------------------------------------------------
     # memory_snapshots  (ai segment — semantic memory layer 3)
@@ -67,8 +72,12 @@ def upgrade() -> None:
             created_at             TIMESTAMPTZ  NOT NULL DEFAULT now()
         )
     """)
-    op.execute("CREATE INDEX IF NOT EXISTS ix_memory_snapshots_user_id    ON memory_snapshots (user_id)")
-    op.execute("CREATE INDEX IF NOT EXISTS ix_memory_snapshots_created_at ON memory_snapshots (created_at)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_memory_snapshots_user_id    ON memory_snapshots (user_id)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_memory_snapshots_created_at ON memory_snapshots (created_at)"
+    )
 
     # ------------------------------------------------------------------
     # investor_profiles  (platform segment)
@@ -90,7 +99,9 @@ def upgrade() -> None:
             created_at           TIMESTAMPTZ  NOT NULL DEFAULT now()
         )
     """)
-    op.execute("CREATE INDEX IF NOT EXISTS ix_investor_profiles_snapshot_date ON investor_profiles (snapshot_date)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_investor_profiles_snapshot_date ON investor_profiles (snapshot_date)"
+    )
 
 
 def downgrade() -> None:

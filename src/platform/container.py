@@ -56,6 +56,7 @@ class AppContainer:
     intelligence_engine_listener: object | None = None  # core: IntelligenceEngineListener
     engine_feedback_listener: object | None = None  # core: FeedbackStore bridge
     user_action_listener: object | None = None  # core: UserActionFeedbackListener (feedback loop)
+    feedback_ledger_subscriber: object | None = None  # ai.memory: FeedbackLedgerSubscriber (E3a)
     # ── thesis ──
     investor_profile_service: tuple | None = None
     thesis_review_listener: object | None = None

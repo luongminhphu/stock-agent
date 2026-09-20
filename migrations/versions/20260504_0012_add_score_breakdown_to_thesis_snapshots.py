@@ -18,6 +18,7 @@ Note: migration 0004 (revision 0004_add_score_breakdown, separate chain) already
 added this column to DBs that ran that branch. Using IF NOT EXISTS so this
 migration is idempotent and safe for both cases.
 """
+
 from __future__ import annotations
 
 from alembic import op
@@ -31,12 +32,8 @@ depends_on: str | None = None
 def upgrade() -> None:
     # Use raw SQL with IF NOT EXISTS — idempotent regardless of whether
     # migration 0004 (separate chain) already added this column.
-    op.execute(
-        "ALTER TABLE thesis_snapshots ADD COLUMN IF NOT EXISTS score_breakdown TEXT"
-    )
+    op.execute("ALTER TABLE thesis_snapshots ADD COLUMN IF NOT EXISTS score_breakdown TEXT")
 
 
 def downgrade() -> None:
-    op.execute(
-        "ALTER TABLE thesis_snapshots DROP COLUMN IF EXISTS score_breakdown"
-    )
+    op.execute("ALTER TABLE thesis_snapshots DROP COLUMN IF EXISTS score_breakdown")

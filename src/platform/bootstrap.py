@@ -575,6 +575,14 @@ async def bootstrap() -> None:
         container.user_action_listener.register()  # type: ignore[union-attr]
         logger.info("platform.bootstrap.user_action_listener_ready")
 
+    # ── ai.memory: FeedbackLedgerSubscriber — S6 ledger hợp nhất (Wave E3a) ──
+    if container.feedback_ledger_subscriber is None:
+        from src.ai.memory.feedback_ledger import FeedbackLedgerSubscriber
+
+        container.feedback_ledger_subscriber = FeedbackLedgerSubscriber()
+        container.feedback_ledger_subscriber.register()  # type: ignore[union-attr]
+        logger.info("platform.bootstrap.feedback_ledger_subscriber_ready")
+
     # ── watchlist: ProactiveWatchListener — closes the proactive watch chain ─
     # ProactiveWatchScheduler (bot) fires ProactiveWatchRequestedEvent 3x/day
     # (09:15 / 11:15 / 14:15 ICT). Without this registration the event bus

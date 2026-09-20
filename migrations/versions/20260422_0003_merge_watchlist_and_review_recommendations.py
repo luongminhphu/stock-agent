@@ -12,9 +12,8 @@ Fix (2026-05-16): removed ghost revision 96b70988d3a9 from down_revision.
 That revision file never existed in the repo and caused Alembic to crash
 with KeyError at _revision_map build time. Chain is now linear.
 """
-from __future__ import annotations
 
-from alembic import op
+from __future__ import annotations
 
 revision: str = "0003_merge_heads"
 down_revision: str = "0002_add_review_recommendations"

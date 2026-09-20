@@ -14,8 +14,6 @@ alembic upgrade head safe to run on any DB state where either or both
 branches have been applied.
 """
 
-from alembic import op
-
 # revision identifiers
 revision = "20260606_0039"
 down_revision = ("20260606_0038", "20260604_0038")

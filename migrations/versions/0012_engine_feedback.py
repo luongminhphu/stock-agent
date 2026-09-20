@@ -4,13 +4,14 @@ Revision ID: 0012_engine_feedback
 Revises: (auto — set to previous revision ID in your chain)
 Create Date: 2026-05-23
 """
+
 from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
 
 revision = "0012_engine_feedback"
-down_revision = None   # TODO: set to your latest migration revision ID
+down_revision = None  # TODO: set to your latest migration revision ID
 branch_labels = None
 depends_on = None
 

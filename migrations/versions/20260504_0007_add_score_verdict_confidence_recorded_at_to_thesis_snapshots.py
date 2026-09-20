@@ -9,8 +9,8 @@ snapshots created by review_service. Legacy market-snapshot rows are unaffected
 (all columns default to NULL).
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "20260504_0007"
@@ -22,19 +22,39 @@ depends_on = None
 def upgrade() -> None:
     op.add_column(
         "thesis_snapshots",
-        sa.Column("score", sa.Float(), nullable=True, comment="Conviction score tại thời điểm review (0-100)"),
+        sa.Column(
+            "score",
+            sa.Float(),
+            nullable=True,
+            comment="Conviction score tại thời điểm review (0-100)",
+        ),
     )
     op.add_column(
         "thesis_snapshots",
-        sa.Column("verdict", sa.String(32), nullable=True, comment="ReviewVerdict value tại thời điểm review"),
+        sa.Column(
+            "verdict",
+            sa.String(32),
+            nullable=True,
+            comment="ReviewVerdict value tại thời điểm review",
+        ),
     )
     op.add_column(
         "thesis_snapshots",
-        sa.Column("confidence", sa.Float(), nullable=True, comment="AI confidence tại thời điểm review (0-1)"),
+        sa.Column(
+            "confidence",
+            sa.Float(),
+            nullable=True,
+            comment="AI confidence tại thời điểm review (0-1)",
+        ),
     )
     op.add_column(
         "thesis_snapshots",
-        sa.Column("recorded_at", sa.DateTime(timezone=True), nullable=True, comment="Timestamp của review tạo ra snapshot này"),
+        sa.Column(
+            "recorded_at",
+            sa.DateTime(timezone=True),
+            nullable=True,
+            comment="Timestamp của review tạo ra snapshot này",
+        ),
     )
     # Make price_at_snapshot nullable (was NOT NULL in initial schema,
     # but review-triggered snapshots don't have a price)

@@ -8,6 +8,7 @@ Adds nullable FLOAT column `quantity` to the theses table.
 This column was added to the ORM model (Thesis) but the corresponding
 migration was missing, causing UndefinedColumnError on dashboard/theses endpoint.
 """
+
 from __future__ import annotations
 
 import sqlalchemy as sa

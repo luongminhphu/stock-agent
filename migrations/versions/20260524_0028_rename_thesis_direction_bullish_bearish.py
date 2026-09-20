@@ -45,6 +45,4 @@ def upgrade() -> None:
 def downgrade() -> None:
     # Intentionally not implemented.
     # To roll back: restore DB from backup + redeploy previous app version.
-    raise NotImplementedError(
-        "Downgrade not supported. Restore from backup if rollback is needed."
-    )
+    raise NotImplementedError("Downgrade not supported. Restore from backup if rollback is needed.")

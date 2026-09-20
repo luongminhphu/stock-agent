@@ -29,6 +29,7 @@ Behaviour after migration
 - AlertService.create() already accepts ``auto_reactivate`` param — no
   service-layer changes required.
 """
+
 from __future__ import annotations
 
 import sqlalchemy as sa

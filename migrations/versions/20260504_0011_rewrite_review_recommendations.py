@@ -27,6 +27,7 @@ Data migration strategy:
   - content ← reason  (carries semantic meaning forward)
   - All other dropped columns have no active API/UI consumers.
 """
+
 from __future__ import annotations
 
 import sqlalchemy as sa
@@ -46,9 +47,7 @@ def upgrade() -> None:
     )
 
     # 2. Populate content from the existing `reason` column (best semantic match)
-    op.execute(
-        "UPDATE review_recommendations SET content = reason WHERE content = ''"
-    )
+    op.execute("UPDATE review_recommendations SET content = reason WHERE content = ''")
 
     # 3. Remove the temporary server default — new rows must supply content explicitly
     op.alter_column("review_recommendations", "content", server_default=None)
@@ -75,9 +74,7 @@ def downgrade() -> None:
         "review_recommendations",
         sa.Column("reason", sa.Text(), nullable=False, server_default=""),
     )
-    op.execute(
-        "UPDATE review_recommendations SET reason = content WHERE reason = ''"
-    )
+    op.execute("UPDATE review_recommendations SET reason = content WHERE reason = ''")
     op.alter_column("review_recommendations", "reason", server_default=None)
 
     op.add_column(
@@ -99,9 +96,7 @@ def downgrade() -> None:
     op.alter_column("review_recommendations", "target_id", server_default=None)
 
     # Re-create the enum type before adding the enum column
-    op.execute(
-        "CREATE TYPE recommendationtargettype AS ENUM ('assumption', 'catalyst')"
-    )
+    op.execute("CREATE TYPE recommendationtargettype AS ENUM ('assumption', 'catalyst')")
     op.add_column(
         "review_recommendations",
         sa.Column(

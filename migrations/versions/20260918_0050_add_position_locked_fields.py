@@ -41,14 +41,8 @@ def upgrade() -> None:
             "ALTER TABLE positions ADD COLUMN IF NOT EXISTS "
             "locked_qty DOUBLE PRECISION NOT NULL DEFAULT 0"
         )
-        op.execute(
-            "ALTER TABLE positions ADD COLUMN IF NOT EXISTS "
-            "locked_reason VARCHAR(64) NULL"
-        )
-        op.execute(
-            "ALTER TABLE positions ADD COLUMN IF NOT EXISTS "
-            "locked_until DATE NULL"
-        )
+        op.execute("ALTER TABLE positions ADD COLUMN IF NOT EXISTS locked_reason VARCHAR(64) NULL")
+        op.execute("ALTER TABLE positions ADD COLUMN IF NOT EXISTS locked_until DATE NULL")
         for col, typ in (
             ("old_locked_qty", "DOUBLE PRECISION"),
             ("new_locked_qty", "DOUBLE PRECISION"),
@@ -57,9 +51,7 @@ def upgrade() -> None:
             ("old_locked_until", "DATE"),
             ("new_locked_until", "DATE"),
         ):
-            op.execute(
-                f"ALTER TABLE position_edits ADD COLUMN IF NOT EXISTS {col} {typ} NULL"
-            )
+            op.execute(f"ALTER TABLE position_edits ADD COLUMN IF NOT EXISTS {col} {typ} NULL")
     else:
         with op.batch_alter_table("positions") as batch:
             batch.add_column(
@@ -70,12 +62,8 @@ def upgrade() -> None:
         with op.batch_alter_table("position_edits") as batch:
             batch.add_column(sa.Column("old_locked_qty", sa.Float(), nullable=True))
             batch.add_column(sa.Column("new_locked_qty", sa.Float(), nullable=True))
-            batch.add_column(
-                sa.Column("old_locked_reason", sa.String(64), nullable=True)
-            )
-            batch.add_column(
-                sa.Column("new_locked_reason", sa.String(64), nullable=True)
-            )
+            batch.add_column(sa.Column("old_locked_reason", sa.String(64), nullable=True))
+            batch.add_column(sa.Column("new_locked_reason", sa.String(64), nullable=True))
             batch.add_column(sa.Column("old_locked_until", sa.Date(), nullable=True))
             batch.add_column(sa.Column("new_locked_until", sa.Date(), nullable=True))
 
@@ -83,9 +71,12 @@ def upgrade() -> None:
 def downgrade() -> None:
     if _is_postgres():
         for col in (
-            "new_locked_until", "old_locked_until",
-            "new_locked_reason", "old_locked_reason",
-            "new_locked_qty", "old_locked_qty",
+            "new_locked_until",
+            "old_locked_until",
+            "new_locked_reason",
+            "old_locked_reason",
+            "new_locked_qty",
+            "old_locked_qty",
         ):
             op.execute(f"ALTER TABLE position_edits DROP COLUMN IF EXISTS {col}")
         op.execute("ALTER TABLE positions DROP COLUMN IF EXISTS locked_until")
@@ -94,9 +85,12 @@ def downgrade() -> None:
     else:
         with op.batch_alter_table("position_edits") as batch:
             for col in (
-                "new_locked_until", "old_locked_until",
-                "new_locked_reason", "old_locked_reason",
-                "new_locked_qty", "old_locked_qty",
+                "new_locked_until",
+                "old_locked_until",
+                "new_locked_reason",
+                "old_locked_reason",
+                "new_locked_qty",
+                "old_locked_qty",
             ):
                 batch.drop_column(col)
         with op.batch_alter_table("positions") as batch:

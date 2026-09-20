@@ -4,6 +4,7 @@ Revision ID: 0013_evolution_log
 Revises: 0012_engine_feedback
 Create Date: 2026-05-23
 """
+
 from __future__ import annotations
 
 import sqlalchemy as sa
@@ -34,13 +35,13 @@ def upgrade() -> None:
         ),
         sa.Column("reviewed_at", sa.DateTime(timezone=True), nullable=True),
     )
-    op.create_index("ix_evolution_log_run_id",    "evolution_log", ["run_id"])
-    op.create_index("ix_evolution_log_status",    "evolution_log", ["status"])
+    op.create_index("ix_evolution_log_run_id", "evolution_log", ["run_id"])
+    op.create_index("ix_evolution_log_status", "evolution_log", ["status"])
     op.create_index("ix_evolution_log_created_at", "evolution_log", ["created_at"])
 
 
 def downgrade() -> None:
     op.drop_index("ix_evolution_log_created_at", table_name="evolution_log")
-    op.drop_index("ix_evolution_log_status",     table_name="evolution_log")
-    op.drop_index("ix_evolution_log_run_id",     table_name="evolution_log")
+    op.drop_index("ix_evolution_log_status", table_name="evolution_log")
+    op.drop_index("ix_evolution_log_run_id", table_name="evolution_log")
     op.drop_table("evolution_log")

@@ -21,6 +21,7 @@ Solution:
 Change:
     memory_snapshots: ADD COLUMN last_synthesis_at TIMESTAMPTZ NULL
 """
+
 from __future__ import annotations
 
 import sqlalchemy as sa

@@ -4,6 +4,7 @@ Revision ID: 0001_initial_schema
 Revises: None
 Create Date: 2026-04-18
 """
+
 from __future__ import annotations
 
 import sqlalchemy as sa
@@ -217,9 +218,7 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
             nullable=False,
         ),
-        sa.ForeignKeyConstraint(
-            ["watchlist_item_id"], ["watchlist_items.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["watchlist_item_id"], ["watchlist_items.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_alerts_user_id", "alerts", ["user_id"])
@@ -241,9 +240,7 @@ def upgrade() -> None:
         ),
         sa.Column("enabled", sa.Boolean(), nullable=False, server_default="true"),
         sa.Column("last_sent_at", sa.DateTime(timezone=True), nullable=True),
-        sa.ForeignKeyConstraint(
-            ["watchlist_item_id"], ["watchlist_items.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["watchlist_item_id"], ["watchlist_items.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_reminders_user_id", "reminders", ["user_id"])

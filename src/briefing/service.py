@@ -293,6 +293,28 @@ class BriefingService:
         )
         await self._repo.save_feedback(feedback)
 
+        # Wave E3a — dual-write vào feedback ledger (ai.memory) qua event, best-effort.
+        try:
+            from src.briefing.models import BriefSnapshot
+            from src.platform.event_bus import get_event_bus
+            from src.platform.events import BriefFeedbackRecordedEvent
+
+            snapshot = await self._session.get(BriefSnapshot, brief_snapshot_id)
+            await get_event_bus().publish(
+                BriefFeedbackRecordedEvent(
+                    brief_snapshot_id=brief_snapshot_id,
+                    user_id=user_id,
+                    outcome=outcome,
+                    brief_type=str(getattr(snapshot, "phase", "") or ""),
+                )
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "briefing.feedback_event_publish_failed",
+                snapshot_id=brief_snapshot_id,
+                error=str(exc),
+            )
+
     # ------------------------------------------------------------------
     # Market context renderer
     # ------------------------------------------------------------------

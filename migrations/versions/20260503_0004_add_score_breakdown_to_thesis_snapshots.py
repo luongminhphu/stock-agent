@@ -9,6 +9,7 @@ Nullable — existing rows (legacy snapshots) will have NULL.
 JSON dict: {"assumption_health": float, "catalyst_progress": float,
              "risk_reward": float, "review_confidence": float}
 """
+
 from __future__ import annotations
 
 import sqlalchemy as sa

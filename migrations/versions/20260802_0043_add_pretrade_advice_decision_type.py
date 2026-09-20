@@ -19,6 +19,7 @@ This migration enables DecisionService.log_pretrade_advice():
 Backward compatible: existing rows are untouched; nullable=True only
 relaxes a constraint.
 """
+
 from __future__ import annotations
 
 import sqlalchemy as sa
@@ -38,9 +39,7 @@ def upgrade() -> None:
     #    PG run fine with autocommit_block. On SQLite this is a no-op.
     if bind.dialect.name == "postgresql":
         with op.get_context().autocommit_block():
-            op.execute(
-                "ALTER TYPE decisiontype ADD VALUE IF NOT EXISTS 'PRETRADE_ADVICE'"
-            )
+            op.execute("ALTER TYPE decisiontype ADD VALUE IF NOT EXISTS 'PRETRADE_ADVICE'")
 
     # 2. thesis_id nullable (pre-trade advice may exist without a thesis).
     # batch_alter_table recreates the table on SQLite (which has no native

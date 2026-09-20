@@ -67,13 +67,17 @@ def upgrade() -> None:
             server_default=sa.func.now(),
         ),
         sa.UniqueConstraint(
-            "user_id", "ticker", "snapshot_date",
+            "user_id",
+            "ticker",
+            "snapshot_date",
             name="uq_position_daily_snapshot",
         ),
     )
     op.create_index("ix_position_daily_snapshots_user_id", "position_daily_snapshots", ["user_id"])
     op.create_index("ix_position_daily_snapshots_ticker", "position_daily_snapshots", ["ticker"])
-    op.create_index("ix_position_daily_snapshots_snapshot_date", "position_daily_snapshots", ["snapshot_date"])
+    op.create_index(
+        "ix_position_daily_snapshots_snapshot_date", "position_daily_snapshots", ["snapshot_date"]
+    )
 
 
 def downgrade() -> None:

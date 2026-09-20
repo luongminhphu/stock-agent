@@ -48,7 +48,9 @@ def upgrade() -> None:
     #    Safe path: add enum type if not exists, then alter column.
     # ------------------------------------------------------------------
     thesisdirection = sa.Enum(
-        "LONG", "SHORT", "NEUTRAL",
+        "LONG",
+        "SHORT",
+        "NEUTRAL",
         name="thesisdirection",
         create_constraint=False,
     )
@@ -68,9 +70,7 @@ def upgrade() -> None:
     #    outcomeoverdict → outcomeverdict
     #    PostgreSQL: rename the type directly.
     # ------------------------------------------------------------------
-    op.execute(
-        "ALTER TYPE outcomeoverdict RENAME TO outcomeverdict"
-    )
+    op.execute("ALTER TYPE outcomeoverdict RENAME TO outcomeverdict")
 
     # ------------------------------------------------------------------
     # 5. Add missing indexes
@@ -82,9 +82,7 @@ def upgrade() -> None:
     op.create_index("ix_theses_status", "theses", ["status"])
     op.create_index("ix_thesis_reviews_reviewed_at", "thesis_reviews", ["reviewed_at"])
     op.create_index("ix_thesis_reviews_verdict", "thesis_reviews", ["verdict"])
-    op.create_index(
-        "ix_thesis_snapshots_snapshotted_at", "thesis_snapshots", ["snapshotted_at"]
-    )
+    op.create_index("ix_thesis_snapshots_snapshotted_at", "thesis_snapshots", ["snapshotted_at"])
 
     # ------------------------------------------------------------------
     # 6. Remove stale signal_events indexes superseded by migration 0017
@@ -113,12 +111,8 @@ def downgrade() -> None:
         "signal_events",
         ["user_id", "ticker", "signal_type"],
     )
-    op.create_index(
-        "ix_signal_events_processed_at", "signal_events", ["processed_at"]
-    )
-    op.create_index(
-        "ix_signal_events_occurred_at", "signal_events", ["occurred_at"]
-    )
+    op.create_index("ix_signal_events_processed_at", "signal_events", ["processed_at"])
+    op.create_index("ix_signal_events_occurred_at", "signal_events", ["occurred_at"])
 
     # Drop added indexes
     op.drop_index("ix_thesis_snapshots_snapshotted_at", table_name="thesis_snapshots")
@@ -137,9 +131,7 @@ def downgrade() -> None:
     op.alter_column(
         "theses",
         "direction",
-        existing_type=sa.Enum(
-            "LONG", "SHORT", "NEUTRAL", name="thesisdirection"
-        ),
+        existing_type=sa.Enum("LONG", "SHORT", "NEUTRAL", name="thesisdirection"),
         type_=sa.VARCHAR(length=16),
         existing_nullable=True,
         postgresql_using="direction::varchar",

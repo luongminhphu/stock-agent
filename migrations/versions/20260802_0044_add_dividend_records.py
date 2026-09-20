@@ -24,6 +24,7 @@ Creates:
   - dividend_records table             — all dialects
   - indexes on user_id, ticker, position_id (matches model `index=True`)
 """
+
 from __future__ import annotations
 
 import sqlalchemy as sa
@@ -73,12 +74,10 @@ def upgrade() -> None:
             """
         )
         op.execute(
-            "CREATE INDEX IF NOT EXISTS ix_dividend_records_user_id "
-            "ON dividend_records (user_id)"
+            "CREATE INDEX IF NOT EXISTS ix_dividend_records_user_id ON dividend_records (user_id)"
         )
         op.execute(
-            "CREATE INDEX IF NOT EXISTS ix_dividend_records_ticker "
-            "ON dividend_records (ticker)"
+            "CREATE INDEX IF NOT EXISTS ix_dividend_records_ticker ON dividend_records (ticker)"
         )
         op.execute(
             "CREATE INDEX IF NOT EXISTS ix_dividend_records_position_id "
@@ -113,9 +112,7 @@ def upgrade() -> None:
     )
     op.create_index("ix_dividend_records_user_id", "dividend_records", ["user_id"])
     op.create_index("ix_dividend_records_ticker", "dividend_records", ["ticker"])
-    op.create_index(
-        "ix_dividend_records_position_id", "dividend_records", ["position_id"]
-    )
+    op.create_index("ix_dividend_records_position_id", "dividend_records", ["position_id"])
 
 
 def downgrade() -> None:

@@ -30,6 +30,7 @@ Schema decisions
   the signal; NULL means pending.
 - Composite index on (user_id, ticker, signal_type) for efficient dedup queries.
 """
+
 from __future__ import annotations
 
 import sqlalchemy as sa

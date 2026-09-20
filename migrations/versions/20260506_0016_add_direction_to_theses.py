@@ -8,6 +8,7 @@ Adds nullable VARCHAR column `direction` to the theses table.
 Corresponds to the ThesisDirection enum (LONG / SHORT / NEUTRAL)
 added to the Thesis ORM model.
 """
+
 from __future__ import annotations
 
 import sqlalchemy as sa

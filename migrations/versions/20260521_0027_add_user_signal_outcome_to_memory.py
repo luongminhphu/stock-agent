@@ -34,13 +34,21 @@ def upgrade() -> None:
     # ------------------------------------------------------------------
     op.add_column(
         "ai_interaction_logs",
-        sa.Column("user_signal", sa.String(32), nullable=True,
-                  comment="bought | sold | ignored | flagged | watched"),
+        sa.Column(
+            "user_signal",
+            sa.String(32),
+            nullable=True,
+            comment="bought | sold | ignored | flagged | watched",
+        ),
     )
     op.add_column(
         "ai_interaction_logs",
-        sa.Column("outcome_json", sa.Text(), nullable=True,
-                  comment="JSON: price_at_signal, price_now, pct_change, thesis_status, filled_at"),
+        sa.Column(
+            "outcome_json",
+            sa.Text(),
+            nullable=True,
+            comment="JSON: price_at_signal, price_now, pct_change, thesis_status, filled_at",
+        ),
     )
     op.execute(
         "CREATE INDEX IF NOT EXISTS ix_ai_interaction_logs_user_signal "
@@ -57,8 +65,12 @@ def upgrade() -> None:
     # ------------------------------------------------------------------
     op.add_column(
         "memory_snapshots",
-        sa.Column("patterns_json", sa.Text(), nullable=True,
-                  comment="JSON list of SemanticPattern: [{pattern_type, description, confidence}]"),
+        sa.Column(
+            "patterns_json",
+            sa.Text(),
+            nullable=True,
+            comment="JSON list of SemanticPattern: [{pattern_type, description, confidence}]",
+        ),
     )
 
 

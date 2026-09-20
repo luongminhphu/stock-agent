@@ -13,6 +13,7 @@ corresponding migration was never created, causing:
 This affected all endpoints that eager-load ThesisReview relationships
 (GET /thesis/{id}/reviews, /assumptions, /catalysts).
 """
+
 from __future__ import annotations
 
 import sqlalchemy as sa

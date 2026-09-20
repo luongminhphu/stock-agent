@@ -17,6 +17,7 @@ Design notes:
   - thesis_id is an optional FK-by-convention (not enforced by DB constraint)
     to avoid hard coupling between portfolio and thesis segments.
 """
+
 from __future__ import annotations
 
 import sqlalchemy as sa

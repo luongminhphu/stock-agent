@@ -75,9 +75,9 @@ def upgrade() -> None:
             sa.DateTime(timezone=True),
             nullable=True,
             comment="MAX(thesis_reviews.reviewed_at) for this thesis. "
-                    "Maintained by ThesisService.touch_reviewed_at() and "
-                    "ThesisReviewService.create_review(). "
-                    "Used by: snapshot stale detection, Wave 4 dedup guard.",
+            "Maintained by ThesisService.touch_reviewed_at() and "
+            "ThesisReviewService.create_review(). "
+            "Used by: snapshot stale detection, Wave 4 dedup guard.",
         ),
     )
 
@@ -89,8 +89,8 @@ def upgrade() -> None:
             sa.DateTime(timezone=True),
             nullable=True,
             comment="Timestamp of last ThesisJudgeAgent verdict for this thesis. "
-                    "Maintained by ai._log_thesis_judge_interaction(). "
-                    "Used by: Wave 4 dedup guard in ThesisJudgeAgent.run_batch().",
+            "Maintained by ai._log_thesis_judge_interaction(). "
+            "Used by: Wave 4 dedup guard in ThesisJudgeAgent.run_batch().",
         ),
     )
 
@@ -105,7 +105,8 @@ def upgrade() -> None:
 
     # D. Backfill last_reviewed_at from existing ThesisReview data in same transaction.
     #    This is a one-time operation; subsequent updates go through service layer.
-    op.execute(sa.text("""
+    op.execute(
+        sa.text("""
         UPDATE theses t
         SET last_reviewed_at = sub.max_reviewed_at
         FROM (
@@ -116,7 +117,8 @@ def upgrade() -> None:
             GROUP BY thesis_id
         ) sub
         WHERE t.id = sub.thesis_id
-    """))
+    """)
+    )
 
 
 def downgrade() -> None:

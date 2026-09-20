@@ -35,13 +35,13 @@ def upgrade() -> None:
         ),
         # Behavioral insights — JSON-encoded list[str]
         sa.Column("behavioral_patterns", sa.Text(), nullable=False, server_default="[]"),
-        sa.Column("confirmed_biases",    sa.Text(), nullable=False, server_default="[]"),
-        sa.Column("top_lessons",         sa.Text(), nullable=False, server_default="[]"),
+        sa.Column("confirmed_biases", sa.Text(), nullable=False, server_default="[]"),
+        sa.Column("top_lessons", sa.Text(), nullable=False, server_default="[]"),
         # Portfolio state snapshot
-        sa.Column("portfolio_bias",       sa.String(512), nullable=False, server_default=""),
-        sa.Column("active_thesis_count",  sa.Integer(),   nullable=False, server_default="0"),
+        sa.Column("portfolio_bias", sa.String(512), nullable=False, server_default=""),
+        sa.Column("active_thesis_count", sa.Integer(), nullable=False, server_default="0"),
         # Decision performance
-        sa.Column("win_rate_30d",  sa.Float(), nullable=False, server_default="0"),
+        sa.Column("win_rate_30d", sa.Float(), nullable=False, server_default="0"),
         sa.Column("avg_hold_days", sa.Float(), nullable=False, server_default="0"),
         # Pre-rendered AI prompt block
         sa.Column("summary_for_ai", sa.Text(), nullable=False, server_default=""),

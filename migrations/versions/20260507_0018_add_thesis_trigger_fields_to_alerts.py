@@ -28,29 +28,17 @@ def upgrade() -> None:
     # ------------------------------------------------------------------
     # PostgreSQL requires ALTER TYPE … ADD VALUE outside a transaction
     # for enum changes.  Alembic handles this via execute_if or raw SQL.
-    op.execute(
-        "ALTER TYPE alertconditiontype ADD VALUE IF NOT EXISTS 'thesis_trigger'"
-    )
+    op.execute("ALTER TYPE alertconditiontype ADD VALUE IF NOT EXISTS 'thesis_trigger'")
 
     # ------------------------------------------------------------------
     # 2. Add new nullable columns to alerts
     # ------------------------------------------------------------------
     with op.batch_alter_table("alerts") as batch_op:
-        batch_op.add_column(
-            sa.Column("label", sa.String(256), nullable=True)
-        )
-        batch_op.add_column(
-            sa.Column("thesis_id", sa.String(64), nullable=True)
-        )
-        batch_op.add_column(
-            sa.Column("dedup_key", sa.String(128), nullable=True)
-        )
-        batch_op.add_column(
-            sa.Column("source_event_id", sa.String(64), nullable=True)
-        )
-        batch_op.add_column(
-            sa.Column("priority", sa.String(16), nullable=True)
-        )
+        batch_op.add_column(sa.Column("label", sa.String(256), nullable=True))
+        batch_op.add_column(sa.Column("thesis_id", sa.String(64), nullable=True))
+        batch_op.add_column(sa.Column("dedup_key", sa.String(128), nullable=True))
+        batch_op.add_column(sa.Column("source_event_id", sa.String(64), nullable=True))
+        batch_op.add_column(sa.Column("priority", sa.String(16), nullable=True))
 
     # ------------------------------------------------------------------
     # 3. Create indexes on thesis_id and dedup_key for fast dedup lookups

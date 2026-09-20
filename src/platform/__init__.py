@@ -24,6 +24,7 @@ from src.platform.config import get_settings, settings
 from src.platform.db import AsyncSessionLocal, Base, get_db_session
 from src.platform.event_bus import EventBus, get_event_bus, reset_event_bus
 from src.platform.events import (
+    BriefFeedbackRecordedEvent,
     BriefingReadyEvent,
     BriefingRequestedEvent,
     DailyAgendaCompletedEvent,
@@ -38,6 +39,7 @@ from src.platform.events import (
     PortfolioSnapshotReadyEvent,
     PortfolioSnapshotRequestedEvent,
     PositionRiskBreachedEvent,
+    PretradeAdviceReconciledEvent,
     ProactiveDiscoveryReadyEvent,
     ProactiveWatchAlertFiredEvent,
     ProactiveWatchRequestedEvent,
@@ -80,7 +82,9 @@ __all__ = [
     "BriefingReadyEvent",
     "BriefingRequestedEvent",
     "DailyAgendaCompletedEvent",
+    "BriefFeedbackRecordedEvent",
     "EngineFeedbackSubmittedEvent",
+    "PretradeAdviceReconciledEvent",
     "EvolutionSuggestionReadyEvent",
     "IntelligenceEngineCompletedEvent",
     "IntelligenceEngineRequestedEvent",

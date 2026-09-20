@@ -32,7 +32,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, func
+from sqlalchemy import DateTime, Index, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.platform.db import Base
@@ -54,7 +54,10 @@ class UserBehaviorLog(Base):
     signal: Mapped[str] = mapped_column(
         String(32),
         nullable=False,
-        comment="bought | sold | watched | ignored | flagged",
+        comment=(
+            "bought | sold | watched | ignored | flagged | "
+            "engine:<outcome> | brief:<outcome> | followed_advice | ignored_advice"
+        ),
     )
 
     # Where the signal came from
@@ -62,7 +65,7 @@ class UserBehaviorLog(Base):
         String(32),
         nullable=False,
         default="discord_reaction",
-        comment="discord_reaction | command | api",
+        comment="discord_reaction | command | api | feedback_listener | core | briefing | thesis",
     )
 
     # Link back to the AI output that was reacted to (nullable)
@@ -80,9 +83,23 @@ class UserBehaviorLog(Base):
     # Optional free-text note (e.g. from /signal command)
     note: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
+    # Wave E3a — feedback ledger hợp nhất: đối tượng được phản hồi.
+    ref_type: Mapped[str | None] = mapped_column(
+        String(16),
+        nullable=True,
+        comment="verdict | brief | pretrade | thesis",
+    )
+    ref_id: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        comment="verdict_event_id | brief_snapshot_id | decision_log_id | thesis_id",
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
+
+    __table_args__ = (Index("ix_user_behavior_logs_ref", "ref_type", "ref_id"),)
 
     def __repr__(self) -> str:
         return (

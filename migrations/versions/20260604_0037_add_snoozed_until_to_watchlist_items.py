@@ -10,8 +10,8 @@ Covers: WatchlistItem.snoozed_until column added in Wave A
 Owner: watchlist segment.
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "20260604_0037"

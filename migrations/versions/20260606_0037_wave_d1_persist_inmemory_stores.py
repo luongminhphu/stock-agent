@@ -21,6 +21,7 @@ New tables:
 
 All stores use upsert pattern (ON CONFLICT DO UPDATE) — one active row per key.
 """
+
 from __future__ import annotations
 
 import sqlalchemy as sa
@@ -39,10 +40,15 @@ def upgrade() -> None:
     op.create_table(
         "trend_snapshots",
         sa.Column("symbol", sa.String(20), primary_key=True, nullable=False),
-        sa.Column("bundle_json", sa.Text(), nullable=False,
-                  comment="JSON: TechnicalSignalBundle.model_dump()"),
-        sa.Column("saved_at", sa.DateTime(timezone=True), nullable=False,
-                  server_default=sa.text("NOW()")),
+        sa.Column(
+            "bundle_json",
+            sa.Text(),
+            nullable=False,
+            comment="JSON: TechnicalSignalBundle.model_dump()",
+        ),
+        sa.Column(
+            "saved_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("NOW()")
+        ),
     )
 
     # ------------------------------------------------------------------
@@ -51,15 +57,31 @@ def upgrade() -> None:
     op.create_table(
         "trend_predictions",
         sa.Column("symbol", sa.String(20), primary_key=True, nullable=False),
-        sa.Column("verdict", sa.String(32), nullable=False,
-                  comment="STRONG_BUY | BUY | WATCH | HOLD | REDUCE | STRONG_SELL"),
+        sa.Column(
+            "verdict",
+            sa.String(32),
+            nullable=False,
+            comment="STRONG_BUY | BUY | WATCH | HOLD | REDUCE | STRONG_SELL",
+        ),
         sa.Column("confidence", sa.Float(), nullable=False, server_default="0"),
-        sa.Column("reasoning_json", sa.Text(), nullable=True,
-                  comment="JSON: full TrendPrediction.model_dump() for warm restore"),
-        sa.Column("predicted_at", sa.DateTime(timezone=True), nullable=False,
-                  server_default=sa.text("NOW()")),
-        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False,
-                  comment="predicted_at + 4h — filter on load to skip stale predictions"),
+        sa.Column(
+            "reasoning_json",
+            sa.Text(),
+            nullable=True,
+            comment="JSON: full TrendPrediction.model_dump() for warm restore",
+        ),
+        sa.Column(
+            "predicted_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("NOW()"),
+        ),
+        sa.Column(
+            "expires_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            comment="predicted_at + 4h — filter on load to skip stale predictions",
+        ),
     )
     op.execute(
         "CREATE INDEX IF NOT EXISTS ix_trend_predictions_expires_at "
@@ -72,12 +94,19 @@ def upgrade() -> None:
     op.create_table(
         "intelligence_snapshots",
         sa.Column("user_id", sa.String(64), primary_key=True, nullable=False),
-        sa.Column("report_json", sa.Text(), nullable=False,
-                  comment="JSON: IntelligenceReport.model_dump()"),
-        sa.Column("trigger_source", sa.String(32), nullable=False,
-                  server_default="unknown"),
-        sa.Column("captured_at", sa.DateTime(timezone=True), nullable=False,
-                  server_default=sa.text("NOW()")),
+        sa.Column(
+            "report_json",
+            sa.Text(),
+            nullable=False,
+            comment="JSON: IntelligenceReport.model_dump()",
+        ),
+        sa.Column("trigger_source", sa.String(32), nullable=False, server_default="unknown"),
+        sa.Column(
+            "captured_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("NOW()"),
+        ),
     )
 
     # ------------------------------------------------------------------
@@ -86,13 +115,25 @@ def upgrade() -> None:
     op.create_table(
         "global_risk_snapshots",
         sa.Column("user_id", sa.String(64), primary_key=True, nullable=False),
-        sa.Column("flagged_tickers_json", sa.Text(), nullable=False,
-                  server_default="'[]'",
-                  comment="JSON array of flagged ticker strings"),
-        sa.Column("verdict_json", sa.Text(), nullable=True,
-                  comment="JSON: EngineVerdict or IntelligenceEngineCompletedEvent payload"),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False,
-                  server_default=sa.text("NOW()")),
+        sa.Column(
+            "flagged_tickers_json",
+            sa.Text(),
+            nullable=False,
+            server_default="'[]'",
+            comment="JSON array of flagged ticker strings",
+        ),
+        sa.Column(
+            "verdict_json",
+            sa.Text(),
+            nullable=True,
+            comment="JSON: EngineVerdict or IntelligenceEngineCompletedEvent payload",
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("NOW()"),
+        ),
     )
 
     # ------------------------------------------------------------------
@@ -102,20 +143,30 @@ def upgrade() -> None:
         "daily_agendas",
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
         sa.Column("user_id", sa.String(64), nullable=False),
-        sa.Column("agenda_date", sa.Date(), nullable=False,
-                  comment="Date (UTC) this agenda was built for"),
-        sa.Column("summary", sa.Text(), nullable=False,
-                  comment="Compact multi-line agenda string for Discord embed prefix"),
-        sa.Column("buckets_json", sa.Text(), nullable=True,
-                  comment="JSON: {decide: [...], watch: [...], defer: [...]}"),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False,
-                  server_default=sa.text("NOW()")),
+        sa.Column(
+            "agenda_date", sa.Date(), nullable=False, comment="Date (UTC) this agenda was built for"
+        ),
+        sa.Column(
+            "summary",
+            sa.Text(),
+            nullable=False,
+            comment="Compact multi-line agenda string for Discord embed prefix",
+        ),
+        sa.Column(
+            "buckets_json",
+            sa.Text(),
+            nullable=True,
+            comment="JSON: {decide: [...], watch: [...], defer: [...]}",
+        ),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("NOW()"),
+        ),
         sa.UniqueConstraint("user_id", "agenda_date", name="uq_daily_agendas_user_date"),
     )
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_daily_agendas_user_id "
-        "ON daily_agendas (user_id)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS ix_daily_agendas_user_id ON daily_agendas (user_id)")
 
 
 def downgrade() -> None:

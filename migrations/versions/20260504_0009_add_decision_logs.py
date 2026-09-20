@@ -16,6 +16,7 @@ Replay loop:
   - AI lesson fields (key_lesson, pattern_detected) — written by
     DecisionService.persist_lesson() after ReplayAgent analysis
 """
+
 from __future__ import annotations
 
 import sqlalchemy as sa
@@ -30,12 +31,18 @@ depends_on: str | None = None
 # Declare enum types with create_type=False so SQLAlchemy's create_table
 # does NOT auto-emit CREATE TYPE — we manage lifecycle manually below.
 decisiontype = postgresql.ENUM(
-    "BUY", "SELL", "HOLD", "ADD", "REDUCE",
+    "BUY",
+    "SELL",
+    "HOLD",
+    "ADD",
+    "REDUCE",
     name="decisiontype",
     create_type=False,
 )
 outcomeoverdict = postgresql.ENUM(
-    "CORRECT", "INCORRECT", "MIXED",
+    "CORRECT",
+    "INCORRECT",
+    "MIXED",
     name="outcomeoverdict",
     create_type=False,
 )
@@ -55,7 +62,6 @@ def upgrade() -> None:
         sa.Column("thesis_id", sa.Integer(), nullable=False),
         sa.Column("user_id", sa.String(64), nullable=False),
         sa.Column("ticker", sa.String(20), nullable=False),
-
         # --- decision ---
         sa.Column("decision_type", decisiontype, nullable=False),
         sa.Column(
@@ -66,24 +72,20 @@ def upgrade() -> None:
         ),
         sa.Column("rationale", sa.Text(), nullable=False),
         sa.Column("review_horizon_days", sa.Integer(), nullable=False, server_default="30"),
-
         # --- frozen context at decision time ---
         sa.Column("price_at_decision", sa.Float(), nullable=True),
         sa.Column("thesis_score_at_decision", sa.Float(), nullable=True),
         sa.Column("thesis_health_score_at_decision", sa.Integer(), nullable=True),
         sa.Column("active_signal", sa.String(100), nullable=True),
         sa.Column("brief_summary", sa.Text(), nullable=True),
-
         # --- outcome evaluation ---
         sa.Column("outcome_price", sa.Float(), nullable=True),
         sa.Column("outcome_pnl_pct", sa.Float(), nullable=True),
         sa.Column("outcome_evaluated_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("outcome_verdict", outcomeoverdict, nullable=True),
-
         # --- AI lessons ---
         sa.Column("key_lesson", sa.Text(), nullable=True),
         sa.Column("pattern_detected", sa.String(100), nullable=True),
-
         # --- constraints ---
         sa.ForeignKeyConstraint(["thesis_id"], ["theses.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),

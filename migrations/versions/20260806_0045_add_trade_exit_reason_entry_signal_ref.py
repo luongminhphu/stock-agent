@@ -23,8 +23,12 @@ branch_labels = None
 depends_on = None
 
 _EXIT_REASON_VALUES = (
-    "stop_loss", "target_hit", "thesis_invalidated", "risk_limit",
-    "rebalance", "manual",
+    "stop_loss",
+    "target_hit",
+    "thesis_invalidated",
+    "risk_limit",
+    "rebalance",
+    "manual",
 )
 
 
@@ -46,12 +50,8 @@ def upgrade() -> None:
             $$;
             """
         )
-        op.execute(
-            "ALTER TABLE trades ADD COLUMN IF NOT EXISTS exit_reason exitreason NULL"
-        )
-        op.execute(
-            "ALTER TABLE trades ADD COLUMN IF NOT EXISTS entry_signal_ref VARCHAR(64) NULL"
-        )
+        op.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS exit_reason exitreason NULL")
+        op.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS entry_signal_ref VARCHAR(64) NULL")
     else:
         with op.batch_alter_table("trades") as batch:
             batch.add_column(
@@ -61,9 +61,7 @@ def upgrade() -> None:
                     nullable=True,
                 )
             )
-            batch.add_column(
-                sa.Column("entry_signal_ref", sa.String(64), nullable=True)
-            )
+            batch.add_column(sa.Column("entry_signal_ref", sa.String(64), nullable=True))
 
 
 def downgrade() -> None:

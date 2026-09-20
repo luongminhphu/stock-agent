@@ -413,6 +413,36 @@ class EngineFeedbackSubmittedEvent(DomainEvent):
     user_note: str = ""
 
 
+@dataclass(frozen=True)
+class BriefFeedbackRecordedEvent(DomainEvent):
+    """Emitted by briefing.BriefingService.record_feedback sau khi lưu BriefFeedback.
+
+    Consumed by: ai.memory.FeedbackLedgerSubscriber → user_behavior_logs
+    (source="briefing", signal="brief:<outcome>", ref_type="brief").
+    """
+
+    brief_snapshot_id: int = 0
+    user_id: str = ""
+    outcome: str = ""  # acted | watching | skipped
+    brief_type: str = ""  # morning | eod | ""
+
+
+@dataclass(frozen=True)
+class PretradeAdviceReconciledEvent(DomainEvent):
+    """Emitted by thesis.DecisionService.reconcile_pretrade_with_action (Wave E3b).
+
+    Khi user BUY/SELL thật trong cửa sổ sau một PRETRADE_ADVICE, thesis phân loại
+    adherence: followed_advice | ignored_advice. Consumed by ai.memory ledger.
+    """
+
+    user_id: str = ""
+    ticker: str = ""
+    decision_log_id: int = 0
+    advice_verdict: str = ""  # BULLISH | BEARISH | NEUTRAL
+    action_type: str = ""  # BUY | SELL
+    adherence: str = ""  # followed_advice | ignored_advice
+
+
 # ─── core self-improvement (Wave 4) ────────────────────────────────────────
 
 
