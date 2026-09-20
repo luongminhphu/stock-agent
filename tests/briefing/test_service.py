@@ -248,3 +248,26 @@ async def test_build_thesis_context_swallows_errors() -> None:
         get_thesis_health=AsyncMock(side_effect=RuntimeError("x"))
     )
     assert await svc._build_thesis_context("u1") == ""
+
+
+# ── Wave E1c: daily_agendas thuộc briefing, persist qua upsert_rows ───────────
+
+
+@pytest.mark.anyio
+async def test_persist_agenda_roundtrip_via_briefing_model() -> None:
+    from src.briefing.agenda_cache import load_today_agendas_from_db, persist_agenda
+    from src.briefing.models import DailyAgenda
+    from src.platform.db import AsyncSessionLocal
+    from src.readmodel import models as rm
+
+    assert rm.DailyAgenda is DailyAgenda and DailyAgenda.__module__ == "src.briefing.models"
+
+    buckets = AgendaBuckets(decide=["HPG"], watch=["VNM"], defer=[])
+    await persist_agenda(AsyncSessionLocal, "u1", "agenda v1", buckets)
+    await persist_agenda(AsyncSessionLocal, "u1", "agenda v2", buckets)  # upsert (user, date)
+    await persist_agenda(AsyncSessionLocal, "u1", "", buckets)  # summary rỗng → bỏ qua
+
+    loaded = await load_today_agendas_from_db(AsyncSessionLocal)
+    assert list(loaded) == ["u1"]
+    assert loaded["u1"].summary == "agenda v2"
+    assert loaded["u1"].buckets.decide == ["HPG"]

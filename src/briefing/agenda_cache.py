@@ -101,57 +101,36 @@ def get_agenda(user_id: str) -> CachedAgenda | None:
 async def persist_agenda(
     session_factory, user_id: str, summary: str, buckets: AgendaBuckets | None
 ) -> None:
-    """Upsert today's agenda to DB. Fire-and-forget — never raises."""
-    if session_factory is None or not summary:
+    """Upsert today's agenda qua platform.db.upsert_rows — never raises."""
+    if not summary:
         return
-    try:
-        import json as _json
-        from datetime import UTC
-        from datetime import date as _date
-        from datetime import datetime as _dt
+    import json as _json
+    from datetime import UTC
+    from datetime import date as _date
+    from datetime import datetime as _dt
 
-        from sqlalchemy.dialects.postgresql import insert as pg_insert
+    from src.briefing.models import DailyAgenda
+    from src.platform.db import upsert_rows
 
-        from src.readmodel.models import DailyAgenda
-
-        today = _date.today()
-        buckets_json = None
-        if buckets is not None:
-            buckets_json = _json.dumps(
-                {
-                    "decide": buckets.decide,
-                    "watch": buckets.watch,
-                    "defer": buckets.defer,
-                }
-            )
-
-        async with session_factory() as session:
-            stmt = (
-                pg_insert(DailyAgenda)
-                .values(
-                    user_id=user_id,
-                    agenda_date=today,
-                    summary=summary,
-                    buckets_json=buckets_json,
-                    created_at=_dt.now(UTC),
-                )
-                .on_conflict_do_update(
-                    constraint="uq_daily_agendas_user_date",
-                    set_={
-                        "summary": summary,
-                        "buckets_json": buckets_json,
-                        "created_at": _dt.now(UTC),
-                    },
-                )
-            )
-            await session.execute(stmt)
-            await session.commit()
-    except Exception as exc:
-        import logging
-
-        logging.getLogger(__name__).warning(
-            "agenda_cache.persist_failed", extra={"user_id": user_id, "error": str(exc)}
+    buckets_json = None
+    if buckets is not None:
+        buckets_json = _json.dumps(
+            {"decide": buckets.decide, "watch": buckets.watch, "defer": buckets.defer}
         )
+    await upsert_rows(
+        session_factory,
+        DailyAgenda,
+        {
+            "user_id": user_id,
+            "agenda_date": _date.today(),
+            "summary": summary,
+            "buckets_json": buckets_json,
+            "created_at": _dt.now(UTC),
+        },
+        constraint="uq_daily_agendas_user_date",
+        log_event="agenda_cache.persist_failed",
+        user_id=user_id,
+    )
 
 
 async def load_today_agendas_from_db(session_factory) -> dict[str, CachedAgenda]:
@@ -164,7 +143,7 @@ async def load_today_agendas_from_db(session_factory) -> dict[str, CachedAgenda]
 
         from sqlalchemy import select
 
-        from src.readmodel.models import DailyAgenda
+        from src.briefing.models import DailyAgenda
 
         today = _date.today()
         async with session_factory() as session:

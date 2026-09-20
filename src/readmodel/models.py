@@ -1,79 +1,21 @@
-"""ORM models cho Wave D.1 — persisted in-memory stores.
+"""readmodel.models — compat re-export (Wave E1).
 
-Owner: readmodel segment.
+readmodel là projection/query (CQRS read side), không sở hữu bảng. Các ORM trước đây
+định nghĩa ở đây đã trả về đúng owner; tên bảng giữ nguyên → không cần migration:
 
-Tables:
-    daily_agendas           — AgendaCache (briefing)
+    market_quote_cache, trend_snapshots, trend_predictions  → src/market/models.py   (E1a)
+    intelligence_snapshots, global_risk_snapshots           → src/core/models.py     (E1b)
+    daily_agendas                                           → src/briefing/models.py (E1c)
 
-Wave E1a: ``market_quote_cache``, ``trend_snapshots``, ``trend_predictions`` chuyển
-sang ``src/market/models.py`` (owner market). Wave E1b: ``intelligence_snapshots``, ``global_risk_snapshots`` → ``src/core/models.py``.
-Re-export bên dưới giữ tương thích 1 wave.
-
-Tất cả các bảng đều dùng upsert pattern (ON CONFLICT DO UPDATE)
-để keep it simple — mỗi symbol/user chỉ có 1 row hiện tại.
+Re-export bên dưới giữ tương thích 1 wave; consumer mới import trực tiếp từ owner.
+Persist qua ``platform.db.upsert_rows``.
 """
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-
-from sqlalchemy import (
-    Date,
-    DateTime,
-    String,
-    Text,
-    UniqueConstraint,
-)
-from sqlalchemy.orm import Mapped, mapped_column
-
-from src.platform.db import Base
-
-
-class DailyAgenda(Base):
-    """Persisted CachedAgenda per user per date — AgendaCache.
-
-    Scoped by date so we never restore yesterday's agenda.
-    On load: only restore if date == today (Asia/Bangkok).
-
-    PK: (user_id, date) — one agenda per user per day.
-    """
-
-    __tablename__ = "daily_agendas"
-    __table_args__ = (
-        UniqueConstraint("user_id", "agenda_date", name="uq_daily_agendas_user_date"),
-    )
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    agenda_date: Mapped[datetime] = mapped_column(
-        Date,
-        nullable=False,
-        comment="Date (UTC) this agenda was built for",
-    )
-    summary: Mapped[str] = mapped_column(
-        Text,
-        nullable=False,
-        comment="Compact multi-line agenda string for Discord embed prefix",
-    )
-    buckets_json: Mapped[str | None] = mapped_column(
-        Text,
-        nullable=True,
-        comment="JSON: {decide: [...], watch: [...], defer: [...]}",
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(UTC),
-    )
-
-
-# ── Wave E1 compat re-export (xoá ở wave sau) ────────────────────────────────
-from src.core.models import GlobalRiskSnapshot, IntelligenceSnapshot  # noqa: E402
-from src.market.models import (  # noqa: E402
-    MarketQuoteCache,
-    TrendPrediction,
-    TrendSnapshot,
-)
+from src.briefing.models import DailyAgenda
+from src.core.models import GlobalRiskSnapshot, IntelligenceSnapshot
+from src.market.models import MarketQuoteCache, TrendPrediction, TrendSnapshot
 
 __all__ = [
     "DailyAgenda",

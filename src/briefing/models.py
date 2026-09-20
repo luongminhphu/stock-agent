@@ -5,6 +5,8 @@ Owner: briefing segment.
 Tables:
   brief_snapshots — persisted output of each morning/EOD brief generation.
   brief_feedback  — user outcome feedback for each brief (acted/watching/skipped).
+  daily_agendas   — CachedAgenda per user per date (Wave E1c, từ readmodel; writer
+                    briefing.agenda_cache.persist_agenda). Tên bảng giữ nguyên.
 
 Design rules:
 - BriefSnapshot is write-side truth for brief history.
@@ -19,7 +21,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import Date, DateTime, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.platform.db import Base
@@ -117,3 +119,41 @@ class BriefFeedback(Base):
             f"<BriefFeedback id={self.id} snapshot={self.brief_snapshot_id} "
             f"user={self.user_id!r} outcome={self.outcome!r}>"
         )
+
+
+class DailyAgenda(Base):
+    """Persisted CachedAgenda per user per date — AgendaCache.
+
+    Scoped by date so we never restore yesterday's agenda.
+    On load: only restore if date == today (Asia/Bangkok).
+
+    PK: (user_id, date) — one agenda per user per day.
+    """
+
+    __tablename__ = "daily_agendas"
+    __table_args__ = (
+        UniqueConstraint("user_id", "agenda_date", name="uq_daily_agendas_user_date"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    agenda_date: Mapped[datetime] = mapped_column(
+        Date,
+        nullable=False,
+        comment="Date (UTC) this agenda was built for",
+    )
+    summary: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        comment="Compact multi-line agenda string for Discord embed prefix",
+    )
+    buckets_json: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="JSON: {decide: [...], watch: [...], defer: [...]}",
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+    )
