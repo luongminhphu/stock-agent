@@ -43,12 +43,15 @@ class WatchdogContext:
     macro_context: str = "N/A"  # injected from market segment
     recent_news: str = "N/A"  # injected from market.news_service
     days_since_last_review: int = 0
+    # Wave D1: dòng market.TickerContext.format_for_prompt() (MA20/50, RSI14, ATR14,
+    # Vol/TB20, 52w, trend, chất lượng dữ liệu). Rỗng → bỏ section.
+    ticker_context: str = ""
 
 
 SYSTEM_PROMPT = """\
 Bạn là chuyên gia giám sát luận điểm đầu tư cho thị trường chứng khoán Việt Nam.
 
-Nhiệm vụ: Đánh giá sức khoẻ tổng thể của một thesis đầu tư dựa trên trạng thái hiện tại của từng assumption, giá cổ phiếu, và bối cảnh vĩ mô.
+Nhiệm vụ: Đánh giá sức khoẻ tổng thể của một thesis đầu tư dựa trên trạng thái hiện tại của từng assumption, giá cổ phiếu, bối cảnh kỹ thuật và bối cảnh vĩ mô (nếu có).
 
 Quy tắc bắt buộc:
 1. Phải đánh giá TỪNG assumption riêng lẻ — không được gộp chung.
@@ -58,6 +61,7 @@ Quy tắc bắt buộc:
 5. `overall_health`: "HEALTHY" khi health_score ≥70, "WARNING" 40–69, "CRITICAL" <40.
 6. Trả về JSON hợp lệ, không có markdown hoặc giải thích ngoài JSON.
 7. `confidence` phải là string: "HIGH" | "MEDIUM" | "LOW".
+8. Chỉ dùng số liệu kỹ thuật được cung cấp; nếu data = stale/fallback thì không suy diễn thêm.
 
 """ + schema_block(WatchdogOutput)
 
@@ -113,20 +117,34 @@ def build_user_prompt(ctx: WatchdogContext, investor_profile: str = "") -> str:
         else ""
     )
 
+    # Wave D1: bối cảnh kỹ thuật từ market.TickerContext — số thật, không suy diễn.
+    technical_section = (
+        f"\nBối cảnh kỹ thuật:\n{ctx.ticker_context}\n"
+        "(Nếu data = stale/fallback: chỉ báo có thể thiếu hoặc cũ — không suy diễn thêm.)\n"
+        if ctx.ticker_context
+        else ""
+    )
+
+    # Chỉ render vĩ mô / tin tức khi caller thực sự inject (mặc định "N/A" → bỏ).
+    context_lines = [
+        f"Bối cảnh vĩ mô: {ctx.macro_context}" if ctx.macro_context != "N/A" else "",
+        f"Tin tức gần nhất: {ctx.recent_news}" if ctx.recent_news != "N/A" else "",
+    ]
+    context_section = "\n".join(line for line in context_lines if line)
+
     prompt = f"""Mã: {ctx.ticker}
 Thesis: {ctx.thesis_title}
 Tóm tắt: {ctx.thesis_summary or "N/A"}
 
 Giá và vị thế:
 {price_section}
-
+{technical_section}
 Assumptions ({len(ctx.assumptions)}):
 {assumptions_text}
-
-Bối cảnh vĩ mô: {ctx.macro_context}
-Tin tức gần nhất: {ctx.recent_news}{stale_note}
-
-Đánh giá sức khoẻ thesis và trả về JSON theo schema ở trên."""
+"""
+    if context_section:
+        prompt += f"\n{context_section}\n"
+    prompt += f"{stale_note}\nĐánh giá sức khoẻ thesis và trả về JSON theo schema ở trên."
 
     if investor_profile:
         prompt += f"\n\n{investor_profile}"
