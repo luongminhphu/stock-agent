@@ -67,6 +67,7 @@ Session safety:
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
@@ -117,6 +118,24 @@ class InvestorContext:
 
     # From thesis.behavioral_dna_service — aggregated DecisionLog profile (Wave 3)
     behavioral_dna_block: str = ""
+
+
+def _resolve_price_sources() -> tuple[object | None, object | None]:
+    """Nguồn giá cho thesis health (Wave D4c): TickerContext + quote fallback.
+
+    Lazy import bootstrap (tránh vòng import); chưa bootstrap (unit test) → (None, None)
+    → health_snapshot bỏ qua giá, không bật AT_RISK theo stop.
+    """
+    try:
+        from src.platform.bootstrap import get_quote_service, get_ticker_context_service
+    except Exception:  # pragma: no cover — import lỗi coi như không có nguồn giá
+        return None, None
+    ticker_ctx = quote_svc = None
+    with contextlib.suppress(RuntimeError):
+        ticker_ctx = get_ticker_context_service()
+    with contextlib.suppress(RuntimeError):
+        quote_svc = get_quote_service()
+    return ticker_ctx, quote_svc
 
 
 class ContextBuilder:
@@ -199,7 +218,13 @@ class ContextBuilder:
         try:
             from src.thesis.health_snapshot import build_thesis_health_snapshots
 
-            snapshots = await build_thesis_health_snapshots(self._session, user_id=user_id)
+            ticker_ctx, quote_svc = _resolve_price_sources()
+            snapshots = await build_thesis_health_snapshots(
+                self._session,
+                user_id=user_id,
+                ticker_context_service=ticker_ctx,
+                quote_service=quote_svc,
+            )
             if not snapshots:
                 return ""
 
