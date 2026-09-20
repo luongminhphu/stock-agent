@@ -22,6 +22,7 @@ from src.platform.bootstrap import (
     get_quote_service,
     get_session_factory,
     get_thesis_review_agent,
+    get_ticker_context_service,
 )
 from src.platform.logging import get_logger
 from src.thesis.models import ThesisStatus
@@ -60,6 +61,7 @@ class ThesisReviewCog(BaseCog):
                     # Wave 3: pass session_factory so ReviewOutcomeReactor runs
                     # after the review — mutates WatchlistItem + creates alerts.
                     session_factory=get_session_factory(),
+                    ticker_context_service=get_ticker_context_service(),
                 )
                 review = await svc.review_thesis(thesis_id=thesis_id, user_id=user_id)
         except ThesisNotFoundError:

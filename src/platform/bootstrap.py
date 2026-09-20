@@ -437,6 +437,7 @@ async def bootstrap() -> None:
             session_factory=AsyncSessionLocal,
             review_agent=_thesis_review_agent,
             quote_service=_quote_service,
+            ticker_context_service=_ticker_context_service,
         )
         _thesis_review_listener.register()
         logger.info("platform.bootstrap.thesis_review_listener_ready")
@@ -450,6 +451,7 @@ async def bootstrap() -> None:
             session_factory=AsyncSessionLocal,
             review_agent=_thesis_review_agent,
             quote_service=_quote_service,
+            ticker_context_service=_ticker_context_service,
         )
         _signal_review_trigger_listener.register()  # type: ignore[union-attr]
         logger.info("platform.bootstrap.signal_review_trigger_listener_ready")

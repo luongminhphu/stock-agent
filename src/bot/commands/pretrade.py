@@ -13,6 +13,7 @@ from src.platform.bootstrap import (
     get_market_regime_service,
     get_pretrade_agent,
     get_quote_service,
+    get_ticker_context_service,
 )
 from src.platform.logging import get_logger
 
@@ -83,6 +84,7 @@ class PretradeCog(BaseCog):
                     quote_service=get_quote_service(),
                     pretrade_agent=get_pretrade_agent(),
                     market_regime_service=get_market_regime_service(),
+                    ticker_context_service=get_ticker_context_service(),
                 )
                 result = await svc.check(ticker=ticker, user_id=user_id)
         except Exception as exc:

@@ -186,7 +186,12 @@ async def get_review_service(
 ) -> ReviewService:  # type: ignore[name-defined]  # noqa: F821
     from src.thesis.review_service import ReviewService
 
-    return ReviewService(session=session, agent=agent, quote_service=quote_svc)  # type: ignore[arg-type]
+    return ReviewService(
+        session=session,
+        agent=agent,  # type: ignore[arg-type]
+        quote_service=quote_svc,  # type: ignore[arg-type]
+        ticker_context_service=_get_tcs(),
+    )
 
 
 async def get_briefing_service(

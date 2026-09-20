@@ -562,7 +562,11 @@ class ThesisMaintenanceScheduler:
 
         # -- Step 2: AI review for stale theses --
         try:
-            from src.platform.bootstrap import get_quote_service, get_thesis_review_agent
+            from src.platform.bootstrap import (
+                get_quote_service,
+                get_thesis_review_agent,
+                get_ticker_context_service,
+            )
             from src.thesis.review_service import ReviewService
 
             async with AsyncSessionLocal() as session:
@@ -570,6 +574,7 @@ class ThesisMaintenanceScheduler:
                     session=session,
                     agent=get_thesis_review_agent(),  # type: ignore[arg-type]
                     quote_service=get_quote_service(),
+                    ticker_context_service=get_ticker_context_service(),
                 )
                 reviews = await svc.review_stale_theses(
                     user_id=str(user_id),
@@ -695,6 +700,7 @@ class ThesisDriftScheduler:
                 get_ai_client,
                 get_quote_service,
                 get_thesis_review_agent,
+                get_ticker_context_service,
             )
             from src.thesis.conviction_drift_detector import ConvictionDriftDetector
             from src.thesis.drift_service import DriftService
@@ -767,6 +773,7 @@ class ThesisDriftScheduler:
                             session=session,
                             agent=get_thesis_review_agent(),  # type: ignore[arg-type]
                             quote_service=get_quote_service(),
+                            ticker_context_service=get_ticker_context_service(),
                         )
                         review = await review_svc.review_thesis(
                             user_id=str(user_id),

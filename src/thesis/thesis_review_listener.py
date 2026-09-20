@@ -94,10 +94,12 @@ class ThesisReviewListener:
         session_factory: AsyncSessionFactory,
         review_agent: Any,
         quote_service: Any | None = None,
+        ticker_context_service: Any | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._review_agent = review_agent
         self._quote_service = quote_service
+        self._ticker_context_service = ticker_context_service
         self._registered = False
 
     # ── bootstrap ────────────────────────────────────────────────────────────
@@ -161,6 +163,7 @@ class ThesisReviewListener:
                 session=session,
                 agent=self._review_agent,
                 quote_service=self._quote_service,
+                ticker_context_service=self._ticker_context_service,
                 # Wave 3: forward session_factory so ReviewOutcomeReactor activates
                 # after each review — mutates WatchlistItem + creates THESIS_TRIGGER alerts.
                 session_factory=self._session_factory,

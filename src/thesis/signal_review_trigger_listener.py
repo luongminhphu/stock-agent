@@ -70,10 +70,12 @@ class SignalReviewTriggerListener:
         session_factory: Any,
         review_agent: Any,
         quote_service: Any = None,
+        ticker_context_service: Any = None,
     ) -> None:
         self._session_factory = session_factory
         self._review_agent = review_agent
         self._quote_service = quote_service
+        self._ticker_context_service = ticker_context_service
         self._registered = False
         # Dedup: (thesis_id_str, phase) — cleared on each SignalEngineCompletedEvent
         self._seen_this_run: set[tuple[str, str]] = set()
@@ -149,6 +151,7 @@ class SignalReviewTriggerListener:
                     session=session,
                     agent=self._review_agent,
                     quote_service=self._quote_service,
+                    ticker_context_service=self._ticker_context_service,
                     # Wave 3: forward session_factory so ReviewOutcomeReactor
                     # runs after the review — mutates WatchlistItem + creates alerts.
                     session_factory=self._session_factory,

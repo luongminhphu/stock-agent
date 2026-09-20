@@ -103,12 +103,16 @@ class ReviewService:
         agent: ThesisReviewAgent,
         quote_service: QuoteReader | None = None,
         session_factory: Any | None = None,
+        ticker_context_service: Any | None = None,
     ) -> None:
         self._session = session
         self._repo = ThesisRepository(session)
         self._agent = agent
         self._quote_service = quote_service
         self._session_factory = session_factory
+        # Wave C2: market.TickerContextService — giá + bối cảnh kỹ thuật cho agent.
+        # None → giữ đường get_quote cũ.
+        self._ticker_context_service = ticker_context_service
         self._scoring = ScoringService()
 
     # ------------------------------------------------------------------
@@ -147,6 +151,14 @@ class ReviewService:
                 f"Thesis {thesis_id} is {thesis.status} — only ACTIVE theses can be reviewed."
             )
 
+        # Wave C2: ưu tiên TickerContext (giá + MA/RSI/ATR/vol/52w/trend) cho agent;
+        # fallback get_quote như cũ. current_price truyền tay vẫn được tôn trọng.
+        ticker_context = ""
+        ctx = await self._fetch_ticker_context(thesis.ticker)
+        if ctx is not None:
+            ticker_context = ctx.format_for_prompt()
+            if current_price is None:
+                current_price = ctx.price
         if current_price is None and self._quote_service is not None:
             try:
                 quote = await self._quote_service.get_quote(thesis.ticker)
@@ -199,6 +211,7 @@ class ReviewService:
             current_price=current_price,
             entry_price=thesis.entry_price,
             target_price=thesis.target_price,
+            ticker_context=ticker_context,
             # Memory wiring — pass session + identifiers for episodic log
             session=self._session,
             user_id=str(user_id),
@@ -224,6 +237,16 @@ class ReviewService:
             ),
         )
         return review
+
+    async def _fetch_ticker_context(self, ticker: str) -> Any | None:
+        """Best-effort: TickerContext hoặc None. Không bao giờ chặn review."""
+        if self._ticker_context_service is None:
+            return None
+        try:
+            return await self._ticker_context_service.get(ticker)
+        except Exception as exc:
+            logger.warning("review_service.ticker_context_failed", ticker=ticker, error=str(exc))
+            return None
 
     async def review_stale_theses(
         self,

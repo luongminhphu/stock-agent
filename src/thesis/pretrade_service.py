@@ -52,10 +52,13 @@ class PreTradeService:
         quote_service: QuoteService,
         pretrade_agent: PreTradeAgent,
         market_regime_service: object | None = None,
+        ticker_context_service: object | None = None,
     ) -> None:
         self._session = session
         self._quote_service = quote_service
         self._agent = pretrade_agent
+        # Wave C2: market.TickerContextService — None → chỉ dùng quote như cũ.
+        self._ticker_context_service = ticker_context_service
         # Optional (Wave 8.1) — None keeps existing callers backward-compatible;
         # market context block is simply omitted (empty string) when not wired.
         self._market_regime_service = market_regime_service
@@ -67,8 +70,14 @@ class PreTradeService:
         ticker = ticker.upper().strip()
         logger.info("pretrade_service.start", ticker=ticker, user_id=user_id)
 
-        # 1. Quote
-        quote = await self._quote_service.get_quote(ticker)
+        # 1. Quote (+ bối cảnh kỹ thuật nếu TickerContextService được wire — Wave C2)
+        ticker_context = ""
+        ctx = await self._fetch_ticker_context(ticker)
+        if ctx is not None:
+            quote = ctx.quote
+            ticker_context = ctx.format_for_prompt()
+        else:
+            quote = await self._quote_service.get_quote(ticker)
         price = quote.price
         change_pct = quote.change_pct
 
@@ -97,6 +106,7 @@ class PreTradeService:
             brief_context=brief_context,
             past_lessons=past_lessons,
             market_context=market_context,
+            ticker_context=ticker_context,
             session=self._session,
         )
         # 6b. Quantitative sizing gate (Wave 2) — portfolio segment owns the
@@ -215,6 +225,16 @@ class PreTradeService:
         except Exception as exc:
             logger.warning("pretrade_service.brief_context_error", ticker=ticker, error=str(exc))
             return ""
+
+    async def _fetch_ticker_context(self, ticker: str) -> object | None:
+        """Best-effort TickerContext; None → caller fallback get_quote."""
+        if self._ticker_context_service is None:
+            return None
+        try:
+            return await self._ticker_context_service.get(ticker)  # type: ignore[attr-defined]
+        except Exception as exc:
+            logger.warning("pretrade_service.ticker_context_failed", ticker=ticker, error=str(exc))
+            return None
 
     async def _build_market_context(self) -> str:
         """Return MarketRegime.format_for_prompt() string (Wave 8.1).

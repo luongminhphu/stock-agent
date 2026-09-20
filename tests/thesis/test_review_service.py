@@ -229,3 +229,75 @@ async def test_list_reviews_custom_limit(mock_repo, mock_agent):
     svc = _make_service(mock_repo, mock_agent)
     await svc.list_reviews(thesis_id=1, user_id="user-test-001", limit=5)
     mock_repo.list_reviews_by_thesis.assert_awaited_once_with(1, limit=5)
+
+
+# ---------------------------------------------------------------------------
+# Wave C2 — TickerContextService: giá + bối cảnh kỹ thuật cho agent
+# ---------------------------------------------------------------------------
+
+
+def _make_ctx(price: float = 30_500.0, line: str = "HPG 30,500 (+1.2%) | trend UP · data live"):
+    ctx = MagicMock()
+    ctx.price = price
+    ctx.format_for_prompt.return_value = line
+    return ctx
+
+
+@pytest.mark.asyncio
+async def test_review_uses_ticker_context_for_price_and_prompt(mock_repo, mock_agent):
+    mock_agent.review.return_value = _make_output()
+    mock_qs = AsyncMock()
+    tcs = AsyncMock()
+    tcs.get.return_value = _make_ctx()
+
+    svc = _make_service(mock_repo, mock_agent, quote_service=mock_qs)
+    svc._ticker_context_service = tcs
+    await svc.review_thesis(thesis_id=1, user_id="user-test-001")
+
+    tcs.get.assert_awaited_once_with("HPG")
+    mock_qs.get_quote.assert_not_awaited()  # context đã có giá → không fetch quote lần 2
+    kw = mock_agent.review.call_args.kwargs
+    assert kw["current_price"] == 30_500.0
+    assert kw["ticker_context"] == "HPG 30,500 (+1.2%) | trend UP · data live"
+
+
+@pytest.mark.asyncio
+async def test_review_explicit_price_still_gets_context_line(mock_repo, mock_agent):
+    """current_price truyền tay được tôn trọng, nhưng agent vẫn nhận bối cảnh kỹ thuật."""
+    mock_agent.review.return_value = _make_output()
+    tcs = AsyncMock()
+    tcs.get.return_value = _make_ctx(price=30_500.0)
+
+    svc = _make_service(mock_repo, mock_agent)
+    svc._ticker_context_service = tcs
+    await svc.review_thesis(thesis_id=1, user_id="user-test-001", current_price=27_000.0)
+
+    kw = mock_agent.review.call_args.kwargs
+    assert kw["current_price"] == 27_000.0 and kw["ticker_context"]
+
+
+@pytest.mark.asyncio
+async def test_review_context_failure_falls_back_to_quote(mock_repo, mock_agent):
+    mock_agent.review.return_value = _make_output()
+    tcs = AsyncMock()
+    tcs.get.side_effect = RuntimeError("ohlcv down")
+    mock_qs = AsyncMock()
+    q = MagicMock()
+    q.price = 29_500.0
+    mock_qs.get_quote.return_value = q
+
+    svc = _make_service(mock_repo, mock_agent, quote_service=mock_qs)
+    svc._ticker_context_service = tcs
+    await svc.review_thesis(thesis_id=1, user_id="user-test-001")
+
+    mock_qs.get_quote.assert_awaited_once_with("HPG")
+    kw = mock_agent.review.call_args.kwargs
+    assert kw["current_price"] == 29_500.0 and kw["ticker_context"] == ""
+
+
+@pytest.mark.asyncio
+async def test_review_without_context_service_sends_empty_context(mock_repo, mock_agent):
+    mock_agent.review.return_value = _make_output()
+    svc = _make_service(mock_repo, mock_agent)
+    await svc.review_thesis(thesis_id=1, user_id="user-test-001", current_price=27_000.0)
+    assert mock_agent.review.call_args.kwargs["ticker_context"] == ""
