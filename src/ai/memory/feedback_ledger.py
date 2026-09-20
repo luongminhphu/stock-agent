@@ -8,13 +8,23 @@ Trước E3a có 3 stream không giao nhau:
   user_behavior_logs ← UserActionEvent (bought/sold/ignored...)      → ai.memory.lesson đọc
 
 Subscriber này dual-write thêm 1 row ledger cho mỗi feedback core/brief/pretrade, với
-``ref_type``/``ref_id`` trỏ về đối tượng gốc. Hai bảng cũ không đổi (reader cũ giữ
-nguyên); readmodel.AccuracyProjection (E3c) đọc ledger làm 1 nguồn.
+``ref_type``/``ref_id`` trỏ về đối tượng gốc. readmodel.AccuracyProjection (E3c) và
+briefing calibration (F5) đọc ledger qua ``FeedbackLedgerReader``.
+
+Reader cũ còn giữ có chủ đích:
+  - core_feedback  → core.evolution cần verdict/actual/reasoning (ledger chỉ có signal+note).
+  - brief_feedback → readmodel.get_brief_feedback_summary (KPI UI, có lịch sử trước E3a).
 
 Ledger là best-effort: lỗi ghi chỉ log, không raise (event gốc đã được xử lý).
 """
 
 from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.db import get_session
 from src.platform.event_bus import EventBus, get_event_bus
@@ -24,6 +34,8 @@ from src.platform.events import (
     PretradeAdviceReconciledEvent,
 )
 from src.platform.logging import get_logger
+
+from .user_behavior_log import UserBehaviorLog
 
 logger = get_logger(__name__)
 
@@ -95,8 +107,6 @@ class FeedbackLedgerSubscriber:
         agent_type: str | None = None,
         note: str | None = None,
     ) -> None:
-        from src.ai.memory.user_behavior_log import UserBehaviorLog
-
         if not user_id:
             logger.warning("feedback_ledger.skip_no_user", ref_type=ref_type, ref_id=ref_id)
             return
@@ -129,3 +139,79 @@ class FeedbackLedgerSubscriber:
                 ref_id=ref_id,
                 error=str(exc),
             )
+
+
+# ── reader (Wave F5) ─────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class BriefFeedbackCalibration:
+    """Tóm tắt phản hồi brief của 1 user trong ``days`` ngày — nguồn: ledger."""
+
+    days: int
+    total: int
+    counts: dict[str, int] = field(default_factory=dict)  # outcome → n (acted/watching/skipped)
+    last_outcome: str | None = None
+    last_at: datetime | None = None
+
+    @property
+    def acted_rate(self) -> float | None:
+        return round(self.counts.get("acted", 0) / self.total, 3) if self.total else None
+
+    def to_prompt_text(self) -> str:
+        """Chuỗi calibration ngắn cho prompt AI; rỗng khi chưa có phản hồi."""
+        if not self.total:
+            return ""
+        parts = [
+            f"{outcome} {n / self.total:.0%}"
+            for outcome, n in sorted(self.counts.items(), key=lambda kv: -kv[1])
+        ]
+        line = f"Phản hồi brief {self.days} ngày: {self.total} lượt — " + ", ".join(parts) + "."
+        if self.last_outcome and self.last_at:
+            line += f" Gần nhất: {self.last_outcome} ({self.last_at:%d/%m/%Y})."
+        return line
+
+
+class FeedbackLedgerReader:
+    """Đọc ``user_behavior_logs`` theo (source, ref_type) — dùng cho calibration/projection."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def brief_calibration(self, user_id: str, days: int = 30) -> BriefFeedbackCalibration:
+        since = datetime.now(UTC) - timedelta(days=days)
+        base = (
+            UserBehaviorLog.user_id == user_id,
+            UserBehaviorLog.source == SOURCE_BRIEFING,
+            UserBehaviorLog.ref_type == REF_BRIEF,
+        )
+        counts_stmt = (
+            select(UserBehaviorLog.signal, func.count())
+            .where(*base, UserBehaviorLog.created_at >= since)
+            .group_by(UserBehaviorLog.signal)
+        )
+        counts: dict[str, int] = {}
+        for signal, n in (await self._session.execute(counts_stmt)).all():
+            outcome = signal.split(":", 1)[1] if ":" in signal else signal
+            counts[outcome] = counts.get(outcome, 0) + int(n)
+
+        last_stmt = (
+            select(UserBehaviorLog.signal, UserBehaviorLog.created_at)
+            .where(*base)
+            .order_by(UserBehaviorLog.created_at.desc(), UserBehaviorLog.id.desc())
+            .limit(1)
+        )
+        last = (await self._session.execute(last_stmt)).first()
+        last_outcome = last_at = None
+        if last is not None:
+            sig, last_at = last
+            last_outcome = sig.split(":", 1)[1] if ":" in sig else sig
+            if last_at is not None and last_at.tzinfo is None:
+                last_at = last_at.replace(tzinfo=UTC)
+        return BriefFeedbackCalibration(
+            days=days,
+            total=sum(counts.values()),
+            counts=counts,
+            last_outcome=last_outcome,
+            last_at=last_at,
+        )

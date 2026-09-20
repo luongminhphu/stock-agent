@@ -74,3 +74,45 @@ async def test_missing_user_is_skipped() -> None:
     sub = FeedbackLedgerSubscriber(EventBus())
     await sub._on_engine_feedback(EngineFeedbackSubmittedEvent(verdict_event_id="v-2", user_id=""))
     assert await _rows("") == []
+
+
+# ── Wave F5: FeedbackLedgerReader.brief_calibration ─────────────────────────
+
+
+@pytest.mark.anyio
+async def test_brief_calibration_reads_ledger_only_brief_rows() -> None:
+    from src.ai.memory.feedback_ledger import FeedbackLedgerReader
+
+    sub = FeedbackLedgerSubscriber(EventBus())
+    for i, outcome in enumerate(("acted", "acted", "skipped", "watching")):
+        await sub._on_brief_feedback(
+            BriefFeedbackRecordedEvent(
+                brief_snapshot_id=100 + i, user_id="u-cal", outcome=outcome, brief_type="morning"
+            )
+        )
+    # row core không được tính vào calibration brief
+    await sub._on_engine_feedback(
+        EngineFeedbackSubmittedEvent(
+            verdict_event_id="v-9", user_id="u-cal", verdict="BUY_SIGNAL", outcome="acted"
+        )
+    )
+
+    async with AsyncSessionLocal() as s:
+        cal = await FeedbackLedgerReader(s).brief_calibration("u-cal", days=30)
+
+    assert cal.total == 4
+    assert cal.counts == {"acted": 2, "skipped": 1, "watching": 1}
+    assert cal.acted_rate == 0.5
+    assert cal.last_outcome == "watching" and cal.last_at is not None
+    text = cal.to_prompt_text()
+    assert text.startswith("Phản hồi brief 30 ngày: 4 lượt — acted 50%")
+    assert "Gần nhất: watching" in text
+
+
+@pytest.mark.anyio
+async def test_brief_calibration_empty_returns_blank_prompt() -> None:
+    from src.ai.memory.feedback_ledger import FeedbackLedgerReader
+
+    async with AsyncSessionLocal() as s:
+        cal = await FeedbackLedgerReader(s).brief_calibration("u-none")
+    assert cal.total == 0 and cal.acted_rate is None and cal.to_prompt_text() == ""
