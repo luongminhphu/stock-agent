@@ -123,6 +123,7 @@ class UserActionFeedbackListener:
             user_id=event.user_id,
             ticker=event.ticker,
         )
+        await self._thesis_reconcile_pretrade(event)
 
     async def _on_buy(self, event: UserActionEvent) -> None:
         """BUY: ensure ticker is tracked in watchlist."""
@@ -131,6 +132,7 @@ class UserActionFeedbackListener:
             ticker=event.ticker,
             note=event.note or None,
         )
+        await self._thesis_reconcile_pretrade(event)
 
     async def _on_ignore_alert(self, event: UserActionEvent) -> None:
         """IGNORE_ALERT: mute specific alert + snooze ticker for mute_days."""
@@ -221,6 +223,45 @@ class UserActionFeedbackListener:
                 error=str(exc),
             )
             await get_feedback_monitor().record_error(ADAPTER_THESIS, str(exc))
+
+    async def _thesis_reconcile_pretrade(self, event: UserActionEvent) -> None:
+        """Wave E3b: nối BUY/SELL thật với PRETRADE_ADVICE gần nhất (rule ở thesis),
+        rồi publish PretradeAdviceReconciledEvent → ai.memory feedback ledger."""
+        if not event.ticker:
+            return
+        try:
+            from src.platform.events import PretradeAdviceReconciledEvent
+            from src.thesis.decision_service import DecisionService
+
+            async with get_session() as session:
+                advice = await DecisionService(session).reconcile_pretrade_with_action(
+                    user_id=event.user_id,
+                    ticker=event.ticker,
+                    action_type=event.action_type,
+                )
+                if advice is None:
+                    return
+                payload = PretradeAdviceReconciledEvent(
+                    user_id=event.user_id,
+                    ticker=advice.ticker,
+                    decision_log_id=int(advice.id),
+                    advice_verdict=(advice.active_signal or "").upper(),
+                    action_type=event.action_type,
+                    adherence=advice.adherence or "",
+                )
+            await self._bus.publish(payload)
+            logger.info(
+                "user_action_listener.pretrade_reconciled",
+                ticker=event.ticker,
+                decision_id=payload.decision_log_id,
+                adherence=payload.adherence,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "user_action_listener.pretrade_reconcile_failed",
+                ticker=event.ticker,
+                error=str(exc),
+            )
 
     async def _thesis_touch_reviewed(
         self,

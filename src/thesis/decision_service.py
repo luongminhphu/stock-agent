@@ -37,6 +37,12 @@ _VALID_DECISION_TYPES = {"BUY", "SELL", "HOLD", "ADD", "REDUCE", "PRETRADE_ADVIC
 _VALID_OUTCOME_VERDICTS = {"CORRECT", "INCORRECT", "MIXED"}
 _DEFAULT_REVIEW_HORIZON_DAYS = 30
 
+# Wave E3b — cửa sổ tối đa (ngày) giữa PRETRADE_ADVICE và hành động thật để coi là
+# "có liên quan" tới lời khuyên đó.
+_PRETRADE_ADHERENCE_WINDOW_DAYS = 7
+ADHERENCE_FOLLOWED = "followed_advice"
+ADHERENCE_IGNORED = "ignored_advice"
+
 # Threshold for verdict classification (percentage points).
 # price movement >= +_VERDICT_THRESHOLD_PCT → CORRECT for bullish decisions.
 # price movement <= -_VERDICT_THRESHOLD_PCT → INCORRECT for bullish decisions.
@@ -190,6 +196,70 @@ class DecisionService:
             thesis_id=thesis.id if thesis else None,
         )
         return row
+
+    async def reconcile_pretrade_with_action(
+        self,
+        *,
+        user_id: str,
+        ticker: str,
+        action_type: str,
+        action_at: datetime | None = None,
+        window_days: int = _PRETRADE_ADHERENCE_WINDOW_DAYS,
+    ) -> DecisionLog | None:
+        """Nối hành động thật (BUY/SELL) với PRETRADE_ADVICE gần nhất còn chưa reconcile.
+
+        Owner: thesis (rule "user có nghe AI không" là thesis scoring concern).
+
+        Rule adherence (advice.active_signal là Verdict BULLISH/BEARISH/NEUTRAL):
+            BUY  + BULLISH → followed   BUY  + BEARISH → ignored
+            SELL + BEARISH → followed   SELL + BULLISH → ignored
+            NEUTRAL / không rõ → ignored (AI không khuyên hành động mà user vẫn làm)
+
+        Trả về row advice đã cập nhật, hoặc None nếu không có advice trong cửa sổ.
+        Caller (core.UserActionFeedbackListener) publish PretradeAdviceReconciledEvent
+        → ai.memory ledger. Không raise ra ngoài cho lỗi dữ liệu; caller quản lý commit.
+        """
+        action = action_type.upper()
+        if action not in ("BUY", "SELL"):
+            return None
+        ticker = ticker.upper().strip()
+        action_at = action_at or datetime.now(UTC)
+        since = action_at - timedelta(days=window_days)
+
+        stmt = (
+            select(DecisionLog)
+            .where(
+                DecisionLog.user_id == str(user_id),
+                DecisionLog.ticker == ticker,
+                DecisionLog.decision_type == "PRETRADE_ADVICE",
+                DecisionLog.adherence.is_(None),
+                DecisionLog.decision_at >= since,
+                DecisionLog.decision_at <= action_at,
+            )
+            .order_by(DecisionLog.decision_at.desc(), DecisionLog.id.desc())
+            .limit(1)
+        )
+        advice = (await self._session.execute(stmt)).scalar_one_or_none()
+        if advice is None:
+            return None
+
+        signal = (advice.active_signal or "").upper()
+        followed = (action == "BUY" and signal == "BULLISH") or (
+            action == "SELL" and signal == "BEARISH"
+        )
+        advice.adherence = ADHERENCE_FOLLOWED if followed else ADHERENCE_IGNORED
+        advice.adherence_action_at = action_at
+        await self._session.flush()
+        logger.info(
+            "decision.pretrade_adherence_reconciled",
+            decision_id=advice.id,
+            user_id=user_id,
+            ticker=ticker,
+            action=action,
+            advice_verdict=signal,
+            adherence=advice.adherence,
+        )
+        return advice
 
     async def log_decision(
         self,

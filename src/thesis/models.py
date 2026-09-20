@@ -357,5 +357,12 @@ class DecisionLog(Base):
     )
     key_lesson: Mapped[str | None] = mapped_column(Text, nullable=True)
     pattern_detected: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Wave E3b — chỉ cho PRETRADE_ADVICE: user có làm theo lời khuyên không.
+    adherence: Mapped[str | None] = mapped_column(
+        String(16), nullable=True
+    )  # followed_advice | ignored_advice
+    adherence_action_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     thesis: Mapped[Thesis] = relationship(back_populates="decision_logs")
