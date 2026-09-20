@@ -69,47 +69,31 @@ logger = get_logger(__name__)
 async def _persist_intelligence_snapshot(
     session_factory, user_id: str, report, trigger_source: str
 ) -> None:
-    """Upsert an IntelligenceSnapshot row. Fire-and-forget — never raises."""
-    if session_factory is None:
-        return
+    """Upsert an IntelligenceSnapshot row qua platform.db.upsert_rows — never raises."""
+    import json as _json
+    from datetime import UTC
+    from datetime import datetime as _dt
+
+    from src.core.models import IntelligenceSnapshot
+    from src.platform.db import upsert_rows
+
     try:
-        import json as _json
-        from datetime import UTC
-        from datetime import datetime as _dt
-
-        from sqlalchemy.dialects.postgresql import insert as pg_insert
-
-        from src.readmodel.models import IntelligenceSnapshot
-
-        try:
-            report_json = _json.dumps(report.model_dump(), default=str)
-        except Exception:
-            report_json = _json.dumps({}, default=str)
-
-        async with session_factory() as session:
-            stmt = (
-                pg_insert(IntelligenceSnapshot)
-                .values(
-                    user_id=user_id,
-                    report_json=report_json,
-                    trigger_source=trigger_source or "unknown",
-                    captured_at=_dt.now(UTC),
-                )
-                .on_conflict_do_update(
-                    index_elements=["user_id"],
-                    set_={
-                        "report_json": report_json,
-                        "trigger_source": trigger_source or "unknown",
-                        "captured_at": _dt.now(UTC),
-                    },
-                )
-            )
-            await session.execute(stmt)
-            await session.commit()
-    except Exception as exc:
-        logger.warning(
-            "intelligence_snapshot_store.persist_failed", user_id=user_id, error=str(exc)
-        )
+        report_json = _json.dumps(report.model_dump(), default=str)
+    except Exception:
+        report_json = _json.dumps({}, default=str)
+    await upsert_rows(
+        session_factory,
+        IntelligenceSnapshot,
+        {
+            "user_id": user_id,
+            "report_json": report_json,
+            "trigger_source": trigger_source or "unknown",
+            "captured_at": _dt.now(UTC),
+        },
+        conflict_columns=["user_id"],
+        log_event="intelligence_snapshot_store.persist_failed",
+        user_id=user_id,
+    )
 
 
 async def load_intelligence_snapshots_from_db(session_factory) -> dict[str, dict]:
@@ -119,7 +103,7 @@ async def load_intelligence_snapshots_from_db(session_factory) -> dict[str, dict
     try:
         from sqlalchemy import select
 
-        from src.readmodel.models import IntelligenceSnapshot
+        from src.core.models import IntelligenceSnapshot
 
         async with session_factory() as session:
             rows = (await session.execute(select(IntelligenceSnapshot))).scalars().all()
@@ -241,7 +225,7 @@ class IntelligenceSnapshotStore:
 
             from sqlalchemy import select  # noqa: PLC0415
 
-            from src.readmodel.models import IntelligenceSnapshot  # noqa: PLC0415
+            from src.core.models import IntelligenceSnapshot  # noqa: PLC0415
 
             async with self._session_factory() as session:
                 stmt = (

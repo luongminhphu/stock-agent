@@ -39,48 +39,34 @@ _TTL_HOURS = 4
 
 
 async def _persist_risk_snapshot(session_factory, user_id: str, flagged: set, verdict) -> None:
-    """Upsert a GlobalRiskSnapshot row. Fire-and-forget — never raises."""
-    if session_factory is None:
-        return
+    """Upsert a GlobalRiskSnapshot row qua platform.db.upsert_rows — never raises."""
+    import json as _json
+    from datetime import UTC
+    from datetime import datetime as _dt
+
+    from src.core.models import GlobalRiskSnapshot
+    from src.platform.db import upsert_rows
+
     try:
-        import json as _json
-        from datetime import UTC
-        from datetime import datetime as _dt
-
-        from sqlalchemy.dialects.postgresql import insert as pg_insert
-
-        from src.readmodel.models import GlobalRiskSnapshot
-
-        try:
-            verdict_json = _json.dumps(
-                verdict.model_dump() if hasattr(verdict, "model_dump") else str(verdict),
-                default=str,
-            )
-        except Exception:
-            verdict_json = None
-
-        async with session_factory() as session:
-            stmt = (
-                pg_insert(GlobalRiskSnapshot)
-                .values(
-                    user_id=user_id,
-                    flagged_tickers_json=_json.dumps(sorted(flagged)),
-                    verdict_json=verdict_json,
-                    updated_at=_dt.now(UTC),
-                )
-                .on_conflict_do_update(
-                    index_elements=["user_id"],
-                    set_={
-                        "flagged_tickers_json": _json.dumps(sorted(flagged)),
-                        "verdict_json": verdict_json,
-                        "updated_at": _dt.now(UTC),
-                    },
-                )
-            )
-            await session.execute(stmt)
-            await session.commit()
-    except Exception as exc:
-        logger.warning("global_risk_store.persist_failed", user_id=user_id, error=str(exc))
+        verdict_json = _json.dumps(
+            verdict.model_dump() if hasattr(verdict, "model_dump") else str(verdict),
+            default=str,
+        )
+    except Exception:
+        verdict_json = None
+    await upsert_rows(
+        session_factory,
+        GlobalRiskSnapshot,
+        {
+            "user_id": user_id,
+            "flagged_tickers_json": _json.dumps(sorted(flagged)),
+            "verdict_json": verdict_json,
+            "updated_at": _dt.now(UTC),
+        },
+        conflict_columns=["user_id"],
+        log_event="global_risk_store.persist_failed",
+        user_id=user_id,
+    )
 
 
 async def load_risk_snapshots_from_db(session_factory) -> list[dict]:
@@ -95,7 +81,7 @@ async def load_risk_snapshots_from_db(session_factory) -> list[dict]:
 
         from sqlalchemy import select
 
-        from src.readmodel.models import GlobalRiskSnapshot
+        from src.core.models import GlobalRiskSnapshot
 
         ttl_cutoff = _dt.now(UTC) - _td(hours=_TTL_HOURS)
         async with session_factory() as session:
@@ -111,11 +97,14 @@ async def load_risk_snapshots_from_db(session_factory) -> list[dict]:
             result = []
             for row in rows:
                 with contextlib.suppress(Exception):
+                    updated_at = row.updated_at
+                    if updated_at is not None and updated_at.tzinfo is None:
+                        updated_at = updated_at.replace(tzinfo=UTC)  # SQLite trả naive
                     result.append(
                         {
                             "user_id": row.user_id,
                             "flagged": set(_json.loads(row.flagged_tickers_json or "[]")),
-                            "updated_at": row.updated_at,
+                            "updated_at": updated_at,
                         }
                     )
             logger.info("global_risk_store.loaded_from_db", count=len(result))
