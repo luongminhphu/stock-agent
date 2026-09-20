@@ -316,26 +316,6 @@ async def _fetch_memory_for_review_full(
         return [], ""
 
 
-async def _fetch_memory_for_review(
-    session,
-    user_id: str | None,
-    ticker: str,
-    thesis_id: int | None = None,
-) -> str:
-    """Thin wrapper — returns rendered memory string only.
-
-    Kept for backward compatibility. Internally delegates to
-    _fetch_memory_for_review_full and discards the episode list.
-    """
-    _, rendered = await _fetch_memory_for_review_full(
-        session=session,
-        user_id=user_id,
-        ticker=ticker,
-        thesis_id=thesis_id,
-    )
-    return rendered
-
-
 async def _log_thesis_review_interaction(
     session,
     user_id: str | None,
