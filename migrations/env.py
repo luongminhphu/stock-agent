@@ -43,6 +43,48 @@ def get_url() -> str:
     return settings.database_url
 
 
+def _strip_comment_only_ops(context_, revision, directives) -> None:
+    """Bỏ các AlterColumnOp chỉ đổi ``comment`` khỏi autogenerate / ``alembic check``.
+
+    Column comment là tài liệu, không phải schema behavior; để nguyên sẽ làm
+    ``alembic check`` (CI job Migrations) báo đỏ vì hàng chục diff vô hại và che
+    mất drift thật (index/column thiếu). Op có kèm đổi type/nullable/default vẫn giữ.
+    """
+    from alembic.operations import ops
+
+    def _keep(op) -> bool:
+        if not isinstance(op, ops.AlterColumnOp):
+            return True
+        # Alembic: nullable/name/type mặc định None; server_default/comment mặc định False.
+        structural = (
+            op.modify_type is not None
+            or op.modify_nullable is not None
+            or op.modify_name is not None
+            or op.modify_server_default is not False
+        )
+        return structural or op.modify_comment is False
+
+    def _prune(container) -> None:
+        # ModifyTableOps lồng trong UpgradeOps/DowngradeOps → duyệt đệ quy.
+        kept = []
+        for op in container.ops:
+            if isinstance(op, ops.OpContainer):
+                _prune(op)
+                if op.ops:
+                    kept.append(op)
+            elif _keep(op):
+                kept.append(op)
+        container.ops = kept
+
+    if not directives:
+        return
+    script = directives[0]
+    for group in (*script.upgrade_ops_list, *script.downgrade_ops_list):
+        _prune(group)
+    if script.upgrade_ops.is_empty():
+        directives[:] = []
+
+
 def run_migrations_offline() -> None:
     """Generate SQL script without a live DB connection."""
     context.configure(
@@ -61,6 +103,7 @@ def do_run_migrations(connection):
         connection=connection,
         target_metadata=target_metadata,
         compare_type=True,
+        process_revision_directives=_strip_comment_only_ops,
     )
     with context.begin_transaction():
         context.run_migrations()

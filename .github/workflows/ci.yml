@@ -148,6 +148,73 @@ jobs:
           retention-days: 7
 
   # -----------------------------------------------------------------------
+  # Job 3b: Migrations (alembic trên Postgres thật) — Wave G1
+  # -----------------------------------------------------------------------
+  migrations:
+    name: Migrations (alembic · Postgres 16)
+    runs-on: ubuntu-latest
+    needs: lint
+    # Lý do: migration chain dùng DDL Postgres (ALTER COLUMN, partial index, enum)
+    # nên không chạy được trên SQLite của job Tests → lỗi kiểu F2 (env.py import
+    # module đã xoá) chỉ lộ khi deploy. Job này chạy toàn chain trên DB sạch.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: stock_agent
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: "postgresql+asyncpg://postgres:postgres@localhost:5432/stock_agent"
+      DISCORD_TOKEN: test-token
+      PERPLEXITY_API_KEY: test-key
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Single head (không để rẽ nhánh chưa merge)
+        run: |
+          alembic heads
+          HEADS=$(alembic heads | grep -c "(head)")
+          if [ "$HEADS" != "1" ]; then
+            echo "ERROR: $HEADS alembic heads — cần merge revision."
+            exit 1
+          fi
+
+      - name: alembic upgrade head (DB sạch → head)
+        run: alembic upgrade head
+
+      - name: Migration mới nhất phải downgrade được
+        run: |
+          alembic downgrade -1
+          alembic upgrade head
+
+      # Drift ORM ↔ migration. Hiện còn 18 diff kế thừa (index khai báo lệch,
+      # theses/decision_logs.quantity, bảng engine_feedback mồ côi) → report-only.
+      # Wave G2 reconcile xong thì bỏ continue-on-error để blocking.
+      - name: Schema drift ORM vs migrations (report-only tới Wave G2)
+        run: alembic check
+        continue-on-error: true
+
+  # -----------------------------------------------------------------------
   # Job 4: Security — detect committed .env files and real secrets
   # -----------------------------------------------------------------------
   security:
