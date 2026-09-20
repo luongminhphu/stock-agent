@@ -1,7 +1,10 @@
 """PortfolioQueryService — thesis-based portfolio view cho dashboard.
 
 Owner: readmodel segment.
-Responsibility: get_portfolio() — thesis active + open positions + aggregate P&L.
+Responsibility:
+- get_portfolio() — thesis active + open positions + aggregate P&L.
+- build_trades_payload() — composition thuan cho trades view (positions x
+  snapshot close x realtime price). Chuyen tu api route ve readmodel (Wave A).
 
 Note: day la thesis-centric view (khac voi PnlService la position-centric).
 - qty va avg_cost lay tu bang positions (closed_at IS NULL).
@@ -20,6 +23,78 @@ from src.platform.logging import get_logger
 from src.thesis.scoring_service import score_tier
 
 logger = get_logger(__name__)
+
+
+def build_trades_payload(
+    live_positions: list[Any],
+    snap_close: dict[str, tuple[float, str]],
+    price_map: dict[str, float],
+    market_open: bool,
+) -> dict[str, Any]:
+    """Pure composition: live positions × snapshot close × realtime prices.
+
+    Khong I/O, khong side-effect — unit-test khong can DB.
+    ``live_positions`` items can attrs: ticker, qty, avg_cost, thesis_id.
+    ``snap_close``: ticker → (close_price, snapshot_date ISO string).
+    Wave 9.3: doc them locked_* (positions cu chua co attrs nay — dung
+    getattr fallback 0/None) de dashboard render badge "Khóa bán" va
+    quick-trade canh bao khi SELL vuot sellable_qty.
+    """
+    positions_out = []
+    total_cost = 0.0
+    total_mkt = 0.0
+    for pos in live_positions:
+        snap = snap_close.get(pos.ticker)
+        if pos.ticker in price_map:
+            current_price: float | None = price_map[pos.ticker]
+            # Off-hours QuoteService tra last_known (gia cuoi phien) → van stale
+            stale = not market_open
+        else:
+            current_price = snap[0] if snap else None
+            stale = True
+
+        cost_basis = pos.avg_cost * pos.qty
+        market_value = current_price * pos.qty if current_price is not None else None
+        unrealized_pnl = (current_price - pos.avg_cost) * pos.qty if current_price is not None else None
+        unrealized_pct = (
+            (unrealized_pnl / cost_basis * 100) if (unrealized_pnl is not None and cost_basis) else None
+        )
+        total_cost += cost_basis
+        total_mkt += market_value if market_value is not None else 0.0
+        locked_qty = getattr(pos, "locked_qty", 0.0) or 0.0
+        locked_until = getattr(pos, "locked_until", None)
+        positions_out.append(
+            {
+                "ticker": pos.ticker,
+                "qty": pos.qty,
+                "avg_cost": pos.avg_cost,
+                "current_price": current_price,
+                "cost_basis": cost_basis,
+                "market_value": market_value,
+                "unrealized_pnl": round(unrealized_pnl, 2) if unrealized_pnl is not None else None,
+                "unrealized_pct": round(unrealized_pct, 4) if unrealized_pct is not None else None,
+                "thesis_id": pos.thesis_id,
+                "price_stale": stale,
+                "snapshot_date": snap[1] if snap else None,
+                # Wave 9.3 — locked position surfaces cho dashboard
+                "locked_qty": locked_qty,
+                "locked_reason": getattr(pos, "locked_reason", None),
+                "locked_until": locked_until.isoformat() if locked_until else None,
+                "sellable_qty": max(0.0, pos.qty - locked_qty),
+            }
+        )
+
+    total_pnl = total_mkt - total_cost
+    total_pct = (total_pnl / total_cost * 100) if total_cost else 0.0
+    return {
+        "positions": positions_out,
+        "total_unrealized_pnl": round(total_pnl, 2),
+        "total_unrealized_pct": round(total_pct, 4),
+        "total_cost_basis": total_cost,
+        "total_market_value": total_mkt,
+        "errors": {},
+        "source": "positions_live" + ("+realtime" if market_open and price_map else ""),
+    }
 
 
 class PortfolioQueryService:

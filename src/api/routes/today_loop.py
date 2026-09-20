@@ -30,15 +30,14 @@ Design notes:
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.deps import get_db
+from src.api.deps import default_user_id, get_db
 from src.platform.bootstrap import get_quote_service
-from src.platform.config import settings
 from src.readmodel.dashboard_service import DashboardService
 
 router = APIRouter(prefix="/today-loop", tags=["today-loop"])
@@ -46,14 +45,6 @@ router = APIRouter(prefix="/today-loop", tags=["today-loop"])
 _OVERDUE_REVIEW_DAYS = 14  # mirror dashboard_service constant
 _LOW_CONVICTION_THRESHOLD = 70  # score < 70 → flag low_conviction
 
-
-def _default_user_id() -> str:
-    if not settings.owner_user_id:
-        raise HTTPException(
-            status_code=500,
-            detail="owner_user_id is not configured. Set it in .env for single-user mode.",
-        )
-    return settings.owner_user_id
 
 
 async def _safe(coro, label: str, stale_sources: list[str]) -> Any:
@@ -180,7 +171,7 @@ async def _build_today_loop(
 
     return {
         "user_id": user_id,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "attention_items": attention_items,
         "top_signals": top_signals,
         "brief_summary": brief_summary,
@@ -258,7 +249,7 @@ async def get_today_loop_single_user(
     """Single-user alias — dùng owner_user_id từ .env."""
     return await _build_today_loop(
         session=session,
-        user_id=_default_user_id(),
+        user_id=default_user_id(),
         enrich_prices=enrich_prices,
         attention_limit=attention_limit,
         signal_limit=signal_limit,

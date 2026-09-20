@@ -7,10 +7,14 @@ Provides reusable Depends() callables for all routes.
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.platform.bootstrap import (
+    get_ai_client as _get_ai_client,
+)
 from src.platform.bootstrap import (
     get_briefing_agent as _get_briefing_agent,
 )
@@ -31,9 +35,6 @@ from src.platform.bootstrap import (
 )
 from src.platform.bootstrap import (
     get_thesis_suggest_agent as _get_suggest_agent,
-)
-from src.platform.bootstrap import (
-    get_ai_client as _get_ai_client,
 )
 from src.platform.db import AsyncSessionLocal
 
@@ -62,6 +63,43 @@ async def get_current_user_id() -> str:
             detail="OWNER_USER_ID not configured. Set it in .env.",
         )
     return settings.owner_user_id
+
+
+def resolve_user_id(request: Request) -> str:
+    """Resolve user_id cho route co 2 dang URL: /x/{user_id}/y va /x/y.
+
+    - Co path param ``user_id`` (multi-user URL)  -> dung no.
+    - Khong co (single-user alias URL)             -> settings.owner_user_id.
+    - owner_user_id chua cau hinh                  -> 500 (giu nguyen contract cu
+      cua ``_default_user_id`` trong cac route module).
+
+    Cho phep khai bao 1 handler cho ca 2 URL bang decorator xep chong::
+
+        @router.get("/dashboard/stats")
+        @router.get("/dashboard/{user_id}/stats")
+        async def get_stats(user_id: UserId, session: DbSession): ...
+    """
+    path_uid = request.path_params.get("user_id")
+    if path_uid:
+        return str(path_uid)
+    return default_user_id()
+
+
+def default_user_id() -> str:
+    """settings.owner_user_id hoac HTTP 500 neu chua cau hinh (single-user mode)."""
+    from src.platform.config import settings
+
+    if not settings.owner_user_id:
+        raise HTTPException(
+            status_code=500,
+            detail="owner_user_id is not configured. Set it in .env for single-user mode.",
+        )
+    return settings.owner_user_id
+
+
+# Annotated aliases — dung trong signature route de rut gon boilerplate.
+DbSession = Annotated[AsyncSession, Depends(get_db)]
+UserId = Annotated[str, Depends(resolve_user_id)]
 
 
 def get_quote_service() -> object:
@@ -104,7 +142,7 @@ def get_ai_client() -> object:
     return _get_ai_client()
 
 
-def get_symbol_registry() -> "SymbolRegistry":  # type: ignore[name-defined]  # noqa: F821
+def get_symbol_registry() -> SymbolRegistry:  # type: ignore[name-defined]  # noqa: F821
     """Return a SymbolRegistry instance for ticker → metadata resolution.
 
     Owner: market segment.
@@ -118,7 +156,7 @@ def get_symbol_registry() -> "SymbolRegistry":  # type: ignore[name-defined]  # 
 
 def get_breadth_service(
     quote_svc: object = Depends(get_quote_service),
-) -> "BreadthService":  # type: ignore[name-defined]  # noqa: F821
+) -> BreadthService:  # type: ignore[name-defined]  # noqa: F821
     """DI factory for BreadthService.
 
     Owner: market segment.
@@ -132,7 +170,7 @@ def get_breadth_service(
 
 async def get_thesis_service(
     session: AsyncSession = Depends(get_db),
-) -> "ThesisService":  # type: ignore[name-defined]  # noqa: F821
+) -> ThesisService:  # type: ignore[name-defined]  # noqa: F821
     from src.thesis.service import ThesisService
 
     return ThesisService(session=session)
@@ -142,7 +180,7 @@ async def get_review_service(
     session: AsyncSession = Depends(get_db),
     agent: object = Depends(get_thesis_review_agent),
     quote_svc: object = Depends(get_quote_service),
-) -> "ReviewService":  # type: ignore[name-defined]  # noqa: F821
+) -> ReviewService:  # type: ignore[name-defined]  # noqa: F821
     from src.thesis.review_service import ReviewService
 
     return ReviewService(session=session, agent=agent, quote_service=quote_svc)  # type: ignore[arg-type]
@@ -152,7 +190,7 @@ async def get_briefing_service(
     session: AsyncSession = Depends(get_db),
     quote_svc: object = Depends(get_quote_service),
     briefing_agent: object = Depends(get_briefing_agent),
-) -> "BriefingService":  # type: ignore[name-defined]  # noqa: F821
+) -> BriefingService:  # type: ignore[name-defined]  # noqa: F821
     from src.briefing.service import BriefingService
     from src.watchlist.service import WatchlistService
 
@@ -168,7 +206,7 @@ async def get_briefing_service(
 async def get_scan_service(
     session: AsyncSession = Depends(get_db),
     quote_svc: object = Depends(get_quote_service),
-) -> "ScanService":  # type: ignore[name-defined]  # noqa: F821
+) -> ScanService:  # type: ignore[name-defined]  # noqa: F821
     from src.watchlist.scan_service import ScanService
 
     return ScanService(session=session, quote_service=quote_svc)
@@ -176,7 +214,7 @@ async def get_scan_service(
 
 async def get_timeline_service(
     session: AsyncSession = Depends(get_db),
-) -> "ThesisTimelineService":  # type: ignore[name-defined]  # noqa: F821
+) -> ThesisTimelineService:  # type: ignore[name-defined]  # noqa: F821
     """DI factory for ThesisTimelineService (readmodel, read-only)."""
     from src.readmodel.timeline_service import ThesisTimelineService
 
@@ -186,7 +224,7 @@ async def get_timeline_service(
 async def get_decision_service(
     session: AsyncSession = Depends(get_db),
     quote_svc: object = Depends(get_quote_service),
-) -> "DecisionService":  # type: ignore[name-defined]  # noqa: F821
+) -> DecisionService:  # type: ignore[name-defined]  # noqa: F821
     """DI factory for DecisionService.
 
     ReplayAgent is injected so analyze_decision() can be called directly
@@ -203,7 +241,7 @@ async def get_decision_service(
 
 async def get_lesson_service(
     session: AsyncSession = Depends(get_db),
-) -> "LessonService":  # type: ignore[name-defined]  # noqa: F821
+) -> LessonService:  # type: ignore[name-defined]  # noqa: F821
     """DI factory for LessonService (read-only)."""
     from src.thesis.lesson_service import LessonService
 

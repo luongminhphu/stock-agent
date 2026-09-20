@@ -13,25 +13,16 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.deps import get_db
+from src.api.deps import default_user_id, get_db
 from src.core.engine import IntelligenceEngine
 from src.core.schemas import EngineOutput, FeedbackEntry, SystemSnapshot
 from src.core.snapshot import SystemSnapshotBuilder
-from src.platform.config import settings
 
 router = APIRouter(prefix="/core", tags=["core-engine"])
 
-
-def _default_user_id() -> str:
-    if not settings.owner_user_id:
-        raise HTTPException(
-            status_code=500,
-            detail="owner_user_id is not configured. Set it in .env for single-user mode.",
-        )
-    return settings.owner_user_id
 
 
 # ---------------------------------------------------------------------------
@@ -55,7 +46,7 @@ async def run_engine_cycle(
     Wave 2: synthesis qua AIClient.
     Wave 3: dispatch thật sang briefing + bot.
     """
-    uid = user_id or _default_user_id()
+    uid = user_id or default_user_id()
     engine = IntelligenceEngine(session=session, user_id=uid)
     return await engine.run_cycle()
 
@@ -78,7 +69,7 @@ async def get_system_snapshot(
     Hữu ích để debug trạng thái hệ thống hoặc feed vào external tool.
     Sources: watchlist alerts, overdue thesis reviews, market scan, portfolio.
     """
-    uid = user_id or _default_user_id()
+    uid = user_id or default_user_id()
     return await SystemSnapshotBuilder(session=session, user_id=uid).build()
 
 
@@ -101,7 +92,7 @@ async def submit_feedback(
 
     event = EngineFeedbackSubmittedEvent(
         verdict_event_id=entry.verdict_event_id,
-        user_id=entry.user_id or _default_user_id(),
+        user_id=entry.user_id or default_user_id(),
         verdict=entry.verdict,
         outcome=entry.outcome,
         trigger_source=entry.trigger_source or "api",

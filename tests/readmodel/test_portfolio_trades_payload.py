@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from src.api.routes.readmodel import _build_trades_payload
+from src.readmodel.portfolio_query_service import build_trades_payload as _build_trades_payload
 
 
 def _pos(ticker: str, qty: float, avg_cost: float, thesis_id: int | None = None):
