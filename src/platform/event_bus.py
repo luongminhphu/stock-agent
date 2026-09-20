@@ -13,6 +13,7 @@ Design decisions:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import inspect
 import logging
 from collections import defaultdict
@@ -173,10 +174,8 @@ class EventBus:
         await self._queue.join()
         if self._worker_task:
             self._worker_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._worker_task
-            except asyncio.CancelledError:
-                pass
         logger.info("EventBus stopped. Dead letters: %d", len(self._dead_letters))
 
     async def _worker(self) -> None:

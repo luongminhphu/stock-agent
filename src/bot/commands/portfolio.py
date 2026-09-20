@@ -321,10 +321,8 @@ class PortfolioCog(BaseCog):
         try:
             async with self.db_session() as session:
                 from src.portfolio.repository import PortfolioRepository  # noqa: PLC0415
-                from src.thesis.repository import ThesisRepository  # noqa: PLC0415
 
                 port_repo = PortfolioRepository(session)
-                thesis_repo = ThesisRepository(session)
 
                 # Validate open position exists
                 position = await port_repo.get_open_position(user_id, ticker_clean)

@@ -22,13 +22,13 @@ from pydantic import BaseModel, Field
 from src.ai.client import AIClient
 from src.ai.prompt_cache import PromptCache
 from src.ai.prompts.watchdog import SYSTEM_PROMPT, WatchdogContext, build_user_prompt
+from src.platform.logging import get_logger
 
 # Module-level cache: watchdog runs every cycle per thesis; skip if unchanged
 _watchdog_cache: PromptCache[ThesisHealthScore] = PromptCache(
     ttl_seconds=600,  # 10 min: thesis health rarely changes faster
     agent_name="WatchdogAgent",
 )
-from src.platform.logging import get_logger
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession

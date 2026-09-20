@@ -6,6 +6,7 @@ and are injected into QuoteService. Wave 2 adds real adapter.
 """
 
 import asyncio
+import contextlib
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -84,7 +85,7 @@ class MarketDataAdapter(ABC):
     @abstractmethod
     async def fetch_bulk_quotes(self, tickers: list[str]) -> list[Quote]: ...
 
-    async def close(self) -> None:
+    async def close(self) -> None:  # noqa: B027 — no-op mặc định là chủ ý
         """Release any held resources (e.g. httpx.AsyncClient).
 
         Default is a no-op so adapters with no resources (MockAdapter)
@@ -349,7 +350,7 @@ async def _load_quotes_from_db(session_factory: Any) -> list["Quote"]:
             rows = (await session.execute(select(MarketQuoteCache))).scalars().all()
             quotes = []
             for row in rows:
-                try:
+                with contextlib.suppress(Exception):
                     quotes.append(
                         Quote(
                             ticker=row.ticker,
@@ -367,8 +368,6 @@ async def _load_quotes_from_db(session_factory: Any) -> list["Quote"]:
                             timestamp=row.quote_ts,
                         )
                     )
-                except Exception:
-                    pass
             _log.info("quote_service.warm_load_from_db", count=len(quotes))
             return quotes
     except Exception as exc:

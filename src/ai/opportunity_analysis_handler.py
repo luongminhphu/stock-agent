@@ -124,7 +124,7 @@ def _parse_output(raw: str) -> dict[str, Any]:
         match = re.search(r"\{.*\}", raw, re.DOTALL)
         if match:
             return json.loads(match.group())
-        raise ValueError(f"Could not parse AI output as JSON: {raw[:200]}")
+        raise ValueError(f"Could not parse AI output as JSON: {raw[:200]}") from None
 
 
 # ── singleton ────────────────────────────────────────────────────────────────

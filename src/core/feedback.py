@@ -30,6 +30,7 @@ Public API (called by evolution.py)::
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import ClassVar
@@ -184,12 +185,10 @@ class FeedbackStore:
             fallback = cls._store[-limit:]
             result_list: list[FeedbackEntry] = []
             for item in fallback:
-                try:
+                with contextlib.suppress(Exception):
                     result_list.append(
                         FeedbackEntry(**{k: v for k, v in item.items() if k != "recorded_at"})
                     )
-                except Exception:
-                    pass
             return result_list
 
     @classmethod

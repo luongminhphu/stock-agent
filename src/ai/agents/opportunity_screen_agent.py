@@ -259,7 +259,7 @@ def _parse_output(raw: str) -> dict[str, Any]:
         match = re.search(r"\{.*\}", raw, re.DOTALL)
         if match:
             return json.loads(match.group())
-        raise ValueError(f"Cannot parse AI output as JSON: {raw[:200]}")
+        raise ValueError(f"Cannot parse AI output as JSON: {raw[:200]}") from None
 
 
 def build_opportunity_screen_context(

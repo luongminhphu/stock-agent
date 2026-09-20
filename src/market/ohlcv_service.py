@@ -80,7 +80,7 @@ class OHLCVAdapter(ABC):
         interval: Interval = Interval.D1,
     ) -> list[Candle]: ...
 
-    async def close(self) -> None:
+    async def close(self) -> None:  # noqa: B027 — no-op mặc định là chủ ý
         """Release any held resources (e.g. httpx.AsyncClient).
 
         Default is a no-op so adapters with no resources do not need

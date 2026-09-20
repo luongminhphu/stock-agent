@@ -252,7 +252,7 @@ class TrendBatchScheduler:
         )
 
         predictions: list[TrendPrediction] = []
-        for bundle, result in zip(bundles, results):
+        for bundle, result in zip(bundles, results, strict=False):
             if isinstance(result, Exception):
                 logger.warning(
                     "trend_batch_scheduler.reasoning_failed",

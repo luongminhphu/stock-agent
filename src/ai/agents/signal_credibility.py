@@ -51,9 +51,7 @@ class SignalCredibilityResult(BaseModel):  # noqa: D101
         """True when signal is worth acting on (STRONG or MODERATE with HIGH/MEDIUM confidence)."""
         if self.verdict == "STRONG":
             return True
-        if self.verdict == "MODERATE" and self.confidence in ("HIGH", "MEDIUM"):
-            return True
-        return False
+        return bool(self.verdict == "MODERATE" and self.confidence in ("HIGH", "MEDIUM"))
 
     def short_summary(self) -> str:
         """One-liner for Discord embeds."""

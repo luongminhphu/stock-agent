@@ -441,12 +441,6 @@ class TradeUseCase:
                 ),
                 "qty": getattr(trade, "qty", None),
             }
-            position_snapshot = {
-                "id": getattr(position, "id", None),
-                "qty": getattr(position, "qty", None),
-                "avg_cost": getattr(position, "avg_cost", None),
-                "closed_at": str(getattr(position, "closed_at", None)),
-            }
 
             async def _run() -> None:
                 try:

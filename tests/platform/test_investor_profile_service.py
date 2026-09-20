@@ -220,7 +220,7 @@ class TestGetLatest:
 
     async def test_get_latest_returns_most_recent(self, session):
         svc = InvestorProfileService(session)
-        s1 = await svc.build_snapshot(user_id=USER_ID)
+        await svc.build_snapshot(user_id=USER_ID)
         await session.flush()
         s2 = await svc.build_snapshot(user_id=USER_ID)
         await session.flush()

@@ -105,7 +105,7 @@ def _extract_previous_review(
             latest.ai_key_points[:_PREV_SUMMARY_MAX_CHARS].strip() if latest.ai_key_points else ""
         ),
         "key_risks": (
-            [l.strip() for l in latest.ai_risk_signals.splitlines() if l.strip()][:3]
+            [ln.strip() for ln in latest.ai_risk_signals.splitlines() if ln.strip()][:3]
             if latest.ai_risk_signals
             else []
         ),

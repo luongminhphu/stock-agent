@@ -55,13 +55,6 @@ from src.api.deps import (
     get_thesis_suggest_agent,
     get_timeline_service,
 )
-
-
-def _bust_thesis_cache(thesis_id: int, user_id: str, session: AsyncSession) -> None:
-    """Invalidate thesis_detail cache after any write that mutates thesis/assumptions/catalysts."""
-    DashboardService(session).invalidate_thesis_detail(user_id, thesis_id)
-
-
 from src.api.dto.thesis import (
     ApplyAiReviewRequest,
     ApplyRecommendationRequest,
@@ -107,6 +100,11 @@ from src.thesis.service import (
 )
 
 router = APIRouter(prefix="/thesis", tags=["thesis"])
+
+
+def _bust_thesis_cache(thesis_id: int, user_id: str, session: AsyncSession) -> None:
+    """Invalidate thesis_detail cache after any write that mutates thesis/assumptions/catalysts."""
+    DashboardService(session).invalidate_thesis_detail(user_id, thesis_id)
 
 
 # ---------------------------------------------------------------------------

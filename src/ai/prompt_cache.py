@@ -47,7 +47,7 @@ from __future__ import annotations
 import hashlib
 import time
 from collections import OrderedDict
-from typing import Generic, TypeVar
+from typing import TypeVar
 
 from pydantic import BaseModel
 
@@ -61,7 +61,7 @@ _DEFAULT_TTL = 300  # 5 minutes
 _DEFAULT_MAX_SIZE = 64  # LRU eviction after this many entries
 
 
-class PromptCache(Generic[T]):
+class PromptCache[T: BaseModel]:
     """LRU in-process cache keyed by prompt content hash.
 
     Generic over Pydantic output type T.

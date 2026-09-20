@@ -87,7 +87,7 @@ except ImportError:  # pragma: no cover
 try:
     from src.readmodel.intelligence_snapshot import get_intelligence_snapshot
 
-    _INTELLIGENCE_SNAPSHOT_AVAILABLE = True
+    _INTELLIGENCE_SNAPSHOT_AVAILABLE = get_intelligence_snapshot is not None
 except ImportError:  # pragma: no cover
     _INTELLIGENCE_SNAPSHOT_AVAILABLE = False
 

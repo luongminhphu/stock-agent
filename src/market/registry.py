@@ -426,13 +426,6 @@ _STATIC_SEED: dict[str, SymbolInfo] = {
         Sector.HEALTHCARE,
         "đấu thầu thuốc bệnh viện, chính sách dược, tỷ lệ thuốc kênh ETC",
     ),
-    "REE": SymbolInfo(
-        "REE",
-        "REE Corporation",
-        Exchange.HOSE,
-        Sector.UTILITIES,
-        "thủy văn hồ chứa, giá điện, công suất năng lượng tái tạo",
-    ),
     "GEX": SymbolInfo(
         "GEX",
         "Gelex Group",

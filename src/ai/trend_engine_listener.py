@@ -130,7 +130,7 @@ class TrendEngineListener:
 
             # 4. Persist successes, log failures
             predictions = []
-            for ticker, result in zip(tickers, results):
+            for ticker, result in zip(tickers, results, strict=False):
                 if isinstance(result, Exception):
                     logger.warning(
                         "trend_engine_listener.symbol_failed",

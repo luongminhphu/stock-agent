@@ -28,6 +28,7 @@ Boundary rules:
 
 from __future__ import annotations
 
+import contextlib
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -143,7 +144,7 @@ class LessonService:
             async with AsyncSessionLocal() as session, session.begin():
                 # 1. Build lesson text
                 lesson_bullets = (
-                    "\n".join(f"\u2022 {l}" for l in record.lessons)
+                    "\n".join(f"\u2022 {lesson}" for lesson in record.lessons)
                     if record.lessons
                     else "(no lessons extracted)"
                 )
@@ -261,10 +262,8 @@ class LessonService:
         dominant_raw = tag_counter.most_common(1)[0][0] if tag_counter else None
         dominant: PatternTag | None = None
         if dominant_raw:
-            try:
+            with contextlib.suppress(ValueError):
                 dominant = PatternTag(dominant_raw)
-            except ValueError:
-                pass
 
         return PatternCounter(
             user_id=user_id,

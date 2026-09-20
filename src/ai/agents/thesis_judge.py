@@ -442,9 +442,6 @@ class ThesisJudgeAgent:
             for t in skipped
         ]
 
-        # Map thesis_id → position in original triggers list for result ordering
-        id_to_idx = {t["thesis_id"]: i for i, t in enumerate(triggers)}
-
         sem = asyncio.Semaphore(_JUDGE_CONCURRENCY)
 
         async def _run_one(t: ThesisJudgeTrigger) -> ThesisJudgeOutput:
@@ -485,9 +482,9 @@ class ThesisJudgeAgent:
         # Merge active + skipped results back in original trigger order.
         # Build a dict keyed by thesis_id for O(1) lookup.
         result_map: dict[Any, ThesisJudgeOutput] = {}
-        for t, r in zip(active_triggers, active_results):
+        for t, r in zip(active_triggers, active_results, strict=False):
             result_map[t["thesis_id"]] = r
-        for t, r in zip(skipped, skipped_outputs):
+        for t, r in zip(skipped, skipped_outputs, strict=False):
             result_map[t["thesis_id"]] = r
 
         ordered = [result_map[t["thesis_id"]] for t in triggers]

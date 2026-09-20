@@ -22,6 +22,7 @@ Interface consumed by:
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -109,7 +110,7 @@ async def load_risk_snapshots_from_db(session_factory) -> list[dict]:
             )
             result = []
             for row in rows:
-                try:
+                with contextlib.suppress(Exception):
                     result.append(
                         {
                             "user_id": row.user_id,
@@ -117,8 +118,6 @@ async def load_risk_snapshots_from_db(session_factory) -> list[dict]:
                             "updated_at": row.updated_at,
                         }
                     )
-                except Exception:
-                    pass
             logger.info("global_risk_store.loaded_from_db", count=len(result))
             return result
     except Exception as exc:

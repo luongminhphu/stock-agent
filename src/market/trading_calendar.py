@@ -82,12 +82,10 @@ class VNTradingCalendar:
             return False
         if d in _fixed_holidays(d.year):
             return False
-        if d in _tet_window(d.year):
-            return False
         # A holiday on Fri→Sun pushes closure to adjacent weekdays; keep it
         # simple — the exchange publishes compensations rarely and the fixed
         # set above covers the common cases. Document as a known simplification.
-        return True
+        return d not in _tet_window(d.year)
 
     @staticmethod
     def is_lunch_break(t: time) -> bool:

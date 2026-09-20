@@ -97,9 +97,9 @@ def _rsi(closes: list[float], period: int = 14) -> float:
     avg_loss = sum(losses[:period]) / period
 
     # Wilder RMA: smoothing factor = 1/period
-    for g, l in zip(gains[period:], losses[period:]):
+    for g, lo in zip(gains[period:], losses[period:], strict=False):
         avg_gain = (avg_gain * (period - 1) + g) / period
-        avg_loss = (avg_loss * (period - 1) + l) / period
+        avg_loss = (avg_loss * (period - 1) + lo) / period
 
     if avg_loss == 0:
         return 100.0
@@ -113,7 +113,7 @@ def _macd_histogram(closes: list[float]) -> float:
         return 0.0
     ema12 = _ema(closes, 12)
     ema26 = _ema(closes, 26)
-    macd_line = [e12 - e26 for e12, e26 in zip(ema12, ema26)]
+    macd_line = [e12 - e26 for e12, e26 in zip(ema12, ema26, strict=False)]
     signal_line = _ema(macd_line, 9)
     return macd_line[-1] - signal_line[-1]
 
@@ -167,7 +167,7 @@ def _obv_slope(closes: list[float], volumes: list[float], window: int = 10) -> f
     xs = list(range(n))
     mean_x = sum(xs) / n
     mean_y = sum(series) / n
-    num = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, series))
+    num = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, series, strict=False))
     den = sum((x - mean_x) ** 2 for x in xs) or 1.0
     slope = num / den
     base = abs(series[-1]) or 1.0
@@ -292,7 +292,7 @@ def _adx(
     minus_s = _rma(minus_dms, period)
 
     dx_series: list[float] = []
-    for a, p, m in zip(atr_s, plus_s, minus_s):
+    for a, p, m in zip(atr_s, plus_s, minus_s, strict=False):
         if a == 0:
             dx_series.append(0.0)
             continue
@@ -307,7 +307,7 @@ def _adx(
     # +DI/-DI must be computed at the SAME index as ATR RMA.
     # zip ensures aligned iteration; we use the last aligned triple.
     last_atr = last_pdi = last_mdi = None
-    for a, p, m in zip(atr_s, plus_s, minus_s):
+    for a, p, m in zip(atr_s, plus_s, minus_s, strict=False):
         last_atr, last_pdi, last_mdi = a, p, m
     if last_atr is None or last_atr == 0:
         return 0.0, 0.0, 0.0
@@ -332,7 +332,7 @@ def _macd_raw(closes: list[float]) -> tuple[float, float, float]:
         return 0.0, 0.0, 0.0
     ema12 = _ema(closes, 12)
     ema26 = _ema(closes, 26)
-    macd_line = [e12 - e26 for e12, e26 in zip(ema12, ema26)]
+    macd_line = [e12 - e26 for e12, e26 in zip(ema12, ema26, strict=False)]
     signal_line = _ema(macd_line, 9)
     hist = macd_line[-1] - signal_line[-1]
     return round(macd_line[-1], 4), round(signal_line[-1], 4), round(hist, 4)
@@ -528,7 +528,7 @@ class TrendEngine:
         tasks = [self.run_for_symbol(s) for s in symbols]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         bundles = []
-        for symbol, result in zip(symbols, results):
+        for symbol, result in zip(symbols, results, strict=False):
             if isinstance(result, Exception):
                 logger.warning(
                     "trend_engine.symbol_failed",

@@ -130,10 +130,8 @@ class IntelligenceEngineListener:
                 f"  top_exposed={','.join(portfolio_snap.top_exposed_tickers)}",
             ]
             portfolio_block = " | ".join(portfolio_lines)
-            enriched_context_hint = (
-                f"{event.context_hint} | {portfolio_block}".strip(" | ")
-                if event.context_hint
-                else portfolio_block
+            enriched_context_hint = " | ".join(
+                part for part in (event.context_hint, portfolio_block) if part
             )
             logger.info(
                 "intelligence_listener.portfolio_context_injected",

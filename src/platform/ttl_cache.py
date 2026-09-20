@@ -21,7 +21,7 @@ import asyncio
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Generic, TypeVar
+from typing import TypeVar
 
 from src.platform.logging import get_logger
 
@@ -32,13 +32,13 @@ V = TypeVar("V")
 
 
 @dataclass
-class _CacheEntry(Generic[V]):
+class _CacheEntry[V]:
     value: V
     expires_at: float  # monotonic time
 
 
 @dataclass
-class _InFlight(Generic[V]):
+class _InFlight[V]:
     """Marker cho stampede protection — key đang được fetch."""
 
     event: asyncio.Event = field(default_factory=asyncio.Event)
@@ -46,7 +46,7 @@ class _InFlight(Generic[V]):
     error: BaseException | None = None
 
 
-class AsyncTTLCache(Generic[K, V]):
+class AsyncTTLCache[K, V]:
     """Async TTL cache với stampede protection.
 
     Usage::

@@ -52,10 +52,14 @@ Invalidation::
 
 from __future__ import annotations
 
+import contextlib
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from src.platform.logging import get_logger
 from src.readmodel.cache import DashboardTTLCache
+
+logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # DB persistence helpers (Wave D.1)
@@ -103,9 +107,7 @@ async def _persist_intelligence_snapshot(
             await session.execute(stmt)
             await session.commit()
     except Exception as exc:
-        from src.platform.logging import get_logger as _get_logger
-
-        _get_logger(__name__).warning(
+        logger.warning(
             "intelligence_snapshot_store.persist_failed", user_id=user_id, error=str(exc)
         )
 
@@ -117,29 +119,22 @@ async def load_intelligence_snapshots_from_db(session_factory) -> dict[str, dict
     try:
         from sqlalchemy import select
 
-        from src.platform.logging import get_logger as _get_logger
         from src.readmodel.models import IntelligenceSnapshot
 
         async with session_factory() as session:
             rows = (await session.execute(select(IntelligenceSnapshot))).scalars().all()
             result = {}
             for row in rows:
-                try:
+                with contextlib.suppress(Exception):
                     result[row.user_id] = {
                         "report_json": row.report_json,
                         "trigger_source": row.trigger_source,
                         "captured_at": row.captured_at,
                     }
-                except Exception:
-                    pass
-            _get_logger(__name__).info(
-                "intelligence_snapshot_store.loaded_from_db", count=len(result)
-            )
+            logger.info("intelligence_snapshot_store.loaded_from_db", count=len(result))
             return result
     except Exception as exc:
-        from src.platform.logging import get_logger as _get_logger
-
-        _get_logger(__name__).warning("intelligence_snapshot_store.load_failed", error=str(exc))
+        logger.warning("intelligence_snapshot_store.load_failed", error=str(exc))
         return {}
 
 
@@ -276,8 +271,15 @@ class IntelligenceSnapshotStore:
 
                 try:
                     return IntelligenceReport.model_validate(data)
-                except Exception:
-                    return _DictBackedReport(data)  # type: ignore[return-value]
+                except Exception as exc:
+                    # Snapshot cũ không khớp schema hiện tại → coi như cache miss
+                    # (trước đây gọi _DictBackedReport chưa định nghĩa → NameError).
+                    logger.warning(
+                        "readmodel.intelligence_snapshot.db_row_schema_mismatch",
+                        user_id=user_id,
+                        error=str(exc),
+                    )
+                    return None
 
         except Exception as exc:
             from src.platform.logging import get_logger as _gl  # noqa: PLC0415

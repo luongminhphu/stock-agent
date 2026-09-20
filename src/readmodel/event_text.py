@@ -53,9 +53,7 @@ def _is_empty(v: Any) -> bool:
         return True
     if isinstance(v, str) and not v.strip():
         return True
-    if isinstance(v, (list, dict)) and len(v) == 0:
-        return True
-    return False
+    return bool(isinstance(v, (list, dict)) and len(v) == 0)
 
 
 def _fmt_value(key: str, v: Any) -> str:

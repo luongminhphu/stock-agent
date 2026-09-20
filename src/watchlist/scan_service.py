@@ -442,15 +442,18 @@ class ScanService:
         latest = await self.get_latest_snapshot(user_id)
         now = datetime.now(UTC)
 
-        if latest is not None and latest.scanned_at is not None:
-            if (now - latest.scanned_at) < timedelta(minutes=max_age_minutes):
-                logger.info(
-                    "scan.reuse_latest_snapshot",
-                    user_id=user_id,
-                    snapshot_id=latest.id,
-                    scanned_at=latest.scanned_at.isoformat(),
-                )
-                return latest
+        if (
+            latest is not None
+            and latest.scanned_at is not None
+            and (now - latest.scanned_at) < timedelta(minutes=max_age_minutes)
+        ):
+            logger.info(
+                "scan.reuse_latest_snapshot",
+                user_id=user_id,
+                snapshot_id=latest.id,
+                scanned_at=latest.scanned_at.isoformat(),
+            )
+            return latest
 
         await self.scan_user(user_id)
         return await self.get_latest_snapshot(user_id)

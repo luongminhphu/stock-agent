@@ -151,20 +151,22 @@ def _compute_rrg(
     bc = benchmark_closes[-n:]
 
     # Step 1 — RS raw
-    rs_raw = [t / b for t, b in zip(tc, bc) if b != 0.0]
+    rs_raw = [t / b for t, b in zip(tc, bc, strict=False) if b != 0.0]
     if len(rs_raw) < _MIN_CANDLES:
         return None
 
     # Step 2 — RS-Ratio
     ema_s = _ema(rs_raw, _EMA_SHORT)
     ema_l = _ema(rs_raw, _EMA_LONG)
-    rs_ratio_series = [(s / l * 100.0) if l != 0.0 else 100.0 for s, l in zip(ema_s, ema_l)]
+    rs_ratio_series = [
+        (s / lg * 100.0) if lg != 0.0 else 100.0 for s, lg in zip(ema_s, ema_l, strict=False)
+    ]
 
     # Step 3 — RS-Momentum
     ema_rs_s = _ema(rs_ratio_series, _EMA_SHORT)
     ema_rs_l = _ema(rs_ratio_series, _EMA_LONG)
     rs_momentum_series = [
-        (s / l * 100.0) if l != 0.0 else 100.0 for s, l in zip(ema_rs_s, ema_rs_l)
+        (s / lg * 100.0) if lg != 0.0 else 100.0 for s, lg in zip(ema_rs_s, ema_rs_l, strict=False)
     ]
 
     # Step 4 — Sample weekly trail (last `trail_points` weekly samples)

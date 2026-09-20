@@ -25,6 +25,7 @@ Thread safety:
 
 from __future__ import annotations
 
+import contextlib
 from datetime import UTC, datetime
 from typing import Any
 
@@ -87,10 +88,8 @@ async def load_snapshots_from_db(session_factory) -> dict[str, dict]:
             rows = (await session.execute(select(TrendSnapshot))).scalars().all()
             result = {}
             for row in rows:
-                try:
+                with contextlib.suppress(Exception):
                     result[row.symbol.upper()] = _json.loads(row.bundle_json)
-                except Exception:
-                    pass
             logger.info("trend_snapshot_store.loaded_from_db", count=len(result))
             return result
     except Exception as exc:

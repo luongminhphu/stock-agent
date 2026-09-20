@@ -12,9 +12,14 @@ All other code calls build_adapter() and works against MarketDataAdapter.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from src.market.quote_service import MarketDataAdapter, QuoteService
 from src.platform.config import settings
 from src.platform.logging import get_logger
+
+if TYPE_CHECKING:
+    from src.market.trend_context_fetcher import TrendContextFetcher
 
 logger = get_logger(__name__)
 
