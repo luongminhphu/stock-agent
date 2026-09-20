@@ -60,7 +60,7 @@ Context sources injected into BriefingAgent
   risk              — PortfolioRiskNarrator.narrate(user_id) → rendered into market_context
   next_action       — NextActionSuggester.suggest(user_id) → rendered into market_context
   trend_pred        — TrendPredictionStore.get_recent(user_id) → rendered into market_context
-  feedback          — DashboardService.get_brief_feedback_summary() → calibration
+  feedback          — ai.memory.FeedbackLedgerReader.brief_calibration() → calibration (F5)
   agenda            — agenda_cache.get_agenda(user_id) → cached CachedAgenda (no DB call)
                        populated by BriefingListener._handle_agenda via DailyAgendaCompletedEvent
   lessons           — LessonService.get_pattern_summary(session, user_id) → patterns
@@ -165,7 +165,7 @@ class BriefingService:
         risk_narrator: Any = None,
         next_action_agent: Any = None,
         trend_store: Any = None,
-        dashboard_service: Any = None,
+        dashboard_service: Any = None,  # F5: deprecated, không dùng — giữ để không TypeError
         agenda_service: Any = None,  # kept for backward compat, not used
         lesson_service: Any = None,
         investor_profile_service: Any = None,
@@ -184,7 +184,6 @@ class BriefingService:
         self._risk_narrator = risk_narrator
         self._next_action_agent = next_action_agent
         self._trend_store = trend_store
-        self._dashboard_service = dashboard_service
         # agenda_service intentionally not stored — we read from cache instead
         self._lesson_service = lesson_service
         self._investor_profile_service = investor_profile_service
@@ -772,10 +771,18 @@ class BriefingService:
             return ""
 
     async def _build_feedback_summary(self, user_id: str) -> str:
-        if not self._dashboard_service or not self._session:
+        """Calibration từ feedback ledger (F5) — chuỗi ngắn, rỗng khi chưa có phản hồi.
+
+        Trước F5 đọc DashboardService.get_brief_feedback_summary → trả dict, prompt
+        nhận repr dict thô; nay dùng FeedbackLedgerReader.to_prompt_text().
+        """
+        if not self._session:
             return ""
         try:
-            return await self._dashboard_service.get_brief_feedback_summary(user_id) or ""
+            from src.ai.memory.feedback_ledger import FeedbackLedgerReader
+
+            cal = await FeedbackLedgerReader(self._session).brief_calibration(user_id)
+            return cal.to_prompt_text()
         except Exception as exc:
             logger.warning("briefing.feedback_summary.failed", error=str(exc))
             return ""

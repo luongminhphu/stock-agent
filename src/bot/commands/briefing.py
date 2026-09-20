@@ -136,7 +136,6 @@ class BriefingCog(BaseCog):
             async with self.db_session() as session:
                 # Lazy imports — session-scoped services, not singletons
                 from src.ai.memory.investor_profile import InvestorProfileService
-                from src.readmodel.dashboard_service import DashboardService
                 from src.thesis.service import ThesisService
 
                 # agenda_service: init via factory, fail-safe
@@ -164,7 +163,6 @@ class BriefingCog(BaseCog):
                         quote_service=get_quote_service(),
                     ),
                     thesis_service=ThesisService(session=session),
-                    dashboard_service=DashboardService(session=session),
                     agenda_service=agenda_service,
                     sector_agent=get_sector_rotation_agent(),
                     lesson_service=LessonService,  # stateless — class reference is sentinel

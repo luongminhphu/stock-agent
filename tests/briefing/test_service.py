@@ -270,3 +270,36 @@ async def test_persist_agenda_roundtrip_via_briefing_model() -> None:
     assert list(loaded) == ["u1"]
     assert loaded["u1"].summary == "agenda v2"
     assert loaded["u1"].buckets.decide == ["HPG"]
+
+
+# ── Wave F5: calibration đọc feedback ledger, không qua DashboardService ──────
+
+
+@pytest.mark.anyio
+async def test_feedback_summary_uses_ledger_reader() -> None:
+    from src.ai.memory.feedback_ledger import FeedbackLedgerSubscriber
+    from src.platform.db import AsyncSessionLocal
+    from src.platform.event_bus import EventBus
+    from src.platform.events import BriefFeedbackRecordedEvent
+
+    sub = FeedbackLedgerSubscriber(EventBus())
+    for i, outcome in enumerate(("acted", "skipped")):
+        await sub._on_brief_feedback(
+            BriefFeedbackRecordedEvent(
+                brief_snapshot_id=900 + i, user_id="u-f5", outcome=outcome, brief_type="morning"
+            )
+        )
+
+    async with AsyncSessionLocal() as session:
+        svc = BriefingService(
+            session=session,
+            briefing_agent=AsyncMock(),
+            watchlist_service=AsyncMock(),
+            dashboard_service=object(),  # deprecated kwarg — phải bị bỏ qua
+        )
+        text = await svc._build_feedback_summary("u-f5")
+        empty = await svc._build_feedback_summary("u-f5-none")
+
+    assert isinstance(text, str) and text.startswith("Phản hồi brief 30 ngày: 2 lượt")
+    assert empty == ""
+    assert not hasattr(svc, "_dashboard_service")
