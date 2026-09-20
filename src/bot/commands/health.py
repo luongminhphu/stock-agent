@@ -22,7 +22,9 @@ logger = get_logger(__name__)
 class HealthCog(BaseCog):
     """Slash command: /health"""
 
-    @app_commands.command(name="health", description="Kiểm tra trạng thái hệ thống và scheduled tasks")
+    @app_commands.command(
+        name="health", description="Kiểm tra trạng thái hệ thống và scheduled tasks"
+    )
     async def health(self, interaction: discord.Interaction) -> None:
         """Return a health embed for all scheduler tasks. Ephemeral — only visible to caller."""
         await interaction.response.defer(ephemeral=True)

@@ -31,11 +31,12 @@ Scoring:
 
 Output is sorted by composite_score DESC, capped at top_n (default 10).
 """
+
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from src.market.registry_types import Exchange
@@ -54,8 +55,8 @@ DEFAULT_BREAKOUT_VOLUME_RATIO = 1.5
 DEFAULT_VOLUME_SURGE_RATIO = 2.0
 DEFAULT_REVERSAL_MAX_PCT = -3.0
 DEFAULT_REVERSAL_VOLUME_RATIO = 1.3
-BREAKOUT_SCORE_CAP_PCT = 10.0   # 10% move = score 1.0
-MOMENTUM_SCORE_CAP_PCT = 6.0    # 6% move = score 1.0
+BREAKOUT_SCORE_CAP_PCT = 10.0  # 10% move = score 1.0
+MOMENTUM_SCORE_CAP_PCT = 6.0  # 6% move = score 1.0
 
 
 @dataclass
@@ -82,7 +83,7 @@ class ScreenCandidate:
     momentum_score: float
     composite_score: float
     screen_criteria: list[str] = field(default_factory=list)
-    detected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    detected_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def format_for_prompt(self) -> str:
         """Compact one-liner for AI prompt injection.
@@ -170,7 +171,7 @@ class OpportunityScreenService:
         from src.market.registry import registry
 
         start = time.monotonic()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         trading_date = now.strftime("%Y-%m-%d")
 
         # Apply exchange filter — default HOSE only, None = full registry.
@@ -292,6 +293,7 @@ class OpportunityScreenService:
 
 # ── job function ─────────────────────────────────────────────────────────────
 
+
 async def run_opportunity_screen_job(quote_service: object) -> ScreenResult:
     """Pure async job function — no Discord imports, testable in isolation.
 
@@ -315,14 +317,16 @@ async def run_opportunity_screen_job(quote_service: object) -> ScreenResult:
         result = await svc.run()
     except Exception as exc:
         logger.error("opportunity_screen_job.unexpected_error", error=str(exc))
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         from src.market.opportunity_screen_service import ScreenResult
+
         result = ScreenResult(
-            scanned_at=datetime.now(timezone.utc),
+            scanned_at=datetime.now(UTC),
             candidates=[],
             total_tickers_scanned=0,
             duration_seconds=0.0,
-            trading_date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            trading_date=datetime.now(UTC).strftime("%Y-%m-%d"),
         )
 
     # Emit event — dedup prevents double-firing within 60 min
@@ -332,9 +336,7 @@ async def run_opportunity_screen_job(quote_service: object) -> ScreenResult:
             candidates_found=len(result.candidates),
             top_symbol=result.top_ticker,
             screen_criteria=result.screen_criteria_summary,
-            candidates_payload=tuple(
-                c.format_for_prompt() for c in result.candidates
-            ),
+            candidates_payload=tuple(c.format_for_prompt() for c in result.candidates),
         )
         emitted = await bus.publish(event, dedup_key="daily")
         if emitted:

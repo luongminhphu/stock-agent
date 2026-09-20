@@ -148,4 +148,4 @@ def build_user_prompt(
 ## Portfolio Risk Context
 {portfolio_section}
 {feedback_block}
-Tổng hợp và rank signals theo urgency. Áp dụng thesis cross-check (rule 12){' và feedback calibration (rule 13)' if feedback_summary.strip() else ''}. Trả về JSON theo schema."""
+Tổng hợp và rank signals theo urgency. Áp dụng thesis cross-check (rule 12){" và feedback calibration (rule 13)" if feedback_summary.strip() else ""}. Trả về JSON theo schema."""

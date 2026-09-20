@@ -67,6 +67,7 @@ class StressTestService:
             self._registry = symbol_registry
         else:
             from src.market.registry import registry as _default_registry
+
             self._registry = _default_registry
         self._repo = ThesisRepository(session)
 
@@ -173,12 +174,10 @@ class StressTestService:
         # ThesisTriggerAlert rules. thesis segment has zero knowledge of watchlist.
         threatened = getattr(result, "threatened_assumptions", []) or []
         broken_count = sum(
-            1 for a in threatened
-            if str(getattr(a, "threat_level", "")).upper() == "BROKEN"
+            1 for a in threatened if str(getattr(a, "threat_level", "")).upper() == "BROKEN"
         )
         weakened_count = sum(
-            1 for a in threatened
-            if str(getattr(a, "threat_level", "")).upper() == "WEAKENED"
+            1 for a in threatened if str(getattr(a, "threat_level", "")).upper() == "WEAKENED"
         )
         await get_event_bus().publish(
             StressTestCompletedEvent(
@@ -189,9 +188,7 @@ class StressTestService:
                 verdict=str(result.verdict),
                 invalidation_probability=float(result.invalidation_probability),
                 confidence=float(getattr(result, "confidence", 0.0)),
-                suggested_triggers=list(
-                    getattr(result, "suggested_triggers_to_watch", []) or []
-                ),
+                suggested_triggers=list(getattr(result, "suggested_triggers_to_watch", []) or []),
                 broken_assumption_count=broken_count,
                 weakened_assumption_count=weakened_count,
                 stress_scenario=str(getattr(result, "stress_scenario", "") or ""),

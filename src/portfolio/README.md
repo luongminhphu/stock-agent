@@ -48,7 +48,7 @@ async with AsyncSessionLocal() as session:
     ctx: PortfolioContext = await get_portfolio_context(
         session,
         user_id="user_123",
-        include_prices=False,   # True for briefing; False for hot AI paths
+        include_prices=False,  # True for briefing; False for hot AI paths
     )
 ```
 

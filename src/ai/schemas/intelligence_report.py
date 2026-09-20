@@ -30,10 +30,11 @@ Mapping từ agent schemas:
     ReplayOutput                       → risk_flags[PATTERN_BIAS_WARNING]
     VerdictOutput                      → top_verdict (voting weight)
 """
+
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -43,26 +44,27 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 # ---------------------------------------------------------------------------
 
 TRIGGER_SOURCES = Literal[
-    "scheduler_morning",    # briefing sáng
-    "scheduler_eod",        # end-of-day summary
-    "watchlist_alert",      # alert kích hoạt từ watchlist
-    "user_query",           # user hỏi trực tiếp qua bot/api
-    "thesis_invalidated",   # thesis bị invalidate → emergency cycle
-    "portfolio_breach",     # risk breach → emergency cycle
-    "manual",               # dev trigger / testing
+    "scheduler_morning",  # briefing sáng
+    "scheduler_eod",  # end-of-day summary
+    "watchlist_alert",  # alert kích hoạt từ watchlist
+    "user_query",  # user hỏi trực tiếp qua bot/api
+    "thesis_invalidated",  # thesis bị invalidate → emergency cycle
+    "portfolio_breach",  # risk breach → emergency cycle
+    "manual",  # dev trigger / testing
 ]
 
 AGENT_SLOT_STATUS = Literal[
-    "ran",           # agent chạy và có output
-    "skipped",       # không đủ signal để chạy
-    "failed",        # chạy nhưng raise exception
-    "not_triggered", # trigger không yêu cầu agent này
+    "ran",  # agent chạy và có output
+    "skipped",  # không đủ signal để chạy
+    "failed",  # chạy nhưng raise exception
+    "not_triggered",  # trigger không yêu cầu agent này
 ]
 
 
 # ---------------------------------------------------------------------------
 # AgentSlot — wrapper bọc output của từng agent
 # ---------------------------------------------------------------------------
+
 
 class AgentSlot(BaseModel):
     """Wrapper cho output của một agent trong một cycle.
@@ -76,8 +78,7 @@ class AgentSlot(BaseModel):
     output: dict | None = Field(
         default=None,
         description=(
-            "Raw output dict của agent — serialized từ Pydantic model. "
-            "None khi status != 'ran'."
+            "Raw output dict của agent — serialized từ Pydantic model. None khi status != 'ran'."
         ),
     )
     ran_at: datetime | None = Field(default=None)
@@ -90,6 +91,7 @@ class AgentSlot(BaseModel):
 # ---------------------------------------------------------------------------
 # PriorityAction — action item cụ thể cho user
 # ---------------------------------------------------------------------------
+
 
 class PriorityAction(BaseModel):
     """Một hành động cụ thể user nên làm sau khi đọc briefing.
@@ -111,10 +113,7 @@ class PriorityAction(BaseModel):
     urgency: Literal["immediate", "today", "this_week"]
     instruction: str = Field(
         max_length=200,
-        description=(
-            "Câu lệnh cụ thể. Bắt đầu bằng động từ. "
-            "VD: 'Kiểm tra SL của VHM tại 44.5k'"
-        ),
+        description=("Câu lệnh cụ thể. Bắt đầu bằng động từ. VD: 'Kiểm tra SL của VHM tại 44.5k'"),
     )
     source_agent: str = Field(description="Agent nào tạo ra action này.")
     reasoning: str = Field(max_length=150)
@@ -123,6 +122,7 @@ class PriorityAction(BaseModel):
 # ---------------------------------------------------------------------------
 # RiskFlag — cảnh báo rủi ro tổng hợp
 # ---------------------------------------------------------------------------
+
 
 class RiskFlag(BaseModel):
     """Cờ rủi ro đã được cross-validate giữa các agents."""
@@ -133,7 +133,7 @@ class RiskFlag(BaseModel):
         "CONCENTRATION_RISK",
         "SECTOR_ROTATION_ADVERSE",
         "VOLUME_ANOMALY",
-        "PATTERN_BIAS_WARNING",   # từ replay_agent / memory
+        "PATTERN_BIAS_WARNING",  # từ replay_agent / memory
         "MARKET_TREND_REVERSAL",
     ]
     ticker: str | None = None
@@ -152,6 +152,7 @@ class RiskFlag(BaseModel):
 # ---------------------------------------------------------------------------
 # IntelligenceReport — contract trung tâm
 # ---------------------------------------------------------------------------
+
 
 class IntelligenceReport(BaseModel):
     """Tổng hợp toàn bộ output của một AI cycle.
@@ -180,9 +181,7 @@ class IntelligenceReport(BaseModel):
         ),
     )
     user_id: str
-    generated_at: datetime = Field(
-        default_factory=lambda: datetime.now(tz=timezone.utc)
-    )
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(tz=UTC))
     trigger_source: TRIGGER_SOURCES
 
     # --- Top-level verdict ---
@@ -267,14 +266,14 @@ class IntelligenceReport(BaseModel):
             return 0.5
 
     @model_validator(mode="after")
-    def _set_emergency_flag(self) -> "IntelligenceReport":
+    def _set_emergency_flag(self) -> IntelligenceReport:
         if self.trigger_source in ("thesis_invalidated", "portfolio_breach"):
             self.is_emergency_cycle = True
             self.ttl_minutes = 15
         return self
 
     @model_validator(mode="after")
-    def _sort_priority_actions(self) -> "IntelligenceReport":
+    def _sort_priority_actions(self) -> IntelligenceReport:
         self.priority_actions = sorted(self.priority_actions, key=lambda a: a.rank)
         return self
 

@@ -9,14 +9,16 @@ Design decisions:
 - Dedup window per (event_type, dedup_key) to prevent signal spam.
 - asyncio-native; does not support threading (use thread-safe queue wrapper if needed).
 """
+
 from __future__ import annotations
 
 import asyncio
 import inspect
 import logging
 from collections import defaultdict
+from collections.abc import Callable, Coroutine
 from datetime import datetime, timedelta
-from typing import Any, Callable, Coroutine, Type, TypeVar
+from typing import Any, TypeVar
 
 from src.platform.events import DomainEvent
 
@@ -59,9 +61,9 @@ class EventBus:
     """
 
     def __init__(self) -> None:
-        self._handlers: dict[Type[DomainEvent], list[Handler]] = defaultdict(list)
+        self._handlers: dict[type[DomainEvent], list[Handler]] = defaultdict(list)
         self._queue: asyncio.Queue[DomainEvent] = asyncio.Queue()
-        self._dedup: dict[str, datetime] = {}           # dedup_key → last_seen
+        self._dedup: dict[str, datetime] = {}  # dedup_key → last_seen
         self._dead_letters: list[DeadLetterEntry] = []
         self._running = False
         self._worker_task: asyncio.Task | None = None
@@ -70,7 +72,7 @@ class EventBus:
 
     def subscribe(
         self,
-        event_type: Type[T],
+        event_type: type[T],
         dedup_window: timedelta | None = None,
     ) -> Callable[[Handler], Handler]:
         """
@@ -79,6 +81,7 @@ class EventBus:
             @bus.subscribe(SignalDetectedEvent)
             async def my_handler(event: SignalDetectedEvent): ...
         """
+
         def decorator(fn: Handler) -> Handler:
             if not inspect.iscoroutinefunction(fn):
                 raise TypeError(
@@ -88,9 +91,10 @@ class EventBus:
             self._handlers[event_type].append(fn)
             logger.debug("Subscribed %s → %s", event_type.__name__, fn.__name__)
             return fn
+
         return decorator
 
-    def subscribe_handler(self, event_type: Type[T], handler: Handler) -> None:
+    def subscribe_handler(self, event_type: type[T], handler: Handler) -> None:
         """Programmatic subscription (no decorator syntax)."""
         if not inspect.iscoroutinefunction(handler):
             raise TypeError(f"Handler {handler.__name__!r} must be async.")
@@ -123,7 +127,9 @@ class EventBus:
             if last_seen and datetime.utcnow() - last_seen < dedup_window:
                 logger.debug(
                     "Dedup suppressed %s (key=%s, window=%s)",
-                    type(event).__name__, dedup_key, dedup_window,
+                    type(event).__name__,
+                    dedup_key,
+                    dedup_window,
                 )
                 return False
             self._dedup[full_key] = datetime.utcnow()
@@ -145,9 +151,7 @@ class EventBus:
         loop = asyncio.get_event_loop()
         if loop.is_running():
             loop.call_soon_threadsafe(
-                lambda: asyncio.ensure_future(
-                    self.publish(event, dedup_key, dedup_window)
-                )
+                lambda: asyncio.ensure_future(self.publish(event, dedup_key, dedup_window))
             )
         else:
             loop.run_until_complete(self.publish(event, dedup_key, dedup_window))
@@ -179,7 +183,7 @@ class EventBus:
         while self._running or not self._queue.empty():
             try:
                 event = await asyncio.wait_for(self._queue.get(), timeout=1.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
             await self._dispatch(event)
             self._queue.task_done()
@@ -203,11 +207,12 @@ class EventBus:
             except Exception as exc:
                 logger.exception(
                     "Handler %s failed for %s (id=%s): %s",
-                    handler.__name__, type(event).__name__, event.event_id, exc,
+                    handler.__name__,
+                    type(event).__name__,
+                    event.event_id,
+                    exc,
                 )
-                self._dead_letters.append(
-                    DeadLetterEntry(event, handler.__name__, exc)
-                )
+                self._dead_letters.append(DeadLetterEntry(event, handler.__name__, exc))
 
     # ── observability ─────────────────────────────────────────────────────────
 

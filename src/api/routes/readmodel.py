@@ -130,7 +130,9 @@ async def get_theses_list(
 
     if enrich_prices:
         # Wave A: query nhe lay ticker thay cho full get_theses_list lan 1.
-        tickers = await list_thesis_tickers(session, user_id, status=status, ticker=ticker, limit=limit)
+        tickers = await list_thesis_tickers(
+            session, user_id, status=status, ticker=ticker, limit=limit
+        )
         price_map, position_map = await fetch_price_and_position(session, user_id, tickers)
 
     items = await DashboardService(session).get_theses_list(
@@ -304,12 +306,18 @@ async def get_recent_signals(
     limit: Annotated[int, Query(ge=1, le=200, description="Số signal tối đa trả về")] = 50,
     stale_days: Annotated[
         int,
-        Query(ge=0, le=30, description="Bỏ qua ticker không có tín hiệu mới trong N ngày. 0 = tắt bộ lọc."),
+        Query(
+            ge=0,
+            le=30,
+            description="Bỏ qua ticker không có tín hiệu mới trong N ngày. 0 = tắt bộ lọc.",
+        ),
     ] = 3,
 ) -> dict[str, Any]:
     svc = DashboardService(session)
     return _paginated(
-        await svc.get_recent_signals(user_id, ticker=ticker, days=days, limit=limit, stale_days=stale_days)
+        await svc.get_recent_signals(
+            user_id, ticker=ticker, days=days, limit=limit, stale_days=stale_days
+        )
     )
 
 
@@ -332,12 +340,16 @@ async def get_thesis_performances(
     ticker: Annotated[str | None, Query(description="Filter theo ticker")] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> list[dict[str, Any]]:
-    return await DashboardService(session).get_thesis_performances(user_id, ticker=ticker, limit=limit)
+    return await DashboardService(session).get_thesis_performances(
+        user_id, ticker=ticker, limit=limit
+    )
 
 
 @router.get("/dashboard/backtesting/price-snapshots/{thesis_id}")
 @router.get("/dashboard/{user_id}/backtesting/price-snapshots/{thesis_id}")
-async def get_price_snapshots(user_id: UserId, thesis_id: int, session: DbSession) -> dict[str, Any]:
+async def get_price_snapshots(
+    user_id: UserId, thesis_id: int, session: DbSession
+) -> dict[str, Any]:
     result = await DashboardService(session).get_price_snapshots(user_id, thesis_id)
     if result is None:
         raise _not_found(thesis_id)
@@ -371,7 +383,9 @@ async def get_portfolio_trades(user_id: UserId, session: DbSession) -> dict[str,
     # Snapshot gần nhất per ticker — CHỈ còn vai trò close_price fallback
     eod_svc = EodSnapshotService(session=session, quote_service=quote_svc)
     snapshots = await eod_svc.get_latest_snapshots(user_id)
-    snap_close: dict[str, tuple[float, str]] = {s.ticker: (s.close_price, str(s.snapshot_date)) for s in snapshots}
+    snap_close: dict[str, tuple[float, str]] = {
+        s.ticker: (s.close_price, str(s.snapshot_date)) for s in snapshots
+    }
 
     # 1 bulk quote call (dung chung build_price_map voi cac route khac);
     # ticker fail/thieu trong batch -> roi ve snapshot close trong builder.
@@ -416,7 +430,9 @@ async def get_attention_needed(
     session: DbSession,
     enrich_prices: Annotated[
         bool,
-        Query(description="Fetch live prices để kiểm tra stop_loss proximity. Tắt nếu muốn bỏ source stop_loss_proximity."),
+        Query(
+            description="Fetch live prices để kiểm tra stop_loss proximity. Tắt nếu muốn bỏ source stop_loss_proximity."
+        ),
     ] = True,
     limit: Annotated[int, Query(ge=1, le=50, description="Số attention items tối đa trả về")] = 20,
 ) -> AttentionPanelResponse:
@@ -425,7 +441,9 @@ async def get_attention_needed(
         tickers = await list_thesis_tickers(session, user_id, status="active")
         price_map = await build_price_map(tickers)
 
-    return await DashboardService(session).get_attention_needed(user_id, price_map=price_map, limit=limit)
+    return await DashboardService(session).get_attention_needed(
+        user_id, price_map=price_map, limit=limit
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -437,7 +455,9 @@ async def get_attention_needed(
 
 @router.get("/dashboard/intelligence")
 @router.get("/dashboard/{user_id}/intelligence")
-async def get_intelligence(user_id: UserId, session: DbSession, response: Response) -> dict[str, Any] | None:
+async def get_intelligence(
+    user_id: UserId, session: DbSession, response: Response
+) -> dict[str, Any] | None:
     result = await DashboardService(session).get_intelligence(user_id)
     if result is None:
         response.status_code = 204
@@ -485,7 +505,11 @@ async def get_leaderboard(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/thesis/{thesis_id}/timeline", response_model=ThesisTimelineResponse, response_model_by_alias=True)
+@router.get(
+    "/thesis/{thesis_id}/timeline",
+    response_model=ThesisTimelineResponse,
+    response_model_by_alias=True,
+)
 async def get_thesis_timeline(thesis_id: int, session: DbSession) -> ThesisTimelineResponse:
     result = await ThesisTimelineService(session).get_timeline(thesis_id)
     if result is None:
@@ -502,7 +526,9 @@ async def get_thesis_timeline(thesis_id: int, session: DbSession) -> ThesisTimel
 async def get_review_timeline(
     thesis_id: int,
     session: DbSession,
-    limit: Annotated[int, Query(ge=1, le=20, description="Số AI reviews gần nhất trả về (mới nhất trước)")] = 5,
+    limit: Annotated[
+        int, Query(ge=1, le=20, description="Số AI reviews gần nhất trả về (mới nhất trước)")
+    ] = 5,
 ) -> ReviewTimelineResponse:
     result = await ThesisTimelineService(session).get_review_timeline(thesis_id, limit=limit)
     if result is None:

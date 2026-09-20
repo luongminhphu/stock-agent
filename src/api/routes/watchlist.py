@@ -105,6 +105,7 @@ async def update_watchlist_note(
     # Bust readmodel cache so dashboard reflects the new note immediately
     try:
         from src.readmodel.cache_subscriber import get_cache
+
         get_cache().invalidate_user(user_id)
     except Exception:
         pass  # cache bust is best-effort — never fail the write

@@ -64,6 +64,7 @@ logger = logging.getLogger(__name__)
 # Color palette — SSOT for all embed sidebar colors
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class COLORS:
     """Hex sidebar colors — never use discord.Color.* or raw hex in commands.
 
@@ -77,26 +78,27 @@ class COLORS:
         GREY    → inactive / paused / no-data / loading / no action
         BLUE    → watchlist / lessons / scanner / info detail
     """
-    GREEN  = 0x57F287
-    RED    = 0xED4245
+
+    GREEN = 0x57F287
+    RED = 0xED4245
     ORANGE = 0xFF6B35
-    TEAL   = 0x4F98A3
-    GOLD   = 0xD4A017
+    TEAL = 0x4F98A3
+    GOLD = 0xD4A017
     PURPLE = 0x9B59B6
-    GREY   = 0x95A5A6
-    BLUE   = 0x3498DB
+    GREY = 0x95A5A6
+    BLUE = 0x3498DB
 
     # Semantic aliases — prefer these in new code
-    BULLISH    = GREEN
-    BEARISH    = RED
-    WEAKENING  = ORANGE
-    NEUTRAL    = TEAL
-    SUCCESS    = GREEN
-    ERROR      = RED
-    WARNING    = ORANGE
-    LOADING    = GREY
-    INFO       = BLUE
-    AI         = PURPLE
+    BULLISH = GREEN
+    BEARISH = RED
+    WEAKENING = ORANGE
+    NEUTRAL = TEAL
+    SUCCESS = GREEN
+    ERROR = RED
+    WARNING = ORANGE
+    LOADING = GREY
+    INFO = BLUE
+    AI = PURPLE
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -104,75 +106,75 @@ class COLORS:
 # ─────────────────────────────────────────────────────────────────────────────
 
 ENGINE_VERDICT_ICONS: dict[str, str] = {
-    "BUY_SIGNAL":    "🟢",
-    "SELL_SIGNAL":   "🔴",
-    "HOLD":          "🟡",
+    "BUY_SIGNAL": "🟢",
+    "SELL_SIGNAL": "🔴",
+    "HOLD": "🟡",
     "REVIEW_THESIS": "📋",
-    "RISK_ALERT":    "⚠️",
-    "NO_ACTION":     "⏸️",
+    "RISK_ALERT": "⚠️",
+    "NO_ACTION": "⏸️",
 }
 
 ENGINE_VERDICT_COLORS: dict[str, int] = {
-    "BUY_SIGNAL":    COLORS.GREEN,
-    "SELL_SIGNAL":   COLORS.RED,
-    "HOLD":          COLORS.TEAL,
+    "BUY_SIGNAL": COLORS.GREEN,
+    "SELL_SIGNAL": COLORS.RED,
+    "HOLD": COLORS.TEAL,
     "REVIEW_THESIS": COLORS.GOLD,
-    "RISK_ALERT":    COLORS.ORANGE,
-    "NO_ACTION":     COLORS.GREY,
+    "RISK_ALERT": COLORS.ORANGE,
+    "NO_ACTION": COLORS.GREY,
 }
 
 VERDICT_ICONS: dict[str, str] = {
-    "BULLISH":     "🟢",
-    "BEARISH":     "🔴",
-    "WEAKENING":   "🟠",
-    "NEUTRAL":     "🟡",
+    "BULLISH": "🟢",
+    "BEARISH": "🔴",
+    "WEAKENING": "🟠",
+    "NEUTRAL": "🟡",
     "INVALIDATED": "❌",
-    "WATCHLIST":   "🔵",
-    "CORRECT":     "✅",
-    "INCORRECT":   "❌",
-    "MIXED":       "⚖️",
+    "WATCHLIST": "🔵",
+    "CORRECT": "✅",
+    "INCORRECT": "❌",
+    "MIXED": "⚖️",
 }
 
 VERDICT_COLORS: dict[str, int] = {
-    "BULLISH":     COLORS.GREEN,
-    "BEARISH":     COLORS.RED,
-    "WEAKENING":   COLORS.ORANGE,
-    "NEUTRAL":     COLORS.TEAL,
+    "BULLISH": COLORS.GREEN,
+    "BEARISH": COLORS.RED,
+    "WEAKENING": COLORS.ORANGE,
+    "NEUTRAL": COLORS.TEAL,
     "INVALIDATED": COLORS.RED,
-    "WATCHLIST":   COLORS.BLUE,
-    "CORRECT":     COLORS.GREEN,
-    "INCORRECT":   COLORS.RED,
-    "MIXED":       COLORS.ORANGE,
+    "WATCHLIST": COLORS.BLUE,
+    "CORRECT": COLORS.GREEN,
+    "INCORRECT": COLORS.RED,
+    "MIXED": COLORS.ORANGE,
 }
 
 STATUS_ICONS: dict[str, str] = {
-    "ACTIVE":      "🟢",
-    "PAUSED":      "⏸️",
-    "WEAKENING":   "🟠",
+    "ACTIVE": "🟢",
+    "PAUSED": "⏸️",
+    "WEAKENING": "🟠",
     "INVALIDATED": "❌",
-    "CLOSED":      "✅",
+    "CLOSED": "✅",
 }
 
 STATUS_COLORS: dict[str, int] = {
-    "ACTIVE":      COLORS.GREEN,
-    "PAUSED":      COLORS.GREY,
-    "WEAKENING":   COLORS.ORANGE,
+    "ACTIVE": COLORS.GREEN,
+    "PAUSED": COLORS.GREY,
+    "WEAKENING": COLORS.ORANGE,
     "INVALIDATED": COLORS.RED,
-    "CLOSED":      COLORS.TEAL,
+    "CLOSED": COLORS.TEAL,
 }
 
 _AGENT_STATUS_ICONS: dict[str, str] = {
-    "ran":     "✅",
-    "failed":  "❌",
+    "ran": "✅",
+    "failed": "❌",
     "skipped": "⏭️",
 }
 
 _URGENCY_PREFIX: dict[str, str] = {
     "CRITICAL": "🚨",
-    "HIGH":     "🔴",
-    "MEDIUM":   "🟠",
-    "LOW":      "🟡",
-    "NORMAL":   "🟡",
+    "HIGH": "🔴",
+    "MEDIUM": "🟠",
+    "LOW": "🟡",
+    "NORMAL": "🟡",
 }
 
 
@@ -180,15 +182,16 @@ _URGENCY_PREFIX: dict[str, str] = {
 # Constants
 # ─────────────────────────────────────────────────────────────────────────────
 
-FOOTER_BRAND  = "stock-agent"
-_ICT_OFFSET   = datetime.timezone(datetime.timedelta(hours=7))
-_MAX_RETRIES  = 3
-_RETRY_DELAY  = 1.5   # seconds
+FOOTER_BRAND = "stock-agent"
+_ICT_OFFSET = datetime.timezone(datetime.timedelta(hours=7))
+_MAX_RETRIES = 3
+_RETRY_DELAY = 1.5  # seconds
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Format helpers
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def ict_now() -> datetime.datetime:
     """Return current time in ICT (UTC+7)."""
@@ -200,7 +203,7 @@ def fmt_ict(dt: datetime.datetime | None = None, fmt: str = "%H:%M ICT %d/%m/%Y"
     if dt is None:
         dt = ict_now()
     elif dt.tzinfo is None:
-        dt = dt.replace(tzinfo=datetime.timezone.utc).astimezone(_ICT_OFFSET)
+        dt = dt.replace(tzinfo=datetime.UTC).astimezone(_ICT_OFFSET)
     else:
         dt = dt.astimezone(_ICT_OFFSET)
     return dt.strftime(fmt)
@@ -384,6 +387,7 @@ def paginate_lines(
 # Safe send primitives — handle rate-limit, HTTPException, never raise
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 async def safe_defer(
     interaction: discord.Interaction,
     *,
@@ -410,7 +414,9 @@ async def safe_defer(
         logger.debug("discord_helper.defer_already_responded")
         return True
     except discord.HTTPException as exc:
-        logger.warning("discord_helper.defer_failed", extra={"status": exc.status, "text": exc.text})
+        logger.warning(
+            "discord_helper.defer_failed", extra={"status": exc.status, "text": exc.text}
+        )
         return False
     except Exception as exc:  # noqa: BLE001
         logger.warning("discord_helper.defer_unexpected", extra={"error": str(exc)})
@@ -449,7 +455,9 @@ async def safe_response(
             logger.error("discord_helper.response_followup_failed", extra={"error": str(exc)})
             return False
     except discord.HTTPException as exc:
-        logger.error("discord_helper.response_failed", extra={"status": exc.status, "text": exc.text})
+        logger.error(
+            "discord_helper.response_failed", extra={"status": exc.status, "text": exc.text}
+        )
         return False
     except Exception as exc:  # noqa: BLE001
         logger.error("discord_helper.response_unexpected", extra={"error": str(exc)})
@@ -614,6 +622,7 @@ async def safe_edit(
 # followup.send() / discord.Embed() directly.
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 async def send_ok(
     interaction: discord.Interaction,
     title: str,
@@ -697,7 +706,9 @@ async def send_warning(
     Use for partial results, rate-limit notices, degraded state.
     """
     embed = (
-        EmbedBuilder(title=f"⚠️ {title}" if not title.startswith("⚠️") else title, color=COLORS.ORANGE)
+        EmbedBuilder(
+            title=f"⚠️ {title}" if not title.startswith("⚠️") else title, color=COLORS.ORANGE
+        )
         .description(description)
         .footer(context or "", brand=True, timestamp=True)
         .build()
@@ -731,6 +742,7 @@ async def send_loading(
 # EmbedBuilder — fluent, auto-footer, auto-truncation
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class EmbedBuilder:
     """Fluent Discord embed builder with stock-agent brand standards.
 
@@ -759,7 +771,7 @@ class EmbedBuilder:
     ) -> None:
         self._embed = discord.Embed(title=truncate(title, 256), color=color)
 
-    def description(self, text: str, limit: int = 4096) -> "EmbedBuilder":
+    def description(self, text: str, limit: int = 4096) -> EmbedBuilder:
         """Set embed description, auto-truncating to limit."""
         self._embed.description = truncate(text, limit) if text else ""
         return self
@@ -771,7 +783,7 @@ class EmbedBuilder:
         *,
         inline: bool = False,
         limit: int = 1024,
-    ) -> "EmbedBuilder":
+    ) -> EmbedBuilder:
         """Add a field, auto-truncating value to Discord's 1024-char limit."""
         self._embed.add_field(
             name=truncate(name, 256),
@@ -786,29 +798,37 @@ class EmbedBuilder:
         *,
         brand: bool = True,
         timestamp: bool = True,
-    ) -> "EmbedBuilder":
+    ) -> EmbedBuilder:
         """Set footer with optional brand tag and ICT timestamp.
 
         Parts are joined with ' · '. Empty parts are skipped.
         """
-        parts: list[str] = [p for p in [text, FOOTER_BRAND if brand else "", fmt_ict(fmt="%H:%M ICT") if timestamp else ""] if p]
+        parts: list[str] = [
+            p
+            for p in [
+                text,
+                FOOTER_BRAND if brand else "",
+                fmt_ict(fmt="%H:%M ICT") if timestamp else "",
+            ]
+            if p
+        ]
         self._embed.set_footer(text=truncate(" · ".join(parts), 2048))
         return self
 
-    def timestamp(self, dt: datetime.datetime | None = None) -> "EmbedBuilder":
+    def timestamp(self, dt: datetime.datetime | None = None) -> EmbedBuilder:
         """Set Discord embed timestamp (shown as relative time in Discord UI)."""
-        self._embed.timestamp = dt or datetime.datetime.now(datetime.timezone.utc)
+        self._embed.timestamp = dt or datetime.datetime.now(datetime.UTC)
         return self
 
-    def thumbnail(self, url: str) -> "EmbedBuilder":
+    def thumbnail(self, url: str) -> EmbedBuilder:
         self._embed.set_thumbnail(url=url)
         return self
 
-    def image(self, url: str) -> "EmbedBuilder":
+    def image(self, url: str) -> EmbedBuilder:
         self._embed.set_image(url=url)
         return self
 
-    def author(self, name: str, icon_url: str | None = None) -> "EmbedBuilder":
+    def author(self, name: str, icon_url: str | None = None) -> EmbedBuilder:
         self._embed.set_author(name=truncate(name, 256), icon_url=icon_url)
         return self
 
@@ -821,6 +841,7 @@ class EmbedBuilder:
 # Internal rendering helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _render_priority_actions(actions: tuple[dict[str, Any], ...] | list[dict[str, Any]]) -> str:
     """Render priority_actions list into a compact Discord field value.
 
@@ -831,10 +852,10 @@ def _render_priority_actions(actions: tuple[dict[str, Any], ...] | list[dict[str
     for item in list(actions)[:3]:
         if not isinstance(item, dict):
             continue
-        urgency    = str(item.get("urgency", "NORMAL")).upper()
-        ticker     = str(item.get("ticker", "")).upper()
+        urgency = str(item.get("urgency", "NORMAL")).upper()
+        ticker = str(item.get("ticker", "")).upper()
         action_txt = str(item.get("action", item.get("reasoning", "")))
-        prefix     = _URGENCY_PREFIX.get(urgency, "🟡")
+        prefix = _URGENCY_PREFIX.get(urgency, "🟡")
         ticker_lbl = f" **{ticker}**" if ticker else ""
         lines.append(f"{prefix}{ticker_lbl} — {truncate(action_txt, 120)}")
     return "\n".join(lines) if lines else "_Không có action cụ thể._"
@@ -846,21 +867,21 @@ def _render_agent_slots(slots: tuple[dict[str, Any], ...] | list[dict[str, Any]]
     Skips heuristic_engine slot (internal). Shows agent short-name + status icon.
     """
     _SHORT: dict[str, str] = {
-        "thesis_judge":            "thesis",
-        "invalidation_detector":   "invalidation",
-        "next_action_suggester":   "next_action",
+        "thesis_judge": "thesis",
+        "invalidation_detector": "invalidation",
+        "next_action_suggester": "next_action",
         "portfolio_risk_narrator": "portfolio_risk",
     }
     parts: list[str] = []
     for slot in slots:
         if not isinstance(slot, dict):
             continue
-        name   = str(slot.get("agent_name", ""))
+        name = str(slot.get("agent_name", ""))
         if name == "heuristic_engine":
             continue
         status = str(slot.get("status", "skipped")).lower()
-        icon   = _AGENT_STATUS_ICONS.get(status, "❓")
-        short  = _SHORT.get(name, name)
+        icon = _AGENT_STATUS_ICONS.get(status, "❓")
+        short = _SHORT.get(name, name)
         parts.append(f"{short} {icon}")
     return "  ".join(parts) if parts else "_heuristic only_"
 
@@ -869,6 +890,7 @@ def _render_agent_slots(slots: tuple[dict[str, Any], ...] | list[dict[str, Any]]
 # Ready-made embed builders
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def build_engine_verdict_embed(verdict: Any) -> discord.Embed:
     """Build a rich embed from an EngineVerdict / IntelligenceEngineCompletedEvent.
 
@@ -876,26 +898,23 @@ def build_engine_verdict_embed(verdict: Any) -> discord.Embed:
     Falls back to legacy ``action`` string on heuristic path.
     Compatible with both ORM objects and Pydantic models via getattr.
     """
-    verdict_type      = str(getattr(verdict, "verdict", "NO_ACTION")).upper()
-    confidence        = float(getattr(verdict, "confidence", 0.0))
-    risk_signals      = list(getattr(verdict, "risk_signals", []) or [])
-    next_watch        = list(getattr(verdict, "next_watch_items", []) or [])
-    action            = getattr(verdict, "action", "") or getattr(verdict, "summary", "") or ""
-    reasoning         = getattr(verdict, "reasoning_summary", "") or ""
-    sources           = list(getattr(verdict, "sources", []) or [])
-    agent_slots       = getattr(verdict, "agent_slots", ()) or ()
-    priority_actions  = getattr(verdict, "priority_actions", ()) or ()
+    verdict_type = str(getattr(verdict, "verdict", "NO_ACTION")).upper()
+    confidence = float(getattr(verdict, "confidence", 0.0))
+    risk_signals = list(getattr(verdict, "risk_signals", []) or [])
+    next_watch = list(getattr(verdict, "next_watch_items", []) or [])
+    action = getattr(verdict, "action", "") or getattr(verdict, "summary", "") or ""
+    reasoning = getattr(verdict, "reasoning_summary", "") or ""
+    sources = list(getattr(verdict, "sources", []) or [])
+    agent_slots = getattr(verdict, "agent_slots", ()) or ()
+    priority_actions = getattr(verdict, "priority_actions", ()) or ()
 
-    icon  = ENGINE_VERDICT_ICONS.get(verdict_type, "🧠")
+    icon = ENGINE_VERDICT_ICONS.get(verdict_type, "🧠")
     color = ENGINE_VERDICT_COLORS.get(verdict_type, COLORS.PURPLE)
 
-    builder = (
-        EmbedBuilder(
-            title=f"{icon} Intelligence Engine — {verdict_type.replace('_', ' ')}",
-            color=color,
-        )
-        .description(reasoning or "_Không có reasoning summary._")
-    )
+    builder = EmbedBuilder(
+        title=f"{icon} Intelligence Engine — {verdict_type.replace('_', ' ')}",
+        color=color,
+    ).description(reasoning or "_Không có reasoning summary._")
 
     builder.field("Confidence", f"{confidence_bar(confidence)} `{confidence:.0%}`", inline=True)
 
@@ -903,7 +922,9 @@ def build_engine_verdict_embed(verdict: Any) -> discord.Embed:
         builder.field("🤖 Agents", _render_agent_slots(agent_slots), inline=True)
 
     if priority_actions:
-        builder.field("🎯 Priority Actions", _render_priority_actions(priority_actions), inline=False)
+        builder.field(
+            "🎯 Priority Actions", _render_priority_actions(priority_actions), inline=False
+        )
     elif action:
         builder.field("🎯 Action", action, inline=False)
 
@@ -927,26 +948,25 @@ def build_thesis_review_embed(review: Any, *, ticker: str = "") -> discord.Embed
     Uses getattr — never raises on missing fields.
     """
     verdict_raw = str(getattr(review, "verdict", "NEUTRAL"))
-    verdict     = verdict_raw.upper()
-    if hasattr(verdict_raw, "value"):           # enum support
+    verdict = verdict_raw.upper()
+    if hasattr(verdict_raw, "value"):  # enum support
         verdict = str(verdict_raw.value).upper()
 
-    confidence  = float(getattr(review, "confidence", 0.0) or 0.0)
-    reasoning   = getattr(review, "reasoning", "") or ""
-    risk_signals= getattr(review, "risk_signals", []) or []
-    next_watch  = getattr(review, "next_watch_items", []) or []
-    catalysts   = getattr(review, "catalysts_status", []) or []
+    confidence = float(getattr(review, "confidence", 0.0) or 0.0)
+    reasoning = getattr(review, "reasoning", "") or ""
+    risk_signals = getattr(review, "risk_signals", []) or []
+    next_watch = getattr(review, "next_watch_items", []) or []
+    catalysts = getattr(review, "catalysts_status", []) or []
     assumptions = getattr(review, "assumptions_status", []) or []
-    created_at  = getattr(review, "created_at", None)
+    created_at = getattr(review, "created_at", None)
 
-    icon  = VERDICT_ICONS.get(verdict, "🟡")
+    icon = VERDICT_ICONS.get(verdict, "🟡")
     color = VERDICT_COLORS.get(verdict, COLORS.TEAL)
     ticker_label = f" {ticker.upper()}" if ticker else ""
 
-    builder = (
-        EmbedBuilder(title=f"{icon} Thesis Review{ticker_label} — {verdict}", color=color)
-        .description(reasoning or "_Không có reasoning._")
-    )
+    builder = EmbedBuilder(
+        title=f"{icon} Thesis Review{ticker_label} — {verdict}", color=color
+    ).description(reasoning or "_Không có reasoning._")
 
     builder.field("Confidence", f"{confidence_bar(confidence)} `{confidence:.0%}`", inline=True)
     builder.field("Verdict", f"{icon} {verdict}", inline=True)
@@ -964,8 +984,10 @@ def build_thesis_review_embed(review: Any, *, ticker: str = "") -> discord.Embed
                 status, name = c.get("status", ""), c.get("name", c.get("catalyst", ""))
             else:
                 status = str(getattr(c, "status", ""))
-                name   = str(getattr(c, "name", getattr(c, "catalyst", "")))
-            s_icon = "✅" if "MET" in status.upper() else "⏳" if "PENDING" in status.upper() else "❌"
+                name = str(getattr(c, "name", getattr(c, "catalyst", "")))
+            s_icon = (
+                "✅" if "MET" in status.upper() else "⏳" if "PENDING" in status.upper() else "❌"
+            )
             lines.append(f"{s_icon} {name}")
         if lines:
             builder.field("📍 Catalysts", "\n".join(lines), inline=False)
@@ -977,8 +999,10 @@ def build_thesis_review_embed(review: Any, *, ticker: str = "") -> discord.Embed
                 status, name = a.get("status", ""), a.get("name", a.get("assumption", ""))
             else:
                 status = str(getattr(a, "status", ""))
-                name   = str(getattr(a, "name", getattr(a, "assumption", "")))
-            s_icon = "✅" if "HOLD" in status.upper() else "❌" if "BROKEN" in status.upper() else "❓"
+                name = str(getattr(a, "name", getattr(a, "assumption", "")))
+            s_icon = (
+                "✅" if "HOLD" in status.upper() else "❌" if "BROKEN" in status.upper() else "❓"
+            )
             lines.append(f"{s_icon} {name}")
         if lines:
             builder.field("📌 Assumptions", "\n".join(lines), inline=False)
@@ -994,23 +1018,24 @@ def build_proactive_alert_embed(alert: Any, *, ticker: str = "") -> discord.Embe
     Compatible with ProactiveAlert, WatchlistTrigger, or any dict-like
     object with alert_type, message, ticker, urgency, reasons fields.
     """
+
     def _get(key: str, default: Any = "") -> Any:
         if isinstance(alert, dict):
             return alert.get(key, default)
         return getattr(alert, key, default) or default
 
     alert_type = str(_get("alert_type", "WATCH")).upper()
-    message    = str(_get("message", _get("summary", "")))
+    message = str(_get("message", _get("summary", "")))
     ticker_val = str(_get("ticker", ticker)).upper()
-    urgency    = str(_get("urgency", "NORMAL")).upper()
-    reasons    = _get("reasons", []) or []
+    urgency = str(_get("urgency", "NORMAL")).upper()
+    reasons = _get("reasons", []) or []
     created_at = _get("created_at", None)
 
     urgency_map: dict[str, tuple[int, str]] = {
-        "HIGH":   (COLORS.RED,    "🚨"),
+        "HIGH": (COLORS.RED, "🚨"),
         "MEDIUM": (COLORS.ORANGE, "⚠️"),
-        "NORMAL": (COLORS.TEAL,   "📡"),
-        "LOW":    (COLORS.GREY,   "🔔"),
+        "NORMAL": (COLORS.TEAL, "📡"),
+        "LOW": (COLORS.GREY, "🔔"),
     }
     color, icon = urgency_map.get(urgency, (COLORS.TEAL, "📡"))
 
@@ -1019,9 +1044,8 @@ def build_proactive_alert_embed(alert: Any, *, ticker: str = "") -> discord.Embe
     if alert_type and alert_type != "WATCH":
         title += f" — {alert_type.replace('_', ' ')}"
 
-    builder = (
-        EmbedBuilder(title=title, color=color)
-        .description(message or "_Không có nội dung cảnh báo._")
+    builder = EmbedBuilder(title=title, color=color).description(
+        message or "_Không có nội dung cảnh báo._"
     )
     builder.field("Urgency", urgency, inline=True)
     if ticker_val:

@@ -209,9 +209,7 @@ class ThesisQueryService:
             upside_pct: float | None = None
             risk_reward: float | None = None
             if t.target_price and effective_entry and effective_entry > 0:
-                upside_pct = round(
-                    (t.target_price - effective_entry) / effective_entry * 100, 1
-                )
+                upside_pct = round((t.target_price - effective_entry) / effective_entry * 100, 1)
                 if t.stop_loss and effective_entry > t.stop_loss:
                     downside = effective_entry - t.stop_loss
                     upside = t.target_price - effective_entry
@@ -227,9 +225,7 @@ class ThesisQueryService:
             try:
                 _, score_breakdown = _scoring_service.compute_with_breakdown(t)
             except Exception:
-                logger.warning(
-                    "thesis_query_service.score_breakdown_failed", thesis_id=t.id
-                )
+                logger.warning("thesis_query_service.score_breakdown_failed", thesis_id=t.id)
                 score_breakdown = None
 
             # --- stop-loss breach: giá đã xuyên stop theo direction ---
@@ -346,7 +342,7 @@ class ThesisQueryService:
 
         # Use already-loaded relationships — no extra DB round-trip.
         assumptions_rows = sorted(thesis.assumptions, key=lambda a: a.id)
-        catalysts_rows   = sorted(
+        catalysts_rows = sorted(
             thesis.catalysts,
             key=lambda c: (c.expected_date is None, c.expected_date),
         )
@@ -484,9 +480,7 @@ class ThesisQueryService:
             # thesis_status may arrive as a raw str when selected via .label()
             # instead of loading a full ORM model — guard against AttributeError.
             thesis_status_str = (
-                r.thesis_status.value
-                if hasattr(r.thesis_status, "value")
-                else str(r.thesis_status)
+                r.thesis_status.value if hasattr(r.thesis_status, "value") else str(r.thesis_status)
             )
 
             result.append(
@@ -639,7 +633,13 @@ class ThesisQueryService:
                 has_market = True
 
             # verdict breakdown
-            v_raw = str(r.last_verdict.value) if hasattr(r.last_verdict, "value") else str(r.last_verdict) if r.last_verdict else None
+            v_raw = (
+                str(r.last_verdict.value)
+                if hasattr(r.last_verdict, "value")
+                else str(r.last_verdict)
+                if r.last_verdict
+                else None
+            )
             v_key = v_raw.lower() if v_raw and v_raw.lower() in verdict_breakdown else "none"
             verdict_breakdown[v_key] += 1
 

@@ -130,16 +130,16 @@ class TrendSynthesisAgent:
         return f"""Phân tích xu hướng cho mã **{ticker}**:
 
 ## RRG Position
-- Quadrant: {rrg.get('quadrant', 'unknown')}
-- RS-Ratio: {rrg.get('rs_ratio', 100):.2f} (>100 = mạnh hơn VNINDEX)
-- RS-Momentum: {rrg.get('rs_momentum', 100):.2f} (>100 = momentum tăng)
-- Trail pattern: {rrg.get('trail_pattern', 'N/A')}
+- Quadrant: {rrg.get("quadrant", "unknown")}
+- RS-Ratio: {rrg.get("rs_ratio", 100):.2f} (>100 = mạnh hơn VNINDEX)
+- RS-Momentum: {rrg.get("rs_momentum", 100):.2f} (>100 = momentum tăng)
+- Trail pattern: {rrg.get("trail_pattern", "N/A")}
 
 ## Technical Indicators
-- RSI(14): {ind.get('rsi', 50):.1f}
-- MACD Histogram: {ind.get('macd_hist', 0):.4f} | Signal: {ind.get('macd_cross', 'N/A')}
-- CMF(20): {ind.get('cmf', 0):.4f}
-- ADX(14): {ind.get('adx', 0):.1f} | +DI: {ind.get('adx_plus_di', 0):.1f} | -DI: {ind.get('adx_minus_di', 0):.1f}
+- RSI(14): {ind.get("rsi", 50):.1f}
+- MACD Histogram: {ind.get("macd_hist", 0):.4f} | Signal: {ind.get("macd_cross", "N/A")}
+- CMF(20): {ind.get("cmf", 0):.4f}
+- ADX(14): {ind.get("adx", 0):.1f} | +DI: {ind.get("adx_plus_di", 0):.1f} | -DI: {ind.get("adx_minus_di", 0):.1f}
 
 ## Composite
 - Regime: {regime}

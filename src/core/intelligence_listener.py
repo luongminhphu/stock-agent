@@ -35,6 +35,7 @@ Portfolio injection (next wave):
 
 Boot: call IntelligenceEngineListener(...).register() in platform bootstrap.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -92,9 +93,7 @@ class IntelligenceEngineListener:
     # Portfolio snapshot cache — runs ~20 min before engine cycle
     # ------------------------------------------------------------------
 
-    async def _handle_portfolio_snapshot(
-        self, event: PortfolioSnapshotReadyEvent
-    ) -> None:
+    async def _handle_portfolio_snapshot(self, event: PortfolioSnapshotReadyEvent) -> None:
         self._portfolio_context[event.user_id] = event
         logger.info(
             "intelligence_listener.portfolio_snapshot_cached",
@@ -171,12 +170,10 @@ class IntelligenceEngineListener:
         # Prefer ai_verdict (VerdictOutput from verdict_agent) when present.
         # Falls back to heuristic EngineVerdict. Both share the same field
         # names so getattr access below is safe for both types.
-        verdict             = getattr(output, "ai_verdict", None) or output.verdict
+        verdict = getattr(output, "ai_verdict", None) or output.verdict
         intelligence_report = output.intelligence_report
 
-        echoed_verdict_event_id: str = (
-            getattr(verdict, "verdict_id", None) or str(uuid.uuid4())
-        )
+        echoed_verdict_event_id: str = getattr(verdict, "verdict_id", None) or str(uuid.uuid4())
 
         def _to_tuple(val: Any) -> tuple[str, ...]:
             if not val:

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import re
 from datetime import date
-from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -27,7 +26,7 @@ class SuggestedAssumption(BaseModel):
         return _coerce_confidence(v)
 
 
-def _parse_timeline_to_date(timeline: str) -> Optional[date]:
+def _parse_timeline_to_date(timeline: str) -> date | None:
     """Best-effort convert 'Q3 2025', 'H1 2026', 'T6/2025', 'YYYY-MM-DD' → date."""
     if not timeline:
         return None
@@ -61,7 +60,7 @@ def _parse_timeline_to_date(timeline: str) -> Optional[date]:
 class SuggestedCatalyst(BaseModel):
     catalyst_text: str
     expected_timeline: str
-    expected_date: Optional[date] = None
+    expected_date: date | None = None
     confidence: float = Field(ge=0.0, le=1.0)
     rationale: str
 
@@ -71,7 +70,7 @@ class SuggestedCatalyst(BaseModel):
         return _coerce_confidence(v)
 
     @model_validator(mode="after")
-    def derive_expected_date(self) -> "SuggestedCatalyst":
+    def derive_expected_date(self) -> SuggestedCatalyst:
         if self.expected_date is None and self.expected_timeline:
             self.expected_date = _parse_timeline_to_date(self.expected_timeline)
         return self

@@ -52,9 +52,7 @@ class DecisionCog(BaseCog):
         rationale="Lý do quyết định (tối đa 500 ký tự)",
         horizon_days="Số ngày để evaluate outcome (mặc định: 30)",
     )
-    @app_commands.choices(action=[
-        app_commands.Choice(name=a, value=a) for a in _VALID_ACTIONS
-    ])
+    @app_commands.choices(action=[app_commands.Choice(name=a, value=a) for a in _VALID_ACTIONS])
     async def log_decision(
         self,
         interaction: discord.Interaction,
@@ -162,7 +160,9 @@ class DecisionCog(BaseCog):
             )
             return
         except Exception as exc:
-            logger.error("replay.command.error", decision_id=decision_id, error=str(exc), exc_info=True)
+            logger.error(
+                "replay.command.error", decision_id=decision_id, error=str(exc), exc_info=True
+            )
             await self.send_error(
                 interaction,
                 title="L\u1ed7i h\u1ec7 th\u1ed1ng",

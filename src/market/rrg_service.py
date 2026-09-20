@@ -30,9 +30,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date, timedelta
-from typing import Sequence
 
 from src.market.ohlcv_service import Interval, OHLCVService
 
@@ -43,11 +43,11 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _BENCHMARK_TICKER = "VNINDEX"
-_EMA_SHORT        = 10
-_EMA_LONG         = 40
+_EMA_SHORT = 10
+_EMA_LONG = 40
 # Minimum candles needed for EMA_LONG to produce a meaningful value.
 # With _EMA_LONG=40 we need at least 40 candles before the first stable EMA.
-_MIN_CANDLES      = _EMA_LONG + _EMA_SHORT + 5   # 55
+_MIN_CANDLES = _EMA_LONG + _EMA_SHORT + 5  # 55
 # One weekly sample every ~5 trading days
 _TRADING_DAYS_PER_WEEK = 5
 
@@ -59,35 +59,39 @@ _TRADING_DAYS_PER_WEEK = 5
 @dataclass(frozen=True)
 class RRGPoint:
     """A single (RS-Ratio, RS-Momentum) point in the trail."""
-    rs_ratio:    float
+
+    rs_ratio: float
     rs_momentum: float
 
 
 @dataclass
 class RRGTicker:
     """RRG result for one ticker."""
-    ticker:     str
-    quadrant:   str           # leading | weakening | lagging | improving
-    rs_ratio:   float         # current (latest) RS-Ratio
-    rs_momentum: float        # current (latest) RS-Momentum
-    trail:      list[RRGPoint] = field(default_factory=list)
+
+    ticker: str
+    quadrant: str  # leading | weakening | lagging | improving
+    rs_ratio: float  # current (latest) RS-Ratio
+    rs_momentum: float  # current (latest) RS-Momentum
+    trail: list[RRGPoint] = field(default_factory=list)
     # oldest → newest; last element == current position
-    error:      str | None    = field(default=None, compare=False)
+    error: str | None = field(default=None, compare=False)
 
 
 @dataclass
 class RRGResponse:
     """Full RRG response."""
-    benchmark:  str
-    as_of:      str                # ISO date
+
+    benchmark: str
+    as_of: str  # ISO date
     lookback_weeks: int
-    trail_points:   int
-    tickers:    list[RRGTicker]
+    trail_points: int
+    tickers: list[RRGTicker]
 
 
 # ---------------------------------------------------------------------------
 # EMA helper
 # ---------------------------------------------------------------------------
+
 
 def _ema(values: list[float], span: int) -> list[float]:
     """Exponential Moving Average — same formula as pandas ewm(span, adjust=False).
@@ -97,11 +101,11 @@ def _ema(values: list[float], span: int) -> list[float]:
     """
     if not values:
         return []
-    k   = 2.0 / (span + 1)
+    k = 2.0 / (span + 1)
     out = [0.0] * len(values)
     # Seed: plain mean of first `min(span, len)` elements
-    seed_n   = min(span, len(values))
-    out[0]   = sum(values[:seed_n]) / seed_n
+    seed_n = min(span, len(values))
+    out[0] = sum(values[:seed_n]) / seed_n
     for i in range(1, len(values)):
         out[i] = values[i] * k + out[i - 1] * (1 - k)
     return out
@@ -111,8 +115,9 @@ def _ema(values: list[float], span: int) -> list[float]:
 # Quadrant classifier
 # ---------------------------------------------------------------------------
 
+
 def _quadrant(rs_ratio: float, rs_momentum: float) -> str:
-    above_r = rs_ratio   >= 100.0
+    above_r = rs_ratio >= 100.0
     above_m = rs_momentum >= 100.0
     if above_r and above_m:
         return "leading"
@@ -127,10 +132,11 @@ def _quadrant(rs_ratio: float, rs_momentum: float) -> str:
 # Core computation
 # ---------------------------------------------------------------------------
 
+
 def _compute_rrg(
-    ticker_closes:    list[float],
+    ticker_closes: list[float],
     benchmark_closes: list[float],
-    trail_points:     int,
+    trail_points: int,
 ) -> tuple[list[RRGPoint], float, float] | None:
     """Compute RS-Ratio, RS-Momentum trail for one ticker vs benchmark.
 
@@ -150,19 +156,15 @@ def _compute_rrg(
         return None
 
     # Step 2 — RS-Ratio
-    ema_s  = _ema(rs_raw, _EMA_SHORT)
-    ema_l  = _ema(rs_raw, _EMA_LONG)
-    rs_ratio_series = [
-        (s / l * 100.0) if l != 0.0 else 100.0
-        for s, l in zip(ema_s, ema_l)
-    ]
+    ema_s = _ema(rs_raw, _EMA_SHORT)
+    ema_l = _ema(rs_raw, _EMA_LONG)
+    rs_ratio_series = [(s / l * 100.0) if l != 0.0 else 100.0 for s, l in zip(ema_s, ema_l)]
 
     # Step 3 — RS-Momentum
     ema_rs_s = _ema(rs_ratio_series, _EMA_SHORT)
     ema_rs_l = _ema(rs_ratio_series, _EMA_LONG)
     rs_momentum_series = [
-        (s / l * 100.0) if l != 0.0 else 100.0
-        for s, l in zip(ema_rs_s, ema_rs_l)
+        (s / l * 100.0) if l != 0.0 else 100.0 for s, l in zip(ema_rs_s, ema_rs_l)
     ]
 
     # Step 4 — Sample weekly trail (last `trail_points` weekly samples)
@@ -173,14 +175,16 @@ def _compute_rrg(
     for _ in range(trail_points):
         if idx < 0:
             break
-        sampled.append(RRGPoint(
-            rs_ratio    = round(rs_ratio_series[idx], 3),
-            rs_momentum = round(rs_momentum_series[idx], 3),
-        ))
+        sampled.append(
+            RRGPoint(
+                rs_ratio=round(rs_ratio_series[idx], 3),
+                rs_momentum=round(rs_momentum_series[idx], 3),
+            )
+        )
         idx -= _TRADING_DAYS_PER_WEEK
-    sampled.reverse()   # oldest → newest
+    sampled.reverse()  # oldest → newest
 
-    current_r = sampled[-1].rs_ratio    if sampled else 100.0
+    current_r = sampled[-1].rs_ratio if sampled else 100.0
     current_m = sampled[-1].rs_momentum if sampled else 100.0
     return sampled, current_r, current_m
 
@@ -188,6 +192,7 @@ def _compute_rrg(
 # ---------------------------------------------------------------------------
 # Service
 # ---------------------------------------------------------------------------
+
 
 class RRGService:
     """Compute RRG coordinates for a list of thesis tickers.
@@ -201,10 +206,10 @@ class RRGService:
 
     async def compute(
         self,
-        tickers:       Sequence[str],
-        benchmark:     str          = _BENCHMARK_TICKER,
-        lookback_weeks: int         = 26,
-        trail_points:  int          = 8,
+        tickers: Sequence[str],
+        benchmark: str = _BENCHMARK_TICKER,
+        lookback_weeks: int = 26,
+        trail_points: int = 8,
     ) -> RRGResponse:
         """Fetch OHLCV + compute RRG for each ticker in parallel.
 
@@ -217,12 +222,12 @@ class RRGService:
         Returns:
             RRGResponse with per-ticker rs_ratio, rs_momentum, trail, quadrant.
         """
-        today     = date.today()
+        today = date.today()
         from_date = today - timedelta(weeks=lookback_weeks + 4)  # +4w buffer for gaps/holidays
 
         tickers_upper = [t.upper() for t in tickers]
-        bench_upper   = benchmark.upper()
-        all_tickers   = list(dict.fromkeys([bench_upper] + tickers_upper))  # dedup, bench first
+        bench_upper = benchmark.upper()
+        all_tickers = list(dict.fromkeys([bench_upper] + tickers_upper))  # dedup, bench first
 
         # ── Parallel OHLCV fetch ──────────────────────────────────────────
         async def _fetch(ticker: str) -> tuple[str, list[float]]:
@@ -236,7 +241,7 @@ class RRGService:
                 logger.warning("rrg: fetch failed for %s: %s", ticker, exc)
                 return ticker, []
 
-        results   = await asyncio.gather(*[_fetch(t) for t in all_tickers])
+        results = await asyncio.gather(*[_fetch(t) for t in all_tickers])
         closes_map: dict[str, list[float]] = dict(results)
 
         bench_closes = closes_map.get(bench_upper, [])
@@ -255,11 +260,15 @@ class RRGService:
         for ticker in tickers_upper:
             tc = closes_map.get(ticker, [])
             if not tc:
-                rrg_tickers.append(RRGTicker(
-                    ticker=ticker, quadrant="lagging",
-                    rs_ratio=100.0, rs_momentum=100.0,
-                    error=f"no OHLCV data for {ticker}",
-                ))
+                rrg_tickers.append(
+                    RRGTicker(
+                        ticker=ticker,
+                        quadrant="lagging",
+                        rs_ratio=100.0,
+                        rs_momentum=100.0,
+                        error=f"no OHLCV data for {ticker}",
+                    )
+                )
                 continue
 
             # Align: use only dates covered by both series, clamped to
@@ -267,29 +276,39 @@ class RRGService:
             # produce genuinely different EMA windows (not just different
             # trail_points on the same underlying series).
             max_candles = lookback_weeks * _TRADING_DAYS_PER_WEEK
-            n   = min(len(tc), len(bench_closes), max_candles)
+            n = min(len(tc), len(bench_closes), max_candles)
             res = _compute_rrg(tc[-n:], bench_closes[-n:], trail_points)
 
             if res is None:
-                rrg_tickers.append(RRGTicker(
-                    ticker=ticker, quadrant="lagging",
-                    rs_ratio=100.0, rs_momentum=100.0,
-                    error=f"insufficient data ({len(tc)} candles, need {_MIN_CANDLES})",
-                ))
+                rrg_tickers.append(
+                    RRGTicker(
+                        ticker=ticker,
+                        quadrant="lagging",
+                        rs_ratio=100.0,
+                        rs_momentum=100.0,
+                        error=f"insufficient data ({len(tc)} candles, need {_MIN_CANDLES})",
+                    )
+                )
                 logger.warning("rrg: %s insufficient data (%d candles)", ticker, len(tc))
                 continue
 
             trail, cur_r, cur_m = res
-            rrg_tickers.append(RRGTicker(
-                ticker=ticker,
-                quadrant=_quadrant(cur_r, cur_m),
-                rs_ratio=round(cur_r, 3),
-                rs_momentum=round(cur_m, 3),
-                trail=trail,
-            ))
+            rrg_tickers.append(
+                RRGTicker(
+                    ticker=ticker,
+                    quadrant=_quadrant(cur_r, cur_m),
+                    rs_ratio=round(cur_r, 3),
+                    rs_momentum=round(cur_m, 3),
+                    trail=trail,
+                )
+            )
             logger.debug(
                 "rrg: %s → %s  R=%.2f  M=%.2f  trail=%d pts",
-                ticker, _quadrant(cur_r, cur_m), cur_r, cur_m, len(trail),
+                ticker,
+                _quadrant(cur_r, cur_m),
+                cur_r,
+                cur_m,
+                len(trail),
             )
 
         return RRGResponse(

@@ -55,17 +55,17 @@ def _breakdown_bar(counts: dict[str, int], keys: list[str], icons: dict[str, str
 
 def build_aggregate_embed(data: dict) -> discord.Embed:
     """Build a Discord Embed from a thesis portfolio aggregate dict."""
-    total     = data.get("total_theses", 0)
-    pnl_pct   = data.get("total_pnl_pct")
-    pnl_abs   = data.get("total_pnl_abs")
-    cost      = data.get("total_cost_basis")
-    market    = data.get("total_market_value")
-    with_pos  = data.get("with_position_count", 0)
-    reviewed  = data.get("reviewed_count", 0)
+    total = data.get("total_theses", 0)
+    pnl_pct = data.get("total_pnl_pct")
+    pnl_abs = data.get("total_pnl_abs")
+    cost = data.get("total_cost_basis")
+    market = data.get("total_market_value")
+    with_pos = data.get("with_position_count", 0)
+    reviewed = data.get("reviewed_count", 0)
 
     verdict_bd: dict[str, int] = data.get("verdict_breakdown", {})
-    tier_bd:    dict[str, int] = data.get("tier_breakdown",    {})
-    pnl_bd:     dict[str, int] = data.get("pnl_breakdown",     {})
+    tier_bd: dict[str, int] = data.get("tier_breakdown", {})
+    pnl_bd: dict[str, int] = data.get("pnl_breakdown", {})
 
     generated_at: str | None = data.get("generated_at")
 
@@ -81,9 +81,7 @@ def build_aggregate_embed(data: dict) -> discord.Embed:
         embed.add_field(
             name="\U0001f4b0 P&L tổng danh mục",
             value=(
-                f"Vốn: `{_fmt_vnd(cost)}`\n"
-                f"Market value: `{_fmt_vnd(market)}`\n"
-                f"P&L: `{pnl_line}`"
+                f"Vốn: `{_fmt_vnd(cost)}`\nMarket value: `{_fmt_vnd(market)}`\nP&L: `{pnl_line}`"
             ),
             inline=False,
         )
@@ -97,44 +95,47 @@ def build_aggregate_embed(data: dict) -> discord.Embed:
     embed.add_field(
         name="\U0001f4c1 Coverage",
         value=(
-            f"Có open position: **{with_pos}** / {total}\n"
-            f"Đã review AI: **{reviewed}** / {total}"
+            f"Có open position: **{with_pos}** / {total}\nĐã review AI: **{reviewed}** / {total}"
         ),
         inline=False,
     )
 
     verdict_icons = {
-        "bullish":   "\U0001f7e2",
-        "bearish":   "\U0001f534",
-        "neutral":   "\U0001f7e1",
+        "bullish": "\U0001f7e2",
+        "bearish": "\U0001f534",
+        "neutral": "\U0001f7e1",
         "watchlist": "\U0001f535",
-        "none":      "\u26aa",
+        "none": "\u26aa",
     }
     embed.add_field(
         name="\U0001f9e0 Verdict breakdown",
-        value=_breakdown_bar(verdict_bd, ["bullish", "neutral", "bearish", "watchlist", "none"], verdict_icons),
+        value=_breakdown_bar(
+            verdict_bd, ["bullish", "neutral", "bearish", "watchlist", "none"], verdict_icons
+        ),
         inline=False,
     )
 
     tier_icons = {
-        "Strong":   "\U0001f4ce",
-        "Healthy":  "\U0001f7e2",
+        "Strong": "\U0001f4ce",
+        "Healthy": "\U0001f7e2",
         "Moderate": "\U0001f7e1",
-        "Weak":     "\U0001f7e0",
+        "Weak": "\U0001f7e0",
         "Critical": "\U0001f534",
-        "none":     "\u26aa",
+        "none": "\u26aa",
     }
     embed.add_field(
         name="\U0001f3c6 Score tier breakdown",
-        value=_breakdown_bar(tier_bd, ["Strong", "Healthy", "Moderate", "Weak", "Critical", "none"], tier_icons),
+        value=_breakdown_bar(
+            tier_bd, ["Strong", "Healthy", "Moderate", "Weak", "Critical", "none"], tier_icons
+        ),
         inline=False,
     )
 
     pnl_icons = {
-        "profit":  "\U0001f7e2",
+        "profit": "\U0001f7e2",
         "neutral": "\U0001f7e1",
-        "loss":    "\U0001f534",
-        "none":    "\u26aa",
+        "loss": "\U0001f534",
+        "none": "\u26aa",
     }
     embed.add_field(
         name="\U0001f4c8 P&L status breakdown",

@@ -9,6 +9,7 @@ Flow:
 
 Fallback: if AIError, falls back to rule-based verdict (Wave 1 logic).
 """
+
 from __future__ import annotations
 
 import discord
@@ -25,24 +26,23 @@ from src.platform.logging import get_logger
 logger = get_logger(__name__)
 
 _VERDICT_META: dict[str, tuple[str, discord.Color]] = {
-    "STRONG_BUY":  ("🟢🟢", discord.Color.from_rgb(0, 180, 80)),
-    "BUY":         ("🟢",   discord.Color.green()),
-    "HOLD":        ("🟡",   discord.Color.gold()),
-    "WATCH":       ("🟠",   discord.Color.from_rgb(255, 140, 0)),
-    "REDUCE":      ("🔴",   discord.Color.from_rgb(220, 80, 40)),
+    "STRONG_BUY": ("🟢🟢", discord.Color.from_rgb(0, 180, 80)),
+    "BUY": ("🟢", discord.Color.green()),
+    "HOLD": ("🟡", discord.Color.gold()),
+    "WATCH": ("🟠", discord.Color.from_rgb(255, 140, 0)),
+    "REDUCE": ("🔴", discord.Color.from_rgb(220, 80, 40)),
     "STRONG_SELL": ("🔴🔴", discord.Color.red()),
 }
 
 _REGIME_LABEL: dict[str, str] = {
-    "TRENDING_UP":   "📈 Uptrend",
+    "TRENDING_UP": "📈 Uptrend",
     "TRENDING_DOWN": "📉 Downtrend",
-    "RANGING":       "➡️  Ranging",
-    "VOLATILE":      "⚡ Volatile",
+    "RANGING": "➡️  Ranging",
+    "VOLATILE": "⚡ Volatile",
 }
 
 
 class TrendCog(BaseCog):
-
     @app_commands.command(
         name="trend",
         description="Phân tích xu hướng tăng/giảm của một mã cổ phiếu (AI)",
@@ -97,6 +97,7 @@ class TrendCog(BaseCog):
 # Rule-based fallback
 # ---------------------------------------------------------------------------
 
+
 def _rule_based_prediction(bundle: TechnicalSignalBundle) -> TrendPrediction:
     c = bundle.composite
     if c >= 0.72:
@@ -147,6 +148,7 @@ def _rule_based_prediction(bundle: TechnicalSignalBundle) -> TrendPrediction:
 # Embed builder
 # ---------------------------------------------------------------------------
 
+
 def _build_trend_embed(bundle: TechnicalSignalBundle, pred: TrendPrediction) -> discord.Embed:
     icon, colour = _VERDICT_META.get(pred.verdict, ("⚪", discord.Color.greyple()))
     regime_label = _REGIME_LABEL.get(bundle.regime, bundle.regime)
@@ -155,8 +157,7 @@ def _build_trend_embed(bundle: TechnicalSignalBundle, pred: TrendPrediction) -> 
     embed = discord.Embed(
         title=f"{icon} {bundle.symbol} — {pred.verdict}",
         description=(
-            f"**{regime_label}**{stale_flag}"
-            f" · Horizon: `{pred.horizon.replace('_', ' ').title()}`"
+            f"**{regime_label}**{stale_flag} · Horizon: `{pred.horizon.replace('_', ' ').title()}`"
         ),
         color=colour,
     )

@@ -14,14 +14,15 @@ Fallback contract:
     Returns _FALLBACK (verdict=NO_ACTION, confidence=0.0) so engine can
     fall through to Wave 1 heuristic without crashing.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
 from src.ai.client import AIClient
 from src.ai.prompt_cache import PromptCache
-from src.ai.schemas import VerdictOutput  # canonical location — no circular import
 from src.ai.prompts.intelligence_verdict import SPEC, build_user_prompt
+from src.ai.schemas import VerdictOutput  # canonical location — no circular import
 from src.platform.logging import get_logger
 
 if TYPE_CHECKING:
@@ -71,8 +72,8 @@ class IntelligenceVerdictAgent:
 
     async def run(
         self,
-        snapshot: "SystemSnapshot",
-        ranked_signals: "list[RankedSignal]",
+        snapshot: SystemSnapshot,
+        ranked_signals: list[RankedSignal],
         session: Any = None,
         user_id: str | None = None,
         **_: Any,
@@ -110,7 +111,9 @@ class IntelligenceVerdictAgent:
                         tickers=[],
                         ai_verdict=str(result.verdict),
                         ai_confidence=result.confidence,
-                        ai_key_points=result.reasoning_summary[:200] if result.reasoning_summary else None,
+                        ai_key_points=result.reasoning_summary[:200]
+                        if result.reasoning_summary
+                        else None,
                     )
                     await MemoryService.log_interaction(session, entry)
                 except Exception as log_exc:
@@ -127,6 +130,7 @@ class IntelligenceVerdictAgent:
                 error=str(exc),
             )
             return _FALLBACK
+
 
 async def _fetch_investor_context(session: Any, user_id: str | None) -> str:
     """Fetch and render investor memory context for prompt injection.

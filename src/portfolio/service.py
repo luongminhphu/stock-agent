@@ -252,9 +252,7 @@ class PortfolioService:
             raise PositionNotFoundError(f"No open position for {ticker}")
 
         if qty > position.qty:
-            raise InsufficientQtyError(
-                f"Cannot sell {qty} of {ticker} — only {position.qty} held"
-            )
+            raise InsufficientQtyError(f"Cannot sell {qty} of {ticker} — only {position.qty} held")
 
         # Wave 1: net proceeds — sell fee + 0.1% sell tax deducted from
         # realized PnL so the number matches what the broker statement shows.
@@ -428,7 +426,7 @@ class PortfolioService:
             position_id=position.id,
             trade_type=TradeType.ADJUST,
             qty=bonus_qty,
-            price=0.0,          # không phải giao dịch tiền — price=0 để không nhiễu VWAP
+            price=0.0,  # không phải giao dịch tiền — price=0 để không nhiễu VWAP
             realized_pnl=None,
             note=f"{auto_note}{(' — ' + note) if note else ''}",
             traded_at=datetime.now(UTC),
@@ -441,8 +439,8 @@ class PortfolioService:
                 ticker=ticker,
                 position_id=position.id,
                 qty=old_qty,
-                dividend_per_share=ratio,   # tỷ lệ, VD 0.15 = 15%
-                total_amount=bonus_qty,     # số cp thưởng nhận được
+                dividend_per_share=ratio,  # tỷ lệ, VD 0.15 = 15%
+                total_amount=bonus_qty,  # số cp thưởng nhận được
                 dividend_type=DividendType.STOCK,
                 note=note,
                 paid_at=datetime.now(UTC),
@@ -539,9 +537,7 @@ class PortfolioService:
         # sua trong cung mot lenh edit) — chan case locked > so cp dang nam.
         effective_qty = qty if qty is not None else position.qty
         if locked_qty is not None and locked_qty > effective_qty:
-            raise ValueError(
-                f"locked_qty ({locked_qty}) khong the lon hon qty ({effective_qty})"
-            )
+            raise ValueError(f"locked_qty ({locked_qty}) khong the lon hon qty ({effective_qty})")
 
         old_qty, old_avg = position.qty, position.avg_cost
         old_locked_qty = position.locked_qty
@@ -570,9 +566,7 @@ class PortfolioService:
         from src.portfolio.models import PositionEdit
 
         lock_touched = (
-            locked_qty is not None
-            or locked_reason is not None
-            or locked_until is not None
+            locked_qty is not None or locked_reason is not None or locked_until is not None
         )
         await self._repo.save_position_edit(
             PositionEdit(

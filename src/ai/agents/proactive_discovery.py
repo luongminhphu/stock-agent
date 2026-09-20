@@ -34,6 +34,7 @@ Output contract (AI JSON):
     "avoid_tickers": ["HPG", "MSN"]
   }
 """
+
 from __future__ import annotations
 
 import json
@@ -47,17 +48,18 @@ logger = get_logger(__name__)
 
 # ── Output schema (dataclass — no Pydantic dep needed here) ─────────────────
 
+
 @dataclass
 class DiscoveryPick:
     ticker: str
-    action: str                         # BUY_WATCH | ACCUMULATE | AVOID
-    verdict: str                        # 1 câu — tại sao relevant với portfolio
-    entry_logic: str                    # điều kiện vào lệnh cụ thể
-    portfolio_fit: str                  # bổ sung hay duplicate exposure?
+    action: str  # BUY_WATCH | ACCUMULATE | AVOID
+    verdict: str  # 1 câu — tại sao relevant với portfolio
+    entry_logic: str  # điều kiện vào lệnh cụ thể
+    portfolio_fit: str  # bổ sung hay duplicate exposure?
     upside_catalyst: str
     invalidation_condition: str
-    confidence: float                   # 0.0–1.0
-    signal_basis: str                   # "BREAKOUT" | "MOMENTUM" | "REVERSAL_WATCH" | ...
+    confidence: float  # 0.0–1.0
+    signal_basis: str  # "BREAKOUT" | "MOMENTUM" | "REVERSAL_WATCH" | ...
 
 
 @dataclass
@@ -156,17 +158,19 @@ def _build_output(data: dict[str, Any]) -> ProactiveDiscoveryOutput:
         if not isinstance(item, dict) or not item.get("ticker"):
             continue
         try:
-            picks.append(DiscoveryPick(
-                ticker=str(item.get("ticker", "")).upper(),
-                action=str(item.get("action", "BUY_WATCH")),
-                verdict=str(item.get("verdict", "")),
-                entry_logic=str(item.get("entry_logic", "")),
-                portfolio_fit=str(item.get("portfolio_fit", "")),
-                upside_catalyst=str(item.get("upside_catalyst", "")),
-                invalidation_condition=str(item.get("invalidation_condition", "")),
-                confidence=float(item.get("confidence", 0.5)),
-                signal_basis=str(item.get("signal_basis", "")),
-            ))
+            picks.append(
+                DiscoveryPick(
+                    ticker=str(item.get("ticker", "")).upper(),
+                    action=str(item.get("action", "BUY_WATCH")),
+                    verdict=str(item.get("verdict", "")),
+                    entry_logic=str(item.get("entry_logic", "")),
+                    portfolio_fit=str(item.get("portfolio_fit", "")),
+                    upside_catalyst=str(item.get("upside_catalyst", "")),
+                    invalidation_condition=str(item.get("invalidation_condition", "")),
+                    confidence=float(item.get("confidence", 0.5)),
+                    signal_basis=str(item.get("signal_basis", "")),
+                )
+            )
         except Exception:
             continue
 
@@ -179,6 +183,7 @@ def _build_output(data: dict[str, Any]) -> ProactiveDiscoveryOutput:
 
 
 # ── Agent ────────────────────────────────────────────────────────────────────
+
 
 class ProactiveDiscoveryAgent:
     """Stateless agent — all context injected per call."""
@@ -210,11 +215,14 @@ class ProactiveDiscoveryAgent:
             )
             messages = [
                 {"role": "system", "content": f"{json_instruction}\n\n{_SYSTEM_PROMPT}"},
-                {"role": "user", "content": _build_user_prompt(
-                    candidates_block=candidates_block,
-                    portfolio_block=portfolio_block,
-                    trading_date=trading_date,
-                )},
+                {
+                    "role": "user",
+                    "content": _build_user_prompt(
+                        candidates_block=candidates_block,
+                        portfolio_block=portfolio_block,
+                        trading_date=trading_date,
+                    ),
+                },
             ]
             response = await self._client.chat_completion(
                 messages=messages,

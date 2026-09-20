@@ -18,12 +18,13 @@ Typical usage (weekly scheduled job):
 
 Table: evolution_log
 """
+
 from __future__ import annotations
 
 import json
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import uuid4
 
@@ -40,6 +41,7 @@ logger = get_logger(__name__)
 
 # ─── ORM model ──────────────────────────────────────────────────────────────────────
 
+
 class EvolutionLog(Base):
     """One row per AI-suggested improvement.
 
@@ -50,39 +52,44 @@ class EvolutionLog(Base):
         pending   →  applied   (owner confirmed the change was made)
         pending   →  dismissed (owner rejected the suggestion)
     """
+
     __tablename__ = "evolution_log"
 
-    id: Mapped[int]           = mapped_column(Integer, primary_key=True, autoincrement=True)
-    run_id: Mapped[str]       = mapped_column(String(64), nullable=False, index=True)
-    target: Mapped[str]       = mapped_column(String(32), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    target: Mapped[str] = mapped_column(String(32), nullable=False)
     # prompt | signal_weight | dispatch_rule | schema | heuristic
-    description: Mapped[str]  = mapped_column(Text, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
     evidence_summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    proposed_change: Mapped[str]  = mapped_column(Text, nullable=False)
-    risk_level: Mapped[str]   = mapped_column(String(8), nullable=False, default="low")
-    status: Mapped[str]       = mapped_column(String(12), nullable=False, default="pending", index=True)
+    proposed_change: Mapped[str] = mapped_column(Text, nullable=False)
+    risk_level: Mapped[str] = mapped_column(String(8), nullable=False, default="low")
+    status: Mapped[str] = mapped_column(String(12), nullable=False, default="pending", index=True)
     # pending | applied | dismissed
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False,
+        DateTime(timezone=True),
+        nullable=False,
         default=lambda: datetime.now(UTC),
     )
     reviewed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
     )
 
 
 # ─── analysis data structures ─────────────────────────────────────────────────────
 
+
 @dataclass
 class VerdictStats:
     """Accuracy metrics for a single verdict type."""
+
     verdict: str
-    total: int                = 0
-    correct: int              = 0
-    incorrect: int            = 0
-    partial: int              = 0
-    not_acted: int            = 0
-    avg_delta_score: float    = 0.0
+    total: int = 0
+    correct: int = 0
+    incorrect: int = 0
+    partial: int = 0
+    not_acted: int = 0
+    avg_delta_score: float = 0.0
 
     @property
     def accuracy(self) -> float:
@@ -98,9 +105,10 @@ class VerdictStats:
 @dataclass
 class TriggerSourceStats:
     """Accuracy metrics grouped by trigger_source."""
+
     trigger_source: str
-    total: int             = 0
-    incorrect_count: int   = 0
+    total: int = 0
+    incorrect_count: int = 0
     avg_delta_score: float = 0.0
 
     @property
@@ -111,15 +119,14 @@ class TriggerSourceStats:
 @dataclass
 class PatternReport:
     """Structured analysis output, serialised into the AI prompt."""
+
     period_days: int
     total_feedback: int
-    weak_verdicts: list[VerdictStats]            = field(default_factory=list)
+    weak_verdicts: list[VerdictStats] = field(default_factory=list)
     dominant_bad_triggers: list[TriggerSourceStats] = field(default_factory=list)
-    all_verdict_stats: list[VerdictStats]        = field(default_factory=list)
-    overall_accuracy: float                      = 0.0
-    generated_at: str                            = field(
-        default_factory=lambda: datetime.now(UTC).isoformat()
-    )
+    all_verdict_stats: list[VerdictStats] = field(default_factory=list)
+    overall_accuracy: float = 0.0
+    generated_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -134,6 +141,7 @@ class ImprovementSuggestion:
 
     NEVER auto-applied. Always requires human approval.
     """
+
     target: Literal["prompt", "signal_weight", "dispatch_rule", "schema", "heuristic"]
     description: str
     evidence_summary: str
@@ -147,6 +155,7 @@ class ImprovementSuggestion:
 
 
 # ─── FailurePatternAnalyser ──────────────────────────────────────────────────────────
+
 
 class FailurePatternAnalyser:
     """Pure analysis layer. Zero AI cost. Deterministic.
@@ -192,7 +201,8 @@ class FailurePatternAnalyser:
     ) -> list[VerdictStats]:
         """Return verdicts with accuracy < 0.5 and at least min_samples evaluations."""
         return [
-            s for s in stats.values()
+            s
+            for s in stats.values()
             if (s.correct + s.incorrect) >= min_samples and s.accuracy < 0.5
         ]
 
@@ -220,7 +230,8 @@ class FailurePatternAnalyser:
             acc[src].avg_delta_score = sum(deltas) / len(deltas) if deltas else 0.0
 
         return [
-            t for t in acc.values()
+            t
+            for t in acc.values()
             if t.total >= min_samples and t.incorrect_rate >= incorrect_rate_threshold
         ]
 
@@ -242,10 +253,8 @@ class FailurePatternAnalyser:
         weak = cls.find_weak_verdicts(verdict_stats)
         bad_triggers = cls.find_dominant_trigger_sources(entries)
 
-        correct_total  = sum(s.correct  for s in verdict_stats.values())
-        assessed_total = sum(
-            s.correct + s.incorrect for s in verdict_stats.values()
-        )
+        correct_total = sum(s.correct for s in verdict_stats.values())
+        assessed_total = sum(s.correct + s.incorrect for s in verdict_stats.values())
         overall_accuracy = correct_total / assessed_total if assessed_total else 0.0
 
         return PatternReport(
@@ -259,6 +268,7 @@ class FailurePatternAnalyser:
 
 
 # ─── EvolutionStore ────────────────────────────────────────────────────────────────────────
+
 
 class EvolutionStore:
     """Persistence layer for EvolutionLog rows.
@@ -338,11 +348,7 @@ class EvolutionStore:
     ) -> list[EvolutionLog]:
         """Return evolution log history, optionally filtered by status."""
         async with AsyncSessionLocal() as session:
-            stmt = (
-                select(EvolutionLog)
-                .order_by(EvolutionLog.created_at.desc())
-                .limit(limit)
-            )
+            stmt = select(EvolutionLog).order_by(EvolutionLog.created_at.desc()).limit(limit)
             if status:
                 stmt = stmt.where(EvolutionLog.status == status)
             result = await session.execute(stmt)
@@ -350,6 +356,7 @@ class EvolutionStore:
 
 
 # ─── SelfImprovementAdvisor ───────────────────────────────────────────────────────────────
+
 
 class SelfImprovementAdvisor:
     """Orchestrates: FeedbackStore → analyse → AI call → log suggestions.
@@ -370,8 +377,9 @@ class SelfImprovementAdvisor:
         ai_client: AsyncAIClient instance from src.ai.client.
                    When None, only heuristic suggestions are produced.
     """
+
     MIN_FEEDBACK_FOR_AI = 10
-    MIN_WEAK_VERDICTS   = 1
+    MIN_WEAK_VERDICTS = 1
 
     def __init__(self, ai_client: Any | None = None) -> None:
         self._ai_client = ai_client
@@ -458,21 +466,22 @@ class SelfImprovementAdvisor:
         )
 
         system = build_system_prompt()
-        user   = build_user_prompt(report)
+        user = build_user_prompt(report)
 
         try:
             # Use chat_completion directly — evolution uses its own parse_ai_response()
             # and does NOT need response_schema parsing. Do NOT pass response_format:
             # sonar-pro rejects json_object (HTTP 400); JSON is enforced via prompt.
             import json as _json  # noqa: PLC0415
-            import re as _re        # noqa: PLC0415
+            import re as _re  # noqa: PLC0415
+
             json_instruction = (
                 "You MUST respond with valid JSON only. "
                 "No markdown, no code fences, no explanation outside JSON."
             )
             messages = [
                 {"role": "system", "content": f"{json_instruction}\n\n{system}"},
-                {"role": "user",   "content": user},
+                {"role": "user", "content": user},
             ]
             response = await self._ai_client.chat_completion(messages=messages)
             raw_text = self._ai_client.extract_text(response)

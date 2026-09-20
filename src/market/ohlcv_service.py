@@ -6,13 +6,13 @@ Wave 2: implement adapter backed by real data provider.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from enum import StrEnum
-
 
 # ---------------------------------------------------------------------------
 # ICT date helper
 # ---------------------------------------------------------------------------
+
 
 def _today_ict() -> date:
     """Return today's date in Asia/Ho_Chi_Minh (ICT, UTC+7).
@@ -25,6 +25,7 @@ def _today_ict() -> date:
     """
     try:
         from zoneinfo import ZoneInfo
+
         return datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).date()
     except Exception:  # noqa: BLE001
         return date.today()
@@ -33,6 +34,7 @@ def _today_ict() -> date:
 # ---------------------------------------------------------------------------
 # Domain types
 # ---------------------------------------------------------------------------
+
 
 class Interval(StrEnum):
     D1 = "1D"
@@ -67,6 +69,7 @@ class Candle:
 # Adapter contract
 # ---------------------------------------------------------------------------
 
+
 class OHLCVAdapter(ABC):
     @abstractmethod
     async def fetch_candles(
@@ -88,6 +91,7 @@ class OHLCVAdapter(ABC):
 # ---------------------------------------------------------------------------
 # Service
 # ---------------------------------------------------------------------------
+
 
 class OHLCVServiceNotConfiguredError(Exception): ...
 

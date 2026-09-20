@@ -47,7 +47,7 @@ _REGIME_MAP: dict[str, str] = {
 
 # sonar-pro response regularly reaches 1400+ tokens for 12-sector analysis.
 # 4096 gives comfortable headroom without hitting rate-limit cost threshold.
-_MAX_TOKENS = 900   # calibrated: SectorRotationOutput ~8 fields
+_MAX_TOKENS = 900  # calibrated: SectorRotationOutput ~8 fields
 
 
 class SectorSignal(BaseModel):
@@ -128,10 +128,7 @@ class SectorRotationOutput(BaseModel):
         if not data.get("macro_summary"):
             ma = data.get("macro_assessment", {})
             regime = ma.get("regime", "") if isinstance(ma, dict) else ""
-            desc = (
-                data.get("regime_rationale")
-                or data.get("regime_description", "")
-            )
+            desc = data.get("regime_rationale") or data.get("regime_description", "")
             data["macro_summary"] = f"{regime}: {desc}".strip(": ") or "N/A"
 
         if not data.get("key_risk"):
@@ -150,8 +147,7 @@ class SectorRotationOutput(BaseModel):
         if not data.get("next_watch"):
             signals = data.get("sector_signals", [])
             watch_sectors = [
-                s["sector"] for s in signals
-                if isinstance(s, dict) and s.get("signal") == "WATCH"
+                s["sector"] for s in signals if isinstance(s, dict) and s.get("signal") == "WATCH"
             ][:3]
             data["next_watch"] = " | ".join(watch_sectors) if watch_sectors else "N/A"
 
@@ -159,9 +155,7 @@ class SectorRotationOutput(BaseModel):
         if isinstance(raw_signals, dict):
             sector_analysis: list[dict] = data.get("sector_analysis", [])
             analysis_map: dict[str, dict] = {
-                s["sector"]: s
-                for s in sector_analysis
-                if isinstance(s, dict) and "sector" in s
+                s["sector"]: s for s in sector_analysis if isinstance(s, dict) and "sector" in s
             }
             normalized: list[dict] = []
             for signal_type, sectors in raw_signals.items():
@@ -169,24 +163,28 @@ class SectorRotationOutput(BaseModel):
                     continue
                 for sector_name in sectors:
                     detail = analysis_map.get(str(sector_name), {})
-                    normalized.append({
-                        "sector": str(sector_name),
-                        "signal": str(signal_type),
-                        "momentum_score": detail.get("momentum_score", 0.5),
-                        "rationale": detail.get("rationale", ""),
-                        "key_tickers": detail.get("top_movers", detail.get("key_tickers", [])),
-                    })
+                    normalized.append(
+                        {
+                            "sector": str(sector_name),
+                            "signal": str(signal_type),
+                            "momentum_score": detail.get("momentum_score", 0.5),
+                            "rationale": detail.get("rationale", ""),
+                            "key_tickers": detail.get("top_movers", detail.get("key_tickers", [])),
+                        }
+                    )
             data["sector_signals"] = normalized
 
         signals = data.get("sector_signals", [])
         if not data.get("top_rotate_in"):
             data["top_rotate_in"] = [
-                s["sector"] for s in signals
+                s["sector"]
+                for s in signals
                 if isinstance(s, dict) and s.get("signal") == "ROTATE_IN"
             ][:3]
         if not data.get("top_rotate_out"):
             data["top_rotate_out"] = [
-                s["sector"] for s in signals
+                s["sector"]
+                for s in signals
                 if isinstance(s, dict) and s.get("signal") == "ROTATE_OUT"
             ][:3]
 
@@ -357,11 +355,7 @@ async def _log_sector_rotation_interaction(
                 trigger=f"sector_rotation:{regime}",
                 tickers=top_in,
                 ai_verdict=regime,
-                ai_key_points=(
-                    f"top_in={top_in} "
-                    f"top_out={top_out} "
-                    f"confidence={confidence}"
-                ),
+                ai_key_points=(f"top_in={top_in} top_out={top_out} confidence={confidence}"),
             )
         await MemoryService.log_interaction(session, entry)
     except Exception as exc:

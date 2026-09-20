@@ -37,8 +37,6 @@ from src.platform.logging import get_logger
 from src.portfolio.models import Position
 from src.portfolio.repository import PortfolioRepository
 
-
-
 logger = get_logger(__name__)
 
 _BREAKEVEN_EPSILON = 1.0
@@ -46,8 +44,8 @@ _TRADE_HISTORY_MAX_LIMIT = 200
 _DIVIDEND_HISTORY_MAX_LIMIT = 100
 
 # Risk breach thresholds (unrealized_pct, negative = loss)
-_RISK_THRESHOLD_CRITICAL = -15.0   # urgency CRITICAL
-_RISK_THRESHOLD_WARN     = -8.0    # urgency TODAY
+_RISK_THRESHOLD_CRITICAL = -15.0  # urgency CRITICAL
+_RISK_THRESHOLD_WARN = -8.0  # urgency TODAY
 
 # Suppress re-emit for the same position+breach within this window.
 _RISK_DEDUP_WINDOW = timedelta(hours=6)
@@ -57,8 +55,7 @@ _RISK_DEDUP_WINDOW = timedelta(hours=6)
 class QuoteServiceProtocol(Protocol):
     """Minimal contract PnlService cần từ market segment."""
 
-    async def get_quote(self, ticker: str) -> object:
-        ...
+    async def get_quote(self, ticker: str) -> object: ...
 
     def is_market_open(self) -> bool:
         """Return True nếu hiện tại đang trong giờ giao dịch."""
@@ -79,7 +76,7 @@ class PositionPnl:
     cost_basis: float
     thesis_id: int | None
     thesis_status: str | None = None  # 'active' | 'invalidated' | 'closed'
-    price_stale: bool = False         # True khi giá là avg_cost do market đóng
+    price_stale: bool = False  # True khi giá là avg_cost do market đóng
 
 
 @dataclass
@@ -318,7 +315,8 @@ class PnlService:
             if price_stale:
                 logger.debug(
                     "pnl.market_closed.use_last_known",
-                    ticker=position.ticker, price=current_price,
+                    ticker=position.ticker,
+                    price=current_price,
                 )
         except Exception as _exc:
             # Import là lazy để tránh circular — kiểm tra theo tên class
@@ -326,7 +324,7 @@ class PnlService:
                 # Market đóng VÀ không có last_known nào (ticker chưa từng được fetch)
                 # → fallback avg_cost để position vẫn hiển thị, P&L = 0
                 current_price = position.avg_cost
-                price_stale   = True
+                price_stale = True
                 logger.debug(
                     "pnl.market_closed.no_last_known",
                     ticker=position.ticker,
@@ -338,9 +336,7 @@ class PnlService:
         # we deduct the estimated exit costs (sell fee + sell tax) the
         # investor would pay if closing at current_price right now.
         unrealized_pnl = (current_price - position.avg_cost) * position.qty
-        exit_costs = current_price * position.qty * (
-            self._trade_fee_pct + self._sell_tax_pct
-        )
+        exit_costs = current_price * position.qty * (self._trade_fee_pct + self._sell_tax_pct)
         unrealized_pnl -= exit_costs
         cost_basis = position.avg_cost * position.qty
         unrealized_pct = (unrealized_pnl / cost_basis * 100) if cost_basis else 0.0
@@ -348,6 +344,7 @@ class PnlService:
         thesis_status: str | None = None
         if position.thesis_id is not None:
             from src.thesis.models import Thesis
+
             thesis_row = await self._session.get(Thesis, position.thesis_id)
             if thesis_row is not None:
                 thesis_status = str(thesis_row.status.value)

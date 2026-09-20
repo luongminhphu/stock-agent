@@ -21,15 +21,17 @@ class SignalCredibilityContext:
     """All context needed to evaluate a signal's credibility."""
 
     ticker: str
-    signal_type: str          # e.g. "breakout", "strong_move", "alert_triggered"
+    signal_type: str  # e.g. "breakout", "strong_move", "alert_triggered"
     current_price: float
     change_pct: float
-    volume_ratio: float       # current volume / 20-day average (1.0 = average)
-    price_5d_trend: float     # 5-day price change % (positive = uptrend)
-    recent_news: str          # short summary of latest news, or "N/A"
+    volume_ratio: float  # current volume / 20-day average (1.0 = average)
+    price_5d_trend: float  # 5-day price change % (positive = uptrend)
+    recent_news: str  # short summary of latest news, or "N/A"
     has_upcoming_earnings: bool
-    alert_note: str = ""      # alert label/condition if alert_triggered, else ""
-    historical_hit_rate: float | None = None  # % of same signal type that succeeded (0-1), or None if unknown
+    alert_note: str = ""  # alert label/condition if alert_triggered, else ""
+    historical_hit_rate: float | None = (
+        None  # % of same signal type that succeeded (0-1), or None if unknown
+    )
 
 
 SYSTEM_PROMPT = """\
@@ -64,11 +66,7 @@ def build_user_prompt(ctx: SignalCredibilityContext) -> str:
         if ctx.historical_hit_rate is not None
         else "- Lịch sử tín hiệu cùng loại: chưa có dữ liệu"
     )
-    alert_line = (
-        f"- Điều kiện alert đã kích hoạt: {ctx.alert_note}"
-        if ctx.alert_note
-        else ""
-    )
+    alert_line = f"- Điều kiện alert đã kích hoạt: {ctx.alert_note}" if ctx.alert_note else ""
     earnings_line = (
         "- ⚠️ Sắp có kết quả kinh doanh — tín hiệu kỹ thuật dễ bị nhiễu"
         if ctx.has_upcoming_earnings

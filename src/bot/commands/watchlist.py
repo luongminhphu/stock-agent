@@ -216,7 +216,11 @@ class WatchlistCog(BaseCog):
             color=discord.Color.blue(),
         )
         has_verdict = any(item.ticker.upper() in verdict_map for item in items)
-        footer_suffix = " · verdict = last 7d AI review" if has_verdict else " · no AI review yet — use /thesis review"
+        footer_suffix = (
+            " · verdict = last 7d AI review"
+            if has_verdict
+            else " · no AI review yet — use /thesis review"
+        )
         embed.set_footer(text=f"{len(items)} ticker(s) · prices may be delayed{footer_suffix}")
         await interaction.followup.send(embed=embed, ephemeral=True)
 

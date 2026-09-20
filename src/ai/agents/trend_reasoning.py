@@ -23,6 +23,7 @@ Fallback (non-blocking):
   This ensures TrendEngineListener.results never contains Exceptions
   from reasoning failures — only from catastrophic signal failures.
 """
+
 from __future__ import annotations
 
 from src.ai.schemas.trend_prediction import (

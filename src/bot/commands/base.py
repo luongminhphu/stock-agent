@@ -31,20 +31,28 @@ from contextlib import asynccontextmanager
 import discord
 from discord.ext import commands
 
-from src.platform.db import AsyncSessionLocal
 from src.bot.discord_helper import (
-    safe_defer,
-    send_ok       as _send_ok,
-    send_error    as _send_error,
-    send_info     as _send_info,
-    send_warning  as _send_warning,
-    paginate_lines,
-    fmt_vnd,
-    fmt_vnd_full,
     fmt_pct,
     fmt_pct_direct,
     fmt_rr,
+    fmt_vnd,
+    fmt_vnd_full,
+    paginate_lines,
+    safe_defer,
 )
+from src.bot.discord_helper import (
+    send_error as _send_error,
+)
+from src.bot.discord_helper import (
+    send_info as _send_info,
+)
+from src.bot.discord_helper import (
+    send_ok as _send_ok,
+)
+from src.bot.discord_helper import (
+    send_warning as _send_warning,
+)
+from src.platform.db import AsyncSessionLocal
 
 
 class BaseCog(commands.Cog):
@@ -133,7 +141,9 @@ class BaseCog(commands.Cog):
         view: discord.ui.View | None = None,
     ) -> None:
         """Send a blue informational embed as followup."""
-        await _send_info(interaction, title, description, ephemeral=ephemeral, context=context, view=view)
+        await _send_info(
+            interaction, title, description, ephemeral=ephemeral, context=context, view=view
+        )
 
     @staticmethod
     async def send_warning(

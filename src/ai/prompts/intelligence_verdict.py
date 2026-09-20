@@ -10,6 +10,7 @@ Agent calls client.structured_call(spec=SPEC, user_prompt=build_user_prompt(...)
 Note: VerdictOutput is imported from src.ai.schemas (NOT from agents) to
 avoide the circular import: agents -> prompts -> agents.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -61,16 +62,19 @@ SPEC = AISpec(
 
 
 def build_user_prompt(
-    snapshot: "SystemSnapshot",
-    ranked_signals: "list[RankedSignal]",
+    snapshot: SystemSnapshot,
+    ranked_signals: list[RankedSignal],
     investor_context: str = "",
 ) -> str:
     """Serialize SystemSnapshot + ranked signals into a structured prompt string."""
 
-    signals_block = "\n".join(
-        f"  [{i + 1}] [{s.source.upper()}] {s.description} (urgency={s.urgency_score:.2f})"
-        for i, s in enumerate(ranked_signals)
-    ) or "  (không có signal)"
+    signals_block = (
+        "\n".join(
+            f"  [{i + 1}] [{s.source.upper()}] {s.description} (urgency={s.urgency_score:.2f})"
+            for i, s in enumerate(ranked_signals)
+        )
+        or "  (không có signal)"
+    )
 
     pf = snapshot.portfolio
     portfolio_block = (
@@ -106,13 +110,11 @@ def build_user_prompt(
         else ""
     )
 
-    investor_block = (
-        f"## Investor Context\n{investor_context}\n\n"
-        if investor_context
-        else ""
-    )
+    investor_block = f"## Investor Context\n{investor_context}\n\n" if investor_context else ""
 
-    return investor_block + f"""## System Snapshot — {snapshot.captured_at.strftime('%Y-%m-%d %H:%M')} ICT
+    return (
+        investor_block
+        + f"""## System Snapshot — {snapshot.captured_at.strftime("%Y-%m-%d %H:%M")} ICT
 Trigger: {snapshot.trigger_source}
 
 ### Ranked Signals (urgency cao → thấp):
@@ -134,3 +136,4 @@ Trigger: {snapshot.trigger_source}
 Tổng hợp toàn bộ context trên và trả về verdict JSON theo schema VerdictOutput.
 Nhớ: bạn là nhà đầu tư kỳ cựu — nói thẳng, không hedge, đi kèm invalidation_trigger cụ thể.
 """
+    )

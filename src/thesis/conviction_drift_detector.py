@@ -46,8 +46,8 @@ logger = get_logger(__name__)
 
 class DriftPattern(StrEnum):
     SUSTAINED_DECLINE = "SUSTAINED_DECLINE"  # N consecutive snapshots declining
-    CUMULATIVE_DROP = "CUMULATIVE_DROP"       # total drop from peak >= threshold
-    SCORE_FLOOR = "SCORE_FLOOR"              # current conviction_score < absolute floor
+    CUMULATIVE_DROP = "CUMULATIVE_DROP"  # total drop from peak >= threshold
+    SCORE_FLOOR = "SCORE_FLOOR"  # current conviction_score < absolute floor
 
 
 @dataclass
@@ -59,9 +59,9 @@ class ConvictionDriftSignal:
     ticker: str
     pattern: DriftPattern
     current_score: float
-    reference_score: float    # peak score (CUMULATIVE_DROP) or first-of-sequence
-    drop_pct: float           # (reference - current) / reference * 100
-    review_count: int         # number of snapshots used in detection window
+    reference_score: float  # peak score (CUMULATIVE_DROP) or first-of-sequence
+    drop_pct: float  # (reference - current) / reference * 100
+    review_count: int  # number of snapshots used in detection window
     detected_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     @property

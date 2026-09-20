@@ -59,9 +59,7 @@ class ConvictionTimelineCog(BaseCog, name="conviction"):
 
         await interaction.followup.send(embed=embed)
 
-    async def _fetch_timeline(
-        self, ticker: str, limit: int
-    ) -> tuple[object | None, int | None]:
+    async def _fetch_timeline(self, ticker: str, limit: int) -> tuple[object | None, int | None]:
         """Query ThesisTimelineService via BaseCog.db_session().
 
         Returns (ConvictionTimelineResponse | None, thesis_id | None).

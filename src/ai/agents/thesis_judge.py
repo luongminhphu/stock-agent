@@ -55,6 +55,7 @@ _JUDGE_CONCURRENCY = 5
 # Input contract (Issue J)
 # ---------------------------------------------------------------------------
 
+
 class ThesisJudgeTrigger(TypedDict, total=False):
     """Typed input for run_batch(). Required keys: thesis_id, ticker.
 
@@ -66,6 +67,7 @@ class ThesisJudgeTrigger(TypedDict, total=False):
         watchdog_verdict, urgency, trigger_reason, risk_flags,
         health_score, stress_verdict, signal_summary, last_review_summary.
     """
+
     thesis_id: Required[str | int]
     ticker: Required[str]
     thesis_title: str
@@ -76,8 +78,8 @@ class ThesisJudgeTrigger(TypedDict, total=False):
     signal_context: dict[str, Any]
     conviction_history: list[dict[str, Any]] | None
     days_since_written: int | None
-    last_reviewed_at: str | None   # ISO 8601 — from thesis.last_reviewed_at
-    last_judged_at: str | None     # ISO 8601 — from previous ThesisJudgeOutput.judged_at
+    last_reviewed_at: str | None  # ISO 8601 — from thesis.last_reviewed_at
+    last_judged_at: str | None  # ISO 8601 — from previous ThesisJudgeOutput.judged_at
 
 
 # ---------------------------------------------------------------------------
@@ -332,12 +334,15 @@ class ThesisJudgeAgent:
             if is_rate_limit:
                 logger.info(
                     "ThesisJudge: rate limit for thesis=%s ticker=%s, using fallback",
-                    thesis_id, ticker,
+                    thesis_id,
+                    ticker,
                 )
             else:
                 logger.warning(
                     "ThesisJudge: AI error for thesis=%s ticker=%s: %s",
-                    thesis_id, ticker, exc,
+                    thesis_id,
+                    ticker,
+                    exc,
                 )
             fallback = self._fallback(
                 thesis_id=thesis_id,
@@ -351,9 +356,10 @@ class ThesisJudgeAgent:
             # Parse / schema errors may indicate prompt regression — log at ERROR
             # so monitoring alerts can catch systematic failures.
             logger.error(
-                "ThesisJudge: parse error for thesis=%s ticker=%s "
-                "— possible prompt regression: %s",
-                thesis_id, ticker, exc,
+                "ThesisJudge: parse error for thesis=%s ticker=%s — possible prompt regression: %s",
+                thesis_id,
+                ticker,
+                exc,
             )
             fallback = self._fallback(
                 thesis_id=thesis_id,
@@ -366,7 +372,9 @@ class ThesisJudgeAgent:
         except Exception as exc:
             logger.warning(
                 "ThesisJudgeAgent unexpected error for thesis=%s ticker=%s: %s",
-                thesis_id, ticker, exc,
+                thesis_id,
+                ticker,
+                exc,
             )
             fallback = self._fallback(
                 thesis_id=thesis_id,
@@ -512,7 +520,9 @@ class ThesisJudgeAgent:
         """
         watchdog_verdict = signal_context.get("watchdog_verdict")
         signal_urgency = signal_context.get("urgency")
-        trigger_reason = signal_context.get("trigger_reason", "AI unavailable — rule-based fallback")
+        trigger_reason = signal_context.get(
+            "trigger_reason", "AI unavailable — rule-based fallback"
+        )
 
         verdict, conviction_delta, action = _derive_fallback_verdict(
             watchdog_verdict=watchdog_verdict,
@@ -532,11 +542,10 @@ class ThesisJudgeAgent:
             ),
             action=action,
             reasoning=f"Rule-based fallback — AI unavailable. Derived from: "
-                       f"watchdog={watchdog_verdict}, urgency={signal_urgency}.",
+            f"watchdog={watchdog_verdict}, urgency={signal_urgency}.",
             confidence=0.3,
             judged_at=datetime.now(UTC).isoformat(),
         )
-
 
     async def judge(
         self,
@@ -566,8 +575,8 @@ class ThesisJudgeAgent:
             triggers: list[ThesisJudgeTrigger] = [
                 {
                     "thesis_id": str(getattr(t, "id", "?")),
-                    "ticker":     getattr(t, "ticker", ""),
-                    "thesis_title":   getattr(t, "title", ""),
+                    "ticker": getattr(t, "ticker", ""),
+                    "thesis_title": getattr(t, "title", ""),
                     "thesis_summary": getattr(t, "summary", "") or "",
                     "signal_context": {},
                     # Populate timestamp fields for Wave 4 dedup guard.
@@ -663,11 +672,9 @@ async def _log_thesis_judge_interaction(
         if thesis_id_val and str(thesis_id_val).isdigit():
             try:
                 from sqlalchemy import text as _text
+
                 await session.execute(
-                    _text(
-                        "UPDATE theses SET last_judged_at = :ts "
-                        "WHERE id = :thesis_id"
-                    ),
+                    _text("UPDATE theses SET last_judged_at = :ts WHERE id = :thesis_id"),
                     {"ts": datetime.now(UTC), "thesis_id": int(thesis_id_val)},
                 )
             except Exception as db_exc:

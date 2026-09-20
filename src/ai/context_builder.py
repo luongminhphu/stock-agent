@@ -68,7 +68,7 @@ Session safety:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from src.platform.logging import get_logger
@@ -128,7 +128,7 @@ class ContextBuilder:
         profile_str = render_for_agent(ctx)
     """
 
-    def __init__(self, session: "AsyncSession") -> None:
+    def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
     async def build(self, user_id: str | None = None) -> InvestorContext:
@@ -147,12 +147,12 @@ class ContextBuilder:
         ctx = InvestorContext()
         fetch_apply_pairs = [
             (self._fetch_investor_profile, _apply_profile),
-            (self._fetch_thesis_health,    _apply_thesis),
-            (self._fetch_recent_lessons,   _apply_lessons),
-            (self._fetch_portfolio_bias,   _apply_portfolio),
-            (self._fetch_memory_context,   _apply_memory),
-            (self._fetch_replay_pattern,   _apply_replay_pattern),  # Wave 9
-            (self._fetch_behavioral_dna,   _apply_behavioral_dna),  # Wave 3
+            (self._fetch_thesis_health, _apply_thesis),
+            (self._fetch_recent_lessons, _apply_lessons),
+            (self._fetch_portfolio_bias, _apply_portfolio),
+            (self._fetch_memory_context, _apply_memory),
+            (self._fetch_replay_pattern, _apply_replay_pattern),  # Wave 9
+            (self._fetch_behavioral_dna, _apply_behavioral_dna),  # Wave 3
         ]
         for fetch_fn, apply_fn in fetch_apply_pairs:
             try:
@@ -199,9 +199,7 @@ class ContextBuilder:
         try:
             from src.thesis.health_snapshot import build_thesis_health_snapshots
 
-            snapshots = await build_thesis_health_snapshots(
-                self._session, user_id=user_id
-            )
+            snapshots = await build_thesis_health_snapshots(self._session, user_id=user_id)
             if not snapshots:
                 return ""
 
@@ -309,18 +307,14 @@ class ContextBuilder:
                         break
 
             if sector_blocks:
-                base += "\n\nSector context:\n" + "\n".join(
-                    f"  {s}" for s in sector_blocks
-                )
+                base += "\n\nSector context:\n" + "\n".join(f"  {s}" for s in sector_blocks)
 
             return base
         except Exception as exc:
             logger.warning("context_builder.portfolio_bias_failed", error=str(exc))
             return ""
 
-    async def _fetch_memory_context(
-        self, user_id: str | None
-    ) -> tuple[str, str]:
+    async def _fetch_memory_context(self, user_id: str | None) -> tuple[str, str]:
         """Fetch episodic memory block AND synthesize patterns (Wave 8).
 
         Returns:
@@ -349,9 +343,7 @@ class ContextBuilder:
         try:
             from src.ai.memory.memory_service import MemoryService
 
-            mem_ctx = await MemoryService.get_memory_context(
-                self._session, user_id=user_id
-            )
+            mem_ctx = await MemoryService.get_memory_context(self._session, user_id=user_id)
             if not mem_ctx.is_empty():
                 episodic_block = mem_ctx.render()
         except Exception as exc:
@@ -370,9 +362,7 @@ class ContextBuilder:
             # Check snapshot freshness — only synthesize when stale or missing
             snapshot_repo = MemorySnapshotRepository(self._session)
             latest = await snapshot_repo.get_latest(user_id=user_id)
-            stale_threshold = datetime.now(tz=timezone.utc) - timedelta(
-                days=_PATTERN_STALE_DAYS
-            )
+            stale_threshold = datetime.now(tz=UTC) - timedelta(days=_PATTERN_STALE_DAYS)
 
             is_stale = (
                 latest is None
@@ -385,13 +375,12 @@ class ContextBuilder:
                 # Read last_synthesis_at from the latest memory_snapshots row.
                 # If synthesis ran within _SYNTHESIS_COOLDOWN_MINUTES: skip + render
                 # from stored snapshot. Otherwise: synthesize + stamp the column.
-                now_utc = datetime.now(tz=timezone.utc)
+                now_utc = datetime.now(tz=UTC)
                 last_synth_db: datetime | None = getattr(latest, "last_synthesis_at", None)
 
                 within_cooldown = (
                     last_synth_db is not None
-                    and (now_utc - last_synth_db).total_seconds()
-                        < _SYNTHESIS_COOLDOWN_MINUTES * 60
+                    and (now_utc - last_synth_db).total_seconds() < _SYNTHESIS_COOLDOWN_MINUTES * 60
                 )
 
                 if within_cooldown:
@@ -417,15 +406,11 @@ class ContextBuilder:
                     logger.info(
                         "context_builder.pattern_synthesis.trigger",
                         user_id=user_id,
-                        latest_snapshot_end=str(
-                            getattr(latest, "period_end", None)
-                        ),
+                        latest_snapshot_end=str(getattr(latest, "period_end", None)),
                     )
                     # Dung singleton da bootstrap (co api_key); AIClient() tran se TypeError.
                     ai_client = get_ai_client()
-                    consolidator = MemoryConsolidator(
-                        client=ai_client, user_id=user_id
-                    )
+                    consolidator = MemoryConsolidator(client=ai_client, user_id=user_id)
                     output = await consolidator.synthesize_patterns(self._session)
                     if output is not None:
                         pattern_block = output.to_prompt_block()
@@ -546,6 +531,7 @@ class ContextBuilder:
 # Apply helpers — each applies one result slot into InvestorContext
 # ---------------------------------------------------------------------------
 
+
 def _apply_profile(ctx: InvestorContext, result: object) -> None:
     if isinstance(result, dict) and result:
         ctx.risk_appetite = result.get("risk_appetite", "")
@@ -603,6 +589,7 @@ def _apply_behavioral_dna(ctx: InvestorContext, result: object) -> None:
 # ---------------------------------------------------------------------------
 # render_for_agent — formats InvestorContext for prompt injection
 # ---------------------------------------------------------------------------
+
 
 def render_for_agent(ctx: InvestorContext) -> str:
     """Render InvestorContext into a structured prompt block.

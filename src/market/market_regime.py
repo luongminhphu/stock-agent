@@ -12,6 +12,7 @@ Caching:
 
 Design: không gọi AI, không import thesis/watchlist/briefing.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

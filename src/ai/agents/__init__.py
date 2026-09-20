@@ -4,6 +4,7 @@ AI Agents — Public API
 All agent facades exposed here. Callers outside this segment
 import from `src.ai.agents`, not from individual modules.
 """
+
 from .agenda_builder import AgendaBuilderAgent
 from .briefing import BriefingAgent
 from .invalidation_detector import ThesisInvalidationDetector

@@ -28,6 +28,7 @@ Failure contract:
     Never raises — screen pipeline is never blocked.
     OpportunityAnalysisCompletedEvent is only emitted on success.
 """
+
 from __future__ import annotations
 
 import json
@@ -85,7 +86,9 @@ def _build_user_prompt(
     portfolio_context_text: str = "",
 ) -> str:
     """Build the user prompt for AI cross-check analysis."""
-    candidates_block = "\n".join(candidates_payload) if candidates_payload else "(không có candidate)"
+    candidates_block = (
+        "\n".join(candidates_payload) if candidates_payload else "(không có candidate)"
+    )
     watchlist_block = ", ".join(watchlist_tickers) if watchlist_tickers else "(trống)"
 
     portfolio_section = (
@@ -117,6 +120,7 @@ def _parse_output(raw: str) -> dict[str, Any]:
     except json.JSONDecodeError:
         # Try extracting JSON block from fenced code or prose
         import re
+
         match = re.search(r"\{.*\}", raw, re.DOTALL)
         if match:
             return json.loads(match.group())
@@ -125,13 +129,13 @@ def _parse_output(raw: str) -> dict[str, Any]:
 
 # ── singleton ────────────────────────────────────────────────────────────────
 
-_instance: "OpportunityAnalysisHandler | None" = None
+_instance: OpportunityAnalysisHandler | None = None
 
 
 def get_opportunity_analysis_handler(
-    ai_client: "AIClient",
+    ai_client: AIClient,
     session_factory: Any,
-) -> "OpportunityAnalysisHandler":
+) -> OpportunityAnalysisHandler:
     """Return the singleton handler. Creates on first call."""
     global _instance
     if _instance is None:
@@ -147,7 +151,7 @@ class OpportunityAnalysisHandler:
 
     def __init__(
         self,
-        ai_client: "AIClient",
+        ai_client: AIClient,
         session_factory: Any,
     ) -> None:
         self._client = ai_client
@@ -190,7 +194,7 @@ class OpportunityAnalysisHandler:
             api_resp = await self._client.chat_completion(
                 messages=[
                     {"role": "system", "content": _SYSTEM_PROMPT},
-                    {"role": "user",   "content": user_prompt},
+                    {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.2,
             )

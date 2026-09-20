@@ -16,6 +16,7 @@ Changelog:
     so thesis review speaks as a seasoned investor, not a neutral analyst.
     _OUTPUT_SCHEMA and build_review_prompt() assembly are unchanged.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -284,8 +285,7 @@ def build_review_prompt(  # noqa: PLR0913
             risks_str = "; ".join(str(r) for r in prev_risks[:3])
             prev_lines.append(f"- Key risks đã ghi nhận: {risks_str}")
         prev_lines.append(
-            "⚠️ Nếu verdict thay đổi, phải giải thích trigger thay đổi "
-            "ở đầu trường summary."
+            "⚠️ Nếu verdict thay đổi, phải giải thích trigger thay đổi ở đầu trường summary."
         )
         sections.append("\n".join(prev_lines))
 
@@ -293,9 +293,7 @@ def build_review_prompt(  # noqa: PLR0913
     # Placed here — after previous_review but still before output schema —
     # so LLM reads behavioural context before encountering JSON formatting rules.
     if memory_context:
-        sections.append(
-            f"### Bối cảnh nhà đầu tư (memory)\n{memory_context}"
-        )
+        sections.append(f"### Bối cảnh nhà đầu tư (memory)\n{memory_context}")
 
     # Section 4: output schema + task instructions (always last)
     sections.append(_OUTPUT_SCHEMA)

@@ -61,14 +61,20 @@ from src.readmodel.cache import DashboardTTLCache
 # DB persistence helpers (Wave D.1)
 # ---------------------------------------------------------------------------
 
-async def _persist_intelligence_snapshot(session_factory, user_id: str, report, trigger_source: str) -> None:
+
+async def _persist_intelligence_snapshot(
+    session_factory, user_id: str, report, trigger_source: str
+) -> None:
     """Upsert an IntelligenceSnapshot row. Fire-and-forget — never raises."""
     if session_factory is None:
         return
     try:
         import json as _json
-        from datetime import UTC, datetime as _dt
+        from datetime import UTC
+        from datetime import datetime as _dt
+
         from sqlalchemy.dialects.postgresql import insert as pg_insert
+
         from src.readmodel.models import IntelligenceSnapshot
 
         try:
@@ -77,23 +83,28 @@ async def _persist_intelligence_snapshot(session_factory, user_id: str, report, 
             report_json = _json.dumps({}, default=str)
 
         async with session_factory() as session:
-            stmt = pg_insert(IntelligenceSnapshot).values(
-                user_id=user_id,
-                report_json=report_json,
-                trigger_source=trigger_source or "unknown",
-                captured_at=_dt.now(UTC),
-            ).on_conflict_do_update(
-                index_elements=["user_id"],
-                set_={
-                    "report_json": report_json,
-                    "trigger_source": trigger_source or "unknown",
-                    "captured_at": _dt.now(UTC),
-                },
+            stmt = (
+                pg_insert(IntelligenceSnapshot)
+                .values(
+                    user_id=user_id,
+                    report_json=report_json,
+                    trigger_source=trigger_source or "unknown",
+                    captured_at=_dt.now(UTC),
+                )
+                .on_conflict_do_update(
+                    index_elements=["user_id"],
+                    set_={
+                        "report_json": report_json,
+                        "trigger_source": trigger_source or "unknown",
+                        "captured_at": _dt.now(UTC),
+                    },
+                )
             )
             await session.execute(stmt)
             await session.commit()
     except Exception as exc:
         from src.platform.logging import get_logger as _get_logger
+
         _get_logger(__name__).warning(
             "intelligence_snapshot_store.persist_failed", user_id=user_id, error=str(exc)
         )
@@ -105,8 +116,9 @@ async def load_intelligence_snapshots_from_db(session_factory) -> dict[str, dict
         return {}
     try:
         from sqlalchemy import select
-        from src.readmodel.models import IntelligenceSnapshot
+
         from src.platform.logging import get_logger as _get_logger
+        from src.readmodel.models import IntelligenceSnapshot
 
         async with session_factory() as session:
             rows = (await session.execute(select(IntelligenceSnapshot))).scalars().all()
@@ -126,10 +138,10 @@ async def load_intelligence_snapshots_from_db(session_factory) -> dict[str, dict
             return result
     except Exception as exc:
         from src.platform.logging import get_logger as _get_logger
-        _get_logger(__name__).warning(
-            "intelligence_snapshot_store.load_failed", error=str(exc)
-        )
+
+        _get_logger(__name__).warning("intelligence_snapshot_store.load_failed", error=str(exc))
         return {}
+
 
 if TYPE_CHECKING:
     from src.ai.schemas import IntelligenceReport
@@ -175,9 +187,12 @@ class IntelligenceSnapshotStore:
         self._warm[user_id] = (report, datetime.now(UTC))
         # Wave D.1: fire-and-forget persist to DB
         import asyncio as _asyncio
+
         _asyncio.create_task(
             _persist_intelligence_snapshot(
-                self._session_factory, user_id, report,
+                self._session_factory,
+                user_id,
+                report,
                 getattr(report, "trigger_source", "unknown"),
             )
         )
@@ -219,7 +234,7 @@ class IntelligenceSnapshotStore:
     async def _try_load_from_db(
         self,
         user_id: str,
-    ) -> "IntelligenceReport | None":
+    ) -> IntelligenceReport | None:
         """Load the latest snapshot for user_id directly from DB (single-row query).
         Returns None if no row exists or DB is unavailable.
         Called on every hot-cache miss to keep cross-process data fresh.
@@ -228,7 +243,9 @@ class IntelligenceSnapshotStore:
             return None
         try:
             import json as _json  # noqa: PLC0415
+
             from sqlalchemy import select  # noqa: PLC0415
+
             from src.readmodel.models import IntelligenceSnapshot  # noqa: PLC0415
 
             async with self._session_factory() as session:
@@ -256,6 +273,7 @@ class IntelligenceSnapshotStore:
                     self._warm_ts[user_id] = row.captured_at
 
                 from src.ai.schemas.intelligence_report import IntelligenceReport  # noqa: PLC0415
+
                 try:
                     return IntelligenceReport.model_validate(data)
                 except Exception:
@@ -263,6 +281,7 @@ class IntelligenceSnapshotStore:
 
         except Exception as exc:
             from src.platform.logging import get_logger as _gl  # noqa: PLC0415
+
             _gl(__name__).debug(
                 "intelligence_snapshot_store.db_refresh_miss",
                 user_id=user_id,
@@ -336,10 +355,9 @@ class IntelligenceSnapshotStore:
             f"hot_alive={self._cache.alive_size()})"
         )
 
-
-# ---------------------------------------------------------------------------
-# Singleton factory
-# ---------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
+    # Singleton factory
+    # ---------------------------------------------------------------------------
 
     async def warm_load(self) -> int:
         """Load persisted reports from DB into warm layer on startup.
@@ -353,11 +371,14 @@ class IntelligenceSnapshotStore:
         for user_id, row_data in rows.items():
             try:
                 import json as _json
-                from datetime import UTC, datetime as _dt
+                from datetime import UTC
+                from datetime import datetime as _dt
+
                 data = _json.loads(row_data["report_json"])
                 # Attempt full model restore; fall back to dict-wrapper
                 try:
                     from src.ai.schemas import IntelligenceReport as _IR
+
                     report = _IR.model_validate(data)
                 except Exception:
                     report = _DictReport(data)
@@ -367,16 +388,19 @@ class IntelligenceSnapshotStore:
             except Exception:
                 pass
         from src.platform.logging import get_logger as _gl
+
         _gl(__name__).info("intelligence_snapshot_store.warm_loaded", count=loaded)
         return loaded
 
 
 class _DictReport:
     """Minimal dict-backed IntelligenceReport stub for warm-load restore."""
+
     def __init__(self, data: dict) -> None:
         self._data = data
         for k, v in data.items():
             setattr(self, k, v)
+
     def model_dump(self) -> dict:
         return self._data
 
@@ -502,9 +526,7 @@ class IntelligenceSnapshotSubscriber:
             for raw in event.agent_slots or ():
                 try:
                     agent_slots.append(
-                        AgentSlot.model_validate(raw)
-                        if isinstance(raw, dict)
-                        else raw
+                        AgentSlot.model_validate(raw) if isinstance(raw, dict) else raw
                     )
                 except Exception as exc:  # noqa: BLE001
                     _sub_logger.warning(
@@ -517,9 +539,7 @@ class IntelligenceSnapshotSubscriber:
             for raw in event.priority_actions or ():
                 try:
                     priority_actions.append(
-                        PriorityAction.model_validate(raw)
-                        if isinstance(raw, dict)
-                        else raw
+                        PriorityAction.model_validate(raw) if isinstance(raw, dict) else raw
                     )
                 except Exception as exc:  # noqa: BLE001
                     _sub_logger.warning(
@@ -531,14 +551,14 @@ class IntelligenceSnapshotSubscriber:
             # Event.verdict may come from heuristic path (free string) or
             # from IntelligenceReport (already typed). Normalise defensively.
             _VALID_VERDICTS = {
-                "BUY_SIGNAL", "SELL_SIGNAL", "HOLD",
-                "REVIEW_THESIS", "RISK_ALERT", "NO_ACTION",
+                "BUY_SIGNAL",
+                "SELL_SIGNAL",
+                "HOLD",
+                "REVIEW_THESIS",
+                "RISK_ALERT",
+                "NO_ACTION",
             }
-            top_verdict = (
-                event.verdict
-                if event.verdict in _VALID_VERDICTS
-                else "NO_ACTION"
-            )
+            top_verdict = event.verdict if event.verdict in _VALID_VERDICTS else "NO_ACTION"
 
             # Build RiskFlag list from event.risk_signals (string tuple).
             # risk_signals are plain string descriptions — wrap as LOW flags
@@ -565,9 +585,15 @@ class IntelligenceSnapshotSubscriber:
                 user_id=event.user_id,
                 trigger_source=(
                     event.trigger_source
-                    if event.trigger_source in (
-                        "scheduler_morning", "scheduler_eod", "watchlist_alert",
-                        "user_query", "thesis_invalidated", "portfolio_breach", "manual",
+                    if event.trigger_source
+                    in (
+                        "scheduler_morning",
+                        "scheduler_eod",
+                        "watchlist_alert",
+                        "user_query",
+                        "thesis_invalidated",
+                        "portfolio_breach",
+                        "manual",
                     )
                     else "manual"
                 ),

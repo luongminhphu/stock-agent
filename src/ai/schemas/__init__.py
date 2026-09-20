@@ -13,13 +13,6 @@ __all__ entry here.
 # --- Base ---
 from src.ai.schemas._base import RiskLevel, Verdict, _coerce_confidence
 
-# --- Thesis Review ---
-from src.ai.schemas.thesis_review import (
-    AssumptionRecommendation,
-    CatalystRecommendation,
-    ThesisReviewOutput,
-)
-
 # --- Briefing ---
 from src.ai.schemas.briefing import (
     ActionPriority,
@@ -31,21 +24,41 @@ from src.ai.schemas.briefing import (
     WatchlistTickerSummary,
 )
 
-# --- Stock Analysis ---
-from src.ai.schemas.stock_analysis import StockAnalysisOutput
-
-# --- Proactive Alert ---
-from src.ai.schemas.proactive_alert import ProactiveAlertOutput, RiskSignal
-
-# --- Thesis Suggestion ---
-from src.ai.schemas.thesis_suggestion import (
-    SuggestedAssumption,
-    SuggestedCatalyst,
-    ThesisSuggestionResult,
+# --- Intelligence Report (Investor OS central contract) ---
+from src.ai.schemas.intelligence_report import (
+    TRIGGER_SOURCES,
+    AgentSlot,
+    IntelligenceReport,
+    PriorityAction,
+    RiskFlag,
 )
 
-# --- Why ---
-from src.ai.schemas.why import MovementDirection, WhyOutput
+# --- Intelligence Verdict ---
+from src.ai.schemas.intelligence_verdict import VerdictOutput
+
+# --- Thesis Invalidation ---
+from src.ai.schemas.invalidation import (
+    BreachType,
+    InvalidationSignal,
+    InvalidationVerdict,
+)
+
+# --- Next Action ---
+from src.ai.schemas.next_action import (
+    ActionScope,
+    NextActionPlan,
+    SuggestedAction,
+)
+
+# --- Portfolio Risk Narrator ---
+from src.ai.schemas.portfolio_risk import (
+    PortfolioRiskNarrativeOutput,
+    RiskChapter,
+    RiskTheme,
+)
+
+# --- Post Mortem ---
+from src.ai.schemas.post_mortem import PostMortemOutput, PostMortemVerdict
 
 # --- Pre-Trade ---
 from src.ai.schemas.pretrade import (
@@ -56,12 +69,11 @@ from src.ai.schemas.pretrade import (
     TradeDecision,
 )
 
-# --- Stress Test ---
-from src.ai.schemas.stress_test import (
-    StressTestOutput,
-    ThreatLevel,
-    ThreatenedAssumption,
-)
+# --- Proactive Alert ---
+from src.ai.schemas.proactive_alert import ProactiveAlertOutput, RiskSignal
+
+# --- Replay ---
+from src.ai.schemas.replay import OutcomeVerdict, ReplayOutput
 
 # --- Sector Rotation ---
 from src.ai.schemas.sector_rotation import (
@@ -71,18 +83,6 @@ from src.ai.schemas.sector_rotation import (
     SectorRotationOutput,
     WatchlistCrosscheck,
 )
-
-# --- Watchdog ---
-from src.ai.schemas.watchdog import (
-    OverallHealth,
-    ThreatenedAssumptionWatchdog,
-    WatchdogOutput,
-    WatchdogRecommendedAction,
-    WatchdogThreatLevel,
-)
-
-# --- Replay ---
-from src.ai.schemas.replay import OutcomeVerdict, ReplayOutput
 
 # --- Signal Credibility ---
 from src.ai.schemas.signal_credibility import (
@@ -101,37 +101,15 @@ from src.ai.schemas.signal_engine import (
     SignalUrgency,
 )
 
-# --- Thesis Judge ---
-from src.ai.schemas.thesis_judge import (
-    ChallengedAssumption,
-    ThesisConvictionDelta,
-    ThesisJudgeOutput,
-    ThesisJudgeVerdict,
-)
+# --- Stock Analysis ---
+from src.ai.schemas.stock_analysis import StockAnalysisOutput
 
-# --- Portfolio Risk Narrator ---
-from src.ai.schemas.portfolio_risk import (
-    PortfolioRiskNarrativeOutput,
-    RiskChapter,
-    RiskTheme,
+# --- Stress Test ---
+from src.ai.schemas.stress_test import (
+    StressTestOutput,
+    ThreatenedAssumption,
+    ThreatLevel,
 )
-
-# --- Thesis Invalidation ---
-from src.ai.schemas.invalidation import (
-    BreachType,
-    InvalidationSignal,
-    InvalidationVerdict,
-)
-
-# --- Next Action ---
-from src.ai.schemas.next_action import (
-    ActionScope,
-    NextActionPlan,
-    SuggestedAction,
-)
-
-# --- Post Mortem ---
-from src.ai.schemas.post_mortem import PostMortemOutput, PostMortemVerdict
 
 # --- Thesis Debate ---
 from src.ai.schemas.thesis_debate import (
@@ -141,17 +119,39 @@ from src.ai.schemas.thesis_debate import (
     OverallStance,
 )
 
-# --- Intelligence Verdict ---
-from src.ai.schemas.intelligence_verdict import VerdictOutput
-
-# --- Intelligence Report (Investor OS central contract) ---
-from src.ai.schemas.intelligence_report import (
-    TRIGGER_SOURCES,
-    AgentSlot,
-    IntelligenceReport,
-    PriorityAction,
-    RiskFlag,
+# --- Thesis Judge ---
+from src.ai.schemas.thesis_judge import (
+    ChallengedAssumption,
+    ThesisConvictionDelta,
+    ThesisJudgeOutput,
+    ThesisJudgeVerdict,
 )
+
+# --- Thesis Review ---
+from src.ai.schemas.thesis_review import (
+    AssumptionRecommendation,
+    CatalystRecommendation,
+    ThesisReviewOutput,
+)
+
+# --- Thesis Suggestion ---
+from src.ai.schemas.thesis_suggestion import (
+    SuggestedAssumption,
+    SuggestedCatalyst,
+    ThesisSuggestionResult,
+)
+
+# --- Watchdog ---
+from src.ai.schemas.watchdog import (
+    OverallHealth,
+    ThreatenedAssumptionWatchdog,
+    WatchdogOutput,
+    WatchdogRecommendedAction,
+    WatchdogThreatLevel,
+)
+
+# --- Why ---
+from src.ai.schemas.why import MovementDirection, WhyOutput
 
 __all__ = [
     # Base

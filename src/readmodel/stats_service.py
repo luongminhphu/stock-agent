@@ -105,9 +105,9 @@ class StatsService:
                     Thesis.status == ThesisStatus.ACTIVE,
                     Catalyst.status == CatalystStatus.PENDING,
                     Catalyst.expected_date.isnot(None),
-                    func.date(
-                        func.timezone(_VN_TZ, Catalyst.expected_date)
-                    ).between(today_ict, in_7d_ict),
+                    func.date(func.timezone(_VN_TZ, Catalyst.expected_date)).between(
+                        today_ict, in_7d_ict
+                    ),
                 )
             )
             or 0

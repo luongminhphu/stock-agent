@@ -6,6 +6,7 @@ to the owner for review. Never auto-applies any suggestion.
 
 Owner: bot segment (thin adapter).
 """
+
 from __future__ import annotations
 
 import discord
@@ -17,9 +18,9 @@ from src.platform.logging import get_logger
 logger = get_logger(__name__)
 
 # Accuracy thresholds for embed colour
-_COLOR_GOOD    = 0x2ECC71  # green  — accuracy >= 70%
+_COLOR_GOOD = 0x2ECC71  # green  — accuracy >= 70%
 _COLOR_CAUTION = 0xE67E22  # orange — accuracy >= 50%
-_COLOR_WEAK    = 0xE74C3C  # red    — accuracy < 50%
+_COLOR_WEAK = 0xE74C3C  # red    — accuracy < 50%
 _COLOR_UNKNOWN = 0x95A5A6  # grey   — accuracy not available
 
 

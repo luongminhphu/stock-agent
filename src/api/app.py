@@ -43,9 +43,9 @@ from src.api.routes.market import router as market_router
 from src.api.routes.memory import router as memory_router
 from src.api.routes.portfolio import router as portfolio_router
 from src.api.routes.readmodel import router as readmodel_router
+from src.api.routes.rrg import router as rrg_router
 from src.api.routes.thesis import router as thesis_router
 from src.api.routes.today_loop import router as today_loop_router
-from src.api.routes.rrg import router as rrg_router
 from src.api.routes.trend import router as trend_router
 from src.api.routes.watchlist import router as watchlist_router
 from src.platform.bootstrap import bootstrap, shutdown
@@ -71,9 +71,9 @@ _FAVICON_SVG = (
 # - JS / CSS: no-cache + must-revalidate — browser revalidates every request
 #   via ETag/Last-Modified. 304 if unchanged (no body sent).
 # - Everything else (images, fonts): 10-minute cache — safe default.
-_CACHE_NO_STORE        = "no-store, no-cache, must-revalidate"
+_CACHE_NO_STORE = "no-store, no-cache, must-revalidate"
 _CACHE_MUST_REVALIDATE = "no-cache, must-revalidate"
-_CACHE_SHORT           = "public, max-age=600"
+_CACHE_SHORT = "public, max-age=600"
 
 
 class _CacheBustedStaticFiles(StaticFiles):
@@ -94,9 +94,7 @@ class _CacheBustedStaticFiles(StaticFiles):
                 else:
                     cache_value = _CACHE_SHORT.encode()
                 headers = list(message.get("headers", []))
-                headers = [
-                    (k, v) for k, v in headers if k.lower() != b"cache-control"
-                ]
+                headers = [(k, v) for k, v in headers if k.lower() != b"cache-control"]
                 headers.append((b"cache-control", cache_value))
                 message = {**message, "headers": headers}
             await send(message)
@@ -195,12 +193,12 @@ def create_app() -> FastAPI:
     app.include_router(briefing_router, prefix="/api/v1")
     app.include_router(readmodel_router, prefix="/api/v1")
     app.include_router(decisions_router, prefix="/api/v1")
-    app.include_router(memory_router, prefix="/api/v1")       # Wave 9b
+    app.include_router(memory_router, prefix="/api/v1")  # Wave 9b
     app.include_router(core_engine_router, prefix="/api/v1")  # Wave 10 — Intelligence Engine
-    app.include_router(portfolio_router, prefix="/api/v1")    # Wave 11 — Quick Trade
-    app.include_router(today_loop_router, prefix="/api/v1")   # Daily investor loop
-    app.include_router(rrg_router, prefix="/api/v1")           # RRG chart
-    app.include_router(trend_router, prefix="/api/v1")         # Trend Analysis panel
+    app.include_router(portfolio_router, prefix="/api/v1")  # Wave 11 — Quick Trade
+    app.include_router(today_loop_router, prefix="/api/v1")  # Daily investor loop
+    app.include_router(rrg_router, prefix="/api/v1")  # RRG chart
+    app.include_router(trend_router, prefix="/api/v1")  # Trend Analysis panel
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request, exc: Exception) -> JSONResponse:

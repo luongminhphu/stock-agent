@@ -7,10 +7,11 @@ and emit EvolutionSuggestionReadyEvent.
 Owner: bot segment (thin scheduler wrapper).
 Domain logic lives in: src/core/evolution.py
 """
+
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 from discord.ext import commands
 
@@ -55,9 +56,9 @@ class EvolutionScheduler:
         """Sleep until next Monday 06:00 ICT."""
         now = datetime.now(_ICT)
         days_until_monday = (7 - now.weekday()) % 7 or 7
-        next_run = now.replace(
-            hour=6, minute=0, second=0, microsecond=0
-        ) + timedelta(days=days_until_monday if now.weekday() != 0 or now.hour >= 6 else 0)
+        next_run = now.replace(hour=6, minute=0, second=0, microsecond=0) + timedelta(
+            days=days_until_monday if now.weekday() != 0 or now.hour >= 6 else 0
+        )
         if now.weekday() == 0 and now.hour < 6:
             next_run = now.replace(hour=6, minute=0, second=0, microsecond=0)
         delay = (next_run - now).total_seconds()
@@ -93,13 +94,11 @@ class EvolutionScheduler:
 
         # Derive overall_accuracy from first heuristic pass — PatternReport not
         # re-exposed here, so we default to 0.0 and let subscriber display count.
-        has_high_risk = any(
-            getattr(s, "risk_level", "low") == "high" for s in suggestions
-        )
+        has_high_risk = any(getattr(s, "risk_level", "low") == "high" for s in suggestions)
 
         event = EvolutionSuggestionReadyEvent(
             suggestion_count=len(suggestions),
-            overall_accuracy=0.0,   # PatternReport not re-fetched here; accuracy shown in embed
+            overall_accuracy=0.0,  # PatternReport not re-fetched here; accuracy shown in embed
             has_high_risk=has_high_risk,
             period_days=30,
         )

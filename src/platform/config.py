@@ -41,9 +41,9 @@ class Settings(BaseSettings):
     # Trading hours guard (Asia/Ho_Chi_Minh = UTC+7)
     # Ngoài giờ này + T7/CN → QuoteService trả cached quote (hoặc skip fetch)
     # Set MARKET_FETCH_ALWAYS=true trong .env để disable guard (debug/backfill)
-    market_open_hour:   int  = 9    # 09:00 ICT
-    market_open_minute: int  = 0
-    market_close_hour:  int  = 15   # 15:00 ICT (sau ATC ~14:45)
+    market_open_hour: int = 9  # 09:00 ICT
+    market_open_minute: int = 0
+    market_close_hour: int = 15  # 15:00 ICT (sau ATC ~14:45)
     market_close_minute: int = 15
     market_fetch_always: bool = False  # bypass guard khi cần debug
 
@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     discord_decision_channel_id: str = ""
 
     # Thesis Drift Detector
-    thesis_drift_threshold_pct: float = 5.0   # Trigger review khi |drift| >= threshold
+    thesis_drift_threshold_pct: float = 5.0  # Trigger review khi |drift| >= threshold
     thesis_drift_cooldown_hours: float = 4.0  # Không re-trigger trong N giờ sau lần review gần nhất
 
     # Auto-invalidation on stop-loss breach (Wave 6c)
@@ -72,9 +72,9 @@ class Settings(BaseSettings):
     # (InvalidationService.check_with_price) → AI confirm (ThesisInvalidationDetector)
     # → invalidate khi CONFIRMED với confidence đủ cao. Cứu HPG-style case:
     # giá xuyên stop nhưng score vẫn Strong vì không luồng nào check breach.
-    auto_invalidate_enabled: bool = True        # False = chỉ log, không invalidate
-    auto_invalidate_min_confidence: float = 0.7 # CONFIRMED + confidence >= ngưỡng mới invalidate
-    auto_invalidate_cooldown_hours: float = 24.0 # 1 lần scan breach/thesis/ngày
+    auto_invalidate_enabled: bool = True  # False = chỉ log, không invalidate
+    auto_invalidate_min_confidence: float = 0.7  # CONFIRMED + confidence >= ngưỡng mới invalidate
+    auto_invalidate_cooldown_hours: float = 24.0  # 1 lần scan breach/thesis/ngày
 
     # Alert auto-reactivation cooldown
     # Alerts with auto_reactivate=True will be reset to ACTIVE after this many hours
@@ -91,7 +91,7 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
 
     trade_fee_pct: float = 0.0025  # 0.25% brokerage fee per side (buy AND sell)
-    sell_tax_pct: float = 0.001    # 0.1% personal income tax on SELL proceeds
+    sell_tax_pct: float = 0.001  # 0.1% personal income tax on SELL proceeds
 
     # ------------------------------------------------------------------
     # Position sizing (Wave 2) — fixed-fractional risk model.
@@ -99,10 +99,10 @@ class Settings(BaseSettings):
     # max_position_pct of equity and available cash.
     # ------------------------------------------------------------------
 
-    risk_per_trade_pct: float = 0.01    # risk 1% NAV per trade (fixed-fractional)
-    max_position_pct: float = 0.20      # one position ≤ 20% NAV (khớp risk_appetite text)
-    default_stop_loss_pct: float = 0.07 # fallback stop khi thesis không có stop_loss
-    portfolio_cash_vnd: float = 0.0     # tiền mặt hiện có; 0 = ước tính từ realized PnL
+    risk_per_trade_pct: float = 0.01  # risk 1% NAV per trade (fixed-fractional)
+    max_position_pct: float = 0.20  # one position ≤ 20% NAV (khớp risk_appetite text)
+    default_stop_loss_pct: float = 0.07  # fallback stop khi thesis không có stop_loss
+    portfolio_cash_vnd: float = 0.0  # tiền mặt hiện có; 0 = ước tính từ realized PnL
 
     # Wave 8.4 — sector concentration warning (advisory, KHÔNG hạn chế qty).
     # Khớp đúng ngưỡng đang dùng ở briefing/service.py::_CONCENTRATION_THRESHOLD
@@ -113,7 +113,7 @@ class Settings(BaseSettings):
 
     # Alert digest (Wave 4b) — cap signals per scan notification to avoid
     # Discord noise when the whole watchlist moves at once (open/close bursts).
-    scan_alert_digest_top_n: int = 5    # top-N signals shown; rest collapsed to a summary line
+    scan_alert_digest_top_n: int = 5  # top-N signals shown; rest collapsed to a summary line
 
     # ------------------------------------------------------------------
     # Investor Static Profile — Wave 1 Blueprint V2
@@ -122,9 +122,7 @@ class Settings(BaseSettings):
     # and injected into every AI agent call via ContextBuilder (Wave 2).
     # ------------------------------------------------------------------
 
-    investor_risk_appetite: str = (
-        "medium — max drawdown 15%, position size ≤20%, không dùng margin"
-    )
+    investor_risk_appetite: str = "medium — max drawdown 15%, position size ≤20%, không dùng margin"
     investor_thesis_style: str = (
         "fundamental + macro top-down, hold 2-6 tháng, tập trung chu kỳ ngành"
     )

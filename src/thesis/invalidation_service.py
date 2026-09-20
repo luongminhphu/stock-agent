@@ -32,8 +32,8 @@ logger = get_logger(__name__)
 
 # Thresholds — adjust as product matures
 _MAX_INVALID_ASSUMPTION_RATIO = 0.5  # >50% assumptions invalid → invalidate
-_MIN_SCORE_THRESHOLD = 20.0          # score below 20 → warn
-_STOP_LOSS_BREACH_BUFFER = 0.0       # current_price <= stop_loss → breach
+_MIN_SCORE_THRESHOLD = 20.0  # score below 20 → warn
+_STOP_LOSS_BREACH_BUFFER = 0.0  # current_price <= stop_loss → breach
 
 
 @dataclass
@@ -110,8 +110,7 @@ class InvalidationService:
 
         # Rule 2: stop-loss breached
         stop_loss_breached = bool(
-            thesis.stop_loss
-            and current_price <= thesis.stop_loss + _STOP_LOSS_BREACH_BUFFER
+            thesis.stop_loss and current_price <= thesis.stop_loss + _STOP_LOSS_BREACH_BUFFER
         )
         if stop_loss_breached:
             logger.info(

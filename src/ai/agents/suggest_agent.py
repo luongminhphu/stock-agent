@@ -39,9 +39,7 @@ _MAX_TOKENS = 3000
 
 class AssumptionDraft(BaseModel):
     description: str
-    rationale: str = Field(
-        ..., description="Tại sao đây là giả định then chốt của thesis"
-    )
+    rationale: str = Field(..., description="Tại sao đây là giả định then chốt của thesis")
     invalidation_signal: str
 
 
@@ -55,9 +53,7 @@ class CatalystDraft(BaseModel):
             "KHÔNG dùng 'SHORT_TERM', 'MEDIUM_TERM', 'LONG_TERM'."
         ),
     )
-    rationale: str = Field(
-        ..., description="Tại sao catalyst này có thể thúc đẩy giá"
-    )
+    rationale: str = Field(..., description="Tại sao catalyst này có thể thúc đẩy giá")
 
 
 class ThesisDraft(BaseModel):
@@ -73,9 +69,7 @@ class ThesisDraft(BaseModel):
     entry_price_suggestion: float | None = None
     target_price_suggestion: float | None = None
     stop_loss_suggestion: float | None = None
-    time_horizon: str = Field(
-        ..., description="SHORT_TERM | MEDIUM_TERM | LONG_TERM"
-    )
+    time_horizon: str = Field(..., description="SHORT_TERM | MEDIUM_TERM | LONG_TERM")
     assumptions: list[AssumptionDraft] = Field(
         ..., min_length=1, description="At least 1 assumption required"
     )
@@ -84,11 +78,10 @@ class ThesisDraft(BaseModel):
     )
     risk_summary: str
     reasoning: str = Field(
-        ..., description="Lý do tổng thể AI đề xuất thesis này: luận điểm chính, điểm mạnh của cổ phiếu, bối cảnh đầu tư"
+        ...,
+        description="Lý do tổng thể AI đề xuất thesis này: luận điểm chính, điểm mạnh của cổ phiếu, bối cảnh đầu tư",
     )
-    conviction_level: str = Field(
-        ..., description="HIGH | MEDIUM | LOW"
-    )
+    conviction_level: str = Field(..., description="HIGH | MEDIUM | LOW")
 
 
 _SYSTEM_PROMPT = """
@@ -262,9 +255,7 @@ class ThesisSuggestAgent:
                 for c in draft.catalysts
             ],
             invalidation_conditions=[
-                a.invalidation_signal
-                for a in draft.assumptions
-                if a.invalidation_signal
+                a.invalidation_signal for a in draft.assumptions if a.invalidation_signal
             ],
             confidence=confidence,
         )

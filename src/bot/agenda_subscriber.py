@@ -14,6 +14,7 @@ Wiring (app.py on_ready):
 This class mirrors the pattern of IntelligenceEngineSubscriber and
 PostMortemSubscriber — thin bot adapter, no domain logic.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -55,9 +56,9 @@ class AgendaSubscriber:
             return self._channel_id
         try:
             from src.platform.config import settings
-            raw = (
-                getattr(settings, "morning_channel_id", None)
-                or getattr(settings, "alert_channel_id", None)
+
+            raw = getattr(settings, "morning_channel_id", None) or getattr(
+                settings, "alert_channel_id", None
             )
             return int(raw) if raw else None
         except Exception:

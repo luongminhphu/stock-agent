@@ -127,9 +127,7 @@ def build_user_prompt(
     # Rendering it as a named section ensures the LLM treats it as a primary
     # anchor rather than a buried key in a raw JSON blob.
     last_review_summary: str | None = signal_context.get("last_review_summary")
-    signal_context_clean = {
-        k: v for k, v in signal_context.items() if k != "last_review_summary"
-    }
+    signal_context_clean = {k: v for k, v in signal_context.items() if k != "last_review_summary"}
 
     assumptions_str = (
         "\n".join(
@@ -171,9 +169,7 @@ def build_user_prompt(
             for h in conviction_history[-5:]  # last 5 only
         ]
         history_block = (
-            "\n## Lịch sử Judge Verdicts (gần nhất trước)\n"
-            + "\n".join(history_lines)
-            + "\n"
+            "\n## Lịch sử Judge Verdicts (gần nhất trước)\n" + "\n".join(history_lines) + "\n"
         )
 
     # Render last_review_summary as a dedicated section when present.
@@ -197,7 +193,7 @@ def build_user_prompt(
 
 ## Thesis
 **Tiêu đề:** {thesis_title}
-**Tóm tắt:** {thesis_summary or '(không có)'}
+**Tóm tắt:** {thesis_summary or "(không có)"}
 
 ## Assumptions (đang active)
 {assumptions_str}

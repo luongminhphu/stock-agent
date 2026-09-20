@@ -158,9 +158,7 @@ class Alert(Base):
     triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     triggered_price: Mapped[float | None] = mapped_column(Float)
     note: Mapped[str | None] = mapped_column(Text)
-    auto_reactivate: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False
-    )
+    auto_reactivate: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # --- Thesis trigger rule fields (nullable — only set for THESIS_TRIGGER alerts) ---
     label: Mapped[str | None] = mapped_column(String(256), nullable=True)
     thesis_id: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
@@ -337,9 +335,7 @@ class SignalEvent(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    processed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     def __repr__(self) -> str:
         return (

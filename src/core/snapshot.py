@@ -12,10 +12,11 @@ Populates BOTH:
   - Flat legacy lists (watchlist_alerts, thesis_due_review, market_anomalies)
     → consumed by engine._derive_action() and briefing
 """
+
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,7 +46,7 @@ class SystemSnapshotBuilder:
     """
 
     OVERDUE_DAYS = 14  # thesis older than N days without AI review = overdue
-    STALE_DAYS = 3    # thesis without any review in N days = stale
+    STALE_DAYS = 3  # thesis without any review in N days = stale
 
     def __init__(
         self,
@@ -73,31 +74,24 @@ class SystemSnapshotBuilder:
         thesis_flat = thesis_flat if isinstance(thesis_flat, list) else []
         market_flat = market_flat if isinstance(market_flat, list) else []
         portfolio_ctx = (
-            portfolio_ctx
-            if isinstance(portfolio_ctx, PortfolioContext)
-            else PortfolioContext()
+            portfolio_ctx if isinstance(portfolio_ctx, PortfolioContext) else PortfolioContext()
         )
 
         # Build nested sub-models from flat data
         watchlist_ctx = WatchlistContext(
             triggered_alert_count=len(alerts_flat),
             top_tickers=list({a.ticker for a in alerts_flat})[:5],
-            has_volume_spike=any(
-                "volume" in (a.alert_type or "").lower() for a in alerts_flat
-            ),
+            has_volume_spike=any("volume" in (a.alert_type or "").lower() for a in alerts_flat),
         )
 
-        stale_cutoff = datetime.now(timezone.utc) - timedelta(days=self.STALE_DAYS)
+        stale_cutoff = datetime.now(UTC) - timedelta(days=self.STALE_DAYS)
         stale_refs = [
-            t for t in thesis_flat
-            if t.last_reviewed_at is None
-            or t.last_reviewed_at.replace(tzinfo=timezone.utc) < stale_cutoff
+            t
+            for t in thesis_flat
+            if t.last_reviewed_at is None or t.last_reviewed_at.replace(tzinfo=UTC) < stale_cutoff
         ]
         invalidated_refs = [t for t in thesis_flat if t.days_overdue > 30]
-        drift_refs = [
-            t for t in thesis_flat
-            if 7 < t.days_overdue <= 30
-        ]
+        drift_refs = [t for t in thesis_flat if 7 < t.days_overdue <= 30]
         thesis_ctx = ThesisContext(
             invalidated_count=len(invalidated_refs),
             drift_detected_count=len(drift_refs),
@@ -105,12 +99,8 @@ class SystemSnapshotBuilder:
             stale_tickers=[t.ticker for t in stale_refs[:5]],
         )
 
-        opportunity_sigs = [
-            s for s in market_flat if "opportunity" in s.signal_type.lower()
-        ]
-        trend_sigs = [
-            s for s in market_flat if "trend" in s.signal_type.lower()
-        ]
+        opportunity_sigs = [s for s in market_flat if "opportunity" in s.signal_type.lower()]
+        trend_sigs = [s for s in market_flat if "trend" in s.signal_type.lower()]
         market_ctx = MarketContext(
             trend_shift_count=len(trend_sigs),
             opportunity_count=len(opportunity_sigs),
@@ -118,7 +108,7 @@ class SystemSnapshotBuilder:
             market_phase=self.trigger_source or "unknown",
         )
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return SystemSnapshot(
             # nested
             watchlist=watchlist_ctx,
@@ -148,17 +138,21 @@ class SystemSnapshotBuilder:
             from src.watchlist.models import Alert  # type: ignore[import]
 
             rows = (
-                await self.session.execute(
-                    select(Alert)
-                    .where(
-                        Alert.user_id == self.user_id,
-                        Alert.triggered_at.isnot(None),
-                        Alert.dismissed_at.is_(None),
+                (
+                    await self.session.execute(
+                        select(Alert)
+                        .where(
+                            Alert.user_id == self.user_id,
+                            Alert.triggered_at.isnot(None),
+                            Alert.dismissed_at.is_(None),
+                        )
+                        .order_by(Alert.triggered_at.desc())
+                        .limit(20)
                     )
-                    .order_by(Alert.triggered_at.desc())
-                    .limit(20)
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
             # Filter out tickers currently in snooze window.
             # Wrapped separately so a WatchlistItem import/query failure
@@ -167,16 +161,20 @@ class SystemSnapshotBuilder:
             try:
                 from src.watchlist.models import WatchlistItem  # type: ignore[import]
 
-                now = datetime.now(timezone.utc)
+                now = datetime.now(UTC)
                 snoozed_rows = (
-                    await self.session.execute(
-                        select(WatchlistItem.ticker).where(
-                            WatchlistItem.user_id == self.user_id,
-                            WatchlistItem.snoozed_until.isnot(None),
-                            WatchlistItem.snoozed_until > now,
+                    (
+                        await self.session.execute(
+                            select(WatchlistItem.ticker).where(
+                                WatchlistItem.user_id == self.user_id,
+                                WatchlistItem.snoozed_until.isnot(None),
+                                WatchlistItem.snoozed_until > now,
+                            )
                         )
                     )
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                )
                 snoozed_tickers = {t.upper() for t in snoozed_rows}
             except Exception:
                 pass  # snooze filter unavailable — return all alerts
@@ -199,15 +197,19 @@ class SystemSnapshotBuilder:
         try:
             from src.thesis.models import Thesis, ThesisReview  # type: ignore[import]
 
-            cutoff = datetime.now(timezone.utc) - timedelta(days=self.OVERDUE_DAYS)
+            cutoff = datetime.now(UTC) - timedelta(days=self.OVERDUE_DAYS)
             theses = (
-                await self.session.execute(
-                    select(Thesis).where(
-                        Thesis.user_id == self.user_id,
-                        Thesis.status == "active",
+                (
+                    await self.session.execute(
+                        select(Thesis).where(
+                            Thesis.user_id == self.user_id,
+                            Thesis.status == "active",
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
             result: list[ThesisRef] = []
             for t in theses:
@@ -220,12 +222,9 @@ class SystemSnapshotBuilder:
                     )
                 ).scalar_one_or_none()
 
-                if last_review is None or last_review.replace(tzinfo=timezone.utc) < cutoff:
+                if last_review is None or last_review.replace(tzinfo=UTC) < cutoff:
                     days_overdue = (
-                        (
-                            datetime.now(timezone.utc)
-                            - last_review.replace(tzinfo=timezone.utc)
-                        ).days
+                        (datetime.now(UTC) - last_review.replace(tzinfo=UTC)).days
                         if last_review
                         else 999
                     )
@@ -285,9 +284,7 @@ class SystemSnapshotBuilder:
             # (total_unrealized_pnl is None when include_prices=False)
             unrealized_pnl_pct: float | None = None
             if pf.total_unrealized_pnl is not None and pf.total_cost_basis > 0:
-                unrealized_pnl_pct = round(
-                    pf.total_unrealized_pnl / pf.total_cost_basis * 100, 2
-                )
+                unrealized_pnl_pct = round(pf.total_unrealized_pnl / pf.total_cost_basis * 100, 2)
 
             # risk_breach_count: separate query — stop_loss_breached not in public interface
             risk_breach = 0
@@ -295,15 +292,18 @@ class SystemSnapshotBuilder:
                 from src.portfolio.models import Position  # type: ignore[import]
 
                 breached = (
-                    await self.session.execute(
-                        select(Position)
-                        .where(
-                            Position.user_id == self.user_id,
-                            Position.closed_at.is_(None),
-                            Position.stop_loss_breached.is_(True),
+                    (
+                        await self.session.execute(
+                            select(Position).where(
+                                Position.user_id == self.user_id,
+                                Position.closed_at.is_(None),
+                                Position.stop_loss_breached.is_(True),
+                            )
                         )
                     )
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                )
                 risk_breach = len(breached)
             except Exception:
                 risk_breach = 0

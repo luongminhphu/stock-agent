@@ -85,9 +85,9 @@ def _extract_previous_review(
     to avoid truncating mid-sentence when ai_key_points is a multi-sentence paragraph.
     """
     thesis_episodes = [
-        ep for ep in episodes
-        if ep.agent_type == "thesis_review"
-        and (thesis_id is None or ep.thesis_id == thesis_id)
+        ep
+        for ep in episodes
+        if ep.agent_type == "thesis_review" and (thesis_id is None or ep.thesis_id == thesis_id)
     ]
     if not thesis_episodes:
         return None
@@ -102,9 +102,7 @@ def _extract_previous_review(
         # ai_key_points stores a 2-3 sentence narrative; splitlines()[0] was
         # cutting mid-sentence when the first sentence ran long.
         "summary": (
-            latest.ai_key_points[:_PREV_SUMMARY_MAX_CHARS].strip()
-            if latest.ai_key_points
-            else ""
+            latest.ai_key_points[:_PREV_SUMMARY_MAX_CHARS].strip() if latest.ai_key_points else ""
         ),
         "key_risks": (
             [l.strip() for l in latest.ai_risk_signals.splitlines() if l.strip()][:3]
@@ -252,6 +250,7 @@ class ThesisReviewAgent:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+
 async def _fetch_memory_for_review_full(
     session,
     user_id: str | None,
@@ -291,8 +290,7 @@ async def _fetch_memory_for_review_full(
         # Secondary filter: ticker-level scope on top of thesis_id scope.
         # Catches edge cases where thesis_id was not recorded on old entries.
         filtered_episodes = [
-            ep for ep in mem_ctx.recent_episodes
-            if not ep.tickers or ticker in ep.tickers
+            ep for ep in mem_ctx.recent_episodes if not ep.tickers or ticker in ep.tickers
         ]
         if not filtered_episodes and mem_ctx.latest_snapshot is None:
             return [], ""

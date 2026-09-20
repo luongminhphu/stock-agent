@@ -32,10 +32,10 @@ class DecisionReplayScheduler:
     Inject DecisionService (with session, quote_service, replay_agent attached).
     """
 
-    def __init__(self, decision_service: "DecisionService") -> None:
+    def __init__(self, decision_service: DecisionService) -> None:
         self._svc = decision_service
 
-    async def run_pending(self) -> list["DecisionReplayEnvelope"]:
+    async def run_pending(self) -> list[DecisionReplayEnvelope]:
         """Evaluate all decisions that reached their horizon.
 
         Steps per decision:
@@ -77,7 +77,7 @@ class DecisionReplayScheduler:
         )
         return results
 
-    async def _process_one(self, decision_id: int) -> "DecisionReplayEnvelope":
+    async def _process_one(self, decision_id: int) -> DecisionReplayEnvelope:
         """Full pipeline for a single decision."""
         # Step 1: outcome evaluation (PnL + verdict)
         await self._svc.evaluate_outcome(decision_id)

@@ -111,9 +111,7 @@ class WatchlistService:
     async def remove(self, user_id: str, ticker: str) -> None:
         item = await self._repo.get_item(user_id, ticker)
         if item is None:
-            raise WatchlistItemNotFoundError(
-                f"{ticker} not found in watchlist for user {user_id}"
-            )
+            raise WatchlistItemNotFoundError(f"{ticker} not found in watchlist for user {user_id}")
         await self._repo.delete_item(item)
         logger.info("watchlist.removed", user_id=user_id, ticker=ticker)
 

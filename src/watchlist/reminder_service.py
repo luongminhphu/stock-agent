@@ -33,7 +33,7 @@ logger = get_logger(__name__)
 
 # How long to wait between sends per frequency type.
 _FREQUENCY_DELTA: dict[ReminderFrequency, timedelta] = {
-    ReminderFrequency.DAILY: timedelta(hours=20),   # allow slight drift
+    ReminderFrequency.DAILY: timedelta(hours=20),  # allow slight drift
     ReminderFrequency.WEEKLY: timedelta(days=6, hours=20),
     ReminderFrequency.ON_SIGNAL: timedelta(hours=1),  # cooldown between signal pings
 }
@@ -127,9 +127,7 @@ class ReminderService:
         """
         reminder = await self._repo.get_reminder(watchlist_item_id)
         if reminder is None:
-            raise ReminderNotFoundError(
-                f"No reminder found for watchlist item {watchlist_item_id}"
-            )
+            raise ReminderNotFoundError(f"No reminder found for watchlist item {watchlist_item_id}")
 
         reminder.enabled = enabled
         await self._repo.save_reminder(reminder)
@@ -232,10 +230,7 @@ class ReminderService:
         now = datetime.now(tz=UTC)
         candidates = await self._repo.list_due_reminders(before=now)
 
-        due = [
-            r for r in candidates
-            if r.frequency in frequencies and self._is_due(r, now)
-        ]
+        due = [r for r in candidates if r.frequency in frequencies and self._is_due(r, now)]
 
         logger.info(
             "reminder_service.list_due",
@@ -265,7 +260,8 @@ class ReminderService:
         candidates = await self._repo.list_due_reminders(before=now)
 
         due = [
-            r for r in candidates
+            r
+            for r in candidates
             if r.frequency == ReminderFrequency.ON_SIGNAL
             and r.watchlist_item is not None
             and r.watchlist_item.ticker in tickers

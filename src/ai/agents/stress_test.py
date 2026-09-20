@@ -53,13 +53,13 @@ logger = get_logger(__name__)
 # New callers must use src.ai.schemas.StressTestOutput
 # ---------------------------------------------------------------------------
 
+
 class ScenarioResult(BaseModel):
     """[DEPRECATED] Use src.ai.schemas.StressTestOutput instead."""
+
     scenario_name: str
     probability: str = Field(..., description="HIGH | MEDIUM | LOW")
-    impact_on_thesis: str = Field(
-        ..., description="INVALIDATES | WEAKENS | NEUTRAL | STRENGTHENS"
-    )
+    impact_on_thesis: str = Field(..., description="INVALIDATES | WEAKENS | NEUTRAL | STRENGTHENS")
     price_impact_estimate: str
     key_assumption_broken: str | None = None
     mitigation: str
@@ -67,6 +67,7 @@ class ScenarioResult(BaseModel):
 
 class StressTestOutput(BaseModel):
     """[DEPRECATED] Use src.ai.schemas.StressTestOutput instead."""
+
     ticker: str
     overall_resilience: str = Field(..., description="STRONG | MODERATE | WEAK | FRAGILE")
     scenario_results: list[ScenarioResult]
@@ -131,7 +132,7 @@ class StressTestAgent:
         target_price: float | None = None,
         stop_loss: float | None = None,
         macro_context: str = "",
-        session: "AsyncSession | None" = None,
+        session: AsyncSession | None = None,
         user_id: str | None = None,
     ) -> object:
         """Run adversarial stress-test and return canonical StressTestOutput.
@@ -228,7 +229,7 @@ class StressTestAgent:
         thesis_summary: str,
         assumptions: list[str],
         scenarios: list[str] | None = None,
-        session: "AsyncSession | None" = None,
+        session: AsyncSession | None = None,
         user_id: str | None = None,
         trigger: str = "stress_test",
     ) -> StressTestOutput:
@@ -260,7 +261,6 @@ class StressTestAgent:
                 user_prompt=user_prompt,
                 response_schema=StressTestOutput,
                 temperature=0.2,
-            
                 max_tokens=2000,
             )
         except AIError:
@@ -292,17 +292,21 @@ class StressTestAgent:
             return ""
         try:
             from src.ai.context_builder import ContextBuilder, render_for_agent
+
             ctx = await ContextBuilder(session).build(user_id=user_id)
             return render_for_agent(ctx)
         except Exception as exc:
             logger.warning("stress_test_agent.investor_profile_failed", error=str(exc))
             return ""
 
-    async def _log_interaction_canonical(self, session, user_id: str | None, ticker: str, result) -> None:
+    async def _log_interaction_canonical(
+        self, session, user_id: str | None, ticker: str, result
+    ) -> None:
         if session is None or not user_id:
             return
         try:
             from src.ai.memory.memory_service import InteractionEntry, MemoryService
+
             threatened = getattr(result, "threatened_assumptions", []) or []
             critical = [
                 f"{a.description[:60]}: {a.threat_level}"
@@ -316,18 +320,25 @@ class StressTestAgent:
                 tickers=[ticker],
                 ai_verdict=str(getattr(result, "verdict", "")),
                 ai_confidence=float(getattr(result, "confidence", 0.0)),
-                ai_key_points=getattr(result, "reasoning", "")[:300] if getattr(result, "reasoning", "") else None,
+                ai_key_points=getattr(result, "reasoning", "")[:300]
+                if getattr(result, "reasoning", "")
+                else None,
                 ai_risk_signals="\n".join(critical) if critical else None,
             )
             await MemoryService.log_interaction(session, entry)
         except Exception as exc:
-            logger.warning("stress_test_agent.memory_log_canonical_failed", ticker=ticker, error=str(exc))
+            logger.warning(
+                "stress_test_agent.memory_log_canonical_failed", ticker=ticker, error=str(exc)
+            )
 
-    async def _log_interaction(self, session, user_id: str | None, ticker: str, result: StressTestOutput, trigger: str) -> None:
+    async def _log_interaction(
+        self, session, user_id: str | None, ticker: str, result: StressTestOutput, trigger: str
+    ) -> None:
         if session is None or not user_id:
             return
         try:
             from src.ai.memory.memory_service import InteractionEntry, MemoryService
+
             critical_scenarios = [
                 f"{s.scenario_name}: {s.impact_on_thesis}"
                 for s in (result.scenario_results or [])
@@ -340,7 +351,9 @@ class StressTestAgent:
                 tickers=[ticker],
                 ai_verdict=result.overall_resilience,
                 ai_confidence=None,
-                ai_key_points=result.most_critical_risk[:300] if result.most_critical_risk else None,
+                ai_key_points=result.most_critical_risk[:300]
+                if result.most_critical_risk
+                else None,
                 ai_risk_signals="\n".join(critical_scenarios) if critical_scenarios else None,
             )
             await MemoryService.log_interaction(session, entry)

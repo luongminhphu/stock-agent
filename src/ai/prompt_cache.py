@@ -57,8 +57,8 @@ logger = get_logger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
 
-_DEFAULT_TTL = 300       # 5 minutes
-_DEFAULT_MAX_SIZE = 64   # LRU eviction after this many entries
+_DEFAULT_TTL = 300  # 5 minutes
+_DEFAULT_MAX_SIZE = 64  # LRU eviction after this many entries
 
 
 class PromptCache(Generic[T]):
@@ -159,6 +159,7 @@ class PromptCache(Generic[T]):
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
+
 
 def _hash_prompts(system_prompt: str, user_prompt: str) -> str:
     """SHA-256 of concatenated prompts, hex-encoded (64 chars)."""

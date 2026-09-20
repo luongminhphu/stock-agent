@@ -55,9 +55,9 @@ logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 _REACTIVATE_COOLDOWN_HOURS: dict[AlertConditionType, int] = {
-    AlertConditionType.CHANGE_PCT_UP:   4,
+    AlertConditionType.CHANGE_PCT_UP: 4,
     AlertConditionType.CHANGE_PCT_DOWN: 4,
-    AlertConditionType.VOLUME_SPIKE:    24,
+    AlertConditionType.VOLUME_SPIKE: 24,
 }
 
 # ---------------------------------------------------------------------------
@@ -74,7 +74,9 @@ MAX_EFFECTIVE_COOLDOWN_HOURS: int = 48
 _DISMISS_REACTIONS: frozenset[str] = frozenset({"ignored", "dismissed", "flagged"})
 
 # Reactions that count as positive/acknowledged (reset nothing, just increment reaction_count).
-_POSITIVE_REACTIONS: frozenset[str] = frozenset({"acted", "bought", "sold", "watched", "acknowledged"})
+_POSITIVE_REACTIONS: frozenset[str] = frozenset(
+    {"acted", "bought", "sold", "watched", "acknowledged"}
+)
 
 
 class AlertNotFoundError(Exception):
@@ -159,9 +161,11 @@ class AlertService:
     ) -> Alert:
         """Create a watch alert rule from a thesis stress-test trigger."""
         priority = (
-            "HIGH"   if invalidation_probability >= 0.7 else
-            "MEDIUM" if invalidation_probability >= 0.4 else
-            "LOW"
+            "HIGH"
+            if invalidation_probability >= 0.7
+            else "MEDIUM"
+            if invalidation_probability >= 0.4
+            else "LOW"
         )
         alert = Alert(
             user_id=user_id,

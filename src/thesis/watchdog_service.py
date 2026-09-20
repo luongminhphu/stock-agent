@@ -43,9 +43,9 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 # Thresholds
-_STOP_LOSS_URGENT_PCT = 2.0    # < 2% from stop-loss → URGENT_ALERT
-_STOP_LOSS_WARNING_PCT = 5.0   # < 5% from stop-loss → SILENT_WARNING
-_STALE_REVIEW_DAYS = 14        # flag stale if no review in 14 days
+_STOP_LOSS_URGENT_PCT = 2.0  # < 2% from stop-loss → URGENT_ALERT
+_STOP_LOSS_WARNING_PCT = 5.0  # < 5% from stop-loss → SILENT_WARNING
+_STALE_REVIEW_DAYS = 14  # flag stale if no review in 14 days
 
 
 @dataclass
@@ -54,7 +54,7 @@ class WatchdogTickerResult:
 
     thesis_id: int
     ticker: str
-    alert_level: str          # OK | SILENT_WARNING | URGENT_ALERT
+    alert_level: str  # OK | SILENT_WARNING | URGENT_ALERT
     health_score: int | None  # None if agent failed
     overall_health: str | None
     recommended_action: str | None
@@ -169,9 +169,7 @@ class WatchdogService:
 
         # Compute stop-loss distance
         if current_price and thesis.stop_loss and current_price > 0:
-            stop_loss_distance_pct = (
-                (current_price - thesis.stop_loss) / current_price * 100
-            )
+            stop_loss_distance_pct = (current_price - thesis.stop_loss) / current_price * 100
 
         # Fast rule-based override — skip AI if already CRITICAL by rules
         rule_alert = self._rule_based_check(
@@ -324,14 +322,17 @@ class WatchdogService:
                 try:
                     from src.platform.event_bus import get_event_bus
                     from src.platform.events import ThesisClosedEvent
-                    await get_event_bus().publish(ThesisClosedEvent(
-                        thesis_id=thesis.id,
-                        user_id=thesis.user_id or "",
-                        ticker=thesis.ticker or "",
-                        close_reason="watchdog_auto_invalidated",
-                        thesis_title=thesis.title or "",
-                        thesis_summary=thesis.summary or "",
-                    ))
+
+                    await get_event_bus().publish(
+                        ThesisClosedEvent(
+                            thesis_id=thesis.id,
+                            user_id=thesis.user_id or "",
+                            ticker=thesis.ticker or "",
+                            close_reason="watchdog_auto_invalidated",
+                            thesis_title=thesis.title or "",
+                            thesis_summary=thesis.summary or "",
+                        )
+                    )
                 except Exception as _ev_exc:  # noqa: BLE001
                     logger.warning(
                         "watchdog.thesis_closed_event.emit_failed",
@@ -362,7 +363,8 @@ class WatchdogService:
 
         # Rule 2: too many invalid/uncertain assumptions
         invalid = sum(
-            1 for a in thesis.assumptions
+            1
+            for a in thesis.assumptions
             if a.status in (AssumptionStatus.INVALID, AssumptionStatus.UNCERTAIN)
         )
         total = len(thesis.assumptions)
@@ -383,16 +385,16 @@ class WatchdogService:
         parts = [f"🔴 **{thesis.ticker}** — Rule-based watchdog alert"]
         if stop_dist is not None and stop_dist < _STOP_LOSS_WARNING_PCT:
             parts.append(f"⚠️ Cách stop-loss: {stop_dist:.1f}%")
-        invalid = [a.description for a in thesis.assumptions
-                   if a.status == AssumptionStatus.INVALID]
+        invalid = [
+            a.description for a in thesis.assumptions if a.status == AssumptionStatus.INVALID
+        ]
         if invalid:
             parts.append("🚫 Assumptions invalid: " + "; ".join(invalid[:3]))
         return "\n".join(parts)
 
     def _days_since_last_review(self, thesis: Thesis) -> int:
         if not thesis.reviews:
-            from datetime import timezone
-            delta = datetime.now(timezone.utc) - thesis.created_at.replace(
+            delta = datetime.now(UTC) - thesis.created_at.replace(
                 tzinfo=UTC if thesis.created_at.tzinfo is None else thesis.created_at.tzinfo
             )
             return delta.days

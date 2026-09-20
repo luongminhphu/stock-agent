@@ -22,7 +22,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.ai.agents.rrg_chart_summary import RRGChartSummaryAgent
 from src.ai.agents.rrg_rotation import RRGRotationAgent
 from src.ai.schemas.rrg_rotation import RRGRotationSignal
-from src.api.deps import get_ai_client, get_current_user_id, get_db, get_ohlcv_service, get_symbol_registry
+from src.api.deps import (
+    get_ai_client,
+    get_current_user_id,
+    get_db,
+    get_ohlcv_service,
+    get_symbol_registry,
+)
 from src.market.ohlcv_service import OHLCVService
 from src.market.rrg_service import RRGService
 from src.readmodel.cache import DashboardTTLCache
@@ -40,12 +46,14 @@ _cache = DashboardTTLCache()
 
 @router.get("/thesis")
 async def get_rrg_thesis(
-    benchmark:      str = Query(default="VNINDEX", description="Benchmark ticker"),
-    lookback_weeks: int = Query(default=26,        ge=4,  le=52),
-    trail_points:   int = Query(default=0,         ge=0,  le=52),
-    extra:          str = Query(default="",        description="Extra tickers (comma-separated) appended to thesis list"),
+    benchmark: str = Query(default="VNINDEX", description="Benchmark ticker"),
+    lookback_weeks: int = Query(default=26, ge=4, le=52),
+    trail_points: int = Query(default=0, ge=0, le=52),
+    extra: str = Query(
+        default="", description="Extra tickers (comma-separated) appended to thesis list"
+    ),
     session: AsyncSession = Depends(get_db),
-    user_id: str          = Depends(get_current_user_id),
+    user_id: str = Depends(get_current_user_id),
     ohlcv_svc: OHLCVService = Depends(get_ohlcv_service),
 ) -> dict[str, Any]:
     """Return RRG coordinates for all active thesis tickers.
@@ -95,15 +103,15 @@ async def get_rrg_thesis(
 
     if not tickers:
         return {
-            "benchmark":      benchmark,
-            "as_of":          None,
+            "benchmark": benchmark,
+            "as_of": None,
             "lookback_weeks": lookback_weeks,
-            "trail_points":   trail_points,
-            "tickers":        [],
+            "trail_points": trail_points,
+            "tickers": [],
         }
 
     # 2. Compute RRG
-    svc    = RRGService(ohlcv_service=ohlcv_svc)
+    svc = RRGService(ohlcv_service=ohlcv_svc)
     result = await svc.compute(
         tickers=tickers,
         benchmark=benchmark,
@@ -114,22 +122,21 @@ async def get_rrg_thesis(
     # 3. Serialise — convert dataclasses → JSON-friendly dicts
     def _serialise_ticker(t: Any) -> dict[str, Any]:
         return {
-            "ticker":      t.ticker,
-            "quadrant":    t.quadrant,
-            "rs_ratio":    t.rs_ratio,
+            "ticker": t.ticker,
+            "quadrant": t.quadrant,
+            "rs_ratio": t.rs_ratio,
             "rs_momentum": t.rs_momentum,
-            "trail":       [{"rs_ratio": p.rs_ratio, "rs_momentum": p.rs_momentum}
-                            for p in t.trail],
-            "error":       t.error,
+            "trail": [{"rs_ratio": p.rs_ratio, "rs_momentum": p.rs_momentum} for p in t.trail],
+            "error": t.error,
         }
 
     response = {
-        "benchmark":      result.benchmark,
-        "as_of":          result.as_of,
+        "benchmark": result.benchmark,
+        "as_of": result.as_of,
         "lookback_weeks": result.lookback_weeks,
-        "trail_points":   result.trail_points,
-        "tickers":        [_serialise_ticker(t) for t in result.tickers],
-        "extra_tickers":  extra_tickers,   # FE uses this to style chips differently
+        "trail_points": result.trail_points,
+        "tickers": [_serialise_ticker(t) for t in result.tickers],
+        "extra_tickers": extra_tickers,  # FE uses this to style chips differently
     }
     _cache.set("rrg", user_id, response, extra=cache_extra)
     return response
@@ -139,19 +146,19 @@ async def get_rrg_thesis(
 
 # Cache rotation signals separately — TTL 5 min (AI call is expensive).
 _rotation_cache = DashboardTTLCache()
-_ROTATION_TTL   = 300   # 5 min
-_summary_cache  = DashboardTTLCache()
-_SUMMARY_TTL    = 300   # 5 min
+_ROTATION_TTL = 300  # 5 min
+_summary_cache = DashboardTTLCache()
+_SUMMARY_TTL = 300  # 5 min
 
 
 @router.get("/rotation/{ticker}")
 async def get_rrg_rotation(
-    ticker:         str,
+    ticker: str,
     lookback_weeks: int = Query(default=26, ge=4, le=52),
-    user_id: str              = Depends(get_current_user_id),
-    ohlcv_svc: OHLCVService   = Depends(get_ohlcv_service),
-    ai_client: object         = Depends(get_ai_client),
-    registry: object          = Depends(get_symbol_registry),
+    user_id: str = Depends(get_current_user_id),
+    ohlcv_svc: OHLCVService = Depends(get_ohlcv_service),
+    ai_client: object = Depends(get_ai_client),
+    registry: object = Depends(get_symbol_registry),
 ) -> dict[str, Any]:
     """Return AI rotation signal for a single ticker.
 
@@ -162,14 +169,14 @@ async def get_rrg_rotation(
     Falls back to rule-based signal on AI failure — never 500.
     """
     ticker_upper = ticker.upper()
-    cache_extra  = f"{ticker_upper}:{lookback_weeks}"
+    cache_extra = f"{ticker_upper}:{lookback_weeks}"
     cached = _rotation_cache.get("rrg_rotation", user_id, extra=cache_extra)
     if cached is not None:
         return cached
 
     # 1. Compute RRG for this single ticker (reuse RRGService)
     trail_points = max(8, min(26, lookback_weeks // 2))
-    svc    = RRGService(ohlcv_service=ohlcv_svc)
+    svc = RRGService(ohlcv_service=ohlcv_svc)
     result = await svc.compute(
         tickers=[ticker_upper],
         benchmark="VNINDEX",
@@ -185,19 +192,19 @@ async def get_rrg_rotation(
         return {"error": t.error}
 
     # 2. Resolve sector + company name from registry
-    sector       = ""
+    sector = ""
     company_name = ""
     try:
         info = registry.get(ticker_upper)  # type: ignore[attr-defined]
         if info:
-            sector       = str(info.sector.value) if info.sector else ""
+            sector = str(info.sector.value) if info.sector else ""
             company_name = info.name or ""
     except Exception:
         pass  # registry miss is non-fatal
 
     # 3. Call AI agent
     trail_dicts = [{"rs_ratio": p.rs_ratio, "rs_momentum": p.rs_momentum} for p in t.trail]
-    agent  = RRGRotationAgent(ai_client=ai_client)  # type: ignore[arg-type]
+    agent = RRGRotationAgent(ai_client=ai_client)  # type: ignore[arg-type]
     signal: RRGRotationSignal = await agent.analyze(
         ticker=ticker_upper,
         quadrant=t.quadrant,
@@ -210,19 +217,19 @@ async def get_rrg_rotation(
     )
 
     response: dict[str, Any] = {
-        "ticker":        signal.ticker,
-        "quadrant":      signal.quadrant,
-        "pattern":       signal.pattern,
-        "signal":        signal.signal,
+        "ticker": signal.ticker,
+        "quadrant": signal.quadrant,
+        "pattern": signal.pattern,
+        "signal": signal.signal,
         "signal_reason": signal.signal_reason,
-        "opportunity":   signal.opportunity,
-        "risk":          signal.risk,
-        "next_watch":    signal.next_watch,
-        "confidence":    signal.confidence,
-        "rs_ratio":      t.rs_ratio,
-        "rs_momentum":   t.rs_momentum,
-        "sector":        sector,
-        "company_name":  company_name,
+        "opportunity": signal.opportunity,
+        "risk": signal.risk,
+        "next_watch": signal.next_watch,
+        "confidence": signal.confidence,
+        "rs_ratio": t.rs_ratio,
+        "rs_momentum": t.rs_momentum,
+        "sector": sector,
+        "company_name": company_name,
     }
     _rotation_cache.set("rrg_rotation", user_id, response, ttl=_ROTATION_TTL, extra=cache_extra)
     return response
@@ -230,10 +237,10 @@ async def get_rrg_rotation(
 
 @router.get("/chart-summary")
 async def get_rrg_chart_summary(
-    lookback_weeks: int   = Query(default=26, ge=4, le=52),
-    user_id: str          = Depends(get_current_user_id),
+    lookback_weeks: int = Query(default=26, ge=4, le=52),
+    user_id: str = Depends(get_current_user_id),
     ohlcv_svc: OHLCVService = Depends(get_ohlcv_service),
-    ai_client: object     = Depends(get_ai_client),
+    ai_client: object = Depends(get_ai_client),
     session: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """AI summary of the full RRG chart — opportunities, risks, portfolio context.
@@ -250,17 +257,26 @@ async def get_rrg_chart_summary(
     # 1. Load active thesis tickers
     async with session as s:
         rows = await s.execute(
-            select(Thesis.ticker)
-            .where(Thesis.user_id == user_id, Thesis.status.in_(_ACTIVE_STATUSES))
+            select(Thesis.ticker).where(
+                Thesis.user_id == user_id, Thesis.status.in_(_ACTIVE_STATUSES)
+            )
         )
         ticker_list = [r[0] for r in rows.all()]
 
     if not ticker_list:
-        return {"market_read": "Chưa có thesis active để phân tích.", "opportunities": [], "risks": [], "portfolio_alert": "", "rotate_from": "", "rotate_to": "", "rotate_reason": ""}
+        return {
+            "market_read": "Chưa có thesis active để phân tích.",
+            "opportunities": [],
+            "risks": [],
+            "portfolio_alert": "",
+            "rotate_from": "",
+            "rotate_to": "",
+            "rotate_reason": "",
+        }
 
     # 2. Compute RRG
     trail_points = max(8, min(26, lookback_weeks // 2))
-    svc    = RRGService(ohlcv_service=ohlcv_svc)
+    svc = RRGService(ohlcv_service=ohlcv_svc)
     result = await svc.compute(
         tickers=ticker_list,
         benchmark="VNINDEX",
@@ -269,13 +285,22 @@ async def get_rrg_chart_summary(
     )
     valid = [t for t in result.tickers if not t.error and t.trail]
     if not valid:
-        return {"market_read": "Dữ liệu giá chưa đủ để phân tích RRG.", "opportunities": [], "risks": [], "portfolio_alert": "", "rotate_from": "", "rotate_to": "", "rotate_reason": ""}
+        return {
+            "market_read": "Dữ liệu giá chưa đủ để phân tích RRG.",
+            "opportunities": [],
+            "risks": [],
+            "portfolio_alert": "",
+            "rotate_from": "",
+            "rotate_to": "",
+            "rotate_reason": "",
+        }
 
     # 3. Load portfolio positions for held-ticker context
     from src.portfolio.service import PortfolioService  # local import — avoids circular
-    pos_svc     = PortfolioService(session=session)
-    positions   = await pos_svc.list_open(user_id)
-    held_set    = {p.ticker for p in positions}
+
+    pos_svc = PortfolioService(session=session)
+    positions = await pos_svc.list_open(user_id)
+    held_set = {p.ticker for p in positions}
     pnl_map: dict[str, float] = {p.ticker: 0.0 for p in positions}  # basic; enriched if available
 
     # 4. Build tickers_context for agent
@@ -284,36 +309,47 @@ async def get_rrg_chart_summary(
         trail = t.trail
         vel_dir = ""
         if len(trail) >= 2:
-            dr = trail[-1].rs_ratio    - trail[-2].rs_ratio
+            dr = trail[-1].rs_ratio - trail[-2].rs_ratio
             dm = trail[-1].rs_momentum - trail[-2].rs_momentum
-            if dr > 0 and dm > 0:    vel_dir = "tăng cả 2 trục"
-            elif dr > 0:             vel_dir = "RS-Ratio tăng"
-            elif dm > 0:             vel_dir = "RS-Mom tăng"
-            else:                    vel_dir = "giảm cả 2 trục"
-        tickers_context.append({
-            "ticker":       t.ticker,
-            "quadrant":     t.quadrant,
-            "rs_ratio":     t.rs_ratio,
-            "rs_momentum":  t.rs_momentum,
-            "velocity_dir": vel_dir,
-            "pct":          pnl_map.get(t.ticker),
-        })
+            if dr > 0 and dm > 0:
+                vel_dir = "tăng cả 2 trục"
+            elif dr > 0:
+                vel_dir = "RS-Ratio tăng"
+            elif dm > 0:
+                vel_dir = "RS-Mom tăng"
+            else:
+                vel_dir = "giảm cả 2 trục"
+        tickers_context.append(
+            {
+                "ticker": t.ticker,
+                "quadrant": t.quadrant,
+                "rs_ratio": t.rs_ratio,
+                "rs_momentum": t.rs_momentum,
+                "velocity_dir": vel_dir,
+                "pct": pnl_map.get(t.ticker),
+            }
+        )
 
     # 5. Call AI agent
-    agent   = RRGChartSummaryAgent(ai_client=ai_client)  # type: ignore[arg-type]
+    agent = RRGChartSummaryAgent(ai_client=ai_client)  # type: ignore[arg-type]
     summary = await agent.analyze(
         tickers_context=tickers_context,
         held_tickers=list(held_set),
     )
 
     response: dict[str, Any] = {
-        "market_read":     summary.market_read,
+        "market_read": summary.market_read,
         "portfolio_alert": summary.portfolio_alert,
-        "rotate_from":     summary.rotate_from,
-        "rotate_to":       summary.rotate_to,
-        "rotate_reason":   summary.rotate_reason,
-        "opportunities":   [{"ticker": o.ticker, "insight": o.insight, "action": o.action} for o in summary.opportunities],
-        "risks":           [{"ticker": r.ticker, "insight": r.insight, "action": r.action} for r in summary.risks],
+        "rotate_from": summary.rotate_from,
+        "rotate_to": summary.rotate_to,
+        "rotate_reason": summary.rotate_reason,
+        "opportunities": [
+            {"ticker": o.ticker, "insight": o.insight, "action": o.action}
+            for o in summary.opportunities
+        ],
+        "risks": [
+            {"ticker": r.ticker, "insight": r.insight, "action": r.action} for r in summary.risks
+        ],
     }
     _summary_cache.set("rrg_chart_summary", user_id, response, ttl=_SUMMARY_TTL)
     return response

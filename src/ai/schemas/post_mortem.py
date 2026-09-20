@@ -16,9 +16,7 @@ PostMortemVerdict = Literal["CORRECT", "INCORRECT", "MIXED", "INCONCLUSIVE"]
 class PostMortemOutput(BaseModel):
     """AI-extracted lesson after a thesis closes."""
 
-    lesson: str = Field(
-        description="1-2 câu súc tích rút ra bài học cụ thể từ thesis này."
-    )
+    lesson: str = Field(description="1-2 câu súc tích rút ra bài học cụ thể từ thesis này.")
     pattern: str = Field(
         description=(
             "Nhãn pattern hành vi nhà đầu tư dạng snake_case. "
@@ -26,9 +24,7 @@ class PostMortemOutput(BaseModel):
             "stop_loss_discipline, overconfidence, position_sizing_error."
         )
     )
-    verdict: PostMortemVerdict = Field(
-        description="Đánh giá tổng thể về quyết định đầu tư."
-    )
+    verdict: PostMortemVerdict = Field(description="Đánh giá tổng thể về quyết định đầu tư.")
     confidence: float = Field(
         ge=0.0,
         le=1.0,

@@ -218,9 +218,7 @@ class ReviewService:
             thesis_id=thesis_id,
             verdict=review.verdict,
             confidence=review.confidence,
-            verdict_flipped=(
-                prev_verdict is not None and review.verdict != prev_verdict
-            ),
+            verdict_flipped=(prev_verdict is not None and review.verdict != prev_verdict),
             recommendation_count=(
                 len(output.assumption_recommendations) + len(output.catalyst_recommendations)
             ),
@@ -366,16 +364,14 @@ class ReviewService:
 
             sorted_theses = sorted(
                 theses,
-                key=lambda t: (0 if t.ticker in high_exposure else 1),
+                key=lambda t: 0 if t.ticker in high_exposure else 1,
             )
 
             logger.info(
                 "review_service.stale_review.portfolio_sort_applied",
                 user_id=user_id,
                 high_exposure_tickers=sorted(high_exposure),
-                prioritised=[
-                    t.ticker for t in sorted_theses if t.ticker in high_exposure
-                ],
+                prioritised=[t.ticker for t in sorted_theses if t.ticker in high_exposure],
             )
             return sorted_theses
 
@@ -725,7 +721,10 @@ class ReviewService:
         if not user_id:
             return
         try:
-            from src.ai.memory.memory_service import InteractionEntry, MemoryService  # noqa: PLC0415
+            from src.ai.memory.memory_service import (  # noqa: PLC0415
+                InteractionEntry,
+                MemoryService,
+            )
 
             await MemoryService.log_interaction(
                 session=self._session,

@@ -12,7 +12,6 @@ from datetime import datetime
 
 from src.thesis.models import AssumptionStatus, CatalystStatus, ThesisDirection
 
-
 # ---------------------------------------------------------------------------
 # Input DTOs
 # ---------------------------------------------------------------------------

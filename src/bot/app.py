@@ -74,16 +74,18 @@ def create_bot() -> commands.Bot:
             _start_invalidation_subscriber(bot)
             _start_trend_shift_subscriber(bot)
             _start_stress_test_subscriber(bot)
-            _start_position_risk_subscriber(bot)           # portfolio loss threshold → Discord
-            _start_proactive_discovery_subscriber(bot)        # AI market scan → ranked picks → Discord
-            _start_proactive_discovery_scheduler(bot)         # triggers 09:30 ICT weekdays
-            _start_trend_batch_scheduler(bot)                 # pre-compute trend verdicts 06:45 ICT
-            _start_agenda_builder_scheduler(bot)               # build daily agenda 07:30 ICT
-            _start_portfolio_snapshot_scheduler(bot)           # portfolio snapshot 08:15 ICT
-            _start_investor_profile_scheduler(bot)             # investor profile snapshot 08:20 ICT
-            _start_eod_portfolio_snapshot_scheduler(bot)       # EOD P&L snapshot 15:20 ICT
-            _start_signal_engine_scheduler(bot)                # signal engine 08:40 + 15:10 ICT
-            _wire_feedback_loop_monitor(bot)                    # FeedbackLoopMonitor — sliding-window error rate alert
+            _start_position_risk_subscriber(bot)  # portfolio loss threshold → Discord
+            _start_proactive_discovery_subscriber(bot)  # AI market scan → ranked picks → Discord
+            _start_proactive_discovery_scheduler(bot)  # triggers 09:30 ICT weekdays
+            _start_trend_batch_scheduler(bot)  # pre-compute trend verdicts 06:45 ICT
+            _start_agenda_builder_scheduler(bot)  # build daily agenda 07:30 ICT
+            _start_portfolio_snapshot_scheduler(bot)  # portfolio snapshot 08:15 ICT
+            _start_investor_profile_scheduler(bot)  # investor profile snapshot 08:20 ICT
+            _start_eod_portfolio_snapshot_scheduler(bot)  # EOD P&L snapshot 15:20 ICT
+            _start_signal_engine_scheduler(bot)  # signal engine 08:40 + 15:10 ICT
+            _wire_feedback_loop_monitor(
+                bot
+            )  # FeedbackLoopMonitor — sliding-window error rate alert
             logger.info(
                 "bot.ready",
                 user=str(bot.user),
@@ -175,17 +177,33 @@ async def _register_cogs(bot: commands.Bot) -> None:
     logger.info(
         "bot.cogs_loaded",
         cogs=[
-            "WatchlistCog", "ThesisCrudCog", "ThesisReviewCog", "DebateCog",
-            "MarketCog", "BriefingCog", "HelpCog", "WhyCog", "PretradeCog",
-            "ConvictionTimelineCog", "PortfolioCog", "StressTestCog",
-            "DecisionCog", "SchedulerTriggerCog", "HealthCog", "SectorRotationCog",
-            "MemoryCog", "TrendCog", "ReviewsCog", "IntelCog",
+            "WatchlistCog",
+            "ThesisCrudCog",
+            "ThesisReviewCog",
+            "DebateCog",
+            "MarketCog",
+            "BriefingCog",
+            "HelpCog",
+            "WhyCog",
+            "PretradeCog",
+            "ConvictionTimelineCog",
+            "PortfolioCog",
+            "StressTestCog",
+            "DecisionCog",
+            "SchedulerTriggerCog",
+            "HealthCog",
+            "SectorRotationCog",
+            "MemoryCog",
+            "TrendCog",
+            "ReviewsCog",
+            "IntelCog",
         ],
     )
 
 
 def _inject_briefing_listener(bot: commands.Bot) -> None:
     from src.platform.bootstrap import get_briefing_listener
+
     listener = get_briefing_listener()
     if listener is not None:
         listener.set_client(bot)
@@ -199,6 +217,7 @@ def _inject_briefing_listener(bot: commands.Bot) -> None:
 
 def _inject_intelligence_engine_subscriber(bot: commands.Bot) -> None:
     from src.platform.bootstrap import get_intelligence_engine_subscriber
+
     subscriber = get_intelligence_engine_subscriber()
     if subscriber is not None:
         subscriber.set_client(bot)
@@ -212,30 +231,35 @@ def _inject_intelligence_engine_subscriber(bot: commands.Bot) -> None:
 
 def _start_briefing_scheduler(bot: commands.Bot) -> None:
     from src.bot.scheduler import BriefingScheduler
+
     scheduler = BriefingScheduler(bot)
     scheduler.start()
 
 
 def _start_scan_scheduler(bot: commands.Bot) -> None:
     from src.bot.scheduler import WatchlistScanScheduler
+
     scheduler = WatchlistScanScheduler(bot)
     scheduler.start()
 
 
 def _start_thesis_maintenance_scheduler(bot: commands.Bot) -> None:
     from src.bot.scheduler import ThesisMaintenanceScheduler
+
     scheduler = ThesisMaintenanceScheduler(bot)
     scheduler.start()
 
 
 def _start_drift_scheduler(bot: commands.Bot) -> None:
     from src.bot.scheduler import ThesisDriftScheduler
+
     scheduler = ThesisDriftScheduler(bot)
     scheduler.start()
 
 
 def _start_snapshot_scheduler() -> None:
     from src.platform.bootstrap import get_snapshot_scheduler
+
     scheduler = get_snapshot_scheduler()
     if scheduler is None:
         logger.warning(
@@ -248,25 +272,28 @@ def _start_snapshot_scheduler() -> None:
 
 def _start_reminder_scheduler(bot: commands.Bot) -> None:
     from src.bot.scheduler import ReminderScheduler
+
     scheduler = ReminderScheduler(bot)
     scheduler.start()
 
 
 def _start_outcome_filler_scheduler(bot: commands.Bot) -> None:
     from src.bot.scheduler import OutcomeFillerScheduler
+
     scheduler = OutcomeFillerScheduler(bot)
     scheduler.start()
 
 
 def _start_decision_replay_scheduler(bot: commands.Bot) -> None:
     from src.bot.scheduler import DecisionReplayScheduler
+
     scheduler = DecisionReplayScheduler(bot)
     scheduler.start()
 
 
 def _start_memory_consolidator_scheduler(bot: commands.Bot) -> None:
-    from src.platform.bootstrap import get_memory_consolidator
     from src.bot.scheduler import MemoryConsolidatorScheduler
+    from src.platform.bootstrap import get_memory_consolidator
 
     if get_memory_consolidator() is None:
         logger.warning(
@@ -281,12 +308,14 @@ def _start_memory_consolidator_scheduler(bot: commands.Bot) -> None:
 
 def _start_recommendation_listener(bot: commands.Bot) -> None:
     from src.bot.recommendation_listener import RecommendationListener
+
     listener = RecommendationListener(bot)
     listener.register()
 
 
 def _start_opportunity_analysis_subscriber(bot: commands.Bot) -> None:
     from src.bot.opportunity_analysis_subscriber import OpportunityAnalysisSubscriber
+
     subscriber = OpportunityAnalysisSubscriber(bot)
     subscriber.register()
 
@@ -316,6 +345,7 @@ def _start_opportunity_screen_scheduler(bot: commands.Bot) -> None:
 
 def _start_proactive_watch_scheduler(bot: commands.Bot) -> None:
     from src.bot.scheduler import ProactiveWatchScheduler
+
     scheduler = ProactiveWatchScheduler(bot)
     scheduler.start()
 
@@ -340,9 +370,8 @@ def _start_proactive_watch_subscriber(bot: commands.Bot) -> None:
 def _start_post_mortem_subscriber(bot: commands.Bot) -> None:
     from src.bot.post_mortem_subscriber import PostMortemSubscriber
 
-    channel_id = (
-        getattr(settings, "decision_channel_id", None)
-        or getattr(settings, "morning_channel_id", None)
+    channel_id = getattr(settings, "decision_channel_id", None) or getattr(
+        settings, "morning_channel_id", None
     )
     if not channel_id:
         logger.warning(
@@ -359,6 +388,7 @@ def _start_post_mortem_subscriber(bot: commands.Bot) -> None:
 
 def _start_intelligence_engine_scheduler(bot: commands.Bot) -> None:
     from src.bot.scheduler import IntelligenceEngineScheduler
+
     scheduler = IntelligenceEngineScheduler(bot)
     scheduler.start()
     logger.info("bot.intelligence_engine_scheduler.started")
@@ -366,6 +396,7 @@ def _start_intelligence_engine_scheduler(bot: commands.Bot) -> None:
 
 def _start_signal_reaction_listener(bot: commands.Bot) -> None:
     from src.bot.signal_reaction_listener import SignalReactionListener
+
     listener = SignalReactionListener(bot)
     listener.register()
 
@@ -406,6 +437,7 @@ def _start_trend_prediction_subscriber(bot: commands.Bot) -> None:
 
 def _start_evolution_scheduler(bot: commands.Bot) -> None:
     from src.bot.scheduled.evolution_job import EvolutionScheduler
+
     scheduler = EvolutionScheduler(bot)
     scheduler.start()
     logger.info("bot.evolution_scheduler.started")
@@ -508,6 +540,7 @@ def _start_proactive_discovery_subscriber(bot: commands.Bot) -> None:
 def _start_proactive_discovery_scheduler(bot: commands.Bot) -> None:
     """Start ProactiveDiscoveryScheduler — fires 09:30 ICT (02:30 UTC) on weekdays."""
     from src.bot.scheduler import ProactiveDiscoveryScheduler
+
     scheduler = ProactiveDiscoveryScheduler(bot)
     scheduler.start()
     logger.info("bot.proactive_discovery_scheduler.started")
@@ -546,8 +579,6 @@ def _start_position_risk_subscriber(bot: commands.Bot) -> None:
     logger.info("bot.position_risk_subscriber.registered", channel_id=channel_id)
 
 
-
-
 def _start_agenda_builder_scheduler(bot: commands.Bot) -> None:
     """Start AgendaBuilderScheduler — 07:30 ICT weekdays.
 
@@ -556,6 +587,7 @@ def _start_agenda_builder_scheduler(bot: commands.Bot) -> None:
     briefing/service.py reads DailyAgendaResult via AgendaService.get_latest_agenda().
     """
     from src.bot.scheduler import AgendaBuilderScheduler
+
     scheduler = AgendaBuilderScheduler(bot)
     scheduler.start()
     logger.info("bot.agenda_builder_scheduler.started")
@@ -568,6 +600,7 @@ def _start_portfolio_snapshot_scheduler(bot: commands.Bot) -> None:
     builds PortfolioSnapshotReadyEvent before IntelligenceEngine (08:35 ICT).
     """
     from src.bot.scheduler import PortfolioSnapshotScheduler
+
     scheduler = PortfolioSnapshotScheduler(bot)
     scheduler.start()
     logger.info("bot.portfolio_snapshot_scheduler.started")
@@ -580,6 +613,7 @@ def _start_investor_profile_scheduler(bot: commands.Bot) -> None:
     BriefingScheduler (08:30) so morning brief has fresh profile context.
     """
     from src.bot.scheduler import InvestorProfileScheduler
+
     scheduler = InvestorProfileScheduler(bot)
     scheduler.start()
     logger.info("bot.investor_profile_scheduler.started")
@@ -592,9 +626,11 @@ def _start_signal_engine_scheduler(bot: commands.Bot) -> None:
     and TrendEngineListener (trend prediction pipeline).
     """
     from src.bot.scheduler import SignalEngineScheduler
+
     scheduler = SignalEngineScheduler(bot)
     scheduler.start()
     logger.info("bot.signal_engine_scheduler.started")
+
 
 def _start_trend_batch_scheduler(bot: commands.Bot) -> None:
     """Start TrendBatchPrecomputeScheduler — 06:45 ICT weekdays.
@@ -646,6 +682,7 @@ def _start_eod_portfolio_snapshot_scheduler(bot: commands.Bot) -> None:
     Catch-up: runs immediately on start if today's snapshot is missing (after 15:20 ICT).
     """
     from src.bot.scheduler import EodPortfolioSnapshotScheduler
+
     scheduler = EodPortfolioSnapshotScheduler(bot)
     scheduler.start()
     logger.info("bot.eod_portfolio_snapshot_scheduler.started")

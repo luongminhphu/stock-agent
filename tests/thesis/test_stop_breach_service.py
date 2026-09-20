@@ -32,6 +32,7 @@ def _session_with(positions: list, theses: list):
 
                 def all(self):
                     return self._r
+
             return _S(self._rows)
 
     async def _execute(stmt):
@@ -54,8 +55,11 @@ def _quote_service(price: float):
 @pytest.mark.anyio
 async def test_load_position_locks_maps_ticker():
     pos = SimpleNamespace(
-        ticker="HPG", qty=8000.0, locked_qty=3000.0,
-        locked_reason="esop", locked_until=datetime.date(2026, 12, 31),
+        ticker="HPG",
+        qty=8000.0,
+        locked_qty=3000.0,
+        locked_reason="esop",
+        locked_until=datetime.date(2026, 12, 31),
     )
     sess = _session_with([pos], theses=[])
     svc = StopBreachService(session=sess, quote_service=_quote_service(20000.0))
@@ -69,21 +73,32 @@ async def test_load_position_locks_maps_ticker():
 async def test_outcome_carries_lock_fields():
     """Khi _process gặp thesis breach và lock object được truyền, outcome
     phải mang đủ locked_qty/sellable_qty để downstream đổi messaging."""
-    from src.thesis.models import Thesis, ThesisStatus
+    from src.thesis.models import ThesisStatus
 
     thesis = SimpleNamespace(
-        id=7, user_id="u1", ticker="HPG", stop_loss=23000.0,
-        score=40.0, status=ThesisStatus.ACTIVE, updated_at=None,
-        assumptions=[], closed_at=None,
+        id=7,
+        user_id="u1",
+        ticker="HPG",
+        stop_loss=23000.0,
+        score=40.0,
+        status=ThesisStatus.ACTIVE,
+        updated_at=None,
+        assumptions=[],
+        closed_at=None,
     )
     pos = SimpleNamespace(
-        ticker="HPG", qty=8000.0, locked_qty=8000.0,
-        locked_reason="esop", locked_until=None,
+        ticker="HPG",
+        qty=8000.0,
+        locked_qty=8000.0,
+        locked_reason="esop",
+        locked_until=None,
     )
     sess = _session_with([pos], theses=[thesis])
     svc = StopBreachService(
-        session=sess, quote_service=_quote_service(21000.0),
-        detector=None, enabled=False,   # observe-only: không AI, không mutate
+        session=sess,
+        quote_service=_quote_service(21000.0),
+        detector=None,
+        enabled=False,  # observe-only: không AI, không mutate
     )
 
     # Trực tiếp gọi _process với lock để tránh quét scheme đầy đủ của scan()

@@ -24,18 +24,18 @@ if TYPE_CHECKING:
 # they encode conviction trajectory semantics, not market direction.
 # Do not replace with COLORS.* — they carry different meaning.
 TREND_META: dict[str, tuple[str, int]] = {
-    "improving":         ("\U0001f4c8 Improving",        0x27AE60),
-    "declining":         ("\U0001f4c9 Declining",        0xE74C3C),
-    "stable":            ("\u27a1\ufe0f Stable",          0x3498DB),
-    "insufficient_data": ("\u26aa Insufficient data",    COLORS.GREY),
+    "improving": ("\U0001f4c8 Improving", 0x27AE60),
+    "declining": ("\U0001f4c9 Declining", 0xE74C3C),
+    "stable": ("\u27a1\ufe0f Stable", 0x3498DB),
+    "insufficient_data": ("\u26aa Insufficient data", COLORS.GREY),
 }
 
 TIER_ICON: dict[str, str] = {
     "Critical": "\U0001f534",
-    "Weak":     "\U0001f7e0",
+    "Weak": "\U0001f7e0",
     "Moderate": "\U0001f7e1",
-    "Healthy":  "\U0001f7e2",
-    "Strong":   "\U0001f48e",
+    "Healthy": "\U0001f7e2",
+    "Strong": "\U0001f48e",
 }
 
 # NOTE: "WATCH" key is intentional — maps to conviction watchlist state,
@@ -44,12 +44,12 @@ VERDICT_ICON: dict[str, str] = {
     "BULLISH": "\U0001f7e2",
     "BEARISH": "\U0001f534",
     "NEUTRAL": "\U0001f7e1",
-    "WATCH":   "\U0001f440",
+    "WATCH": "\U0001f440",
 }
 
 _BAR_FILLED = "\u2588"
-_BAR_EMPTY  = "\u2591"
-_BAR_WIDTH  = 8
+_BAR_EMPTY = "\u2591"
+_BAR_WIDTH = 8
 
 
 # ---------------------------------------------------------------------------
@@ -85,7 +85,7 @@ def _sparkline(scores: list[float]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def build_conviction_embed(result: "ConvictionTimelineResponse") -> discord.Embed:
+def build_conviction_embed(result: ConvictionTimelineResponse) -> discord.Embed:
     """Build a Discord embed from ConvictionTimelineResponse."""
     trend_key = (result.trend or "insufficient_data").lower()
     trend_label, colour = TREND_META.get(trend_key, TREND_META["insufficient_data"])
@@ -141,7 +141,9 @@ def build_conviction_embed(result: "ConvictionTimelineResponse") -> discord.Embe
 
     if latest_pt and latest_pt.verdict:
         v_icon = VERDICT_ICON.get(latest_pt.verdict.upper(), "\u26aa")
-        conf_pct = f"{latest_pt.confidence * 100:.0f}%" if latest_pt.confidence is not None else "\u2014"
+        conf_pct = (
+            f"{latest_pt.confidence * 100:.0f}%" if latest_pt.confidence is not None else "\u2014"
+        )
         ts_str = latest_pt.snapshotted_at.strftime("%d/%m/%Y")
         embed.add_field(
             name="Latest AI verdict",
@@ -151,9 +153,7 @@ def build_conviction_embed(result: "ConvictionTimelineResponse") -> discord.Embe
         embed.add_field(name="Snapshot date", value=ts_str, inline=True)
 
     if latest_pt and latest_pt.price:
-        pnl_str = (
-            f" \u00b7 PnL {latest_pt.pnl_pct:+.1f}%" if latest_pt.pnl_pct is not None else ""
-        )
+        pnl_str = f" \u00b7 PnL {latest_pt.pnl_pct:+.1f}%" if latest_pt.pnl_pct is not None else ""
         embed.add_field(
             name="Price at last snapshot",
             value=f"{latest_pt.price:,.0f} VND{pnl_str}",

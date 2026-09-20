@@ -9,6 +9,7 @@ Domain logic lives in ai/agents/proactive_alert_agent.py.
 
 Wire-up: call RecommendationListener(bot).register() in app.py on_ready.
 """
+
 from __future__ import annotations
 
 import discord

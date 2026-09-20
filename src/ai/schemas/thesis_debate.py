@@ -8,6 +8,7 @@ Distinct from ThesisJudgeOutput:
   - JudgeOutput: verdict + conviction_delta for auto-triggered signal cross-check.
   - DebateOutput: structured adversarial challenges for user-initiated deep review.
 """
+
 from __future__ import annotations
 
 from enum import StrEnum
@@ -16,16 +17,16 @@ from pydantic import BaseModel, Field
 
 
 class ChallengeStrength(StrEnum):
-    CRITICAL = "critical"       # Must resolve before acting — thesis may be wrong at core
-    SIGNIFICANT = "significant" # Meaningfully weakens the thesis
-    MODERATE = "moderate"       # Worth addressing; manageable risk
-    MINOR = "minor"             # Low concern, can proceed
+    CRITICAL = "critical"  # Must resolve before acting — thesis may be wrong at core
+    SIGNIFICANT = "significant"  # Meaningfully weakens the thesis
+    MODERATE = "moderate"  # Worth addressing; manageable risk
+    MINOR = "minor"  # Low concern, can proceed
 
 
 class OverallStance(StrEnum):
-    BULL = "bull"       # AI finds thesis fundamentally sound
-    BEAR = "bear"       # AI finds thesis fundamentally challenged
-    NEUTRAL = "neutral" # Mixed — valid points on both sides
+    BULL = "bull"  # AI finds thesis fundamentally sound
+    BEAR = "bear"  # AI finds thesis fundamentally challenged
+    NEUTRAL = "neutral"  # Mixed — valid points on both sides
 
 
 class DebateChallenge(BaseModel):
@@ -53,9 +54,7 @@ class DebateOutput(BaseModel):
       - Future: persist as thesis_debate_log for learning loop.
     """
 
-    verdict: str = Field(
-        description="1-2 câu kết luận thẳng thắn từ góc nhìn devil's advocate"
-    )
+    verdict: str = Field(description="1-2 câu kết luận thẳng thắn từ góc nhìn devil's advocate")
     overall_stance: OverallStance
     confidence: float = Field(
         ge=0.0,

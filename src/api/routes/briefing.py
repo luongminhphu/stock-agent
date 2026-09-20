@@ -28,6 +28,7 @@ _VALID_PHASES = frozenset({"morning", "eod"})
 
 # ── READ — dashboard (no AI) ───────────────────────────────────────────────────
 
+
 @router.get("/latest", response_model=BriefResponse)
 async def get_latest_brief(
     phase: str = Query(..., description="morning | eod"),
@@ -72,6 +73,7 @@ async def get_brief_feedback_summary(
 
 # ── GENERATE — explicit AI trigger ────────────────────────────────────────────
 
+
 @router.post("/{phase}/generate", response_model=BriefResponse)
 async def generate_brief(
     phase: str,
@@ -102,6 +104,7 @@ async def generate_brief(
 
 
 # ── BACKWARD COMPAT — bot / scheduler ─────────────────────────────────────────
+
 
 @router.get("/morning", response_model=BriefResponse)
 async def get_morning_brief(
@@ -136,6 +139,7 @@ async def get_eod_brief(
 
 
 # ── FEEDBACK ──────────────────────────────────────────────────────────────────
+
 
 @router.post("/{snapshot_id}/feedback", status_code=204)
 async def post_brief_feedback(

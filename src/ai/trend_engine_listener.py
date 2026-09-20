@@ -24,6 +24,7 @@ Event flow:
         → TrendPredictionStore.save()
         → TrendPredictionCompletedEvent
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -161,17 +162,13 @@ class TrendEngineListener:
 
     async def _analyze_one(self, bundle: Any) -> Any:
         """Run TrendReasoningAgent for a single TechnicalSignalBundle."""
-        thesis_context = await self._fetch_thesis_context(
-            getattr(bundle, "symbol", "")
-        )
+        thesis_context = await self._fetch_thesis_context(getattr(bundle, "symbol", ""))
         return await self._agent.analyze(
             bundle,
             thesis_context=thesis_context,
         )
 
-    async def _emit_completed(
-        self, phase: str, predictions: list[Any]
-    ) -> None:
+    async def _emit_completed(self, phase: str, predictions: list[Any]) -> None:
         top = sorted(
             predictions,
             key=lambda p: getattr(p, "confidence", 0.0),
@@ -180,10 +177,7 @@ class TrendEngineListener:
         event = TrendPredictionCompletedEvent(
             scan_phase=phase,
             symbols_analyzed=len(predictions),
-            top_verdicts=tuple(
-                (getattr(p, "symbol", ""), getattr(p, "verdict", ""))
-                for p in top
-            ),
+            top_verdicts=tuple((getattr(p, "symbol", ""), getattr(p, "verdict", "")) for p in top),
         )
         await get_event_bus().publish(event)
 
@@ -197,14 +191,8 @@ class TrendEngineListener:
         here avoids a direct WatchlistService (session-per-call) import.
         """
         try:
-            outputs = await self._watchlist_query.get_latest_outputs(
-                user_id=user_id
-            )
-            return [
-                o["ticker"]
-                for o in outputs
-                if o.get("ticker")
-            ]
+            outputs = await self._watchlist_query.get_latest_outputs(user_id=user_id)
+            return [o["ticker"] for o in outputs if o.get("ticker")]
         except Exception as exc:
             logger.warning(
                 "trend_engine_listener.watchlist_fetch_failed",

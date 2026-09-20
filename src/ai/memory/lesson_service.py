@@ -86,7 +86,9 @@ class PatternCounter:
         if self.total == 0:
             return ""
 
-        lines = [f"[Behavior Patterns \u2014 last {_LESSON_LOOKBACK_DAYS} days, {self.total} replays analyzed]"]
+        lines = [
+            f"[Behavior Patterns \u2014 last {_LESSON_LOOKBACK_DAYS} days, {self.total} replays analyzed]"
+        ]
         win_pct = f"{self.win_rate:.0%}"
         dom = self.dominant_pattern.value if self.dominant_pattern else "none"
         lines.append(f"Win rate: {win_pct} | Dominant pattern: {dom} ({self.counts.get(dom, 0)}x)")
@@ -138,45 +140,46 @@ class LessonService:
         try:
             from src.platform.db import AsyncSessionLocal  # noqa: PLC0415
 
-            async with AsyncSessionLocal() as session:
-                async with session.begin():
-                    # 1. Build lesson text
-                    lesson_bullets = "\n".join(
-                        f"\u2022 {l}" for l in record.lessons
-                    ) if record.lessons else "(no lessons extracted)"
+            async with AsyncSessionLocal() as session, session.begin():
+                # 1. Build lesson text
+                lesson_bullets = (
+                    "\n".join(f"\u2022 {l}" for l in record.lessons)
+                    if record.lessons
+                    else "(no lessons extracted)"
+                )
 
-                    risk_parts: list[str] = []
-                    if record.pattern_tag:
-                        risk_parts.append(f"pattern: {record.pattern_tag.value}")
-                    if record.exit_reason_assessment:
-                        risk_parts.append(f"exit assessment: {record.exit_reason_assessment}")
-                    risk_text = " | ".join(risk_parts) or None
+                risk_parts: list[str] = []
+                if record.pattern_tag:
+                    risk_parts.append(f"pattern: {record.pattern_tag.value}")
+                if record.exit_reason_assessment:
+                    risk_parts.append(f"exit assessment: {record.exit_reason_assessment}")
+                risk_text = " | ".join(risk_parts) or None
 
-                    # 2. Write AIInteractionLog row
-                    log_row = AIInteractionLog(
-                        user_id=record.user_id,
-                        agent_type=_AGENT_TYPE,
-                        trigger="replay",
-                        ai_verdict=record.outcome_verdict.value,
-                        ai_confidence=1.0,
-                        ai_key_points=lesson_bullets,
-                        ai_risk_signals=risk_text,
-                    )
-                    log_row.tickers = [record.ticker]
-                    repo = InteractionLogRepository(session)
-                    saved_log = await repo.save(log_row)
+                # 2. Write AIInteractionLog row
+                log_row = AIInteractionLog(
+                    user_id=record.user_id,
+                    agent_type=_AGENT_TYPE,
+                    trigger="replay",
+                    ai_verdict=record.outcome_verdict.value,
+                    ai_confidence=1.0,
+                    ai_key_points=lesson_bullets,
+                    ai_risk_signals=risk_text,
+                )
+                log_row.tickers = [record.ticker]
+                repo = InteractionLogRepository(session)
+                saved_log = await repo.save(log_row)
 
-                    # 3. Write UserBehaviorLog row
-                    behavior = UserBehaviorLog(
-                        user_id=record.user_id,
-                        signal="sold",
-                        source="replay",
-                        interaction_log_id=saved_log.id if saved_log else None,
-                        ticker=record.ticker,
-                        agent_type=_AGENT_TYPE,
-                        note=(record.summary[:512] if record.summary else None),
-                    )
-                    session.add(behavior)
+                # 3. Write UserBehaviorLog row
+                behavior = UserBehaviorLog(
+                    user_id=record.user_id,
+                    signal="sold",
+                    source="replay",
+                    interaction_log_id=saved_log.id if saved_log else None,
+                    ticker=record.ticker,
+                    agent_type=_AGENT_TYPE,
+                    note=(record.summary[:512] if record.summary else None),
+                )
+                session.add(behavior)
 
             logger.info(
                 "lesson_service.persist_replay.ok",

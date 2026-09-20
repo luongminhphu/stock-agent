@@ -49,9 +49,7 @@ class StressTestOutput(BaseModel):
     ticker: str
     scenario: str = Field(description="Name/description of the stress scenario tested")
     overall_threat: ThreatLevel
-    threatened_assumptions: list[ThreatenedAssumption] = Field(
-        default_factory=list
-    )
+    threatened_assumptions: list[ThreatenedAssumption] = Field(default_factory=list)
     portfolio_impact_note: str = Field(
         default="",
         description="How this scenario would impact overall portfolio if it materialises",

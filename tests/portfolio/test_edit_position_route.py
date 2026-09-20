@@ -25,9 +25,15 @@ from src.api.deps import get_current_user_id, get_db, get_quote_service
 
 def _fake_position(ticker: str = "HCM") -> SimpleNamespace:
     return SimpleNamespace(
-        id=1, ticker=ticker, qty=57_500.0, avg_cost=14_900.0,
-        thesis_id=None, closed_at=None,
-        locked_qty=0.0, locked_reason=None, locked_until=None,
+        id=1,
+        ticker=ticker,
+        qty=57_500.0,
+        avg_cost=14_900.0,
+        thesis_id=None,
+        closed_at=None,
+        locked_qty=0.0,
+        locked_reason=None,
+        locked_until=None,
     )
 
 
@@ -59,7 +65,9 @@ async def test_edit_returns_200_when_snapshot_refresh_fails():
         # Route gọi get_quote_service() trực tiếp (không qua Depends) →
         # patch tại module route, tránh chạm bootstrap singleton.
         patch.object(
-            portfolio_route, "get_quote_service", return_value=_FakeQuoteSvc(),
+            portfolio_route,
+            "get_quote_service",
+            return_value=_FakeQuoteSvc(),
         ),
         patch(
             "src.portfolio.eod_snapshot_service.EodSnapshotService.refresh_after_trade",
@@ -68,7 +76,8 @@ async def test_edit_returns_200_when_snapshot_refresh_fails():
         ),
     ):
         async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test",
+            transport=ASGITransport(app=app),
+            base_url="http://test",
         ) as client:
             r = await client.put(
                 "/api/v1/portfolio/positions/HCM",
@@ -150,7 +159,9 @@ async def test_edit_with_locked_fields_returns_them_in_response():
             return_value=locked_pos,
         ) as svc_mock,
         patch.object(
-            portfolio_route, "get_quote_service", return_value=_FakeQuoteSvc(),
+            portfolio_route,
+            "get_quote_service",
+            return_value=_FakeQuoteSvc(),
         ),
         patch(
             "src.portfolio.eod_snapshot_service.EodSnapshotService.refresh_after_trade",
@@ -158,7 +169,8 @@ async def test_edit_with_locked_fields_returns_them_in_response():
         ),
     ):
         async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test",
+            transport=ASGITransport(app=app),
+            base_url="http://test",
         ) as client:
             r = await client.put(
                 "/api/v1/portfolio/positions/HCM",
@@ -188,7 +200,8 @@ async def test_edit_rejects_negative_locked_qty_422():
     app.dependency_overrides[get_current_user_id] = lambda: "user-test-001"
 
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test",
+        transport=ASGITransport(app=app),
+        base_url="http://test",
     ) as client:
         r = await client.put(
             "/api/v1/portfolio/positions/HCM",

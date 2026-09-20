@@ -36,9 +36,7 @@ class TickerDirectionQuery:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def get_direction_map(
-        self, user_id: str, tickers: list[str]
-    ) -> dict[str, str]:
+    async def get_direction_map(self, user_id: str, tickers: list[str]) -> dict[str, str]:
         """Return {ticker: 'bull'|'bear'} for tickers that have an active BULLISH/BEARISH thesis.
 
         Tickers with no active thesis, or with NEUTRAL direction, are omitted.

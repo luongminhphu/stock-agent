@@ -74,17 +74,11 @@ class UserBehaviorLog(Base):
     )
 
     # Denormalised context (avoids join for common queries)
-    ticker: Mapped[str | None] = mapped_column(
-        String(16), nullable=True, index=True
-    )
-    agent_type: Mapped[str | None] = mapped_column(
-        String(64), nullable=True
-    )
+    ticker: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    agent_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     # Optional free-text note (e.g. from /signal command)
-    note: Mapped[str | None] = mapped_column(
-        String(512), nullable=True
-    )
+    note: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True

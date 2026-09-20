@@ -30,14 +30,15 @@ router = APIRouter(prefix="/trend", tags=["trend"])
 _cache: DashboardTTLCache = DashboardTTLCache()
 
 # TTL constants (seconds)
-_TTL_MARKET_OPEN  = 30 * 60   # 30 min — daily OHLCV stable within session
-_TTL_MARKET_CLOSE = 4  * 60 * 60  # 4 h  — data static until next open
+_TTL_MARKET_OPEN = 30 * 60  # 30 min — daily OHLCV stable within session
+_TTL_MARKET_CLOSE = 4 * 60 * 60  # 4 h  — data static until next open
 
 
 def _trend_ttl() -> int:
     """Return cache TTL based on current market hours."""
     try:
         from src.platform.bootstrap import get_quote_service
+
         guard = get_quote_service()._guard
         return _TTL_MARKET_OPEN if guard.is_market_open() else _TTL_MARKET_CLOSE
     except Exception:

@@ -33,6 +33,7 @@ Boot::
     from src.core.user_action_listener import UserActionFeedbackListener
     UserActionFeedbackListener().register()
 """
+
 from __future__ import annotations
 
 from math import ceil
@@ -210,7 +211,9 @@ class UserActionFeedbackListener:
                 "user_action_listener.thesis_adapter_unavailable",
                 hint="ThesisService not importable from src.thesis.service",
             )
-            await get_feedback_monitor().record_error(ADAPTER_THESIS, "ImportError: ThesisService unavailable")
+            await get_feedback_monitor().record_error(
+                ADAPTER_THESIS, "ImportError: ThesisService unavailable"
+            )
         except Exception as exc:
             logger.error(
                 "user_action_listener.thesis_close_failed",
@@ -252,7 +255,9 @@ class UserActionFeedbackListener:
                 "user_action_listener.thesis_adapter_unavailable",
                 hint="ThesisService not importable from src.thesis.service",
             )
-            await get_feedback_monitor().record_error(ADAPTER_THESIS, "ImportError: ThesisService unavailable")
+            await get_feedback_monitor().record_error(
+                ADAPTER_THESIS, "ImportError: ThesisService unavailable"
+            )
         except Exception as exc:
             logger.error(
                 "user_action_listener.thesis_touch_reviewed_failed",
@@ -283,7 +288,9 @@ class UserActionFeedbackListener:
                 "user_action_listener.watchlist_adapter_unavailable",
                 hint="WatchlistService not importable from src.watchlist.service",
             )
-            await get_feedback_monitor().record_error(ADAPTER_WATCHLIST, "ImportError: WatchlistService unavailable")
+            await get_feedback_monitor().record_error(
+                ADAPTER_WATCHLIST, "ImportError: WatchlistService unavailable"
+            )
         except Exception as exc:
             logger.error(
                 "user_action_listener.watchlist_deprioritize_failed",
@@ -325,7 +332,9 @@ class UserActionFeedbackListener:
                 "user_action_listener.watchlist_adapter_unavailable",
                 hint="WatchlistService not importable from src.watchlist.service",
             )
-            await get_feedback_monitor().record_error(ADAPTER_WATCHLIST, "ImportError: WatchlistService unavailable")
+            await get_feedback_monitor().record_error(
+                ADAPTER_WATCHLIST, "ImportError: WatchlistService unavailable"
+            )
         except Exception as exc:
             logger.error(
                 "user_action_listener.watchlist_track_failed",
@@ -362,7 +371,9 @@ class UserActionFeedbackListener:
                 "user_action_listener.watchlist_adapter_unavailable",
                 hint="WatchlistService not importable from src.watchlist.service",
             )
-            await get_feedback_monitor().record_error(ADAPTER_WATCHLIST, "ImportError: WatchlistService unavailable")
+            await get_feedback_monitor().record_error(
+                ADAPTER_WATCHLIST, "ImportError: WatchlistService unavailable"
+            )
         except Exception as exc:
             logger.error(
                 "user_action_listener.mute_alert_failed",
@@ -399,7 +410,9 @@ class UserActionFeedbackListener:
                 "user_action_listener.watchlist_adapter_unavailable",
                 hint="WatchlistService not importable from src.watchlist.service",
             )
-            await get_feedback_monitor().record_error(ADAPTER_WATCHLIST, "ImportError: WatchlistService unavailable")
+            await get_feedback_monitor().record_error(
+                ADAPTER_WATCHLIST, "ImportError: WatchlistService unavailable"
+            )
         except Exception as exc:
             logger.error(
                 "user_action_listener.watchlist_snooze_failed",
@@ -439,9 +452,7 @@ class UserActionFeedbackListener:
         try:
             from src.ai.memory.user_behavior_log import UserBehaviorLog
 
-            signal = _ACTION_TO_SIGNAL.get(
-                event.action_type, event.action_type.lower()
-            )
+            signal = _ACTION_TO_SIGNAL.get(event.action_type, event.action_type.lower())
 
             async with get_session() as session:
                 session.add(
@@ -467,7 +478,9 @@ class UserActionFeedbackListener:
                 "user_action_listener.memory_adapter_unavailable",
                 hint="UserBehaviorLog not importable from src.ai.memory.user_behavior_log",
             )
-            await get_feedback_monitor().record_error(ADAPTER_MEMORY, "ImportError: UserBehaviorLog unavailable")
+            await get_feedback_monitor().record_error(
+                ADAPTER_MEMORY, "ImportError: UserBehaviorLog unavailable"
+            )
         except Exception as exc:
             logger.error(
                 "user_action_listener.memory_record_failed",

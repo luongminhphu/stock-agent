@@ -30,6 +30,7 @@ from discord.ext import commands
 from src.bot.commands.base import BaseCog
 from src.platform.bootstrap import get_quote_service
 from src.portfolio.models import DividendType
+from src.portfolio.pnl_service import PnlService
 from src.portfolio.service import (
     InsufficientQtyError,
     InvalidOperationError,
@@ -37,7 +38,6 @@ from src.portfolio.service import (
     PositionNotFoundError,
     TradeNotFoundError,
 )
-from src.portfolio.pnl_service import PnlService
 from src.portfolio.trade_usecase import TradeUseCase
 from src.readmodel.dashboard_service import DashboardService
 
@@ -139,7 +139,9 @@ class PortfolioCog(BaseCog):
         if result.thesis_auto_wired:
             embed.add_field(name="Thesis", value="🔗 Auto-linked từ thesis active", inline=True)
         elif thesis_id:
-            decision_hint = "✅ DecisionLog đã ghi" if result.decision_logged else "⚠️ DecisionLog thất bại"
+            decision_hint = (
+                "✅ DecisionLog đã ghi" if result.decision_logged else "⚠️ DecisionLog thất bại"
+            )
             embed.add_field(name="Decision Log", value=decision_hint, inline=True)
         if note:
             embed.add_field(name="Ghi chú", value=note, inline=False)
@@ -221,11 +223,11 @@ class PortfolioCog(BaseCog):
             inline=True,
         )
         if not result.position_closed:
-            embed.add_field(
-                name="Còn giữ", value=f"{result.position_qty:,.0f} cổ", inline=True
-            )
+            embed.add_field(name="Còn giữ", value=f"{result.position_qty:,.0f} cổ", inline=True)
         if thesis_id:
-            decision_hint = "✅ DecisionLog đã ghi" if result.decision_logged else "⚠️ DecisionLog thất bại"
+            decision_hint = (
+                "✅ DecisionLog đã ghi" if result.decision_logged else "⚠️ DecisionLog thất bại"
+            )
             embed.add_field(name="Decision Log", value=decision_hint, inline=True)
         if note:
             embed.add_field(name="Ghi chú", value=note, inline=False)
@@ -277,7 +279,9 @@ class PortfolioCog(BaseCog):
         )
         embed.add_field(name="Số cổ", value=f"{trade.qty:,.0f}", inline=True)
         embed.add_field(name="Giá mua mới", value=self.fmt_vnd(trade.price), inline=True)
-        embed.add_field(name="Giá vốn TB sau sửa", value=self.fmt_vnd(position.avg_cost), inline=True)
+        embed.add_field(
+            name="Giá vốn TB sau sửa", value=self.fmt_vnd(position.avg_cost), inline=True
+        )
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     # ------------------------------------------------------------------
@@ -344,6 +348,7 @@ class PortfolioCog(BaseCog):
 
                 # Validate thesis ownership + ticker match
                 from src.thesis.models import Thesis  # noqa: PLC0415
+
                 thesis = await session.get(Thesis, thesis_id)
                 if thesis is None:
                     await self.send_error(
@@ -540,7 +545,9 @@ class PortfolioCog(BaseCog):
         user_id = self.user_id(interaction)
 
         if qty <= 0 or dividend_per_share <= 0:
-            await self.send_error(interaction, "Giá trị không hợp lệ", "qty và dividend_per_share phải > 0")
+            await self.send_error(
+                interaction, "Giá trị không hợp lệ", "qty và dividend_per_share phải > 0"
+            )
             return
 
         try:
@@ -561,7 +568,9 @@ class PortfolioCog(BaseCog):
         total = record.qty * record.dividend_per_share
         embed = discord.Embed(title=f"💰 Cổ tức {record.ticker}", color=0x4F98A3)
         embed.add_field(name="Số cổ", value=f"{record.qty:,.0f}", inline=True)
-        embed.add_field(name="Cổ tức/cp", value=self.fmt_vnd(record.dividend_per_share), inline=True)
+        embed.add_field(
+            name="Cổ tức/cp", value=self.fmt_vnd(record.dividend_per_share), inline=True
+        )
         embed.add_field(name="Tổng nhận", value=self.fmt_vnd(total), inline=True)
         if note:
             embed.add_field(name="Ghi chú", value=note, inline=False)
@@ -603,7 +612,11 @@ class PortfolioCog(BaseCog):
         lines: list[str] = []
         for p in sorted(pnl.positions, key=lambda x: -(x.market_value or 0)):
             pnl_icon = "🟢" if (p.unrealized_pct or 0) >= 0 else "🔴"
-            pnl_str = f"{pnl_icon} {self.fmt_pct(p.unrealized_pct / 100)}" if p.unrealized_pct is not None else "⚪"
+            pnl_str = (
+                f"{pnl_icon} {self.fmt_pct(p.unrealized_pct / 100)}"
+                if p.unrealized_pct is not None
+                else "⚪"
+            )
             thesis_str = f" | thesis #{p.thesis_id}" if p.thesis_id else ""
             lines.append(
                 f"**{p.ticker}** {p.qty:,.0f}cp @ {self.fmt_vnd(p.avg_cost)} → {self.fmt_vnd(p.current_price or 0)} {pnl_str}{thesis_str}"
@@ -706,11 +719,15 @@ class PortfolioCog(BaseCog):
         embed.add_field(name="Đang lỗ", value=str(losing), inline=True)
 
         if data.get("total_market_value"):
-            embed.add_field(name="Thị giá", value=self.fmt_vnd(data["total_market_value"]), inline=True)
+            embed.add_field(
+                name="Thị giá", value=self.fmt_vnd(data["total_market_value"]), inline=True
+            )
         if data.get("total_cost_basis"):
             embed.add_field(name="Vốn", value=self.fmt_vnd(data["total_cost_basis"]), inline=True)
         if not data.get("has_quantity_data"):
-            embed.set_footer(text="⚠️ Một số thesis chưa có quantity — thị giá/vốn có thể không đầy đủ")
+            embed.set_footer(
+                text="⚠️ Một số thesis chưa có quantity — thị giá/vốn có thể không đầy đủ"
+            )
         elif footer:
             embed.set_footer(text=footer)
 
@@ -753,11 +770,7 @@ class PortfolioCog(BaseCog):
                 icon = "🟢"
             else:
                 icon = "🟢" if (t.realized_pnl or 0) >= 0 else "🔴"
-            pnl_str = (
-                f" | P&L {self.fmt_vnd(t.realized_pnl)}"
-                if t.realized_pnl is not None
-                else ""
-            )
+            pnl_str = f" | P&L {self.fmt_vnd(t.realized_pnl)}" if t.realized_pnl is not None else ""
             date_str = t.traded_at.strftime("%d/%m %H:%M") if t.traded_at else "?"
             trade_id_hint = f" `#{t.id}`" if is_buy else ""
             if is_adjust:
@@ -784,11 +797,16 @@ class PortfolioCog(BaseCog):
         title = f"📜 Lịch sử{f' {ticker.upper()}' if ticker else ''}"
         embed = discord.Embed(title=title, description=body, color=0x4F98A3)
         embed.add_field(name="Tổng kết", value=summary_line, inline=False)
-        footer_parts = list(filter(None, [
-            footer_hint,
-            f"{summary.total_trades} giao dịch",
-            "BUY trade hiển thị #ID — dùng /correct_trade <id> <new_price> để sửa giá",
-        ]))
+        footer_parts = list(
+            filter(
+                None,
+                [
+                    footer_hint,
+                    f"{summary.total_trades} giao dịch",
+                    "BUY trade hiển thị #ID — dùng /correct_trade <id> <new_price> để sửa giá",
+                ],
+            )
+        )
         embed.set_footer(text=" — ".join(footer_parts))
         await interaction.followup.send(embed=embed, ephemeral=True)
 

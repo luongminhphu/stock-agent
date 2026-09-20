@@ -13,6 +13,7 @@ Sources:
 
 Cached 30s per (user_id, limit).
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -113,21 +114,24 @@ class AttentionService:
                 items.append(item)
 
         async with AsyncSessionLocal() as session:
-
             # ---- Source 1: Triggered alerts --------------------------------
             if _WATCHLIST_MODELS_AVAILABLE:
                 try:
                     alert_rows = (
-                        await session.execute(
-                            select(Alert)
-                            .where(
-                                Alert.user_id == user_id,
-                                Alert.status == AlertStatus.TRIGGERED,
+                        (
+                            await session.execute(
+                                select(Alert)
+                                .where(
+                                    Alert.user_id == user_id,
+                                    Alert.status == AlertStatus.TRIGGERED,
+                                )
+                                .order_by(Alert.triggered_at.desc())
+                                .limit(50)
                             )
-                            .order_by(Alert.triggered_at.desc())
-                            .limit(50)
                         )
-                    ).scalars().all()
+                        .scalars()
+                        .all()
+                    )
 
                     for r in alert_rows:
                         priority = getattr(r, "priority", "medium") or "medium"
@@ -141,21 +145,25 @@ class AttentionService:
                         triggered_at = r.triggered_at or now
                         if triggered_at.tzinfo is None:
                             triggered_at = triggered_at.replace(tzinfo=UTC)
-                        label = getattr(r, "label", None) or str(getattr(r, "condition_type", "alert"))
-                        _add(AttentionItem(
-                            kind="triggered_alert",
-                            ticker=r.ticker,
-                            thesis_id=getattr(r, "thesis_id", None),
-                            message=f"Alert: {label} @ {r.ticker}",
-                            urgency=urgency,
-                            ts=triggered_at,
-                            metadata={
-                                "alert_id": r.id,
-                                "condition_type": str(getattr(r, "condition_type", "")),
-                                "triggered_price": getattr(r, "triggered_price", None),
-                                "threshold": getattr(r, "threshold", None),
-                            },
-                        ))
+                        label = getattr(r, "label", None) or str(
+                            getattr(r, "condition_type", "alert")
+                        )
+                        _add(
+                            AttentionItem(
+                                kind="triggered_alert",
+                                ticker=r.ticker,
+                                thesis_id=getattr(r, "thesis_id", None),
+                                message=f"Alert: {label} @ {r.ticker}",
+                                urgency=urgency,
+                                ts=triggered_at,
+                                metadata={
+                                    "alert_id": r.id,
+                                    "condition_type": str(getattr(r, "condition_type", "")),
+                                    "triggered_price": getattr(r, "triggered_price", None),
+                                    "threshold": getattr(r, "threshold", None),
+                                },
+                            )
+                        )
                 except Exception as exc:
                     logger.warning("attention.source1_alerts.error", error=str(exc), exc_info=True)
 
@@ -207,15 +215,17 @@ class AttentionService:
                             days_overdue = (now - last_reviewed).days
                             msg = f"{row.ticker}: review AI cách đây {days_overdue} ngày"
 
-                        _add(AttentionItem(
-                            kind="overdue_review",
-                            ticker=row.ticker,
-                            thesis_id=row.id,
-                            message=msg,
-                            urgency=AttentionUrgency.HIGH,
-                            ts=last_reviewed or created_at_utc,
-                            metadata={"days_overdue": days_overdue},
-                        ))
+                        _add(
+                            AttentionItem(
+                                kind="overdue_review",
+                                ticker=row.ticker,
+                                thesis_id=row.id,
+                                message=msg,
+                                urgency=AttentionUrgency.HIGH,
+                                ts=last_reviewed or created_at_utc,
+                                metadata={"days_overdue": days_overdue},
+                            )
+                        )
                 except Exception as exc:
                     logger.warning("attention.source2_overdue.error", error=str(exc), exc_info=True)
 
@@ -249,28 +259,34 @@ class AttentionService:
                         expected = row.expected_date
                         if expected is not None:
                             expected = _ensure_utc(expected)
-                        hours_left = round((expected - now).total_seconds() / 3600, 1) if expected else None
+                        hours_left = (
+                            round((expected - now).total_seconds() / 3600, 1) if expected else None
+                        )
                         desc = (row.description or "")[:80]
                         msg = (
                             f"{row.ticker}: catalyst '{desc}' trong {hours_left}h"
                             if hours_left is not None
                             else f"{row.ticker}: catalyst sắp đến hạn"
                         )
-                        _add(AttentionItem(
-                            kind="upcoming_catalyst",
-                            ticker=row.ticker,
-                            thesis_id=row.thesis_id,
-                            message=msg,
-                            urgency=AttentionUrgency.HIGH,
-                            ts=expected or now,
-                            metadata={
-                                "catalyst_id": row.id,
-                                "hours_left": hours_left,
-                                "description": row.description,
-                            },
-                        ))
+                        _add(
+                            AttentionItem(
+                                kind="upcoming_catalyst",
+                                ticker=row.ticker,
+                                thesis_id=row.thesis_id,
+                                message=msg,
+                                urgency=AttentionUrgency.HIGH,
+                                ts=expected or now,
+                                metadata={
+                                    "catalyst_id": row.id,
+                                    "hours_left": hours_left,
+                                    "description": row.description,
+                                },
+                            )
+                        )
                 except Exception as exc:
-                    logger.warning("attention.source3_catalysts.error", error=str(exc), exc_info=True)
+                    logger.warning(
+                        "attention.source3_catalysts.error", error=str(exc), exc_info=True
+                    )
 
             # ---- Source 4: Stop-loss proximity (requires price_map) --------
             if price_map and _THESIS_MODELS_AVAILABLE:
@@ -284,8 +300,7 @@ class AttentionService:
                                 Thesis.stop_loss,
                                 Thesis.direction,
                                 Thesis.created_at,
-                            )
-                            .where(
+                            ).where(
                                 Thesis.user_id == user_id,
                                 Thesis.status == ThesisStatus.ACTIVE,
                                 Thesis.stop_loss != None,  # noqa: E711
@@ -301,53 +316,60 @@ class AttentionService:
                         # nhất, thay cho proximity warning (không còn "sắp chạm").
                         _dir = str(getattr(row.direction, "value", row.direction) or "").upper()
                         breached = (
-                            current >= row.stop_loss if _dir == "BEARISH"
+                            current >= row.stop_loss
+                            if _dir == "BEARISH"
                             else current <= row.stop_loss
                         )
                         if breached:
                             overshoot_pct = abs(current - row.stop_loss) / row.stop_loss * 100
-                            _add(AttentionItem(
-                                kind="stop_loss_breach",
-                                ticker=row.ticker,
-                                thesis_id=row.id,
-                                message=(
-                                    f"{row.ticker}: giá đã XUYÊN stop_loss "
-                                    f"{overshoot_pct:.1f}% "
-                                    f"(giá: {current:,.0f} | SL: {row.stop_loss:,.0f}) "
-                                    f"— thesis #{row.id} cần invalidate hoặc điều chỉnh"
-                                ),
-                                urgency=AttentionUrgency.CRITICAL,
-                                ts=now,
-                                metadata={
-                                    "current_price": current,
-                                    "stop_loss": row.stop_loss,
-                                    "overshoot_pct": round(overshoot_pct, 2),
-                                    "stop_breached": True,
-                                },
-                            ))
+                            _add(
+                                AttentionItem(
+                                    kind="stop_loss_breach",
+                                    ticker=row.ticker,
+                                    thesis_id=row.id,
+                                    message=(
+                                        f"{row.ticker}: giá đã XUYÊN stop_loss "
+                                        f"{overshoot_pct:.1f}% "
+                                        f"(giá: {current:,.0f} | SL: {row.stop_loss:,.0f}) "
+                                        f"— thesis #{row.id} cần invalidate hoặc điều chỉnh"
+                                    ),
+                                    urgency=AttentionUrgency.CRITICAL,
+                                    ts=now,
+                                    metadata={
+                                        "current_price": current,
+                                        "stop_loss": row.stop_loss,
+                                        "overshoot_pct": round(overshoot_pct, 2),
+                                        "stop_breached": True,
+                                    },
+                                )
+                            )
                             continue
 
                         distance_pct = abs(current - row.stop_loss) / row.stop_loss * 100
                         if distance_pct <= _STOP_LOSS_PROXIMITY_PCT:
-                            _add(AttentionItem(
-                                kind="stop_loss_proximity",
-                                ticker=row.ticker,
-                                thesis_id=row.id,
-                                message=(
-                                    f"{row.ticker}: giá hiện tại cách stop_loss "
-                                    f"{distance_pct:.1f}% "
-                                    f"(giá: {current:,.0f} | SL: {row.stop_loss:,.0f})"
-                                ),
-                                urgency=AttentionUrgency.CRITICAL,
-                                ts=now,
-                                metadata={
-                                    "current_price": current,
-                                    "stop_loss": row.stop_loss,
-                                    "distance_pct": round(distance_pct, 2),
-                                },
-                            ))
+                            _add(
+                                AttentionItem(
+                                    kind="stop_loss_proximity",
+                                    ticker=row.ticker,
+                                    thesis_id=row.id,
+                                    message=(
+                                        f"{row.ticker}: giá hiện tại cách stop_loss "
+                                        f"{distance_pct:.1f}% "
+                                        f"(giá: {current:,.0f} | SL: {row.stop_loss:,.0f})"
+                                    ),
+                                    urgency=AttentionUrgency.CRITICAL,
+                                    ts=now,
+                                    metadata={
+                                        "current_price": current,
+                                        "stop_loss": row.stop_loss,
+                                        "distance_pct": round(distance_pct, 2),
+                                    },
+                                )
+                            )
                 except Exception as exc:
-                    logger.warning("attention.source4_stoploss.error", error=str(exc), exc_info=True)
+                    logger.warning(
+                        "attention.source4_stoploss.error", error=str(exc), exc_info=True
+                    )
 
         # Sort: critical → high → medium, stable ts desc within tier
         items.sort(key=lambda x: (_URGENCY_ORDER.get(x.urgency, 99), -(x.ts.timestamp())))

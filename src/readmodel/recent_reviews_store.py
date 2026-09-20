@@ -23,10 +23,11 @@ Query design:
     parsed into list[str] here so callers never need to know storage detail
   - No lazy loads — fully async-safe
 """
+
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -89,7 +90,7 @@ class RecentReviewsStore:
             RecentReviewsResponse with rows sorted newest-first.
         """
         limit = min(limit, 100)
-        since_dt = datetime.now(tz=timezone.utc) - timedelta(hours=since_hours)
+        since_dt = datetime.now(tz=UTC) - timedelta(hours=since_hours)
 
         try:
             async with self._session_factory() as session:
@@ -112,7 +113,7 @@ class RecentReviewsStore:
             user_id=user_id,
             since_hours=since_hours,
             ticker_filter=ticker,
-            generated_at=datetime.now(tz=timezone.utc),
+            generated_at=datetime.now(tz=UTC),
             rows=rows,
             total=len(rows),
         )
@@ -170,7 +171,9 @@ class RecentReviewsStore:
                     thesis_id=r.thesis_id,
                     ticker=r.ticker,
                     thesis_title=r.title,
-                    thesis_status=str(r.thesis_status.value) if hasattr(r.thesis_status, "value") else str(r.thesis_status),
+                    thesis_status=str(r.thesis_status.value)
+                    if hasattr(r.thesis_status, "value")
+                    else str(r.thesis_status),
                     verdict=str(r.verdict.value) if hasattr(r.verdict, "value") else str(r.verdict),
                     confidence=float(r.confidence),
                     confidence_pct=confidence_pct,
@@ -186,7 +189,7 @@ class RecentReviewsStore:
         logger.debug(
             "recent_reviews_store.query_done",
             user_id=user_id,
-            since_hours=int((datetime.now(tz=timezone.utc) - since_dt).total_seconds() / 3600),
+            since_hours=int((datetime.now(tz=UTC) - since_dt).total_seconds() / 3600),
             rows=len(out),
         )
         return out

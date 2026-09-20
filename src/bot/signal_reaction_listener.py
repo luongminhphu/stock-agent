@@ -75,12 +75,44 @@ _EXECUTION_SIGNALS = {"bought", "sold"}
 _ALERT_ID_RE = re.compile(r"alert:(\d+)")
 
 # Common Vietnamese finance / generic terms to exclude from ticker extraction.
-_TICKER_STOP: frozenset[str] = frozenset({
-    "AI", "OK", "DM", "ID", "API", "BOT", "VND", "USD", "ETF",
-    "TP", "MR", "NN", "SX", "VN", "HN", "PE", "ROE", "EPS",
-    "NW", "PB", "PS", "BUY", "SELL", "HOLD", "SL", "NAV",
-    "TT", "TK", "KL", "GT", "GD", "TC", "CE", "FL",
-})
+_TICKER_STOP: frozenset[str] = frozenset(
+    {
+        "AI",
+        "OK",
+        "DM",
+        "ID",
+        "API",
+        "BOT",
+        "VND",
+        "USD",
+        "ETF",
+        "TP",
+        "MR",
+        "NN",
+        "SX",
+        "VN",
+        "HN",
+        "PE",
+        "ROE",
+        "EPS",
+        "NW",
+        "PB",
+        "PS",
+        "BUY",
+        "SELL",
+        "HOLD",
+        "SL",
+        "NAV",
+        "TT",
+        "TK",
+        "KL",
+        "GT",
+        "GD",
+        "TC",
+        "CE",
+        "FL",
+    }
+)
 
 
 class SignalReactionListener:
@@ -195,9 +227,7 @@ def _extract_ticker(message: discord.Message) -> str | None:
     # 1. Structured embed fields
     for embed in message.embeds:
         for field in embed.fields:
-            if field.name and any(
-                kw in field.name.lower() for kw in ("ticker", "mã", "symbol")
-            ):
+            if field.name and any(kw in field.name.lower() for kw in ("ticker", "mã", "symbol")):
                 value = (field.value or "").strip().upper()
                 if value and value not in _TICKER_STOP:
                     return value
@@ -333,9 +363,7 @@ async def _forward_execution_to_thesis(
         )
 
 
-def _emit_ignore_alert_action(
-    user_id: str, ticker: str, alert_id: int | None
-) -> None:
+def _emit_ignore_alert_action(user_id: str, ticker: str, alert_id: int | None) -> None:
     """Publish UserActionEvent(IGNORE_ALERT). Fire-and-forget, never raises.
 
     Wave 3: closes the dead IGNORE_ALERT wiring. The ⏭️ reaction on an
@@ -349,7 +377,7 @@ def _emit_ignore_alert_action(
 
     try:
         from src.platform.event_bus import get_event_bus  # noqa: PLC0415
-        from src.platform.events import UserActionEvent    # noqa: PLC0415
+        from src.platform.events import UserActionEvent  # noqa: PLC0415
 
         event = UserActionEvent(
             user_id=user_id,

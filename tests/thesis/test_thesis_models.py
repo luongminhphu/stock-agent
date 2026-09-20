@@ -100,9 +100,9 @@ def test_risk_reward_none_when_stop_above_entry():
 
 def test_invalid_assumption_count():
     t = make_thesis()
-    a1 = Assumption(status=AssumptionStatus.INVALID, description='x')
-    a2 = Assumption(status=AssumptionStatus.VALID, description='x')
-    a3 = Assumption(status=AssumptionStatus.INVALID, description='x')
+    a1 = Assumption(status=AssumptionStatus.INVALID, description="x")
+    a2 = Assumption(status=AssumptionStatus.VALID, description="x")
+    a3 = Assumption(status=AssumptionStatus.INVALID, description="x")
     t.assumptions = [a1, a2, a3]
     assert t.invalid_assumption_count == 2
 
@@ -114,7 +114,7 @@ def test_invalid_assumption_count():
 
 def test_triggered_catalyst_count():
     t = make_thesis()
-    c1 = Catalyst(status=CatalystStatus.TRIGGERED, description='x')
-    c2 = Catalyst(status=CatalystStatus.PENDING, description='x')
+    c1 = Catalyst(status=CatalystStatus.TRIGGERED, description="x")
+    c2 = Catalyst(status=CatalystStatus.PENDING, description="x")
     t.catalysts = [c1, c2]
     assert t.triggered_catalyst_count == 1

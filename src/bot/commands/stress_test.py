@@ -19,16 +19,16 @@ from src.thesis.stress_test_service import StressTestService
 logger = get_logger(__name__)
 
 _THREAT_COLOUR = {
-    ThreatLevel.LOW:      discord.Color.green(),
-    ThreatLevel.MEDIUM:   discord.Color.gold(),
-    ThreatLevel.HIGH:     discord.Color.orange(),
+    ThreatLevel.LOW: discord.Color.green(),
+    ThreatLevel.MEDIUM: discord.Color.gold(),
+    ThreatLevel.HIGH: discord.Color.orange(),
     ThreatLevel.CRITICAL: discord.Color.red(),
 }
 
 _THREAT_EMOJI = {
-    ThreatLevel.LOW:      "὾2",
-    ThreatLevel.MEDIUM:   "὾1",
-    ThreatLevel.HIGH:     "ὓ4",
+    ThreatLevel.LOW: "὾2",
+    ThreatLevel.MEDIUM: "὾1",
+    ThreatLevel.HIGH: "ὓ4",
     ThreatLevel.CRITICAL: "💣",
 }
 
@@ -107,9 +107,7 @@ def build_stress_test_embed(result: StressTestOutput) -> discord.Embed:
             lines.append(f"{emoji} **{a.threat_level}** — {a.assumption_text[:80]}")
             lines.append(f"  ↳ _{a.evidence[:120]}_")
             if a.probability_of_invalidation > 0:
-                lines.append(
-                    f"  📊 Xác suất invalidation: **{a.probability_of_invalidation:.0%}**"
-                )
+                lines.append(f"  📊 Xác suất invalidation: **{a.probability_of_invalidation:.0%}**")
         embed.add_field(
             name=f"⚠️ Assumptions bị đe dọa ({len(result.threatened_assumptions)})",
             value="\n".join(lines)[:1024],

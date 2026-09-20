@@ -56,9 +56,7 @@ async def check_readiness() -> HealthReport:
         checks["quote_service"] = (
             HealthStatus.OK if _bs._quote_service is not None else HealthStatus.DOWN
         )
-        checks["ai_client"] = (
-            HealthStatus.OK if _bs._ai_client is not None else HealthStatus.DOWN
-        )
+        checks["ai_client"] = HealthStatus.OK if _bs._ai_client is not None else HealthStatus.DOWN
         checks["thesis_review_agent"] = (
             HealthStatus.OK if _bs._thesis_review_agent is not None else HealthStatus.DOWN
         )

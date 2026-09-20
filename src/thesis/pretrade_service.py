@@ -127,7 +127,8 @@ class PreTradeService:
                 )
                 logger.info(
                     "pretrade_service.averaging_down_override",
-                    ticker=ticker, user_id=user_id,
+                    ticker=ticker,
+                    user_id=user_id,
                 )
 
         # 7. Persist the advice for later reconciliation (Wave 1).
@@ -233,7 +234,7 @@ class PreTradeService:
 
     async def _compute_sizing(
         self, *, ticker: str, user_id: str, price: float
-    ) -> "SizingResult | None":
+    ) -> SizingResult | None:
         """Quantitative position sizing from PositionSizingService. Never raises.
 
         Returns the raw SizingResult (not just its rendered note) so callers
@@ -247,9 +248,7 @@ class PreTradeService:
             from src.portfolio.position_sizing_service import PositionSizingService
 
             svc = PositionSizingService(self._session)
-            return await svc.size_for_entry(
-                user_id=user_id, ticker=ticker, entry_price=price
-            )
+            return await svc.size_for_entry(user_id=user_id, ticker=ticker, entry_price=price)
         except Exception as exc:
             logger.warning(
                 "pretrade_service.sizing_failed",
@@ -277,9 +276,7 @@ class PreTradeService:
                 result.summary,
             ]
             if result.blocking_issues:
-                rationale_parts.append(
-                    "blocking: " + "; ".join(result.blocking_issues[:3])
-                )
+                rationale_parts.append("blocking: " + "; ".join(result.blocking_issues[:3]))
 
             svc = DecisionService(self._session, quote_service=self._quote_service)
             await svc.log_pretrade_advice(

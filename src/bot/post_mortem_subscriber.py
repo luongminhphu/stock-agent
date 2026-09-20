@@ -87,11 +87,7 @@ class PostMortemSubscriber:
 def _build_embed(event: ThesisPostMortemReadyEvent) -> discord.Embed:
     verdict_emoji = _VERDICT_EMOJI.get(event.verdict, "❓")
     color = _VERDICT_COLOR.get(event.verdict, discord.Color.light_grey())
-    pnl_str = (
-        f"{event.outcome_pnl_pct:+.1f}%"
-        if event.outcome_pnl_pct is not None
-        else "N/A"
-    )
+    pnl_str = f"{event.outcome_pnl_pct:+.1f}%" if event.outcome_pnl_pct is not None else "N/A"
     confidence_bar = "█" * round(event.confidence * 10) + "░" * (10 - round(event.confidence * 10))
     tags_str = " · ".join(f"`{t}`" for t in event.memory_tags) if event.memory_tags else "—"
     date_str = datetime.datetime.now(tz=datetime.UTC).strftime("%d/%m/%Y %H:%M UTC")

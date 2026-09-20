@@ -55,9 +55,13 @@ def build_trades_payload(
 
         cost_basis = pos.avg_cost * pos.qty
         market_value = current_price * pos.qty if current_price is not None else None
-        unrealized_pnl = (current_price - pos.avg_cost) * pos.qty if current_price is not None else None
+        unrealized_pnl = (
+            (current_price - pos.avg_cost) * pos.qty if current_price is not None else None
+        )
         unrealized_pct = (
-            (unrealized_pnl / cost_basis * 100) if (unrealized_pnl is not None and cost_basis) else None
+            (unrealized_pnl / cost_basis * 100)
+            if (unrealized_pnl is not None and cost_basis)
+            else None
         )
         total_cost += cost_basis
         total_mkt += market_value if market_value is not None else 0.0
@@ -118,8 +122,7 @@ class PortfolioQueryService:
                     Position.qty,
                     Position.avg_cost,
                     Position.thesis_id,
-                )
-                .where(
+                ).where(
                     Position.user_id == user_id,
                     Position.closed_at.is_(None),
                     Position.qty > 0,
@@ -224,40 +227,38 @@ class PortfolioQueryService:
             else:
                 neutral += 1
 
-            positions.append({
-                "thesis_id": r.id,
-                "ticker": r.ticker,
-                "title": r.title,
-                "status": str(r.status.value),
-                "quantity": quantity,
-                "avg_cost": round(avg_cost, 0) if avg_cost else None,
-                "entry_price": r.entry_price,
-                "current_price": current_price,
-                "pnl_pct": round(pnl_pct, 2) if pnl_pct is not None else None,
-                "pnl_abs": round(pnl_abs, 0) if pnl_abs is not None else None,
-                "cost_basis": round(cost_basis, 0) if cost_basis is not None else None,
-                "market_value": round(market_value, 0) if market_value is not None else None,
-                "weight_pct": None,
-                "last_verdict": str(r.last_verdict) if r.last_verdict else None,
-                "score": r.score,
-                "score_tier": tier_label,
-                "score_tier_icon": tier_icon,
-                "change_pct": None,
-            })
+            positions.append(
+                {
+                    "thesis_id": r.id,
+                    "ticker": r.ticker,
+                    "title": r.title,
+                    "status": str(r.status.value),
+                    "quantity": quantity,
+                    "avg_cost": round(avg_cost, 0) if avg_cost else None,
+                    "entry_price": r.entry_price,
+                    "current_price": current_price,
+                    "pnl_pct": round(pnl_pct, 2) if pnl_pct is not None else None,
+                    "pnl_abs": round(pnl_abs, 0) if pnl_abs is not None else None,
+                    "cost_basis": round(cost_basis, 0) if cost_basis is not None else None,
+                    "market_value": round(market_value, 0) if market_value is not None else None,
+                    "weight_pct": None,
+                    "last_verdict": str(r.last_verdict) if r.last_verdict else None,
+                    "score": r.score,
+                    "score_tier": tier_label,
+                    "score_tier_icon": tier_icon,
+                    "change_pct": None,
+                }
+            )
 
         for pos in positions:
             mv = pos["market_value"]
             if mv is not None and has_market_data and total_market_value > 0:
                 pos["weight_pct"] = round(mv / total_market_value * 100, 2)
 
-        positions.sort(
-            key=lambda p: (p["pnl_abs"] is None, -(p["pnl_abs"] or 0), p["ticker"])
-        )
+        positions.sort(key=lambda p: (p["pnl_abs"] is None, -(p["pnl_abs"] or 0), p["ticker"]))
 
         total_pnl_abs = (
-            (total_market_value - total_cost_basis)
-            if (has_cost_data and has_market_data)
-            else None
+            (total_market_value - total_cost_basis) if (has_cost_data and has_market_data) else None
         )
         total_pnl_pct: float | None = None
         if total_cost_basis > 0 and total_pnl_abs is not None:

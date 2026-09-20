@@ -29,6 +29,7 @@ Output contract (AI must return):
   Maximum 5 suggestions per run. Fewer is better.
   Suggestions are NEVER auto-applied — owner reviews each one.
 """
+
 from __future__ import annotations
 
 import json
@@ -37,7 +38,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from src.core.evolution import ImprovementSuggestion, PatternReport
 
-_VALID_TARGETS   = {"prompt", "signal_weight", "dispatch_rule", "schema", "heuristic"}
+_VALID_TARGETS = {"prompt", "signal_weight", "dispatch_rule", "schema", "heuristic"}
 _VALID_RISK_LEVELS = {"low", "medium", "high"}
 _MAX_SUGGESTIONS = 5
 
@@ -70,7 +71,7 @@ Format output bat buoc (JSON):
 """.strip()
 
 
-def build_user_prompt(report: "PatternReport") -> str:
+def build_user_prompt(report: PatternReport) -> str:
     data = report.to_dict()
     return f"""
 Day la PatternReport tu {report.period_days} ngay qua cua Intelligence Engine:
@@ -87,7 +88,7 @@ Neu overall_accuracy >= 0.70 va khong co weak verdicts, tra ve suggestions = [].
 
 def parse_ai_response(
     raw: str | dict[str, Any],
-) -> list["ImprovementSuggestion"]:
+) -> list[ImprovementSuggestion]:
     """Parse AI JSON response into ImprovementSuggestion list.
 
     Never raises. Returns [] on any parse/validation failure.
@@ -106,7 +107,7 @@ def parse_ai_response(
 
         suggestions: list[ImprovementSuggestion] = []
         for item in items[:_MAX_SUGGESTIONS]:
-            target     = str(item.get("target", "heuristic"))
+            target = str(item.get("target", "heuristic"))
             risk_level = str(item.get("risk_level", "low"))
 
             # sanitise enum values
@@ -115,16 +116,16 @@ def parse_ai_response(
             if risk_level not in _VALID_RISK_LEVELS:
                 risk_level = "low"
 
-            description     = str(item.get("description", "")).strip()
+            description = str(item.get("description", "")).strip()
             evidence_summary = str(item.get("evidence_summary", "")).strip()
-            proposed_change  = str(item.get("proposed_change", "")).strip()
+            proposed_change = str(item.get("proposed_change", "")).strip()
 
             if not description or not proposed_change:
                 continue  # skip malformed item
 
             suggestions.append(
                 ImprovementSuggestion(
-                    target=target,          # type: ignore[arg-type]
+                    target=target,  # type: ignore[arg-type]
                     description=description,
                     evidence_summary=evidence_summary,
                     proposed_change=proposed_change,

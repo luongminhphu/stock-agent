@@ -69,18 +69,18 @@ class SizingResult:
     ticker: str
     entry_price: float
     stop_price: float
-    stop_source: str              # "thesis" | "fallback_default"
+    stop_source: str  # "thesis" | "fallback_default"
     equity_vnd: float
-    cash_known: bool              # False when cash is estimated without config
+    cash_known: bool  # False when cash is estimated without config
     risk_per_trade_pct: float
-    risk_budget_vnd: float        # equity × risk_per_trade_pct
-    max_qty: int                  # final answer after all caps, lot-rounded
-    max_value_vnd: float          # max_qty × entry_price
-    portfolio_pct_after: float    # max_value_vnd / equity × 100
-    cap_reason: str               # which cap bound the size: "risk" | "concentration" | "cash" | "invalid" | "averaging_down_blocked"
+    risk_budget_vnd: float  # equity × risk_per_trade_pct
+    max_qty: int  # final answer after all caps, lot-rounded
+    max_value_vnd: float  # max_qty × entry_price
+    portfolio_pct_after: float  # max_value_vnd / equity × 100
+    cap_reason: str  # which cap bound the size: "risk" | "concentration" | "cash" | "invalid" | "averaging_down_blocked"
     warnings: list[str] = field(default_factory=list)
-    pyramiding_note: str = ""     # Wave 8.3 — advisory only, never blocks sizing
-    sector_note: str = ""         # Wave 8.4 — advisory only, never blocks sizing
+    pyramiding_note: str = ""  # Wave 8.3 — advisory only, never blocks sizing
+    sector_note: str = ""  # Wave 8.4 — advisory only, never blocks sizing
 
     def to_note(self) -> str:
         """Render compact Vietnamese block for embed/prompt consumption."""
@@ -149,10 +149,17 @@ class PositionSizingService:
 
         if entry_price <= 0:
             return SizingResult(
-                ticker=ticker, entry_price=entry_price, stop_price=0.0,
-                stop_source="invalid", equity_vnd=0.0, cash_known=False,
-                risk_per_trade_pct=risk_per_trade_pct, risk_budget_vnd=0.0,
-                max_qty=0, max_value_vnd=0.0, portfolio_pct_after=0.0,
+                ticker=ticker,
+                entry_price=entry_price,
+                stop_price=0.0,
+                stop_source="invalid",
+                equity_vnd=0.0,
+                cash_known=False,
+                risk_per_trade_pct=risk_per_trade_pct,
+                risk_budget_vnd=0.0,
+                max_qty=0,
+                max_value_vnd=0.0,
+                portfolio_pct_after=0.0,
                 cap_reason="invalid",
                 warnings=[f"entry_price={entry_price} không hợp lệ"],
             )
@@ -161,7 +168,9 @@ class PositionSizingService:
         # position by buying more of it). Short-circuits before risk/stop math
         # since there is nothing to size — the entry itself is blocked.
         avg_down_block = await self._check_averaging_down(
-            user_id=user_id, ticker=ticker, entry_price=entry_price,
+            user_id=user_id,
+            ticker=ticker,
+            entry_price=entry_price,
             risk_per_trade_pct=risk_per_trade_pct,
         )
         if avg_down_block is not None:
@@ -181,10 +190,17 @@ class PositionSizingService:
         if stop_price >= entry_price:
             # Degenerate stop (thesis stop above current price) → no valid sizing
             return SizingResult(
-                ticker=ticker, entry_price=entry_price, stop_price=stop_price,
-                stop_source=stop_source, equity_vnd=0.0, cash_known=False,
-                risk_per_trade_pct=risk_per_trade_pct, risk_budget_vnd=0.0,
-                max_qty=0, max_value_vnd=0.0, portfolio_pct_after=0.0,
+                ticker=ticker,
+                entry_price=entry_price,
+                stop_price=stop_price,
+                stop_source=stop_source,
+                equity_vnd=0.0,
+                cash_known=False,
+                risk_per_trade_pct=risk_per_trade_pct,
+                risk_budget_vnd=0.0,
+                max_qty=0,
+                max_value_vnd=0.0,
+                portfolio_pct_after=0.0,
                 cap_reason="invalid",
                 warnings=[
                     f"stop_price ({stop_price:,.0f}) >= entry ({entry_price:,.0f}) — "
@@ -224,7 +240,10 @@ class PositionSizingService:
         # qty is known so the warning can state the ACTUAL projected weight
         # this trade would create, not just today's pre-trade weight.
         sector_note = await self._check_sector_concentration(
-            user_id=user_id, ticker=ticker, equity=equity, added_value=max_value,
+            user_id=user_id,
+            ticker=ticker,
+            equity=equity,
+            added_value=max_value,
             warn_pct=sector_concentration_warn_pct,
         )
 
@@ -247,17 +266,26 @@ class PositionSizingService:
         )
         logger.info(
             "position_sizing.computed",
-            ticker=ticker, user_id=user_id,
-            equity=round(equity), cash_known=cash_known,
-            stop=stop_price, stop_source=stop_source,
-            max_qty=max_qty, cap=cap_reason,
+            ticker=ticker,
+            user_id=user_id,
+            equity=round(equity),
+            cash_known=cash_known,
+            stop=stop_price,
+            stop_source=stop_source,
+            max_qty=max_qty,
+            cap=cap_reason,
         )
         return result
 
     # ------------------------------------------------------------------
 
     async def _check_averaging_down(
-        self, *, user_id: str, ticker: str, entry_price: float, risk_per_trade_pct: float,
+        self,
+        *,
+        user_id: str,
+        ticker: str,
+        entry_price: float,
+        risk_per_trade_pct: float,
     ) -> SizingResult | None:
         """Block sizing when this BUY would average down an open losing position.
 
@@ -272,13 +300,13 @@ class PositionSizingService:
         try:
             from src.portfolio.repository import PortfolioRepository
 
-            position = await PortfolioRepository(self._session).get_open_position(
-                user_id, ticker
-            )
+            position = await PortfolioRepository(self._session).get_open_position(user_id, ticker)
         except Exception as exc:
             logger.warning(
                 "position_sizing.averaging_down_lookup_failed",
-                ticker=ticker, user_id=user_id, error=str(exc),
+                ticker=ticker,
+                user_id=user_id,
+                error=str(exc),
             )
             return None
 
@@ -324,9 +352,7 @@ class PositionSizingService:
             from src.watchlist.repository import WatchlistRepository
             from src.watchlist.signal_engine import SignalType
 
-            position = await PortfolioRepository(self._session).get_open_position(
-                user_id, ticker
-            )
+            position = await PortfolioRepository(self._session).get_open_position(user_id, ticker)
             if position is None or position.avg_cost <= 0 or entry_price <= position.avg_cost:
                 return ""
 
@@ -344,12 +370,19 @@ class PositionSizingService:
         except Exception as exc:
             logger.warning(
                 "position_sizing.pyramiding_check_failed",
-                ticker=ticker, user_id=user_id, error=str(exc),
+                ticker=ticker,
+                user_id=user_id,
+                error=str(exc),
             )
             return ""
 
     async def _check_sector_concentration(
-        self, *, user_id: str, ticker: str, equity: float, added_value: float,
+        self,
+        *,
+        user_id: str,
+        ticker: str,
+        equity: float,
+        added_value: float,
         warn_pct: float,
     ) -> str:
         """Advisory only — warn (never block) when this BUY would push total
@@ -410,7 +443,9 @@ class PositionSizingService:
         except Exception as exc:
             logger.warning(
                 "position_sizing.sector_concentration_check_failed",
-                ticker=ticker, user_id=user_id, error=str(exc),
+                ticker=ticker,
+                user_id=user_id,
+                error=str(exc),
             )
             return ""
 
@@ -429,14 +464,13 @@ class PositionSizingService:
         except Exception as exc:
             logger.warning(
                 "position_sizing.thesis_stop_lookup_failed",
-                ticker=ticker, error=str(exc),
+                ticker=ticker,
+                error=str(exc),
             )
         _, _, default_stop_loss_pct, _, _, _ = self._knobs()
         return entry_price * (1 - default_stop_loss_pct), "fallback_default"
 
-    async def _estimate_equity_and_cash(
-        self, user_id: str
-    ) -> tuple[float, float, bool]:
+    async def _estimate_equity_and_cash(self, user_id: str) -> tuple[float, float, bool]:
         """Equity = market value of open positions + cash.
 
         Cash source:
@@ -459,9 +493,7 @@ class PositionSizingService:
         try:
             dividends = await repo.get_dividend_total(user_id)
         except Exception as exc:
-            logger.warning(
-                "position_sizing.dividend_total_failed", user_id=user_id, error=str(exc)
-            )
+            logger.warning("position_sizing.dividend_total_failed", user_id=user_id, error=str(exc))
 
         _, _, _, portfolio_cash_vnd, _, _ = self._knobs()
         if portfolio_cash_vnd > 0:

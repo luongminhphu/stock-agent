@@ -14,6 +14,7 @@ Moved here because health snapshot reads are a watchlist segment concern,
 not thesis. src/thesis/watchlist_query_service.py now re-exports this class
 as a backward-compat shim.
 """
+
 from __future__ import annotations
 
 from typing import Any

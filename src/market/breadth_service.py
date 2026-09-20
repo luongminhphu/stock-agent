@@ -20,14 +20,14 @@ import datetime
 import time
 from dataclasses import dataclass
 
-from src.market.registry import Exchange, registry
 from src.market.quote_service import QuoteService
+from src.market.registry import Exchange, registry
 
-_MARKET_TTL   = 30.0   # seconds — trong giờ giao dịch: refresh 30s
-_OFFHOURS_TTL = 3600.0 # seconds — ngoài giờ: giữ 1 tiếng (giảm số lần call đêm/sáng sớm)
+_MARKET_TTL = 30.0  # seconds — trong giờ giao dịch: refresh 30s
+_OFFHOURS_TTL = 3600.0  # seconds — ngoài giờ: giữ 1 tiếng (giảm số lần call đêm/sáng sớm)
 
 # Giờ giao dịch HOSE: 09:00–15:05 ICT (UTC+7) weekdays
-_MARKET_OPEN_ICT  = datetime.time(9,  0)
+_MARKET_OPEN_ICT = datetime.time(9, 0)
 _MARKET_CLOSE_ICT = datetime.time(15, 5)
 
 
@@ -47,12 +47,12 @@ class MarketBreadth:
     """Aggregate breadth snapshot for a given exchange scope."""
 
     exchange: str  # "HOSE" | "HNX" | "UPCOM" | "ALL"
-    advance: int        # change > 0
-    decline: int        # change < 0
-    unchanged: int      # change == 0
-    ceiling: int        # price >= ceiling price (trần)
-    floor: int          # price <= floor price (sàn)
-    total: int          # number of tickers with valid quotes
+    advance: int  # change > 0
+    decline: int  # change < 0
+    unchanged: int  # change == 0
+    ceiling: int  # price >= ceiling price (trần)
+    floor: int  # price <= floor price (sàn)
+    total: int  # number of tickers with valid quotes
     advance_pct: float  # advance / total * 100
     decline_pct: float  # decline / total * 100
     unchanged_pct: float
@@ -133,9 +133,15 @@ class BreadthService:
         if not tickers:
             return MarketBreadth(
                 exchange=key,
-                advance=0, decline=0, unchanged=0,
-                ceiling=0, floor=0, total=0,
-                advance_pct=0.0, decline_pct=0.0, unchanged_pct=0.0,
+                advance=0,
+                decline=0,
+                unchanged=0,
+                ceiling=0,
+                floor=0,
+                total=0,
+                advance_pct=0.0,
+                decline_pct=0.0,
+                unchanged_pct=0.0,
             )
 
         quotes = await self._quote_svc.get_bulk_quotes(tickers)

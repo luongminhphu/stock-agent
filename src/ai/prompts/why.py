@@ -1,6 +1,7 @@
 """Prompt pack for WhyAgent — explain price movement.
 Owner: ai segment.
 """
+
 from __future__ import annotations
 
 from src.ai.prompts._spec import PromptSpec, schema_block

@@ -8,7 +8,7 @@ No business logic — pure persistence.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import desc, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -77,9 +77,7 @@ class InteractionLogRepository:
     async def set_user_signal(self, log_id: int, signal: str) -> None:
         """Record user reaction (bought/sold/ignored/flagged/watched)."""
         stmt = (
-            update(AIInteractionLog)
-            .where(AIInteractionLog.id == log_id)
-            .values(user_signal=signal)
+            update(AIInteractionLog).where(AIInteractionLog.id == log_id).values(user_signal=signal)
         )
         await self._session.execute(stmt)
         await self._session.flush()
@@ -104,7 +102,7 @@ class InteractionLogRepository:
         Only returns logs older than `older_than_days` so price has settled.
         Caller: outcome_filler scheduler job.
         """
-        cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
+        cutoff = datetime.now(UTC) - timedelta(days=older_than_days)
         stmt = (
             select(AIInteractionLog)
             .where(
@@ -131,9 +129,8 @@ class InteractionLogRepository:
         if not symbols:
             return []
         from sqlalchemy import or_
-        conditions = [
-            AIInteractionLog.tickers_json.contains(sym) for sym in symbols
-        ]
+
+        conditions = [AIInteractionLog.tickers_json.contains(sym) for sym in symbols]
         stmt = (
             select(AIInteractionLog)
             .where(or_(*conditions))
@@ -142,7 +139,6 @@ class InteractionLogRepository:
         )
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
-
 
     async def count_by_user(self, user_id: str) -> int:
         """Return total interaction count for a user (used for auto-consolidation)."""
@@ -175,9 +171,7 @@ class MemorySnapshotRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def list_all(
-        self, user_id: str, limit: int = 10
-    ) -> list[MemorySnapshot]:
+    async def list_all(self, user_id: str, limit: int = 10) -> list[MemorySnapshot]:
         stmt = (
             select(MemorySnapshot)
             .where(MemorySnapshot.user_id == user_id)

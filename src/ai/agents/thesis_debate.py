@@ -28,6 +28,7 @@ Memory logging (Wave C.3, optional):
   - Accept session + user_id for future episodic memory integration.
   - Pattern mirrors ThesisJudgeAgent._log_thesis_judge_interaction.
 """
+
 from __future__ import annotations
 
 import json
@@ -171,13 +172,10 @@ class ThesisDebateAgent:
             )
 
             # Sort challenges CRITICAL → SIGNIFICANT → MODERATE → MINOR
-            result.challenges.sort(
-                key=lambda c: _STRENGTH_ORDER.get(c.strength, 99)
-            )
+            result.challenges.sort(key=lambda c: _STRENGTH_ORDER.get(c.strength, 99))
 
             logger.info(
-                "ThesisDebate: thesis=%s ticker=%s stance=%s "
-                "challenges=%d confidence=%.1f",
+                "ThesisDebate: thesis=%s ticker=%s stance=%s challenges=%d confidence=%.1f",
                 thesis_id,
                 ticker,
                 result.overall_stance,
@@ -202,9 +200,7 @@ class ThesisDebateAgent:
                     )
                     await MemoryService.log_interaction(session, entry)
                 except Exception as log_exc:
-                    logger.warning(
-                        "thesis_debate.log_interaction_failed", error=str(log_exc)
-                    )
+                    logger.warning("thesis_debate.log_interaction_failed", error=str(log_exc))
 
             return result
 
@@ -229,8 +225,7 @@ class ThesisDebateAgent:
         except (json.JSONDecodeError, ValidationError) as exc:
             # Parse/schema error may signal prompt regression — log at ERROR
             logger.error(
-                "ThesisDebate: parse error thesis=%s ticker=%s "
-                "— possible prompt regression: %s",
+                "ThesisDebate: parse error thesis=%s ticker=%s — possible prompt regression: %s",
                 thesis_id,
                 ticker,
                 exc,

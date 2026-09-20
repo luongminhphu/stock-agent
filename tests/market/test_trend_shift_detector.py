@@ -3,20 +3,17 @@
 Tests are isolated from EventBus, TrendEngine, and TrendSnapshotStore I/O.
 All tests use the pure detect_shift() function directly.
 """
+
 from __future__ import annotations
 
 import pytest
 
 from src.market.trend_shift_detector import (
-    COMPOSITE_DELTA_THRESHOLD,
-    MINOR_CONFIDENCE_FLOOR,
-    NEUTRAL_BAND_HI,
-    NEUTRAL_BAND_LO,
     detect_shift,
 )
 
-
 # ─── MAJOR shift ──────────────────────────────────────────────────────────────
+
 
 class TestMajorShift:
     def test_trending_up_to_trending_down(self):
@@ -63,6 +60,7 @@ class TestMajorShift:
 
 # ─── MINOR shift ──────────────────────────────────────────────────────────────
 
+
 class TestMinorShift:
     def test_regime_change_with_sufficient_confidence(self):
         """Regime polarity changes but composite stays in the SAME zone — MINOR.
@@ -101,6 +99,7 @@ class TestMinorShift:
 
 
 # ─── Noise filters — no alert expected ───────────────────────────────────────
+
 
 class TestNoiseFilters:
     def test_identical_bundle_no_alert(self):

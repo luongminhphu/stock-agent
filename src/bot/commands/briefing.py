@@ -31,14 +31,14 @@ from src.watchlist.service import WatchlistService
 logger = get_logger(__name__)
 
 _SENTIMENT_COLOUR = {
-    MarketSentiment.RISK_ON:   discord.Color.green(),
-    MarketSentiment.RISK_OFF:  discord.Color.red(),
-    MarketSentiment.MIXED:     discord.Color.gold(),
+    MarketSentiment.RISK_ON: discord.Color.green(),
+    MarketSentiment.RISK_OFF: discord.Color.red(),
+    MarketSentiment.MIXED: discord.Color.gold(),
     MarketSentiment.UNCERTAIN: discord.Color.greyple(),
     # Legacy fallbacks
-    MarketSentiment.BULLISH:   discord.Color.green(),
-    MarketSentiment.BEARISH:   discord.Color.red(),
-    MarketSentiment.NEUTRAL:   discord.Color.greyple(),
+    MarketSentiment.BULLISH: discord.Color.green(),
+    MarketSentiment.BEARISH: discord.Color.red(),
+    MarketSentiment.NEUTRAL: discord.Color.greyple(),
 }
 
 _OUTCOME_LABEL = {
@@ -61,13 +61,15 @@ class BriefFeedbackView(discord.ui.View):
         self._snapshot_id = snapshot_id
         self._user_id = user_id
 
-    @discord.ui.button(label="\u2705 \u0110\u00e3 th\u1ef1c hi\u1ec7n", style=discord.ButtonStyle.success)
-    async def btn_acted(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ) -> None:
+    @discord.ui.button(
+        label="\u2705 \u0110\u00e3 th\u1ef1c hi\u1ec7n", style=discord.ButtonStyle.success
+    )
+    async def btn_acted(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         await self._record(interaction, outcome="acted")
 
-    @discord.ui.button(label="\U0001f440 \u0110ang theo d\u00f5i", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(
+        label="\U0001f440 \u0110ang theo d\u00f5i", style=discord.ButtonStyle.secondary
+    )
     async def btn_watching(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -103,9 +105,7 @@ class BriefFeedbackView(discord.ui.View):
             )
 
         label = _OUTCOME_LABEL.get(outcome, outcome)
-        await interaction.response.send_message(
-            f"Ghi nh\u1eadn: **{label}**", ephemeral=True
-        )
+        await interaction.response.send_message(f"Ghi nh\u1eadn: **{label}**", ephemeral=True)
         for child in self.children:
             if isinstance(child, discord.ui.Button):
                 child.disabled = True
@@ -131,9 +131,9 @@ class BriefingCog(BaseCog):
         try:
             async with self.db_session() as session:
                 # Lazy imports — session-scoped services, not singletons
-                from src.thesis.service import ThesisService
-                from src.readmodel.dashboard_service import DashboardService
                 from src.platform.investor_profile import InvestorProfileService
+                from src.readmodel.dashboard_service import DashboardService
+                from src.thesis.service import ThesisService
 
                 # agenda_service: init via factory, fail-safe
                 agenda_service = None
@@ -163,7 +163,7 @@ class BriefingCog(BaseCog):
                     dashboard_service=DashboardService(session=session),
                     agenda_service=agenda_service,
                     sector_agent=get_sector_rotation_agent(),
-                    lesson_service=LessonService,          # stateless — class reference is sentinel
+                    lesson_service=LessonService,  # stateless — class reference is sentinel
                     investor_profile_service=InvestorProfileService(session=session),
                     session=session,
                 )
@@ -240,7 +240,10 @@ def build_brief_embeds(brief: BriefOutput, phase: str) -> list[discord.Embed]:
                 description=page,
                 color=discord.Color.blurple(),
             )
-        embed.set_footer(text="stock-agent \u00b7 AI-native" + (f" ({i + 1}/{len(pages)})" if len(pages) > 1 else ""))
+        embed.set_footer(
+            text="stock-agent \u00b7 AI-native"
+            + (f" ({i + 1}/{len(pages)})" if len(pages) > 1 else "")
+        )
         embeds.append(embed)
 
     return embeds
@@ -249,6 +252,7 @@ def build_brief_embeds(brief: BriefOutput, phase: str) -> list[discord.Embed]:
 # ---------------------------------------------------------------------------
 # Legacy single-embed builder — kept for scheduler backward compat
 # ---------------------------------------------------------------------------
+
 
 def build_brief_embed(brief: BriefOutput, phase: str) -> discord.Embed:
     """Single-embed builder — kept for backward compatibility with scheduler.

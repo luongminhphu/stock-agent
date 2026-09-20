@@ -118,8 +118,8 @@ class ProactiveWatchListener:
                         alert_id=alert.id,
                         ticker=alert.ticker,
                         condition_type=alert.condition_type.value
-                            if hasattr(alert.condition_type, "value")
-                            else str(alert.condition_type),
+                        if hasattr(alert.condition_type, "value")
+                        else str(alert.condition_type),
                         threshold=alert.threshold or 0.0,
                         triggered_price=alert.triggered_price,
                         note=alert.note or "",

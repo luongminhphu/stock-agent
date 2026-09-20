@@ -21,8 +21,8 @@ from typing import TYPE_CHECKING
 from src.ai.client import AIClient
 from src.ai.prompts.brief import (
     SYSTEM_PROMPT,
-    build_morning_prompt,
     build_eod_prompt,
+    build_morning_prompt,
 )
 from src.ai.schemas import BriefOutput
 from src.ai.schemas._base import PortfolioRiskNote
@@ -30,6 +30,7 @@ from src.platform.logging import get_logger
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+
     from src.ai.agents.portfolio_risk_narrator import (
         PortfolioRiskNarratorAgent,
     )

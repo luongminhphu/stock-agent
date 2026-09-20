@@ -19,23 +19,31 @@ from src.bot.discord_helper import COLORS, VERDICT_ICONS, confidence_bar, fmt_ic
 # ---------------------------------------------------------------------------
 
 VERDICT_META: dict[str, dict] = {
-    "CORRECT":   {"emoji": VERDICT_ICONS["CORRECT"],   "color": discord.Color.green()},
+    "CORRECT": {"emoji": VERDICT_ICONS["CORRECT"], "color": discord.Color.green()},
     "INCORRECT": {"emoji": VERDICT_ICONS["INCORRECT"], "color": discord.Color.red()},
-    "MIXED":     {"emoji": VERDICT_ICONS["MIXED"],     "color": discord.Color.orange()},
+    "MIXED": {"emoji": VERDICT_ICONS["MIXED"], "color": discord.Color.orange()},
 }
 DEFAULT_VERDICT_META: dict = {"emoji": "\U0001f4cb", "color": discord.Color.blue()}  # 📋
 
 _VERDICT_ICON: dict[str, str] = {
-    "CORRECT":   VERDICT_ICONS["CORRECT"],
+    "CORRECT": VERDICT_ICONS["CORRECT"],
     "INCORRECT": VERDICT_ICONS["INCORRECT"],
-    "MIXED":     VERDICT_ICONS["MIXED"],
+    "MIXED": VERDICT_ICONS["MIXED"],
 }
 
 
 def _batch_outcome_color(results: list[dict]) -> int:
     """Derive sidebar color from majority outcome in a batch replay list."""
-    correct   = sum(1 for i in results if str(getattr(i.get("decision"), "outcome_verdict", "")).upper() == "CORRECT")
-    incorrect = sum(1 for i in results if str(getattr(i.get("decision"), "outcome_verdict", "")).upper() == "INCORRECT")
+    correct = sum(
+        1
+        for i in results
+        if str(getattr(i.get("decision"), "outcome_verdict", "")).upper() == "CORRECT"
+    )
+    incorrect = sum(
+        1
+        for i in results
+        if str(getattr(i.get("decision"), "outcome_verdict", "")).upper() == "INCORRECT"
+    )
     if correct > incorrect:
         return COLORS.GREEN
     if incorrect > correct:
@@ -46,6 +54,7 @@ def _batch_outcome_color(results: list[dict]) -> int:
 # ---------------------------------------------------------------------------
 # Scheduler embed — batch end-of-day summary
 # ---------------------------------------------------------------------------
+
 
 def build_replay_embed(
     results: list[dict],
@@ -80,6 +89,7 @@ def build_replay_embed(
 # Command embeds — /replay and /lessons
 # ---------------------------------------------------------------------------
 
+
 def build_single_replay_embed(decision_id: int, envelope) -> discord.Embed:
     """Build Discord embed for /replay command result."""
     verdict = envelope.outcome_verdict or "MIXED"
@@ -100,12 +110,20 @@ def build_single_replay_embed(decision_id: int, envelope) -> discord.Embed:
     _what_right_raw = getattr(replay, "what_went_right", None)
     _what_wrong_raw = getattr(replay, "what_went_wrong", None)
     # ReplayOutput returns list[str]; join for Discord embed value (max 1024 chars)
-    what_right = "\n".join(f"• {x}" for x in _what_right_raw) if isinstance(_what_right_raw, list) else _what_right_raw
-    what_wrong = "\n".join(f"• {x}" for x in _what_wrong_raw) if isinstance(_what_wrong_raw, list) else _what_wrong_raw
+    what_right = (
+        "\n".join(f"• {x}" for x in _what_right_raw)
+        if isinstance(_what_right_raw, list)
+        else _what_right_raw
+    )
+    what_wrong = (
+        "\n".join(f"• {x}" for x in _what_wrong_raw)
+        if isinstance(_what_wrong_raw, list)
+        else _what_wrong_raw
+    )
     key_lesson = getattr(replay, "key_lesson", None)
-    pattern    = getattr(replay, "pattern_detected", None)
+    pattern = getattr(replay, "pattern_detected", None)
     adjustment = getattr(replay, "suggested_adjustment", None)
-    conf       = getattr(replay, "confidence", None)
+    conf = getattr(replay, "confidence", None)
 
     if what_right:
         embed.add_field(name="\u2705 Đúng ở điểm nào", value=what_right[:1024], inline=False)
@@ -133,7 +151,11 @@ def build_lessons_embed(
     limit: int,
 ) -> discord.Embed:
     """Build Discord embed listing AI-generated lessons for /lessons command."""
-    title = f"\U0001f9e0 Lessons \u2014 {ticker.upper()}" if ticker else "\U0001f9e0 Lessons \u2014 Tất cả mã"
+    title = (
+        f"\U0001f9e0 Lessons \u2014 {ticker.upper()}"
+        if ticker
+        else "\U0001f9e0 Lessons \u2014 Tất cả mã"
+    )
 
     if not rows:
         scope = f"mã **{ticker.upper()}**" if ticker else "bất kỳ mã nào"
@@ -161,7 +183,5 @@ def build_lessons_embed(
         )
         embed.add_field(name=field_name, value=row.key_lesson, inline=False)
 
-    embed.set_footer(
-        text=f"Hiển thị {len(rows)}/{limit} bài học mới nhất  \u00b7  stock-agent"
-    )
+    embed.set_footer(text=f"Hiển thị {len(rows)}/{limit} bài học mới nhất  \u00b7  stock-agent")
     return embed

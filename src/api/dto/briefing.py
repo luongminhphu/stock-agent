@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 class BriefResponse(BaseModel):
     snapshot_id: int | None = None
-    phase: str | None = None            # persisted phase ("morning" | "eod")
+    phase: str | None = None  # persisted phase ("morning" | "eod")
     created_at: datetime | None = None  # snapshot generation time — used by dashboard clock
     headline: str
     sentiment: str

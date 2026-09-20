@@ -38,20 +38,20 @@ from src.thesis.models import DecisionLog
 _DEFAULT_LOOKBACK_DAYS = 90
 _DEFAULT_MAX_LESSONS = 5
 _DEFAULT_PATTERN_LOOKBACK_DAYS = 90
-_MIN_OCCURRENCES = 2   # min pattern count to surface in warnings
+_MIN_OCCURRENCES = 2  # min pattern count to surface in warnings
 _HIGH_FREQ_THRESHOLD = 0.30  # >= 30% → flagged as high-frequency bias
 
 # Human-readable labels for known pattern tags.
 # Unknown tags fall back to the raw tag string.
 _PATTERN_LABELS: dict[str, str] = {
-    "early_exit":           "thoát sớm trước khi thesis hoàn thành",
-    "stop_loss_ignored":    "bỏ qua stop loss, giữ lịnh dù thesis đã sai",
-    "premature_entry":      "vào lệnh trước khi catalyst xuất hiện",
-    "breakout_chasing":     "mua đuổi theo breakout, giá đã chạy xa",
-    "fomo_entry":           "mua theo tâm lý FOMO, thiếu phân tích",
-    "overhold":             "giữ quá lâu sau khi tín hiệu đảo chiều",
-    "thesis_drift":         "thesis đã thay đổi nhưng không cập nhật",
-    "size_too_large":       "vào lệnh với size quá lớn so với rủi ro",
+    "early_exit": "thoát sớm trước khi thesis hoàn thành",
+    "stop_loss_ignored": "bỏ qua stop loss, giữ lịnh dù thesis đã sai",
+    "premature_entry": "vào lệnh trước khi catalyst xuất hiện",
+    "breakout_chasing": "mua đuổi theo breakout, giá đã chạy xa",
+    "fomo_entry": "mua theo tâm lý FOMO, thiếu phân tích",
+    "overhold": "giữ quá lâu sau khi tín hiệu đảo chiều",
+    "thesis_drift": "thesis đã thay đổi nhưng không cập nhật",
+    "size_too_large": "vào lệnh với size quá lớn so với rủi ro",
     "averaging_down_blind": "mua thêm khi lỗ mà không có luận cứ",
 }
 
@@ -59,6 +59,7 @@ _PATTERN_LABELS: dict[str, str] = {
 @dataclass(frozen=True)
 class PatternEntry:
     """One aggregated pattern tag with occurrence count and frequency."""
+
     tag: str
     count: int
     total_sells: int
@@ -91,6 +92,7 @@ class PatternCounter:
         total_sells:   Total SELL trades in the lookback window.
         lookback_days: Window used for this aggregation.
     """
+
     entries: list[PatternEntry] = field(default_factory=list)
     total_sells: int = 0
     lookback_days: int = _DEFAULT_PATTERN_LOOKBACK_DAYS
@@ -110,10 +112,7 @@ class PatternCounter:
         if not self.entries:
             return ""
 
-        header = (
-            f"Exit patterns (last {self.lookback_days} ngày, "
-            f"{self.total_sells} lệnh bán):"
-        )
+        header = f"Exit patterns (last {self.lookback_days} ngày, {self.total_sells} lệnh bán):"
         lines = [header]
         for e in self.entries:
             pct = f"{e.frequency:.0%}"
@@ -136,6 +135,7 @@ class PatternCounter:
 @dataclass(frozen=True)
 class LessonSnippet:
     """One persisted AI lesson, ready for prompt injection."""
+
     decision_id: int
     ticker: str
     decision_type: str
@@ -280,15 +280,12 @@ class LessonService:
         cutoff = datetime.now(UTC) - timedelta(days=lookback_days)
 
         # --- Step 1: Fetch SELL rows with pattern_detected in window ---
-        pattern_stmt = (
-            select(DecisionLog.pattern_detected)
-            .where(
-                and_(
-                    DecisionLog.user_id == user_id,
-                    DecisionLog.decision_type == "SELL",
-                    DecisionLog.pattern_detected.isnot(None),
-                    DecisionLog.decision_at >= cutoff,
-                )
+        pattern_stmt = select(DecisionLog.pattern_detected).where(
+            and_(
+                DecisionLog.user_id == user_id,
+                DecisionLog.decision_type == "SELL",
+                DecisionLog.pattern_detected.isnot(None),
+                DecisionLog.decision_at >= cutoff,
             )
         )
         pattern_rows = (await self._session.execute(pattern_stmt)).scalars().all()
@@ -297,27 +294,18 @@ class LessonService:
             return None
 
         # --- Step 2: Count total SELL trades in window (denominator) ---
-        total_stmt = (
-            select(DecisionLog.id)
-            .where(
-                and_(
-                    DecisionLog.user_id == user_id,
-                    DecisionLog.decision_type == "SELL",
-                    DecisionLog.decision_at >= cutoff,
-                )
+        total_stmt = select(DecisionLog.id).where(
+            and_(
+                DecisionLog.user_id == user_id,
+                DecisionLog.decision_type == "SELL",
+                DecisionLog.decision_at >= cutoff,
             )
         )
-        total_sells = len(
-            (await self._session.execute(total_stmt)).scalars().all()
-        )
+        total_sells = len((await self._session.execute(total_stmt)).scalars().all())
 
         # --- Step 3: Count per tag, filter by min_occurrences ---
         tag_counts: Counter[str] = Counter(pattern_rows)
-        qualifying = {
-            tag: count
-            for tag, count in tag_counts.items()
-            if count >= min_occurrences
-        }
+        qualifying = {tag: count for tag, count in tag_counts.items() if count >= min_occurrences}
 
         if not qualifying:
             return None

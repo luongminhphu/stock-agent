@@ -320,10 +320,7 @@ class ThesisRepository:
         for row in rows:
             grouped[row.thesis_id].append(row)
 
-        return {
-            tid: reviews[:limit_per_thesis]
-            for tid, reviews in grouped.items()
-        }
+        return {tid: reviews[:limit_per_thesis] for tid, reviews in grouped.items()}
 
     # ------------------------------------------------------------------
     # Snapshot queries

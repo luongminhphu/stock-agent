@@ -139,7 +139,7 @@ async def get_portfolio_context(
         sector_totals: dict[str, float] = {}
         for s in summaries:
             key = s.sector or "không phân loại"
-            value = (s.market_value or s.avg_cost * s.qty)
+            value = s.market_value or s.avg_cost * s.qty
             sector_totals[key] = sector_totals.get(key, 0.0) + value
         sector_weights = {
             k: round(v / basis_for_weights * 100, 1)

@@ -57,7 +57,9 @@ class SignalCredibilityResult(BaseModel):  # noqa: D101
 
     def short_summary(self) -> str:
         """One-liner for Discord embeds."""
-        icon = {"STRONG": "🟢", "MODERATE": "🟡", "WEAK": "🟠", "NOISE": "🔴"}.get(self.verdict, "⚪")
+        icon = {"STRONG": "🟢", "MODERATE": "🟡", "WEAK": "🟠", "NOISE": "🔴"}.get(
+            self.verdict, "⚪"
+        )
         return f"{icon} {self.verdict} ({self.score}/100) — {'; '.join(self.failure_risks[:1]) or 'N/A'}"
 
 
@@ -67,9 +69,7 @@ class SignalCredibilityAgent:
     def __init__(self, ai_client: AIClient) -> None:
         self._client = ai_client
 
-    async def evaluate(
-        self, ctx: SignalCredibilityContext
-    ) -> SignalCredibilityResult | None:
+    async def evaluate(self, ctx: SignalCredibilityContext) -> SignalCredibilityResult | None:
         """Score the signal. Returns None on any failure (graceful degrade)."""
         try:
             user_prompt = build_user_prompt(ctx)
@@ -82,7 +82,7 @@ class SignalCredibilityAgent:
             api_resp = await self._client.chat_completion(
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user",   "content": user_prompt},
+                    {"role": "user", "content": user_prompt},
                 ],
                 temperature=SPEC.temperature,
                 max_tokens=SPEC.max_tokens,

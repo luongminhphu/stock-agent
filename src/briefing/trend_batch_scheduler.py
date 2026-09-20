@@ -28,6 +28,7 @@ Error handling:
     - run_for_user() always writes to store — even partial results are useful.
     - Thesis context fetch failure is silent — falls back to "N/A" per symbol.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -37,8 +38,8 @@ from src.platform.logging import get_logger
 
 if TYPE_CHECKING:
     from src.ai.agents.trend_reasoning import TrendPrediction, TrendReasoningAgent
-    from src.readmodel.trend_prediction_store import TrendPredictionStore
     from src.market.trend_engine import TrendEngine
+    from src.readmodel.trend_prediction_store import TrendPredictionStore
 
 logger = get_logger(__name__)
 
@@ -60,9 +61,9 @@ class TrendBatchScheduler:
 
     def __init__(
         self,
-        trend_engine: "TrendEngine",
-        reasoning_agent: "TrendReasoningAgent",
-        prediction_store: "TrendPredictionStore",
+        trend_engine: TrendEngine,
+        reasoning_agent: TrendReasoningAgent,
+        prediction_store: TrendPredictionStore,
         watchlist_service,
         bot_notifier=None,
         thesis_query=None,
@@ -82,7 +83,7 @@ class TrendBatchScheduler:
         self,
         user_id: str,
         session=None,
-    ) -> list["TrendPrediction"]:
+    ) -> list[TrendPrediction]:
         """Pre-compute trend predictions for all watchlist symbols of one user.
 
         Steps:
@@ -128,9 +129,7 @@ class TrendBatchScheduler:
             user_id=user_id,
             total=len(predictions),
             actionable=sum(1 for p in predictions if p.is_actionable),
-            strong_signals=[
-                p.symbol for p in predictions if p.verdict in _ALERT_VERDICTS
-            ],
+            strong_signals=[p.symbol for p in predictions if p.verdict in _ALERT_VERDICTS],
         )
 
         # Step 5: Push strong alerts
@@ -230,7 +229,7 @@ class TrendBatchScheduler:
         session,
         user_id: str,
         thesis_context: str = "N/A",
-    ) -> list["TrendPrediction"]:
+    ) -> list[TrendPrediction]:
         """Run TrendReasoningAgent for each bundle concurrently.
 
         Uses asyncio.gather with return_exceptions=True so one slow/failing
@@ -239,7 +238,7 @@ class TrendBatchScheduler:
         """
         from src.ai.agents.trend_reasoning import _fallback_prediction
 
-        async def _analyze_one(bundle) -> "TrendPrediction":
+        async def _analyze_one(bundle) -> TrendPrediction:
             return await self._agent.analyze(
                 bundle=bundle,
                 thesis_context=thesis_context,
@@ -252,7 +251,7 @@ class TrendBatchScheduler:
             return_exceptions=True,
         )
 
-        predictions: list["TrendPrediction"] = []
+        predictions: list[TrendPrediction] = []
         for bundle, result in zip(bundles, results):
             if isinstance(result, Exception):
                 logger.warning(
@@ -268,7 +267,7 @@ class TrendBatchScheduler:
 
     async def _push_strong_alerts(
         self,
-        predictions: list["TrendPrediction"],
+        predictions: list[TrendPrediction],
         user_id: str,
     ) -> None:
         """Push STRONG_BUY / STRONG_SELL signals via notifier if configured."""
@@ -276,9 +275,9 @@ class TrendBatchScheduler:
             return
 
         strong = [
-            p for p in predictions
-            if p.verdict in _ALERT_VERDICTS
-            and p.confidence >= _MIN_ALERT_CONFIDENCE
+            p
+            for p in predictions
+            if p.verdict in _ALERT_VERDICTS and p.confidence >= _MIN_ALERT_CONFIDENCE
         ]
 
         if not strong:

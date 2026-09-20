@@ -17,17 +17,17 @@ from __future__ import annotations
 import discord
 
 _VERDICT_COLOR: dict[str, discord.Color] = {
-    "bullish":  discord.Color.green(),
+    "bullish": discord.Color.green(),
     "cautious": discord.Color.orange(),
-    "bearish":  discord.Color.red(),
-    "neutral":  discord.Color.light_grey(),
+    "bearish": discord.Color.red(),
+    "neutral": discord.Color.light_grey(),
 }
 
 _VERDICT_EMOJI: dict[str, str] = {
-    "bullish":  "🟢",
+    "bullish": "🟢",
     "cautious": "🟡",
-    "bearish":  "🔴",
-    "neutral":  "⚪",
+    "bearish": "🔴",
+    "neutral": "⚪",
 }
 
 
@@ -51,6 +51,7 @@ def build_intel_embeds(data: dict) -> list[discord.Embed]:
 # ---------------------------------------------------------------------------
 # Private builders
 # ---------------------------------------------------------------------------
+
 
 def _build_verdict_embed(data: dict) -> discord.Embed:
     verdict_raw = (data.get("overall_verdict") or "neutral").lower()
@@ -130,19 +131,20 @@ def _build_risk_embed(data: dict) -> discord.Embed | None:
 # Micro-formatters  (handle both str and dict action/flag shapes)
 # ---------------------------------------------------------------------------
 
+
 def _fmt_action(action: str | dict) -> str:
     if isinstance(action, str):
         return action
     symbol = action.get("symbol", "")
-    text   = action.get("action") or action.get("text") or str(action)
+    text = action.get("action") or action.get("text") or str(action)
     return f"**{symbol}** — {text}" if symbol else text
 
 
 def _fmt_flag(flag: str | dict) -> str:
     if isinstance(flag, str):
         return flag
-    symbol   = flag.get("symbol", "")
-    text     = flag.get("flag") or flag.get("text") or str(flag)
+    symbol = flag.get("symbol", "")
+    text = flag.get("flag") or flag.get("text") or str(flag)
     severity = flag.get("severity", "")
     parts = []
     if symbol:

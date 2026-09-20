@@ -57,10 +57,10 @@ _TET_DATES: dict[int, date] = {
 def _fixed_holidays(year: int) -> set[date]:
     """Gregorian public holidays when the exchange is closed."""
     return {
-        date(year, 1, 1),    # New Year
-        date(year, 4, 30),   # Reunification Day
-        date(year, 5, 1),    # Labour Day
-        date(year, 9, 2),    # National Day
+        date(year, 1, 1),  # New Year
+        date(year, 4, 30),  # Reunification Day
+        date(year, 5, 1),  # Labour Day
+        date(year, 9, 2),  # National Day
     }
 
 

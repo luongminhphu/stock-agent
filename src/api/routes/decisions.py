@@ -38,6 +38,7 @@ router = APIRouter(tags=["decisions"])
 # Request / Response DTOs
 # ---------------------------------------------------------------------------
 
+
 class LogDecisionRequest(BaseModel):
     """Request body for POST /decisions.
 
@@ -45,6 +46,7 @@ class LogDecisionRequest(BaseModel):
     execution_price: actual fill price ("Giá thực hiện"); if omitted, live quote is used.
     quantity: number of shares traded ("Khối lượng"); optional, stored for context.
     """
+
     thesis_id: int = Field(..., description="ID of the linked Thesis (required — NOT NULL FK)")
     decision_type: str = Field(..., description="BUY | SELL | HOLD | ADD | REDUCE")
     rationale: str = Field(..., min_length=1, max_length=2000)
@@ -82,7 +84,7 @@ class DecisionResponse(BaseModel):
     outcome_evaluated_at: str | None
 
     @classmethod
-    def from_orm(cls, d: object) -> "DecisionResponse":
+    def from_orm(cls, d: object) -> DecisionResponse:
         return cls(
             id=d.id,  # type: ignore[attr-defined]
             user_id=d.user_id,  # type: ignore[attr-defined]
@@ -133,6 +135,7 @@ class LessonSnippetResponse(BaseModel):
 # Decision endpoints
 # ---------------------------------------------------------------------------
 
+
 @router.post(
     "/decisions",
     response_model=DecisionResponse,
@@ -164,7 +167,9 @@ async def log_decision(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+        ) from exc
     return DecisionResponse.from_orm(decision)
 
 
@@ -208,7 +213,9 @@ async def evaluate_decision(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+        ) from exc
     return DecisionResponse.from_orm(decision)
 
 
@@ -230,7 +237,9 @@ async def replay_decision(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+        ) from exc
 
     r = envelope.replay
     d_id = envelope.decision_id
@@ -253,6 +262,7 @@ async def replay_decision(
 # ---------------------------------------------------------------------------
 # Lesson endpoints
 # ---------------------------------------------------------------------------
+
 
 @router.get(
     "/lessons",

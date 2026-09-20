@@ -54,6 +54,7 @@ router = APIRouter(tags=["portfolio"])
 # DTOs
 # ---------------------------------------------------------------------------
 
+
 class BuyRequest(BaseModel):
     ticker: str = Field(..., min_length=1, max_length=10, description="Mã cổ phiếu, VD: VCB")
     qty: float = Field(..., gt=0, description="Số lượng mua (cp)")
@@ -93,7 +94,9 @@ class SellRequest(BaseModel):
 class AdjustRequest(BaseModel):
     ticker: str = Field(..., min_length=1, max_length=10, description="Mã cổ phiếu, VD: HPG")
     ratio: float = Field(
-        ..., gt=0, le=10,
+        ...,
+        gt=0,
+        le=10,
         description=(
             "Tỷ lệ thưởng/tách. VD: 0.15 = cổ tức cổ phiếu 15% (1,000 cp → 1,150 cp); "
             "1.0 = split 1:2 (1,000 cp → 2,000 cp)"
@@ -124,15 +127,18 @@ class PositionEditRequest(BaseModel):
     qty: float | None = Field(None, gt=0, description="Số lượng mới — None = giữ nguyên")
     avg_cost: float | None = Field(None, gt=0, description="Giá vốn TB mới — None = giữ nguyên")
     locked_qty: float | None = Field(
-        None, ge=0,
+        None,
+        ge=0,
         description="Số cp KHÔNG bán được (ESOP/phát hành thêm...) — 0 = mở khóa toàn bộ",
     )
     locked_reason: str | None = Field(
-        None, max_length=64,
+        None,
+        max_length=64,
         description="esop | private_placement | pending_settlement | pledged | odd_lot | core_hold | text ngắn",
     )
     locked_until: date | None = Field(
-        None, description="Ngày dự kiến mở khóa (chỉ ý nghĩa khi locked_qty > 0)",
+        None,
+        description="Ngày dự kiến mở khóa (chỉ ý nghĩa khi locked_qty > 0)",
     )
 
 
@@ -185,6 +191,7 @@ class TradeResponse(BaseModel):
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 async def _refresh_snapshot_after_commit(
     quote_svc: object,
     user_id: str,
@@ -211,7 +218,9 @@ async def _refresh_snapshot_after_commit(
         async with AsyncSessionLocal() as snap_session:
             eod_svc = EodSnapshotService(session=snap_session, quote_service=quote_svc)
             await eod_svc.refresh_after_trade(
-                user_id, ticker, position_closed=position_closed,
+                user_id,
+                ticker,
+                position_closed=position_closed,
             )
             await snap_session.commit()
     except Exception as exc:
@@ -227,6 +236,7 @@ async def _refresh_snapshot_after_commit(
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
 
 @router.post(
     "/portfolio/buy",
@@ -269,7 +279,9 @@ async def buy_stock(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+        ) from exc
 
     await _refresh_snapshot_after_commit(quote_svc, user_id, result.ticker)
 
@@ -331,13 +343,19 @@ async def sell_stock(
     except PositionNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except InsufficientQtyError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+        ) from exc
 
     # Full sell → position_closed=True để xoá snapshot hôm nay của ticker.
     await _refresh_snapshot_after_commit(
-        quote_svc, user_id, result.ticker,
+        quote_svc,
+        user_id,
+        result.ticker,
         position_closed=result.position_closed,
     )
 
@@ -359,6 +377,7 @@ async def sell_stock(
 # ---------------------------------------------------------------------------
 # Stock dividend / split adjustment
 # ---------------------------------------------------------------------------
+
 
 @router.post(
     "/portfolio/adjust",
@@ -404,12 +423,16 @@ async def adjust_position(
         # Commit TRƯỚC — snapshot refresh chạy sau trên session riêng.
         await session.commit()
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
     except PositionNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except Exception as exc:
         await session.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+        ) from exc
 
     # Refresh snapshot SAU commit — isolated session, never-raises.
     await _refresh_snapshot_after_commit(quote_svc, user_id, position.ticker)
@@ -431,6 +454,7 @@ async def adjust_position(
 # ---------------------------------------------------------------------------
 # Direct position edit (manual correction)
 # ---------------------------------------------------------------------------
+
 
 @router.put(
     "/portfolio/positions/{ticker}",
@@ -454,7 +478,10 @@ async def edit_position(
     svc = PortfolioService(session=session)
     try:
         position = await svc.edit_position(
-            user_id=user_id, ticker=ticker, qty=body.qty, avg_cost=body.avg_cost,
+            user_id=user_id,
+            ticker=ticker,
+            qty=body.qty,
+            avg_cost=body.avg_cost,
             locked_qty=body.locked_qty,
             locked_reason=body.locked_reason,
             locked_until=body.locked_until,
@@ -463,12 +490,16 @@ async def edit_position(
         # chạy sau, trên session riêng: lỗi snapshot không rollback edit.
         await session.commit()
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
     except PositionNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except Exception as exc:
         await session.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+        ) from exc
 
     # Refresh snapshot hôm nay SAU commit — dashboard phản ánh giá mới ngay.
     # Isolated session + never-raises: edit đã commit an toàn dù bước này lỗi.
@@ -488,6 +519,7 @@ async def edit_position(
 # ---------------------------------------------------------------------------
 # Trade history
 # ---------------------------------------------------------------------------
+
 
 @router.get(
     "/portfolio/trades",
@@ -557,24 +589,25 @@ async def get_trade_history(
 # Wave 5a — Position sizing preview
 # ---------------------------------------------------------------------------
 
+
 class SizingPreviewResponse(BaseModel):
     """Quantitative sizing for a prospective entry — advisory, not a gate."""
 
     ticker: str
     entry_price: float
     stop_price: float
-    stop_source: str              # "thesis" | "fallback_default"
+    stop_source: str  # "thesis" | "fallback_default"
     equity_vnd: float
-    cash_known: bool              # False → cash estimated, size is conservative
+    cash_known: bool  # False → cash estimated, size is conservative
     risk_per_trade_pct: float
     risk_budget_vnd: float
     max_qty: int
     max_value_vnd: float
     portfolio_pct_after: float
-    cap_reason: str               # "risk" | "concentration" | "cash" | "invalid" | "averaging_down_blocked"
+    cap_reason: str  # "risk" | "concentration" | "cash" | "invalid" | "averaging_down_blocked"
     warnings: list[str]
-    pyramiding_note: str = ""     # Wave 8.3 — advisory: adding to a winner without a fresh breakout
-    sector_note: str = ""         # Wave 8.4 — advisory: sector exposure past warn threshold
+    pyramiding_note: str = ""  # Wave 8.3 — advisory: adding to a winner without a fresh breakout
+    sector_note: str = ""  # Wave 8.4 — advisory: sector exposure past warn threshold
 
 
 @router.get(

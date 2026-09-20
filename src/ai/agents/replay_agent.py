@@ -32,8 +32,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.ai.memory.lesson_service import LessonService
 from src.ai.memory.memory_service import InteractionEntry, MemoryService
-from src.ai.prompts.replay import ReplayContext, build_user_prompt
 from src.ai.prompts.replay import SPEC as REPLAY_SPEC
+from src.ai.prompts.replay import ReplayContext, build_user_prompt
 from src.ai.schemas.replay import ReplayOutcomeRecord, ReplayOutput
 from src.platform.logging import get_logger
 
@@ -122,12 +122,8 @@ class ReplayAgent:
                 tickers=[ctx.ticker],
                 ai_verdict=output.outcome_verdict.value,
                 ai_confidence=output.confidence,
-                ai_key_points=(
-                    " | ".join(output.lessons[:3]) if output.lessons else None
-                ),
-                ai_risk_signals=(
-                    output.pattern_tag.value if output.pattern_tag else None
-                ),
+                ai_key_points=(" | ".join(output.lessons[:3]) if output.lessons else None),
+                ai_risk_signals=(output.pattern_tag.value if output.pattern_tag else None),
                 thesis_id=ctx.thesis_id,
             ),
         )
@@ -186,7 +182,9 @@ class ReplayAgent:
         if isinstance(traded_at, datetime):
             decision_at_str = traded_at.strftime("%Y-%m-%d %H:%M")
         else:
-            decision_at_str = str(traded_at) if traded_at else datetime.now(UTC).strftime("%Y-%m-%d")
+            decision_at_str = (
+                str(traded_at) if traded_at else datetime.now(UTC).strftime("%Y-%m-%d")
+            )
 
         realized_pnl = trade_snapshot.get("realized_pnl")
         entry_price = trade_snapshot.get("price")

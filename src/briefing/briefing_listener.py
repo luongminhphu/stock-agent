@@ -35,6 +35,7 @@ Wave B.1 (AgendaBuckets → BriefingService):
 - BriefingService có thể đọc lại buckets để enforce mapping DECIDE → ACT_TODAY
   ở tầng domain-level, độc lập với LLM prompt.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -62,7 +63,7 @@ class BriefingListener:
         morning_channel_id: int | None,
         eod_channel_id: int | None,
         user_id: str,
-        discord_client: "discord.Client | None" = None,
+        discord_client: discord.Client | None = None,
         agenda_service_factory: object | None = None,
     ) -> None:
         self._client = discord_client
@@ -73,7 +74,7 @@ class BriefingListener:
         # Injected from bootstrap so BriefingService can include agenda context.
         self._agenda_service_factory = agenda_service_factory
 
-    def set_client(self, client: "discord.Client") -> None:
+    def set_client(self, client: discord.Client) -> None:
         """Inject discord.Client after bot login (called from bot on_ready)."""
         self._client = client
         logger.info("briefing_listener.client_injected")
@@ -99,11 +100,7 @@ class BriefingListener:
         """
         try:
             # Basic guard: if there is literally nothing, clear cache and return.
-            if (
-                event.decide_count <= 0
-                and event.watch_count <= 0
-                and event.defer_count <= 0
-            ):
+            if event.decide_count <= 0 and event.watch_count <= 0 and event.defer_count <= 0:
                 set_agenda(event.user_id, None)
                 logger.info(
                     "briefing_listener.agenda_cleared",
@@ -179,9 +176,7 @@ class BriefingListener:
             )
             return
 
-        channel_id = (
-            self._morning_channel_id if phase == "morning" else self._eod_channel_id
-        )
+        channel_id = self._morning_channel_id if phase == "morning" else self._eod_channel_id
         if not channel_id:
             logger.warning(
                 "briefing_listener.no_channel",

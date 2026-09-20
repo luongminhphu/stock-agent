@@ -21,6 +21,7 @@ Pattern: session_factory injection, never raises — returns [] on error.
 Naming note: previously StressTestQueryService. Renamed to ThesisRiskSignalQuery
 to avoid implying persisted StressTest entity queries exist.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -49,8 +50,8 @@ class ThesisRiskSignalQuery:
         """
         try:
             async with self._session_factory() as session:
-                from src.thesis.repository import ThesisRepository
                 from src.thesis.models import AssumptionStatus
+                from src.thesis.repository import ThesisRepository
 
                 repo = ThesisRepository(session)
                 theses = await repo.list_active_for_user(user_id=user_id)
@@ -61,14 +62,17 @@ class ThesisRiskSignalQuery:
                     total = len(assumptions)
 
                     threatened = [
-                        a for a in assumptions
-                        if getattr(a, "status", None) in (
+                        a
+                        for a in assumptions
+                        if getattr(a, "status", None)
+                        in (
                             AssumptionStatus.INVALID,
                             AssumptionStatus.UNCERTAIN,
                         )
                     ]
                     broken = [
-                        a for a in assumptions
+                        a
+                        for a in assumptions
                         if getattr(a, "status", None) == AssumptionStatus.INVALID
                     ]
 
@@ -88,29 +92,31 @@ class ThesisRiskSignalQuery:
                         if str(getattr(c, "status", "pending")).lower() == "pending"
                     ]
 
-                    results.append({
-                        "thesis_id": str(thesis.id),
-                        "ticker": thesis.ticker,
-                        "thesis_title": thesis.title,
-                        "verdict": verdict,
-                        "invalidation_probability": round(invalidation_prob, 3),
-                        "broken_assumption_count": len(broken),
-                        "weakened_assumption_count": len(threatened) - len(broken),
-                        "threatened_assumptions": [
-                            {
-                                "description": getattr(a, "description", ""),
-                                "status": str(getattr(a, "status", "")),
-                                "threat_level": (
-                                    "BROKEN"
-                                    if getattr(a, "status", None) == AssumptionStatus.INVALID
-                                    else "WEAKENED"
-                                ),
-                            }
-                            for a in threatened
-                        ],
-                        "pending_catalysts": pending_catalysts,
-                        "_source": "derived_from_thesis_state",
-                    })
+                    results.append(
+                        {
+                            "thesis_id": str(thesis.id),
+                            "ticker": thesis.ticker,
+                            "thesis_title": thesis.title,
+                            "verdict": verdict,
+                            "invalidation_probability": round(invalidation_prob, 3),
+                            "broken_assumption_count": len(broken),
+                            "weakened_assumption_count": len(threatened) - len(broken),
+                            "threatened_assumptions": [
+                                {
+                                    "description": getattr(a, "description", ""),
+                                    "status": str(getattr(a, "status", "")),
+                                    "threat_level": (
+                                        "BROKEN"
+                                        if getattr(a, "status", None) == AssumptionStatus.INVALID
+                                        else "WEAKENED"
+                                    ),
+                                }
+                                for a in threatened
+                            ],
+                            "pending_catalysts": pending_catalysts,
+                            "_source": "derived_from_thesis_state",
+                        }
+                    )
 
                 return results
         except Exception as exc:

@@ -17,7 +17,6 @@ from __future__ import annotations
 
 from typing import TypedDict
 
-
 # ---------------------------------------------------------------------------
 # Schema
 # ---------------------------------------------------------------------------
@@ -30,10 +29,10 @@ class CommandEntry(TypedDict):
 
 
 class GroupEntry(TypedDict):
-    label: str   # tên hiển thị trên dropdown
+    label: str  # tên hiển thị trên dropdown
     emoji: str
     colour: int  # discord.Color int
-    intro: str   # 1-line mô tả nhóm
+    intro: str  # 1-line mô tả nhóm
     commands: list[CommandEntry]
 
 

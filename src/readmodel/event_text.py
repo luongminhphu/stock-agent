@@ -20,24 +20,24 @@ from src.readmodel.schemas import TimelineEvent
 # ---------------------------------------------------------------------------
 
 _LABEL_MAP: dict[str, str] = {
-    "verdict":              "Verdict",
-    "confidence":           "Confidence",
-    "risk_signals":         "Rủi ro",
-    "next_watch_items":     "Cần theo dõi",
-    "entry_price":          "Giá vào",
-    "target_price":         "Mục tiêu",
-    "stop_loss":            "Stop loss",
-    "score":                "Score",
-    "pnl_pct":              "P&L",
-    "price":                "Giá",
-    "final_score":          "Score cuối",
-    "status":               "Trạng thái",
-    "assumption_id":        "Assumption",
-    "catalyst_id":          "Catalyst",
-    "assumption_health":    "Assumption health",
-    "catalyst_progress":    "Catalyst progress",
-    "risk_reward":          "Risk/reward",
-    "review_confidence":    "AI confidence",
+    "verdict": "Verdict",
+    "confidence": "Confidence",
+    "risk_signals": "Rủi ro",
+    "next_watch_items": "Cần theo dõi",
+    "entry_price": "Giá vào",
+    "target_price": "Mục tiêu",
+    "stop_loss": "Stop loss",
+    "score": "Score",
+    "pnl_pct": "P&L",
+    "price": "Giá",
+    "final_score": "Score cuối",
+    "status": "Trạng thái",
+    "assumption_id": "Assumption",
+    "catalyst_id": "Catalyst",
+    "assumption_health": "Assumption health",
+    "catalyst_progress": "Catalyst progress",
+    "risk_reward": "Risk/reward",
+    "review_confidence": "AI confidence",
 }
 
 # ---------------------------------------------------------------------------
@@ -61,8 +61,14 @@ def _is_empty(v: Any) -> bool:
 def _fmt_value(key: str, v: Any) -> str:
     """Format một value thành chuỗi đẹp dựa trên key hint."""
     if isinstance(v, float):
-        if key in ("confidence", "pnl_pct", "assumption_health",
-                   "catalyst_progress", "risk_reward", "review_confidence"):
+        if key in (
+            "confidence",
+            "pnl_pct",
+            "assumption_health",
+            "catalyst_progress",
+            "risk_reward",
+            "review_confidence",
+        ):
             pct = v * 100 if key == "confidence" and 0 <= v <= 1 else v
             sign = "+" if pct > 0 and key == "pnl_pct" else ""
             return f"{sign}{pct:.1f}%"
@@ -134,9 +140,7 @@ _MAX_EVENTS = 30
 def _event_is_meaningful(event: TimelineEvent) -> bool:
     """True nếu event có ít nhất summary hoặc detail không rỗng."""
     has_summary = bool(event.summary and event.summary.strip())
-    has_detail = bool(event.detail and any(
-        not _is_empty(v) for v in event.detail.values()
-    ))
+    has_detail = bool(event.detail and any(not _is_empty(v) for v in event.detail.values()))
     return has_summary or has_detail
 
 

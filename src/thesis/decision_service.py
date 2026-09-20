@@ -112,9 +112,7 @@ class DecisionService:
             return None
 
         ticker = ticker.upper().strip()
-        thesis = await self._repo.get_active_by_user_and_ticker(
-            user_id=user_id, ticker=ticker
-        )
+        thesis = await self._repo.get_active_by_user_and_ticker(user_id=user_id, ticker=ticker)
         if thesis is None:
             logger.info(
                 "decision_service.record_execution_signal.no_active_thesis",
@@ -161,9 +159,7 @@ class DecisionService:
         thesis_id stays NULL otherwise (the most common /pretrade usage).
         """
         ticker = ticker.upper().strip()
-        thesis = await self._repo.get_active_by_user_and_ticker(
-            user_id=user_id, ticker=ticker
-        )
+        thesis = await self._repo.get_active_by_user_and_ticker(user_id=user_id, ticker=ticker)
 
         thesis_score = self._infer_current_thesis_score(thesis) if thesis else None
         thesis_health_score = self._infer_current_health_score(thesis) if thesis else None
@@ -337,7 +333,8 @@ class DecisionService:
         )
         rows = (await self._session.execute(stmt)).scalars().all()
         return [
-            row for row in rows
+            row
+            for row in rows
             if row.decision_at is not None
             and row.decision_at + timedelta(days=row.review_horizon_days) <= now
         ]
@@ -531,11 +528,13 @@ class DecisionService:
             from src.platform.event_bus import get_event_bus
             from src.platform.events import ThesisReviewRequestedEvent
 
-            await get_event_bus().publish(ThesisReviewRequestedEvent(
-                thesis_id=str(thesis_id),
-                symbol=ticker,
-                reason="lesson_from_replay",
-            ))
+            await get_event_bus().publish(
+                ThesisReviewRequestedEvent(
+                    thesis_id=str(thesis_id),
+                    symbol=ticker,
+                    reason="lesson_from_replay",
+                )
+            )
             logger.info(
                 "decision_service.thesis_review_requested_after_lesson",
                 thesis_id=thesis_id,

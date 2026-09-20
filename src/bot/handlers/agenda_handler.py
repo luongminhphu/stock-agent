@@ -4,6 +4,7 @@ Owner: bot segment.
 Boundary: receives DailyAgendaResult, formats into Discord message, sends.
 Contains no business logic — pure presentation adapter.
 """
+
 from __future__ import annotations
 
 from src.ai.prompts.agenda import AgendaItem, DailyAgendaResult
@@ -27,9 +28,7 @@ class AgendaHandler:
         try:
             await self._channel.send(msg)
         except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "agenda_handler.send_failed", user_id=user_id, error=str(exc)
-            )
+            logger.warning("agenda_handler.send_failed", user_id=user_id, error=str(exc))
 
     def _format(self, agenda: DailyAgendaResult) -> str:
         lines = ["📋 **AGENDA HÔM NAY**", ""]
@@ -44,12 +43,8 @@ class AgendaHandler:
             label = _PRIORITY_LABEL[priority]
             lines.append(f"{emoji} **{label}**")
             for item in items:
-                deadline_str = (
-                    f" _(hạn: {item.deadline})_" if item.deadline else ""
-                )
-                lines.append(
-                    f"• **{item.ticker}** — {item.reason}{deadline_str}"
-                )
+                deadline_str = f" _(hạn: {item.deadline})_" if item.deadline else ""
+                lines.append(f"• **{item.ticker}** — {item.reason}{deadline_str}")
                 lines.append(f"  → _{item.action_hint}_")
             lines.append("")
 

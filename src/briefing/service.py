@@ -123,8 +123,8 @@ class BriefingService:
     def __init__(
         self,
         session: AsyncSession,
-        briefing_agent: "BriefingAgent",
-        watchlist_service: "WatchlistService",
+        briefing_agent: BriefingAgent,
+        watchlist_service: WatchlistService,
         pnl_service: Any = None,
         thesis_service: Any = None,
         quote_service: Any = None,
@@ -443,12 +443,12 @@ class BriefingService:
             lines = ["P&L vị thế mở:"]
             for p in positions:
                 ticker = getattr(p, "ticker", "?")
-                qty    = getattr(p, "qty", 0)
-                cost   = getattr(p, "avg_cost", 0) or getattr(p, "cost_price", 0)
-                price  = getattr(p, "current_price", None)
-                upnl   = getattr(p, "unrealized_pnl", None)
-                upct   = getattr(p, "unrealized_pnl_pct", None)
-                line   = f"  {ticker}: {qty:,.0f} cp @ {cost:,.0f}"
+                qty = getattr(p, "qty", 0)
+                cost = getattr(p, "avg_cost", 0) or getattr(p, "cost_price", 0)
+                price = getattr(p, "current_price", None)
+                upnl = getattr(p, "unrealized_pnl", None)
+                upct = getattr(p, "unrealized_pnl_pct", None)
+                line = f"  {ticker}: {qty:,.0f} cp @ {cost:,.0f}"
                 if price:
                     line += f" | giá hiện tại: {price:,.0f}"
                 if upnl is not None:
@@ -504,7 +504,7 @@ class BriefingService:
 
             # --- Concentration flags ---
             _CONCENTRATION_THRESHOLD = 50.0  # single sector > 50% = concentrated
-            _UNLABELLED_THRESHOLD    = 30.0  # >30% unlabelled = data quality warning
+            _UNLABELLED_THRESHOLD = 30.0  # >30% unlabelled = data quality warning
 
             concentration_flags: list[str] = []
             for sector, weight in sector_weights.items():
@@ -658,9 +658,7 @@ class BriefingService:
             logger.warning("briefing.sector_context.failed", error=str(exc))
             return ""
 
-    async def _build_judge_context(
-        self, user_id: str, investor_context: str = ""
-    ) -> str:
+    async def _build_judge_context(self, user_id: str, investor_context: str = "") -> str:
         """Run ThesisJudge for all active theses.
 
         investor_context: pre-rendered ContextBuilder block; passed into
@@ -675,9 +673,7 @@ class BriefingService:
                 return ""
             # judge() convenience wrapper — pass investor_context through
             return (
-                await self._thesis_judge_agent.judge(
-                    theses, investor_context=investor_context
-                )
+                await self._thesis_judge_agent.judge(theses, investor_context=investor_context)
                 or ""
             )
         except Exception as exc:
@@ -756,11 +752,11 @@ class BriefingService:
                 parts = []
                 if cached.summary:
                     parts.append(cached.summary)
-                for ticker in (buckets.decide or []):
+                for ticker in buckets.decide or []:
                     parts.append(f"DECIDE {ticker}")
-                for ticker in (buckets.watch or []):
+                for ticker in buckets.watch or []:
                     parts.append(f"WATCH {ticker}")
-                for ticker in (buckets.defer or []):
+                for ticker in buckets.defer or []:
                     parts.append(f"DEFER {ticker}")
                 return "\n".join(parts) if parts else ""
             # Fallback: plain summary string
@@ -792,6 +788,7 @@ class BriefingService:
 
             # Actual actions today: trades executed + non-PRETRADE decisions logged
             from sqlalchemy import select  # noqa: PLC0415
+
             from src.portfolio.models import Trade  # noqa: PLC0415
             from src.thesis.models import DecisionLog  # noqa: PLC0415
 
@@ -799,14 +796,14 @@ class BriefingService:
 
             trade_rows = (
                 await self._session.execute(
-                    select(Trade.ticker, Trade.trade_type)
-                    .where(Trade.user_id == user_id, Trade.traded_at >= today_start)
+                    select(Trade.ticker, Trade.trade_type).where(
+                        Trade.user_id == user_id, Trade.traded_at >= today_start
+                    )
                 )
             ).all()
             decision_rows = (
                 await self._session.execute(
-                    select(DecisionLog.ticker, DecisionLog.decision_type)
-                    .where(
+                    select(DecisionLog.ticker, DecisionLog.decision_type).where(
                         DecisionLog.user_id == user_id,
                         DecisionLog.decision_at >= today_start,
                         DecisionLog.decision_type != "PRETRADE_ADVICE",
@@ -816,7 +813,9 @@ class BriefingService:
 
             acted: dict[str, list[str]] = {}
             for ticker, ttype in trade_rows:
-                acted.setdefault(ticker.upper(), []).append(ttype.value if hasattr(ttype, "value") else str(ttype))
+                acted.setdefault(ticker.upper(), []).append(
+                    ttype.value if hasattr(ttype, "value") else str(ttype)
+                )
             for ticker, dtype in decision_rows:
                 acted.setdefault(ticker.upper(), []).append(str(dtype))
 

@@ -14,6 +14,7 @@ All persistence is delegated to FeedbackStore.
 
 Boot: call EngineFeedbackListener().register() in platform bootstrap.
 """
+
 from __future__ import annotations
 
 from src.core.feedback import FeedbackStore

@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from collections import defaultdict
 from datetime import date
 
 from src.market.quote_service import QuoteService

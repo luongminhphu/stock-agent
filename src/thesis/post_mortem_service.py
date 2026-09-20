@@ -75,6 +75,7 @@ class PostMortemService:
         try:
             async with self._session_factory() as session:
                 from src.thesis.lesson_service import LessonService
+
                 svc = LessonService(session)
                 return await svc.build_lesson_context(
                     event.user_id,
@@ -89,7 +90,7 @@ class PostMortemService:
             )
             return ""
 
-    async def _run_ai(self, event: ThesisClosedEvent, lesson_context: str) -> "PostMortemOutput":
+    async def _run_ai(self, event: ThesisClosedEvent, lesson_context: str) -> PostMortemOutput:
         pnl_str = (
             f"{event.outcome_pnl_pct:+.1f}%"
             if event.outcome_pnl_pct is not None
@@ -110,7 +111,7 @@ class PostMortemService:
             max_tokens=AIClient.COMPLEX_MAX_TOKENS,
         )
 
-    async def _emit(self, event: ThesisClosedEvent, output: "PostMortemOutput") -> None:
+    async def _emit(self, event: ThesisClosedEvent, output: PostMortemOutput) -> None:
         result = ThesisPostMortemReadyEvent(
             thesis_id=event.thesis_id,
             user_id=event.user_id,

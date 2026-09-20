@@ -16,6 +16,7 @@ Boundary:
     market/trend_engine.py (same fields, avoids cross-segment import).
   - This file has NO imports from market, thesis, or briefing segments.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -31,6 +32,7 @@ _STALE_THRESHOLD = timedelta(minutes=5)
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
+
 
 class TrendVerdict(StrEnum):
     STRONG_BUY = "STRONG_BUY"
@@ -48,8 +50,8 @@ class TrendDirection(StrEnum):
 
 
 class TrendHorizon(StrEnum):
-    SHORT_TERM = "SHORT_TERM"   # 1-5 ngày
-    MID_TERM = "MID_TERM"       # 2-4 tuần
+    SHORT_TERM = "SHORT_TERM"  # 1-5 ngày
+    MID_TERM = "MID_TERM"  # 2-4 tuần
 
 
 class TrendRegime(StrEnum):
@@ -69,12 +71,14 @@ class SignalLabel(StrEnum):
 # Technical input bundle (AI-facing view)
 # ---------------------------------------------------------------------------
 
+
 class SignalScore(BaseModel):
     """Normalised 0–1 score for a single technical dimension.
 
     value=0.0 → strongly bearish; 0.5 → neutral; 1.0 → strongly bullish.
     label is derived from value by the producer (TrendSignalComposer).
     """
+
     value: float = Field(ge=0.0, le=1.0)
     label: SignalLabel
 
@@ -94,12 +98,12 @@ class RawIndicators(BaseModel):
     Populated by TrendSignalComposer.compute() — optional for backward compat.
     Consumers: TrendSynthesisAgent, trend analysis dashboard panel.
     """
+
     rsi: float = Field(default=50.0, description="RSI-14, 0-100")
     macd_line: float = Field(default=0.0)
     macd_signal: float = Field(default=0.0)
     macd_hist: float = Field(default=0.0)
-    macd_cross: str = Field(default="bearish_cross",
-                            description="bullish_cross | bearish_cross")
+    macd_cross: str = Field(default="bearish_cross", description="bullish_cross | bearish_cross")
     cmf: float = Field(default=0.0, description="Chaikin Money Flow -1 to +1")
     adx: float = Field(default=0.0, description="ADX 0-100")
     adx_plus_di: float = Field(default=0.0)
@@ -113,13 +117,14 @@ class TechnicalSignalBundle(BaseModel):
     TrendReasoningAgent.analyze() — no raw OHLCV data is forwarded
     so the AI cannot hallucinate price targets.
     """
+
     symbol: str
     as_of: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     # Four orthogonal signal dimensions
-    momentum: SignalScore    # RSI-14, MACD histogram
-    structure: SignalScore   # EMA 20/50 cross, HH/HL swing pattern
-    volume: SignalScore      # OBV slope, volume surge ratio
+    momentum: SignalScore  # RSI-14, MACD histogram
+    structure: SignalScore  # EMA 20/50 cross, HH/HL swing pattern
+    volume: SignalScore  # OBV slope, volume surge ratio
     volatility: SignalScore  # ATR expansion/contraction
 
     # Weighted composite (0–1) and regime label
@@ -137,6 +142,7 @@ class TechnicalSignalBundle(BaseModel):
 # AI output
 # ---------------------------------------------------------------------------
 
+
 class TrendPrediction(BaseModel):
     """Structured verdict produced by TrendReasoningAgent.
 
@@ -148,11 +154,13 @@ class TrendPrediction(BaseModel):
       - confidence is hard-capped at 0.85 to prevent overconfidence.
       - reasoning is capped at 200 chars so it fits in Discord embeds.
     """
+
     symbol: str
     verdict: TrendVerdict
     direction: TrendDirection
-    confidence: float = Field(ge=0.0, le=0.85,
-        description="Hard cap 0.85 — prevents overconfidence.")
+    confidence: float = Field(
+        ge=0.0, le=0.85, description="Hard cap 0.85 — prevents overconfidence."
+    )
     horizon: TrendHorizon
     risk_signals: list[str] = Field(
         default_factory=list,

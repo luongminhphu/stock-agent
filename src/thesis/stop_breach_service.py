@@ -52,10 +52,10 @@ class StopBreachOutcome:
     current_price: float
     stop_loss: float
     overshoot_pct: float
-    action: str                    # "invalidated" | "observed" | "ai_not_confirmed" | "ai_failed"
+    action: str  # "invalidated" | "observed" | "ai_not_confirmed" | "ai_failed"
     ai_verdict: str | None = None  # CONFIRMED / SUSPECTED / CLEARED / None
     ai_confidence: float | None = None
-    ai_action: str | None = None   # exit_signal / review / reduce / hold
+    ai_action: str | None = None  # exit_signal / review / reduce / hold
     reason: str = ""
     # Wave 9.4 — vị thế khóa (ESOP/phát hành thêm): khi sellable == 0,
     # exit_signal vô nghĩa → caller đổi messaging thành "theo dõi mở khóa"
@@ -120,9 +120,7 @@ class StopBreachService:
                 quote = await self._quote_service.get_quote(ticker)  # type: ignore[attr-defined]
                 price_map[ticker] = quote.price
             except Exception as exc:
-                logger.warning(
-                    "stop_breach.quote_fetch_failed", ticker=ticker, error=str(exc)
-                )
+                logger.warning("stop_breach.quote_fetch_failed", ticker=ticker, error=str(exc))
 
         lock_map = await self._load_position_locks(user_id, tickers)
 
@@ -140,9 +138,7 @@ class StopBreachService:
     # Internals
     # ------------------------------------------------------------------
 
-    async def _load_position_locks(
-        self, user_id: str, tickers: list[str]
-    ) -> dict[str, object]:
+    async def _load_position_locks(self, user_id: str, tickers: list[str]) -> dict[str, object]:
         """Wave 9.4: map ticker → Position cho vị thế đang khóa bán.
 
         Cross-segment read (portfolio) — đọc thuần, không logic portfolio
@@ -203,9 +199,7 @@ class StopBreachService:
         overshoot = abs(price - thesis.stop_loss) / thesis.stop_loss * 100  # type: ignore[operator]
 
         if self._in_cooldown(thesis):
-            logger.debug(
-                "stop_breach.cooldown_skip", thesis_id=thesis.id, ticker=thesis.ticker
-            )
+            logger.debug("stop_breach.cooldown_skip", thesis_id=thesis.id, ticker=thesis.ticker)
             return None
 
         base = dict(
@@ -301,6 +295,4 @@ class StopBreachService:
                 )
             )
         except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "stop_breach.closed_event_failed", thesis_id=thesis.id, error=str(exc)
-            )
+            logger.warning("stop_breach.closed_event_failed", thesis_id=thesis.id, error=str(exc))

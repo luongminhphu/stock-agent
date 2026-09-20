@@ -68,10 +68,7 @@ class OutcomeFillerService:
         logs = result.scalars().all()
 
         # Filter: only logs where review_horizon_days have elapsed
-        due = [
-            log for log in logs
-            if (now - log.decision_at).days >= log.review_horizon_days
-        ]
+        due = [log for log in logs if (now - log.decision_at).days >= log.review_horizon_days]
 
         if not due:
             logger.info("outcome_filler.no_due_logs", user_id=user_id, total_pending=len(logs))
@@ -176,9 +173,7 @@ def _classify_verdict(
     return OutcomeVerdict.MIXED
 
 
-def _classify_pretrade_advice_verdict(
-    pnl_pct: float, active_signal: str | None
-) -> OutcomeVerdict:
+def _classify_pretrade_advice_verdict(pnl_pct: float, active_signal: str | None) -> OutcomeVerdict:
     """Verdict for PRETRADE_ADVICE rows, judged against the AI's stored view.
 
     active_signal carries the AI directional view at advice time:

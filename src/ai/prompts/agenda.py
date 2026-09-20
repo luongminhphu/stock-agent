@@ -3,26 +3,27 @@
 Owner: ai segment.
 Contract: AgendaContext IN → DailyAgendaResult OUT (JSON).
 """
+
 from __future__ import annotations
 
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
 # ---------------------------------------------------------------------------
 # Input contract
 # ---------------------------------------------------------------------------
 
+
 class PendingDecisionItem(BaseModel):
     decision_id: int
     ticker: str
-    decision_type: str          # BUY | SELL | HOLD | ADD | REDUCE
-    decision_at: str            # ISO date string
+    decision_type: str  # BUY | SELL | HOLD | ADD | REDUCE
+    decision_at: str  # ISO date string
     horizon_days: int
-    deadline: str               # ISO date string — ngày horizon hết hạn
-    days_until_deadline: int    # âm = đã quá hạn
-    pnl_pct: float | None       # None nếu chưa evaluate_outcome
+    deadline: str  # ISO date string — ngày horizon hết hạn
+    days_until_deadline: int  # âm = đã quá hạn
+    pnl_pct: float | None  # None nếu chưa evaluate_outcome
     rationale_summary: str | None
 
 
@@ -30,7 +31,7 @@ class ActiveThesisItem(BaseModel):
     thesis_id: int
     ticker: str
     thesis_title: str
-    health_score: int | None    # 0-100
+    health_score: int | None  # 0-100
     days_active: int
     next_assumption_check: str | None  # ISO date — ngày assumption sắp được test
     has_pending_decision: bool
@@ -39,43 +40,44 @@ class ActiveThesisItem(BaseModel):
 
 class MemorySignalItem(BaseModel):
     ticker: str
-    pattern_summary: str        # 1 câu từ SemanticPattern.description
+    pattern_summary: str  # 1 câu từ SemanticPattern.description
     confidence: float
 
 
 class AgendaContext(BaseModel):
-    today: str                  # ISO date
+    today: str  # ISO date
     user_id: str
     pending_decisions: list[PendingDecisionItem]
     active_theses: list[ActiveThesisItem]
     memory_signals: list[MemorySignalItem]
-    unreviewed_lessons_count: int   # decisions có key_lesson nhưng user chưa xem
+    unreviewed_lessons_count: int  # decisions có key_lesson nhưng user chưa xem
 
 
 # ---------------------------------------------------------------------------
 # Output contract
 # ---------------------------------------------------------------------------
 
+
 class AgendaItem(BaseModel):
     priority: Literal["DECIDE", "WATCH", "DEFER"]
     ticker: str
     urgency_source: Literal[
-        "decision_horizon",     # horizon sắp/đã hết hạn
-        "assumption_test",      # assumption sắp được kiểm chứng
-        "thesis_stale",         # thesis lâu không review
-        "memory_signal",        # memory pattern active
-        "lesson_pending",       # lesson chưa đọc
+        "decision_horizon",  # horizon sắp/đã hết hạn
+        "assumption_test",  # assumption sắp được kiểm chứng
+        "thesis_stale",  # thesis lâu không review
+        "memory_signal",  # memory pattern active
+        "lesson_pending",  # lesson chưa đọc
     ]
-    reason: str                 # 1 câu ngắn, tiếng Việt
-    action_hint: str            # hành động cụ thể cần làm
-    deadline: str | None        # ISO date nếu có
+    reason: str  # 1 câu ngắn, tiếng Việt
+    action_hint: str  # hành động cụ thể cần làm
+    deadline: str | None  # ISO date nếu có
 
 
 class DailyAgendaResult(BaseModel):
     decide: list[AgendaItem] = Field(default_factory=list)
     watch: list[AgendaItem] = Field(default_factory=list)
     defer: list[AgendaItem] = Field(default_factory=list)
-    opening_line: str           # 1 câu AI tóm tắt ngày
+    opening_line: str  # 1 câu AI tóm tắt ngày
     total_action_items: int
 
 
@@ -144,9 +146,7 @@ def build_user_prompt(ctx: AgendaContext) -> str:
     if ctx.memory_signals:
         lines.append("== MEMORY SIGNALS ==")
         for m in ctx.memory_signals:
-            lines.append(
-                f"- [{m.ticker}] {m.pattern_summary} (confidence={m.confidence:.2f})"
-            )
+            lines.append(f"- [{m.ticker}] {m.pattern_summary} (confidence={m.confidence:.2f})")
         lines.append("")
 
     if ctx.unreviewed_lessons_count > 0:

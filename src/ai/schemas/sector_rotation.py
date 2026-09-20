@@ -53,18 +53,34 @@ class SectorFlow(BaseModel):
         if "flow" in d and not isinstance(d["flow"], FlowDirection):
             raw = str(d["flow"]).upper().strip()
             _flow_map: dict[str, str] = {
-                "INFLOW": "INFLOW", "OUTFLOW": "OUTFLOW", "NEUTRAL": "NEUTRAL",
-                "POSITIVE": "INFLOW", "UP": "INFLOW", "BULLISH": "INFLOW",
-                "BUY": "INFLOW", "STRONG": "INFLOW", "RISING": "INFLOW",
-                "NEGATIVE": "OUTFLOW", "DOWN": "OUTFLOW", "BEARISH": "OUTFLOW",
-                "SELL": "OUTFLOW", "WEAK": "OUTFLOW", "FALLING": "OUTFLOW",
+                "INFLOW": "INFLOW",
+                "OUTFLOW": "OUTFLOW",
+                "NEUTRAL": "NEUTRAL",
+                "POSITIVE": "INFLOW",
+                "UP": "INFLOW",
+                "BULLISH": "INFLOW",
+                "BUY": "INFLOW",
+                "STRONG": "INFLOW",
+                "RISING": "INFLOW",
+                "NEGATIVE": "OUTFLOW",
+                "DOWN": "OUTFLOW",
+                "BEARISH": "OUTFLOW",
+                "SELL": "OUTFLOW",
+                "WEAK": "OUTFLOW",
+                "FALLING": "OUTFLOW",
             }
             d["flow"] = _flow_map.get(raw, "NEUTRAL")
 
         if "strength" not in d:
             for alias in (
-                "signal_strength", "score", "weight", "momentum_score",
-                "avg_return", "performance", "change_pct", "return_pct",
+                "signal_strength",
+                "score",
+                "weight",
+                "momentum_score",
+                "avg_return",
+                "performance",
+                "change_pct",
+                "return_pct",
             ):
                 if alias in d:
                     d["strength"] = d[alias]
@@ -126,8 +142,11 @@ class SectorRotationOutput(BaseModel):
         return _coerce_confidence(v)
 
     @field_validator(
-        "sector_signals", "top_rotate_in", "top_rotate_out",
-        "watchlist_crosscheck", "key_risks",
+        "sector_signals",
+        "top_rotate_in",
+        "top_rotate_out",
+        "watchlist_crosscheck",
+        "key_risks",
         mode="before",
     )
     @classmethod
@@ -137,7 +156,7 @@ class SectorRotationOutput(BaseModel):
         return v  # type: ignore[return-value]
 
     @model_validator(mode="after")
-    def normalize_model_output(self) -> "SectorRotationOutput":
+    def normalize_model_output(self) -> SectorRotationOutput:
         """Normalize verbose/non-canonical market_regime values from model."""
         if not self.top_rotate_in and self.sector_signals:
             self.top_rotate_in = [

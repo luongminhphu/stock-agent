@@ -36,14 +36,18 @@ _TTL_HOURS = 4
 # DB persistence helpers (Wave D.1)
 # ---------------------------------------------------------------------------
 
+
 async def _persist_risk_snapshot(session_factory, user_id: str, flagged: set, verdict) -> None:
     """Upsert a GlobalRiskSnapshot row. Fire-and-forget — never raises."""
     if session_factory is None:
         return
     try:
         import json as _json
-        from datetime import UTC, datetime as _dt
+        from datetime import UTC
+        from datetime import datetime as _dt
+
         from sqlalchemy.dialects.postgresql import insert as pg_insert
+
         from src.readmodel.models import GlobalRiskSnapshot
 
         try:
@@ -55,18 +59,22 @@ async def _persist_risk_snapshot(session_factory, user_id: str, flagged: set, ve
             verdict_json = None
 
         async with session_factory() as session:
-            stmt = pg_insert(GlobalRiskSnapshot).values(
-                user_id=user_id,
-                flagged_tickers_json=_json.dumps(sorted(flagged)),
-                verdict_json=verdict_json,
-                updated_at=_dt.now(UTC),
-            ).on_conflict_do_update(
-                index_elements=["user_id"],
-                set_={
-                    "flagged_tickers_json": _json.dumps(sorted(flagged)),
-                    "verdict_json": verdict_json,
-                    "updated_at": _dt.now(UTC),
-                },
+            stmt = (
+                pg_insert(GlobalRiskSnapshot)
+                .values(
+                    user_id=user_id,
+                    flagged_tickers_json=_json.dumps(sorted(flagged)),
+                    verdict_json=verdict_json,
+                    updated_at=_dt.now(UTC),
+                )
+                .on_conflict_do_update(
+                    index_elements=["user_id"],
+                    set_={
+                        "flagged_tickers_json": _json.dumps(sorted(flagged)),
+                        "verdict_json": verdict_json,
+                        "updated_at": _dt.now(UTC),
+                    },
+                )
             )
             await session.execute(stmt)
             await session.commit()
@@ -80,27 +88,35 @@ async def load_risk_snapshots_from_db(session_factory) -> list[dict]:
         return []
     try:
         import json as _json
-        from datetime import UTC, datetime as _dt, timedelta as _td
+        from datetime import UTC
+        from datetime import datetime as _dt
+        from datetime import timedelta as _td
+
         from sqlalchemy import select
+
         from src.readmodel.models import GlobalRiskSnapshot
 
         ttl_cutoff = _dt.now(UTC) - _td(hours=_TTL_HOURS)
         async with session_factory() as session:
             rows = (
-                await session.execute(
-                    select(GlobalRiskSnapshot).where(
-                        GlobalRiskSnapshot.updated_at > ttl_cutoff
+                (
+                    await session.execute(
+                        select(GlobalRiskSnapshot).where(GlobalRiskSnapshot.updated_at > ttl_cutoff)
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             result = []
             for row in rows:
                 try:
-                    result.append({
-                        "user_id": row.user_id,
-                        "flagged": set(_json.loads(row.flagged_tickers_json or "[]")),
-                        "updated_at": row.updated_at,
-                    })
+                    result.append(
+                        {
+                            "user_id": row.user_id,
+                            "flagged": set(_json.loads(row.flagged_tickers_json or "[]")),
+                            "updated_at": row.updated_at,
+                        }
+                    )
                 except Exception:
                     pass
             logger.info("global_risk_store.loaded_from_db", count=len(result))
@@ -108,6 +124,8 @@ async def load_risk_snapshots_from_db(session_factory) -> list[dict]:
     except Exception as exc:
         logger.warning("global_risk_store.load_failed", error=str(exc))
         return []
+
+
 _TTL = timedelta(hours=_TTL_HOURS)
 
 
@@ -146,6 +164,7 @@ class GlobalRiskStore:
         )
         # Wave D.1: fire-and-forget persist to DB
         import asyncio as _asyncio
+
         _asyncio.create_task(
             _persist_risk_snapshot(self._session_factory, user_id, flagged, verdict)
         )
@@ -206,7 +225,6 @@ class GlobalRiskStore:
 
         return set()
 
-
     async def warm_load(self) -> int:
         """Load non-stale risk snapshots from DB into memory on startup.
 
@@ -233,6 +251,7 @@ class _DummyVerdict:
     """Minimal verdict stub for warm-loaded GlobalRiskStore entries.
     Allows get_flagged_tickers() to extract tickers without a full schema restore.
     """
+
     def __init__(self, flagged: set[str]) -> None:
         self.flagged_tickers = list(flagged)
         self.risk_tickers = list(flagged)

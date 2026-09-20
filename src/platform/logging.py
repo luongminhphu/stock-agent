@@ -11,10 +11,10 @@ import structlog
 
 # Loggers cần suppress ở WARNING+ để không nhấn chìm business logs
 _NOISY_LOGGERS = [
-    "sqlalchemy.engine",        # SQL echo — controlled separately via DB_ECHO
+    "sqlalchemy.engine",  # SQL echo — controlled separately via DB_ECHO
     "sqlalchemy.engine.Engine",
     "sqlalchemy.pool",
-    "httpx",                    # HTTP request/response — quá verbose ở INFO
+    "httpx",  # HTTP request/response — quá verbose ở INFO
 ]
 
 

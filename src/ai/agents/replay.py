@@ -26,7 +26,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from src.ai.client import AIClient
-from src.ai.prompts.replay import ReplayContext, SYSTEM_PROMPT, build_user_prompt
+from src.ai.prompts.replay import SYSTEM_PROMPT, ReplayContext, build_user_prompt
 from src.ai.schemas.replay import ReplayOutput
 from src.platform.logging import get_logger
 
@@ -66,11 +66,9 @@ class DecisionReplayResult:
         self.what_went_wrong = output.what_went_wrong
         self.lessons = output.lessons
         self.key_lesson = output.lessons[0] if output.lessons else None
-        self.pattern_detected = (
-            output.pattern_tag.value if output.pattern_tag else None
-        )
-        self.suggested_adjustment: str | None = None   # not in ReplayOutput schema
-        self.confidence: float = output.confidence     # already float 0–1
+        self.pattern_detected = output.pattern_tag.value if output.pattern_tag else None
+        self.suggested_adjustment: str | None = None  # not in ReplayOutput schema
+        self.confidence: float = output.confidence  # already float 0–1
         self.summary = output.summary
         self.thesis_accuracy_note = output.thesis_accuracy_note
         self.exit_reason_assessment = output.exit_reason_assessment
@@ -137,6 +135,7 @@ class ReplayAgent:
 # Internal helper
 # ---------------------------------------------------------------------------
 
+
 async def _log_replay_interaction(
     session,
     user_id: str | None,
@@ -168,7 +167,7 @@ async def _log_replay_interaction(
             trigger=trigger,
             tickers=[result.ticker],
             ai_verdict=result.outcome_verdict,
-            ai_confidence=result.confidence,          # already float
+            ai_confidence=result.confidence,  # already float
             ai_key_points="\n".join(key_lines) if key_lines else None,
             ai_risk_signals="\n".join(risk_lines) if risk_lines else None,
             decision_id=result.decision_id,

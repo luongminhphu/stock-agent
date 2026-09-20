@@ -11,7 +11,6 @@ from dataclasses import dataclass
 
 from src.watchlist.models import AlertConditionType
 
-
 # ---------------------------------------------------------------------------
 # Input DTOs
 # ---------------------------------------------------------------------------

@@ -69,7 +69,7 @@ logger = get_logger(__name__)
 
 # Wave E: default strong_move threshold and sensitivity thresholds
 _DEFAULT_STRONG_MOVE_PCT = 3.0
-_WEAK_SCORE_THRESHOLD = 50.0   # score < 50 → lower threshold to 2%
+_WEAK_SCORE_THRESHOLD = 50.0  # score < 50 → lower threshold to 2%
 _SENSITIVE_STRONG_MOVE_PCT = 2.0
 
 
@@ -351,10 +351,7 @@ class ScanService:
                 thesis_score_map = await self._thesis_score_query.get_score_map(  # type: ignore[union-attr]
                     user_id, tickers
                 )
-                weak_tickers = [
-                    t for t, s in thesis_score_map.items()
-                    if s < _WEAK_SCORE_THRESHOLD
-                ]
+                weak_tickers = [t for t, s in thesis_score_map.items() if s < _WEAK_SCORE_THRESHOLD]
                 if weak_tickers:
                     logger.info(
                         "scan.thesis_score_sensitive_tickers",

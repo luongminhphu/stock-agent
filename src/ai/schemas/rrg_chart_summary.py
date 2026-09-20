@@ -16,19 +16,21 @@ class RRGTickerInsight(BaseModel):
     insight: str = Field(
         description="1 câu ngắn gọn về cơ hội hoặc rủi ro của ticker này, tối đa 100 ký tự"
     )
-    action: str = Field(
-        description="BUY | WATCH | HOLD | REDUCE | AVOID"
-    )
+    action: str = Field(description="BUY | WATCH | HOLD | REDUCE | AVOID")
 
     @field_validator("action", mode="before")
     @classmethod
     def normalise_action(cls, v: object) -> str:
         mapping = {
-            "STRONG_BUY": "BUY", "ACCUMULATE": "BUY",
-            "MONITOR": "WATCH", "CAUTION": "WATCH",
+            "STRONG_BUY": "BUY",
+            "ACCUMULATE": "BUY",
+            "MONITOR": "WATCH",
+            "CAUTION": "WATCH",
             "NEUTRAL": "HOLD",
-            "SELL": "REDUCE", "TRIM": "REDUCE",
-            "STRONG_SELL": "AVOID", "EXIT": "AVOID",
+            "SELL": "REDUCE",
+            "TRIM": "REDUCE",
+            "STRONG_SELL": "AVOID",
+            "EXIT": "AVOID",
         }
         s = str(v).upper().strip()
         return mapping.get(s, s)
@@ -65,11 +67,13 @@ class RRGChartSummary(BaseModel):
                 bo = d["bestOpportunity"]
                 if isinstance(bo, dict):
                     # normalize inner keys
-                    d["opportunities"] = [{
-                        "ticker":  bo.get("ticker", ""),
-                        "insight": bo.get("reason", bo.get("insight", "")),
-                        "action":  bo.get("action", "WATCH"),
-                    }]
+                    d["opportunities"] = [
+                        {
+                            "ticker": bo.get("ticker", ""),
+                            "insight": bo.get("reason", bo.get("insight", "")),
+                            "action": bo.get("action", "WATCH"),
+                        }
+                    ]
             elif "topOpportunities" in d:
                 d["opportunities"] = d["topOpportunities"]
 
@@ -78,11 +82,13 @@ class RRGChartSummary(BaseModel):
             if "highestRisk" in d:
                 hr = d["highestRisk"]
                 if isinstance(hr, dict):
-                    d["risks"] = [{
-                        "ticker":  hr.get("ticker", ""),
-                        "insight": hr.get("reason", hr.get("insight", "")),
-                        "action":  hr.get("action", "REDUCE"),
-                    }]
+                    d["risks"] = [
+                        {
+                            "ticker": hr.get("ticker", ""),
+                            "insight": hr.get("reason", hr.get("insight", "")),
+                            "action": hr.get("action", "REDUCE"),
+                        }
+                    ]
             elif "topRisks" in d:
                 d["risks"] = d["topRisks"]
 
@@ -91,8 +97,8 @@ class RRGChartSummary(BaseModel):
             suggestions = d.get("rotationSuggestions") or []
             if suggestions and isinstance(suggestions[0], dict):
                 first = suggestions[0]
-                d.setdefault("rotate_from",   first.get("fromTicker", ""))
-                d.setdefault("rotate_to",     first.get("toTicker", ""))
+                d.setdefault("rotate_from", first.get("fromTicker", ""))
+                d.setdefault("rotate_to", first.get("toTicker", ""))
                 d.setdefault("rotate_reason", first.get("reason", ""))
 
         # Normalize insight lists: each item may use "reason" instead of "insight"
@@ -141,15 +147,17 @@ class RRGChartSummary(BaseModel):
         description=(
             "Nhận định tổng quan về toàn bộ chart trong 1 câu: "
             "xu hướng đang tập trung ở quadrant nào, động lực tổng thể."
-        )
+        ),
     )
 
     # Rotate suggestion — only if a held ticker is weakening AND another is improving
     rotate_from: str = Field(default="", description="Ticker đang hold nên cân nhắc giảm")
-    rotate_to:   str = Field(default="", description="Ticker trong watchlist nên cân nhắc tăng")
+    rotate_to: str = Field(default="", description="Ticker trong watchlist nên cân nhắc tăng")
     rotate_reason: str = Field(default="", description="Lý do rotate ngắn gọn")
 
-    @field_validator("market_read", "portfolio_alert", "rotate_from", "rotate_to", "rotate_reason", mode="before")
+    @field_validator(
+        "market_read", "portfolio_alert", "rotate_from", "rotate_to", "rotate_reason", mode="before"
+    )
     @classmethod
     def coerce_str(cls, v: object) -> str:
         if isinstance(v, list):

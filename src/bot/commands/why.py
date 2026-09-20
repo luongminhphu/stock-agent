@@ -16,13 +16,13 @@ from src.platform.logging import get_logger
 logger = get_logger(__name__)
 
 _DIR_EMOJI = {
-    MovementDirection.UP:       "📈",
-    MovementDirection.DOWN:     "📉",
+    MovementDirection.UP: "📈",
+    MovementDirection.DOWN: "📉",
     MovementDirection.SIDEWAYS: "➡️",
 }
 _DIR_COLOR = {
-    MovementDirection.UP:       discord.Color.green(),
-    MovementDirection.DOWN:     discord.Color.red(),
+    MovementDirection.UP: discord.Color.green(),
+    MovementDirection.DOWN: discord.Color.red(),
     MovementDirection.SIDEWAYS: discord.Color.greyple(),
 }
 

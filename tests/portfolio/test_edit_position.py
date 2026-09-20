@@ -32,8 +32,16 @@ def _make_service(open_position: object | None) -> tuple[PortfolioService, Async
 
 
 def _pos(**kwargs: object) -> SimpleNamespace:
-    defaults = dict(id=7, user_id="u1", ticker="FPT", qty=1000.0, avg_cost=80_000.0,
-                    locked_qty=0.0, locked_reason=None, locked_until=None)
+    defaults = dict(
+        id=7,
+        user_id="u1",
+        ticker="FPT",
+        qty=1000.0,
+        avg_cost=80_000.0,
+        locked_qty=0.0,
+        locked_reason=None,
+        locked_until=None,
+    )
     defaults.update(kwargs)
     return SimpleNamespace(**defaults)
 
@@ -110,8 +118,11 @@ async def test_edit_locked_only_sets_lock_and_audits():
     svc, repo = _make_service(_pos())
 
     result = await svc.edit_position(
-        user_id="u1", ticker="FPT",
-        locked_qty=400.0, locked_reason=" ESOP ", locked_until=date(2027, 3, 1),
+        user_id="u1",
+        ticker="FPT",
+        locked_qty=400.0,
+        locked_reason=" ESOP ",
+        locked_until=date(2027, 3, 1),
     )
 
     assert result.locked_qty == 400.0
@@ -178,9 +189,7 @@ async def test_locked_qty_validated_against_new_qty_same_call():
     """Sua qty va locked trong cung lenh: locked <= qty moi."""
     svc, _ = _make_service(_pos())
 
-    result = await svc.edit_position(
-        user_id="u1", ticker="FPT", qty=500.0, locked_qty=500.0
-    )
+    result = await svc.edit_position(user_id="u1", ticker="FPT", qty=500.0, locked_qty=500.0)
     assert result.qty == 500.0
     assert result.locked_qty == 500.0
 

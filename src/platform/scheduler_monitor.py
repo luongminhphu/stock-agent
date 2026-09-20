@@ -79,9 +79,9 @@ class SchedulerMonitor:
         self._statuses: dict[str, TaskStatus] = {}
         self._lock = asyncio.Lock()
         # Optional Discord channel for proactive alerts (set after bot login).
-        self._alert_channel: "discord.TextChannel | None" = None
+        self._alert_channel: discord.TextChannel | None = None
 
-    def set_alert_channel(self, channel: "discord.TextChannel") -> None:
+    def set_alert_channel(self, channel: discord.TextChannel) -> None:
         """Call after bot is ready to enable proactive Discord alerts."""
         self._alert_channel = channel
         logger.info("scheduler_monitor.alert_channel_set", channel_id=channel.id)
@@ -160,7 +160,7 @@ class SchedulerMonitor:
     def get_status(self) -> dict[str, TaskStatus]:
         return dict(self._statuses)
 
-    def get_health_embed(self) -> "discord.Embed":
+    def get_health_embed(self) -> discord.Embed:
         import discord
 
         statuses = list(self._statuses.values())
@@ -179,11 +179,11 @@ class SchedulerMonitor:
         lines: list[str] = []
         for s in sorted(statuses, key=lambda x: x.task_name):
             fail_info = (
-                f" — {s.consecutive_failures} lần fail liên tiếp" if s.consecutive_failures > 0 else ""
+                f" — {s.consecutive_failures} lần fail liên tiếp"
+                if s.consecutive_failures > 0
+                else ""
             )
-            lines.append(
-                f"{s.status_icon} `{s.task_name}` — last run: {s.last_run_str}{fail_info}"
-            )
+            lines.append(f"{s.status_icon} `{s.task_name}` — last run: {s.last_run_str}{fail_info}")
 
         embed.description = "\n".join(lines)
 
@@ -191,9 +191,7 @@ class SchedulerMonitor:
         if unhealthy:
             detail_lines = []
             for s in unhealthy:
-                detail_lines.append(
-                    f"**`{s.task_name}`**: {s.last_error or 'unknown error'}"
-                )
+                detail_lines.append(f"**`{s.task_name}`**: {s.last_error or 'unknown error'}")
             embed.add_field(
                 name="⚠️ Lỗi gần nhất",
                 value="\n".join(detail_lines),

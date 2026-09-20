@@ -17,6 +17,7 @@ Boundary:
   - AI call is delegated 100% to ProactiveDiscoveryAgent.
   - Soft-fail: returns False on any error, never raises to caller.
 """
+
 from __future__ import annotations
 
 import json
@@ -41,12 +42,12 @@ def _build_portfolio_block(portfolio: dict[str, Any]) -> str:
     else:
         lines.append(f"Số vị thế đang mở: {len(positions)}")
         for p in positions:
-            ticker   = p.get("ticker", "?")
-            qty      = p.get("qty", 0)
+            ticker = p.get("ticker", "?")
+            qty = p.get("qty", 0)
             avg_cost = p.get("avg_cost", 0)
-            pnl_pct  = p.get("unrealized_pnl_pct")
-            sector   = p.get("sector", "?")
-            pnl_str  = f"{pnl_pct:+.1f}%" if pnl_pct is not None else "N/A"
+            pnl_pct = p.get("unrealized_pnl_pct")
+            sector = p.get("sector", "?")
+            pnl_str = f"{pnl_pct:+.1f}%" if pnl_pct is not None else "N/A"
             lines.append(
                 f"  {ticker:<6} | qty={qty} | cost={avg_cost:,.0f} | P&L={pnl_str} | sector={sector}"
             )
@@ -66,7 +67,7 @@ def _build_portfolio_block(portfolio: dict[str, Any]) -> str:
     summary = portfolio.get("summary", {})
     if summary:
         total_value = summary.get("total_market_value")
-        total_pnl   = summary.get("unrealized_pnl_pct")
+        total_pnl = summary.get("unrealized_pnl_pct")
         if total_value is not None:
             lines.append(f"\nNAV ước tính: {total_value:,.0f} VND")
         if total_pnl is not None:
@@ -96,6 +97,7 @@ def _build_candidates_block(candidates: list[Any], registry: Any) -> str:
 def _picks_to_json(output: Any) -> str:
     """Serialise DiscoveryPick list to JSON string for event transport."""
     import dataclasses
+
     if output is None:
         return "[]"
     try:
@@ -109,15 +111,15 @@ class ProactiveDiscoveryService:
 
     def __init__(
         self,
-        ai_agent: Any,          # ProactiveDiscoveryAgent
-        session_factory: Any,   # AsyncSessionLocal (async context manager)
-        quote_service: Any,     # QuoteService
-        registry: Any,          # SymbolRegistry instance
+        ai_agent: Any,  # ProactiveDiscoveryAgent
+        session_factory: Any,  # AsyncSessionLocal (async context manager)
+        quote_service: Any,  # QuoteService
+        registry: Any,  # SymbolRegistry instance
     ) -> None:
-        self._agent          = ai_agent
+        self._agent = ai_agent
         self._session_factory = session_factory
-        self._quote_service  = quote_service
-        self._registry       = registry
+        self._quote_service = quote_service
+        self._registry = registry
 
     async def run(self, user_id: str) -> bool:
         """Run full pipeline and emit ProactiveDiscoveryReadyEvent.
@@ -125,11 +127,14 @@ class ProactiveDiscoveryService:
         Returns True if event was emitted, False on any failure.
         """
         trading_date = datetime.now(UTC).strftime("%Y-%m-%d")
-        logger.info("proactive_discovery_service.run.start", user_id=user_id, trading_date=trading_date)
+        logger.info(
+            "proactive_discovery_service.run.start", user_id=user_id, trading_date=trading_date
+        )
 
         try:
             # ── Step 1: Market screen ─────────────────────────────────────────
             from src.market.opportunity_screen_service import OpportunityScreenService
+
             screen_svc = OpportunityScreenService(quote_service=self._quote_service)
             screen_result = await screen_svc.run()
 
@@ -144,6 +149,7 @@ class ProactiveDiscoveryService:
             try:
                 async with self._session_factory() as session:
                     from src.readmodel.portfolio_query_service import PortfolioQueryService
+
                     # Fetch live prices for holdings
                     pqs = PortfolioQueryService(session)
                     raw_port = await pqs.get_portfolio(user_id=user_id)

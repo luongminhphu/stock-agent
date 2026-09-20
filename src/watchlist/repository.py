@@ -111,9 +111,7 @@ class WatchlistRepository:
         stmt = (
             select(Reminder)
             .where(Reminder.enabled.is_(True))
-            .where(
-                (Reminder.last_sent_at.is_(None)) | (Reminder.last_sent_at < before)
-            )
+            .where((Reminder.last_sent_at.is_(None)) | (Reminder.last_sent_at < before))
             .options(selectinload(Reminder.watchlist_item))
         )
         result = await self._session.execute(stmt)
@@ -148,13 +146,13 @@ class SignalEventRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def save(self, event: "SignalEvent") -> "SignalEvent":
+    async def save(self, event: SignalEvent) -> SignalEvent:
         """Stage a new SignalEvent row and flush (no commit — caller owns tx)."""
         self._session.add(event)
         await self._session.flush()
         return event
 
-    async def list_pending(self, limit: int = 100) -> list["SignalEvent"]:
+    async def list_pending(self, limit: int = 100) -> list[SignalEvent]:
         """Return unprocessed signal events ordered oldest-first.
 
         An event is 'pending' when processed_at IS NULL.
@@ -171,7 +169,7 @@ class SignalEventRepository:
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_by_event_id(self, event_id: str) -> "SignalEvent | None":
+    async def get_by_event_id(self, event_id: str) -> SignalEvent | None:
         """Lookup one signal_events row by public event_id. None if unknown."""
         from src.watchlist.models import SignalEvent
 
@@ -179,7 +177,7 @@ class SignalEventRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def mark_processed(self, event: "SignalEvent") -> None:
+    async def mark_processed(self, event: SignalEvent) -> None:
         """Stamp processed_at = now(UTC) and flush."""
         event.processed_at = datetime.now(UTC)
         await self._session.flush()
@@ -189,7 +187,7 @@ class SignalEventRepository:
         symbol: str,
         user_id: str | None = None,
         limit: int = 50,
-    ) -> list["SignalEvent"]:
+    ) -> list[SignalEvent]:
         """Return recent signal events for a ticker, newest-first.
 
         Args:

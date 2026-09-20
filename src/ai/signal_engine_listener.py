@@ -26,6 +26,7 @@ Event flow:
         → briefing.BriefingListener (injects summary into brief context)
         → thesis.SignalReviewTriggerListener  (enqueues ThesisJudgeAgent)
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any

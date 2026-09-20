@@ -12,6 +12,7 @@ Tables:
 Tất cả các bảng đều dùng upsert pattern (ON CONFLICT DO UPDATE)
 để keep it simple — mỗi symbol/user chỉ có 1 row hiện tại.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -159,7 +160,9 @@ class DailyAgenda(Base):
     """
 
     __tablename__ = "daily_agendas"
-    __table_args__ = (UniqueConstraint("user_id", "agenda_date", name="uq_daily_agendas_user_date"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "agenda_date", name="uq_daily_agendas_user_date"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)

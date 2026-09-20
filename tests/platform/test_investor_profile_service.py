@@ -19,7 +19,6 @@ Test matrix:
 from __future__ import annotations
 
 import datetime
-import json
 
 import pytest
 
@@ -67,7 +66,7 @@ async def _make_decision(
     """Insert a DecisionLog row."""
     from src.thesis.models import DecisionLog, OutcomeVerdict
 
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     decision_at = now - datetime.timedelta(days=days_ago)
     evaluated_at = now - datetime.timedelta(days=max(0, days_ago - 1))
 

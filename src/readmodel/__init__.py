@@ -26,7 +26,8 @@ Startup wiring (call once in lifespan / startup hook)::
 
 from src.readmodel.backtesting_service import BacktestingService
 from src.readmodel.cache import DashboardTTLCache
-from src.readmodel.cache_subscriber import CacheSubscriber, get_cache as get_readmodel_cache
+from src.readmodel.cache_subscriber import CacheSubscriber
+from src.readmodel.cache_subscriber import get_cache as get_readmodel_cache
 from src.readmodel.dashboard_service import DashboardService
 from src.readmodel.intelligence_snapshot import (
     IntelligenceSnapshotStore,

@@ -28,6 +28,7 @@ Design notes:
 - stale_sources is non-empty when a source raises; the route still returns 200
   with partial data so the UI can degrade gracefully.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -44,7 +45,6 @@ router = APIRouter(prefix="/today-loop", tags=["today-loop"])
 
 _OVERDUE_REVIEW_DAYS = 14  # mirror dashboard_service constant
 _LOW_CONVICTION_THRESHOLD = 70  # score < 70 → flag low_conviction
-
 
 
 async def _safe(coro, label: str, stale_sources: list[str]) -> Any:
@@ -69,9 +69,7 @@ async def _build_today_loop(
     price_map: dict[str, float] = {}
     if enrich_prices:
         try:
-            theses_for_price = await svc.get_theses_list(
-                user_id, status="active", limit=500
-            )
+            theses_for_price = await svc.get_theses_list(user_id, status="active", limit=500)
             tickers = list({t["ticker"] for t in theses_for_price if t.get("ticker")})
             if tickers:
                 quote_svc = get_quote_service()
@@ -88,15 +86,16 @@ async def _build_today_loop(
     attention_items: list[dict] = []
     if attention_result is not None:
         for item in attention_result.items:
-            attention_items.append(
-                item.model_dump() if hasattr(item, "model_dump") else dict(item)
-            )
+            attention_items.append(item.model_dump() if hasattr(item, "model_dump") else dict(item))
 
-    top_signals: list[dict] = await _safe(
-        svc.get_recent_signals(user_id, days=7, limit=signal_limit, stale_days=3),
-        label="top_signals",
-        stale_sources=stale_sources,
-    ) or []
+    top_signals: list[dict] = (
+        await _safe(
+            svc.get_recent_signals(user_id, days=7, limit=signal_limit, stale_days=3),
+            label="top_signals",
+            stale_sources=stale_sources,
+        )
+        or []
+    )
 
     scan_snapshot = await _safe(
         svc.get_scan_latest(user_id),
@@ -119,10 +118,7 @@ async def _build_today_loop(
     )
     brief_summary: dict[str, Any] = {}
     if brief_raw:
-        narrative = (
-            brief_raw.get("summary")
-            or brief_raw.get("content")
-        )
+        narrative = brief_raw.get("summary") or brief_raw.get("content")
         brief_summary = {
             "narrative": narrative,
             "phase": brief_raw.get("phase", "morning"),

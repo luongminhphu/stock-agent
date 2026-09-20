@@ -11,6 +11,7 @@ Wave B:
   consumers (BriefingService, bot notifier) can react without polling.
   Non-blocking — event publish failure never fails the agenda build.
 """
+
 from __future__ import annotations
 
 from src.platform.logging import get_logger

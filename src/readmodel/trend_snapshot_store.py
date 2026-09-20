@@ -22,6 +22,7 @@ Storage strategy:
 Thread safety:
   asyncio single-threaded — no locking needed for the cache dict.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -35,27 +36,35 @@ logger = get_logger(__name__)
 # DB persistence helpers (Wave D.1)
 # ---------------------------------------------------------------------------
 
+
 async def _persist_snapshot(session_factory, symbol: str, bundle_dict: dict) -> None:
     """Upsert a TrendSnapshot row. Fire-and-forget — never raises."""
     if session_factory is None:
         return
     try:
         import json as _json
-        from datetime import UTC, datetime as _dt
+        from datetime import UTC
+        from datetime import datetime as _dt
+
         from sqlalchemy.dialects.postgresql import insert as pg_insert
+
         from src.readmodel.models import TrendSnapshot
 
         async with session_factory() as session:
-            stmt = pg_insert(TrendSnapshot).values(
-                symbol=symbol.upper(),
-                bundle_json=_json.dumps(bundle_dict, default=str),
-                saved_at=_dt.now(UTC),
-            ).on_conflict_do_update(
-                index_elements=["symbol"],
-                set_={
-                    "bundle_json": _json.dumps(bundle_dict, default=str),
-                    "saved_at": _dt.now(UTC),
-                },
+            stmt = (
+                pg_insert(TrendSnapshot)
+                .values(
+                    symbol=symbol.upper(),
+                    bundle_json=_json.dumps(bundle_dict, default=str),
+                    saved_at=_dt.now(UTC),
+                )
+                .on_conflict_do_update(
+                    index_elements=["symbol"],
+                    set_={
+                        "bundle_json": _json.dumps(bundle_dict, default=str),
+                        "saved_at": _dt.now(UTC),
+                    },
+                )
             )
             await session.execute(stmt)
             await session.commit()
@@ -69,7 +78,9 @@ async def load_snapshots_from_db(session_factory) -> dict[str, dict]:
         return {}
     try:
         import json as _json
+
         from sqlalchemy import select
+
         from src.readmodel.models import TrendSnapshot
 
         async with session_factory() as session:
@@ -139,6 +150,7 @@ class TrendSnapshotStore:
         )
         # Wave D.1: fire-and-forget persist to DB
         import asyncio as _asyncio
+
         _asyncio.create_task(_persist_snapshot(self._session_factory, symbol, bundle_dict))
 
     # ------------------------------------------------------------------

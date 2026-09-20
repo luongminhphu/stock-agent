@@ -54,7 +54,10 @@ class TestPricePriority:
         snap_close = {"VIC": (104_000.0, "2026-08-17")}
 
         out = _build_trades_payload(
-            live, snap_close, price_map={"VIC": 106_000.0}, market_open=True,
+            live,
+            snap_close,
+            price_map={"VIC": 106_000.0},
+            market_open=True,
         )
 
         row = out["positions"][0]
@@ -68,7 +71,10 @@ class TestPricePriority:
         live = [_pos("VNM", 10_000, 62_300)]
 
         out = _build_trades_payload(
-            live, snap_close={}, price_map={"VNM": 61_800.0}, market_open=False,
+            live,
+            snap_close={},
+            price_map={"VNM": 61_800.0},
+            market_open=False,
         )
 
         row = out["positions"][0]
@@ -113,7 +119,8 @@ class TestTotals:
         assert out["total_market_value"] == expected_mkt
         assert out["total_unrealized_pnl"] == round(expected_mkt - expected_cost, 2)
         assert out["total_unrealized_pct"] == round(
-            (expected_mkt - expected_cost) / expected_cost * 100, 4,
+            (expected_mkt - expected_cost) / expected_cost * 100,
+            4,
         )
 
     def test_empty_portfolio(self):
@@ -131,10 +138,17 @@ class TestLockedPositionFields:
     def test_locked_position_surfaces_sellable(self):
         from datetime import date
 
-        live = [SimpleNamespace(
-            ticker="HPG", qty=5000, avg_cost=25000, thesis_id=None,
-            locked_qty=2000, locked_reason="esop", locked_until=date(2026, 12, 15),
-        )]
+        live = [
+            SimpleNamespace(
+                ticker="HPG",
+                qty=5000,
+                avg_cost=25000,
+                thesis_id=None,
+                locked_qty=2000,
+                locked_reason="esop",
+                locked_until=date(2026, 12, 15),
+            )
+        ]
         out = _build_trades_payload(live, {}, price_map={}, market_open=False)
 
         row = out["positions"][0]
@@ -155,10 +169,17 @@ class TestLockedPositionFields:
         assert row["sellable_qty"] == 1000
 
     def test_fully_locked_position_sellable_zero(self):
-        live = [SimpleNamespace(
-            ticker="FPT", qty=800, avg_cost=95000, thesis_id=None,
-            locked_qty=800, locked_reason="private_placement", locked_until=None,
-        )]
+        live = [
+            SimpleNamespace(
+                ticker="FPT",
+                qty=800,
+                avg_cost=95000,
+                thesis_id=None,
+                locked_qty=800,
+                locked_reason="private_placement",
+                locked_until=None,
+            )
+        ]
         out = _build_trades_payload(live, {}, price_map={}, market_open=False)
 
         row = out["positions"][0]

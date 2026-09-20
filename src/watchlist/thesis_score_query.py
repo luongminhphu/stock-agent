@@ -41,9 +41,7 @@ class ThesisScoreQuery:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def get_score_map(
-        self, user_id: str, tickers: list[str]
-    ) -> dict[str, float]:
+    async def get_score_map(self, user_id: str, tickers: list[str]) -> dict[str, float]:
         """Return {ticker: health_score} for tickers with an active thesis.
 
         Tickers without an active thesis are absent from the returned dict

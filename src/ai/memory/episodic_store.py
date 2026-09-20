@@ -18,7 +18,7 @@ Owner: ai segment.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -92,25 +92,21 @@ class EpisodicStore:
         """
         existing = await self._repo.get_by_id(interaction_log_id)
         if existing is None:
-            logger.warning(
-                "episodic_store.fill_outcome: id=%s not found", interaction_log_id
-            )
+            logger.warning("episodic_store.fill_outcome: id=%s not found", interaction_log_id)
             return False
         if existing.outcome_json is not None:
             return False  # đã fill rồi, không ghi đè
 
         pct_change: float | None = None
         if price_at_signal and price_at_signal != 0:
-            pct_change = round(
-                (price_now - price_at_signal) / price_at_signal * 100, 2
-            )
+            pct_change = round((price_now - price_at_signal) / price_at_signal * 100, 2)
 
         outcome = {
             "price_at_signal": price_at_signal,
             "price_now": price_now,
             "pct_change": pct_change,
             "thesis_status": thesis_status,
-            "filled_at": datetime.now(timezone.utc).isoformat(),
+            "filled_at": datetime.now(UTC).isoformat(),
         }
         await self._repo.set_outcome(interaction_log_id, outcome)
         logger.info(
@@ -136,9 +132,7 @@ class EpisodicStore:
 
         Chỉ trả logs đủ cũ (≥ older_than_days) để price đã settle.
         """
-        return await self._repo.get_pending_outcome(
-            older_than_days=older_than_days, limit=limit
-        )
+        return await self._repo.get_pending_outcome(older_than_days=older_than_days, limit=limit)
 
     async def get_recent_by_symbols(
         self,

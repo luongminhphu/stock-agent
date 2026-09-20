@@ -15,7 +15,7 @@ from discord import app_commands
 
 from src.ai.schemas import SectorRotationOutput
 from src.bot.commands.base import BaseCog
-from src.platform.bootstrap import get_sector_rotation_agent, get_quote_service
+from src.platform.bootstrap import get_quote_service, get_sector_rotation_agent
 from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
@@ -132,10 +132,7 @@ def _build_sector_embed(
     # Signals — nếu có watchlist, ưu tiên signals có tickers overlap
     signals = result.sector_signals
     if watchlist_filter:
-        filtered = [
-            s for s in signals
-            if any(t in s.key_tickers for t in watchlist_filter)
-        ]
+        filtered = [s for s in signals if any(t in s.key_tickers for t in watchlist_filter)]
         signals = filtered or signals  # fallback full nếu không match
 
     if signals:

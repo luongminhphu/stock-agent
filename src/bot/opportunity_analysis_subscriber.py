@@ -9,6 +9,7 @@ Lifecycle:
     subscriber = OpportunityAnalysisSubscriber(bot)
     subscriber.register()   ← called in bot app.py on_ready
 """
+
 from __future__ import annotations
 
 import discord
@@ -26,8 +27,10 @@ def _build_opportunity_embed(event: OpportunityAnalysisCompletedEvent) -> discor
     # Colour based on overlap quality
     overlap_count = len(event.watchlist_overlap)
     colour = (
-        discord.Color.green() if overlap_count >= 2
-        else discord.Color.gold() if overlap_count == 1
+        discord.Color.green()
+        if overlap_count >= 2
+        else discord.Color.gold()
+        if overlap_count == 1
         else discord.Color.light_grey()
     )
 

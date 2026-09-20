@@ -9,6 +9,7 @@ Caching:
 - Stampede protection: nhiều coroutine cùng hỏi 1 symbol → chỉ 1 HTTP call.
 - Fallback: nếu TCBS fail → trả list rỗng, không raise.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

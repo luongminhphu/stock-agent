@@ -17,6 +17,7 @@ that only read total_positions / total_nav / unrealized_pnl are unaffected):
 
 Boot: PortfolioSnapshotListener().register() is called in platform bootstrap.
 """
+
 from __future__ import annotations
 
 from src.platform.event_bus import EventBus, get_event_bus
@@ -58,7 +59,11 @@ class PortfolioSnapshotListener:
         )
 
         # ── Resolve singletons lazily (bootstrap must have run first) ─────
-        from src.platform.bootstrap import get_pnl_service_class, get_quote_service, get_session_factory
+        from src.platform.bootstrap import (
+            get_pnl_service_class,
+            get_quote_service,
+            get_session_factory,
+        )
 
         PnlService = get_pnl_service_class()
         quote_service = get_quote_service()
@@ -95,7 +100,7 @@ class PortfolioSnapshotListener:
             unrealized_pnl=pnl.total_unrealized_pnl,
             unrealized_pnl_pct=round(pnl.total_unrealized_pct, 4),
             top_exposed_tickers=top_exposed_tickers,
-            cash_pct=0.0,               # placeholder — cash model not yet modelled
+            cash_pct=0.0,  # placeholder — cash model not yet modelled
             snapshot_phase=event.phase,
         )
         await self._bus.publish(ready)

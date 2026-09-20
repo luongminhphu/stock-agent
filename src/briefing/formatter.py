@@ -15,32 +15,32 @@ from collections import defaultdict
 from src.ai.schemas import ActionPriority, BriefOutput, MarketSentiment, PrioritizedAction
 
 _SENTIMENT_EMOJI = {
-    MarketSentiment.RISK_ON:   "🟢",
-    MarketSentiment.RISK_OFF:  "🔴",
-    MarketSentiment.MIXED:     "🟡",
+    MarketSentiment.RISK_ON: "🟢",
+    MarketSentiment.RISK_OFF: "🔴",
+    MarketSentiment.MIXED: "🟡",
     MarketSentiment.UNCERTAIN: "❓",
     # Legacy fallbacks
-    MarketSentiment.BULLISH:   "🟢",
-    MarketSentiment.BEARISH:   "🔴",
-    MarketSentiment.NEUTRAL:   "⚪",
+    MarketSentiment.BULLISH: "🟢",
+    MarketSentiment.BEARISH: "🔴",
+    MarketSentiment.NEUTRAL: "⚪",
 }
 
 _SENTIMENT_LABEL = {
-    MarketSentiment.RISK_ON:   "Risk-On",
-    MarketSentiment.RISK_OFF:  "Risk-Off",
-    MarketSentiment.MIXED:     "Mixed",
+    MarketSentiment.RISK_ON: "Risk-On",
+    MarketSentiment.RISK_OFF: "Risk-Off",
+    MarketSentiment.MIXED: "Mixed",
     MarketSentiment.UNCERTAIN: "Uncertain",
     # Legacy fallbacks
-    MarketSentiment.BULLISH:   "Bullish",
-    MarketSentiment.BEARISH:   "Bearish",
-    MarketSentiment.NEUTRAL:   "Neutral",
+    MarketSentiment.BULLISH: "Bullish",
+    MarketSentiment.BEARISH: "Bearish",
+    MarketSentiment.NEUTRAL: "Neutral",
 }
 
 # Bucket config: (emoji, header label, show_reason, bold_ticker)
 _PRIORITY_CONFIG: dict[ActionPriority, tuple[str, str, bool, bool]] = {
-    ActionPriority.ACT_TODAY:  ("🔴", "Hành động hôm nay",  True,  True),
-    ActionPriority.WATCH_MORE: ("🟡", "Theo dõi thêm",       True,  False),
-    ActionPriority.SKIP_TODAY: ("⚪",  "Bỏ qua hôm nay",     False, False),
+    ActionPriority.ACT_TODAY: ("🔴", "Hành động hôm nay", True, True),
+    ActionPriority.WATCH_MORE: ("🟡", "Theo dõi thêm", True, False),
+    ActionPriority.SKIP_TODAY: ("⚪", "Bỏ qua hôm nay", False, False),
 }
 
 # Ticker signal emoji — corrected (was broken surrogate pairs)
@@ -69,7 +69,11 @@ def _format_prioritized_actions(actions: list[PrioritizedAction]) -> list[str]:
 
     lines: list[str] = []
 
-    for priority in (ActionPriority.ACT_TODAY, ActionPriority.WATCH_MORE, ActionPriority.SKIP_TODAY):
+    for priority in (
+        ActionPriority.ACT_TODAY,
+        ActionPriority.WATCH_MORE,
+        ActionPriority.SKIP_TODAY,
+    ):
         items = buckets.get(priority)
         if not items:
             continue
@@ -77,15 +81,17 @@ def _format_prioritized_actions(actions: list[PrioritizedAction]) -> list[str]:
         emoji, header, show_reason, bold_ticker = _PRIORITY_CONFIG[priority]
 
         if priority == ActionPriority.SKIP_TODAY:
-            tickers_or_actions = ", ".join(
-                (a.ticker or a.action[:20]) for a in items
-            )
+            tickers_or_actions = ", ".join((a.ticker or a.action[:20]) for a in items)
             lines += ["", f"{emoji} _Bỏ qua hôm nay: {tickers_or_actions}_"]
             continue
 
         lines += ["", f"{emoji} **{header}**"]
         for a in items:
-            ticker_part = f"**{a.ticker}** " if bold_ticker and a.ticker else (f"{a.ticker} " if a.ticker else "")
+            ticker_part = (
+                f"**{a.ticker}** "
+                if bold_ticker and a.ticker
+                else (f"{a.ticker} " if a.ticker else "")
+            )
             action_text = _inline(a.action)
             line = f"\u2022 {ticker_part}{action_text}"
 
@@ -141,17 +147,13 @@ def _build_sections(brief: BriefOutput, brief_type: str) -> list[list[str]]:
     if brief.ticker_summaries:
         block = ["", "**\ud83d\udcca Ticker**"]
         for ts in brief.ticker_summaries:
-            signal_emoji = _TICKER_SIGNAL_EMOJI.get(
-                getattr(ts, "signal", "neutral"), "⚪"
-            )
+            signal_emoji = _TICKER_SIGNAL_EMOJI.get(getattr(ts, "signal", "neutral"), "⚪")
             price = getattr(ts, "price", 0.0)
             change_pct = getattr(ts, "change_pct", 0.0)
             one_line = getattr(ts, "one_line", "") or getattr(ts, "one_liner", "")
             watch_reason = getattr(ts, "watch_reason", "")
             pct = f"+{change_pct:.1f}%" if change_pct >= 0 else f"{change_pct:.1f}%"
-            block.append(
-                f"{signal_emoji} **{ts.ticker}** `{price:,.0f}` ({pct}) \u2014 {one_line}"
-            )
+            block.append(f"{signal_emoji} **{ts.ticker}** `{price:,.0f}` ({pct}) \u2014 {one_line}")
             if watch_reason:
                 block.append(f"  \u21b3 _{watch_reason}_")
         sections.append(block)
@@ -228,9 +230,7 @@ def format_brief(
 
     for i, section in enumerate(sections):
         candidate = "\n".join(assembled + section)
-        if i == 0:
-            assembled += section
-        elif len(candidate) <= char_limit:
+        if i == 0 or len(candidate) <= char_limit:
             assembled += section
         else:
             dropped += 1

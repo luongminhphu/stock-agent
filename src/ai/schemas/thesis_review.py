@@ -142,19 +142,15 @@ class ThesisReviewOutput(BaseModel):
         le=1.0,
         description="Updated conviction score for the thesis (0.0-1.0)",
     )
-    assumption_recommendations: list[AssumptionRecommendation] = Field(
-        default_factory=list
-    )
-    catalyst_recommendations: list[CatalystRecommendation] = Field(
-        default_factory=list
-    )
+    assumption_recommendations: list[AssumptionRecommendation] = Field(default_factory=list)
+    catalyst_recommendations: list[CatalystRecommendation] = Field(default_factory=list)
     key_risks: list[str] = Field(
         default_factory=list,
         description="Current key risks to monitor",
     )
-    action_recommendation: Literal[
-        "HOLD", "ADD", "REDUCE", "EXIT", "WAIT_FOR_CATALYST"
-    ] = Field(description="Recommended portfolio action")
+    action_recommendation: Literal["HOLD", "ADD", "REDUCE", "EXIT", "WAIT_FOR_CATALYST"] = Field(
+        description="Recommended portfolio action"
+    )
     summary: str = Field(description="2-3 sentence summary of thesis health")
     confidence: float = Field(
         ge=0.0,

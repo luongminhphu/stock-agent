@@ -102,10 +102,10 @@ class QuoteBatchReader(Protocol):
 # Attention panel constants
 # ---------------------------------------------------------------------------
 
-_OVERDUE_REVIEW_DAYS: int = 14          # thesis without review for > N days
-_UPCOMING_CATALYST_HOURS: int = 72      # catalyst deadline within N hours
-_STOP_LOSS_PROXIMITY_PCT: float = 3.0   # price within N% of stop_loss
-_ATTENTION_CACHE_TTL_SECS: int = 30     # cache TTL (panel is a hint, not a signal)
+_OVERDUE_REVIEW_DAYS: int = 14  # thesis without review for > N days
+_UPCOMING_CATALYST_HOURS: int = 72  # catalyst deadline within N hours
+_STOP_LOSS_PROXIMITY_PCT: float = 3.0  # price within N% of stop_loss
+_ATTENTION_CACHE_TTL_SECS: int = 30  # cache TTL (panel is a hint, not a signal)
 
 _URGENCY_ORDER = {
     AttentionUrgency.CRITICAL: 0,
@@ -242,7 +242,9 @@ class DashboardService:
             return cached
 
         if not _WATCHLIST_MODELS_AVAILABLE:
-            logger.warning("get_scan_latest.import_error", detail="WatchlistScan model not available")
+            logger.warning(
+                "get_scan_latest.import_error", detail="WatchlistScan model not available"
+            )
             return None
 
         try:
@@ -292,7 +294,9 @@ class DashboardService:
             return cached
 
         if not _BRIEFING_MODELS_AVAILABLE:
-            logger.warning("get_brief_latest.import_error", detail="BriefSnapshot model not available")
+            logger.warning(
+                "get_brief_latest.import_error", detail="BriefSnapshot model not available"
+            )
             return None
 
         try:
@@ -345,9 +349,7 @@ class DashboardService:
             logger.warning("get_brief_latest.db_error", error=str(exc), exc_info=True)
             return None
 
-    async def get_brief_feedback_summary(
-        self, user_id: str, days: int = 30
-    ) -> dict[str, Any]:
+    async def get_brief_feedback_summary(self, user_id: str, days: int = 30) -> dict[str, Any]:
         """Return feedback summary using a single DB-level aggregation query.
 
         Previous implementation: 2 round-trips — one full-object fetch for
@@ -398,20 +400,22 @@ class DashboardService:
             # COUNT FILTER: standard SQL:2003, supported by PostgreSQL 9.4+.
             stmt = select(
                 # latest feedback fields (rank = 1)
-                func.max(
-                    case((ranked_sq.c.rn == 1, ranked_sq.c.outcome), else_=None)
-                ).label("last_outcome"),
-                func.max(
-                    case((ranked_sq.c.rn == 1, ranked_sq.c.created_at), else_=None)
-                ).label("last_created_at"),
+                func.max(case((ranked_sq.c.rn == 1, ranked_sq.c.outcome), else_=None)).label(
+                    "last_outcome"
+                ),
+                func.max(case((ranked_sq.c.rn == 1, ranked_sq.c.created_at), else_=None)).label(
+                    "last_created_at"
+                ),
                 # 30-day window counts
-                func.count(literal_column("1")).filter(
-                    ranked_sq.c.created_at >= since
-                ).label("total_30d"),
-                func.count(literal_column("1")).filter(
+                func.count(literal_column("1"))
+                .filter(ranked_sq.c.created_at >= since)
+                .label("total_30d"),
+                func.count(literal_column("1"))
+                .filter(
                     ranked_sq.c.created_at >= since,
                     ranked_sq.c.outcome == "acted",
-                ).label("acted_30d"),
+                )
+                .label("acted_30d"),
             )
 
             row = (await self._session.execute(stmt)).one_or_none()
@@ -436,13 +440,13 @@ class DashboardService:
                 "last_feedback_outcome": row.last_outcome,
                 "last_feedback_at": last_at.isoformat() if last_at else None,
                 # Primary keys
-                "acted_rate_30d":     acted_rate,
+                "acted_rate_30d": acted_rate,
                 "total_feedbacks_30d": total,
-                "acted_count_30d":     acted,
+                "acted_count_30d": acted,
                 # Aliases for frontend compatibility
-                "acted_rate":   acted_rate,
-                "total":        total,
-                "acted":        acted,
+                "acted_rate": acted_rate,
+                "total": total,
+                "acted": acted,
             }
         except Exception as exc:
             logger.warning("get_brief_feedback_summary.db_error", error=str(exc), exc_info=True)
@@ -475,21 +479,25 @@ class DashboardService:
             since = datetime.now(UTC) - timedelta(days=days)
 
             rows = (
-                await self._session.execute(
-                    select(BriefSnapshot.tickers)
-                    .join(
-                        BriefFeedback,
-                        BriefFeedback.brief_snapshot_id == BriefSnapshot.id,
+                (
+                    await self._session.execute(
+                        select(BriefSnapshot.tickers)
+                        .join(
+                            BriefFeedback,
+                            BriefFeedback.brief_snapshot_id == BriefSnapshot.id,
+                        )
+                        .where(
+                            BriefFeedback.user_id == user_id,
+                            BriefSnapshot.user_id == user_id,
+                            BriefFeedback.outcome == BriefFeedbackOutcome.ACTED,
+                            BriefFeedback.created_at >= since,
+                        )
+                        .distinct()
                     )
-                    .where(
-                        BriefFeedback.user_id == user_id,
-                        BriefSnapshot.user_id == user_id,
-                        BriefFeedback.outcome == BriefFeedbackOutcome.ACTED,
-                        BriefFeedback.created_at >= since,
-                    )
-                    .distinct()
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
             tickers: set[str] = set()
             for csv in rows:
@@ -535,16 +543,20 @@ class DashboardService:
 
         try:
             rows = (
-                await self._session.execute(
-                    select(Alert)
-                    .where(
-                        Alert.user_id == user_id,
-                        Alert.status == AlertStatus.TRIGGERED,
+                (
+                    await self._session.execute(
+                        select(Alert)
+                        .where(
+                            Alert.user_id == user_id,
+                            Alert.status == AlertStatus.TRIGGERED,
+                        )
+                        .order_by(Alert.triggered_at.desc())
+                        .limit(limit)
                     )
-                    .order_by(Alert.triggered_at.desc())
-                    .limit(limit)
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
             return [
                 {
@@ -596,7 +608,9 @@ class DashboardService:
                     Truyền ``stale_days=0`` để tắt bộ lọc này.
         """
         if not _WATCHLIST_MODELS_AVAILABLE:
-            logger.warning("get_recent_signals.import_error", detail="SignalEvent model not available")
+            logger.warning(
+                "get_recent_signals.import_error", detail="SignalEvent model not available"
+            )
             return []
 
         try:
@@ -622,18 +636,20 @@ class DashboardService:
                         metadata = json.loads(r.metadata_json) if r.metadata_json else None
                     except (json.JSONDecodeError, TypeError):
                         metadata = None
-                    result.append({
-                        "id": r.id,
-                        "event_id": r.event_id,
-                        "ticker": r.ticker,
-                        "signal_type": r.signal_type,
-                        "strength": r.strength,
-                        "confidence": r.confidence,
-                        "source": r.source,
-                        "metadata": metadata,
-                        "occurred_at": r.occurred_at.isoformat() if r.occurred_at else None,
-                        "processed_at": r.processed_at.isoformat() if r.processed_at else None,
-                    })
+                    result.append(
+                        {
+                            "id": r.id,
+                            "event_id": r.event_id,
+                            "ticker": r.ticker,
+                            "signal_type": r.signal_type,
+                            "strength": r.strength,
+                            "confidence": r.confidence,
+                            "source": r.source,
+                            "metadata": metadata,
+                            "occurred_at": r.occurred_at.isoformat() if r.occurred_at else None,
+                            "processed_at": r.processed_at.isoformat() if r.processed_at else None,
+                        }
+                    )
                 return result
 
             cache_extra = f"{ticker or ''}:{days}:{stale_days}"
@@ -653,9 +669,7 @@ class DashboardService:
                     func.min(SignalEvent.occurred_at).label("first_seen"),
                     func.max(SignalEvent.occurred_at).label("last_seen"),
                     func.max(SignalEvent.source).label("source"),
-                    func.array_agg(
-                        SignalEvent.signal_type.distinct()
-                    ).label("signal_types_agg"),
+                    func.array_agg(SignalEvent.signal_type.distinct()).label("signal_types_agg"),
                 )
                 .where(
                     SignalEvent.user_id == user_id,
@@ -690,16 +704,18 @@ class DashboardService:
                 raw_types = r.signal_types_agg or []
                 signal_types = sorted({st for st in raw_types if st is not None})
 
-                result.append({
-                    "ticker": r.ticker,
-                    "signal_types": signal_types,
-                    "max_strength": round(r.max_strength or 0.0, 3),
-                    "max_confidence": round(r.max_confidence or 0.0, 3),
-                    "count": r.count,
-                    "first_seen": first_seen.isoformat() if first_seen else None,
-                    "last_seen": last_seen.isoformat() if last_seen else None,
-                    "source": r.source,
-                })
+                result.append(
+                    {
+                        "ticker": r.ticker,
+                        "signal_types": signal_types,
+                        "max_strength": round(r.max_strength or 0.0, 3),
+                        "max_confidence": round(r.max_confidence or 0.0, 3),
+                        "count": r.count,
+                        "first_seen": first_seen.isoformat() if first_seen else None,
+                        "last_seen": last_seen.isoformat() if last_seen else None,
+                        "source": r.source,
+                    }
+                )
 
             # --------------- staleness filter ---------------
             # Loại bỏ tickers không có tín hiệu mới trong stale_days ngày.
@@ -707,7 +723,8 @@ class DashboardService:
             if stale_days > 0:
                 stale_cutoff = datetime.now(UTC) - timedelta(days=stale_days)
                 result = [
-                    r for r in result
+                    r
+                    for r in result
                     if r["last_seen"] is not None
                     and datetime.fromisoformat(r["last_seen"]) >= stale_cutoff
                 ]
@@ -778,9 +795,10 @@ class DashboardService:
         user_id: str,
         price_map: dict[str, float] | None = None,
         limit: int = 20,
-    ) -> "AttentionPanelResponse":
+    ) -> AttentionPanelResponse:
         """Delegate to AttentionService.get_attention_needed()."""
         from src.readmodel.attention_service import AttentionService
+
         return await AttentionService().get_attention_needed(
             user_id=user_id,
             price_map=price_map,
@@ -791,7 +809,8 @@ class DashboardService:
     # 16. Intelligence snapshot — delegates to IntelligenceReadService
     # ------------------------------------------------------------------
 
-    async def get_intelligence(self, user_id: str) -> "dict[str, Any] | None":
+    async def get_intelligence(self, user_id: str) -> dict[str, Any] | None:
         """Delegate to IntelligenceReadService.get_intelligence()."""
         from src.readmodel.intelligence_read_service import IntelligenceReadService
+
         return await IntelligenceReadService().get_intelligence(user_id=user_id)

@@ -24,8 +24,8 @@ import datetime
 import discord
 
 from src.bot.commands.proactive_watch_embeds import (
-    build_proactive_watch_embed,
     build_proactive_watch_batch_embed,
+    build_proactive_watch_embed,
 )
 from src.platform.event_bus import get_event_bus
 from src.platform.events import ProactiveWatchAlertFiredEvent
@@ -63,9 +63,7 @@ class ProactiveWatchSubscriber:
             events.append(event)
         else:
             events: list[ProactiveWatchAlertFiredEvent] = [event]  # type: ignore[no-redef]
-            task = asyncio.get_running_loop().create_task(
-                self._flush_after_window(scan_id, events)
-            )
+            task = asyncio.get_running_loop().create_task(self._flush_after_window(scan_id, events))
             self._pending[scan_id] = (task, events)
 
     async def _flush_after_window(

@@ -29,9 +29,16 @@ class _FakeQuoteSvc:
 
 def _trade_result(**overrides) -> TradeResult:
     defaults = dict(
-        trade_id=10, position_id=5, ticker="HCM", trade_type="buy",
-        qty=1_000.0, price=15_000.0, avg_cost=14_900.0,
-        position_qty=58_500.0, realized_pnl=None, position_closed=False,
+        trade_id=10,
+        position_id=5,
+        ticker="HCM",
+        trade_type="buy",
+        qty=1_000.0,
+        price=15_000.0,
+        avg_cost=14_900.0,
+        position_qty=58_500.0,
+        realized_pnl=None,
+        position_closed=False,
         decision_logged=False,
     )
     defaults.update(overrides)
@@ -69,7 +76,8 @@ async def test_buy_returns_201_when_snapshot_refresh_fails():
         ),
     ):
         async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test",
+            transport=ASGITransport(app=app),
+            base_url="http://test",
         ) as client:
             r = await client.post(
                 "/api/v1/portfolio/buy",
@@ -95,8 +103,10 @@ async def test_sell_full_refresh_called_with_position_closed():
             "src.portfolio.trade_usecase.TradeUseCase.execute_sell",
             new_callable=AsyncMock,
             return_value=_trade_result(
-                trade_type="sell", realized_pnl=1_250_000.0,
-                position_qty=0.0, position_closed=True,
+                trade_type="sell",
+                realized_pnl=1_250_000.0,
+                position_qty=0.0,
+                position_closed=True,
             ),
         ),
         patch(
@@ -105,7 +115,8 @@ async def test_sell_full_refresh_called_with_position_closed():
         ),
     ):
         async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test",
+            transport=ASGITransport(app=app),
+            base_url="http://test",
         ) as client:
             r = await client.post(
                 "/api/v1/portfolio/sell",
@@ -140,7 +151,8 @@ async def test_buy_business_error_still_400_and_no_commit():
         ),
     ):
         async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test",
+            transport=ASGITransport(app=app),
+            base_url="http://test",
         ) as client:
             r = await client.post(
                 "/api/v1/portfolio/buy",

@@ -27,12 +27,12 @@ Public API (called by evolution.py)::
     rows = await FeedbackStore.get_recent(limit=200)
     rows = await FeedbackStore.get_by_verdict_event(verdict_event_id)
 """
+
 from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import ClassVar
-
 
 from src.core.models import CoreFeedback
 from src.core.schemas import FeedbackEntry, FeedbackOutcome
@@ -92,10 +92,12 @@ class FeedbackStore:
         db_ok = await cls._write_to_db(entry)
         if not db_ok:
             # DB unavailable — keep in memory so evolution.py can still read
-            cls._store.append({
-                **entry.model_dump(),
-                "recorded_at": datetime.now(UTC).isoformat(),
-            })
+            cls._store.append(
+                {
+                    **entry.model_dump(),
+                    "recorded_at": datetime.now(UTC).isoformat(),
+                }
+            )
             logger.warning(
                 "feedback_store.db_unavailable_fallback",
                 extra={"verdict_event_id": verdict_event_id},
@@ -137,7 +139,7 @@ class FeedbackStore:
         limit: int = 200,
         days: int | None = None,
         user_id: str | None = None,
-    ) -> list["FeedbackEntry"]:
+    ) -> list[FeedbackEntry]:
         """Return most recent feedback records as FeedbackEntry objects.
 
         Args:
@@ -150,6 +152,7 @@ class FeedbackStore:
         """
         try:
             from sqlalchemy import select
+
             async with get_session() as session:
                 stmt = select(CoreFeedback).order_by(CoreFeedback.recorded_at.desc())
                 if days is not None:
@@ -182,7 +185,9 @@ class FeedbackStore:
             result_list: list[FeedbackEntry] = []
             for item in fallback:
                 try:
-                    result_list.append(FeedbackEntry(**{k: v for k, v in item.items() if k != "recorded_at"}))
+                    result_list.append(
+                        FeedbackEntry(**{k: v for k, v in item.items() if k != "recorded_at"})
+                    )
                 except Exception:
                     pass
             return result_list
@@ -199,10 +204,9 @@ class FeedbackStore:
         """
         try:
             from sqlalchemy import select
+
             async with get_session() as session:
-                stmt = select(CoreFeedback).where(
-                    CoreFeedback.verdict_event_id == verdict_event_id
-                )
+                stmt = select(CoreFeedback).where(CoreFeedback.verdict_event_id == verdict_event_id)
                 result = await session.execute(stmt)
                 rows = result.scalars().all()
                 return [
@@ -223,10 +227,7 @@ class FeedbackStore:
                 "feedback_store.get_by_verdict_event_db_failed",
                 extra={"error": str(exc)},
             )
-            return [
-                e for e in cls._store
-                if e.get("verdict_event_id") == verdict_event_id
-            ]
+            return [e for e in cls._store if e.get("verdict_event_id") == verdict_event_id]
 
     # ---------------------------------------------------------------------------
     # Test helpers

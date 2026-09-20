@@ -14,6 +14,7 @@ Wiring (app.py on_ready):
 This class mirrors the pattern of PostMortemSubscriber and
 ProactiveWatchSubscriber — thin bot adapter, no domain logic.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -60,6 +61,7 @@ class IntelligenceEngineSubscriber:
             return self._channel_id
         try:
             from src.platform.config import settings
+
             raw = settings.alert_channel_id
             return int(raw) if raw else None
         except Exception:
@@ -115,6 +117,7 @@ class IntelligenceEngineSubscriber:
 
         try:
             from src.bot.discord_helper import build_engine_verdict_embed, safe_send
+
             embed = build_engine_verdict_embed(event)
             await safe_send(channel, embed=embed)
             logger.info(

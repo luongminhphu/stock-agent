@@ -59,9 +59,7 @@ class WatchdogOutput(BaseModel):
         le=100,
         description="Composite health score 0-100",
     )
-    threatened_assumptions: list[ThreatenedAssumptionWatchdog] = Field(
-        default_factory=list
-    )
+    threatened_assumptions: list[ThreatenedAssumptionWatchdog] = Field(default_factory=list)
     risk_flags: list[str] = Field(
         default_factory=list,
         description="Specific risk flags identified",

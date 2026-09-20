@@ -10,7 +10,6 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-
 class RiskSignal(BaseModel):
     """Một risk signal cụ thể liên quan đến mã chứng khoán."""
 
@@ -48,6 +47,4 @@ class ProactiveAlertOutput(BaseModel):
         default_factory=list,
         description="Những mốc/sự kiện cụ thể cần theo dõi tiếp theo (tối đa 3)",
     )
-    reasoning: str = Field(
-        description="Lý do chi tiết hơn cho verdict, tối đa 150 từ"
-    )
+    reasoning: str = Field(description="Lý do chi tiết hơn cho verdict, tối đa 150 từ")

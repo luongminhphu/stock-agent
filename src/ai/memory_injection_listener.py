@@ -77,11 +77,7 @@ class MemoryInjectionListener:
 def _format_memory_entry(event: ThesisPostMortemReadyEvent) -> str:
     """Render a structured plain-text memory entry from the post-mortem event."""
     date_str = datetime.datetime.now(tz=datetime.UTC).strftime("%Y-%m-%d")
-    pnl_str = (
-        f"{event.outcome_pnl_pct:+.1f}%"
-        if event.outcome_pnl_pct is not None
-        else "N/A"
-    )
+    pnl_str = f"{event.outcome_pnl_pct:+.1f}%" if event.outcome_pnl_pct is not None else "N/A"
     tags_str = ", ".join(event.memory_tags) if event.memory_tags else ""
     lines = [
         f"[PostMortem][{event.ticker}][{event.verdict}][{event.pattern}] {date_str}",

@@ -30,8 +30,8 @@ _REASONING_SUMMARY_MAX = 200  # chars truncated for conviction drawer
 
 # Wave 3: tolerance windows for review-to-snapshot matching.
 # Raise REVIEWED_KIND_TOLERANCE_SECS if scheduler + review jitter is larger.
-_NEAREST_REVIEW_LOOKAHEAD_SECS: int = 14400   # 4 h — catch reviews that run after snapshot
-_REVIEWED_KIND_TOLERANCE_SECS: int = 300      # 5 min — mark point as 'reviewed' kind
+_NEAREST_REVIEW_LOOKAHEAD_SECS: int = 14400  # 4 h — catch reviews that run after snapshot
+_REVIEWED_KIND_TOLERANCE_SECS: int = 300  # 5 min — mark point as 'reviewed' kind
 
 
 class ThesisTimelineService:
@@ -136,7 +136,9 @@ class ThesisTimelineService:
             .order_by(ThesisSnapshot.snapshotted_at)
         )
         for snap in snapshots_result.scalars().all():
-            price_str = f"{snap.price_at_snapshot:,.0f}" if snap.price_at_snapshot is not None else "n/a"
+            price_str = (
+                f"{snap.price_at_snapshot:,.0f}" if snap.price_at_snapshot is not None else "n/a"
+            )
             pnl_str = f"{snap.pnl_pct:+.1f}%" if snap.pnl_pct is not None else "n/a"
             events.append(
                 TimelineEvent(
@@ -187,9 +189,7 @@ class ThesisTimelineService:
         """
         from src.thesis.models import Thesis, ThesisReview
 
-        thesis_result = await self._session.execute(
-            select(Thesis).where(Thesis.id == thesis_id)
-        )
+        thesis_result = await self._session.execute(select(Thesis).where(Thesis.id == thesis_id))
         thesis = thesis_result.scalar_one_or_none()
         if thesis is None:
             return None
@@ -284,9 +284,7 @@ class ThesisTimelineService:
         from src.thesis.models import Thesis, ThesisReview, ThesisSnapshot
         from src.thesis.scoring_service import score_tier
 
-        thesis_result = await self._session.execute(
-            select(Thesis).where(Thesis.id == thesis_id)
-        )
+        thesis_result = await self._session.execute(select(Thesis).where(Thesis.id == thesis_id))
         thesis = thesis_result.scalar_one_or_none()
         if thesis is None:
             return None
@@ -339,7 +337,10 @@ class ThesisTimelineService:
                 reasoning_summary = _truncate(nearest.reasoning, _REASONING_SUMMARY_MAX)
                 risk_signals = _parse_json_list(nearest.risk_signals)
                 # Mark as 'reviewed' if review co-occurs within tolerance window of snapshot
-                if abs((nearest.reviewed_at - snap.snapshotted_at).total_seconds()) <= _REVIEWED_KIND_TOLERANCE_SECS:
+                if (
+                    abs((nearest.reviewed_at - snap.snapshotted_at).total_seconds())
+                    <= _REVIEWED_KIND_TOLERANCE_SECS
+                ):
                     kind = "reviewed"
 
             points.append(

@@ -73,6 +73,7 @@ async def _emit_thesis_closed(thesis: Thesis, close_reason: str) -> None:
     try:
         from src.platform.event_bus import get_event_bus
         from src.platform.events import ThesisClosedEvent
+
         event = ThesisClosedEvent(
             thesis_id=thesis.id,
             user_id=thesis.user_id or "",
@@ -137,20 +138,18 @@ class ThesisService:
         logger.info("thesis.created", thesis_id=thesis.id, ticker=thesis.ticker)
 
         for desc in inp.assumptions or []:
-            await self._components.add_assumption(
-                thesis.id, AddAssumptionInput(description=desc)
-            )
+            await self._components.add_assumption(thesis.id, AddAssumptionInput(description=desc))
         for cat in inp.catalysts or []:
-            cat_inp = cat if isinstance(cat, AddCatalystInput) else AddCatalystInput(description=str(cat))
+            cat_inp = (
+                cat if isinstance(cat, AddCatalystInput) else AddCatalystInput(description=str(cat))
+            )
             await self._components.add_catalyst(thesis.id, cat_inp)
 
         if inp.assumptions or inp.catalysts:
             thesis = await self._get_owned(thesis.id, resolved)  # reload voi components
         return thesis
 
-    async def update(
-        self, thesis_id: int, user_id: str, inp: UpdateThesisInput
-    ) -> Thesis:
+    async def update(self, thesis_id: int, user_id: str, inp: UpdateThesisInput) -> Thesis:
         thesis = await self._get_owned(thesis_id, user_id)
         self._assert_mutable(thesis)
 
@@ -333,9 +332,7 @@ class ThesisService:
         await self._get_owned(thesis_id, user_id)
         return await self._components.update_assumption(thesis_id, assumption_id, inp)
 
-    async def delete_assumption(
-        self, thesis_id: int, assumption_id: int, user_id: str
-    ) -> None:
+    async def delete_assumption(self, thesis_id: int, assumption_id: int, user_id: str) -> None:
         await self._get_owned(thesis_id, user_id)
         await self._components.delete_assumption(thesis_id, assumption_id)
 
@@ -343,9 +340,7 @@ class ThesisService:
     # Catalyst proxy
     # ------------------------------------------------------------------
 
-    async def add_catalyst(
-        self, thesis_id: int, user_id: str, inp: AddCatalystInput
-    ) -> Catalyst:
+    async def add_catalyst(self, thesis_id: int, user_id: str, inp: AddCatalystInput) -> Catalyst:
         thesis = await self._get_owned(thesis_id, user_id)
         self._assert_mutable(thesis)
         return await self._components.add_catalyst(thesis_id, inp)
@@ -374,9 +369,7 @@ class ThesisService:
         await self._get_owned(thesis_id, user_id)
         return await self._components.update_catalyst(thesis_id, catalyst_id, inp)
 
-    async def delete_catalyst(
-        self, thesis_id: int, catalyst_id: int, user_id: str
-    ) -> None:
+    async def delete_catalyst(self, thesis_id: int, catalyst_id: int, user_id: str) -> None:
         await self._get_owned(thesis_id, user_id)
         await self._components.delete_catalyst(thesis_id, catalyst_id)
 
@@ -444,23 +437,25 @@ class ThesisService:
                     last_review_at = last_review_at.replace(tzinfo=UTC)
                 days_since_review = (now - last_review_at).days
 
-            results.append({
-                "id": thesis.id,
-                "ticker": thesis.ticker,
-                "entry_thesis": (
-                    getattr(thesis, "entry_thesis", None)
-                    or getattr(thesis, "summary", "")
-                    or ""
-                ),
-                "target_price": thesis.target_price,
-                "stop_loss": thesis.stop_loss,
-                # time_horizon is not a DB column — omitted.
-                # Use target_date if callers need a deadline reference.
-                "target_date": getattr(thesis, "target_date", None),
-                "assumption_count": len(assumptions),
-                "last_review_at": last_review_at,
-                "days_since_review": days_since_review,
-            })
+            results.append(
+                {
+                    "id": thesis.id,
+                    "ticker": thesis.ticker,
+                    "entry_thesis": (
+                        getattr(thesis, "entry_thesis", None)
+                        or getattr(thesis, "summary", "")
+                        or ""
+                    ),
+                    "target_price": thesis.target_price,
+                    "stop_loss": thesis.stop_loss,
+                    # time_horizon is not a DB column — omitted.
+                    # Use target_date if callers need a deadline reference.
+                    "target_date": getattr(thesis, "target_date", None),
+                    "assumption_count": len(assumptions),
+                    "last_review_at": last_review_at,
+                    "days_since_review": days_since_review,
+                }
+            )
         return results
 
     # ------------------------------------------------------------------

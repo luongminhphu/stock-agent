@@ -7,14 +7,14 @@ Boundary:
 - Nhận AgendaContext, trả DailyAgendaResult.
 - Không đọc DB, không gọi service, không gửi notification.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 from src.ai.client import AIClient
 from src.ai.prompts.agenda import (
+    SYSTEM_PROMPT,
     AgendaContext,
     DailyAgendaResult,
-    SYSTEM_PROMPT,
     build_user_prompt,
 )
 from src.platform.logging import get_logger

@@ -23,7 +23,7 @@ import pytest
 
 from src.ai.schemas import BriefOutput, MarketSentiment
 from src.briefing.agenda_cache import AgendaBuckets, _AgendaCache, set_agenda
-from src.briefing.service import BriefResult, BriefingService
+from src.briefing.service import BriefingService, BriefResult
 
 
 @pytest.fixture(autouse=True)
@@ -55,9 +55,7 @@ def _make_svc(
 ) -> tuple[BriefingService, AsyncMock, AsyncMock]:
     watchlist_service = AsyncMock()
     watchlist_service.list_items.return_value = watchlist_items
-    watchlist_service.get_tickers.return_value = [
-        getattr(it, "ticker") for it in watchlist_items
-    ]
+    watchlist_service.get_tickers.return_value = [it.ticker for it in watchlist_items]
 
     quote_service = AsyncMock()
     if quotes is not None:

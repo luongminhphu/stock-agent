@@ -7,6 +7,7 @@ Output schema: ProactiveAlertOutput (Pydantic BaseModel defined in ai.schemas).
 
 Boundary: pure data + string builders. No I/O, no DB, no bus imports.
 """
+
 from __future__ import annotations
 
 from src.ai.prompts._spec import PromptSpec, schema_block, with_persona
@@ -69,13 +70,10 @@ def build_user_prompt(
         User prompt string để pass vào AIClient.chat().
     """
     meta_lines = (
-        "\n".join(f"  - {k}: {v}" for k, v in metadata.items() if v is not None)
-        or "  (không có)"
+        "\n".join(f"  - {k}: {v}" for k, v in metadata.items() if v is not None) or "  (không có)"
     )
 
-    context_block = (
-        f"\nBối cảnh nhà đầu tư:\n{investor_context}\n" if investor_context else ""
-    )
+    context_block = f"\nBối cảnh nhà đầu tư:\n{investor_context}\n" if investor_context else ""
 
     return f"""\
 Tín hiệu mới cần quyết định hành động:

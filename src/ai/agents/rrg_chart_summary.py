@@ -57,7 +57,7 @@ def _build_prompt(
     lines = ["## Trạng thái RRG hiện tại\n"]
     for t in tickers_context:
         held_flag = " [ĐANG HOLD]" if t["ticker"] in held_tickers else ""
-        vel_str   = f"velocity={t['velocity_dir']}" if t.get("velocity_dir") else ""
+        vel_str = f"velocity={t['velocity_dir']}" if t.get("velocity_dir") else ""
         lines.append(
             f"- {t['ticker']}{held_flag}: {t['quadrant'].upper()}"
             f" | RS-Ratio={t['rs_ratio']:.2f} RS-Mom={t['rs_momentum']:.2f}"
@@ -84,47 +84,59 @@ def _heuristic_fallback(
 ) -> RRGChartSummary:
     """Rule-based fallback when AI fails."""
     opportunities: list[RRGTickerInsight] = []
-    risks:         list[RRGTickerInsight] = []
+    risks: list[RRGTickerInsight] = []
     portfolio_alert = ""
 
     held_set = set(held_tickers)
-    held_weak = [t for t in tickers_context if t["ticker"] in held_set and t["quadrant"] in ("weakening", "lagging")]
+    held_weak = [
+        t
+        for t in tickers_context
+        if t["ticker"] in held_set and t["quadrant"] in ("weakening", "lagging")
+    ]
 
     for t in tickers_context:
         ticker = t["ticker"]
-        q      = t["quadrant"]
+        q = t["quadrant"]
         if q == "improving" and len(opportunities) < 2:
-            opportunities.append(RRGTickerInsight(
-                ticker=ticker,
-                insight=f"{ticker} đang vào Improving — momentum đang tích cực.",
-                action="WATCH",
-            ))
+            opportunities.append(
+                RRGTickerInsight(
+                    ticker=ticker,
+                    insight=f"{ticker} đang vào Improving — momentum đang tích cực.",
+                    action="WATCH",
+                )
+            )
         elif q == "leading" and len(opportunities) < 2:
-            opportunities.append(RRGTickerInsight(
-                ticker=ticker,
-                insight=f"{ticker} đang Leading — giữ vị thế nếu momentum còn mạnh.",
-                action="HOLD",
-            ))
+            opportunities.append(
+                RRGTickerInsight(
+                    ticker=ticker,
+                    insight=f"{ticker} đang Leading — giữ vị thế nếu momentum còn mạnh.",
+                    action="HOLD",
+                )
+            )
         elif q == "weakening" and len(risks) < 2:
-            risks.append(RRGTickerInsight(
-                ticker=ticker,
-                insight=f"{ticker} đang Weakening — theo dõi chặt, cân nhắc giảm.",
-                action="WATCH" if ticker not in held_set else "REDUCE",
-            ))
+            risks.append(
+                RRGTickerInsight(
+                    ticker=ticker,
+                    insight=f"{ticker} đang Weakening — theo dõi chặt, cân nhắc giảm.",
+                    action="WATCH" if ticker not in held_set else "REDUCE",
+                )
+            )
         elif q == "lagging" and len(risks) < 2:
-            risks.append(RRGTickerInsight(
-                ticker=ticker,
-                insight=f"{ticker} đang Lagging — tránh mua thêm, xem xét thoát.",
-                action="AVOID",
-            ))
+            risks.append(
+                RRGTickerInsight(
+                    ticker=ticker,
+                    insight=f"{ticker} đang Lagging — tránh mua thêm, xem xét thoát.",
+                    action="AVOID",
+                )
+            )
 
     if len(held_weak) >= 2:
         names = ", ".join(t["ticker"] for t in held_weak)
         portfolio_alert = f"{names} cùng Weakening — rủi ro tập trung trong danh mục."
 
-    leading_count   = sum(1 for t in tickers_context if t["quadrant"] == "leading")
+    leading_count = sum(1 for t in tickers_context if t["quadrant"] == "leading")
     improving_count = sum(1 for t in tickers_context if t["quadrant"] == "improving")
-    total           = len(tickers_context) or 1
+    total = len(tickers_context) or 1
     if leading_count + improving_count > total * 0.5:
         market_read = "Thị trường đang có xu hướng tích cực — nhiều ticker trong Leading/Improving."
     else:

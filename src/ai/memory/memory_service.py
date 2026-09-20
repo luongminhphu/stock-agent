@@ -98,12 +98,10 @@ class MemoryContext:
 
         # W5B: split episodes into invalidation vs general
         invalidation_eps = [
-            ep for ep in self.recent_episodes
-            if ep.agent_type in _INVALIDATION_AGENT_TYPES
+            ep for ep in self.recent_episodes if ep.agent_type in _INVALIDATION_AGENT_TYPES
         ]
         general_eps = [
-            ep for ep in self.recent_episodes
-            if ep.agent_type not in _INVALIDATION_AGENT_TYPES
+            ep for ep in self.recent_episodes if ep.agent_type not in _INVALIDATION_AGENT_TYPES
         ]
 
         # W5B: render invalidation history section
@@ -168,14 +166,11 @@ class MemoryService:
         try:
             from src.platform.db import AsyncSessionLocal  # noqa: PLC0415
 
-            async with AsyncSessionLocal() as log_session:
-                async with log_session.begin():
-                    saved = await MemoryService._do_log(log_session, entry)
+            async with AsyncSessionLocal() as log_session, log_session.begin():
+                saved = await MemoryService._do_log(log_session, entry)
 
             # Auto-consolidation check — fire-and-forget, never raises
-            asyncio.ensure_future(
-                MemoryService._maybe_consolidate(entry.user_id)
-            )
+            asyncio.ensure_future(MemoryService._maybe_consolidate(entry.user_id))
             return saved
         except Exception as exc:
             logger.warning(
@@ -194,9 +189,9 @@ class MemoryService:
         Fire-and-forget: all exceptions are swallowed.
         """
         try:
-            from src.platform.db import AsyncSessionLocal  # noqa: PLC0415
-            from src.platform.bootstrap import get_ai_client  # noqa: PLC0415
             from src.ai.memory.consolidator import MemoryConsolidator  # noqa: PLC0415
+            from src.platform.bootstrap import get_ai_client  # noqa: PLC0415
+            from src.platform.db import AsyncSessionLocal  # noqa: PLC0415
 
             async with AsyncSessionLocal() as session:
                 repo = InteractionLogRepository(session)
@@ -273,24 +268,23 @@ class MemoryService:
         try:
             from src.platform.db import AsyncSessionLocal  # noqa: PLC0415
 
-            async with AsyncSessionLocal() as write_session:
-                async with write_session.begin():
-                    log = AIInteractionLog(
-                        user_id=user_id,
-                        agent_type=source,
-                        trigger=source,
-                        ai_key_points=content,
-                    )
-                    log.tickers = tags or []
-                    repo = InteractionLogRepository(write_session)
-                    saved = await repo.save(log)
-                    logger.debug(
-                        "memory_service.append.saved",
-                        user_id=user_id,
-                        source=source,
-                        tags=tags,
-                    )
-                    return saved
+            async with AsyncSessionLocal() as write_session, write_session.begin():
+                log = AIInteractionLog(
+                    user_id=user_id,
+                    agent_type=source,
+                    trigger=source,
+                    ai_key_points=content,
+                )
+                log.tickers = tags or []
+                repo = InteractionLogRepository(write_session)
+                saved = await repo.save(log)
+                logger.debug(
+                    "memory_service.append.saved",
+                    user_id=user_id,
+                    source=source,
+                    tags=tags,
+                )
+                return saved
         except Exception as exc:
             logger.warning(
                 "memory_service.append.failed",
@@ -337,34 +331,33 @@ class MemoryService:
             return False
 
         try:
-            from src.platform.db import AsyncSessionLocal  # noqa: PLC0415
             from src.ai.memory.user_behavior_log import UserBehaviorLog  # noqa: PLC0415
+            from src.platform.db import AsyncSessionLocal  # noqa: PLC0415
 
-            async with AsyncSessionLocal() as session:
-                async with session.begin():
-                    # 1. Write UserBehaviorLog row
-                    behavior = UserBehaviorLog(
-                        user_id=user_id,
-                        signal=signal,
-                        source=source,
-                        interaction_log_id=interaction_log_id,
-                        ticker=ticker,
-                        agent_type=agent_type,
-                        note=note,
-                    )
-                    session.add(behavior)
+            async with AsyncSessionLocal() as session, session.begin():
+                # 1. Write UserBehaviorLog row
+                behavior = UserBehaviorLog(
+                    user_id=user_id,
+                    signal=signal,
+                    source=source,
+                    interaction_log_id=interaction_log_id,
+                    ticker=ticker,
+                    agent_type=agent_type,
+                    note=note,
+                )
+                session.add(behavior)
 
-                    # 2. Back-fill AIInteractionLog.user_signal (compat layer)
-                    if interaction_log_id is not None:
-                        repo = InteractionLogRepository(session)
-                        log_row = await repo.get_by_id(interaction_log_id)
-                        if log_row is not None and log_row.user_signal is None:
-                            log_row.user_signal = signal
-                            logger.debug(
-                                "memory_service.log_user_signal.backfilled",
-                                interaction_log_id=interaction_log_id,
-                                signal=signal,
-                            )
+                # 2. Back-fill AIInteractionLog.user_signal (compat layer)
+                if interaction_log_id is not None:
+                    repo = InteractionLogRepository(session)
+                    log_row = await repo.get_by_id(interaction_log_id)
+                    if log_row is not None and log_row.user_signal is None:
+                        log_row.user_signal = signal
+                        logger.debug(
+                            "memory_service.log_user_signal.backfilled",
+                            interaction_log_id=interaction_log_id,
+                            signal=signal,
+                        )
 
             logger.info(
                 "memory_service.log_user_signal.ok",
@@ -425,10 +418,7 @@ class MemoryService:
             )
 
         if thesis_id is not None and episodes:
-            episodes = [
-                ep for ep in episodes
-                if ep.thesis_id is None or ep.thesis_id == thesis_id
-            ]
+            episodes = [ep for ep in episodes if ep.thesis_id is None or ep.thesis_id == thesis_id]
             logger.debug(
                 "memory_service.episodes_filtered_by_thesis",
                 user_id=user_id,

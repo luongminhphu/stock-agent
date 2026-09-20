@@ -10,6 +10,7 @@ Design notes:
   format, same pattern as src.ai.prompts.stress_test.
 - Never import domain models here — only plain Python types.
 """
+
 from __future__ import annotations
 
 SYSTEM_PROMPT = """
@@ -70,10 +71,11 @@ def build_user_prompt(
     }
 
     import json
+
     schema_block = json.dumps(schema_example, ensure_ascii=False, indent=2)
 
     return f"""## Mã chứng khoán: {symbol}
-## Thời điểm phân tích: {as_of or 'N/A'}
+## Thời điểm phân tích: {as_of or "N/A"}
 
 ## Tín hiệu kỹ thuật (pre-computed)
 Regime      : {regime}

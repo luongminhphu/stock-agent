@@ -16,6 +16,7 @@ Migration:
 
     Production: generate a new Alembic revision targeting this model.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime

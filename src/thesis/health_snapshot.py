@@ -35,10 +35,11 @@ Wave (actual_entry_price):
   - format_for_prompt() renders P&L thực tế vs thesis reference khi cả hai đều có.
   - _compute_snapshot() reads actual_entry_price từ ORM object (None nếu chưa có lệnh).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -49,10 +50,10 @@ from src.platform.logging import get_logger
 logger = get_logger(__name__)
 
 # ── tuneable constants ────────────────────────────────────────────────────────
-MAX_THESES = 8               # cap to avoid prompt bloat
-REVIEW_DUE_DAYS = 7         # days without review → REVIEW_DUE flag
-AT_RISK_STOP_PCT_THRESHOLD = 5.0   # ≤5% from stop_loss → AT_RISK
-AT_RISK_SCORE_THRESHOLD = 0.35     # health_score ≤ 0.35 → AT_RISK (0.0–1.0 scale)
+MAX_THESES = 8  # cap to avoid prompt bloat
+REVIEW_DUE_DAYS = 7  # days without review → REVIEW_DUE flag
+AT_RISK_STOP_PCT_THRESHOLD = 5.0  # ≤5% from stop_loss → AT_RISK
+AT_RISK_SCORE_THRESHOLD = 0.35  # health_score ≤ 0.35 → AT_RISK (0.0–1.0 scale)
 
 # urgency ordering (higher = more urgent, used for sort)
 _URGENCY_ORDER = {
@@ -127,9 +128,7 @@ class ThesisHealthSnapshot:
 
         # Health + review
         review_str = (
-            f"{self.days_since_review}d trước"
-            if self.days_since_review < 999
-            else "chưa review"
+            f"{self.days_since_review}d trước" if self.days_since_review < 999 else "chưa review"
         )
         details: list[str] = [
             f"health={self.health_score:.2f}",
@@ -150,12 +149,16 @@ class ThesisHealthSnapshot:
             )
             # P&L vs target from actual entry
             if self.target_price is not None and self.actual_entry_price > 0:
-                pnl_to_target = (self.target_price - self.actual_entry_price) / self.actual_entry_price * 100
+                pnl_to_target = (
+                    (self.target_price - self.actual_entry_price) / self.actual_entry_price * 100
+                )
                 sign = "+" if pnl_to_target >= 0 else ""
                 details.append(f"P&L vs target: {sign}{pnl_to_target:.1f}%")
             # P&L vs stop from actual entry
             if self.stop_loss is not None and self.actual_entry_price > 0:
-                pnl_to_stop = (self.stop_loss - self.actual_entry_price) / self.actual_entry_price * 100
+                pnl_to_stop = (
+                    (self.stop_loss - self.actual_entry_price) / self.actual_entry_price * 100
+                )
                 details.append(f"P&L vs stop: {pnl_to_stop:.1f}%")
         elif self.entry_price is not None:
             # Only thesis reference price — no actual execution yet
@@ -174,9 +177,7 @@ class ThesisHealthSnapshot:
 
         # Assumptions
         held = self.assumptions_total - self.assumptions_invalidated
-        details.append(
-            f"giả định: {held}/{self.assumptions_total} còn valid"
-        )
+        details.append(f"giả định: {held}/{self.assumptions_total} còn valid")
 
         # Verdict
         details.append(f"verdict: {self.last_verdict}")
@@ -187,8 +188,9 @@ class ThesisHealthSnapshot:
 
 # ── builder ───────────────────────────────────────────────────────────────────
 
+
 async def build_thesis_health_snapshots(
-    session: "AsyncSession",
+    session: AsyncSession,
     user_id: str | None,
 ) -> list[ThesisHealthSnapshot]:
     """
@@ -231,9 +233,7 @@ async def build_thesis_health_snapshots(
             continue
 
     # Sort by urgency DESC, then health_score ASC (worst first within same urgency)
-    snapshots.sort(
-        key=lambda s: (-_URGENCY_ORDER.get(s.urgency_flag, 0), s.health_score)
-    )
+    snapshots.sort(key=lambda s: (-_URGENCY_ORDER.get(s.urgency_flag, 0), s.health_score))
     return snapshots[:MAX_THESES]
 
 
@@ -248,8 +248,8 @@ async def _fetch_score(thesis: object) -> float:
         from src.thesis.scoring_service import ScoringService
 
         svc = ScoringService()
-        raw = svc.compute(thesis)      # sync, returns 0.0–100.0
-        return round(raw / 100.0, 4)   # normalize → 0.0–1.0
+        raw = svc.compute(thesis)  # sync, returns 0.0–100.0
+        return round(raw / 100.0, 4)  # normalize → 0.0–1.0
     except Exception:
         return 0.5  # neutral fallback — don't penalise for missing score
 
@@ -276,9 +276,9 @@ def _compute_snapshot(thesis: object, health_score: float) -> ThesisHealthSnapsh
     # Days since last review
     last_reviewed_at = getattr(thesis, "last_reviewed_at", None)
     if last_reviewed_at is not None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if last_reviewed_at.tzinfo is None:
-            last_reviewed_at = last_reviewed_at.replace(tzinfo=timezone.utc)
+            last_reviewed_at = last_reviewed_at.replace(tzinfo=UTC)
         days_since_review = max(0, (now - last_reviewed_at).days)
     else:
         days_since_review = 999  # sentinel: never reviewed
@@ -287,15 +287,14 @@ def _compute_snapshot(thesis: object, health_score: float) -> ThesisHealthSnapsh
     assumptions = getattr(thesis, "assumptions", []) or []
     assumptions_total = len(assumptions)
     assumptions_invalidated = sum(
-        1 for a in assumptions
+        1
+        for a in assumptions
         if str(getattr(a, "status", "")).lower() in ("invalidated", "false", "failed")
     )
 
     # Last verdict from thesis object or default
     last_verdict_raw = (
-        getattr(thesis, "last_verdict", None)
-        or getattr(thesis, "verdict", None)
-        or "UNREVIEWED"
+        getattr(thesis, "last_verdict", None) or getattr(thesis, "verdict", None) or "UNREVIEWED"
     )
     last_verdict = str(last_verdict_raw).upper()
     if last_verdict not in ("VALID", "WEAKENING", "INVALID", "UNREVIEWED"):
@@ -306,9 +305,8 @@ def _compute_snapshot(thesis: object, health_score: float) -> ThesisHealthSnapsh
     if status == "invalidated":
         urgency_flag = "INVALIDATED"
     elif (
-        (distance_to_stop_pct is not None and distance_to_stop_pct <= AT_RISK_STOP_PCT_THRESHOLD)
-        or health_score <= AT_RISK_SCORE_THRESHOLD
-    ):
+        distance_to_stop_pct is not None and distance_to_stop_pct <= AT_RISK_STOP_PCT_THRESHOLD
+    ) or health_score <= AT_RISK_SCORE_THRESHOLD:
         urgency_flag = "AT_RISK"
     elif days_since_review >= REVIEW_DUE_DAYS:
         urgency_flag = "REVIEW_DUE"

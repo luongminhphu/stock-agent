@@ -61,9 +61,7 @@ def build_debate_embed(
         icon = _STRENGTH_ICON.get(challenge.strength, "•")
         field_name = f"{icon} #{i} · {challenge.area} · `{challenge.strength.value}`"
         counter = (
-            f"\n> 💡 _{challenge.counter_argument[:100]}_"
-            if challenge.counter_argument
-            else ""
+            f"\n> 💡 _{challenge.counter_argument[:100]}_" if challenge.counter_argument else ""
         )
         field_value = f"{challenge.challenge[:200]}{counter}"
         embed.add_field(name=field_name, value=field_value, inline=False)

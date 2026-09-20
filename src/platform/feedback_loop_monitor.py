@@ -32,13 +32,14 @@ Config (env-driven via Settings, with safe defaults)::
     FEEDBACK_MONITOR_MIN_SAMPLE           = 10  # skip alert if fewer events in window
     FEEDBACK_MONITOR_WINDOW_SECONDS       = 3600
 """
+
 from __future__ import annotations
 
 import asyncio
 import datetime
 from collections import deque
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Deque
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import discord
@@ -51,15 +52,15 @@ logger = get_logger(__name__)
 # Constants (can be overridden via Settings if needed later)
 # ---------------------------------------------------------------------------
 
-_ERROR_THRESHOLD_PCT: float = 5.0   # alert when error_rate >= 5%
-_MIN_SAMPLE:         int   = 10     # ignore window if fewer events
-_WINDOW_SECONDS:     int   = 3600   # 1-hour sliding window
+_ERROR_THRESHOLD_PCT: float = 5.0  # alert when error_rate >= 5%
+_MIN_SAMPLE: int = 10  # ignore window if fewer events
+_WINDOW_SECONDS: int = 3600  # 1-hour sliding window
 
 # Adapter names (kept as constants to avoid typos in callers)
-ADAPTER_THESIS    = "thesis"
+ADAPTER_THESIS = "thesis"
 ADAPTER_WATCHLIST = "watchlist"
-ADAPTER_MEMORY    = "memory"
-ADAPTER_SNAPSHOT  = "snapshot"
+ADAPTER_MEMORY = "memory"
+ADAPTER_SNAPSHOT = "snapshot"
 
 _ALL_ADAPTERS = (ADAPTER_THESIS, ADAPTER_WATCHLIST, ADAPTER_MEMORY, ADAPTER_SNAPSHOT)
 
@@ -68,13 +69,14 @@ _ALL_ADAPTERS = (ADAPTER_THESIS, ADAPTER_WATCHLIST, ADAPTER_MEMORY, ADAPTER_SNAP
 # Internal dataclass
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class _AdapterWindow:
     name: str
-    events: Deque[tuple[datetime.datetime, bool]] = field(default_factory=deque)
+    events: deque[tuple[datetime.datetime, bool]] = field(default_factory=deque)
     # Alert deduplication — True while alert is active (rate above threshold)
     alert_active: bool = False
-    total_ok:    int = 0
+    total_ok: int = 0
     total_error: int = 0
 
     def trim(self, cutoff: datetime.datetime) -> None:
@@ -84,9 +86,9 @@ class _AdapterWindow:
 
     def rate(self) -> tuple[int, int, float]:
         """Return (total, errors, error_rate_pct) within the current window."""
-        total  = len(self.events)
+        total = len(self.events)
         errors = sum(1 for _, ok in self.events if not ok)
-        rate   = (errors / total * 100.0) if total > 0 else 0.0
+        rate = (errors / total * 100.0) if total > 0 else 0.0
         return total, errors, rate
 
 
@@ -94,14 +96,15 @@ class _AdapterWindow:
 # Monitor
 # ---------------------------------------------------------------------------
 
+
 class FeedbackLoopMonitor:
     """Sliding-window error-rate monitor for the UserActionFeedbackListener."""
 
     def __init__(
         self,
         error_threshold_pct: float = _ERROR_THRESHOLD_PCT,
-        min_sample:          int   = _MIN_SAMPLE,
-        window_seconds:      int   = _WINDOW_SECONDS,
+        min_sample: int = _MIN_SAMPLE,
+        window_seconds: int = _WINDOW_SECONDS,
     ) -> None:
         self._threshold = error_threshold_pct
         self._min_sample = min_sample
@@ -110,9 +113,9 @@ class FeedbackLoopMonitor:
             name: _AdapterWindow(name=name) for name in _ALL_ADAPTERS
         }
         self._lock = asyncio.Lock()
-        self._alert_channel: "discord.TextChannel | None" = None
+        self._alert_channel: discord.TextChannel | None = None
 
-    def set_alert_channel(self, channel: "discord.TextChannel") -> None:
+    def set_alert_channel(self, channel: discord.TextChannel) -> None:
         """Inject Discord channel after bot login."""
         self._alert_channel = channel
         logger.info(
@@ -156,11 +159,7 @@ class FeedbackLoopMonitor:
             total, errors, rate = w.rate()
             rate_info = (total, errors, rate)
 
-            if (
-                total >= self._min_sample
-                and rate >= self._threshold
-                and not w.alert_active
-            ):
+            if total >= self._min_sample and rate >= self._threshold and not w.alert_active:
                 w.alert_active = True
                 should_alert = True
 
@@ -188,22 +187,22 @@ class FeedbackLoopMonitor:
             w.trim(now - datetime.timedelta(seconds=self._window))
             total, errors, rate = w.rate()
             out[name] = {
-                "window_total":   total,
-                "window_errors":  errors,
+                "window_total": total,
+                "window_errors": errors,
                 "error_rate_pct": round(rate, 1),
-                "total_ok":       w.total_ok,
-                "total_error":    w.total_error,
-                "alert_active":   w.alert_active,
+                "total_ok": w.total_ok,
+                "total_error": w.total_error,
+                "alert_active": w.alert_active,
             }
         return out
 
-    def get_health_embed(self) -> "discord.Embed":
+    def get_health_embed(self) -> discord.Embed:
         """Build a Discord embed summarising current error rates."""
         import discord  # noqa: PLC0415
 
-        stats  = self.get_stats()
+        stats = self.get_stats()
         any_alert = any(v["alert_active"] for v in stats.values())
-        color  = 0xE74C3C if any_alert else 0x2ECC71
+        color = 0xE74C3C if any_alert else 0x2ECC71
 
         embed = discord.Embed(
             title="🔁 Feedback Loop Monitor",
@@ -222,7 +221,7 @@ class FeedbackLoopMonitor:
         ict_now = datetime.datetime.now(tz=datetime.UTC) + datetime.timedelta(hours=7)
         embed.set_footer(
             text=f"Ngưỡng cảnh báo: {self._threshold}% (min {self._min_sample} events/1h) — "
-                 f"{ict_now.strftime('%d/%m %H:%M ICT')}"
+            f"{ict_now.strftime('%d/%m %H:%M ICT')}"
         )
         return embed
 
@@ -241,7 +240,7 @@ class FeedbackLoopMonitor:
 
     async def _send_alert(
         self,
-        adapter:   str,
+        adapter: str,
         rate_info: tuple[int, int, float],
         last_error: str,
     ) -> None:
@@ -265,10 +264,7 @@ class FeedbackLoopMonitor:
         try:
             import discord  # noqa: PLC0415
 
-            ict_now = (
-                datetime.datetime.now(tz=datetime.UTC)
-                + datetime.timedelta(hours=7)
-            )
+            ict_now = datetime.datetime.now(tz=datetime.UTC) + datetime.timedelta(hours=7)
             embed = discord.Embed(
                 title="🚨 Feedback Loop — Tỷ lệ lỗi cao",
                 description=(

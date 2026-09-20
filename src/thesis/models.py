@@ -75,8 +75,8 @@ class ReviewVerdict(enum.StrEnum):
     BEARISH = "BEARISH"
     NEUTRAL = "NEUTRAL"
     WATCHLIST = "WATCHLIST"
-    WEAKENING = "WEAKENING"          # thesis còn valid nhưng momentum suy yếu
-    INVALIDATED = "INVALIDATED"      # AI judge kết luận thesis đã bị invalidated
+    WEAKENING = "WEAKENING"  # thesis còn valid nhưng momentum suy yếu
+    INVALIDATED = "INVALIDATED"  # AI judge kết luận thesis đã bị invalidated
     INSUFFICIENT_DATA = "INSUFFICIENT_DATA"  # không đủ data để ra verdict
 
 
@@ -151,9 +151,7 @@ class Thesis(Base):
     # last_judged_at: timestamp of the latest ThesisJudgeAgent verdict.
     # Maintained by: ai._log_thesis_judge_interaction().
     # Used by: Wave 4 dedup guard in ThesisJudgeAgent.run_batch().
-    last_judged_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    last_judged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     assumptions: Mapped[list[Assumption]] = relationship(
         back_populates="thesis", cascade="all, delete-orphan"
@@ -311,9 +309,7 @@ class ReviewRecommendation(Base):
         default=RecommendationStatus.PENDING,
         index=True,
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     target_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     target_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     target_description: Mapped[str | None] = mapped_column(Text, nullable=True)

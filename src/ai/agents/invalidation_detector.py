@@ -228,8 +228,7 @@ class ThesisInvalidationDetector:
 
         # Determine breach_type
         assumption_ratio_breach = (
-            total_assumptions > 0
-            and len(invalid_assumptions) / total_assumptions > 0.5
+            total_assumptions > 0 and len(invalid_assumptions) / total_assumptions > 0.5
         )
         v_upper = (watchdog_verdict or "").upper()
         u_upper = (watchdog_urgency or "").upper()
@@ -267,7 +266,7 @@ class ThesisInvalidationDetector:
             api_resp = await self._client.chat_completion(
                 messages=[
                     {"role": "system", "content": _SYSTEM_PROMPT},
-                    {"role": "user",   "content": user_prompt},
+                    {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.2,
             )
@@ -283,7 +282,11 @@ class ThesisInvalidationDetector:
 
             logger.info(
                 "InvalidationDetector: thesis=%s ticker=%s verdict=%s action=%s confidence=%.2f",
-                thesis_id, ticker, signal.verdict, signal.action, signal.confidence,
+                thesis_id,
+                ticker,
+                signal.verdict,
+                signal.action,
+                signal.confidence,
             )
             await _log_invalidation_interaction(session, user_id, signal)
             return signal
@@ -293,12 +296,15 @@ class ThesisInvalidationDetector:
             if is_rate:
                 logger.info(
                     "InvalidationDetector: rate limit thesis=%s ticker=%s, using fallback",
-                    thesis_id, ticker,
+                    thesis_id,
+                    ticker,
                 )
             else:
                 logger.warning(
                     "InvalidationDetector: AI error thesis=%s ticker=%s: %s",
-                    thesis_id, ticker, exc,
+                    thesis_id,
+                    ticker,
+                    exc,
                 )
             fallback = self._fallback(
                 thesis_id=thesis_id,
@@ -316,7 +322,9 @@ class ThesisInvalidationDetector:
         except (json.JSONDecodeError, ValidationError) as exc:
             logger.error(
                 "InvalidationDetector: parse error thesis=%s ticker=%s — possible prompt regression: %s",
-                thesis_id, ticker, exc,
+                thesis_id,
+                ticker,
+                exc,
             )
             fallback = self._fallback(
                 thesis_id=thesis_id,
@@ -334,7 +342,9 @@ class ThesisInvalidationDetector:
         except Exception as exc:
             logger.warning(
                 "InvalidationDetector: unexpected error thesis=%s ticker=%s: %s",
-                thesis_id, ticker, exc,
+                thesis_id,
+                ticker,
+                exc,
             )
             fallback = self._fallback(
                 thesis_id=thesis_id,
@@ -427,11 +437,7 @@ async def _log_invalidation_interaction(
         action = str(getattr(result, "action", "") or "")
         confidence = getattr(result, "confidence", 0.0) or 0.0
         breach_type = getattr(result, "breach_type", None)
-        breach_str = (
-            breach_type.value
-            if hasattr(breach_type, "value")
-            else str(breach_type or "")
-        )
+        breach_str = breach_type.value if hasattr(breach_type, "value") else str(breach_type or "")
         breach_summary = str(getattr(result, "breach_summary", "") or "")
 
         entry = InteractionEntry(

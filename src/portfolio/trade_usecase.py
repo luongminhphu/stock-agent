@@ -60,7 +60,7 @@ class TradeResult:
     trade_id: int
     position_id: int
     ticker: str
-    trade_type: str                    # "buy" | "sell"
+    trade_type: str  # "buy" | "sell"
     qty: float
     price: float
     avg_cost: float
@@ -318,7 +318,7 @@ class TradeUseCase:
         """
         try:
             from src.platform.event_bus import get_event_bus  # noqa: PLC0415
-            from src.platform.events import UserActionEvent    # noqa: PLC0415
+            from src.platform.events import UserActionEvent  # noqa: PLC0415
 
             event = UserActionEvent(
                 user_id=user_id,
@@ -435,7 +435,7 @@ class TradeUseCase:
                 "realized_pnl": getattr(trade, "realized_pnl", None),
                 "price": getattr(trade, "price", None),
                 "exit_reason": (
-                    getattr(trade, "exit_reason").value
+                    trade.exit_reason.value
                     if getattr(trade, "exit_reason", None) is not None
                     else None
                 ),

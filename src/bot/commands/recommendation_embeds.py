@@ -11,6 +11,7 @@ Wave 7 changes:
 - thesis_id shown as inline header field when non-empty.
 - Spacer field only added when thesis_id is absent (keeps 3-column row clean).
 """
+
 from __future__ import annotations
 
 import discord
@@ -20,26 +21,26 @@ from src.platform.events import RecommendationReadyEvent
 # ── constants ──────────────────────────────────────────────────────────────
 
 _ACTION_EMOJI = {
-    "BUY":    "🟢",
-    "SELL":   "🔴",
+    "BUY": "🟢",
+    "SELL": "🔴",
     "REDUCE": "🟡",
-    "HOLD":   "⏸️",
-    "WATCH":  "👁️",
+    "HOLD": "⏸️",
+    "WATCH": "👁️",
 }
 
 _URGENCY_LABEL = {
-    "NOW":        "⚡ NGAY BÂY GIỜ",
-    "TODAY":      "🕒 HÔM NAY",
-    "THIS_WEEK":  "📅 TUẦN NÀY",
+    "NOW": "⚡ NGAY BÂY GIỜ",
+    "TODAY": "🕒 HÔM NAY",
+    "THIS_WEEK": "📅 TUẦN NÀY",
     "MONITORING": "🔭 THEO DÕI",
 }
 
 _COLOR_MAP = {
-    "BUY":    discord.Color.green(),
-    "SELL":   discord.Color.red(),
+    "BUY": discord.Color.green(),
+    "SELL": discord.Color.red(),
     "REDUCE": discord.Color.orange(),
-    "HOLD":   discord.Color.light_grey(),
-    "WATCH":  discord.Color.blue(),
+    "HOLD": discord.Color.light_grey(),
+    "WATCH": discord.Color.blue(),
 }
 
 _CONFIDENCE_BAR_LEN = 10
@@ -79,10 +80,12 @@ def build_recommendation_embed(
     color = _COLOR_MAP.get(action, discord.Color.blurple())
 
     # Resolve content — kwargs override event fields
-    _reasoning        = reasoning        if reasoning        is not None else event.reasoning
-    _action_detail    = action_detail    if action_detail    is not None else event.action_detail
-    _risk_signals     = risk_signals     if risk_signals     is not None else list(event.risk_signals)
-    _next_watch_items = next_watch_items if next_watch_items is not None else list(event.next_watch_items)
+    _reasoning = reasoning if reasoning is not None else event.reasoning
+    _action_detail = action_detail if action_detail is not None else event.action_detail
+    _risk_signals = risk_signals if risk_signals is not None else list(event.risk_signals)
+    _next_watch_items = (
+        next_watch_items if next_watch_items is not None else list(event.next_watch_items)
+    )
 
     embed = discord.Embed(
         title=f"{action_emoji} **{event.symbol}** — {action}",
@@ -142,9 +145,7 @@ def build_recommendation_embed(
             inline=False,
         )
 
-    embed.set_footer(
-        text=f"source: {event.source_agent} • id: {event.recommendation_id[:8]}"
-    )
+    embed.set_footer(text=f"source: {event.source_agent} • id: {event.recommendation_id[:8]}")
 
     return embed
 

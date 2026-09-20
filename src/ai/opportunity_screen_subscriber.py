@@ -28,6 +28,7 @@ Fault tolerance:
   Failure at any step is logged; subsequent steps still attempt to run.
   Handler always returns None — bus worker never sees an exception from here.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -78,7 +79,7 @@ class OpportunityScreenSubscriber:
         bus.subscribe_handler(OpportunityScreenCompletedEvent, self._handle)
         logger.info("opportunity_screen_subscriber.registered")
 
-    async def _handle(self, event: "OpportunityScreenCompletedEvent") -> None:
+    async def _handle(self, event: OpportunityScreenCompletedEvent) -> None:
         """Handle OpportunityScreenCompletedEvent — never raises."""
         logger.info(
             "opportunity_screen_subscriber.triggered",
@@ -113,12 +114,10 @@ class OpportunityScreenSubscriber:
         - Ensures freshness if handler fires with slight delay
         """
         try:
-            from src.platform.bootstrap import get_quote_service
             from src.market.opportunity_screen_service import OpportunityScreenService
+            from src.platform.bootstrap import get_quote_service
 
-            svc = OpportunityScreenService(
-                get_quote_service(), top_n=MAX_CANDIDATES_FOR_PROMPT
-            )
+            svc = OpportunityScreenService(get_quote_service(), top_n=MAX_CANDIDATES_FOR_PROMPT)
             result = await svc.run()
             if not result.candidates:
                 return "Không có candidate nào vượt ngưỡng screen."
@@ -128,9 +127,7 @@ class OpportunityScreenSubscriber:
                 lines.append(f"  {i}. {c.format_for_prompt()}")
             return "\n".join(lines)
         except Exception as exc:
-            logger.warning(
-                "opportunity_screen_subscriber.candidates_block_failed", error=str(exc)
-            )
+            logger.warning("opportunity_screen_subscriber.candidates_block_failed", error=str(exc))
             return "(Không lấy được danh sách candidate)"
 
     async def _fetch_investor_context(self) -> str:
@@ -138,21 +135,19 @@ class OpportunityScreenSubscriber:
         if not self._user_id:
             return ""
         try:
-            from src.platform.db import AsyncSessionLocal
             from src.ai.context_builder import ContextBuilder, render_for_agent
+            from src.platform.db import AsyncSessionLocal
 
             async with AsyncSessionLocal() as session:
                 ctx = await ContextBuilder(session).build(user_id=self._user_id)
             return render_for_agent(ctx)
         except Exception as exc:
-            logger.warning(
-                "opportunity_screen_subscriber.context_failed", error=str(exc)
-            )
+            logger.warning("opportunity_screen_subscriber.context_failed", error=str(exc))
             return ""
 
     async def _run_analysis(
         self,
-        event: "OpportunityScreenCompletedEvent",
+        event: OpportunityScreenCompletedEvent,
         candidates_block: str,
         investor_context: str,
     ) -> str | None:
@@ -161,7 +156,8 @@ class OpportunityScreenSubscriber:
             # SectorRotationAgent.analyze() accepts a free-form context string
             # and returns a structured analysis string.
             prompt_context = (
-                f"{investor_context}\n\n{candidates_block}" if investor_context
+                f"{investor_context}\n\n{candidates_block}"
+                if investor_context
                 else candidates_block
             )
             result = await self._agent.analyze(  # type: ignore[union-attr]
@@ -175,12 +171,10 @@ class OpportunityScreenSubscriber:
             )
             return analysis_text
         except Exception as exc:
-            logger.warning(
-                "opportunity_screen_subscriber.analysis_failed", error=str(exc)
-            )
+            logger.warning("opportunity_screen_subscriber.analysis_failed", error=str(exc))
             return None
 
-    async def _send_to_discord(self, analysis: str, event: "OpportunityScreenCompletedEvent") -> None:
+    async def _send_to_discord(self, analysis: str, event: OpportunityScreenCompletedEvent) -> None:
         """Send analysis to Discord morning channel if client is available."""
         if self._discord_client is None or self._morning_channel_id is None:
             logger.debug(
@@ -214,9 +208,7 @@ class OpportunityScreenSubscriber:
                 channel_id=self._morning_channel_id,
             )
         except Exception as exc:
-            logger.warning(
-                "opportunity_screen_subscriber.discord_send_failed", error=str(exc)
-            )
+            logger.warning("opportunity_screen_subscriber.discord_send_failed", error=str(exc))
 
 
 def _split_discord_message(text: str, limit: int = 1900) -> list[str]:

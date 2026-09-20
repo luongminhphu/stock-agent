@@ -392,7 +392,9 @@ async def get_health_score(
 @router.get("/{thesis_id}/conviction-timeline", response_model=ConvictionTimelineResponse)
 async def get_conviction_timeline(
     thesis_id: int,
-    limit: int = Query(default=20, ge=2, le=50, description="Số data-point trả về (tối thiểu 2, tối đa 50)"),
+    limit: int = Query(
+        default=20, ge=2, le=50, description="Số data-point trả về (tối thiểu 2, tối đa 50)"
+    ),
     _user_id: str = Depends(get_current_user_id),
     timeline_svc: ThesisTimelineService = Depends(get_timeline_service),
 ) -> ConvictionTimelineResponse:
@@ -862,9 +864,7 @@ async def debate_thesis(
     ]
     # Derive invalidation conditions from explicitly invalid assumptions
     invalidation_conditions = [
-        a.description
-        for a in (thesis.assumptions or [])
-        if a.status.value == "invalid"
+        a.description for a in (thesis.assumptions or []) if a.status.value == "invalid"
     ]
     days_since = (datetime.now(UTC) - thesis.created_at).days
 

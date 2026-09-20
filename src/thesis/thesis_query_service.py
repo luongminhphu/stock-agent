@@ -12,6 +12,7 @@ with readmodel.ThesisQueryService which owns the full UI/bot projection
 
 Pattern: session_factory injection, never raises — returns [] on error.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -27,9 +28,7 @@ class ThesisActiveContextQuery:
     def __init__(self, session_factory: Any) -> None:
         self._session_factory = session_factory
 
-    async def get_active_with_components(
-        self, user_id: str
-    ) -> list[dict[str, Any]]:
+    async def get_active_with_components(self, user_id: str) -> list[dict[str, Any]]:
         """Return active thesis dicts including assumptions and catalysts.
 
         Uses ThesisRepository.list_active_for_user() which eager-loads
@@ -68,9 +67,7 @@ class ThesisActiveContextQuery:
             "target_price": getattr(thesis, "target_price", None),
             "stop_loss": getattr(thesis, "stop_loss", None),
             "created_at": (
-                thesis.created_at.isoformat()
-                if getattr(thesis, "created_at", None)
-                else None
+                thesis.created_at.isoformat() if getattr(thesis, "created_at", None) else None
             ),
             "assumptions": [
                 {
@@ -87,9 +84,7 @@ class ThesisActiveContextQuery:
                     "description": getattr(c, "description", ""),
                     "status": str(getattr(c, "status", "pending")),
                     "expected_date": (
-                        c.expected_date.isoformat()
-                        if getattr(c, "expected_date", None)
-                        else None
+                        c.expected_date.isoformat() if getattr(c, "expected_date", None) else None
                     ),
                 }
                 for c in catalysts

@@ -77,20 +77,28 @@ def _build_prompt(contexts: list[dict[str, Any]]) -> str:
         if ctx.get("thesis_title"):
             lines.append(f"thesis: {ctx['thesis_title']}")
         if ctx.get("judge_verdict"):
-            lines.append(f"ThesisJudge: verdict={ctx['judge_verdict']} "
-                         f"delta={ctx.get('conviction_delta', 'N/A')} "
-                         f"action={ctx.get('judge_action', 'N/A')}")
+            lines.append(
+                f"ThesisJudge: verdict={ctx['judge_verdict']} "
+                f"delta={ctx.get('conviction_delta', 'N/A')} "
+                f"action={ctx.get('judge_action', 'N/A')}"
+            )
         if ctx.get("invalidation_verdict"):
-            lines.append(f"Invalidation: verdict={ctx['invalidation_verdict']} "
-                         f"breach={ctx.get('breach_type', 'N/A')} "
-                         f"action={ctx.get('invalidation_action', 'N/A')}")
+            lines.append(
+                f"Invalidation: verdict={ctx['invalidation_verdict']} "
+                f"breach={ctx.get('breach_type', 'N/A')} "
+                f"action={ctx.get('invalidation_action', 'N/A')}"
+            )
         if ctx.get("watchdog_verdict"):
-            lines.append(f"Watchdog: verdict={ctx['watchdog_verdict']} "
-                         f"urgency={ctx.get('watchdog_urgency', 'N/A')} "
-                         f"health={ctx.get('health_score', 'N/A')}")
+            lines.append(
+                f"Watchdog: verdict={ctx['watchdog_verdict']} "
+                f"urgency={ctx.get('watchdog_urgency', 'N/A')} "
+                f"health={ctx.get('health_score', 'N/A')}"
+            )
         if ctx.get("signal_urgency"):
-            lines.append(f"SignalEngine: urgency={ctx['signal_urgency']} "
-                         f"ranked_signals={ctx.get('top_signals', [])}")
+            lines.append(
+                f"SignalEngine: urgency={ctx['signal_urgency']} "
+                f"ranked_signals={ctx.get('top_signals', [])}"
+            )
         if ctx.get("stop_loss_breached"):
             lines.append("⚠️ stop_loss BREACHED")
         if ctx.get("notes"):
@@ -101,7 +109,7 @@ def _build_prompt(contexts: list[dict[str, Any]]) -> str:
         "{",
         '  "summary": "<1-2 câu tổng hợp>",',
         '  "actions": [',
-        '    {',
+        "    {",
         '      "ticker": "<mã hoặc PORTFOLIO>",',
         '      "thesis_id": "<id hoặc null>",',
         '      "scope": "<ActionScope value>",',
@@ -112,9 +120,9 @@ def _build_prompt(contexts: list[dict[str, Any]]) -> str:
         '      "rationale": "<lý do 1-2 câu>",',
         '      "source_signals": ["..."],',
         '      "confidence": <float 0.0-1.0>',
-        '    }',
-        '  ]',
-        '}',
+        "    }",
+        "  ]",
+        "}",
     ]
     return "\n".join(lines)
 
@@ -142,12 +150,12 @@ _URGENCY_SCORE_MAP = {
 #   BEARISH (watchdog proxy)        → high, signal respond
 # ON_TRACK is intentionally absent — no fallback action needed.
 _VERDICT_FALLBACK: dict[str, tuple[str, ActionScope]] = {
-    "INVALIDATED":       ("critical", ActionScope.THESIS_INVALIDATE),
+    "INVALIDATED": ("critical", ActionScope.THESIS_INVALIDATE),
     "CONFIRMED_INVALID": ("critical", ActionScope.THESIS_INVALIDATE),
-    "WEAKENING":         ("high",     ActionScope.THESIS_REVIEW),
-    "SUSPECTED":         ("high",     ActionScope.THESIS_REVIEW),
-    "REVIEW_NOW":        ("high",     ActionScope.THESIS_REVIEW),
-    "BEARISH":           ("high",     ActionScope.SIGNAL_RESPOND),
+    "WEAKENING": ("high", ActionScope.THESIS_REVIEW),
+    "SUSPECTED": ("high", ActionScope.THESIS_REVIEW),
+    "REVIEW_NOW": ("high", ActionScope.THESIS_REVIEW),
+    "BEARISH": ("high", ActionScope.SIGNAL_RESPOND),
 }
 
 
@@ -163,44 +171,44 @@ def _fallback_plan(contexts: list[dict[str, Any]]) -> NextActionPlan:
         ticker = ctx.get("ticker", "UNKNOWN")
 
         invalidation_verdict = ctx.get("invalidation_verdict", "")
-        judge_verdict        = ctx.get("judge_verdict", "")
-        watchdog_verdict     = (ctx.get("watchdog_verdict") or "").upper()
-        watchdog_urgency     = (ctx.get("watchdog_urgency") or "").upper()
-        stop_loss_breached   = ctx.get("stop_loss_breached", False)
+        judge_verdict = ctx.get("judge_verdict", "")
+        watchdog_verdict = (ctx.get("watchdog_verdict") or "").upper()
+        watchdog_urgency = (ctx.get("watchdog_urgency") or "").upper()
+        stop_loss_breached = ctx.get("stop_loss_breached", False)
 
         # --- resolve urgency + scope via priority cascade ---
         if stop_loss_breached or invalidation_verdict in ("CONFIRMED", "CONFIRMED_INVALID"):
             urgency = "critical"
-            scope   = ActionScope.THESIS_INVALIDATE
-            title   = f"{ticker}: Cân nhắc thoát vị thế"
-            step    = "Kiểm tra lại stop-loss và xem xét đóng vị thế nếu thesis bị vô hiệu hóa."
-            source  = [
+            scope = ActionScope.THESIS_INVALIDATE
+            title = f"{ticker}: Cân nhắc thoát vị thế"
+            step = "Kiểm tra lại stop-loss và xem xét đóng vị thế nếu thesis bị vô hiệu hóa."
+            source = [
                 f"invalidation:{invalidation_verdict}",
                 *(["stop_loss_breach"] if stop_loss_breached else []),
             ]
         elif judge_verdict and judge_verdict in _VERDICT_FALLBACK:
             urgency, scope = _VERDICT_FALLBACK[judge_verdict]
-            title   = f"{ticker}: Review thesis ngay"
-            step    = "Chạy ThesisReview hoặc review thủ công các assumptions đang bị thách thức."
-            source  = [f"ThesisJudge:{judge_verdict}"]
+            title = f"{ticker}: Review thesis ngay"
+            step = "Chạy ThesisReview hoặc review thủ công các assumptions đang bị thách thức."
+            source = [f"ThesisJudge:{judge_verdict}"]
             if invalidation_verdict:
                 source.append(f"Invalidation:{invalidation_verdict}")
         elif invalidation_verdict in _VERDICT_FALLBACK:
             urgency, scope = _VERDICT_FALLBACK[invalidation_verdict]
-            title   = f"{ticker}: Review thesis ngay"
-            step    = "Chạy ThesisReview hoặc review thủ công các assumptions đang bị thách thức."
-            source  = [f"Invalidation:{invalidation_verdict}"]
+            title = f"{ticker}: Review thesis ngay"
+            step = "Chạy ThesisReview hoặc review thủ công các assumptions đang bị thách thức."
+            source = [f"Invalidation:{invalidation_verdict}"]
         elif watchdog_verdict == "BEARISH" or watchdog_urgency in ("HIGH", "CRITICAL"):
             urgency, scope = _VERDICT_FALLBACK["BEARISH"]
-            title   = f"{ticker}: Tín hiệu tiêu cực"
-            step    = "Theo dõi sát diễn biến giá và dòng tiền. Cân nhắc reduce nếu tín hiệu duy trì."
-            source  = [f"Watchdog:{watchdog_verdict}:{watchdog_urgency}"]
+            title = f"{ticker}: Tín hiệu tiêu cực"
+            step = "Theo dõi sát diễn biến giá và dòng tiền. Cân nhắc reduce nếu tín hiệu duy trì."
+            source = [f"Watchdog:{watchdog_verdict}:{watchdog_urgency}"]
         else:
             urgency = "low"
-            scope   = ActionScope.WATCHLIST_MONITOR
-            title   = f"{ticker}: Tiếp tục theo dõi"
-            step    = "Không có tín hiệu bất thường. Duy trì monitoring theo kế hoạch."
-            source  = ["no_breach_detected"]
+            scope = ActionScope.WATCHLIST_MONITOR
+            title = f"{ticker}: Tiếp tục theo dõi"
+            step = "Không có tín hiệu bất thường. Duy trì monitoring theo kế hoạch."
+            source = ["no_breach_detected"]
 
         actions.append(
             SuggestedAction(
@@ -316,7 +324,7 @@ class NextActionSuggester:
             api_resp = await self._client.chat_completion(
                 messages=[
                     {"role": "system", "content": _SYSTEM_PROMPT},
-                    {"role": "user",   "content": user_prompt},
+                    {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.3,
             )
@@ -357,9 +365,7 @@ class NextActionSuggester:
             return _fallback_plan(contexts)
 
         except (json.JSONDecodeError, ValidationError) as exc:
-            logger.error(
-                "NextActionSuggester: parse error — possible prompt regression: %s", exc
-            )
+            logger.error("NextActionSuggester: parse error — possible prompt regression: %s", exc)
             return _fallback_plan(contexts)
 
         except Exception as exc:
@@ -403,9 +409,9 @@ async def _log_next_action_interaction(
     try:
         from src.ai.memory.memory_service import InteractionEntry, MemoryService
 
-        tickers = list({
-            a.ticker for a in (plan.actions or []) if a.ticker and a.ticker != "PORTFOLIO"
-        })[:5]
+        tickers = list(
+            {a.ticker for a in (plan.actions or []) if a.ticker and a.ticker != "PORTFOLIO"}
+        )[:5]
 
         entry = InteractionEntry(
             user_id=user_id,
@@ -414,8 +420,7 @@ async def _log_next_action_interaction(
             tickers=tickers,
             ai_verdict=(plan.summary or "")[:120],
             ai_key_points=(
-                f"total_actions={len(plan.actions)} "
-                f"total_critical={plan.total_critical}"
+                f"total_actions={len(plan.actions)} total_critical={plan.total_critical}"
             ),
         )
         await MemoryService.log_interaction(session, entry)

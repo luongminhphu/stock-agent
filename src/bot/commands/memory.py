@@ -47,12 +47,12 @@ class MemoryCog(BaseCog):
             async with self.db_session() as session:
                 # --- Episodic + snapshot render ---
                 from src.ai.memory.memory_service import MemoryService
-                mem_ctx = await MemoryService.get_memory_context(
-                    session, user_id=user_id
-                )
+
+                mem_ctx = await MemoryService.get_memory_context(session, user_id=user_id)
 
                 # --- Pattern synthesis block from latest snapshot ---
                 from src.ai.memory.repository import MemorySnapshotRepository
+
                 snapshot_repo = MemorySnapshotRepository(session)
                 latest = await snapshot_repo.get_latest(user_id=user_id)
 
@@ -94,6 +94,7 @@ class MemoryCog(BaseCog):
                         import json
 
                         from src.ai.memory.consolidator import PatternSynthesisOutput
+
                         stored = json.loads(behavioral)
                         synth = PatternSynthesisOutput(**stored)
                         pattern_block = synth.to_prompt_block()
@@ -114,9 +115,7 @@ class MemoryCog(BaseCog):
                 episode_count = getattr(latest, "episode_count", None)
                 footer_parts = []
                 if period_end:
-                    footer_parts.append(
-                        f"Cập nhật: {period_end.strftime('%d/%m/%Y %H:%M')}"
-                    )
+                    footer_parts.append(f"Cập nhật: {period_end.strftime('%d/%m/%Y %H:%M')}")
                 if episode_count is not None:
                     footer_parts.append(f"{episode_count} episodes")
                 if footer_parts:
@@ -145,9 +144,7 @@ class MemoryCog(BaseCog):
                 from src.ai.memory.consolidator import MemoryConsolidator
                 from src.platform.bootstrap import get_ai_client
 
-                consolidator = MemoryConsolidator(
-                    client=get_ai_client(), user_id=user_id
-                )
+                consolidator = MemoryConsolidator(client=get_ai_client(), user_id=user_id)
                 output = await consolidator.synthesize_patterns(session)
 
             if output is None:
@@ -171,8 +168,10 @@ class MemoryCog(BaseCog):
             # Confidence indicator
             conf_pct = f"{output.confidence:.0%}"
             conf_label = (
-                "🟢 Cao" if output.confidence >= 0.7
-                else "🟡 Trung bình" if output.confidence >= 0.5
+                "🟢 Cao"
+                if output.confidence >= 0.7
+                else "🟡 Trung bình"
+                if output.confidence >= 0.5
                 else "🔴 Thấp (chưa đủ độ tin cậy)"
             )
             embed.add_field(

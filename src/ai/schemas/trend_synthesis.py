@@ -102,8 +102,13 @@ class TrendSynthesisOutput(BaseModel):
             return 0.5
 
     @field_validator(
-        "signal_summary", "rrg_note", "macd_note", "rsi_note",
-        "cmf_note", "adx_note", "next_watch",
+        "signal_summary",
+        "rrg_note",
+        "macd_note",
+        "rsi_note",
+        "cmf_note",
+        "adx_note",
+        "next_watch",
         mode="before",
     )
     @classmethod

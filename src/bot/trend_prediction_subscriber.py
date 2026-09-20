@@ -16,6 +16,7 @@ Wiring (app.py on_ready)::
 This class mirrors the pattern of AgendaSubscriber and
 IntelligenceEngineSubscriber — thin bot adapter, no domain logic.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -33,11 +34,11 @@ _SKIP_WHEN_EMPTY = True
 
 # Verdict → colour mapping for the embed side-bar.
 _VERDICT_COLOURS: dict[str, discord.Colour] = {
-    "BULLISH":    discord.Colour.green(),
-    "BEARISH":    discord.Colour.red(),
-    "WEAKENING":  discord.Colour.orange(),
-    "NEUTRAL":    discord.Colour.greyple(),
-    "SIDEWAYS":   discord.Colour.greyple(),
+    "BULLISH": discord.Colour.green(),
+    "BEARISH": discord.Colour.red(),
+    "WEAKENING": discord.Colour.orange(),
+    "NEUTRAL": discord.Colour.greyple(),
+    "SIDEWAYS": discord.Colour.greyple(),
 }
 _DEFAULT_COLOUR = discord.Colour.blurple()
 
@@ -70,6 +71,7 @@ class TrendPredictionSubscriber:
             return self._channel_id
         try:
             from src.platform.config import settings
+
             raw = getattr(settings, "alert_channel_id", None)
             return int(raw) if raw else None
         except Exception:
@@ -151,10 +153,7 @@ class TrendPredictionSubscriber:
         )
 
         if event.top_verdicts:
-            lines = [
-                f"`{symbol}` — **{verdict}**"
-                for symbol, verdict in event.top_verdicts
-            ]
+            lines = [f"`{symbol}` — **{verdict}**" for symbol, verdict in event.top_verdicts]
             embed.add_field(
                 name="Top verdicts",
                 value="\n".join(lines),

@@ -136,6 +136,7 @@ class SchedulerTriggerCog(BaseCog):
 
         try:
             from src.platform.bootstrap import get_snapshot_scheduler
+
             written = await get_snapshot_scheduler().run_once()
         except Exception as exc:
             logger.error("run_snapshot.error", error=str(exc), exc_info=True)

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import timedelta, timezone
+from datetime import UTC, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +29,7 @@ _ICT = timezone(timedelta(hours=7))
 
 
 # ── READ — no AI ───────────────────────────────────────────────────────────────────────────────────────
+
 
 @router.get("/snapshot")
 async def get_memory_snapshot(
@@ -62,6 +63,7 @@ async def get_memory_snapshot(
 
 # ── REFRESH — explicit AI trigger ──────────────────────────────────────────────────────────────────────────────────────
 
+
 @router.post("/refresh")
 async def refresh_memory(
     user_id: str = Depends(get_current_user_id),
@@ -91,6 +93,7 @@ async def refresh_memory(
 
     if output is None:
         from fastapi.responses import JSONResponse
+
         return JSONResponse(
             status_code=status.HTTP_202_ACCEPTED,
             content={
@@ -113,6 +116,7 @@ async def refresh_memory(
 
 # ── Helpers ────────────────────────────────────────────────────────────────────────────────────
 
+
 def _build_snapshot_response(snapshot: object | None) -> dict:
     """Serialise a MemorySnapshot ORM row into the canonical snapshot dict."""
     import json as _json
@@ -134,6 +138,7 @@ def _build_snapshot_response(snapshot: object | None) -> dict:
         if behavioral:
             try:
                 from src.ai.memory.consolidator import PatternSynthesisOutput
+
                 stored = _json.loads(behavioral) if isinstance(behavioral, str) else behavioral
                 synth = PatternSynthesisOutput(**stored)
                 patterns = synth.patterns
@@ -178,12 +183,19 @@ def _serialize_episode(ep: object) -> dict:
 
     # ── Map verdict → action icon key ───────────────────────────────────────────────────────────────────────
     _verdict_to_action = {
-        "BUY": "BUY", "STRONG_BUY": "BUY",
-        "SELL": "SELL", "STRONG_SELL": "SELL",
-        "HOLD": "HOLD", "WATCH": "HOLD", "NEUTRAL": "HOLD",
-        "SKIP": "SKIP", "AVOID": "SKIP",
-        "BULLISH": "BUY", "BEARISH": "SELL",
-        "MONITORING": "HOLD", "ALERT": "HOLD",
+        "BUY": "BUY",
+        "STRONG_BUY": "BUY",
+        "SELL": "SELL",
+        "STRONG_SELL": "SELL",
+        "HOLD": "HOLD",
+        "WATCH": "HOLD",
+        "NEUTRAL": "HOLD",
+        "SKIP": "SKIP",
+        "AVOID": "SKIP",
+        "BULLISH": "BUY",
+        "BEARISH": "SELL",
+        "MONITORING": "HOLD",
+        "ALERT": "HOLD",
     }
     action = _verdict_to_action.get((ai_verdict or "").upper(), "HOLD")
 
@@ -198,8 +210,7 @@ def _serialize_episode(ep: object) -> dict:
         # created_at may be timezone-aware (UTC from DB) or naive — handle both
         if created_at.tzinfo is None:
             # Naive: assume UTC, attach tzinfo then convert
-            from datetime import timezone as _tz
-            created_at_ict = created_at.replace(tzinfo=_tz.utc).astimezone(_ICT)
+            created_at_ict = created_at.replace(tzinfo=UTC).astimezone(_ICT)
         else:
             created_at_ict = created_at.astimezone(_ICT)
         date_str = created_at_ict.strftime("%d/%m/%Y %H:%M")
@@ -274,8 +285,10 @@ def _parse_risk_signals(raw: str | None) -> str | None:
         arr = json.loads(s)
         if isinstance(arr, list) and arr:
             first = arr[0]
-            desc = first if isinstance(first, str) else (
-                first.get("description") or first.get("signal") or ""
+            desc = (
+                first
+                if isinstance(first, str)
+                else (first.get("description") or first.get("signal") or "")
             )
             return _truncate(desc) if desc else None
     except (json.JSONDecodeError, TypeError, AttributeError):
@@ -294,6 +307,7 @@ def _truncate(s: str, max_len: int = 80) -> str | None:
 
 
 # ── BEHAVIORAL DNA ─────────────────────────────────────────────────────────────────────────────
+
 
 @router.get("/behavioral-dna")
 async def get_behavioral_dna(
@@ -343,13 +357,12 @@ async def get_behavioral_dna(
         "worst_decision_day": dna.worst_decision_day,
         "day_win_rates": dna.day_win_rates,
         # Recurring patterns
-        "top_patterns": [
-            {"pattern": p, "count": c} for p, c in (dna.top_patterns or [])
-        ],
+        "top_patterns": [{"pattern": p, "count": c} for p, c in (dna.top_patterns or [])],
     }
 
 
 # ── BEHAVIORAL DNA ─────────────────────────────────────────────────────────────────────────────
+
 
 @router.get("/behavioral-dna")
 async def get_behavioral_dna(
@@ -394,7 +407,5 @@ async def get_behavioral_dna(
         "best_decision_day": dna.best_decision_day,
         "worst_decision_day": dna.worst_decision_day,
         "day_win_rates": dna.day_win_rates,
-        "top_patterns": [
-            {"pattern": p, "count": c} for p, c in (dna.top_patterns or [])
-        ],
+        "top_patterns": [{"pattern": p, "count": c} for p, c in (dna.top_patterns or [])],
     }

@@ -29,6 +29,7 @@ Thesis status mutation rules (only when current status == ACTIVE):
 
 Alert dedup key: 'review_outcome:{review_id}' — idempotent across retries.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -51,15 +52,15 @@ logger = get_logger(__name__)
 # Priority constants
 # ---------------------------------------------------------------------------
 
-PRIORITY_BEARISH: int = 10   # urgent — needs immediate attention
-PRIORITY_RISKY: int = 30     # elevated — monitor closely
-PRIORITY_BULLISH: int = 90   # de-prioritised — thesis looking strong
+PRIORITY_BEARISH: int = 10  # urgent — needs immediate attention
+PRIORITY_RISKY: int = 30  # elevated — monitor closely
+PRIORITY_BULLISH: int = 90  # de-prioritised — thesis looking strong
 
 # ---------------------------------------------------------------------------
 # Thresholds for thesis status mutation
 # ---------------------------------------------------------------------------
 
-_CONFIDENCE_WEAKENING: float = 0.6   # WEAKENING verdict threshold
+_CONFIDENCE_WEAKENING: float = 0.6  # WEAKENING verdict threshold
 _CONFIDENCE_BEARISH_WEAK: float = 0.75  # BEARISH → WEAKENING threshold
 
 # ---------------------------------------------------------------------------
@@ -72,6 +73,7 @@ def _parse_text_list(raw: str | None) -> list[str]:
     if not raw:
         return []
     import json
+
     stripped = raw.strip()
     if stripped.startswith("["):
         try:
@@ -101,7 +103,11 @@ def _compute_priority_change(
 def _build_note(verdict: str, confidence: float, summary: str | None, reasoning: str | None) -> str:
     """Build a short watchlist note from AI review output."""
     confidence_pct = round(confidence * 100)
-    base = summary or (reasoning[:100] + "...") if reasoning and len(reasoning) > 100 else (reasoning or "")
+    base = (
+        summary or (reasoning[:100] + "...")
+        if reasoning and len(reasoning) > 100
+        else (reasoning or "")
+    )
     return f"[{verdict} {confidence_pct}%] {base}".strip()
 
 
@@ -256,9 +262,12 @@ class ReviewOutcomeReactor:
         new_status: ThesisStatus | None = None
         if v == "INVALIDATED":
             new_status = ThesisStatus.INVALIDATED
-        elif v == "WEAKENING" and confidence >= _CONFIDENCE_WEAKENING:
-            new_status = ThesisStatus.WEAKENING
-        elif v == "BEARISH" and confidence >= _CONFIDENCE_BEARISH_WEAK:
+        elif (
+            v == "WEAKENING"
+            and confidence >= _CONFIDENCE_WEAKENING
+            or v == "BEARISH"
+            and confidence >= _CONFIDENCE_BEARISH_WEAK
+        ):
             new_status = ThesisStatus.WEAKENING
 
         if new_status is None:
@@ -284,14 +293,17 @@ class ReviewOutcomeReactor:
             try:
                 from src.platform.event_bus import get_event_bus
                 from src.platform.events import ThesisClosedEvent
-                await get_event_bus().publish(ThesisClosedEvent(
-                    thesis_id=thesis.id,
-                    user_id=thesis.user_id or "",
-                    ticker=thesis.ticker or "",
-                    close_reason="review_invalidated",
-                    thesis_title=getattr(thesis, "title", "") or "",
-                    thesis_summary=getattr(thesis, "summary", "") or "",
-                ))
+
+                await get_event_bus().publish(
+                    ThesisClosedEvent(
+                        thesis_id=thesis.id,
+                        user_id=thesis.user_id or "",
+                        ticker=thesis.ticker or "",
+                        close_reason="review_invalidated",
+                        thesis_title=getattr(thesis, "title", "") or "",
+                        thesis_summary=getattr(thesis, "summary", "") or "",
+                    )
+                )
             except Exception as _ev_exc:  # noqa: BLE001
                 logger.warning(
                     "review_outcome_reactor.thesis_closed_event.emit_failed",

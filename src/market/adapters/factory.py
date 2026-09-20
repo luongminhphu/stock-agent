@@ -38,7 +38,7 @@ def build_adapter() -> MarketDataAdapter:
     return ChainedAdapter(primary=primary, secondary=secondary)
 
 
-def create_trend_context_fetcher(quote_service: QuoteService) -> "TrendContextFetcher":
+def create_trend_context_fetcher(quote_service: QuoteService) -> TrendContextFetcher:
     """Wire TrendContextFetcher từ các adapter đã có.
 
     Usage::
@@ -47,8 +47,8 @@ def create_trend_context_fetcher(quote_service: QuoteService) -> "TrendContextFe
         fetcher = create_trend_context_fetcher(quote_svc)
         trend_engine = TrendEngine(ohlcv_service, context_fetcher=fetcher, ...)
     """
-    from src.market.news_adapter import TCBSNewsAdapter
     from src.market.market_regime import MarketRegimeService
+    from src.market.news_adapter import TCBSNewsAdapter
     from src.market.trend_context_fetcher import TrendContextFetcher
 
     return TrendContextFetcher(

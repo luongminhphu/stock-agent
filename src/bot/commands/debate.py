@@ -79,8 +79,7 @@ class DebateCog(BaseCog):
                 interaction,
                 title="Debate failed",
                 description=(
-                    f"Could not complete debate for thesis **#{thesis_id}**.\n"
-                    f"Error: `{exc}`"
+                    f"Could not complete debate for thesis **#{thesis_id}**.\nError: `{exc}`"
                 ),
             )
             return

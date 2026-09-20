@@ -29,6 +29,7 @@ Async interface (briefing contract):
 
 Pattern: mirrors TrendSnapshotStore (same segment, same Wave-1 strategy).
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -42,14 +43,19 @@ logger = get_logger(__name__)
 # DB persistence helpers (Wave D.1)
 # ---------------------------------------------------------------------------
 
+
 async def _persist_prediction(session_factory, symbol: str, prediction) -> None:
     """Upsert a TrendPrediction row. Fire-and-forget — never raises."""
     if session_factory is None:
         return
     try:
         import json as _json
-        from datetime import UTC, datetime as _dt, timedelta as _td
+        from datetime import UTC
+        from datetime import datetime as _dt
+        from datetime import timedelta as _td
+
         from sqlalchemy.dialects.postgresql import insert as pg_insert
+
         from src.readmodel.models import TrendPrediction
 
         verdict = str(getattr(prediction, "verdict", "HOLD"))
@@ -62,22 +68,26 @@ async def _persist_prediction(session_factory, symbol: str, prediction) -> None:
         expires_at = predicted_at + _td(hours=4)
 
         async with session_factory() as session:
-            stmt = pg_insert(TrendPrediction).values(
-                symbol=symbol.upper(),
-                verdict=verdict,
-                confidence=confidence,
-                reasoning_json=reasoning_json,
-                predicted_at=predicted_at,
-                expires_at=expires_at,
-            ).on_conflict_do_update(
-                index_elements=["symbol"],
-                set_={
-                    "verdict": verdict,
-                    "confidence": confidence,
-                    "reasoning_json": reasoning_json,
-                    "predicted_at": predicted_at,
-                    "expires_at": expires_at,
-                },
+            stmt = (
+                pg_insert(TrendPrediction)
+                .values(
+                    symbol=symbol.upper(),
+                    verdict=verdict,
+                    confidence=confidence,
+                    reasoning_json=reasoning_json,
+                    predicted_at=predicted_at,
+                    expires_at=expires_at,
+                )
+                .on_conflict_do_update(
+                    index_elements=["symbol"],
+                    set_={
+                        "verdict": verdict,
+                        "confidence": confidence,
+                        "reasoning_json": reasoning_json,
+                        "predicted_at": predicted_at,
+                        "expires_at": expires_at,
+                    },
+                )
             )
             await session.execute(stmt)
             await session.commit()
@@ -90,25 +100,34 @@ async def load_predictions_from_db(session_factory) -> list[dict]:
     if session_factory is None:
         return []
     try:
-        from datetime import UTC, datetime as _dt
+        from datetime import UTC
+        from datetime import datetime as _dt
+
         from sqlalchemy import select
+
         from src.readmodel.models import TrendPrediction
 
         now = _dt.now(UTC)
         async with session_factory() as session:
             rows = (
-                await session.execute(
-                    select(TrendPrediction).where(TrendPrediction.expires_at > now)
+                (
+                    await session.execute(
+                        select(TrendPrediction).where(TrendPrediction.expires_at > now)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             result = []
             for row in rows:
-                result.append({
-                    "symbol": row.symbol,
-                    "verdict": row.verdict,
-                    "confidence": row.confidence,
-                    "reasoning_json": row.reasoning_json,
-                })
+                result.append(
+                    {
+                        "symbol": row.symbol,
+                        "verdict": row.verdict,
+                        "confidence": row.confidence,
+                        "reasoning_json": row.reasoning_json,
+                    }
+                )
             logger.info("trend_prediction_store.loaded_from_db", count=len(result))
             return result
     except Exception as exc:
@@ -116,10 +135,10 @@ async def load_predictions_from_db(session_factory) -> list[dict]:
         return []
 
 
-
 # ---------------------------------------------------------------------------
 # Restored prediction wrapper — used during warm load from DB
 # ---------------------------------------------------------------------------
+
 
 class _RestoredPrediction:
     """Lightweight wrapper around a JSON-restored TrendPrediction.
@@ -140,6 +159,7 @@ class _RestoredPrediction:
 
     def __repr__(self) -> str:
         return f"_RestoredPrediction(symbol={self.symbol!r}, verdict={self.verdict!r}, confidence={self.confidence})"
+
 
 class TrendPredictionStore:
     """In-memory store for TrendPrediction objects.
@@ -288,6 +308,7 @@ class TrendPredictionStore:
         )
         # Wave D.1: fire-and-forget persist to DB
         import asyncio as _asyncio
+
         _asyncio.create_task(_persist_prediction(self._session_factory, symbol, prediction))
 
     def store(self, predictions: list[Any]) -> None:
@@ -331,7 +352,9 @@ class TrendPredictionStore:
             if reasoning_json:
                 try:
                     import json as _json
-                    from datetime import UTC, datetime as _dt
+                    from datetime import UTC
+                    from datetime import datetime as _dt
+
                     # Reconstruct a minimal stub object for the in-memory cache.
                     # Full model restore attempted via model_validate; falls back
                     # to a lightweight _RestoredPrediction wrapper.

@@ -11,6 +11,7 @@ Sources (in priority order):
 No new AI calls. No cross-segment domain logic.
 All sources degrade gracefully — partial failure returns whatever was collected.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -42,9 +43,9 @@ SignalSeverity = Literal["HIGH", "MEDIUM", "LOW"]
 # Maps PriorityAction.urgency / RiskFlag.severity strings → SignalSeverity
 _URGENCY_MAP: dict[str, SignalSeverity] = {
     "critical": "HIGH",
-    "high":     "HIGH",
-    "medium":   "MEDIUM",
-    "low":      "LOW",
+    "high": "HIGH",
+    "medium": "MEDIUM",
+    "low": "LOW",
 }
 
 
@@ -81,8 +82,8 @@ class TodayLoopResult:
     date: date
     generated_at: datetime
     summary: TodayLoopSummary
-    top_actions: list[TodaySignal]   # HIGH severity only, max 5
-    signals: list[TodaySignal]       # all signals sorted by severity + created_at
+    top_actions: list[TodaySignal]  # HIGH severity only, max 5
+    signals: list[TodaySignal]  # all signals sorted by severity + created_at
     engine_status: dict[str, EngineStatus]
     snapshot_is_stale: bool = False
     snapshot_generated_at: datetime | None = None
@@ -140,36 +141,40 @@ class TodayLoopQueryService:
                         str(getattr(action, "urgency", "medium")).lower(), "MEDIUM"
                     )
                     ticker = getattr(action, "ticker", "") or ""
-                    signals.append(TodaySignal(
-                        id=f"intel_action_{idx}",
-                        ticker=ticker.upper(),
-                        source="INTELLIGENCE",
-                        severity=severity,
-                        created_at=snapshot_generated_at or now,
-                        headline=str(getattr(action, "action_text", "") or "")[:200],
-                        details=str(getattr(action, "reasoning", "") or "")[:400] or None,
-                        action_hint=str(getattr(action, "action_text", "") or "")[:120] or None,
-                        link_type="thesis" if ticker else None,
-                        link_target=ticker or None,
-                        tags=["intelligence", severity.lower()],
-                    ))
+                    signals.append(
+                        TodaySignal(
+                            id=f"intel_action_{idx}",
+                            ticker=ticker.upper(),
+                            source="INTELLIGENCE",
+                            severity=severity,
+                            created_at=snapshot_generated_at or now,
+                            headline=str(getattr(action, "action_text", "") or "")[:200],
+                            details=str(getattr(action, "reasoning", "") or "")[:400] or None,
+                            action_hint=str(getattr(action, "action_text", "") or "")[:120] or None,
+                            link_type="thesis" if ticker else None,
+                            link_target=ticker or None,
+                            tags=["intelligence", severity.lower()],
+                        )
+                    )
 
                 # risk_flags → INTELLIGENCE risk signals
                 for idx, flag in enumerate(report.risk_flags or []):
                     flag_severity = _URGENCY_MAP.get(
                         str(getattr(flag, "severity", "low")).lower(), "LOW"
                     )
-                    signals.append(TodaySignal(
-                        id=f"intel_risk_{idx}",
-                        ticker="",
-                        source="INTELLIGENCE",
-                        severity=flag_severity,
-                        created_at=snapshot_generated_at or now,
-                        headline=str(getattr(flag, "description", "") or "")[:200],
-                        details=None,
-                        action_hint=None,
-                        tags=["risk", flag_severity.lower()],
-                    ))
+                    signals.append(
+                        TodaySignal(
+                            id=f"intel_risk_{idx}",
+                            ticker="",
+                            source="INTELLIGENCE",
+                            severity=flag_severity,
+                            created_at=snapshot_generated_at or now,
+                            headline=str(getattr(flag, "description", "") or "")[:200],
+                            details=None,
+                            action_hint=None,
+                            tags=["risk", flag_severity.lower()],
+                        )
+                    )
 
         except Exception as exc:
             _logger.warning(
@@ -186,63 +191,74 @@ class TodayLoopQueryService:
         try:
             from src.watchlist.models import Alert, WatchlistItem  # type: ignore[import]
 
-            today_start = datetime.now(UTC).replace(
-                hour=0, minute=0, second=0, microsecond=0
-            )
+            today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
 
             # Load snoozed tickers to filter out (same pattern as snapshot.py)
             snoozed_tickers: set[str] = set()
             try:
                 snoozed_rows = (
-                    await self._session.execute(
-                        select(WatchlistItem.ticker).where(
-                            WatchlistItem.user_id == user_id,
-                            WatchlistItem.snoozed_until.isnot(None),
-                            WatchlistItem.snoozed_until > now,
+                    (
+                        await self._session.execute(
+                            select(WatchlistItem.ticker).where(
+                                WatchlistItem.user_id == user_id,
+                                WatchlistItem.snoozed_until.isnot(None),
+                                WatchlistItem.snoozed_until > now,
+                            )
                         )
                     )
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                )
                 snoozed_tickers = {t.upper() for t in snoozed_rows}
             except Exception:
                 pass
 
             alert_rows = (
-                await self._session.execute(
-                    select(Alert).where(
-                        Alert.user_id == user_id,
-                        Alert.triggered_at >= today_start,
-                        Alert.dismissed_at.is_(None),
+                (
+                    await self._session.execute(
+                        select(Alert)
+                        .where(
+                            Alert.user_id == user_id,
+                            Alert.triggered_at >= today_start,
+                            Alert.dismissed_at.is_(None),
+                        )
+                        .order_by(Alert.triggered_at.desc())
+                        .limit(30)
                     )
-                    .order_by(Alert.triggered_at.desc())
-                    .limit(30)
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
             for idx, row in enumerate(alert_rows):
                 if row.ticker.upper() in snoozed_tickers:
                     continue
                 alert_type = (row.alert_type or "").lower()
                 severity: SignalSeverity = (
-                    "HIGH" if any(k in alert_type for k in ("breach", "stop", "critical"))
-                    else "MEDIUM" if any(k in alert_type for k in ("volume", "trend", "cross"))
+                    "HIGH"
+                    if any(k in alert_type for k in ("breach", "stop", "critical"))
+                    else "MEDIUM"
+                    if any(k in alert_type for k in ("volume", "trend", "cross"))
                     else "LOW"
                 )
                 triggered_at = row.triggered_at
                 if triggered_at is not None and triggered_at.tzinfo is None:
                     triggered_at = triggered_at.replace(tzinfo=UTC)
-                signals.append(TodaySignal(
-                    id=f"alert_{row.id}_{idx}",
-                    ticker=row.ticker.upper(),
-                    source="WATCHLIST_SCAN",
-                    severity=severity,
-                    created_at=triggered_at or now,
-                    headline=f"{row.ticker}: {row.alert_type or 'Alert triggered'}",
-                    details=getattr(row, "note", None),
-                    action_hint="Review alert and update watchlist",
-                    link_type="watchlist",
-                    link_target=row.ticker.upper(),
-                    tags=["watchlist", alert_type or "alert"],
-                ))
+                signals.append(
+                    TodaySignal(
+                        id=f"alert_{row.id}_{idx}",
+                        ticker=row.ticker.upper(),
+                        source="WATCHLIST_SCAN",
+                        severity=severity,
+                        created_at=triggered_at or now,
+                        headline=f"{row.ticker}: {row.alert_type or 'Alert triggered'}",
+                        details=getattr(row, "note", None),
+                        action_hint="Review alert and update watchlist",
+                        link_type="watchlist",
+                        link_target=row.ticker.upper(),
+                        tags=["watchlist", alert_type or "alert"],
+                    )
+                )
 
         except Exception as exc:
             _logger.warning(

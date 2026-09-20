@@ -32,7 +32,7 @@ Callers: bot/scheduler.py (adapter) — scheduler just calls .run(), no logic th
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
@@ -54,8 +54,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_MIN_EPISODES = 3       # weekly run threshold
-_MIN_SYNTH_EPISODES = 5 # on-demand synthesis threshold (stricter)
+_MIN_EPISODES = 3  # weekly run threshold
+_MIN_SYNTH_EPISODES = 5  # on-demand synthesis threshold (stricter)
 _LOOKBACK_DAYS = 7
 
 
@@ -147,7 +147,7 @@ class MemoryConsolidator:
         - AI call fails
         - Any DB error
         """
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         period_start = now - timedelta(days=_LOOKBACK_DAYS)
 
         try:
@@ -252,7 +252,7 @@ class MemoryConsolidator:
                 prompt_block = result.to_prompt_block()  # inject into system prompt
                 # result.confidence < 0.5 → to_prompt_block() returns "" automatically
         """
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         period_start = now - timedelta(days=lookback_days)
         period_label = f"{period_start.strftime('%Y-%m-%d')} → {now.strftime('%Y-%m-%d')}"
 
@@ -292,6 +292,7 @@ class MemoryConsolidator:
             # backward-compat with existing latest_snapshot.as_context_block().
             # Store the pattern list + bias_warnings as behavioral_patterns JSON.
             import json
+
             snapshot = MemorySnapshot(
                 user_id=self._user_id,
                 period_start=period_start,

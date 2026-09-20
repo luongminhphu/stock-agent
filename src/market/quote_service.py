@@ -9,7 +9,7 @@ import asyncio
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import UTC, datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 from tenacity import retry, stop_after_attempt, wait_fixed
@@ -116,24 +116,24 @@ class TradingHoursGuard:
 
     def __init__(
         self,
-        open_hour: int   = 9,
+        open_hour: int = 9,
         open_minute: int = 0,
-        close_hour: int  = 15,
+        close_hour: int = 15,
         close_minute: int = 15,
-        always: bool     = False,
+        always: bool = False,
     ) -> None:
-        self._open   = open_hour  * 60 + open_minute
-        self._close  = close_hour * 60 + close_minute
+        self._open = open_hour * 60 + open_minute
+        self._close = close_hour * 60 + close_minute
         self._always = always
 
     @classmethod
     def from_settings(cls, settings: "Settings") -> "TradingHoursGuard":
         return cls(
-            open_hour    = settings.market_open_hour,
-            open_minute  = settings.market_open_minute,
-            close_hour   = settings.market_close_hour,
-            close_minute = settings.market_close_minute,
-            always       = settings.market_fetch_always,
+            open_hour=settings.market_open_hour,
+            open_minute=settings.market_open_minute,
+            close_hour=settings.market_close_hour,
+            close_minute=settings.market_close_minute,
+            always=settings.market_fetch_always,
         )
 
     def is_market_open(self, now: datetime | None = None) -> bool:
@@ -161,10 +161,10 @@ class TradingHoursGuard:
 # In-process quote cache with in-flight deduplication
 # ---------------------------------------------------------------------------
 
-_QUOTE_TTL    = 3.0   # seconds — short enough for real-time feel, long enough to coalesce
-_BULK_TTL     = 3.0   # same for bulk
+_QUOTE_TTL = 3.0  # seconds — short enough for real-time feel, long enough to coalesce
+_BULK_TTL = 3.0  # same for bulk
 # Ngoài giờ: cache lâu hơn (giá cuối phiên — 15 phút refreshà không cần thay đổi)
-_OFF_HOURS_TTL = 15 * 60.0   # 15 phút
+_OFF_HOURS_TTL = 15 * 60.0  # 15 phút
 
 
 class _QuoteCache:
@@ -270,12 +270,14 @@ class _QuoteCache:
 # DB persistence helpers (quote cache — survives restart)
 # ---------------------------------------------------------------------------
 
+
 async def _persist_quotes_to_db(session_factory: Any, quotes: list["Quote"]) -> None:
     """Upsert a batch of quotes into market_quote_cache. Fire-and-forget — never raises."""
     if session_factory is None or not quotes:
         return
     try:
         from sqlalchemy.dialects.postgresql import insert as pg_insert
+
         from src.readmodel.models import MarketQuoteCache
 
         now = datetime.now(UTC)
@@ -303,23 +305,27 @@ async def _persist_quotes_to_db(session_factory: Any, quotes: list["Quote"]) -> 
         # thứ tự → PostgreSQL deadlock (ShareLock) → rollback cả batch.
         rows.sort(key=lambda r: r["ticker"])
         async with session_factory() as session:
-            stmt = pg_insert(MarketQuoteCache).values(rows).on_conflict_do_update(
-                index_elements=["ticker"],
-                set_={
-                    "price": pg_insert(MarketQuoteCache).excluded.price,
-                    "change": pg_insert(MarketQuoteCache).excluded.change,
-                    "change_pct": pg_insert(MarketQuoteCache).excluded.change_pct,
-                    "volume": pg_insert(MarketQuoteCache).excluded.volume,
-                    "value": pg_insert(MarketQuoteCache).excluded.value,
-                    "open": pg_insert(MarketQuoteCache).excluded.open,
-                    "high": pg_insert(MarketQuoteCache).excluded.high,
-                    "low": pg_insert(MarketQuoteCache).excluded.low,
-                    "ref_price": pg_insert(MarketQuoteCache).excluded.ref_price,
-                    "ceiling": pg_insert(MarketQuoteCache).excluded.ceiling,
-                    "floor": pg_insert(MarketQuoteCache).excluded.floor,
-                    "quote_ts": pg_insert(MarketQuoteCache).excluded.quote_ts,
-                    "saved_at": pg_insert(MarketQuoteCache).excluded.saved_at,
-                },
+            stmt = (
+                pg_insert(MarketQuoteCache)
+                .values(rows)
+                .on_conflict_do_update(
+                    index_elements=["ticker"],
+                    set_={
+                        "price": pg_insert(MarketQuoteCache).excluded.price,
+                        "change": pg_insert(MarketQuoteCache).excluded.change,
+                        "change_pct": pg_insert(MarketQuoteCache).excluded.change_pct,
+                        "volume": pg_insert(MarketQuoteCache).excluded.volume,
+                        "value": pg_insert(MarketQuoteCache).excluded.value,
+                        "open": pg_insert(MarketQuoteCache).excluded.open,
+                        "high": pg_insert(MarketQuoteCache).excluded.high,
+                        "low": pg_insert(MarketQuoteCache).excluded.low,
+                        "ref_price": pg_insert(MarketQuoteCache).excluded.ref_price,
+                        "ceiling": pg_insert(MarketQuoteCache).excluded.ceiling,
+                        "floor": pg_insert(MarketQuoteCache).excluded.floor,
+                        "quote_ts": pg_insert(MarketQuoteCache).excluded.quote_ts,
+                        "saved_at": pg_insert(MarketQuoteCache).excluded.saved_at,
+                    },
+                )
             )
             await session.execute(stmt)
             await session.commit()
@@ -336,6 +342,7 @@ async def _load_quotes_from_db(session_factory: Any) -> list["Quote"]:
         return []
     try:
         from sqlalchemy import select
+
         from src.readmodel.models import MarketQuoteCache
 
         async with session_factory() as session:
@@ -399,8 +406,8 @@ class QuoteService:
         session_factory: Any = None,
     ) -> None:
         self._adapter = adapter
-        self._cache   = _QuoteCache()
-        self._guard   = guard or TradingHoursGuard()  # default: standard HOSE hours
+        self._cache = _QuoteCache()
+        self._guard = guard or TradingHoursGuard()  # default: standard HOSE hours
         self._session_factory = session_factory  # None → no DB persistence
 
     async def warm_load(self) -> int:

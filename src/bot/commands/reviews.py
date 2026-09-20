@@ -13,7 +13,7 @@ Adapter contract:
 
 from __future__ import annotations
 
-from typing import Optional
+from datetime import UTC
 
 import discord
 from discord import app_commands
@@ -58,9 +58,9 @@ class ReviewsCog(BaseCog):
     async def reviews(
         self,
         interaction: discord.Interaction,
-        ticker: Optional[str] = None,
-        hours: Optional[int] = 24,
-        limit: Optional[int] = 10,
+        ticker: str | None = None,
+        hours: int | None = 24,
+        limit: int | None = 10,
     ) -> None:
         await interaction.response.defer(ephemeral=True)
         user_id = self.user_id(interaction)
@@ -106,9 +106,7 @@ class ReviewsCog(BaseCog):
 
         embed = discord.Embed(
             title=f"🤖 Recent AI Reviews{ticker_label} · last {since_hours}h",
-            description=(
-                f"**{result.total}** review(s) found · showing {len(result.rows)}"
-            ),
+            description=(f"**{result.total}** review(s) found · showing {len(result.rows)}"),
             color=embed_color,
         )
 
@@ -119,12 +117,12 @@ class ReviewsCog(BaseCog):
 
             # Timestamp: HH:MM if today, else dd/mm
             if row.reviewed_at:
-                from datetime import datetime, timezone
-                now = datetime.now(tz=timezone.utc)
+                from datetime import datetime
+
+                now = datetime.now(tz=UTC)
                 reviewed = row.reviewed_at
-                if hasattr(reviewed, 'tzinfo') and reviewed.tzinfo is None:
-                    from datetime import timezone as tz
-                    reviewed = reviewed.replace(tzinfo=tz.utc)
+                if hasattr(reviewed, "tzinfo") and reviewed.tzinfo is None:
+                    reviewed = reviewed.replace(tzinfo=UTC)
                 if reviewed.date() == now.date():
                     time_str = reviewed.strftime("%H:%M")
                 else:
@@ -132,14 +130,16 @@ class ReviewsCog(BaseCog):
             else:
                 time_str = "—"
 
-            field_name = (
-                f"{icon} {row.ticker} · {verdict_up} · {confidence_str} · {time_str}"
-            )
+            field_name = f"{icon} {row.ticker} · {verdict_up} · {confidence_str} · {time_str}"
 
             # Summary line (prefer summary, fallback to reasoning[:120])
             summary_text = (
                 row.summary
-                or (row.reasoning[:120] + "…" if row.reasoning and len(row.reasoning) > 120 else row.reasoning)
+                or (
+                    row.reasoning[:120] + "…"
+                    if row.reasoning and len(row.reasoning) > 120
+                    else row.reasoning
+                )
                 or "_No summary available_"
             )
 
@@ -154,8 +154,8 @@ class ReviewsCog(BaseCog):
 
         embed.set_footer(
             text=(
-                f"Use /review_thesis <id> to trigger a new review · "
-                f"/recommendations <id> to act on AI suggestions"
+                "Use /review_thesis <id> to trigger a new review · "
+                "/recommendations <id> to act on AI suggestions"
             )
         )
         await interaction.followup.send(embed=embed, ephemeral=True)

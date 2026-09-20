@@ -57,25 +57,26 @@ Memory logging field mapping (Wave 6 fix):
                       (never Python repr)
     ai_key_points ← human-readable summary: action + urgency + signal context
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from src.ai.prompts.proactive_alert import (
+    SYSTEM_PROMPT,
+    ProactiveAlertOutput,
+    build_user_prompt,
+)
 from src.platform.event_bus import get_event_bus
 from src.platform.events import RecommendationReadyEvent, SignalDetectedEvent
 from src.platform.logging import get_logger
-from src.ai.prompts.proactive_alert import (
-    ProactiveAlertOutput,
-    SYSTEM_PROMPT,
-    build_user_prompt,
-)
 
 if TYPE_CHECKING:
     from src.ai.client import AIClient
 
 logger = get_logger(__name__)
 
-_instance: "ProactiveAlertAgent | None" = None
+_instance: ProactiveAlertAgent | None = None
 
 
 class ProactiveAlertAgent:
@@ -94,7 +95,7 @@ class ProactiveAlertAgent:
 
     def __init__(
         self,
-        ai_client: "AIClient",
+        ai_client: AIClient,
         session_factory: Any = None,
     ) -> None:
         self._ai_client = ai_client
@@ -173,8 +174,8 @@ class ProactiveAlertAgent:
 
         if self._session_factory:
             try:
-                from src.platform.config import settings
                 from src.ai.context_builder import ContextBuilder, render_for_agent
+                from src.platform.config import settings
                 from src.thesis.service import ThesisService
 
                 async with self._session_factory() as session:
@@ -215,7 +216,7 @@ class ProactiveAlertAgent:
                 user_prompt=user_prompt,
                 response_schema=ProactiveAlertOutput,
                 temperature=0.2,
-                max_tokens=900,   # calibrated: ProactiveAlertOutput ~7 fields
+                max_tokens=900,  # calibrated: ProactiveAlertOutput ~7 fields
             )
             logger.info(
                 "proactive_alert_agent.analysis_complete",
@@ -349,6 +350,7 @@ async def _log_proactive_alert_interaction(
         return
     try:
         from src.platform.config import settings
+
         user_id = settings.owner_user_id or None
         if not user_id:
             return
@@ -399,7 +401,7 @@ async def _log_proactive_alert_interaction(
 
 
 def get_proactive_alert_agent(
-    ai_client: "AIClient",
+    ai_client: AIClient,
     session_factory: Any = None,
 ) -> ProactiveAlertAgent:
     """Return singleton ProactiveAlertAgent. Creates on first call.

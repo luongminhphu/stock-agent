@@ -84,9 +84,7 @@ def _build_prompt(
     trail_summary = []
     for i, pt in enumerate(trail):
         q = _classify_quadrant(pt["rs_ratio"], pt["rs_momentum"])
-        trail_summary.append(
-            f"  [{i+1}] R={pt['rs_ratio']:.2f} M={pt['rs_momentum']:.2f} → {q}"
-        )
+        trail_summary.append(f"  [{i + 1}] R={pt['rs_ratio']:.2f} M={pt['rs_momentum']:.2f} → {q}")
 
     # Detect cross events in trail
     crosses: list[str] = []
@@ -103,13 +101,13 @@ def _build_prompt(
         f"## Vị trí hiện tại\n"
         f"Quadrant: {quadrant}\n"
         f"RS-Ratio: {rs_ratio:.3f}  |  RS-Momentum: {rs_momentum:.3f}\n\n"
-        f"## Trail (oldest → newest, {len(trail)} điểm)\n"
-        + "\n".join(trail_summary) + "\n\n"
-        f"## Quadrant transitions\n"
-        + (", ".join(crosses) if crosses else "Không có cross event") + "\n\n"
-        f"## Yêu cầu\n"
-        f"Phân tích pattern, xác định signal và cơ hội rotation. "
-        f"Trả JSON theo schema RRGRotationSignal."
+        f"## Trail (oldest → newest, {len(trail)} điểm)\n" + "\n".join(trail_summary) + "\n\n"
+        "## Quadrant transitions\n"
+        + (", ".join(crosses) if crosses else "Không có cross event")
+        + "\n\n"
+        "## Yêu cầu\n"
+        "Phân tích pattern, xác định signal và cơ hội rotation. "
+        "Trả JSON theo schema RRGRotationSignal."
     )
 
 
@@ -137,21 +135,21 @@ def _rule_based_fallback(
         mom_trend = trail[-1]["rs_momentum"] - trail[-3]["rs_momentum"]
 
     signal_map = {
-        "leading":   "BUY"    if mom_trend >= 0 else "WATCH",
-        "weakening": "WATCH"  if mom_trend > -1 else "REDUCE",
-        "lagging":   "AVOID"  if mom_trend <= 0 else "WATCH",
-        "improving": "WATCH"  if mom_trend >= 0 else "HOLD",
+        "leading": "BUY" if mom_trend >= 0 else "WATCH",
+        "weakening": "WATCH" if mom_trend > -1 else "REDUCE",
+        "lagging": "AVOID" if mom_trend <= 0 else "WATCH",
+        "improving": "WATCH" if mom_trend >= 0 else "HOLD",
     }
     signal = signal_map.get(quadrant, "HOLD")
 
     pattern_map = {
-        ("leading",   True):  "STABLE",
-        ("leading",   False): "EXITING_LEADING",
-        ("weakening", True):  "ROTATING",
+        ("leading", True): "STABLE",
+        ("leading", False): "EXITING_LEADING",
+        ("weakening", True): "ROTATING",
         ("weakening", False): "WEAKENING_FAST",
-        ("lagging",   True):  "RECOVERY",
-        ("lagging",   False): "DEEP_LAGGING",
-        ("improving", True):  "ENTERING_IMPROVING",
+        ("lagging", True): "RECOVERY",
+        ("lagging", False): "DEEP_LAGGING",
+        ("improving", True): "ENTERING_IMPROVING",
         ("improving", False): "ROTATING",
     }
     pattern = pattern_map.get((quadrant, mom_trend >= 0), "STABLE")
@@ -161,7 +159,7 @@ def _rule_based_fallback(
         quadrant=quadrant,
         pattern=pattern,
         signal=signal,
-        signal_reason=f"Rule-based: {quadrant}, momentum trend {'+' if mom_trend>=0 else ''}{mom_trend:.2f}",
+        signal_reason=f"Rule-based: {quadrant}, momentum trend {'+' if mom_trend >= 0 else ''}{mom_trend:.2f}",
         confidence=0.3,
     )
 
@@ -214,7 +212,10 @@ class RRGRotationAgent:
             result.ticker = ticker  # ensure ticker is always set from caller
             logger.info(
                 "rrg_rotation_agent.complete ticker=%s pattern=%s signal=%s confidence=%.2f",
-                ticker, result.pattern, result.signal, result.confidence,
+                ticker,
+                result.pattern,
+                result.signal,
+                result.confidence,
             )
             return result
 

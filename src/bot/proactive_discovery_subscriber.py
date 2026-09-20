@@ -9,6 +9,7 @@ Lifecycle:
     subscriber = ProactiveDiscoverySubscriber(bot)
     subscriber.register()   ← called in bot/app.py on_ready
 """
+
 from __future__ import annotations
 
 import json
@@ -25,9 +26,9 @@ logger = get_logger(__name__)
 
 # Action → colour + emoji
 _ACTION_META: dict[str, tuple[str, discord.Color]] = {
-    "BUY_WATCH":  ("👀 Theo dõi vào",  discord.Color.green()),
+    "BUY_WATCH": ("👀 Theo dõi vào", discord.Color.green()),
     "ACCUMULATE": ("📈 Tích lũy thêm", discord.Color.blue()),
-    "AVOID":      ("⚠️ Tránh hôm nay", discord.Color.red()),
+    "AVOID": ("⚠️ Tránh hôm nay", discord.Color.red()),
 }
 
 
@@ -52,24 +53,24 @@ def _build_embed(event: ProactiveDiscoveryReadyEvent) -> discord.Embed:
         picks = []
 
     colour = _embed_colour(picks)
-    title  = f"🧠 Proactive Discovery — {event.trading_date or 'Today'}"
-    desc   = event.market_regime_note or "Market scan completed."
+    title = f"🧠 Proactive Discovery — {event.trading_date or 'Today'}"
+    desc = event.market_regime_note or "Market scan completed."
 
     embed = discord.Embed(title=title, description=desc, colour=colour)
 
     # ── Picks ────────────────────────────────────────────────────────────────
     for pick in picks:
-        ticker     = pick.get("ticker", "?")
-        action     = pick.get("action", "BUY_WATCH")
-        verdict    = pick.get("verdict", "")
-        entry      = pick.get("entry_logic", "")
-        fit        = pick.get("portfolio_fit", "")
-        catalyst   = pick.get("upside_catalyst", "")
+        ticker = pick.get("ticker", "?")
+        action = pick.get("action", "BUY_WATCH")
+        verdict = pick.get("verdict", "")
+        entry = pick.get("entry_logic", "")
+        fit = pick.get("portfolio_fit", "")
+        catalyst = pick.get("upside_catalyst", "")
         invalidate = pick.get("invalidation_condition", "")
         confidence = pick.get("confidence", 0.0)
-        signal     = pick.get("signal_basis", "")
-        emoji      = _pick_emoji(action)
-        conf_str   = f"{int(confidence * 100)}%"
+        signal = pick.get("signal_basis", "")
+        emoji = _pick_emoji(action)
+        conf_str = f"{int(confidence * 100)}%"
 
         field_lines = [
             f"{emoji} **{action}**  ·  confidence {conf_str}  ·  signal: `{signal}`",

@@ -15,10 +15,10 @@ from discord import app_commands
 
 from src.bot.commands.base import BaseCog
 from src.bot.commands.help_data import (
+    _OVERVIEW_COLOUR,
     HELP_DATA,
     CommandEntry,
     GroupEntry,
-    _OVERVIEW_COLOUR,
 )
 
 # Re-export so existing imports from help.py stay valid
@@ -83,8 +83,7 @@ def _build_overview_embed() -> discord.Embed:
         title="📖 stock-agent — Danh sách lệnh",
         description=(
             "AI-native platform phân tích chứng khoán Việt Nam.\n"
-            "Chọn nhóm lệnh từ dropdown bên dưới để xem chi tiết.\n\n"
-            + "\n".join(lines)
+            "Chọn nhóm lệnh từ dropdown bên dưới để xem chi tiết.\n\n" + "\n".join(lines)
         ),
         color=_OVERVIEW_COLOUR,
     )

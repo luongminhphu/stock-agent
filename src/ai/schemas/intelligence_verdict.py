@@ -14,11 +14,11 @@ Breaking changes from v1:
   - NEW: invalidation_trigger — điều gì sẽ làm verdict này sai.
   - RENAMED: reasoning_summary kept, risk_signals kept, next_watch_items kept.
 """
+
 from __future__ import annotations
 
-from typing import Annotated, Literal
-
 import logging as _logging
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -199,8 +199,6 @@ class VerdictOutput(BaseModel):
     def _truncate_reasoning_summary(cls, v: str) -> str:
         limit = 600
         if isinstance(v, str) and len(v) > limit:
-            _log.warning(
-                "VerdictOutput.reasoning_summary truncated %d → %d chars", len(v), limit
-            )
+            _log.warning("VerdictOutput.reasoning_summary truncated %d → %d chars", len(v), limit)
             return v[:limit]
         return v

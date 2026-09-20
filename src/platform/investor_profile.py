@@ -58,15 +58,17 @@ class InvestorProfileSnapshot(Base):
 
     # Behavioral insights extracted from DecisionLog
     behavioral_patterns: Mapped[str] = mapped_column(Text, default="[]")  # JSON list[str]
-    confirmed_biases: Mapped[str] = mapped_column(Text, default="[]")     # JSON list[str]
-    top_lessons: Mapped[str] = mapped_column(Text, default="[]")          # JSON list[str], top 5
+    confirmed_biases: Mapped[str] = mapped_column(Text, default="[]")  # JSON list[str]
+    top_lessons: Mapped[str] = mapped_column(Text, default="[]")  # JSON list[str], top 5
 
     # Portfolio state snapshot
-    portfolio_bias: Mapped[str] = mapped_column(String(512), default="")  # e.g. "Banking 42%, RE 18%"
+    portfolio_bias: Mapped[str] = mapped_column(
+        String(512), default=""
+    )  # e.g. "Banking 42%, RE 18%"
     active_thesis_count: Mapped[int] = mapped_column(Integer, default=0)
 
     # Decision performance metrics
-    win_rate_30d: Mapped[float] = mapped_column(Float, default=0.0)   # % correct decisions
+    win_rate_30d: Mapped[float] = mapped_column(Float, default=0.0)  # % correct decisions
     avg_hold_days: Mapped[float] = mapped_column(Float, default=0.0)  # avg holding period
 
     # AI-ready narrative block — pre-rendered for fast injection
@@ -86,14 +88,14 @@ class InvestorProfileSnapshot(Base):
 class StaticProfile:
     """Immutable config from .env — owner edits manually when investment style changes."""
 
-    risk_appetite: str        # "medium — max drawdown 10%, position size ≤15%"
-    thesis_style: str         # "fundamental, hold 3-6 months"
-    trading_horizon: str      # "swing to positional — no day trading"
-    preferred_sectors: str    # "banking, consumer staples, tech"
-    avoid: str                # "speculative penny stocks, T+ illiquid"
+    risk_appetite: str  # "medium — max drawdown 10%, position size ≤15%"
+    thesis_style: str  # "fundamental, hold 3-6 months"
+    trading_horizon: str  # "swing to positional — no day trading"
+    preferred_sectors: str  # "banking, consumer staples, tech"
+    avoid: str  # "speculative penny stocks, T+ illiquid"
 
     @classmethod
-    def from_settings(cls) -> "StaticProfile":
+    def from_settings(cls) -> StaticProfile:
         """Build StaticProfile from platform settings singleton."""
         from src.platform.config import settings
 
@@ -226,9 +228,7 @@ class InvestorProfileService:
             snapshot = await self.get_latest()
 
             # avoid_list: split comma-separated avoid string from settings
-            avoid_list: list[str] = [
-                s.strip() for s in static.avoid.split(",") if s.strip()
-            ]
+            avoid_list: list[str] = [s.strip() for s in static.avoid.split(",") if s.strip()]
 
             # preferred_sectors: split comma-separated string from settings
             preferred_sectors: list[str] = [
@@ -274,7 +274,7 @@ class InvestorProfileService:
             - Caller is responsible for session.commit() after this returns.
             - Gracefully handles missing portfolio/thesis data (returns zeros).
         """
-        today = datetime.datetime.now(datetime.timezone.utc)
+        today = datetime.datetime.now(datetime.UTC)
 
         active_thesis_count = await self._count_active_theses(user_id)
         lessons, patterns, biases, win_rate, avg_hold = await self._extract_decision_insights(
@@ -339,7 +339,7 @@ class InvestorProfileService:
         try:
             from src.thesis.models import DecisionLog, OutcomeVerdict
 
-            cutoff_30d = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=30)
+            cutoff_30d = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=30)
 
             result = await self._session.execute(
                 select(DecisionLog)
@@ -351,9 +351,7 @@ class InvestorProfileService:
 
             # Top lessons (most recent with key_lesson set)
             lessons: list[str] = [
-                d.key_lesson
-                for d in decisions
-                if d.key_lesson and d.key_lesson.strip()
+                d.key_lesson for d in decisions if d.key_lesson and d.key_lesson.strip()
             ][:5]
 
             # Unique patterns (preserve insertion order via dict)
@@ -366,20 +364,19 @@ class InvestorProfileService:
             )[:5]
 
             # Biases — simple heuristic: repeated patterns become confirmed biases
-            biases: list[str] = [
-                f"Pattern lặp lại: {p}" for p in patterns[:3]
-            ]
+            biases: list[str] = [f"Pattern lặp lại: {p}" for p in patterns[:3]]
 
             # Win rate (last 30 days, evaluated decisions only)
             recent_evaluated = [
-                d for d in decisions
-                if d.decision_at and _as_utc(d.decision_at) >= cutoff_30d
+                d
+                for d in decisions
+                if d.decision_at
+                and _as_utc(d.decision_at) >= cutoff_30d
                 and d.outcome_verdict is not None
             ]
             if recent_evaluated:
                 correct = sum(
-                    1 for d in recent_evaluated
-                    if d.outcome_verdict == OutcomeVerdict.CORRECT
+                    1 for d in recent_evaluated if d.outcome_verdict == OutcomeVerdict.CORRECT
                 )
                 win_rate = (correct / len(recent_evaluated)) * 100
             else:
@@ -387,7 +384,8 @@ class InvestorProfileService:
 
             # Avg hold days (last 10 closed decisions)
             closed = [
-                d for d in decisions
+                d
+                for d in decisions
                 if d.outcome_evaluated_at is not None and d.decision_at is not None
             ][:10]
             if closed:
@@ -403,9 +401,7 @@ class InvestorProfileService:
             return lessons, patterns, biases, win_rate, avg_hold
 
         except Exception as exc:
-            logger.warning(
-                "platform.investor_profile.decision_insights_failed", error=str(exc)
-            )
+            logger.warning("platform.investor_profile.decision_insights_failed", error=str(exc))
             return [], [], [], 0.0, 0.0
 
     async def _summarize_portfolio_bias(self, user_id: str) -> str:
@@ -445,17 +441,11 @@ class InvestorProfileService:
                 return ""
 
             top_sectors = sorted(sector_totals.items(), key=lambda x: x[1], reverse=True)[:3]
-            parts = [
-                f"{s} {(v / total_value) * 100:.0f}%"
-                for s, v in top_sectors
-                if v > 0
-            ]
+            parts = [f"{s} {(v / total_value) * 100:.0f}%" for s, v in top_sectors if v > 0]
             return ", ".join(parts)
 
         except Exception as exc:
-            logger.warning(
-                "platform.investor_profile.portfolio_bias_failed", error=str(exc)
-            )
+            logger.warning("platform.investor_profile.portfolio_bias_failed", error=str(exc))
             return ""
 
     def _compose_summary(  # noqa: PLR0913

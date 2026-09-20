@@ -23,18 +23,18 @@ class MarketSentiment(StrEnum):
     Legacy values (kept for backward compat with old BriefSnapshot DB records): BULLISH, BEARISH, NEUTRAL.
     """
 
-    RISK_ON   = "RISK_ON"
-    RISK_OFF  = "RISK_OFF"
-    MIXED     = "MIXED"
+    RISK_ON = "RISK_ON"
+    RISK_OFF = "RISK_OFF"
+    MIXED = "MIXED"
     UNCERTAIN = "UNCERTAIN"
     # Legacy — kept for backward compat; do not use in new prompts
-    BULLISH   = "BULLISH"
-    BEARISH   = "BEARISH"
-    NEUTRAL   = "NEUTRAL"
+    BULLISH = "BULLISH"
+    BEARISH = "BEARISH"
+    NEUTRAL = "NEUTRAL"
 
 
 class ActionPriority(StrEnum):
-    ACT_TODAY  = "ACT_TODAY"
+    ACT_TODAY = "ACT_TODAY"
     WATCH_MORE = "WATCH_MORE"
     SKIP_TODAY = "SKIP_TODAY"
 
@@ -235,7 +235,7 @@ class BriefOutput(BaseModel):
         return v  # type: ignore[return-value]
 
     @model_validator(mode="after")
-    def build_action_queue(self) -> "BriefOutput":
+    def build_action_queue(self) -> BriefOutput:
         """Derive ActionQueue từ prioritized_actions sau khi AI parse xong."""
         actions = self.prioritized_actions
         if not actions:
@@ -258,9 +258,7 @@ class BriefOutput(BaseModel):
         )
         queue = sorted_actions[:5]
 
-        top_action = next(
-            (a for a in queue if a.priority == ActionPriority.ACT_TODAY), None
-        )
+        top_action = next((a for a in queue if a.priority == ActionPriority.ACT_TODAY), None)
 
         urgent = [a.ticker for a in queue if a.priority == ActionPriority.ACT_TODAY and a.ticker]
         watch = [a.ticker for a in queue if a.priority == ActionPriority.WATCH_MORE and a.ticker]

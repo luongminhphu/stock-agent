@@ -69,12 +69,8 @@ class InvalidationSignal(BaseModel):
     verdict: InvalidationVerdict = Field(
         description="AI confirmation: CONFIRMED | SUSPECTED | CLEARED."
     )
-    breach_type: BreachType = Field(
-        description="Primary breach type that triggered the check."
-    )
-    breach_summary: str = Field(
-        description="One-sentence summary of the breach for bot alert."
-    )
+    breach_type: BreachType = Field(description="Primary breach type that triggered the check.")
+    breach_summary: str = Field(description="One-sentence summary of the breach for bot alert.")
     narrative: str = Field(
         description=(
             "2-3 sentence explanation of why the thesis is (or is not) invalidated. "
@@ -91,16 +87,13 @@ class InvalidationSignal(BaseModel):
         ),
     )
     confidence: float = Field(
-        ge=0.0, le=1.0,
-        description="AI confidence in verdict. <0.5 = low, treat as SUSPECTED."
+        ge=0.0, le=1.0, description="AI confidence in verdict. <0.5 = low, treat as SUSPECTED."
     )
     mitigating_factors: list[str] = Field(
-        default_factory=list,
-        description="Factors that partially offset the breach signal."
+        default_factory=list, description="Factors that partially offset the breach signal."
     )
     checked_at: str = Field(
-        default="",
-        description="ISO 8601 timestamp — stamped by agent after parse."
+        default="", description="ISO 8601 timestamp — stamped by agent after parse."
     )
 
     @field_validator("confidence", mode="before")

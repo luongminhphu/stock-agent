@@ -18,6 +18,7 @@ Manual trigger (bot command)::
 Note: discord.ext.tasks import is deferred to __init__ so this module
 can be imported in test environments without a Discord installation.
 """
+
 from __future__ import annotations
 
 from src.platform.logging import get_logger
@@ -40,7 +41,7 @@ class OpportunityScreenScheduler:
 
         self._quote_service = quote_service
         self._task = tasks.loop(
-            time=datetime.time(2, 10, 0, tzinfo=datetime.timezone.utc)  # 09:10 ICT
+            time=datetime.time(2, 10, 0, tzinfo=datetime.UTC)  # 09:10 ICT
         )(self._run)
 
     def start(self) -> None:

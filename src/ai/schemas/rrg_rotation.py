@@ -16,8 +16,7 @@ class RRGRotationSignal(BaseModel):
 
     # Current position
     quadrant: str = Field(
-        default="unknown",
-        description="leading | weakening | lagging | improving"
+        default="unknown", description="leading | weakening | lagging | improving"
     )
 
     @model_validator(mode="before")
@@ -56,12 +55,8 @@ class RRGRotationSignal(BaseModel):
     )
 
     # Core signals — Option C focus
-    signal: str = Field(
-        description="BUY | WATCH | HOLD | REDUCE | AVOID"
-    )
-    signal_reason: str = Field(
-        description="1 câu lý do ngắn gọn cho signal, tối đa 120 ký tự"
-    )
+    signal: str = Field(description="BUY | WATCH | HOLD | REDUCE | AVOID")
+    signal_reason: str = Field(description="1 câu lý do ngắn gọn cho signal, tối đa 120 ký tự")
 
     # Rotation opportunity detail
     opportunity: str = Field(
@@ -74,14 +69,12 @@ class RRGRotationSignal(BaseModel):
 
     # Risk
     risk: str = Field(
-        default="",
-        description="Rủi ro chính cần theo dõi với ticker này trong RRG context"
+        default="", description="Rủi ro chính cần theo dõi với ticker này trong RRG context"
     )
 
     # What to watch next
     next_watch: str = Field(
-        default="",
-        description="Điều kiện hoặc mốc kỹ thuật cần theo dõi tiếp theo"
+        default="", description="Điều kiện hoặc mốc kỹ thuật cần theo dõi tiếp theo"
     )
 
     confidence: float = Field(ge=0.0, le=1.0, default=0.5)
@@ -90,11 +83,18 @@ class RRGRotationSignal(BaseModel):
     @classmethod
     def normalise_signal(cls, v: object) -> str:
         mapping = {
-            "STRONG_BUY": "BUY", "ACCUMULATE": "BUY", "LONG": "BUY",
-            "MONITOR": "WATCH", "CAUTION": "WATCH",
+            "STRONG_BUY": "BUY",
+            "ACCUMULATE": "BUY",
+            "LONG": "BUY",
+            "MONITOR": "WATCH",
+            "CAUTION": "WATCH",
             "NEUTRAL": "HOLD",
-            "SELL": "REDUCE", "TRIM": "REDUCE", "DISTRIBUTE": "REDUCE",
-            "STRONG_SELL": "AVOID", "EXIT": "AVOID", "SHORT": "AVOID",
+            "SELL": "REDUCE",
+            "TRIM": "REDUCE",
+            "DISTRIBUTE": "REDUCE",
+            "STRONG_SELL": "AVOID",
+            "EXIT": "AVOID",
+            "SHORT": "AVOID",
         }
         s = str(v).upper().strip()
         return mapping.get(s, s)

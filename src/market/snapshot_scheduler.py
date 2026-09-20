@@ -89,14 +89,13 @@ class SnapshotScheduler:
     """
 
     def __init__(self, quote_service: object, session_factory: object) -> None:
-        from discord.ext import tasks
         import datetime
+
+        from discord.ext import tasks
 
         self._quote_service = quote_service
         self._session_factory = session_factory
-        self._task = tasks.loop(
-            time=datetime.time(8, 10, 0, tzinfo=datetime.timezone.utc)
-        )(self._run)
+        self._task = tasks.loop(time=datetime.time(8, 10, 0, tzinfo=datetime.UTC))(self._run)
 
     def start(self) -> None:
         if not self._task.is_running():

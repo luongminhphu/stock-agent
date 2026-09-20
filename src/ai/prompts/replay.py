@@ -22,7 +22,7 @@ class ReplayContext:
     decision_id: int
     thesis_id: int
     ticker: str
-    decision_type: str                    # BUY | SELL | HOLD | ADD | REDUCE
+    decision_type: str  # BUY | SELL | HOLD | ADD | REDUCE
     decision_at: str
     rationale: str
     price_at_decision: float | None
@@ -34,8 +34,8 @@ class ReplayContext:
     outcome_pnl_pct: float | None
     outcome_horizon_days: int
     outcome_verdict_hint: str | None = None
-    exit_reason: str | None = None        # ExitReason value if SELL; None for BUY/HOLD
-    entry_signal_ref: str | None = None   # brief/signal ref at buy time (optional)
+    exit_reason: str | None = None  # ExitReason value if SELL; None for BUY/HOLD
+    entry_signal_ref: str | None = None  # brief/signal ref at buy time (optional)
 
 
 SYSTEM_PROMPT = """\
@@ -92,12 +92,8 @@ def build_user_prompt(ctx: ReplayContext) -> str:
         if ctx.thesis_health_score_at_decision is not None
         else "N/A"
     )
-    outcome_price = (
-        f"{ctx.outcome_price:,.0f} VND" if ctx.outcome_price is not None else "N/A"
-    )
-    outcome_pnl = (
-        f"{ctx.outcome_pnl_pct:+.1f}%" if ctx.outcome_pnl_pct is not None else "N/A"
-    )
+    outcome_price = f"{ctx.outcome_price:,.0f} VND" if ctx.outcome_price is not None else "N/A"
+    outcome_pnl = f"{ctx.outcome_pnl_pct:+.1f}%" if ctx.outcome_pnl_pct is not None else "N/A"
 
     prompt = f"""Quyết định #{ctx.decision_id}
 Thesis #{ctx.thesis_id} | Mã: {ctx.ticker}
@@ -108,9 +104,9 @@ Bối cảnh lúc ra quyết định:
 - Giá tại thời điểm: {decision_price}
 - Điểm thesis: {thesis_score}
 - Điểm sức khoẻ thesis: {health_score}
-- Signal đang active: {ctx.active_signal or 'N/A'}
-- Tóm tắt brief: {ctx.brief_summary or 'N/A'}
-- Lý do của nhà đầu tư: {ctx.rationale or 'N/A'}"""
+- Signal đang active: {ctx.active_signal or "N/A"}
+- Tóm tắt brief: {ctx.brief_summary or "N/A"}
+- Lý do của nhà đầu tư: {ctx.rationale or "N/A"}"""
 
     if ctx.entry_signal_ref:
         prompt += f"\n- Entry signal ref: {ctx.entry_signal_ref}"
@@ -123,7 +119,7 @@ Bối cảnh lúc ra quyết định:
 Kết quả sau {ctx.outcome_horizon_days} ngày:
 - Giá kết quả: {outcome_price}
 - P&L: {outcome_pnl}
-- Nhận định sơ bộ: {ctx.outcome_verdict_hint or 'N/A'}
+- Nhận định sơ bộ: {ctx.outcome_verdict_hint or "N/A"}
 
 Hãy phân tích quyết định này và trả về JSON theo schema ở trên."""
 

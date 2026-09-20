@@ -55,28 +55,21 @@ class SuggestedAction(BaseModel):
       - api: return in /next-actions endpoint.
     """
 
-    ticker: str = Field(
-        description="Mã cổ phiếu. 'PORTFOLIO' for portfolio-level actions."
-    )
+    ticker: str = Field(description="Mã cổ phiếu. 'PORTFOLIO' for portfolio-level actions.")
     thesis_id: str | None = Field(
-        default=None,
-        description="Thesis ID nếu action liên quan trực tiếp đến một thesis."
+        default=None, description="Thesis ID nếu action liên quan trực tiếp đến một thesis."
     )
     scope: ActionScope
     urgency: Literal["critical", "high", "medium", "low"] = Field(
         description="critical: cần hành động hôm nay. high: trong 1-2 ngày. "
-                    "medium: trong tuần. low: theo dõi."
+        "medium: trong tuần. low: theo dõi."
     )
     urgency_score: float = Field(
-        ge=0.0, le=1.0,
-        description="Numeric urgency for sorting. 1.0 = most urgent."
+        ge=0.0, le=1.0, description="Numeric urgency for sorting. 1.0 = most urgent."
     )
-    title: str = Field(
-        description="Tiêu đề ngắn (< 10 từ) cho bot alert và dashboard card."
-    )
+    title: str = Field(description="Tiêu đề ngắn (< 10 từ) cho bot alert và dashboard card.")
     step: str = Field(
-        description="Bước hành động cụ thể, 1-2 câu. Viết cho nhà đầu tư, "
-                    "không phải log kỹ thuật."
+        description="Bước hành động cụ thể, 1-2 câu. Viết cho nhà đầu tư, không phải log kỹ thuật."
     )
     rationale: str = Field(
         description="Lý do 1-2 câu: tại sao action này quan trọng tại thời điểm này."
@@ -84,7 +77,7 @@ class SuggestedAction(BaseModel):
     source_signals: list[str] = Field(
         default_factory=list,
         description="Các agent/signal đã trigger action này, e.g. "
-                    "['ThesisJudge:WEAKENING', 'Watchdog:BEARISH', 'stop_loss_breach']."
+        "['ThesisJudge:WEAKENING', 'Watchdog:BEARISH', 'stop_loss_breach'].",
     )
     confidence: float = Field(ge=0.0, le=1.0)
 
@@ -123,21 +116,13 @@ class NextActionPlan(BaseModel):
     """
 
     actions: list[SuggestedAction] = Field(
-        default_factory=list,
-        description="Ordered list of actions, urgency_score DESC."
+        default_factory=list, description="Ordered list of actions, urgency_score DESC."
     )
-    summary: str = Field(
-        default="",
-        description="1-2 câu tổng hợp: hôm nay cần chú ý gì nhất."
-    )
+    summary: str = Field(default="", description="1-2 câu tổng hợp: hôm nay cần chú ý gì nhất.")
     total_critical: int = Field(
-        default=0,
-        description="Số action có urgency=critical, for badge/notification."
+        default=0, description="Số action có urgency=critical, for badge/notification."
     )
-    generated_at: str = Field(
-        default="",
-        description="ISO 8601 timestamp — stamped by agent."
-    )
+    generated_at: str = Field(default="", description="ISO 8601 timestamp — stamped by agent.")
 
     @field_validator("actions", mode="before")
     @classmethod

@@ -28,11 +28,12 @@ Module-level API (used by IntelligenceEngineScheduler):
 - run_cycle(user_id, phase, ...): opens its own session, runs full cycle,
   publishes IntelligenceEngineCompletedEvent, returns EngineVerdict | None.
 """
+
 from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -61,18 +62,19 @@ _AGENT_TIMEOUT_SECONDS = 25.0
 
 # Verdict priority for voting — higher wins ties.
 _VERDICT_PRIORITY: dict[str, int] = {
-    "RISK_ALERT":     5,
-    "SELL_SIGNAL":    4,
-    "REVIEW_THESIS":  3,
-    "BUY_SIGNAL":     2,
-    "HOLD":           1,
-    "NO_ACTION":      0,
+    "RISK_ALERT": 5,
+    "SELL_SIGNAL": 4,
+    "REVIEW_THESIS": 3,
+    "BUY_SIGNAL": 2,
+    "HOLD": 1,
+    "NO_ACTION": 0,
 }
 
 
 # ---------------------------------------------------------------------------
 # Agent dispatch helpers
 # ---------------------------------------------------------------------------
+
 
 async def _run_with_timeout(
     coro: Any,
@@ -86,7 +88,7 @@ async def _run_with_timeout(
     try:
         result = await asyncio.wait_for(coro, timeout=timeout)
         return agent_name, result, None
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning("orchestrator.agent_timeout", agent=agent_name, timeout=timeout)
         return agent_name, None, f"timeout after {timeout}s"
     except Exception as exc:
@@ -217,7 +219,7 @@ class IntelligenceEngine:
             return_exceptions=False,
         )
 
-        ran_at = datetime.now(timezone.utc)
+        ran_at = datetime.now(UTC)
         for agent_name, result, error in results:
             if error:
                 slot = AgentSlot(
@@ -238,19 +240,24 @@ class IntelligenceEngine:
                 slot = AgentSlot(
                     agent_name=agent_name,
                     status="ran",
-                    output=result.model_dump(mode="json") if hasattr(result, "model_dump") else dict(result),
+                    output=result.model_dump(mode="json")
+                    if hasattr(result, "model_dump")
+                    else dict(result),
                     ran_at=ran_at,
                 )
                 agent_results[agent_name] = result
             agent_slots.append(slot)
 
         # Add heuristic_engine slot for audit trail
-        agent_slots.insert(0, AgentSlot(
-            agent_name="heuristic_engine",
-            status="ran",
-            output=heuristic_verdict.model_dump(mode="json"),
-            ran_at=ran_at,
-        ))
+        agent_slots.insert(
+            0,
+            AgentSlot(
+                agent_name="heuristic_engine",
+                status="ran",
+                output=heuristic_verdict.model_dump(mode="json"),
+                ran_at=ran_at,
+            ),
+        )
 
         return self._synthesize_agent_outputs(
             snapshot=snapshot,
@@ -271,14 +278,14 @@ class IntelligenceEngine:
         Each agent is only included when the snapshot has relevant data.
         This prevents unnecessary AI calls on empty contexts.
         """
-        from src.ai.agents.thesis_judge import ThesisJudgeAgent
         from src.ai.agents.invalidation_detector import ThesisInvalidationDetector
         from src.ai.agents.next_action_suggester import NextActionSuggester
-        from src.ai.agents.portfolio_risk_narrator import PortfolioRiskNarrator
         from src.ai.agents.opportunity_screen_agent import (
             OpportunityScreenAgent,
             build_opportunity_screen_context,
         )
+        from src.ai.agents.portfolio_risk_narrator import PortfolioRiskNarrator
+        from src.ai.agents.thesis_judge import ThesisJudgeAgent
 
         tasks: list[tuple[str, Any]] = []
 
@@ -286,24 +293,32 @@ class IntelligenceEngine:
         if snapshot.thesis_due_review:
             thesis_agent = ThesisJudgeAgent(self._ai_client)
             # ThesisJudgeAgent.run() accepts snapshot directly
-            tasks.append(("thesis_judge", thesis_agent.run(
-                snapshot=snapshot,
-                session=self.session,
-                user_id=self.user_id,
-            )))
+            tasks.append(
+                (
+                    "thesis_judge",
+                    thesis_agent.run(
+                        snapshot=snapshot,
+                        session=self.session,
+                        user_id=self.user_id,
+                    ),
+                )
+            )
         else:
             logger.debug("orchestrator.skip_thesis_judge", reason="no_thesis_due")
 
         # 2. InvalidationDetector — run when thesis exist
-        if snapshot.thesis_due_review or any(
-            s.source == "thesis" for s in signals
-        ):
+        if snapshot.thesis_due_review or any(s.source == "thesis" for s in signals):
             invalidation_agent = ThesisInvalidationDetector(self._ai_client)
-            tasks.append(("invalidation_detector", invalidation_agent.run(
-                snapshot=snapshot,
-                session=self.session,
-                user_id=self.user_id,
-            )))
+            tasks.append(
+                (
+                    "invalidation_detector",
+                    invalidation_agent.run(
+                        snapshot=snapshot,
+                        session=self.session,
+                        user_id=self.user_id,
+                    ),
+                )
+            )
         else:
             logger.debug("orchestrator.skip_invalidation", reason="no_thesis_signals")
 
@@ -311,20 +326,30 @@ class IntelligenceEngine:
         if signals:
             suggester = NextActionSuggester(self._ai_client)
             contexts = self._build_next_action_contexts(snapshot, signals)
-            tasks.append(("next_action_suggester", suggester.suggest(
-                contexts=contexts,
-                session=self.session,
-                user_id=self.user_id,
-            )))
+            tasks.append(
+                (
+                    "next_action_suggester",
+                    suggester.suggest(
+                        contexts=contexts,
+                        session=self.session,
+                        user_id=self.user_id,
+                    ),
+                )
+            )
 
         # 4. PortfolioRiskNarrator — run when portfolio has positions
         if snapshot.portfolio.top_exposed_tickers:
             narrator = PortfolioRiskNarrator(self._ai_client)
-            tasks.append(("portfolio_risk_narrator", narrator.run(
-                snapshot=snapshot,
-                session=self.session,
-                user_id=self.user_id,
-            )))
+            tasks.append(
+                (
+                    "portfolio_risk_narrator",
+                    narrator.run(
+                        snapshot=snapshot,
+                        session=self.session,
+                        user_id=self.user_id,
+                    ),
+                )
+            )
         else:
             logger.debug("orchestrator.skip_portfolio_risk", reason="no_positions")
 
@@ -373,18 +398,17 @@ class IntelligenceEngine:
         for thesis_ref in snapshot.thesis_due_review[:8]:
             ticker = thesis_ref.ticker
             # Find matching signals for this ticker
-            ticker_signals = [
-                s for s in signals
-                if ticker.upper() in s.description.upper()
-            ]
-            top_urgency = max(
-                (s.urgency_score for s in ticker_signals), default=0.0
-            )
+            ticker_signals = [s for s in signals if ticker.upper() in s.description.upper()]
+            top_urgency = max((s.urgency_score for s in ticker_signals), default=0.0)
             ctx: dict[str, Any] = {
                 "ticker": ticker,
                 "thesis_id": str(getattr(thesis_ref, "thesis_id", "") or ""),
                 "thesis_title": getattr(thesis_ref, "thesis_title", "") or "",
-                "signal_urgency": "HIGH" if top_urgency >= 0.65 else "MEDIUM" if top_urgency >= 0.40 else "LOW",
+                "signal_urgency": "HIGH"
+                if top_urgency >= 0.65
+                else "MEDIUM"
+                if top_urgency >= 0.40
+                else "LOW",
                 "top_signals": [s.source for s in ticker_signals[:3]],
                 "stop_loss_breached": any(
                     "breach" in s.description.lower() and ticker.upper() in s.description.upper()
@@ -396,11 +420,13 @@ class IntelligenceEngine:
         # If no thesis context, fall back to top signal tickers
         if not contexts:
             for ticker in snapshot.watchlist.top_tickers[:5]:
-                contexts.append({
-                    "ticker": ticker,
-                    "signal_urgency": "MEDIUM",
-                    "top_signals": ["watchlist"],
-                })
+                contexts.append(
+                    {
+                        "ticker": ticker,
+                        "signal_urgency": "MEDIUM",
+                        "top_signals": ["watchlist"],
+                    }
+                )
 
         return contexts
 
@@ -508,17 +534,15 @@ class IntelligenceEngine:
 
     def _map_judge_verdict(self, raw: str) -> str | None:
         mapping = {
-            "WEAKENING":   "REVIEW_THESIS",
+            "WEAKENING": "REVIEW_THESIS",
             "INVALIDATED": "RISK_ALERT",
             "CONFIRMED_INVALID": "RISK_ALERT",
-            "ON_TRACK":    "HOLD",
-            "IMPROVING":   "BUY_SIGNAL",
+            "ON_TRACK": "HOLD",
+            "IMPROVING": "BUY_SIGNAL",
         }
         return mapping.get(raw)
 
-    def _extract_priority_actions(
-        self, agent_results: dict[str, Any]
-    ) -> list[PriorityAction]:
+    def _extract_priority_actions(self, agent_results: dict[str, Any]) -> list[PriorityAction]:
         """Convert NextActionPlan.actions → PriorityAction list."""
         plan = agent_results.get("next_action_suggester")
         if plan is None:
@@ -536,8 +560,8 @@ class IntelligenceEngine:
         }
         action_type_map = {
             "THESIS_INVALIDATE": "CONSIDER_EXIT",
-            "THESIS_REVIEW":     "REVIEW_THESIS",
-            "SIGNAL_RESPOND":    "CHECK_STOP_LOSS",
+            "THESIS_REVIEW": "REVIEW_THESIS",
+            "SIGNAL_RESPOND": "CHECK_STOP_LOSS",
             "WATCHLIST_MONITOR": "MONITOR",
         }
 
@@ -597,18 +621,22 @@ class IntelligenceEngine:
                 ticker = getattr(sig, "ticker", None)
                 if breach:
                     flag_type = (
-                        "THESIS_INVALIDATED" if breach in ("FUNDAMENTAL", "PRICE")
-                        else "STOP_LOSS_BREACH" if breach == "STOP_LOSS"
+                        "THESIS_INVALIDATED"
+                        if breach in ("FUNDAMENTAL", "PRICE")
+                        else "STOP_LOSS_BREACH"
+                        if breach == "STOP_LOSS"
                         else "VOLUME_ANOMALY"
                     )
-                    _add(RiskFlag(
-                        flag_type=flag_type,  # type: ignore[arg-type]
-                        ticker=ticker,
-                        severity="HIGH",
-                        description=str(getattr(sig, "description", "") or "")[:200],
-                        confirmed_by=["invalidation_detector"],
-                        is_new=True,
-                    ))
+                    _add(
+                        RiskFlag(
+                            flag_type=flag_type,  # type: ignore[arg-type]
+                            ticker=ticker,
+                            severity="HIGH",
+                            description=str(getattr(sig, "description", "") or "")[:200],
+                            confirmed_by=["invalidation_detector"],
+                            is_new=True,
+                        )
+                    )
 
         # PortfolioRiskNarrator chapters
         portfolio_output = agent_results.get("portfolio_risk_narrator")
@@ -623,15 +651,21 @@ class IntelligenceEngine:
                 else:
                     flag_type = "MARKET_TREND_REVERSAL"
                 severity_raw = str(getattr(chapter, "severity", "MEDIUM") or "MEDIUM").upper()
-                severity = severity_raw if severity_raw in ("LOW", "MEDIUM", "HIGH", "CRITICAL") else "MEDIUM"
-                _add(RiskFlag(
-                    flag_type=flag_type,  # type: ignore[arg-type]
-                    ticker=None,
-                    severity=severity,  # type: ignore[arg-type]
-                    description=str(getattr(chapter, "summary", "") or "")[:200],
-                    confirmed_by=["portfolio_risk_narrator"],
-                    is_new=True,
-                ))
+                severity = (
+                    severity_raw
+                    if severity_raw in ("LOW", "MEDIUM", "HIGH", "CRITICAL")
+                    else "MEDIUM"
+                )
+                _add(
+                    RiskFlag(
+                        flag_type=flag_type,  # type: ignore[arg-type]
+                        ticker=None,
+                        severity=severity,  # type: ignore[arg-type]
+                        description=str(getattr(chapter, "summary", "") or "")[:200],
+                        confirmed_by=["portfolio_risk_narrator"],
+                        is_new=True,
+                    )
+                )
 
         return flags
 
@@ -653,7 +687,7 @@ class IntelligenceEngine:
         # Highest urgency: tickers from NextActionSuggester critical/high actions
         plan = agent_results.get("next_action_suggester")
         if plan is not None:
-            for action in (getattr(plan, "actions", []) or []):
+            for action in getattr(plan, "actions", []) or []:
                 urgency = str(getattr(action, "urgency", "") or "")
                 ticker = getattr(action, "ticker", None)
                 if ticker and urgency in ("critical", "high"):
@@ -712,17 +746,13 @@ class IntelligenceEngine:
         top = signals[0]
         verdict_type, confidence = self._map_signal_to_verdict(top)
 
-        risk_signals = [
-            s.description for s in signals if s.source in ("portfolio", "watchlist")
-        ][:5]
-        next_watch = [
-            s.description for s in signals if s.source in ("thesis", "market")
-        ][:5]
+        risk_signals = [s.description for s in signals if s.source in ("portfolio", "watchlist")][
+            :5
+        ]
+        next_watch = [s.description for s in signals if s.source in ("thesis", "market")][:5]
         sources = list({s.source for s in signals})
 
-        summary = " | ".join(
-            f"{s.source}:{s.urgency_score:.2f}" for s in signals[:4]
-        )
+        summary = " | ".join(f"{s.source}:{s.urgency_score:.2f}" for s in signals[:4])
 
         return EngineVerdict(
             verdict_id=str(uuid.uuid4()),
@@ -733,7 +763,7 @@ class IntelligenceEngine:
             action=self._derive_action(verdict_type, snap),
             reasoning_summary=summary,
             sources=sources,
-            generated_at=datetime.now(timezone.utc),
+            generated_at=datetime.now(UTC),
         )
 
     def _build_intelligence_report(
@@ -784,18 +814,18 @@ class IntelligenceEngine:
             ]
 
         action_type_map = {
-            "RISK_ALERT":    "CHECK_STOP_LOSS",
+            "RISK_ALERT": "CHECK_STOP_LOSS",
             "REVIEW_THESIS": "REVIEW_THESIS",
-            "BUY_SIGNAL":    "CONSIDER_ENTRY",
-            "SELL_SIGNAL":   "CONSIDER_EXIT",
-            "HOLD":          "MONITOR",
+            "BUY_SIGNAL": "CONSIDER_ENTRY",
+            "SELL_SIGNAL": "CONSIDER_EXIT",
+            "HOLD": "MONITOR",
         }
         urgency_map = {
-            "RISK_ALERT":    "immediate",
+            "RISK_ALERT": "immediate",
             "REVIEW_THESIS": "today",
-            "BUY_SIGNAL":    "today",
-            "SELL_SIGNAL":   "immediate",
-            "HOLD":          "this_week",
+            "BUY_SIGNAL": "today",
+            "SELL_SIGNAL": "immediate",
+            "HOLD": "this_week",
         }
         return [
             PriorityAction(
@@ -859,15 +889,15 @@ class IntelligenceEngine:
 
     def _normalize_trigger_source(self, trigger_source: str) -> str:
         mapping = {
-            "scheduler":          "scheduler_morning",
-            "scheduler_morning":  "scheduler_morning",
-            "scheduler_eod":      "scheduler_eod",
-            "discord_command":    "user_query",
-            "user_query":         "user_query",
-            "manual":             "manual",
-            "watchlist_alert":    "watchlist_alert",
+            "scheduler": "scheduler_morning",
+            "scheduler_morning": "scheduler_morning",
+            "scheduler_eod": "scheduler_eod",
+            "discord_command": "user_query",
+            "user_query": "user_query",
+            "manual": "manual",
+            "watchlist_alert": "watchlist_alert",
             "thesis_invalidated": "thesis_invalidated",
-            "portfolio_breach":   "portfolio_breach",
+            "portfolio_breach": "portfolio_breach",
         }
         return mapping.get(trigger_source or "manual", "manual")
 
@@ -911,9 +941,7 @@ class IntelligenceEngine:
             return "MARKET_TREND_REVERSAL"
         return None
 
-    def _map_signal_to_verdict(
-        self, top: RankedSignal
-    ) -> tuple[VerdictType, float]:
+    def _map_signal_to_verdict(self, top: RankedSignal) -> tuple[VerdictType, float]:
         if top.source == "portfolio":
             return "RISK_ALERT", min(0.95, 0.70 + top.urgency_score * 0.25)
         if top.source == "thesis" and "invalidate" in top.description.lower():
@@ -936,14 +964,14 @@ class IntelligenceEngine:
             action="Không có action ưu tiên. Hệ thống ổn định.",
             reasoning_summary="0 signals detected across all segments",
             sources=[],
-            generated_at=datetime.now(timezone.utc),
+            generated_at=datetime.now(UTC),
         )
 
     def _derive_action(self, verdict: VerdictType, snap: SystemSnapshot) -> str:
         if verdict == "RISK_ALERT":
-            tickers = ", ".join(
-                a.ticker for a in snap.watchlist_alerts[:3]
-            ) or ", ".join(snap.portfolio.top_exposed_tickers[:3])
+            tickers = ", ".join(a.ticker for a in snap.watchlist_alerts[:3]) or ", ".join(
+                snap.portfolio.top_exposed_tickers[:3]
+            )
             return f"Kiểm tra ngay: {tickers}" if tickers else "Kiểm tra risk breach"
         if verdict == "REVIEW_THESIS":
             tickers = ", ".join(t.ticker for t in snap.thesis_due_review[:3])

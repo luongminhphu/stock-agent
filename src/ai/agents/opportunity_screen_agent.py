@@ -27,6 +27,7 @@ Output: OpportunityScreenOutput (Pydantic, engine-compatible)
 Graceful degrade:
   Returns None on any AI/parse failure — engine pipeline is unaffected.
 """
+
 from __future__ import annotations
 
 import json
@@ -44,11 +45,12 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 # ── concentration thresholds (mirror briefing service) ───────────────────────
-_CONCENTRATION_WARN_PCT = 35.0   # cross-check hint
+_CONCENTRATION_WARN_PCT = 35.0  # cross-check hint
 _CONCENTRATION_ALERT_PCT = 50.0  # hard warning
 
 
 # ── input context ─────────────────────────────────────────────────────────────
+
 
 @dataclass
 class OpportunityScreenContext:
@@ -78,6 +80,7 @@ class OpportunityScreenContext:
 
 
 # ── output schema ─────────────────────────────────────────────────────────────
+
 
 class OpportunityScreenOutput(BaseModel):
     """Structured output from OpportunityScreenAgent.
@@ -150,9 +153,7 @@ Quy tắc:
 def _build_user_prompt(ctx: OpportunityScreenContext) -> str:
     """Render OpportunityScreenContext into an AI-ready prompt."""
     candidates_block = (
-        "\n".join(ctx.candidates_payload)
-        if ctx.candidates_payload
-        else "(không có candidate)"
+        "\n".join(ctx.candidates_payload) if ctx.candidates_payload else "(không có candidate)"
     )
 
     # Portfolio block
@@ -169,8 +170,10 @@ def _build_user_prompt(ctx: OpportunityScreenContext) -> str:
     if ctx.sector_weights:
         weight_lines = []
         for sector, pct in sorted(ctx.sector_weights.items(), key=lambda x: -x[1]):
-            flag = " ⚠ CONCENTRATION" if pct >= _CONCENTRATION_ALERT_PCT else (
-                " ← cross-check" if pct >= _CONCENTRATION_WARN_PCT else ""
+            flag = (
+                " ⚠ CONCENTRATION"
+                if pct >= _CONCENTRATION_ALERT_PCT
+                else (" ← cross-check" if pct >= _CONCENTRATION_WARN_PCT else "")
             )
             weight_lines.append(f"  {sector}: {pct:.1f}%{flag}")
         sector_block = "Tỷ trọng ngành hiện tại:\n" + "\n".join(weight_lines)
@@ -193,6 +196,7 @@ Hãy cross-check candidates với danh mục và trả về JSON theo schema đ�
 
 # ── agent ─────────────────────────────────────────────────────────────────────
 
+
 class OpportunityScreenAgent:
     """Cross-check screen candidates vs open portfolio positions + sector weights.
 
@@ -205,7 +209,7 @@ class OpportunityScreenAgent:
         # output is OpportunityScreenOutput | None
     """
 
-    def __init__(self, ai_client: "AIClient") -> None:
+    def __init__(self, ai_client: AIClient) -> None:
         self._client = ai_client
 
     async def run(self, ctx: OpportunityScreenContext) -> OpportunityScreenOutput | None:
@@ -219,7 +223,7 @@ class OpportunityScreenAgent:
             api_resp = await self._client.chat_completion(
                 messages=[
                     {"role": "system", "content": _SYSTEM_PROMPT},
-                    {"role": "user",   "content": user_prompt},
+                    {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.2,
             )
@@ -245,6 +249,7 @@ class OpportunityScreenAgent:
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
+
 
 def _parse_output(raw: str) -> dict[str, Any]:
     """Parse AI JSON output. Raises ValueError on failure."""

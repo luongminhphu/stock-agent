@@ -51,9 +51,7 @@ class Signal(BaseModel):
         default_factory=list,
         description="Risk flags from watchdog/stress inputs",
     )
-    action: str = Field(
-        description="Recommended action: specific and time-bounded"
-    )
+    action: str = Field(description="Recommended action: specific and time-bounded")
     causal_sources: list[str] = Field(
         default_factory=list,
         description="Source agents/data contributing to this signal",
@@ -89,9 +87,7 @@ class RankedSignal(Signal):
     )
     cross_signal_note: str = Field(
         default="",
-        description=(
-            "Cross-signal context: how this signal relates to other signals in same run."
-        ),
+        description=("Cross-signal context: how this signal relates to other signals in same run."),
     )
     feedback_note: str = Field(
         default="",
@@ -184,7 +180,9 @@ class ThesisReviewTrigger(BaseModel):
 class SignalEngineOutput(BaseModel):
     """Structured output from SignalEngineAgent."""
 
-    snapshot_date: str = Field(default="", description="Ng\u00e0y ch\u1ea1y signal engine, format YYYY-MM-DD")
+    snapshot_date: str = Field(
+        default="", description="Ng\u00e0y ch\u1ea1y signal engine, format YYYY-MM-DD"
+    )
     generated_at: str = Field(default="", description="ISO 8601 timestamp khi engine ch\u1ea1y.")
     signal_summary: str = Field(default="", description="1-line summary cho bot header.")
     portfolio_context: PortfolioRiskNote = Field(default_factory=PortfolioRiskNote)
@@ -199,7 +197,9 @@ class SignalEngineOutput(BaseModel):
     risk_alerts: list[RiskAlert] = Field(default_factory=list)
     opportunity_windows: list[OpportunityHint] = Field(default_factory=list)
     portfolio_concentration_note: str = Field(default="")
-    confidence: float = Field(ge=0.0, le=1.0, description="\u0110\u1ed9 tin c\u1eady t\u1ed5ng th\u1ec3")
+    confidence: float = Field(
+        ge=0.0, le=1.0, description="\u0110\u1ed9 tin c\u1eady t\u1ed5ng th\u1ec3"
+    )
     reasoning_summary: str = Field(default="")
 
     @field_validator("confidence", mode="before")
@@ -208,7 +208,9 @@ class SignalEngineOutput(BaseModel):
         return _coerce_confidence(v)
 
     @field_validator(
-        "ranked_signals", "risk_alerts", "opportunity_windows",
+        "ranked_signals",
+        "risk_alerts",
+        "opportunity_windows",
         mode="before",
     )
     @classmethod
@@ -230,5 +232,13 @@ class SignalEngineOutput(BaseModel):
             elif isinstance(item, str):
                 result.append(ThesisReviewTrigger(thesis_id=item))
             elif isinstance(item, dict):
-                result.append(ThesisReviewTrigger(**{k: val for k, val in item.items() if k in ThesisReviewTrigger.model_fields}))
+                result.append(
+                    ThesisReviewTrigger(
+                        **{
+                            k: val
+                            for k, val in item.items()
+                            if k in ThesisReviewTrigger.model_fields
+                        }
+                    )
+                )
         return result

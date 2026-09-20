@@ -3,6 +3,7 @@ Domain Event Catalog — Platform V2
 All typed events emitted across segments.
 Owner: platform segment.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -14,20 +15,23 @@ from uuid import uuid4
 @dataclass(frozen=True)
 class DomainEvent:
     """Base class for all domain events."""
+
     event_id: str = field(default_factory=lambda: str(uuid4()))
     occurred_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 # ─── watchlist / signal ───────────────────────────────────────────────
 
+
 @dataclass(frozen=True)
 class SignalDetectedEvent(DomainEvent):
     """Emitted by watchlist.signal_engine when a tradeable signal is found."""
+
     symbol: str = ""
-    signal_type: str = ""          # BREAKOUT | TREND_REVERSAL | THESIS_DIVERGENCE | ...
-    strength: float = 0.0          # 0.0 – 1.0
-    confidence: float = 0.0        # 0.0 – 1.0
-    source: str = ""               # e.g. "technical" | "news" | "combined"
+    signal_type: str = ""  # BREAKOUT | TREND_REVERSAL | THESIS_DIVERGENCE | ...
+    strength: float = 0.0  # 0.0 – 1.0
+    confidence: float = 0.0  # 0.0 – 1.0
+    source: str = ""  # e.g. "technical" | "news" | "combined"
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -63,6 +67,7 @@ class ProactiveWatchAlertFiredEvent(DomainEvent):
 
 # ─── portfolio / position ────────────────────────────────────────────
 
+
 @dataclass(frozen=True)
 class PositionRiskBreachedEvent(DomainEvent):
     symbol: str = ""
@@ -79,8 +84,9 @@ class PortfolioSnapshotRequestedEvent(DomainEvent):
     Produced by: bot.PortfolioSnapshotScheduler
     Consumed by: portfolio.PortfolioSnapshotListener
     """
+
     user_id: str = ""
-    phase: str = "morning"          # "morning" | "eod"
+    phase: str = "morning"  # "morning" | "eod"
     triggered_by: str = "scheduler"
 
 
@@ -96,17 +102,19 @@ class PortfolioSnapshotReadyEvent(DomainEvent):
     Backward-compatible: original 3 fields (total_positions, total_nav,
     unrealized_pnl) are preserved with same types and defaults.
     """
+
     user_id: str = ""
     total_positions: int = 0
     total_nav: float = 0.0
     unrealized_pnl: float = 0.0
     unrealized_pnl_pct: float = 0.0
     top_exposed_tickers: tuple[str, ...] = field(default_factory=tuple)
-    cash_pct: float = 0.0           # placeholder — cash model not yet modelled
+    cash_pct: float = 0.0  # placeholder — cash model not yet modelled
     snapshot_phase: str = "morning"
 
 
 # ─── thesis ──────────────────────────────────────────────────────────────────────
+
 
 @dataclass(frozen=True)
 class ThesisInvalidatedEvent(DomainEvent):
@@ -137,6 +145,7 @@ class ThesisReviewTriggeredEvent(DomainEvent):
     urgency: "CRITICAL" | "HIGH" — matches ThesisReviewTrigger.urgency.
     phase:   propagated from the originating SignalEngineRequestedEvent.
     """
+
     thesis_id: str = ""
     ticker: str = ""
     reason: str = ""
@@ -188,6 +197,7 @@ class StressTestCompletedEvent(DomainEvent):
 
 # ─── AI recommendations ───────────────────────────────────────────────
 
+
 @dataclass(frozen=True)
 class RecommendationReadyEvent(DomainEvent):
     symbol: str = ""
@@ -220,6 +230,7 @@ class SignalEngineCompletedEvent(DomainEvent):
     for backward compatibility with existing consumers that only read
     the count fields.
     """
+
     phase: str = "morning"
     ranked_signal_count: int = 0
     thesis_review_trigger_count: int = 0
@@ -230,6 +241,7 @@ class SignalEngineCompletedEvent(DomainEvent):
 
 
 # ─── briefing ────────────────────────────────────────────────────────────────────────
+
 
 @dataclass(frozen=True)
 class BriefingRequestedEvent(DomainEvent):
@@ -247,6 +259,7 @@ class BriefingReadyEvent(DomainEvent):
 
 
 # ─── opportunity screen ───────────────────────────────────────────────
+
 
 @dataclass(frozen=True)
 class OpportunityScreenCompletedEvent(DomainEvent):
@@ -269,6 +282,7 @@ class OpportunityAIAnalysisRequestedEvent(DomainEvent):
     Carries serialised candidates so the AI handler does not need to
     re-fetch market data — it only needs watchlist + thesis context.
     """
+
     user_id: str = ""
     candidates_payload: tuple[str, ...] = field(default_factory=tuple)
     screen_criteria: str = ""
@@ -283,12 +297,13 @@ class OpportunityAnalysisCompletedEvent(DomainEvent):
     Produced by: ai.OpportunityAnalysisHandler
     Consumed by: bot.OpportunityAnalysisSubscriber (Discord delivery)
     """
+
     user_id: str = ""
-    verdict: str = ""           # e.g. "2 candidates overlap with watchlist"
+    verdict: str = ""  # e.g. "2 candidates overlap with watchlist"
     ranked_tickers: tuple[str, ...] = field(default_factory=tuple)
     watchlist_overlap: tuple[str, ...] = field(default_factory=tuple)
     thesis_relevant: tuple[str, ...] = field(default_factory=tuple)
-    action: str = ""            # e.g. "REVIEW VHM and DGC before EOD"
+    action: str = ""  # e.g. "REVIEW VHM and DGC before EOD"
     reasoning_summary: str = ""
     confidence: float = 0.0
     trading_date: str = ""
@@ -298,6 +313,7 @@ class OpportunityAnalysisCompletedEvent(DomainEvent):
 
 
 # ─── trend shift ────────────────────────────────────────────────────────────
+
 
 @dataclass(frozen=True)
 class TrendShiftEvent(DomainEvent):
@@ -313,6 +329,7 @@ class TrendShiftEvent(DomainEvent):
 
 # ─── trend prediction ───────────────────────────────────────────────────────────
 
+
 @dataclass(frozen=True)
 class TrendPredictionCompletedEvent(DomainEvent):
     scan_phase: str = "morning"
@@ -321,6 +338,7 @@ class TrendPredictionCompletedEvent(DomainEvent):
 
 
 # ─── core intelligence engine ──────────────────────────────────────────────
+
 
 @dataclass(frozen=True)
 class IntelligenceEngineRequestedEvent(DomainEvent):
@@ -362,11 +380,12 @@ class IntelligenceEngineCompletedEvent(DomainEvent):
     reasoning. Defaults to empty tuple. Replaces the single `summary` string
     for downstream consumers that need structured action payloads.
     """
+
     user_id: str = ""
     verdict: str = "NO_ACTION"
     confidence: float = 0.0
     action_required: bool = False
-    summary: str = ""                          # EngineVerdict.action
+    summary: str = ""  # EngineVerdict.action
     trigger_source: str = ""
     verdict_event_id: str = field(default_factory=lambda: str(uuid4()))
     reasoning_summary: str = ""
@@ -383,6 +402,7 @@ class IntelligenceEngineCompletedEvent(DomainEvent):
 
 # ─── core intelligence feedback ───────────────────────────────────────────
 
+
 @dataclass(frozen=True)
 class EngineFeedbackSubmittedEvent(DomainEvent):
     verdict_event_id: str = ""
@@ -395,6 +415,7 @@ class EngineFeedbackSubmittedEvent(DomainEvent):
 
 # ─── core self-improvement (Wave 4) ────────────────────────────────────────
 
+
 @dataclass(frozen=True)
 class EvolutionSuggestionReadyEvent(DomainEvent):
     """Emitted after SelfImprovementAdvisor completes a run.
@@ -402,6 +423,7 @@ class EvolutionSuggestionReadyEvent(DomainEvent):
     Produced by: core.evolution_scheduler (bot scheduled job, weekly)
     Consumed by: bot.EvolutionSubscriber → Discord embed for owner review
     """
+
     run_id: str = ""
     suggestion_count: int = 0
     overall_accuracy: float = 0.0
@@ -410,6 +432,7 @@ class EvolutionSuggestionReadyEvent(DomainEvent):
 
 
 # ─── daily agenda ────────────────────────────────────────────────────────────
+
 
 @dataclass(frozen=True)
 class DailyAgendaCompletedEvent(DomainEvent):
@@ -424,6 +447,7 @@ class DailyAgendaCompletedEvent(DomainEvent):
     quick fanout without loading full DailyAgendaResult from DB.
     opening_line: AI-generated 1-sentence summary for Discord preview.
     """
+
     user_id: str = ""
     decide_count: int = 0
     watch_count: int = 0
@@ -472,6 +496,7 @@ class UserActionEvent(DomainEvent):
         mute_days:     for IGNORE_ALERT — how many days to suppress (default 7)
         snooze_hours:  for DEFER — how many hours to snooze watchlist (default 24)
     """
+
     user_id: str = ""
     action_type: ActionType = "DEFER"  # type: ignore[assignment]
     ticker: str = ""
@@ -485,6 +510,7 @@ class UserActionEvent(DomainEvent):
 
 
 # ─── proactive discovery (portfolio-aware market scan) ────────────────────────
+
 
 @dataclass(frozen=True)
 class ProactiveDiscoveryReadyEvent(DomainEvent):
@@ -504,8 +530,9 @@ class ProactiveDiscoveryReadyEvent(DomainEvent):
         picks_count      : len(picks) for quick log/monitor
         trading_date     : YYYY-MM-DD of the scan
     """
+
     user_id: str = ""
-    picks_json: str = ""                               # JSON string — list[dict]
+    picks_json: str = ""  # JSON string — list[dict]
     portfolio_gaps: tuple[str, ...] = field(default_factory=tuple)
     market_regime_note: str = ""
     avoid_tickers: tuple[str, ...] = field(default_factory=tuple)

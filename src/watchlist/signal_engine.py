@@ -36,16 +36,18 @@ THESIS_DIVERGENCE:
             scan_signal.thesis_direction = thesis.direction  # "bull" | "bear"
     Khi thesis_direction chưa được inject, engine skip silently.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-
 # ── Signal Types ─────────────────────────────────────────────────────────────────
+
 
 class SignalType:
     """Namespace for signal type constants (aligned with events.py)."""
+
     BREAKOUT = "BREAKOUT"
     TREND_REVERSAL = "TREND_REVERSAL"
     STRONG_MOVE = "STRONG_MOVE"
@@ -60,12 +62,13 @@ class SignalReport:
     Structured signal output from SignalEngine.
     One ScanSignal can produce zero or more SignalReports.
     """
+
     symbol: str
-    signal_type: str                    # SignalType constant
-    strength: float                     # 0.0 – 1.0 (magnitude of move/pattern)
-    confidence: float                   # 0.0 – 1.0 (reliability of classification)
-    source: str                         # "technical" | "alert" | "combined"
-    description: str                    # human-readable — used in Discord / briefing
+    signal_type: str  # SignalType constant
+    strength: float  # 0.0 – 1.0 (magnitude of move/pattern)
+    confidence: float  # 0.0 – 1.0 (reliability of classification)
+    source: str  # "technical" | "alert" | "combined"
+    description: str  # human-readable — used in Discord / briefing
     detected_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     metadata: dict = field(default_factory=dict)
 
@@ -89,6 +92,7 @@ class SignalReport:
 
 
 # ── Engine ─────────────────────────────────────────────────────────────────────
+
 
 class SignalEngine:
     """
@@ -159,87 +163,92 @@ class SignalEngine:
         # ─ Rule 1: Alert Triggered (highest confidence — user-defined) ──────
         if triggered_alerts:
             alert_count = len(triggered_alerts)
-            alert_types = list({
-                getattr(a.condition_type, "value", str(a.condition_type))
-                for a in triggered_alerts
-            })
-            reports.append(SignalReport(
-                symbol=symbol,
-                signal_type=SignalType.ALERT_TRIGGERED,
-                strength=min(1.0, 0.5 + alert_count * 0.15),
-                confidence=0.95,
-                source="alert",
-                description=(
-                    f"{alert_count} alert {'triggered' if alert_count == 1 else 'triggered'} "
-                    f"trên {symbol}: {', '.join(alert_types)}"
-                ),
-                metadata={
-                    "alert_count": alert_count,
-                    "alert_types": alert_types,
-                    "price": current_price,
-                },
-            ))
+            alert_types = list(
+                {
+                    getattr(a.condition_type, "value", str(a.condition_type))
+                    for a in triggered_alerts
+                }
+            )
+            reports.append(
+                SignalReport(
+                    symbol=symbol,
+                    signal_type=SignalType.ALERT_TRIGGERED,
+                    strength=min(1.0, 0.5 + alert_count * 0.15),
+                    confidence=0.95,
+                    source="alert",
+                    description=(
+                        f"{alert_count} alert {'triggered' if alert_count == 1 else 'triggered'} "
+                        f"trên {symbol}: {', '.join(alert_types)}"
+                    ),
+                    metadata={
+                        "alert_count": alert_count,
+                        "alert_types": alert_types,
+                        "price": current_price,
+                    },
+                )
+            )
 
         # ─ Rule 2: Breakout (price spike + volume confirmation) ───────────
-        if (
-            change_pct >= self._breakout_change_pct
-            and volume_ratio >= self._breakout_volume_ratio
-        ):
+        if change_pct >= self._breakout_change_pct and volume_ratio >= self._breakout_volume_ratio:
             strength = min(1.0, change_pct / 10.0)
             confidence = min(0.90, 0.60 + (volume_ratio - 1.5) * 0.10)
-            reports.append(SignalReport(
-                symbol=symbol,
-                signal_type=SignalType.BREAKOUT,
-                strength=round(strength, 3),
-                confidence=round(confidence, 3),
-                source="technical",
-                description=(
-                    f"{symbol} breakout: +{change_pct:.1f}% "
-                    f"với volume {volume_ratio:.1f}x trung bình"
-                ),
-                metadata={
-                    "change_pct": change_pct,
-                    "volume_ratio": volume_ratio,
-                    "price": current_price,
-                },
-            ))
+            reports.append(
+                SignalReport(
+                    symbol=symbol,
+                    signal_type=SignalType.BREAKOUT,
+                    strength=round(strength, 3),
+                    confidence=round(confidence, 3),
+                    source="technical",
+                    description=(
+                        f"{symbol} breakout: +{change_pct:.1f}% "
+                        f"với volume {volume_ratio:.1f}x trung bình"
+                    ),
+                    metadata={
+                        "change_pct": change_pct,
+                        "volume_ratio": volume_ratio,
+                        "price": current_price,
+                    },
+                )
+            )
 
         # ─ Rule 3: Risk Spike (sharp downside move) ───────────────────
         elif change_pct <= self._risk_spike_change_pct:
             strength = min(1.0, abs(change_pct) / 10.0)
-            reports.append(SignalReport(
-                symbol=symbol,
-                signal_type=SignalType.RISK_SPIKE,
-                strength=round(strength, 3),
-                confidence=0.80,
-                source="technical",
-                description=(
-                    f"{symbol} risk spike: {change_pct:.1f}% — "
-                    f"kiểm tra stop-loss và thesis"
-                ),
-                metadata={
-                    "change_pct": change_pct,
-                    "price": current_price,
-                },
-            ))
+            reports.append(
+                SignalReport(
+                    symbol=symbol,
+                    signal_type=SignalType.RISK_SPIKE,
+                    strength=round(strength, 3),
+                    confidence=0.80,
+                    source="technical",
+                    description=(
+                        f"{symbol} risk spike: {change_pct:.1f}% — kiểm tra stop-loss và thesis"
+                    ),
+                    metadata={
+                        "change_pct": change_pct,
+                        "price": current_price,
+                    },
+                )
+            )
 
         # ─ Rule 4: Strong Move fallback (no volume confirmation) ───────
         elif abs(change_pct) >= self._strong_move_pct and not any(
-            r.signal_type in (SignalType.BREAKOUT, SignalType.RISK_SPIKE)
-            for r in reports
+            r.signal_type in (SignalType.BREAKOUT, SignalType.RISK_SPIKE) for r in reports
         ):
             is_up = change_pct > 0
-            reports.append(SignalReport(
-                symbol=symbol,
-                signal_type=SignalType.STRONG_MOVE,
-                strength=min(1.0, abs(change_pct) / 8.0),
-                confidence=0.60,
-                source="technical",
-                description=(
-                    f"{symbol} strong {'tăng' if is_up else 'giảm'}: {change_pct:+.1f}%"
-                ),
-                metadata={"change_pct": change_pct, "price": current_price},
-            ))
+            reports.append(
+                SignalReport(
+                    symbol=symbol,
+                    signal_type=SignalType.STRONG_MOVE,
+                    strength=min(1.0, abs(change_pct) / 8.0),
+                    confidence=0.60,
+                    source="technical",
+                    description=(
+                        f"{symbol} strong {'tăng' if is_up else 'giảm'}: {change_pct:+.1f}%"
+                    ),
+                    metadata={"change_pct": change_pct, "price": current_price},
+                )
+            )
 
         # ─ Rule 5: Trend Reversal (bounce after risk spike) ──────────────
         # Requires prior_risk_spike=True injected by ScanService (Wave 1).
@@ -253,23 +262,25 @@ class SignalEngine:
             strength = min(1.0, change_pct / 8.0)
             # Higher confidence when volume also elevated
             confidence = 0.65 + (0.10 if volume_ratio >= 1.3 else 0.0)
-            reports.append(SignalReport(
-                symbol=symbol,
-                signal_type=SignalType.TREND_REVERSAL,
-                strength=round(strength, 3),
-                confidence=round(confidence, 3),
-                source="technical",
-                description=(
-                    f"{symbol} reversal bounce: +{change_pct:.1f}% "
-                    f"sau risk spike — theo dõi confirmation"
-                ),
-                metadata={
-                    "change_pct": change_pct,
-                    "volume_ratio": volume_ratio,
-                    "price": current_price,
-                    "trigger": "prior_risk_spike",
-                },
-            ))
+            reports.append(
+                SignalReport(
+                    symbol=symbol,
+                    signal_type=SignalType.TREND_REVERSAL,
+                    strength=round(strength, 3),
+                    confidence=round(confidence, 3),
+                    source="technical",
+                    description=(
+                        f"{symbol} reversal bounce: +{change_pct:.1f}% "
+                        f"sau risk spike — theo dõi confirmation"
+                    ),
+                    metadata={
+                        "change_pct": change_pct,
+                        "volume_ratio": volume_ratio,
+                        "price": current_price,
+                        "trigger": "prior_risk_spike",
+                    },
+                )
+            )
 
         # ─ Rule 6: Thesis Divergence (price vs. thesis direction) ────────
         # Requires thesis_direction injected by ScanService (Wave 1).
@@ -278,9 +289,8 @@ class SignalEngine:
         if thesis_direction is not None:
             is_bull_thesis = thesis_direction == "bull"
             is_bear_thesis = thesis_direction == "bear"
-            diverged = (
-                (is_bull_thesis and change_pct <= -self._thesis_divergence_min_pct)
-                or (is_bear_thesis and change_pct >= self._thesis_divergence_min_pct)
+            diverged = (is_bull_thesis and change_pct <= -self._thesis_divergence_min_pct) or (
+                is_bear_thesis and change_pct >= self._thesis_divergence_min_pct
             )
             if diverged:
                 divergence_magnitude = abs(change_pct)
@@ -288,23 +298,25 @@ class SignalEngine:
                 # Higher confidence when divergence is large
                 confidence = min(0.85, 0.60 + divergence_magnitude * 0.02)
                 direction_label = "tăng" if change_pct > 0 else "giảm"
-                reports.append(SignalReport(
-                    symbol=symbol,
-                    signal_type=SignalType.THESIS_DIVERGENCE,
-                    strength=round(strength, 3),
-                    confidence=round(confidence, 3),
-                    source="combined",
-                    description=(
-                        f"{symbol} đi ngược thesis ({thesis_direction}): "
-                        f"{direction_label} {abs(change_pct):.1f}% — xem xét lại luận điểm"
-                    ),
-                    metadata={
-                        "change_pct": change_pct,
-                        "price": current_price,
-                        "thesis_direction": thesis_direction,
-                        "divergence_pct": round(change_pct, 2),
-                    },
-                ))
+                reports.append(
+                    SignalReport(
+                        symbol=symbol,
+                        signal_type=SignalType.THESIS_DIVERGENCE,
+                        strength=round(strength, 3),
+                        confidence=round(confidence, 3),
+                        source="combined",
+                        description=(
+                            f"{symbol} đi ngược thesis ({thesis_direction}): "
+                            f"{direction_label} {abs(change_pct):.1f}% — xem xét lại luận điểm"
+                        ),
+                        metadata={
+                            "change_pct": change_pct,
+                            "price": current_price,
+                            "thesis_direction": thesis_direction,
+                            "divergence_pct": round(change_pct, 2),
+                        },
+                    )
+                )
 
         # ─ Optional: blend AI credibility score into confidence ─────────
         if credibility is not None:

@@ -9,6 +9,7 @@ Endpoints:
     GET  /api/v1/core/snapshot     — raw SystemSnapshot (no AI synthesis)
     POST /api/v1/core/feedback     — submit verdict outcome for self-improvement loop
 """
+
 from __future__ import annotations
 
 from typing import Annotated
@@ -24,7 +25,6 @@ from src.core.snapshot import SystemSnapshotBuilder
 router = APIRouter(prefix="/core", tags=["core-engine"])
 
 
-
 # ---------------------------------------------------------------------------
 # 1. Run full engine cycle
 # ---------------------------------------------------------------------------
@@ -35,7 +35,7 @@ async def run_engine_cycle(
     session: Annotated[AsyncSession, Depends(get_db)],
     user_id: Annotated[
         str | None,
-        Query(description="User ID. Mặc định dùng owner_user_id từ .env (single-user mode).")
+        Query(description="User ID. Mặc định dùng owner_user_id từ .env (single-user mode)."),
     ] = None,
 ) -> EngineOutput:
     """Chạy một vòng Intelligence Engine.
@@ -60,8 +60,7 @@ async def run_engine_cycle(
 async def get_system_snapshot(
     session: Annotated[AsyncSession, Depends(get_db)],
     user_id: Annotated[
-        str | None,
-        Query(description="User ID. Mặc định dùng owner_user_id từ .env.")
+        str | None, Query(description="User ID. Mặc định dùng owner_user_id từ .env.")
     ] = None,
 ) -> SystemSnapshot:
     """Thu thập SystemSnapshot cross-segment mà không chạy AI synthesis.

@@ -18,6 +18,7 @@ Bootstrap contract::
     )
     listener.register()   # idempotent
 """
+
 from __future__ import annotations
 
 import logging
@@ -36,8 +37,8 @@ logger = logging.getLogger(__name__)
 INVALIDATION_THRESHOLD = 0.75
 
 # ReviewVerdict string values that map to high invalidation scores.
-_HIGH_INVALIDATION_VERDICTS = {"INVALIDATED", "BEARISH"}   # ThesisReviewOutput.verdict
-_MED_INVALIDATION_VERDICTS  = {"WEAKENING", "NEUTRAL"}     # partial concern
+_HIGH_INVALIDATION_VERDICTS = {"INVALIDATED", "BEARISH"}  # ThesisReviewOutput.verdict
+_MED_INVALIDATION_VERDICTS = {"WEAKENING", "NEUTRAL"}  # partial concern
 
 
 def _verdict_to_invalidation_score(verdict: str, confidence: float) -> float:
@@ -58,10 +59,10 @@ def _verdict_to_invalidation_score(verdict: str, confidence: float) -> float:
     """
     base: dict[str, float] = {
         "INVALIDATED": 0.90,
-        "BEARISH":     0.82,
-        "WEAKENING":   0.65,
-        "NEUTRAL":     0.40,
-        "BULLISH":     0.15,
+        "BEARISH": 0.82,
+        "WEAKENING": 0.65,
+        "NEUTRAL": 0.40,
+        "BULLISH": 0.15,
     }
     raw = base.get(verdict.upper(), 0.50)
     return round(raw * max(0.0, min(1.0, confidence)), 4)
@@ -120,9 +121,9 @@ class ThesisReviewListener:
             "thesis_review_listener.received",
             extra={
                 "thesis_id": event.thesis_id,
-                "symbol":    event.symbol,
-                "reason":    event.reason,
-                "event_id":  event.event_id,
+                "symbol": event.symbol,
+                "reason": event.reason,
+                "event_id": event.event_id,
             },
         )
 
@@ -144,7 +145,7 @@ class ThesisReviewListener:
         Returns ThesisReview ORM instance on success, None on any failure.
         Session is always closed after this call — no leak across events.
         """
-        from src.thesis.review_service import ReviewService, ReviewNotAllowedError
+        from src.thesis.review_service import ReviewNotAllowedError, ReviewService
 
         try:
             thesis_id_int = int(event.thesis_id)
@@ -166,6 +167,7 @@ class ThesisReviewListener:
             )
             try:
                 from src.thesis.repository import ThesisRepository
+
                 repo = ThesisRepository(session)
                 thesis = await repo.get_by_id(thesis_id_int)
                 if thesis is None:
@@ -182,10 +184,10 @@ class ThesisReviewListener:
                 logger.info(
                     "thesis_review_listener.review_done",
                     extra={
-                        "thesis_id":  thesis_id_int,
-                        "verdict":    review.verdict,
+                        "thesis_id": thesis_id_int,
+                        "verdict": review.verdict,
                         "confidence": review.confidence,
-                        "event_id":   event.event_id,
+                        "event_id": event.event_id,
                     },
                 )
                 return review
@@ -195,8 +197,8 @@ class ThesisReviewListener:
                     "thesis_review_listener.review_skipped",
                     extra={
                         "thesis_id": thesis_id_int,
-                        "reason":    str(exc),
-                        "event_id":  event.event_id,
+                        "reason": str(exc),
+                        "event_id": event.event_id,
                     },
                 )
                 return None
@@ -206,8 +208,8 @@ class ThesisReviewListener:
                     "thesis_review_listener.review_failed",
                     extra={
                         "thesis_id": thesis_id_int,
-                        "error":     str(exc),
-                        "event_id":  event.event_id,
+                        "error": str(exc),
+                        "event_id": event.event_id,
                     },
                 )
                 return None
@@ -227,9 +229,7 @@ class ThesisReviewListener:
         within the EventBus default dedup window (60 min).
         """
         verdict_str: str = (
-            review.verdict.value
-            if hasattr(review.verdict, "value")
-            else str(review.verdict)
+            review.verdict.value if hasattr(review.verdict, "value") else str(review.verdict)
         )
         confidence: float = float(review.confidence or 0.0)
         invalidation_score = _verdict_to_invalidation_score(verdict_str, confidence)
@@ -237,21 +237,20 @@ class ThesisReviewListener:
         logger.info(
             "thesis_review_listener.invalidation_score",
             extra={
-                "thesis_id":         event.thesis_id,
-                "verdict":           verdict_str,
-                "confidence":        confidence,
+                "thesis_id": event.thesis_id,
+                "verdict": verdict_str,
+                "confidence": confidence,
                 "invalidation_score": invalidation_score,
-                "threshold":         INVALIDATION_THRESHOLD,
+                "threshold": INVALIDATION_THRESHOLD,
             },
         )
 
         if invalidation_score < INVALIDATION_THRESHOLD:
             return
 
-        trigger_description = (
-            (review.reasoning or "")[:200].strip()
-            or f"AI verdict: {verdict_str} (score={invalidation_score})"
-        )
+        trigger_description = (review.reasoning or "")[
+            :200
+        ].strip() or f"AI verdict: {verdict_str} (score={invalidation_score})"
 
         invalidated_event = ThesisInvalidatedEvent(
             thesis_id=event.thesis_id,
@@ -270,11 +269,11 @@ class ThesisReviewListener:
             logger.warning(
                 "thesis_review_listener.invalidation_published",
                 extra={
-                    "thesis_id":         event.thesis_id,
-                    "symbol":            event.symbol,
+                    "thesis_id": event.thesis_id,
+                    "symbol": event.symbol,
                     "invalidation_score": invalidation_score,
-                    "verdict":           verdict_str,
-                    "event_id":          invalidated_event.event_id,
+                    "verdict": verdict_str,
+                    "event_id": invalidated_event.event_id,
                 },
             )
         else:

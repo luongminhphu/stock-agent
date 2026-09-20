@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 
 from src.ai.client import AIClient
 from src.ai.prompt_cache import PromptCache
-from src.ai.prompts.watchdog import WatchdogContext, build_user_prompt, SYSTEM_PROMPT
+from src.ai.prompts.watchdog import SYSTEM_PROMPT, WatchdogContext, build_user_prompt
 
 # Module-level cache: watchdog runs every cycle per thesis; skip if unchanged
 _watchdog_cache: PromptCache[ThesisHealthScore] = PromptCache(
@@ -81,9 +81,7 @@ class ThesisHealthScore(BaseModel):
     def discord_summary(self, ticker: str) -> str:
         """Short embed text for Discord alert."""
         icon = {"HEALTHY": "🟢", "WARNING": "🟡", "CRITICAL": "🔴"}.get(self.overall_health, "⚪")
-        threatened = [
-            t.description[:60] for t in self.threatened_assumptions if t.is_threatened
-        ]
+        threatened = [t.description[:60] for t in self.threatened_assumptions if t.is_threatened]
         lines = [
             f"{icon} **{ticker}** — {self.overall_health} ({self.health_score}/100)",
             f"📊 {self.recommended_action} | Confidence: {self.confidence}",
@@ -129,7 +127,7 @@ class WatchdogAgent:
             api_resp = await self._client.chat_completion(
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user",   "content": user_prompt},
+                    {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.2,
                 max_tokens=800,  # calibrated: WatchdogOutput ~9 fields
@@ -200,9 +198,7 @@ class WatchdogAgent:
             from src.ai.memory.memory_service import InteractionEntry, MemoryService
 
             threatened = [
-                t.description[:100]
-                for t in result.threatened_assumptions
-                if t.is_threatened
+                t.description[:100] for t in result.threatened_assumptions if t.is_threatened
             ]
             entry = InteractionEntry(
                 user_id=user_id,

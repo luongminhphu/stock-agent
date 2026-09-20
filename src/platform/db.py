@@ -46,6 +46,7 @@ AsyncSessionLocal = async_sessionmaker(
 
 class Base(DeclarativeBase):
     """Base class for all SQLAlchemy ORM models. Import this in each segment's models.py."""
+
     pass
 
 

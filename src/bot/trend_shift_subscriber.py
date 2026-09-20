@@ -19,6 +19,7 @@ Noise already filtered by detector:
     (morning/midday/pre_atc) is a distinct data point. Owner may want
     to see the same symbol shift across phases.
 """
+
 from __future__ import annotations
 
 import discord
@@ -29,20 +30,20 @@ from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
 
-_COLOR_MAJOR = 0xE74C3C   # red    — MAJOR shift, act now
-_COLOR_MINOR = 0xF39C12   # amber  — MINOR shift, watch closely
+_COLOR_MAJOR = 0xE74C3C  # red    — MAJOR shift, act now
+_COLOR_MINOR = 0xF39C12  # amber  — MINOR shift, watch closely
 
 _REGIME_EMOJI = {
-    "TRENDING_UP":   "↑",
+    "TRENDING_UP": "↑",
     "TRENDING_DOWN": "↓",
-    "RANGING":       "↔",
-    "VOLATILE":      "⚠️",
+    "RANGING": "↔",
+    "VOLATILE": "⚠️",
 }
 
 _PHASE_LABEL = {
-    "morning":  "Morning (09:05)",
-    "midday":   "Midday (11:00)",
-    "pre_atc":  "Pre-ATC (14:10)",
+    "morning": "Morning (09:05)",
+    "midday": "Midday (11:00)",
+    "pre_atc": "Pre-ATC (14:10)",
 }
 
 
@@ -96,7 +97,7 @@ class TrendShiftSubscriber:
     def _build_embed(self, event: TrendShiftEvent) -> discord.Embed:
         is_major = event.shift_severity == "MAJOR"
         colour = _COLOR_MAJOR if is_major else _COLOR_MINOR
-        icon   = "🚨" if is_major else "📊"
+        icon = "🚨" if is_major else "📊"
         symbol = event.symbol.upper()
 
         embed = discord.Embed(
@@ -106,7 +107,7 @@ class TrendShiftSubscriber:
 
         # Regime arrow
         prev_e = _REGIME_EMOJI.get(event.previous_regime, "")
-        curr_e = _REGIME_EMOJI.get(event.current_regime,  "")
+        curr_e = _REGIME_EMOJI.get(event.current_regime, "")
         embed.add_field(
             name="Regime",
             value=f"{prev_e} `{event.previous_regime}` → {curr_e} `{event.current_regime}`",
@@ -119,8 +120,7 @@ class TrendShiftSubscriber:
         embed.add_field(
             name="Composite",
             value=(
-                f"`{event.previous_composite:.2f}` → `{event.current_composite:.2f}` "
-                f"({delta_str})"
+                f"`{event.previous_composite:.2f}` → `{event.current_composite:.2f}` ({delta_str})"
             ),
             inline=True,
         )

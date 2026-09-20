@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re as _re
 from dataclasses import dataclass, field
-from typing import Any, Type, TypeVar
+from typing import Any, TypeVar
 
 import httpx
 from pydantic import BaseModel
@@ -70,8 +70,8 @@ class AIClient:
 
     BASE_URL = "https://api.perplexity.ai"
     DEFAULT_MODEL = "sonar-pro"
-    DEFAULT_MAX_TOKENS = 4096    # raised from 2048 — prevents truncation on medium outputs
-    COMPLEX_MAX_TOKENS = 8192    # for stress_test / briefing with many fields
+    DEFAULT_MAX_TOKENS = 4096  # raised from 2048 — prevents truncation on medium outputs
+    COMPLEX_MAX_TOKENS = 8192  # for stress_test / briefing with many fields
 
     def __init__(self, api_key: str, timeout: float = 60.0) -> None:
         self._api_key = api_key
@@ -85,7 +85,7 @@ class AIClient:
             timeout=self._timeout,
         )
 
-    async def __aenter__(self) -> "AIClient":
+    async def __aenter__(self) -> AIClient:
         return self
 
     async def __aexit__(self, *_: Any) -> None:
@@ -175,7 +175,7 @@ class AIClient:
         self,
         system_prompt: str,
         user_prompt: str,
-        response_schema: Type[T],
+        response_schema: type[T],
         model: str | None = None,
         temperature: float = 0.2,
         max_tokens: int = DEFAULT_MAX_TOKENS,
@@ -239,7 +239,7 @@ class AIClient:
                 f"Failed to parse response into {response_schema.__name__}: {exc}\nRaw: {content}"
             ) from exc
 
-    async def structured_call(self, spec: "AISpec", user_prompt: str) -> Any:
+    async def structured_call(self, spec: AISpec, user_prompt: str) -> Any:
         """Convenience wrapper: call chat() using an AISpec bundle.
 
         Agents that declare a module-level SPEC (AISpec) use this instead of
@@ -279,14 +279,14 @@ def _strip_json_fences(text: str) -> str:
         # Remove opening fence (```json or ```)
         first_newline = text.find("\n")
         if first_newline != -1:
-            text = text[first_newline + 1:]
+            text = text[first_newline + 1 :]
         # Remove closing fence
         if text.endswith("```"):
             text = text[:-3].rstrip()
     return text
 
 
-_CITATION_RE = _re.compile(r'\[\d+\]')
+_CITATION_RE = _re.compile(r"\[\d+\]")
 
 
 def _clean_citations(text: str) -> str:
@@ -298,11 +298,11 @@ def _clean_citations(text: str) -> str:
     Strategy: remove every occurrence of [<digits>] globally.  This is safe
     because no JSON field name or numeric value contains this pattern.
     """
-    return _CITATION_RE.sub('', text)
+    return _CITATION_RE.sub("", text)
 
 
 _TRAILING_COMMA_RE = _re.compile(
-    r',\s*([}\]])',
+    r",\s*([}\]])",
     _re.MULTILINE,
 )
 
@@ -328,7 +328,7 @@ def _repair_json(text: str) -> str:
         - Single-quoted strings
         - Comments
     """
-    repaired = _TRAILING_COMMA_RE.sub(r'\1', text)
+    repaired = _TRAILING_COMMA_RE.sub(r"\1", text)
     return repaired
 
 
@@ -359,6 +359,6 @@ class AISpec:
     """
 
     system_prompt: str
-    output_schema: Type[BaseModel]
+    output_schema: type[BaseModel]
     temperature: float = 0.2
     max_tokens: int = field(default=AIClient.DEFAULT_MAX_TOKENS)

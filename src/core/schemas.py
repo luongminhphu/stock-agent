@@ -3,6 +3,7 @@
 Owner: core segment.
 All downstream consumers (api, bot, briefing) import from here.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -142,8 +143,8 @@ FeedbackOutcome = Literal[
     "incorrect",
     "partial",
     "not_acted",
-    "acted",          # user took the recommended action
-    "rejected",       # user explicitly dismissed the verdict
+    "acted",  # user took the recommended action
+    "rejected",  # user explicitly dismissed the verdict
 ]
 
 
@@ -152,10 +153,11 @@ class FeedbackEntry(BaseModel):
 
     Produced by FeedbackStore.record() and consumed by evolution.py.
     """
+
     verdict_event_id: str
     user_id: str = ""
-    verdict: str = ""             # e.g. "BUY_SIGNAL", "HOLD"
+    verdict: str = ""  # e.g. "BUY_SIGNAL", "HOLD"
     outcome: FeedbackOutcome = "not_acted"
-    trigger_source: str = ""      # "bot", "api", "scheduler"
+    trigger_source: str = ""  # "bot", "api", "scheduler"
     user_note: str | None = None
-    delta_score: float = 0.0      # reserved for evolution scoring
+    delta_score: float = 0.0  # reserved for evolution scoring

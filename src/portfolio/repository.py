@@ -173,6 +173,7 @@ class PortfolioRepository:
     async def get_dividend_total(self, user_id: str, ticker: str | None = None) -> float:
         """Return sum of total_amount across all cash dividends for a user (optionally per ticker)."""
         from src.portfolio.models import DividendType
+
         stmt = (
             select(func.coalesce(func.sum(DividendRecord.total_amount), 0.0))
             .where(DividendRecord.user_id == user_id)

@@ -47,9 +47,9 @@ from src.thesis.models import DecisionLog, OutcomeVerdict
 logger = get_logger(__name__)
 
 _DEFAULT_LOOKBACK_DAYS = 365
-_MIN_SAMPLE_SIZE = 3          # minimum evaluated trades for a metric to be meaningful
-_EARLY_EXIT_THRESHOLD = 0.5   # sold when <50% of target upside remaining
-_LATE_EXIT_DAYS = 30          # still holding N days after stop loss price breached
+_MIN_SAMPLE_SIZE = 3  # minimum evaluated trades for a metric to be meaningful
+_EARLY_EXIT_THRESHOLD = 0.5  # sold when <50% of target upside remaining
+_LATE_EXIT_DAYS = 30  # still holding N days after stop loss price breached
 
 
 # ---------------------------------------------------------------------------
@@ -70,12 +70,12 @@ class BehavioralDNA:
     avg_hold_days_losers: float | None = None
 
     # Exit discipline
-    early_exit_winner_rate: float | None = None   # 0.0–1.0
-    late_exit_loser_rate: float | None = None      # 0.0–1.0
+    early_exit_winner_rate: float | None = None  # 0.0–1.0
+    late_exit_loser_rate: float | None = None  # 0.0–1.0
 
     # Timing patterns
-    best_decision_day: str | None = None           # e.g. "Wednesday"
-    worst_decision_day: str | None = None          # e.g. "Monday"
+    best_decision_day: str | None = None  # e.g. "Wednesday"
+    worst_decision_day: str | None = None  # e.g. "Monday"
     day_win_rates: dict[str, float] = field(default_factory=dict)
 
     # Recurring behavioral patterns
@@ -155,9 +155,7 @@ class BehavioralDNA:
 
         # Top patterns
         if self.top_patterns:
-            pattern_str = " · ".join(
-                f"{p} (×{c})" for p, c in self.top_patterns[:5]
-            )
+            pattern_str = " · ".join(f"{p} (×{c})" for p, c in self.top_patterns[:5])
             lines.append(f"Top patterns   : {pattern_str}")
 
         # Win rates
@@ -302,9 +300,7 @@ class BehavioralDNAService:
             )
             .order_by(DecisionLog.decision_at.asc())
         )
-        rows: list[DecisionLog] = list(
-            (await self._session.execute(stmt)).scalars().all()
-        )
+        rows: list[DecisionLog] = list((await self._session.execute(stmt)).scalars().all())
 
         total_decisions = len(rows)
         evaluated = [r for r in rows if r.outcome_verdict is not None]
@@ -320,14 +316,8 @@ class BehavioralDNAService:
         if total_evaluated < _MIN_SAMPLE_SIZE:
             return dna
 
-        winners = [
-            r for r in evaluated
-            if r.outcome_verdict == OutcomeVerdict.CORRECT
-        ]
-        losers = [
-            r for r in evaluated
-            if r.outcome_verdict == OutcomeVerdict.INCORRECT
-        ]
+        winners = [r for r in evaluated if r.outcome_verdict == OutcomeVerdict.CORRECT]
+        losers = [r for r in evaluated if r.outcome_verdict == OutcomeVerdict.INCORRECT]
 
         # -- Hold duration -------------------------------------------------
         dna.avg_hold_days_winners = _avg_hold_days(winners)

@@ -116,8 +116,8 @@ logger = get_logger(__name__)
 # Both comparisons use naive time — strip tzinfo before comparing.
 # ---------------------------------------------------------------------------
 
-_MARKET_OPEN_UTC  = datetime.time(hour=2, minute=0)   # 09:00 ICT
-_MARKET_CLOSE_UTC = datetime.time(hour=8, minute=0)   # 15:00 ICT
+_MARKET_OPEN_UTC = datetime.time(hour=2, minute=0)  # 09:00 ICT
+_MARKET_CLOSE_UTC = datetime.time(hour=8, minute=0)  # 15:00 ICT
 
 
 def _in_market_hours(now_utc: datetime.datetime) -> bool:
@@ -183,6 +183,7 @@ class InvestorProfileScheduler:
         task_name = "investor_profile.snapshot"
 
         from src.platform.bootstrap import get_investor_profile_service
+
         result = get_investor_profile_service()
         if result is None:
             logger.warning(
@@ -222,7 +223,7 @@ class InvestorProfileScheduler:
 # ---------------------------------------------------------------------------
 
 _MORNING_TIME = datetime.time(hour=1, minute=30, tzinfo=datetime.UTC)  # 08:30 ICT
-_EOD_TIME     = datetime.time(hour=8, minute=0,  tzinfo=datetime.UTC)  # 15:00 ICT
+_EOD_TIME = datetime.time(hour=8, minute=0, tzinfo=datetime.UTC)  # 15:00 ICT
 
 
 class BriefingScheduler:
@@ -412,9 +413,7 @@ class WatchlistScanScheduler:
                 return
 
             # Wave 4b: digest top-N signals (settings.scan_alert_digest_top_n)
-            embed = build_scan_embed(
-                result, now_utc, top_n=settings.scan_alert_digest_top_n
-            )
+            embed = build_scan_embed(result, now_utc, top_n=settings.scan_alert_digest_top_n)
             await channel.send(embed=embed)  # type: ignore[union-attr]
             logger.info(
                 "scheduler.scan.notified",
@@ -437,8 +436,8 @@ class WatchlistScanScheduler:
 # ThesisMaintenanceScheduler
 # ---------------------------------------------------------------------------
 
-_MAINTENANCE_TIME        = datetime.time(hour=1, minute=30, tzinfo=datetime.UTC)  # 08:30 ICT
-_MAINTENANCE_STALE_DAYS  = 3
+_MAINTENANCE_TIME = datetime.time(hour=1, minute=30, tzinfo=datetime.UTC)  # 08:30 ICT
+_MAINTENANCE_STALE_DAYS = 3
 _CATALYST_LOOKAHEAD_DAYS = 30  # fetch catalysts within this window
 
 
@@ -543,8 +542,7 @@ class ThesisMaintenanceScheduler:
                 )
 
             new_upcoming = [
-                c for c in all_upcoming
-                if c.get("id") not in self._notified_catalyst_ids
+                c for c in all_upcoming if c.get("id") not in self._notified_catalyst_ids
             ]
 
             logger.info(
@@ -619,9 +617,7 @@ class ThesisMaintenanceScheduler:
             )
             await channel.send(embed=embed)  # type: ignore[union-attr]
 
-            newly_notified_ids = {
-                c["id"] for c in upcoming_catalysts if c.get("id") is not None
-            }
+            newly_notified_ids = {c["id"] for c in upcoming_catalysts if c.get("id") is not None}
             self._notified_catalyst_ids.update(newly_notified_ids)
 
             logger.info(
@@ -694,7 +690,11 @@ class ThesisDriftScheduler:
             return
 
         try:
-            from src.platform.bootstrap import get_ai_client, get_quote_service, get_thesis_review_agent
+            from src.platform.bootstrap import (
+                get_ai_client,
+                get_quote_service,
+                get_thesis_review_agent,
+            )
             from src.thesis.conviction_drift_detector import ConvictionDriftDetector
             from src.thesis.drift_service import DriftService
             from src.thesis.review_service import ReviewService
@@ -820,7 +820,7 @@ class ThesisDriftScheduler:
 # ReminderScheduler
 # ---------------------------------------------------------------------------
 
-_REMINDER_DAILY_TIME  = datetime.time(hour=1, minute=0, tzinfo=datetime.UTC)  # 08:00 ICT
+_REMINDER_DAILY_TIME = datetime.time(hour=1, minute=0, tzinfo=datetime.UTC)  # 08:00 ICT
 _REMINDER_WEEKLY_TIME = datetime.time(hour=1, minute=0, tzinfo=datetime.UTC)  # 08:00 ICT Mon
 
 
@@ -887,9 +887,7 @@ class ReminderScheduler:
 
             async with AsyncSessionLocal() as session:
                 svc = ReminderService(session)
-                reminders = await svc.get_due_reminders(
-                    user_id=str(user_id), frequency=frequency
-                )
+                reminders = await svc.get_due_reminders(user_id=str(user_id), frequency=frequency)
                 await session.commit()
 
             if not reminders:
@@ -1143,6 +1141,7 @@ class MemoryConsolidatorScheduler:
         task_name = "memory.consolidate"
 
         from src.platform.bootstrap import get_memory_consolidator
+
         consolidator = get_memory_consolidator()
         if consolidator is None:
             logger.warning(
@@ -1225,6 +1224,7 @@ class AgendaBuilderScheduler:
         user_id = getattr(settings, "scheduler_user_id", None)
 
         from src.platform.bootstrap import get_agenda_service_factory
+
         factory = get_agenda_service_factory()
 
         if not user_id or factory is None:
@@ -1268,9 +1268,9 @@ class AgendaBuilderScheduler:
 # ---------------------------------------------------------------------------
 
 # ICT = UTC+7  →  subtract 7h for UTC
-_PROACTIVE_MORNING_TIME = datetime.time(hour=2,  minute=15, tzinfo=datetime.UTC)  # 09:15 ICT
-_PROACTIVE_MIDDAY_TIME  = datetime.time(hour=4,  minute=15, tzinfo=datetime.UTC)  # 11:15 ICT
-_PROACTIVE_PRE_ATC_TIME = datetime.time(hour=7,  minute=15, tzinfo=datetime.UTC)  # 14:15 ICT
+_PROACTIVE_MORNING_TIME = datetime.time(hour=2, minute=15, tzinfo=datetime.UTC)  # 09:15 ICT
+_PROACTIVE_MIDDAY_TIME = datetime.time(hour=4, minute=15, tzinfo=datetime.UTC)  # 11:15 ICT
+_PROACTIVE_PRE_ATC_TIME = datetime.time(hour=7, minute=15, tzinfo=datetime.UTC)  # 14:15 ICT
 
 
 class ProactiveWatchScheduler:
@@ -1478,7 +1478,9 @@ class PortfolioSnapshotScheduler:
                     triggered_by="scheduler",
                 )
             )
-            logger.info("scheduler.portfolio_snapshot.event_emitted", phase=phase, user_id=str(user_id))
+            logger.info(
+                "scheduler.portfolio_snapshot.event_emitted", phase=phase, user_id=str(user_id)
+            )
             await self._monitor.record_success(task_name)
 
         except Exception as exc:
@@ -1496,7 +1498,7 @@ class PortfolioSnapshotScheduler:
 
 # ICT = UTC+7  →  subtract 7h for UTC
 _IE_MORNING_TIME = datetime.time(hour=1, minute=35, tzinfo=datetime.UTC)  # 08:35 ICT
-_IE_EOD_TIME     = datetime.time(hour=8, minute=12, tzinfo=datetime.UTC)  # 15:12 ICT
+_IE_EOD_TIME = datetime.time(hour=8, minute=12, tzinfo=datetime.UTC)  # 15:12 ICT
 
 
 class IntelligenceEngineScheduler:
@@ -1635,7 +1637,7 @@ class ProactiveDiscoveryScheduler:
     """
 
     def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
-        self._client  = client
+        self._client = client
         self._monitor = monitor or get_monitor()
 
     def start(self) -> None:
@@ -1694,8 +1696,8 @@ class ProactiveDiscoveryScheduler:
 # SignalEngineScheduler — emit SignalEngineRequestedEvent (08:40 + 15:10 ICT)
 # ---------------------------------------------------------------------------
 
-_SE_MORNING_TIME = datetime.time(hour=1, minute=40, tzinfo=datetime.UTC)   # 08:40 ICT
-_SE_EOD_TIME     = datetime.time(hour=8, minute=10, tzinfo=datetime.UTC)   # 15:10 ICT
+_SE_MORNING_TIME = datetime.time(hour=1, minute=40, tzinfo=datetime.UTC)  # 08:40 ICT
+_SE_EOD_TIME = datetime.time(hour=8, minute=10, tzinfo=datetime.UTC)  # 15:10 ICT
 
 
 class SignalEngineScheduler:
@@ -1830,9 +1832,9 @@ class TrendBatchPrecomputeScheduler:
         task_name = "trend_batch.precompute"
 
         from src.platform.bootstrap import (
-            get_trend_reasoning_agent,
-            get_trend_prediction_store,
             get_ohlcv_service,
+            get_trend_prediction_store,
+            get_trend_reasoning_agent,
         )
         from src.platform.config import settings
 
@@ -1861,9 +1863,9 @@ class TrendBatchPrecomputeScheduler:
         try:
             from src.briefing.trend_batch_scheduler import TrendBatchScheduler
             from src.market.trend_engine import TrendEngine
-            from src.watchlist.service import WatchlistService
-            from src.thesis.thesis_query_service import ThesisActiveContextQuery
             from src.platform.db import AsyncSessionLocal
+            from src.thesis.thesis_query_service import ThesisActiveContextQuery
+            from src.watchlist.service import WatchlistService
 
             trend_engine = TrendEngine(ohlcv_service=ohlcv_svc)
 
@@ -1887,10 +1889,7 @@ class TrendBatchPrecomputeScheduler:
                 "scheduler.trend_batch.done",
                 user_id=str(user_id),
                 count=len(predictions),
-                actionable=sum(
-                    1 for p in predictions
-                    if getattr(p, "is_actionable", False)
-                ),
+                actionable=sum(1 for p in predictions if getattr(p, "is_actionable", False)),
             )
             await self._monitor.record_success(task_name)
 
@@ -1975,9 +1974,10 @@ class EodPortfolioSnapshotScheduler:
             return
 
         try:
-            from src.portfolio.models import PositionDailySnapshot
-            from src.platform.db import AsyncSessionLocal
             from sqlalchemy import select
+
+            from src.platform.db import AsyncSessionLocal
+            from src.portfolio.models import PositionDailySnapshot
 
             today = now_ict.date()
             async with AsyncSessionLocal() as session:
@@ -2009,9 +2009,9 @@ class EodPortfolioSnapshotScheduler:
             )
 
     async def _run_snapshot(self, task_name: str) -> None:
-        from src.portfolio.eod_snapshot_service import EodSnapshotService
         from src.platform.bootstrap import get_quote_service
         from src.platform.db import AsyncSessionLocal
+        from src.portfolio.eod_snapshot_service import EodSnapshotService
 
         user_id = getattr(settings, "scheduler_user_id", None)
         if not user_id:

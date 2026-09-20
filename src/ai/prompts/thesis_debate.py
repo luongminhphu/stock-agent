@@ -9,6 +9,7 @@ Design notes:
 - Vietnamese market context is explicitly injected (HOSE/HNX room, margin cycles, etc.).
 - debate_focus param allows user to narrow the debate to a specific decision.
 """
+
 from __future__ import annotations
 
 from typing import Any

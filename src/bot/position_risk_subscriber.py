@@ -16,6 +16,7 @@ Dedup: upstream publishes with
   dedup_key=f"position_risk:{user_id}:{symbol}:{breach_type}"
   dedup_window=6h — no double-alert within 6 hours per position.
 """
+
 from __future__ import annotations
 
 import discord
@@ -26,12 +27,12 @@ from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
 
-_COLOR_CRITICAL = 0xE74C3C   # red
-_COLOR_WARN     = 0xE67E22   # orange
+_COLOR_CRITICAL = 0xE74C3C  # red
+_COLOR_WARN = 0xE67E22  # orange
 
 _URGENCY_EMOJI = {
     "CRITICAL": "🔴",
-    "TODAY":    "🟠",
+    "TODAY": "🟠",
 }
 
 
@@ -87,11 +88,11 @@ class PositionRiskSubscriber:
 
     def _build_embed(self, event: PositionRiskBreachedEvent) -> discord.Embed:
         urgency = (event.urgency or "TODAY").upper()
-        symbol  = (event.symbol or "?").upper()
-        breach  = event.breach_type or "LOSS_PCT"
+        symbol = (event.symbol or "?").upper()
+        breach = event.breach_type or "LOSS_PCT"
 
         colour = _COLOR_CRITICAL if urgency == "CRITICAL" else _COLOR_WARN
-        emoji  = _URGENCY_EMOJI.get(urgency, "⚪")
+        emoji = _URGENCY_EMOJI.get(urgency, "⚪")
 
         embed = discord.Embed(
             title=f"{emoji} Position risk — {symbol}",
@@ -129,7 +130,5 @@ class PositionRiskSubscriber:
 
         embed.add_field(name="Next step", value=action, inline=False)
 
-        embed.set_footer(
-            text=f"{breach}  •  event_id: {event.event_id}"
-        )
+        embed.set_footer(text=f"{breach}  •  event_id: {event.event_id}")
         return embed

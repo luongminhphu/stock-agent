@@ -110,9 +110,7 @@ class BriefFeedback(Base):
         default=lambda: datetime.now(UTC),
     )
 
-    __table_args__ = (
-        Index("ix_brief_feedback_snapshot_user", "brief_snapshot_id", "user_id"),
-    )
+    __table_args__ = (Index("ix_brief_feedback_snapshot_user", "brief_snapshot_id", "user_id"),)
 
     def __repr__(self) -> str:
         return (

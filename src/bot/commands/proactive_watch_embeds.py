@@ -24,26 +24,26 @@ from src.bot.discord_helper import COLORS, fmt_ict, truncate
 #   P3 Medium   → BLUE   (informational, standard watch)
 #   P4 Low      → GREEN  (low urgency, background monitor)
 _PRIORITY_COLOURS: dict[int, int] = {
-    1: COLORS.RED,     # Critical
+    1: COLORS.RED,  # Critical
     2: COLORS.ORANGE,  # High
-    3: COLORS.BLUE,    # Medium
-    4: COLORS.GREEN,   # Low
+    3: COLORS.BLUE,  # Medium
+    4: COLORS.GREEN,  # Low
 }
 
 _CONDITION_LABELS: dict[str, str] = {
-    "PRICE_BREAKOUT":   "Breakout giá",
-    "VOLUME_SURGE":     "Volume đột biến",
-    "MA_CROSS":         "MA cross",
-    "RSI_EXTREME":      "RSI cực trị",
-    "SUPPORT_BREAK":    "Hỗ trợ gãy",
+    "PRICE_BREAKOUT": "Breakout giá",
+    "VOLUME_SURGE": "Volume đột biến",
+    "MA_CROSS": "MA cross",
+    "RSI_EXTREME": "RSI cực trị",
+    "SUPPORT_BREAK": "Hỗ trợ gãy",
     "RESISTANCE_TOUCH": "Chạm kháng cự",
 }
 
 _PHASE_LABELS: dict[str, str] = {
     "ACCUMULATION": "Tích lũy",
-    "MARKUP":       "Tăng mạnh",
+    "MARKUP": "Tăng mạnh",
     "DISTRIBUTION": "Phân phối",
-    "DECLINE":      "Giảm",
+    "DECLINE": "Giảm",
 }
 
 _PRIORITY_LABELS: dict[int, str] = {
@@ -79,17 +79,12 @@ def build_proactive_watch_embed(
 
     embed = discord.Embed(
         title=f"\U0001f6a8 Proactive Watch: {ticker.upper()}",
-        description=(
-            f"**Điều kiện:** {condition_label}\n"
-            f"**Chi tiết:** {truncate(details, 900)}"
-        ),
+        description=(f"**Điều kiện:** {condition_label}\n**Chi tiết:** {truncate(details, 900)}"),
         color=color,
     )
     embed.add_field(name="Priority", value=f"`{priority_label}` (P{priority})", inline=True)
     embed.add_field(name="Điều kiện kỹ thuật", value=f"`{condition}`", inline=True)
-    embed.set_footer(
-        text=f"Triggered lúc {fmt_ict(triggered_at, fmt='%H:%M ICT')} · stock-agent"
-    )
+    embed.set_footer(text=f"Triggered lúc {fmt_ict(triggered_at, fmt='%H:%M ICT')} · stock-agent")
     return embed
 
 
@@ -123,9 +118,7 @@ def build_proactive_watch_batch_embed(
         condition_label = _CONDITION_LABELS.get(
             getattr(a, "condition", ""), getattr(a, "condition", "?")
         )
-        phase_label = _PHASE_LABELS.get(
-            getattr(a, "phase", ""), getattr(a, "phase", "")
-        )
+        phase_label = _PHASE_LABELS.get(getattr(a, "phase", ""), getattr(a, "phase", ""))
         phase_str = f" ({phase_label})" if phase_label else ""
         p = getattr(a, "priority", "?")
         priority_label = _PRIORITY_LABELS.get(p, str(p)) if isinstance(p, int) else str(p)
@@ -139,7 +132,5 @@ def build_proactive_watch_batch_embed(
         description=truncate("\n".join(lines), 4096),
         color=color,
     )
-    embed.set_footer(
-        text=f"Scan lúc {fmt_ict(now_utc, fmt='%H:%M ICT')} · stock-agent"
-    )
+    embed.set_footer(text=f"Scan lúc {fmt_ict(now_utc, fmt='%H:%M ICT')} · stock-agent")
     return embed

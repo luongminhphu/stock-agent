@@ -30,6 +30,7 @@ Dedup strategy:
   Set is cleared on each new SignalEngineCompletedEvent to allow
   re-triggering across different runs.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -182,9 +183,7 @@ class SignalReviewTriggerListener:
                 error=str(exc),
             )
 
-    async def _resolve_thesis_id(
-        self, event: ThesisReviewTriggeredEvent
-    ) -> tuple[int, str] | None:
+    async def _resolve_thesis_id(self, event: ThesisReviewTriggeredEvent) -> tuple[int, str] | None:
         """Resolve (thesis_id: int, user_id: str) needed by ReviewService.
 
         Primary path:  event.thesis_id non-empty → parse as int directly.

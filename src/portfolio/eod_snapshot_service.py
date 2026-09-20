@@ -149,9 +149,7 @@ class EodSnapshotService:
         )
         return result
 
-    async def get_latest_snapshots(
-        self, user_id: str
-    ) -> list[PositionDailySnapshot]:
+    async def get_latest_snapshots(self, user_id: str) -> list[PositionDailySnapshot]:
         """Return most recent snapshot per ticker for a user.
 
         Used by readmodel route as primary source for portfolio dashboard.

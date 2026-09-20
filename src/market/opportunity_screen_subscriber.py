@@ -19,6 +19,7 @@ Lifecycle:
     subscriber = OpportunityScreenSubscriber()
     subscriber.register()   ← called in bootstrap(), after bus.start()
 """
+
 from __future__ import annotations
 
 from src.platform.logging import get_logger

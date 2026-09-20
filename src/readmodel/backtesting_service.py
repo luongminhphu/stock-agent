@@ -85,11 +85,14 @@ class BacktestingService:
             bucket = stats[verdict]
             bucket["total"] += 1
             bucket["pnl_sum"] += pnl
-            if verdict in ("BULLISH", "WATCHLIST") and pnl >= 0:
-                bucket["hits"] += 1
-            elif verdict == "BEARISH" and pnl < 0:
-                bucket["hits"] += 1
-            elif verdict == "NEUTRAL" and abs(pnl) < NEUTRAL_ACCURACY_THRESHOLD:
+            if (
+                verdict in ("BULLISH", "WATCHLIST")
+                and pnl >= 0
+                or verdict == "BEARISH"
+                and pnl < 0
+                or verdict == "NEUTRAL"
+                and abs(pnl) < NEUTRAL_ACCURACY_THRESHOLD
+            ):
                 bucket["hits"] += 1
 
         result = []

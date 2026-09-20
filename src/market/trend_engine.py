@@ -26,6 +26,7 @@ Design decisions:
   - No external TA libraries: pure Python math to avoid dependency.
     Trade-off: not the fastest, but zero import friction for Wave 1.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -45,9 +46,11 @@ MIN_BARS = 60
 # Local primitives
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class OHLCVBar:
     """Minimal OHLCV bar. Symbol is optional (set at engine level)."""
+
     close: float
     high: float
     low: float
@@ -58,6 +61,7 @@ class OHLCVBar:
 # ---------------------------------------------------------------------------
 # Pure indicator functions
 # ---------------------------------------------------------------------------
+
 
 def _ema(values: list[float], period: int) -> list[float]:
     """Exponential Moving Average. Returns list same length as input."""
@@ -85,8 +89,8 @@ def _rsi(closes: list[float], period: int = 14) -> float:
         return 50.0
 
     deltas = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
-    gains  = [max(d, 0.0)        for d in deltas]
-    losses = [abs(min(d, 0.0))   for d in deltas]
+    gains = [max(d, 0.0) for d in deltas]
+    losses = [abs(min(d, 0.0)) for d in deltas]
 
     # Seed: simple average of first `period` values
     avg_gain = sum(gains[:period]) / period
@@ -196,9 +200,7 @@ def _atr(highs: list[float], lows: list[float], closes: list[float], period: int
     return sum(trs[-period:]) / period
 
 
-def _atr_expansion_ratio(
-    highs: list[float], lows: list[float], closes: list[float]
-) -> float:
+def _atr_expansion_ratio(highs: list[float], lows: list[float], closes: list[float]) -> float:
     """ATR-14 / ATR-30 ratio. Normalised: contraction > 0.5, expansion < 0.5."""
     if len(closes) < 32:
         return 0.5
@@ -211,8 +213,13 @@ def _atr_expansion_ratio(
     return max(0.0, min(1.0, normalised))
 
 
-def _cmf(highs: list[float], lows: list[float], closes: list[float],
-         volumes: list[float], period: int = 20) -> float:
+def _cmf(
+    highs: list[float],
+    lows: list[float],
+    closes: list[float],
+    volumes: list[float],
+    period: int = 20,
+) -> float:
     """Chaikin Money Flow over `period` bars. Returns -1.0 to +1.0.
 
     Formula:
@@ -240,8 +247,9 @@ def _cmf(highs: list[float], lows: list[float], closes: list[float],
     return max(-1.0, min(1.0, mfv_sum / vol_sum))
 
 
-def _adx(highs: list[float], lows: list[float], closes: list[float],
-         period: int = 14) -> tuple[float, float, float]:
+def _adx(
+    highs: list[float], lows: list[float], closes: list[float], period: int = 14
+) -> tuple[float, float, float]:
     """Wilder's ADX. Returns (adx, plus_di, minus_di) all in 0-100 range.
 
     ADX < 20: no trend / ranging
@@ -259,9 +267,9 @@ def _adx(highs: list[float], lows: list[float], closes: list[float],
     minus_dms: list[float] = []
     trs: list[float] = []
     for i in range(1, n):
-        up   = highs[i] - highs[i - 1]
+        up = highs[i] - highs[i - 1]
         down = lows[i - 1] - lows[i]
-        plus_dms.append(up   if up > down and up > 0 else 0.0)
+        plus_dms.append(up if up > down and up > 0 else 0.0)
         minus_dms.append(down if down > up and down > 0 else 0.0)
         tr = max(
             highs[i] - lows[i],
@@ -279,9 +287,9 @@ def _adx(highs: list[float], lows: list[float], closes: list[float],
             result.append(result[-1] * (p - 1) / p + v / p)
         return result
 
-    atr_s    = _rma(trs, period)
-    plus_s   = _rma(plus_dms, period)
-    minus_s  = _rma(minus_dms, period)
+    atr_s = _rma(trs, period)
+    plus_s = _rma(plus_dms, period)
+    minus_s = _rma(minus_dms, period)
 
     dx_series: list[float] = []
     for a, p, m in zip(atr_s, plus_s, minus_s):
@@ -303,7 +311,7 @@ def _adx(highs: list[float], lows: list[float], closes: list[float],
         last_atr, last_pdi, last_mdi = a, p, m
     if last_atr is None or last_atr == 0:
         return 0.0, 0.0, 0.0
-    plus_di  = 100.0 * last_pdi  / last_atr
+    plus_di = 100.0 * last_pdi / last_atr
     minus_di = 100.0 * last_mdi / last_atr
     return (
         max(0.0, min(100.0, adx_val)),
@@ -338,9 +346,7 @@ def _classify_label(value: float) -> str:
     return "NEUTRAL"
 
 
-def _classify_regime(
-    structure_value: float, momentum_value: float, volatility_value: float
-) -> str:
+def _classify_regime(structure_value: float, momentum_value: float, volatility_value: float) -> str:
     if volatility_value < 0.35:
         return "VOLATILE"
     if structure_value >= 0.65 and momentum_value >= 0.55:
@@ -353,6 +359,7 @@ def _classify_regime(
 # ---------------------------------------------------------------------------
 # TrendSignalComposer
 # ---------------------------------------------------------------------------
+
 
 class TrendSignalComposer:
     """Compute TechnicalSignalBundle from a list of OHLCVBar.
@@ -401,11 +408,11 @@ class TrendSignalComposer:
 
         ema_cross = _ema_cross_signal(closes)
         swing = _swing_structure_score(closes)
-        structure_val = (ema_cross * 0.6 + swing * 0.4)
+        structure_val = ema_cross * 0.6 + swing * 0.4
 
         obv = _obv_slope(closes, volumes)
         surge = _volume_surge_ratio(volumes)
-        volume_val = (obv * 0.6 + surge * 0.4)
+        volume_val = obv * 0.6 + surge * 0.4
 
         volatility_val = _atr_expansion_ratio(highs, lows, closes)
 
@@ -438,9 +445,9 @@ class TrendSignalComposer:
             # Raw indicator values — exposed for TrendSynthesisAgent and dashboard
             "raw_indicators": {
                 "rsi": round(rsi, 2),
-                "macd_line": macd_line,    # already rounded in _macd_raw
+                "macd_line": macd_line,  # already rounded in _macd_raw
                 "macd_signal": macd_signal,
-                "macd_hist": macd_hist,    # % of price, scale-invariant
+                "macd_hist": macd_hist,  # % of price, scale-invariant
                 "macd_cross": macd_cross,
                 "cmf": round(cmf_val, 4),
                 "adx": round(adx_val, 2),
@@ -458,6 +465,7 @@ class TrendSignalComposer:
 # ---------------------------------------------------------------------------
 # Candle → OHLCVBar mapper
 # ---------------------------------------------------------------------------
+
 
 def _candles_to_bars(candles: list[Any], symbol: str) -> list[OHLCVBar]:
     """Map OHLCVService Candle objects to local OHLCVBar primitives.
@@ -480,6 +488,7 @@ def _candles_to_bars(candles: list[Any], symbol: str) -> list[OHLCVBar]:
 # ---------------------------------------------------------------------------
 # TrendEngine
 # ---------------------------------------------------------------------------
+
 
 class TrendEngine:
     """Orchestrates TechnicalSignalBundle computation for one or many symbols.
@@ -508,6 +517,7 @@ class TrendEngine:
         bars = _candles_to_bars(candles, symbol)
         bundle_dict = self._composer.compute(symbol, bars)
         from src.ai.schemas.trend_prediction import TechnicalSignalBundle  # noqa: PLC0415
+
         return TechnicalSignalBundle.model_validate(bundle_dict)
 
     async def run_for_symbols(self, symbols: list[str]) -> list[Any]:

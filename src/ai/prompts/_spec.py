@@ -25,7 +25,6 @@ from typing import Any
 
 from pydantic import BaseModel
 
-
 # ---------------------------------------------------------------------------
 # Veteran Investor Persona
 # ---------------------------------------------------------------------------
@@ -151,5 +150,5 @@ class PromptSpec:
     system_prompt: str
     output_schema: type[BaseModel]
     response_schema: dict[str, Any] | None = field(default=None)
-    max_tokens: int = field(default=4096)   # override per-agent for token efficiency
+    max_tokens: int = field(default=4096)  # override per-agent for token efficiency
     temperature: float = field(default=0.2)

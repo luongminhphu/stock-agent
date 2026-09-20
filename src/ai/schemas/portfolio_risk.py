@@ -24,7 +24,6 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from src.ai.schemas._base import RiskLevel, Verdict, _coerce_confidence
 
-
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
@@ -33,12 +32,12 @@ from src.ai.schemas._base import RiskLevel, Verdict, _coerce_confidence
 class RiskTheme(StrEnum):
     """Canonical risk themes for portfolio-level narrative chapters."""
 
-    CONCENTRATION     = "CONCENTRATION"      # single ticker or sector > threshold
-    THESIS_DRIFT      = "THESIS_DRIFT"       # price moving against active thesis direction
-    DRAWDOWN          = "DRAWDOWN"           # position PnL or total PnL below threshold
+    CONCENTRATION = "CONCENTRATION"  # single ticker or sector > threshold
+    THESIS_DRIFT = "THESIS_DRIFT"  # price moving against active thesis direction
+    DRAWDOWN = "DRAWDOWN"  # position PnL or total PnL below threshold
     SECTOR_OVEREXPOSE = "SECTOR_OVEREXPOSE"  # >40% NAV in one sector
-    CASH_DRAG         = "CASH_DRAG"          # cash ratio too high during uptrend
-    SIGNAL_CONFLICT   = "SIGNAL_CONFLICT"    # conflicting signals on the same ticker
+    CASH_DRAG = "CASH_DRAG"  # cash ratio too high during uptrend
+    SIGNAL_CONFLICT = "SIGNAL_CONFLICT"  # conflicting signals on the same ticker
 
 
 # ---------------------------------------------------------------------------
@@ -108,9 +107,7 @@ class PortfolioRiskNarrativeOutput(BaseModel):
       - ReadModel caches risk_score for portfolio risk timeline
     """
 
-    overall_risk_level: RiskLevel = Field(
-        description="Composite risk level across all chapters."
-    )
+    overall_risk_level: RiskLevel = Field(description="Composite risk level across all chapters.")
     risk_score: int = Field(
         ge=0,
         le=100,

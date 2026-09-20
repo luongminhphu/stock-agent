@@ -12,7 +12,7 @@ Owner: market segment.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Any
 
 import httpx
@@ -53,10 +53,8 @@ def _parse_ts(ts: Any) -> tuple[float, date]:
         try:
             epoch = float(ts_str)
         except ValueError:
-            epoch = datetime.fromisoformat(
-                ts_str.replace("Z", "+00:00")
-            ).timestamp()
-    return epoch, datetime.fromtimestamp(epoch, tz=timezone.utc).date()
+            epoch = datetime.fromisoformat(ts_str.replace("Z", "+00:00")).timestamp()
+    return epoch, datetime.fromtimestamp(epoch, tz=UTC).date()
 
 
 class VCIOHLCVAdapter(OHLCVAdapter):
@@ -79,14 +77,10 @@ class VCIOHLCVAdapter(OHLCVAdapter):
         time_frame = _INTERVAL_MAP.get(interval, "ONE_DAY")
         delta_days = (to_date - from_date).days
         count_back = max(delta_days + 5, 10)
-        to_ts = int(
-            datetime.combine(to_date, datetime.max.time())
-            .replace(tzinfo=timezone.utc)
-            .timestamp()
+        to_ts = int(datetime.combine(to_date, datetime.max.time()).replace(tzinfo=UTC).timestamp())
+        from_epoch = (
+            datetime.combine(from_date, datetime.min.time()).replace(tzinfo=UTC).timestamp()
         )
-        from_epoch = datetime.combine(from_date, datetime.min.time()).replace(
-            tzinfo=timezone.utc
-        ).timestamp()
 
         payload: dict[str, Any] = {
             "timeFrame": time_frame,
@@ -111,11 +105,11 @@ class VCIOHLCVAdapter(OHLCVAdapter):
 
         symbol_data = raw[0]
         timestamps = symbol_data.get("t", [])
-        opens      = symbol_data.get("o", [])
-        highs      = symbol_data.get("h", [])
-        lows       = symbol_data.get("l", [])
-        closes     = symbol_data.get("c", [])
-        volumes    = symbol_data.get("v", [])
+        opens = symbol_data.get("o", [])
+        highs = symbol_data.get("h", [])
+        lows = symbol_data.get("l", [])
+        closes = symbol_data.get("c", [])
+        volumes = symbol_data.get("v", [])
 
         candles: list[Candle] = []
         for i, raw_ts in enumerate(timestamps):
@@ -123,16 +117,18 @@ class VCIOHLCVAdapter(OHLCVAdapter):
                 epoch, candle_date = _parse_ts(raw_ts)
                 if epoch < from_epoch:
                     continue
-                candles.append(Candle(
-                    ticker=ticker,
-                    date=candle_date,
-                    open=float(opens[i]),
-                    high=float(highs[i]),
-                    low=float(lows[i]),
-                    close=float(closes[i]),
-                    volume=int(volumes[i]),
-                    value=0.0,
-                ))
+                candles.append(
+                    Candle(
+                        ticker=ticker,
+                        date=candle_date,
+                        open=float(opens[i]),
+                        high=float(highs[i]),
+                        low=float(lows[i]),
+                        close=float(closes[i]),
+                        volume=int(volumes[i]),
+                        value=0.0,
+                    )
+                )
             except (IndexError, ValueError, TypeError) as exc:
                 logger.warning("vci_ohlcv.parse_error", ticker=ticker, index=i, error=str(exc))
 

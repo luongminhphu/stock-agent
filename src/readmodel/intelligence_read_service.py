@@ -11,6 +11,7 @@ IntelligenceEngineCompletedEvent — wired in bootstrap.py.
 
 Cached 30s per user_id.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -115,7 +116,8 @@ class IntelligenceReadService:
                     getattr(report, "top_verdict", "")
                     or getattr(report, "overall_verdict", "")
                     or ""
-                ) or None,
+                )
+                or None,
                 "conviction": str(
                     getattr(report, "top_verdict_conviction", "")
                     or getattr(report, "conviction", "medium")
@@ -130,7 +132,8 @@ class IntelligenceReadService:
                     getattr(report, "narrative_summary", "")
                     or getattr(report, "market_context", "")
                     or ""
-                )[:800] or None,
+                )[:800]
+                or None,
                 "market_context": str(getattr(report, "market_context", "") or "")[:500] or None,
                 "priority_actions": _serialize_actions(getattr(report, "priority_actions", None)),
                 "risk_flags": _serialize_risk_flags(getattr(report, "risk_flags", None)),

@@ -125,9 +125,7 @@ class TrendSynthesisService:
 
         # 1. Compute TrendEngine bundle + RRG in parallel.
         # return_exceptions=True: partial 429 → degrade gracefully instead of crash.
-        engine_task = asyncio.create_task(
-            self._engine.run_for_symbol(ticker)
-        )
+        engine_task = asyncio.create_task(self._engine.run_for_symbol(ticker))
         rrg_task = asyncio.create_task(
             self._rrg.compute(
                 tickers=[ticker],
@@ -141,7 +139,7 @@ class TrendSynthesisService:
 
         # If both fail (e.g. full 429 outage) → raise so run() returns error dict
         bundle_failed = isinstance(bundle_obj, BaseException)
-        rrg_failed    = isinstance(rrg_response, BaseException)
+        rrg_failed = isinstance(rrg_response, BaseException)
         if bundle_failed and rrg_failed:
             raise bundle_obj  # type: ignore[misc]
 
@@ -160,7 +158,9 @@ class TrendSynthesisService:
 
         # 2. Extract indicator values — TechnicalSignalBundle is a Pydantic model
         if not bundle_failed:
-            bundle_dict = bundle_obj.model_dump() if hasattr(bundle_obj, "model_dump") else dict(bundle_obj)  # type: ignore[union-attr]
+            bundle_dict = (
+                bundle_obj.model_dump() if hasattr(bundle_obj, "model_dump") else dict(bundle_obj)
+            )  # type: ignore[union-attr]
         else:
             bundle_dict = {}
         raw_indicators = bundle_dict.get("raw_indicators") or {}

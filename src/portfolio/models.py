@@ -70,11 +70,11 @@ class ExitReason(enum.StrEnum):
     """
 
     THESIS_INVALIDATED = "thesis_invalidated"
-    TARGET_HIT         = "target_hit"
-    STOP_LOSS          = "stop_loss"
-    TIME_DECAY         = "time_decay"
-    OPPORTUNITY_COST   = "opportunity_cost"
-    MANUAL             = "manual"
+    TARGET_HIT = "target_hit"
+    STOP_LOSS = "stop_loss"
+    TIME_DECAY = "time_decay"
+    OPPORTUNITY_COST = "opportunity_cost"
+    MANUAL = "manual"
 
 
 class Position(Base):
@@ -306,6 +306,7 @@ class PositionDailySnapshot(Base):
 # PortfolioContext — read-model dataclass (no DB table)
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class PositionSummary:
     """Lightweight snapshot of one open position for AI context.
@@ -318,7 +319,7 @@ class PositionSummary:
     avg_cost: float
     sector: str | None
     thesis_id: int | None
-    market_value: float | None = None   # filled by get_portfolio_context() if prices available
+    market_value: float | None = None  # filled by get_portfolio_context() if prices available
     unrealized_pnl: float | None = None
     unrealized_pnl_pct: float | None = None
     # Wave 9.1 — locked position (ESOP/phát hành thêm không bán được...)
@@ -353,8 +354,8 @@ class PortfolioContext:
 
     user_id: str
     open_positions: list[PositionSummary] = field(default_factory=list)
-    sector_weights: dict[str, float] = field(default_factory=dict)   # sector → weight %
-    total_cost_basis: float = 0.0         # sum(avg_cost * qty) for open positions
+    sector_weights: dict[str, float] = field(default_factory=dict)  # sector → weight %
+    total_cost_basis: float = 0.0  # sum(avg_cost * qty) for open positions
     total_market_value: float | None = None  # None when prices unavailable
     total_unrealized_pnl: float | None = None
     total_realized_pnl: float = 0.0
@@ -413,9 +414,8 @@ class PortfolioContext:
 
         if self.sector_weights:
             weights = ", ".join(
-                f"{k}: {v:.1f}%" for k, v in sorted(
-                    self.sector_weights.items(), key=lambda x: x[1], reverse=True
-                )
+                f"{k}: {v:.1f}%"
+                for k, v in sorted(self.sector_weights.items(), key=lambda x: x[1], reverse=True)
             )
             lines.append(f"  Tỷ trọng ngành: {weights}")
 
@@ -470,7 +470,7 @@ class PositionEdit(Base):
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
 
-    position: Mapped["Position"] = relationship()
+    position: Mapped[Position] = relationship()
 
     def __repr__(self) -> str:
         return (

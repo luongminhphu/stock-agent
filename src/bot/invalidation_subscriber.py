@@ -7,6 +7,7 @@ so the owner is notified immediately when a thesis is invalidated.
 Owner: bot segment (thin adapter — no domain logic).
 Emitter: thesis/thesis_review_listener.py
 """
+
 from __future__ import annotations
 
 import discord
@@ -18,9 +19,9 @@ from src.platform.logging import get_logger
 logger = get_logger(__name__)
 
 # Colour thresholds — mirror INVALIDATION_THRESHOLD in thesis_review_listener.py
-_COLOR_CRITICAL = 0xE74C3C   # red    — score >= 0.90 (INVALIDATED verdict)
-_COLOR_HIGH     = 0xE67E22   # orange — score >= 0.75 (BEARISH verdict)
-_COLOR_WARN     = 0xF1C40F   # yellow — below 0.90 but still triggered
+_COLOR_CRITICAL = 0xE74C3C  # red    — score >= 0.90 (INVALIDATED verdict)
+_COLOR_HIGH = 0xE67E22  # orange — score >= 0.75 (BEARISH verdict)
+_COLOR_WARN = 0xF1C40F  # yellow — below 0.90 but still triggered
 
 _TRIGGER_DESC_MAX = 300
 
@@ -114,7 +115,5 @@ class InvalidationSubscriber:
             inline=False,
         )
 
-        embed.set_footer(
-            text=f"thesis_id: {event.thesis_id}  •  event_id: {event.event_id}"
-        )
+        embed.set_footer(text=f"thesis_id: {event.thesis_id}  •  event_id: {event.event_id}")
         return embed

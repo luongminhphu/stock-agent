@@ -48,18 +48,18 @@ _ALIGNMENT_ICON: dict[AlignmentStatus, str] = {
 }
 
 _CATEGORY_ICON: dict[ResolutionCategory, str] = {
-    ResolutionCategory.THESIS_CONFLICT:    "\U0001f4cb",
-    ResolutionCategory.RISK_LIMIT:         "\U0001f6a8",
-    ResolutionCategory.TIMING:             "\U0001f4b0",
-    ResolutionCategory.MARKET_CONDITION:   "\U0001f4ca",
-    ResolutionCategory.PORTFOLIO_BALANCE:  "\U0001f30d",
+    ResolutionCategory.THESIS_CONFLICT: "\U0001f4cb",
+    ResolutionCategory.RISK_LIMIT: "\U0001f6a8",
+    ResolutionCategory.TIMING: "\U0001f4b0",
+    ResolutionCategory.MARKET_CONDITION: "\U0001f4ca",
+    ResolutionCategory.PORTFOLIO_BALANCE: "\U0001f30d",
 }
 
 _PRIORITY_BADGE = {
     "BLOCKING": "[P1]",
-    "HIGH":     "[P2]",
-    "MEDIUM":   "[P3]",
-    "LOW":      "[P4]",
+    "HIGH": "[P2]",
+    "MEDIUM": "[P3]",
+    "LOW": "[P4]",
 }
 
 
@@ -113,7 +113,9 @@ def _build_pretrade_embed(result) -> discord.Embed:
     """Build Discord embed from PreTradeCheckOutput (current schema)."""
     # intended_action: TradeDecision (BUY/SELL/REDUCE/HOLD)
     meta = _DECISION_META.get(result.intended_action, _DECISION_META[TradeDecision.HOLD])
-    conf_bar = "\u2588" * round(result.confidence * 10) + "\u2591" * (10 - round(result.confidence * 10))
+    conf_bar = "\u2588" * round(result.confidence * 10) + "\u2591" * (
+        10 - round(result.confidence * 10)
+    )
 
     # verdict (BULLISH/BEARISH/…) shown in title alongside intended_action label
     verdict_str = result.verdict.value if hasattr(result.verdict, "value") else str(result.verdict)
@@ -145,8 +147,11 @@ def _build_pretrade_embed(result) -> discord.Embed:
     if resolution_steps and result.intended_action != TradeDecision.BUY:
         steps = sorted(
             resolution_steps,
-            key=lambda s: list(_PRIORITY_BADGE.keys()).index(s.priority)
-            if s.priority in _PRIORITY_BADGE else 99,
+            key=lambda s: (
+                list(_PRIORITY_BADGE.keys()).index(s.priority)
+                if s.priority in _PRIORITY_BADGE
+                else 99
+            ),
         )
         lines: list[str] = []
         for step in steps:

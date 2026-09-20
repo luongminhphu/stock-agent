@@ -12,12 +12,13 @@ Design:
 - Luôn trả (str, str), không raise
 - Không biết về AI schema, không biết về bot
 """
+
 from __future__ import annotations
 
 import asyncio
 
-from src.market.news_adapter import TCBSNewsAdapter
 from src.market.market_regime import MarketRegimeService
+from src.market.news_adapter import TCBSNewsAdapter
 from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
@@ -60,7 +61,7 @@ class TrendContextFetcher:
                 ),
                 timeout=_FETCH_TIMEOUT,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("trend_context_fetcher.timeout", extra={"symbol": symbol})
             return _EMPTY_NEWS, _EMPTY_MARKET
         except Exception as exc:

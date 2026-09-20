@@ -47,14 +47,14 @@ class DashboardTTLCache:
 
     # Default TTLs (seconds) per namespace — tunable at call-site via ttl= kwarg.
     DEFAULTS: dict[str, int] = {
-        "stats":           60,
-        "scan_latest":     30,
-        "recent_signals":  30,
-        "brief_latest":    30,
-        "thesis_detail":   15,
-        "rrg":             600,   # 10 min — weekly OHLCV data; no point re-fetching intraday
-        "attention":       30,
-        "trend":           300,   # 5 min — daily OHLCV indicators; stable within a session
+        "stats": 60,
+        "scan_latest": 30,
+        "recent_signals": 30,
+        "brief_latest": 30,
+        "thesis_detail": 15,
+        "rrg": 600,  # 10 min — weekly OHLCV data; no point re-fetching intraday
+        "attention": 30,
+        "trend": 300,  # 5 min — daily OHLCV indicators; stable within a session
     }
 
     # Evict expired entries after this many set() calls (amortised O(1) per call).

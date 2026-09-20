@@ -133,8 +133,8 @@ class TimelineEvent(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    kind: str         = Field(serialization_alias="event_type")
-    ts:   datetime    = Field(serialization_alias="occurred_at")
+    kind: str = Field(serialization_alias="event_type")
+    ts: datetime = Field(serialization_alias="occurred_at")
     summary: str
     detail: dict | None
 
@@ -288,9 +288,9 @@ class PortfolioSummary(BaseModel):
 
 
 class AttentionUrgency(StrEnum):
-    CRITICAL = "critical"   # cần hành động ngay (stop_loss gần, alert critical)
-    HIGH = "high"           # quan trọng, nên xử lý hôm nay (overdue review, catalyst sắp)
-    MEDIUM = "medium"       # theo dõi thêm (alert thường, catalyst xa hơn)
+    CRITICAL = "critical"  # cần hành động ngay (stop_loss gần, alert critical)
+    HIGH = "high"  # quan trọng, nên xử lý hôm nay (overdue review, catalyst sắp)
+    MEDIUM = "medium"  # theo dõi thêm (alert thường, catalyst xa hơn)
 
 
 class AttentionItem(BaseModel):
@@ -314,8 +314,8 @@ class AttentionItem(BaseModel):
     ticker: str
     thesis_id: int | None = None
     message: str
-    urgency: str                        # AttentionUrgency value
-    ts: datetime                        # thời điểm phát sinh (alert.triggered_at, catalyst.deadline, ...)
+    urgency: str  # AttentionUrgency value
+    ts: datetime  # thời điểm phát sinh (alert.triggered_at, catalyst.deadline, ...)
     metadata: dict | None = None
 
 
@@ -350,10 +350,10 @@ class RecentReviewRow(BaseModel):
     thesis_id: int
     ticker: str
     thesis_title: str
-    thesis_status: str          # ThesisStatus value: active / invalidated / closed / paused
-    verdict: str                # ReviewVerdict value: BULLISH / BEARISH / NEUTRAL / WATCHLIST
-    confidence: float           # 0.0–1.0
-    confidence_pct: int         # round(confidence * 100)
+    thesis_status: str  # ThesisStatus value: active / invalidated / closed / paused
+    verdict: str  # ReviewVerdict value: BULLISH / BEARISH / NEUTRAL / WATCHLIST
+    confidence: float  # 0.0–1.0
+    confidence_pct: int  # round(confidence * 100)
     reasoning: str | None = None
     summary: str | None = None
     risk_signals: list[str] = []

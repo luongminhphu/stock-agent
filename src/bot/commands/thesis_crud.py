@@ -240,43 +240,44 @@ class ThesisCrudCog(BaseCog):
             position_map: dict[str, tuple[float, float]] = {}
 
             async with self.db_session() as session:
+                from sqlalchemy import select
+
                 from src.readmodel.dashboard_service import DashboardService
                 from src.thesis.models import Thesis, ThesisStatus
-                from sqlalchemy import select
 
                 # ── Pre-fetch tickers of active theses ─────────────────
                 tickers_rows = (
-                    await session.execute(
-                        select(Thesis.ticker)
-                        .where(
-                            Thesis.user_id == user_id,
-                            Thesis.status == ThesisStatus.ACTIVE,
+                    (
+                        await session.execute(
+                            select(Thesis.ticker).where(
+                                Thesis.user_id == user_id,
+                                Thesis.status == ThesisStatus.ACTIVE,
+                            )
                         )
                     )
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                )
                 tickers = list(set(tickers_rows))
 
                 # ── Gather prices + positions in parallel ───────────────
                 if tickers:
+
                     async def _fetch_prices() -> dict[str, float]:
                         try:
                             from src.market.quote_service import QuoteService
+
                             qs = QuoteService()
                             quotes = await qs.get_quotes(tickers)
-                            return {
-                                q.ticker: q.close
-                                for q in quotes
-                                if q.close is not None
-                            }
+                            return {q.ticker: q.close for q in quotes if q.close is not None}
                         except Exception as exc:
-                            logger.warning(
-                                "thesis_aggregate.price_fetch_failed", error=str(exc)
-                            )
+                            logger.warning("thesis_aggregate.price_fetch_failed", error=str(exc))
                             return {}
 
                     async def _fetch_positions() -> dict[str, tuple[float, float]]:
                         try:
                             from src.portfolio.service import PortfolioService
+
                             ps = PortfolioService(session)
                             positions = await ps.get_positions(user_id=user_id)
                             return {
@@ -285,9 +286,7 @@ class ThesisCrudCog(BaseCog):
                                 if p.quantity and p.quantity > 0
                             }
                         except Exception as exc:
-                            logger.warning(
-                                "thesis_aggregate.position_fetch_failed", error=str(exc)
-                            )
+                            logger.warning("thesis_aggregate.position_fetch_failed", error=str(exc))
                             return {}
 
                     price_map, position_map = await asyncio.gather(

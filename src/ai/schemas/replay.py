@@ -23,10 +23,10 @@ from src.ai.schemas._base import _coerce_confidence
 
 
 class OutcomeVerdict(StrEnum):
-    WIN        = "WIN"
-    LOSS       = "LOSS"
+    WIN = "WIN"
+    LOSS = "LOSS"
     BREAK_EVEN = "BREAK_EVEN"
-    PENDING    = "PENDING"
+    PENDING = "PENDING"
 
 
 class PatternTag(StrEnum):
@@ -46,13 +46,13 @@ class PatternTag(StrEnum):
       oversized        — position was too large relative to risk/conviction
     """
 
-    FOMO_ENTRY         = "fomo_entry"
-    EARLY_EXIT         = "early_exit"
-    IGNORED_STOP_LOSS  = "ignored_stop_loss"
-    THESIS_DRIFT       = "thesis_drift"
+    FOMO_ENTRY = "fomo_entry"
+    EARLY_EXIT = "early_exit"
+    IGNORED_STOP_LOSS = "ignored_stop_loss"
+    THESIS_DRIFT = "thesis_drift"
     CORRECT_CONVICTION = "correct_conviction"
-    SIZED_CORRECTLY    = "sized_correctly"
-    OVERSIZED          = "oversized"
+    SIZED_CORRECTLY = "sized_correctly"
+    OVERSIZED = "oversized"
 
 
 class ReplayOutput(BaseModel):
@@ -143,7 +143,7 @@ class ReplayOutcomeRecord:
     """
 
     user_id: str
-    trade_id: int                         # FK to Trade.id that triggered replay
+    trade_id: int  # FK to Trade.id that triggered replay
     ticker: str
     outcome_verdict: OutcomeVerdict
     outcome_pnl_pct: float | None
@@ -160,7 +160,7 @@ class ReplayOutcomeRecord:
         output: ReplayOutput,
         user_id: str,
         trade_id: int,
-    ) -> "ReplayOutcomeRecord":
+    ) -> ReplayOutcomeRecord:
         """Construct from ReplayOutput returned by ReplayAgent.
 
         Usage::

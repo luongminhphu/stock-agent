@@ -41,7 +41,7 @@ class WatchdogContext:
     stop_loss: float | None = None
     target_price: float | None = None
     macro_context: str = "N/A"  # injected from market segment
-    recent_news: str = "N/A"    # injected from market.news_service
+    recent_news: str = "N/A"  # injected from market.news_service
     days_since_last_review: int = 0
 
 
@@ -81,9 +81,7 @@ def build_user_prompt(ctx: WatchdogContext, investor_profile: str = "") -> str:
     if ctx.current_price and ctx.entry_price:
         pnl = (ctx.current_price - ctx.entry_price) / ctx.entry_price * 100
         stop_dist = (
-            (ctx.current_price - ctx.stop_loss) / ctx.current_price * 100
-            if ctx.stop_loss
-            else None
+            (ctx.current_price - ctx.stop_loss) / ctx.current_price * 100 if ctx.stop_loss else None
         )
         target_dist = (
             (ctx.target_price - ctx.current_price) / ctx.current_price * 100
@@ -100,12 +98,14 @@ def build_user_prompt(ctx: WatchdogContext, investor_profile: str = "") -> str:
         if target_dist is not None:
             price_section += f" | Cách target: {target_dist:+.1f}%"
 
-    assumptions_text = "\n".join(
-        f"  [{i+1}] ID={a.assumption_id} | {a.current_status.upper()} | "
-        f"{a.description}"
-        + (f" [Note: {a.last_note}]" if a.last_note else "")
-        for i, a in enumerate(ctx.assumptions)
-    ) or "  (Không có assumption nào)"
+    assumptions_text = (
+        "\n".join(
+            f"  [{i + 1}] ID={a.assumption_id} | {a.current_status.upper()} | "
+            f"{a.description}" + (f" [Note: {a.last_note}]" if a.last_note else "")
+            for i, a in enumerate(ctx.assumptions)
+        )
+        or "  (Không có assumption nào)"
+    )
 
     stale_note = (
         f"\n⚠️ Thesis chưa được review trong {ctx.days_since_last_review} ngày."
@@ -115,7 +115,7 @@ def build_user_prompt(ctx: WatchdogContext, investor_profile: str = "") -> str:
 
     prompt = f"""Mã: {ctx.ticker}
 Thesis: {ctx.thesis_title}
-Tóm tắt: {ctx.thesis_summary or 'N/A'}
+Tóm tắt: {ctx.thesis_summary or "N/A"}
 
 Giá và vị thế:
 {price_section}

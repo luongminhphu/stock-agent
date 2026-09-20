@@ -8,6 +8,7 @@ Responsibilities:
 - Does NOT contain business rules for DECIDE/WATCH/DEFER classification.
   That logic lives exclusively in AgendaBuilderAgent (ai segment).
 """
+
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
@@ -78,9 +79,7 @@ class AgendaService:
     # Private loaders — each loader reads from exactly one segment
     # ------------------------------------------------------------------
 
-    async def _load_pending_decisions(
-        self, user_id: str, today: date
-    ) -> list[PendingDecisionItem]:
+    async def _load_pending_decisions(self, user_id: str, today: date) -> list[PendingDecisionItem]:
         """Return decisions that are unevaluated and within the horizon window."""
         cutoff = datetime.now(UTC) - timedelta(days=90 + _HORIZON_WINDOW_DAYS)
         stmt = (
@@ -97,9 +96,7 @@ class AgendaService:
 
         items = []
         for row in rows:
-            deadline = (
-                row.decision_at.date() + timedelta(days=row.review_horizon_days)
-            )
+            deadline = row.decision_at.date() + timedelta(days=row.review_horizon_days)
             days_until = (deadline - today).days
             if days_until <= _HORIZON_WINDOW_DAYS:
                 items.append(
@@ -117,9 +114,7 @@ class AgendaService:
                 )
         return items
 
-    async def _load_active_theses(
-        self, user_id: str, today: date
-    ) -> list[ActiveThesisItem]:
+    async def _load_active_theses(self, user_id: str, today: date) -> list[ActiveThesisItem]:
         """Load active theses with metadata needed for AI prioritisation."""
         stmt = (
             select(Thesis)
@@ -137,10 +132,7 @@ class AgendaService:
 
             last_reviewed_days_ago = None
             if getattr(t, "reviews", None):
-                valid_reviews = [
-                    r for r in t.reviews
-                    if getattr(r, "created_at", None) is not None
-                ]
+                valid_reviews = [r for r in t.reviews if getattr(r, "created_at", None) is not None]
                 if valid_reviews:
                     latest_review = max(valid_reviews, key=lambda r: r.created_at)
                     last_reviewed_days_ago = (today - latest_review.created_at.date()).days
@@ -148,8 +140,7 @@ class AgendaService:
             next_check = self._find_next_assumption_check(t, today)
 
             has_pending = any(
-                d.outcome_evaluated_at is None
-                for d in (getattr(t, "decision_logs", None) or [])
+                d.outcome_evaluated_at is None for d in (getattr(t, "decision_logs", None) or [])
             )
 
             items.append(
@@ -178,9 +169,7 @@ class AgendaService:
         try:
             import json as _json
 
-            memory_ctx = await self._memory_svc.get_memory_context(
-                self._session, user_id
-            )
+            memory_ctx = await self._memory_svc.get_memory_context(self._session, user_id)
             if memory_ctx is None or memory_ctx.latest_snapshot is None:
                 return []
             patterns = _json.loads(memory_ctx.latest_snapshot.patterns_json or "[]")

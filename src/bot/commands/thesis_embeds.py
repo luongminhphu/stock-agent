@@ -15,8 +15,8 @@ import discord
 
 from src.bot.discord_helper import (
     COLORS,
-    VERDICT_ICONS,
     STATUS_ICONS,
+    VERDICT_ICONS,
     confidence_bar,
     fmt_ict,
     truncate,
@@ -32,34 +32,34 @@ logger = logging.getLogger(__name__)
 # Use COLORS.* int constants — not discord.Color.* — for consistency with
 # all other embeds in the codebase (discord.Embed accepts int directly).
 _VERDICT_COLOUR: dict[ReviewVerdict, int] = {
-    ReviewVerdict.BULLISH:     COLORS.GREEN,
-    ReviewVerdict.BEARISH:     COLORS.RED,
-    ReviewVerdict.WEAKENING:   COLORS.ORANGE,   # added
-    ReviewVerdict.NEUTRAL:     COLORS.TEAL,
-    ReviewVerdict.INVALIDATED: COLORS.RED,       # added
-    ReviewVerdict.WATCHLIST:   COLORS.BLUE,
+    ReviewVerdict.BULLISH: COLORS.GREEN,
+    ReviewVerdict.BEARISH: COLORS.RED,
+    ReviewVerdict.WEAKENING: COLORS.ORANGE,  # added
+    ReviewVerdict.NEUTRAL: COLORS.TEAL,
+    ReviewVerdict.INVALIDATED: COLORS.RED,  # added
+    ReviewVerdict.WATCHLIST: COLORS.BLUE,
 }
 
 _VERDICT_ICON: dict[ReviewVerdict, str] = {
-    ReviewVerdict.BULLISH:     VERDICT_ICONS["BULLISH"],
-    ReviewVerdict.BEARISH:     VERDICT_ICONS["BEARISH"],
-    ReviewVerdict.WEAKENING:   VERDICT_ICONS["WEAKENING"],   # added
-    ReviewVerdict.NEUTRAL:     VERDICT_ICONS["NEUTRAL"],
-    ReviewVerdict.INVALIDATED: VERDICT_ICONS["INVALIDATED"], # added
-    ReviewVerdict.WATCHLIST:   VERDICT_ICONS["WATCHLIST"],
+    ReviewVerdict.BULLISH: VERDICT_ICONS["BULLISH"],
+    ReviewVerdict.BEARISH: VERDICT_ICONS["BEARISH"],
+    ReviewVerdict.WEAKENING: VERDICT_ICONS["WEAKENING"],  # added
+    ReviewVerdict.NEUTRAL: VERDICT_ICONS["NEUTRAL"],
+    ReviewVerdict.INVALIDATED: VERDICT_ICONS["INVALIDATED"],  # added
+    ReviewVerdict.WATCHLIST: VERDICT_ICONS["WATCHLIST"],
 }
 
 STATUS_ICON: dict[ThesisStatus, str] = {
-    ThesisStatus.ACTIVE:      STATUS_ICONS["ACTIVE"],
-    ThesisStatus.PAUSED:      STATUS_ICONS["PAUSED"],
-    ThesisStatus.WEAKENING:   STATUS_ICONS["WEAKENING"],   # added
+    ThesisStatus.ACTIVE: STATUS_ICONS["ACTIVE"],
+    ThesisStatus.PAUSED: STATUS_ICONS["PAUSED"],
+    ThesisStatus.WEAKENING: STATUS_ICONS["WEAKENING"],  # added
     ThesisStatus.INVALIDATED: STATUS_ICONS["INVALIDATED"],
-    ThesisStatus.CLOSED:      STATUS_ICONS["CLOSED"],
+    ThesisStatus.CLOSED: STATUS_ICONS["CLOSED"],
 }
 
 TARGET_ICON: dict[str, str] = {
     "assumption": "\U0001f4cc",  # 📌
-    "catalyst":   "\u26a1",      # ⚡
+    "catalyst": "\u26a1",  # ⚡
 }
 
 # Drift verdict → icon (string keys from AI output)
@@ -71,9 +71,9 @@ _DRIFT_VERDICT_ICON: dict[str, str] = {
 
 # Conviction drift severity → icon
 _CONVICTION_SEVERITY_ICON: dict[str, str] = {
-    "CRITICAL": "\U0001f53b",    # 🔻
-    "HIGH":     "\u2b07\ufe0f", # ⬇️
-    "MEDIUM":   "\U0001f4c9",    # 📉
+    "CRITICAL": "\U0001f53b",  # 🔻
+    "HIGH": "\u2b07\ufe0f",  # ⬇️
+    "MEDIUM": "\U0001f4c9",  # 📉
 }
 
 
@@ -187,7 +187,9 @@ def build_maintenance_embed(
     """Build embed for ThesisMaintenanceScheduler daily summary."""
     lines: list[str] = []
     if expired_count:
-        lines.append(f"\u23f0 **{expired_count}** catalyst \u0111\u00e3 h\u1ebft h\u1ea1n \u2192 EXPIRED")
+        lines.append(
+            f"\u23f0 **{expired_count}** catalyst \u0111\u00e3 h\u1ebft h\u1ea1n \u2192 EXPIRED"
+        )
     for r in reviews:
         try:
             verdict_enum = ReviewVerdict(r.verdict)
@@ -195,8 +197,7 @@ def build_maintenance_embed(
         except (ValueError, KeyError):
             icon = "\u26aa"
         lines.append(
-            f"{icon} Thesis #{r.thesis_id} \u2014 {r.verdict} "
-            f"(confidence: {r.confidence:.0%})"
+            f"{icon} Thesis #{r.thesis_id} \u2014 {r.verdict} (confidence: {r.confidence:.0%})"
         )
 
     embed = discord.Embed(
@@ -240,9 +241,7 @@ def build_maintenance_embed(
                     f"\u26a1 **{ticker}** — {description} `{date_str}` ({days_str})"
                 )
             else:
-                upcoming_lines.append(
-                    f"\U0001f4c5 **{ticker}** — {description} `{date_str}`"
-                )
+                upcoming_lines.append(f"\U0001f4c5 **{ticker}** — {description} `{date_str}`")
 
         catalyst_field_lines: list[str] = []
         if urgent_lines:
@@ -312,6 +311,7 @@ def build_drift_embed(
     if threshold_pct is None:
         try:
             from src.platform.config import settings  # noqa: PLC0415
+
             threshold_pct = settings.thesis_drift_threshold_pct
         except Exception:  # noqa: BLE001
             threshold_pct = 0.0
@@ -337,7 +337,7 @@ def build_stop_breach_embed(outcomes: list, now_utc: datetime.datetime) -> disco
     Nhóm: invalidated (đã xử lý) trước, observed/ai_not_confirmed/ai_failed sau.
     """
     invalidated = [o for o in outcomes if o.action == "invalidated"]
-    others      = [o for o in outcomes if o.action != "invalidated"]
+    others = [o for o in outcomes if o.action != "invalidated"]
 
     color = discord.Color.red() if invalidated else discord.Color.orange()
     title = "🛑 Stop-breach auto-invalidation" if invalidated else "🛑 Stop-breach detected"
@@ -361,9 +361,7 @@ def build_stop_breach_embed(outcomes: list, now_utc: datetime.datetime) -> disco
                 until = getattr(o, "locked_until", None)
                 if isinstance(until, datetime.datetime):
                     until = until.date()
-                until_txt = (
-                    f", mở khóa dự kiến {until:%d/%m/%Y}" if until else ""
-                )
+                until_txt = f", mở khóa dự kiến {until:%d/%m/%Y}" if until else ""
                 lines.append(
                     f"{head}\n"
                     f"→ Thesis #{o.thesis_id} vô hiệu, nhưng vị thế bị khóa "
@@ -381,9 +379,9 @@ def build_stop_breach_embed(outcomes: list, now_utc: datetime.datetime) -> disco
     if others:
         lines = []
         label = {
-            "observed":          "quan sát (auto-invalidate tắt)",
-            "ai_not_confirmed":  "AI chưa xác nhận",
-            "ai_failed":         "AI confirm thất bại — cần xem tay",
+            "observed": "quan sát (auto-invalidate tắt)",
+            "ai_not_confirmed": "AI chưa xác nhận",
+            "ai_failed": "AI confirm thất bại — cần xem tay",
         }
         for o in others:
             extra = ""

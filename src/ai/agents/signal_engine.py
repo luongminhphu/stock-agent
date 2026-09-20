@@ -69,21 +69,12 @@ def _build_portfolio_context(portfolio_data: dict[str, Any]) -> PortfolioRiskNot
     """
     positions: list[dict] = portfolio_data.get("positions", [])
 
-    top_concentration = [
-        p["ticker"]
-        for p in positions
-        if (p.get("weight_pct") or 0) > 25
-    ]
-    losing_positions = [
-        p["ticker"]
-        for p in positions
-        if (p.get("pnl_pct") or 0) < -5
-    ]
+    top_concentration = [p["ticker"] for p in positions if (p.get("weight_pct") or 0) > 25]
+    losing_positions = [p["ticker"] for p in positions if (p.get("pnl_pct") or 0) < -5]
     misaligned_positions = [
         p["ticker"]
         for p in positions
-        if p.get("last_verdict") == "BEARISH"
-        and p.get("quantity") is not None
+        if p.get("last_verdict") == "BEARISH" and p.get("quantity") is not None
     ]
 
     return PortfolioRiskNote(
@@ -145,9 +136,7 @@ class SignalEngineAgent:
         """
         generated_at = datetime.now(UTC).isoformat()
         portfolio_context = (
-            _build_portfolio_context(portfolio_data)
-            if portfolio_data
-            else PortfolioRiskNote()
+            _build_portfolio_context(portfolio_data) if portfolio_data else PortfolioRiskNote()
         )
 
         user_prompt = build_user_prompt(
@@ -165,9 +154,7 @@ class SignalEngineAgent:
                 user_prompt=user_prompt,
             )
             # Enforce sort + cap regardless of what AI returned
-            raw.ranked_signals.sort(
-                key=lambda s: _URGENCY_ORDER.get(s.urgency, 9)
-            )
+            raw.ranked_signals.sort(key=lambda s: _URGENCY_ORDER.get(s.urgency, 9))
             raw.ranked_signals = raw.ranked_signals[:10]
             # Always use rule-based portfolio context — never trust AI-rewritten version
             raw.portfolio_context = portfolio_context
@@ -182,9 +169,7 @@ class SignalEngineAgent:
             return raw
 
         except Exception as exc:
-            logger.warning(
-                "SignalEngineAgent AI call failed, using rule-based fallback: %s", exc
-            )
+            logger.warning("SignalEngineAgent AI call failed, using rule-based fallback: %s", exc)
             return self._fallback(
                 watchdog_outputs=watchdog_outputs,
                 portfolio_context=portfolio_context,

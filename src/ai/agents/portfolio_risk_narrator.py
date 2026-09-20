@@ -137,9 +137,7 @@ def _build_user_prompt(ctx: PortfolioRiskNarratorContext) -> str:
         lines += ["", "### Top signals (portfolio tickers only)"]
         for s in ctx.ranked_signals[:5]:
             conflict = f" | conflict: {s.thesis_conflict_note}" if s.thesis_conflict_note else ""
-            lines.append(
-                f"- {s.ticker} [{s.urgency}] {s.verdict} — {s.trigger_reason}{conflict}"
-            )
+            lines.append(f"- {s.ticker} [{s.urgency}] {s.verdict} — {s.trigger_reason}{conflict}")
 
     if ctx.stress_impact_note:
         lines += ["", "### Stress test portfolio impact", ctx.stress_impact_note]
@@ -176,7 +174,7 @@ class PortfolioRiskNarratorAgent:
             api_resp = await self._client.chat_completion(
                 messages=[
                     {"role": "system", "content": _SYSTEM_PROMPT},
-                    {"role": "user",   "content": user_prompt},
+                    {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.3,
             )

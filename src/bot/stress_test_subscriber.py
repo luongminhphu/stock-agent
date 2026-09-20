@@ -16,6 +16,7 @@ Verdict colour mapping:
   WARN / invalidation_probability >= 0.40 → orange (watch closely)
   PASS / otherwise                         → green  (thesis holding)
 """
+
 from __future__ import annotations
 
 import discord
@@ -26,17 +27,17 @@ from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
 
-_COLOR_FAIL = 0xE74C3C   # red
-_COLOR_WARN = 0xE67E22   # orange
-_COLOR_PASS = 0x27AE60   # green
+_COLOR_FAIL = 0xE74C3C  # red
+_COLOR_WARN = 0xE67E22  # orange
+_COLOR_PASS = 0x27AE60  # green
 
-_SCENARIO_MAX    = 300
-_TRIGGERS_SHOWN  = 3
+_SCENARIO_MAX = 300
+_TRIGGERS_SHOWN = 3
 
 _VERDICT_EMOJI = {
-    "FAIL":    "🔴",
-    "WARN":    "🟠",
-    "PASS":    "🟢",
+    "FAIL": "🔴",
+    "WARN": "🟠",
+    "PASS": "🟢",
     "UNKNOWN": "⚪",
 }
 
@@ -111,7 +112,7 @@ class StressTestSubscriber:
             colour = _COLOR_PASS
             verdict_key = "UNKNOWN"
 
-        emoji  = _VERDICT_EMOJI.get(verdict_key, "⚪")
+        emoji = _VERDICT_EMOJI.get(verdict_key, "⚪")
         symbol = (event.symbol or "?").upper()
         title_text = event.thesis_title or symbol
         if len(title_text) > 60:
@@ -136,12 +137,14 @@ class StressTestSubscriber:
         )
 
         # Assumption damage summary
-        broken   = event.broken_assumption_count
+        broken = event.broken_assumption_count
         weakened = event.weakened_assumption_count
         if broken or weakened:
             damage_parts = []
-            if broken:   damage_parts.append(f"🔴 {broken} broken")
-            if weakened: damage_parts.append(f"🟠 {weakened} weakened")
+            if broken:
+                damage_parts.append(f"🔴 {broken} broken")
+            if weakened:
+                damage_parts.append(f"🟠 {weakened} weakened")
             embed.add_field(
                 name="Assumptions",
                 value=" · ".join(damage_parts),
@@ -180,15 +183,12 @@ class StressTestSubscriber:
             )
         elif verdict_key == "WARN":
             action = (
-                f"Theo dõi sát `{symbol}`. "
-                "Chạy `/thesis review` để kiểm tra conviction hiện tại."
+                f"Theo dõi sát `{symbol}`. Chạy `/thesis review` để kiểm tra conviction hiện tại."
             )
         else:
             action = f"Thesis `{symbol}` vẫn holding. Theo dõi các trigger trên."
 
         embed.add_field(name="Next step", value=action, inline=False)
 
-        embed.set_footer(
-            text=f"thesis_id: {event.thesis_id}  •  event_id: {event.event_id}"
-        )
+        embed.set_footer(text=f"thesis_id: {event.thesis_id}  •  event_id: {event.event_id}")
         return embed

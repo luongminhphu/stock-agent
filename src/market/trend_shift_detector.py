@@ -35,9 +35,9 @@ Scan phases (set by caller):
   midday   — 11:00 ICT, mid-session check
   pre_atc  — 14:10 ICT, last continuous trading check before ATC (14:30)
 """
+
 from __future__ import annotations
 
-import asyncio
 from typing import TYPE_CHECKING
 
 from src.platform.event_bus import get_event_bus
@@ -94,6 +94,7 @@ def _composite_zone(composite: float) -> str:
 
 
 # ─── Core detection logic (pure function — easy to unit-test) ─────────────────
+
 
 def detect_shift(
     symbol: str,
@@ -175,6 +176,7 @@ def detect_shift(
 
 # ─── TrendShiftDetector ───────────────────────────────────────────────────────
 
+
 class TrendShiftDetector:
     """Scan a list of portfolio symbols; detect and publish TrendShiftEvents.
 
@@ -191,8 +193,8 @@ class TrendShiftDetector:
 
     def __init__(
         self,
-        trend_engine: "TrendEngine",
-        snapshot_store: "TrendSnapshotStore",
+        trend_engine: TrendEngine,
+        snapshot_store: TrendSnapshotStore,
     ) -> None:
         self._engine = trend_engine
         self._store = snapshot_store
@@ -242,7 +244,7 @@ class TrendShiftDetector:
 
     async def _process_symbol(
         self,
-        bundle: "TechnicalSignalBundle",
+        bundle: TechnicalSignalBundle,
         scan_phase: str,
     ) -> TrendShiftEvent | None:
         """Compare bundle with snapshot; publish shift event if found; update snapshot."""

@@ -34,13 +34,14 @@ Design notes:
 - register() is idempotent via a module-level guard flag so double-calling
   at startup (e.g. during test setup) doesn't register duplicate handlers.
 """
+
 from __future__ import annotations
 
 from src.platform.event_bus import get_event_bus
 from src.platform.events import BriefingReadyEvent, WatchlistScanCompletedEvent
 from src.platform.logging import get_logger
-from src.readmodel.cache import DashboardTTLCache
 from src.readmodel import dashboard_service as _ds
+from src.readmodel.cache import DashboardTTLCache
 
 logger = get_logger(__name__)
 

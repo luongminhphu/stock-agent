@@ -35,7 +35,8 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from src.market.registry_types import Exchange, Sector, SymbolInfo
 from src.platform.logging import get_logger
@@ -119,6 +120,7 @@ def _parse_exchange(raw: str | None) -> Exchange:
 # ---------------------------------------------------------------------------
 # vnstock sync loader (runs in thread)
 # ---------------------------------------------------------------------------
+
 
 def _load_vnstock_sync() -> dict[str, SymbolInfo]:
     """Fetch full listing from vnstock (VCI source) — synchronous, no pandas.
@@ -208,6 +210,7 @@ def _load_vnstock_sync() -> dict[str, SymbolInfo]:
 # RegistryLoader
 # ---------------------------------------------------------------------------
 
+
 class RegistryLoader:
     """Load SymbolInfo entries from vnstock Listing API + DB tickers.
 
@@ -251,9 +254,15 @@ class RegistryLoader:
                     # Upgrade name if static seed used ticker as placeholder
                     result[ticker] = SymbolInfo(
                         ticker=ticker,
-                        name=info.name if (not existing.name or existing.name == ticker) else existing.name,
-                        exchange=info.exchange if existing.exchange == Exchange.HOSE and info.exchange != Exchange.HOSE else existing.exchange,
-                        sector=info.sector if existing.sector == Sector.OTHER and info.sector != Sector.OTHER else existing.sector,
+                        name=info.name
+                        if (not existing.name or existing.name == ticker)
+                        else existing.name,
+                        exchange=info.exchange
+                        if existing.exchange == Exchange.HOSE and info.exchange != Exchange.HOSE
+                        else existing.exchange,
+                        sector=info.sector
+                        if existing.sector == Sector.OTHER and info.sector != Sector.OTHER
+                        else existing.sector,
                         key_metrics=existing.key_metrics,  # always preserve
                     )
             logger.info(
@@ -304,7 +313,7 @@ class RegistryLoader:
             if ticker not in existing:
                 new_entries[ticker] = SymbolInfo(
                     ticker=ticker,
-                    name=ticker,           # placeholder — lazy VCI enrich will update
+                    name=ticker,  # placeholder — lazy VCI enrich will update
                     exchange=Exchange.HOSE,
                     sector=Sector.OTHER,
                     key_metrics="",
@@ -323,6 +332,7 @@ async def _query_db_tickers(session: Any) -> set[str]:
 
     try:
         from src.thesis.models import Thesis
+
         has_thesis = True
     except ImportError:
         has_thesis = False

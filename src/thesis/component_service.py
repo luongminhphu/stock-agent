@@ -21,6 +21,7 @@ from src.thesis.dtos import (
     UpdateAssumptionInput,
     UpdateCatalystInput,
 )
+from src.thesis.invalidation_service import InvalidationService
 from src.thesis.models import (
     Assumption,
     Catalyst,
@@ -31,7 +32,6 @@ from src.thesis.models import (
 )
 from src.thesis.repository import ThesisRepository
 from src.thesis.scoring_service import ScoringService
-from src.thesis.invalidation_service import InvalidationService
 from src.thesis.timeline_parser import parse_timeline_to_date
 
 logger = get_logger(__name__)
@@ -100,6 +100,7 @@ class ComponentService:
         thesis = await self._repo.get_by_id(thesis_id)
         if thesis is None:
             from src.thesis.dtos import ThesisNotFoundError
+
             raise ThesisNotFoundError(f"Thesis {thesis_id} not found")
         return thesis
 
@@ -107,9 +108,7 @@ class ComponentService:
     # Assumption CRUD
     # ------------------------------------------------------------------
 
-    async def add_assumption(
-        self, thesis_id: int, inp: AddAssumptionInput
-    ) -> Assumption:
+    async def add_assumption(self, thesis_id: int, inp: AddAssumptionInput) -> Assumption:
         assumption = Assumption(
             thesis_id=thesis_id,
             description=inp.description,
@@ -129,6 +128,7 @@ class ComponentService:
         inp: UpdateAssumptionInput,
     ) -> Assumption:
         from src.thesis.dtos import AssumptionNotFoundError
+
         assumption = await self._repo.get_assumption_by_id(assumption_id, thesis_id)
         if assumption is None:
             raise AssumptionNotFoundError(
@@ -148,6 +148,7 @@ class ComponentService:
 
     async def delete_assumption(self, thesis_id: int, assumption_id: int) -> None:
         from src.thesis.dtos import AssumptionNotFoundError
+
         assumption = await self._repo.get_assumption_by_id(assumption_id, thesis_id)
         if assumption is None:
             raise AssumptionNotFoundError(
@@ -162,9 +163,7 @@ class ComponentService:
     # Catalyst CRUD
     # ------------------------------------------------------------------
 
-    async def add_catalyst(
-        self, thesis_id: int, inp: AddCatalystInput
-    ) -> Catalyst:
+    async def add_catalyst(self, thesis_id: int, inp: AddCatalystInput) -> Catalyst:
         # Resolve expected_date: explicit date takes priority, then parse timeline string
         resolved_date = inp.expected_date or parse_timeline_to_date(inp.timeline)
         catalyst = Catalyst(
@@ -213,11 +212,10 @@ class ComponentService:
         inp: UpdateCatalystInput,
     ) -> Catalyst:
         from src.thesis.dtos import CatalystNotFoundError
+
         catalyst = await self._repo.get_catalyst_by_id(catalyst_id, thesis_id)
         if catalyst is None:
-            raise CatalystNotFoundError(
-                f"Catalyst {catalyst_id} not found in thesis {thesis_id}"
-            )
+            raise CatalystNotFoundError(f"Catalyst {catalyst_id} not found in thesis {thesis_id}")
         if inp.description is not None:
             catalyst.description = inp.description
         if inp.status is not None:
@@ -236,11 +234,10 @@ class ComponentService:
 
     async def delete_catalyst(self, thesis_id: int, catalyst_id: int) -> None:
         from src.thesis.dtos import CatalystNotFoundError
+
         catalyst = await self._repo.get_catalyst_by_id(catalyst_id, thesis_id)
         if catalyst is None:
-            raise CatalystNotFoundError(
-                f"Catalyst {catalyst_id} not found in thesis {thesis_id}"
-            )
+            raise CatalystNotFoundError(f"Catalyst {catalyst_id} not found in thesis {thesis_id}")
         await self._repo.delete_catalyst(catalyst)
         logger.info("catalyst.deleted", catalyst_id=catalyst_id, thesis_id=thesis_id)
         await self._recompute_score(thesis_id)
@@ -322,9 +319,8 @@ class ComponentService:
         rec = await self._repo.get_recommendation_by_id(recommendation_id)
         if rec is None:
             from src.thesis.dtos import RecommendationNotFoundError
-            raise RecommendationNotFoundError(
-                f"Recommendation {recommendation_id} not found"
-            )
+
+            raise RecommendationNotFoundError(f"Recommendation {recommendation_id} not found")
 
         now = datetime.now(UTC)
 

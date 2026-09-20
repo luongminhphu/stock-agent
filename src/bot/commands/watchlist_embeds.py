@@ -25,7 +25,7 @@ def _dominant_color(signals: list) -> int:
     """Return embed sidebar color based on majority direction of signals."""
     if not signals:
         return COLORS.TEAL
-    ups   = sum(1 for s in signals if s.change_pct >= 0)
+    ups = sum(1 for s in signals if s.change_pct >= 0)
     downs = len(signals) - ups
     if ups > downs:
         return COLORS.GREEN
@@ -88,16 +88,10 @@ def build_scan_embed(
     for s in shown:
         icon = _price_icon(s.change_pct, s.has_alerts)
         thesis_badge = _thesis_badge(getattr(s, "thesis_score", None))
-        lines.append(
-            f"{icon} **{s.ticker}** {s.change_pct:+.1f}% — {s.description}{thesis_badge}"
-        )
+        lines.append(f"{icon} **{s.ticker}** {s.change_pct:+.1f}% — {s.description}{thesis_badge}")
 
     for r in on_signal_reminders:
-        ticker = (
-            r.watchlist_item.ticker
-            if r.watchlist_item
-            else f"item#{r.watchlist_item_id}"
-        )
+        ticker = r.watchlist_item.ticker if r.watchlist_item else f"item#{r.watchlist_item_id}"
         lines.append(f"\u23f0 **{ticker}** \u2014 nh\u1eafc nh\u1edf theo d\u00f5i (ON_SIGNAL)")
 
     if overflow:
