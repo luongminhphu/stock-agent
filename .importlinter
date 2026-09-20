@@ -1,0 +1,84 @@
+# Wave E2a — boundary contracts cho modular monolith stock-agent.
+# Chạy: PYTHONPATH=. lint-imports   (CI: warn mode 1 wave, sau đó fail)
+# `src` là namespace package → liệt kê từng segment làm root package.
+[importlinter]
+root_packages =
+    src.ai
+    src.api
+    src.bot
+    src.briefing
+    src.core
+    src.market
+    src.platform
+    src.portfolio
+    src.readmodel
+    src.thesis
+    src.watchlist
+include_external_packages = False
+
+[importlinter:contract:platform-independent]
+name = platform không import business segment (trừ bootstrap/wiring)
+type = forbidden
+allow_indirect_imports = True
+source_modules =
+    src.platform
+forbidden_modules =
+    src.ai
+    src.market
+    src.thesis
+    src.watchlist
+    src.briefing
+    src.readmodel
+    src.portfolio
+    src.core
+    src.bot
+    src.api
+ignore_imports =
+    src.platform.bootstrap -> src.**
+
+[importlinter:contract:adapters-no-orm]
+name = bot và api là adapter mỏng — không import ORM models
+type = forbidden
+allow_indirect_imports = True
+source_modules =
+    src.bot
+    src.api
+forbidden_modules =
+    src.ai.models
+    src.market.models
+    src.thesis.models
+    src.watchlist.models
+    src.briefing.models
+    src.readmodel.models
+    src.portfolio.models
+    src.core.models
+
+[importlinter:contract:domain-no-adapters]
+name = domain segment không import bot/api
+type = forbidden
+allow_indirect_imports = True
+source_modules =
+    src.briefing
+    src.thesis
+    src.watchlist
+    src.market
+    src.portfolio
+    src.ai
+    src.core
+    src.readmodel
+forbidden_modules =
+    src.bot
+    src.api
+
+[importlinter:contract:market-upstream]
+name = market là upstream — không import readmodel/thesis/portfolio/briefing/watchlist
+type = forbidden
+allow_indirect_imports = True
+source_modules =
+    src.market
+forbidden_modules =
+    src.readmodel
+    src.thesis
+    src.portfolio
+    src.briefing
+    src.watchlist
