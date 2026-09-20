@@ -54,6 +54,7 @@ def create_bot() -> commands.Bot:
             _start_scan_scheduler(bot)
             _start_thesis_maintenance_scheduler(bot)
             _start_drift_scheduler(bot)
+            _start_thesis_watchdog_scheduler(bot)
             _start_snapshot_scheduler()
             _start_reminder_scheduler(bot)
             _start_outcome_filler_scheduler(bot)
@@ -254,6 +255,13 @@ def _start_drift_scheduler(bot: commands.Bot) -> None:
     from src.bot.scheduler import ThesisDriftScheduler
 
     scheduler = ThesisDriftScheduler(bot)
+    scheduler.start()
+
+
+def _start_thesis_watchdog_scheduler(bot: commands.Bot) -> None:
+    from src.bot.scheduler import ThesisWatchdogScheduler
+
+    scheduler = ThesisWatchdogScheduler(bot)
     scheduler.start()
 
 

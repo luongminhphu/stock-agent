@@ -94,6 +94,8 @@ from src.bot.commands.thesis_embeds import (
     build_drift_embed,
     build_maintenance_embed,
     build_stop_breach_embed,
+    build_watchdog_digest_embed,
+    build_watchdog_urgent_embed,
 )
 from src.bot.commands.watchlist_embeds import build_scan_embed
 from src.platform.config import settings
@@ -829,6 +831,137 @@ class ThesisDriftScheduler:
 
     @_drift_task.before_loop
     async def _before_drift(self) -> None:
+        await self._client.wait_until_ready()
+
+
+# ---------------------------------------------------------------------------
+# ThesisWatchdogScheduler (Wave D3)
+# ---------------------------------------------------------------------------
+
+# 08:25 ICT: sau InvestorProfileScheduler (08:20, profile tươi cho prompt)
+# và trước BriefingScheduler morning (08:30) để brief có thể tham chiếu.
+_WATCHDOG_TIME = datetime.time(hour=1, minute=25, tzinfo=datetime.UTC)  # 08:25 ICT
+
+
+class ThesisWatchdogScheduler:
+    """Daily assumption-health watchdog cho toàn bộ thesis ACTIVE — 08:25 ICT ngày làm việc.
+
+    Thin adapter: mọi rule (stop theo ATR, assumption ratio, stale, escalation
+    AI ↔ rule, auto-invalidate) nằm trong thesis.WatchdogService. Scheduler chỉ
+    wire dependency từ bootstrap, gọi run_for_user, commit và route embed:
+
+        URGENT_ALERT   → alert_channel_id (nếu chưa set → morning_channel_id)
+        SILENT_WARNING → morning_channel_id (digest, không lặp lại URGENT)
+        chỉ OK         → không gửi, record_success
+
+    Khác ThesisDriftScheduler (15 phút, price-triggered): watchdog là vòng
+    kiểm tra định kỳ theo assumption, không phụ thuộc drift.
+    """
+
+    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
+        self._client = client
+        self._monitor = monitor or get_monitor()
+
+    def start(self) -> None:
+        self._monitor.register_task("thesis.watchdog")
+        self._watchdog_task.start()
+        logger.info("scheduler.thesis_watchdog.started")
+
+    def stop(self) -> None:
+        self._watchdog_task.cancel()
+        logger.info("scheduler.thesis_watchdog.stopped")
+
+    @tasks.loop(time=_WATCHDOG_TIME)
+    async def _watchdog_task(self) -> None:
+        now_utc = datetime.datetime.now(tz=datetime.UTC)
+        if now_utc.weekday() >= 5:
+            return
+        await self.run_once(now_utc)
+
+    async def run_once(self, now_utc: datetime.datetime) -> None:
+        """Một lượt chạy — tách khỏi tasks.loop để test được không cần Discord."""
+        task_name = "thesis.watchdog"
+        user_id = getattr(settings, "scheduler_user_id", None)
+        if not user_id:
+            logger.warning(
+                "scheduler.thesis_watchdog.skipped",
+                reason="scheduler_user_id not configured",
+            )
+            return
+
+        try:
+            from src.ai.agents.invalidation_detector import ThesisInvalidationDetector
+            from src.ai.agents.watchdog import WatchdogAgent
+            from src.platform.bootstrap import (
+                get_ai_client,
+                get_quote_service,
+                get_ticker_context_service,
+            )
+            from src.thesis.invalidation_service import InvalidationService
+            from src.thesis.watchdog_service import WatchdogService
+
+            ai_client = get_ai_client()
+            invalidation_svc = (
+                InvalidationService(detector=ThesisInvalidationDetector(ai_client))
+                if settings.auto_invalidate_enabled
+                else None
+            )
+            async with AsyncSessionLocal() as session:
+                svc = WatchdogService(
+                    session=session,
+                    watchdog_agent=WatchdogAgent(ai_client),
+                    quote_service=get_quote_service(),
+                    invalidation_svc=invalidation_svc,
+                    ticker_context_service=get_ticker_context_service(),
+                    min_confidence=settings.auto_invalidate_min_confidence,
+                )
+                run_result = await svc.run_for_user(str(user_id))
+                await session.commit()
+
+            logger.info(
+                "scheduler.thesis_watchdog.done",
+                total=len(run_result.results),
+                urgent=len(run_result.urgent_alerts),
+                warnings=len(run_result.silent_warnings),
+                errors=len(run_result.errors),
+            )
+
+            if not run_result.has_notable():
+                await self._monitor.record_success(task_name)
+                return
+
+            morning_id = getattr(settings, "morning_channel_id", None)
+            alert_id = getattr(settings, "alert_channel_id", None) or morning_id
+
+            if run_result.has_urgent():
+                await self._send(
+                    alert_id, build_watchdog_urgent_embed(run_result, now_utc), "urgent"
+                )
+            if run_result.silent_warnings:
+                await self._send(
+                    morning_id, build_watchdog_digest_embed(run_result, now_utc), "digest"
+                )
+            await self._monitor.record_success(task_name)
+
+        except Exception as exc:
+            logger.error("scheduler.thesis_watchdog.error", error=str(exc))
+            await self._monitor.record_failure(task_name, exc)
+
+    async def _send(self, channel_id: str | None, embed: discord.Embed, kind: str) -> None:
+        if not channel_id:
+            logger.warning("scheduler.thesis_watchdog.channel_not_configured", kind=kind)
+            return
+        channel = self._client.get_channel(int(channel_id))
+        if channel is None:
+            logger.warning(
+                "scheduler.thesis_watchdog.channel_not_found", kind=kind, channel_id=channel_id
+            )
+            return
+        await channel.send(embed=embed)  # type: ignore[union-attr]
+        logger.info("scheduler.thesis_watchdog.notified", kind=kind)
+
+    @_watchdog_task.before_loop
+    async def _before_watchdog(self) -> None:
         await self._client.wait_until_ready()
 
 

@@ -418,3 +418,84 @@ def build_stop_breach_embed(outcomes: list, now_utc: datetime.datetime) -> disco
 
     embed.set_footer(text="StopBreachService · rule + AI confirmation · 15-min drift tick")
     return embed
+
+
+# ---------------------------------------------------------------------------
+# Wave D3: Watchdog embeds — render WatchdogRunResult (thesis.watchdog_service)
+# ---------------------------------------------------------------------------
+
+_WATCHDOG_ACTION_VN: dict[str, str] = {
+    "HOLD": "Giữ",
+    "REVIEW_SOON": "Xem lại sớm",
+    "REVIEW_URGENT": "Xem lại ngay",
+    "CONSIDER_EXIT": "Cân nhắc thoát",
+}
+
+
+def _watchdog_line(r) -> str:  # noqa: ANN001 — WatchdogTickerResult (duck-typed)
+    """Một dòng cho một thesis: health → hành động → stop/dữ liệu → auto-invalidate."""
+    if r.health_score is not None:
+        head = f"**{r.ticker}** — {r.overall_health} ({r.health_score}/100)"
+    else:
+        head = f"**{r.ticker}** — rule-based" + (" (AI lỗi)" if r.agent_failed else "")
+    parts = [head]
+    if r.recommended_action:
+        parts.append(_WATCHDOG_ACTION_VN.get(r.recommended_action, r.recommended_action))
+    # near_stop là rule của thesis (NEAR_STOP_ATR) — bot chỉ đọc property.
+    if getattr(r, "near_stop", False):
+        parts.append(f"cách stop {r.stop_distance_atr:.1f} ATR")
+    elif (
+        r.stop_distance_atr is None
+        and r.stop_loss_distance_pct is not None
+        and r.stop_loss_distance_pct < 5.0
+    ):
+        parts.append(f"cách stop {r.stop_loss_distance_pct:.1f}%")
+    if r.source_quality in ("stale", "fallback"):
+        parts.append("dữ liệu cũ")
+    line = " · ".join(parts)
+    if r.auto_invalidated:
+        line += f"\n→ Thesis #{r.thesis_id} đã tự vô hiệu (AI xác nhận)."
+    return line
+
+
+def build_watchdog_urgent_embed(run_result, now_utc: datetime.datetime) -> discord.Embed:  # noqa: ANN001
+    """Embed cảnh báo khẩn — chỉ URGENT_ALERT, đẩy vào alert channel ngay khi có."""
+    urgent = run_result.urgent_alerts
+    embed = discord.Embed(
+        title=f"🔴 Watchdog: {len(urgent)} thesis cần xem lại ngay",
+        color=discord.Color.red(),
+        timestamp=now_utc,
+    )
+    embed.description = truncate("\n\n".join(_watchdog_line(r) for r in urgent), 4096)
+    embed.set_footer(text="WatchdogService · assumption health + TickerContext · 08:20 ICT")
+    return embed
+
+
+def build_watchdog_digest_embed(run_result, now_utc: datetime.datetime) -> discord.Embed:  # noqa: ANN001
+    """Embed tổng hợp buổi sáng — SILENT_WARNING + đếm OK/lỗi. Không lặp lại URGENT."""
+    warnings = run_result.silent_warnings
+    healthy = run_result.healthy
+    urgent = run_result.urgent_alerts
+    embed = discord.Embed(
+        title="🟡 Watchdog sáng — sức khỏe thesis",
+        color=discord.Color.gold() if warnings else discord.Color.dark_grey(),
+        timestamp=now_utc,
+    )
+    summary = f"{len(healthy)} ổn · {len(warnings)} cần chú ý · {len(urgent)} khẩn"
+    if run_result.errors:
+        summary += f" · {len(run_result.errors)} lỗi ({', '.join(sorted(run_result.errors))})"
+    embed.description = summary
+    if warnings:
+        embed.add_field(
+            name="Cần chú ý",
+            value=truncate("\n".join(_watchdog_line(r) for r in warnings), 1024),
+            inline=False,
+        )
+    if urgent:
+        embed.add_field(
+            name="Khẩn (đã gửi alert riêng)",
+            value=truncate(", ".join(r.ticker for r in urgent), 1024),
+            inline=False,
+        )
+    embed.set_footer(text="WatchdogService · assumption health + TickerContext · 08:20 ICT")
+    return embed
