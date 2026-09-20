@@ -107,3 +107,39 @@ class TestUnlockDateFormat:
     def test_no_until_no_date(self):
         val = _field0([_outcome(locked_qty=1000.0, sellable_qty=0.0)])
         assert "mở khóa dự kiến" not in val
+
+
+class TestNearStopSection:
+    """Wave C3: outcome near_stop có section riêng, không lẫn vào 'xuyên stop'."""
+
+    def _near(self, **over):
+        base = dict(
+            action="near_stop",
+            current_price=23300.0,
+            overshoot_pct=-1.3,
+            stop_distance_atr=0.6,
+            source_quality="live",
+            ai_verdict=None,
+            ai_confidence=None,
+            ai_action=None,
+        )
+        base.update(over)
+        return _outcome(**base)
+
+    def test_only_near_stop_renders_gold_early_warning(self):
+        embed = build_stop_breach_embed([self._near()], _NOW)
+        assert "gần stop" in embed.title
+        assert len(embed.fields) == 1
+        val = embed.fields[0].value
+        assert "0.60 ATR" in val and "1.3%" in val and "#42" in val
+        assert "còn cách stop" in val and "cần xem xét" not in val
+
+    def test_stale_data_is_flagged(self):
+        embed = build_stop_breach_embed([self._near(source_quality="stale")], _NOW)
+        assert "data cũ" in embed.fields[0].value
+
+    def test_mixed_outcomes_keep_breach_title_and_append_near_stop_last(self):
+        embed = build_stop_breach_embed([_outcome(action="observed"), self._near()], _NOW)
+        assert "detected" in embed.title
+        assert embed.fields[0].name == "Cần xem xét thủ công"
+        assert embed.fields[-1].name.startswith("Sắp chạm stop")

@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.logging import get_logger
 from src.thesis.models import Thesis, ThesisReview, ThesisStatus
+from src.thesis.price_snapshot import load_price_snapshots
 
 logger = get_logger(__name__)
 
@@ -71,9 +72,12 @@ class DriftService:
         quote_service: object,  # QuoteService, avoid circular import
         threshold_pct: float = 5.0,
         cooldown_hours: float = 4.0,
+        ticker_context_service: object | None = None,
     ) -> None:
         self._session = session
         self._quote_service = quote_service
+        # Wave C3: bulk giá qua market.TickerContextService; None → get_quote từng mã.
+        self._ticker_context_service = ticker_context_service
         self._threshold_pct = threshold_pct
         self._cooldown_hours = cooldown_hours
 
@@ -94,17 +98,13 @@ class DriftService:
 
         # Deduplicate tickers for quote fetching
         tickers = sorted({t.ticker for t in theses if t.entry_price is not None})
-        price_map: dict[str, float] = {}
-        for ticker in tickers:
-            try:
-                quote = await self._quote_service.get_quote(ticker)  # type: ignore[union-attr]
-                price_map[ticker] = quote.price
-            except Exception as exc:
-                logger.warning(
-                    "drift_service.quote_fetch_failed",
-                    ticker=ticker,
-                    error=str(exc),
-                )
+        snapshots = await load_price_snapshots(
+            tickers,
+            ticker_context_service=self._ticker_context_service,
+            quote_service=self._quote_service,
+            log_event="drift_service",
+        )
+        price_map: dict[str, float] = {k: v.price for k, v in snapshots.items()}
 
         signals: list[DriftSignal] = []
         for thesis in theses:

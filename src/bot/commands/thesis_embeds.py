@@ -337,10 +337,15 @@ def build_stop_breach_embed(outcomes: list, now_utc: datetime.datetime) -> disco
     Nhóm: invalidated (đã xử lý) trước, observed/ai_not_confirmed/ai_failed sau.
     """
     invalidated = [o for o in outcomes if o.action == "invalidated"]
-    others = [o for o in outcomes if o.action != "invalidated"]
+    near_stop = [o for o in outcomes if o.action == "near_stop"]
+    others = [o for o in outcomes if o.action not in ("invalidated", "near_stop")]
 
-    color = discord.Color.red() if invalidated else discord.Color.orange()
-    title = "🛑 Stop-breach auto-invalidation" if invalidated else "🛑 Stop-breach detected"
+    if invalidated:
+        color, title = discord.Color.red(), "🛑 Stop-breach auto-invalidation"
+    elif others:
+        color, title = discord.Color.orange(), "🛑 Stop-breach detected"
+    else:
+        color, title = discord.Color.gold(), "⚠️ Giá tiến gần stop-loss"
     embed = discord.Embed(title=title, color=color, timestamp=now_utc)
 
     if invalidated:
@@ -394,6 +399,22 @@ def build_stop_breach_embed(outcomes: list, now_utc: datetime.datetime) -> disco
                 f"thesis #{o.thesis_id} cần xem xét"
             )
         embed.add_field(name="Cần xem xét thủ công", value="\n".join(lines)[:1024], inline=False)
+
+    if near_stop:
+        # Wave C3: cảnh báo sớm theo ATR — thesis chưa xuyên stop, không AI, không mutate.
+        lines = []
+        for o in near_stop:
+            atr_txt = f"{o.stop_distance_atr:.2f} ATR" if o.stop_distance_atr is not None else "—"
+            quality = getattr(o, "source_quality", "quote")
+            stale = " · data cũ" if quality in ("stale", "fallback") else ""
+            lines.append(
+                f"**{o.ticker}** — giá {o.current_price:,.0f} còn cách stop {o.stop_loss:,.0f} "
+                f"{atr_txt} ({abs(o.overshoot_pct):.1f}%){stale} → thesis #{o.thesis_id}: "
+                f"kiểm tra lại giả định / cân nhắc giảm vị thế trước khi xuyên stop"
+            )
+        embed.add_field(
+            name="Sắp chạm stop (< 1 ATR14)", value="\n".join(lines)[:1024], inline=False
+        )
 
     embed.set_footer(text="StopBreachService · rule + AI confirmation · 15-min drift tick")
     return embed

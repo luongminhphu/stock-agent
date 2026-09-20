@@ -36,6 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.platform.logging import get_logger
 from src.thesis.invalidation_service import InvalidationService
 from src.thesis.models import Thesis, ThesisStatus
+from src.thesis.price_snapshot import PriceSnapshot, load_price_snapshots
 
 if TYPE_CHECKING:
     from src.ai.agents.invalidation_detector import ThesisInvalidationDetector
@@ -52,7 +53,7 @@ class StopBreachOutcome:
     current_price: float
     stop_loss: float
     overshoot_pct: float
-    action: str  # "invalidated" | "observed" | "ai_not_confirmed" | "ai_failed"
+    action: str  # "invalidated" | "observed" | "ai_not_confirmed" | "ai_failed" | "near_stop"
     ai_verdict: str | None = None  # CONFIRMED / SUSPECTED / CLEARED / None
     ai_confidence: float | None = None
     ai_action: str | None = None  # exit_signal / review / reduce / hold
@@ -64,6 +65,15 @@ class StopBreachOutcome:
     sellable_qty: float | None = None
     locked_reason: str | None = None
     locked_until: object | None = None  # date
+    # Wave C3 — khoảng cách stop theo ATR14 (dương = còn cách, âm = đã xuyên);
+    # None khi thiếu OHLCV. near_stop: 0 < distance < NEAR_STOP_ATR.
+    stop_distance_atr: float | None = None
+    source_quality: str = "quote"
+
+
+# Wave C3: cảnh báo sớm khi giá còn cách stop dưới 1 ATR14 — chỉ quan sát,
+# không bao giờ invalidate. Ngưỡng nằm ở thesis, không ở bot/scheduler.
+NEAR_STOP_ATR = 1.0
 
 
 @dataclass
@@ -76,7 +86,16 @@ class StopBreachScanResult:
 
     @property
     def observed(self) -> list[StopBreachOutcome]:
-        return [o for o in self.outcomes if o.action != "invalidated"]
+        return [o for o in self.outcomes if o.action not in ("invalidated", "near_stop")]
+
+    @property
+    def near_stop(self) -> list[StopBreachOutcome]:
+        return [o for o in self.outcomes if o.action == "near_stop"]
+
+    @property
+    def breached(self) -> list[StopBreachOutcome]:
+        """Mọi outcome đã xuyên stop (loại near_stop) — cho embed/notify cũ."""
+        return [o for o in self.outcomes if o.action != "near_stop"]
 
 
 class StopBreachService:
@@ -100,9 +119,12 @@ class StopBreachService:
         cooldown_hours: float = 24.0,
         min_confidence: float = 0.7,
         enabled: bool = True,
+        ticker_context_service: object | None = None,
     ) -> None:
         self._session = session
         self._quote_service = quote_service
+        # Wave C3: bulk giá + ATR14 qua market.TickerContextService; None → get_quote.
+        self._ticker_context_service = ticker_context_service
         self._invalidation_svc = InvalidationService(detector=detector)
         self._cooldown = timedelta(hours=cooldown_hours)
         self._min_confidence = min_confidence
@@ -114,22 +136,21 @@ class StopBreachService:
             return StopBreachScanResult()
 
         tickers = sorted({t.ticker for t in theses})
-        price_map: dict[str, float] = {}
-        for ticker in tickers:
-            try:
-                quote = await self._quote_service.get_quote(ticker)  # type: ignore[attr-defined]
-                price_map[ticker] = quote.price
-            except Exception as exc:
-                logger.warning("stop_breach.quote_fetch_failed", ticker=ticker, error=str(exc))
+        snapshots = await load_price_snapshots(
+            tickers,
+            ticker_context_service=self._ticker_context_service,
+            quote_service=self._quote_service,
+            log_event="stop_breach",
+        )
 
         lock_map = await self._load_position_locks(user_id, tickers)
 
         result = StopBreachScanResult()
         for thesis in theses:
-            price = price_map.get(thesis.ticker)
-            if price is None:
+            snap = snapshots.get(thesis.ticker)
+            if snap is None:
                 continue
-            outcome = await self._process(thesis, price, lock_map.get(thesis.ticker))
+            outcome = await self._process(thesis, snap, lock_map.get(thesis.ticker))
             if outcome is not None:
                 result.outcomes.append(outcome)
         return result
@@ -183,18 +204,57 @@ class StopBreachService:
             updated = updated.replace(tzinfo=UTC)
         return (datetime.now(UTC) - updated) < self._cooldown
 
+    def _maybe_near_stop(
+        self,
+        thesis: Thesis,
+        snap: PriceSnapshot,
+        distance_atr: float | None,
+    ) -> StopBreachOutcome | None:
+        """Wave C3: giá chưa xuyên stop nhưng còn cách < NEAR_STOP_ATR → cảnh báo sớm.
+
+        Observe-only: không gọi AI, không mutate thesis, tôn trọng cooldown.
+        """
+        if distance_atr is None or not (0 < distance_atr < NEAR_STOP_ATR):
+            return None
+        if self._in_cooldown(thesis):
+            return None
+        stop = float(thesis.stop_loss)  # type: ignore[arg-type]
+        distance_pct = (snap.price - stop) / stop * 100
+        logger.info(
+            "stop_breach.near_stop",
+            thesis_id=thesis.id,
+            ticker=thesis.ticker,
+            price=snap.price,
+            stop_loss=stop,
+            distance_atr=round(distance_atr, 2),
+            source_quality=snap.source_quality,
+        )
+        return StopBreachOutcome(
+            thesis_id=thesis.id,
+            ticker=thesis.ticker,
+            current_price=snap.price,
+            stop_loss=stop,
+            overshoot_pct=round(-distance_pct, 2),  # âm = còn cách stop
+            action="near_stop",
+            reason=f"Giá còn cách stop {distance_atr:.2f} ATR14 (< {NEAR_STOP_ATR:.1f})",
+            stop_distance_atr=round(distance_atr, 2),
+            source_quality=snap.source_quality,
+        )
+
     async def _process(
         self,
         thesis: Thesis,
-        price: float,
+        snap: PriceSnapshot,
         lock: object | None = None,
     ) -> StopBreachOutcome | None:
         """lock = Position (có locked_* attrs) hoặc None."""
+        price = snap.price
+        distance_atr = snap.stop_distance_atr(thesis.stop_loss)
         rule = self._invalidation_svc.check_with_price(
             thesis, current_score=float(thesis.score or 0), current_price=price
         )
         if not rule.stop_loss_breached:
-            return None
+            return self._maybe_near_stop(thesis, snap, distance_atr)
 
         overshoot = abs(price - thesis.stop_loss) / thesis.stop_loss * 100  # type: ignore[operator]
 
@@ -209,6 +269,8 @@ class StopBreachService:
             stop_loss=thesis.stop_loss,
             overshoot_pct=round(overshoot, 2),
             reason=rule.reason,
+            stop_distance_atr=round(distance_atr, 2) if distance_atr is not None else None,
+            source_quality=snap.source_quality,
         )
         if lock is not None:
             locked_qty = float(getattr(lock, "locked_qty", 0.0) or 0.0)

@@ -712,6 +712,7 @@ class ThesisDriftScheduler:
                     quote_service=get_quote_service(),
                     threshold_pct=settings.thesis_drift_threshold_pct,
                     cooldown_hours=settings.thesis_drift_cooldown_hours,
+                    ticker_context_service=get_ticker_context_service(),
                 )
                 signals = await drift_svc.detect(str(user_id))
 
@@ -748,6 +749,7 @@ class ThesisDriftScheduler:
                         cooldown_hours=settings.auto_invalidate_cooldown_hours,
                         min_confidence=settings.auto_invalidate_min_confidence,
                         enabled=settings.auto_invalidate_enabled,
+                        ticker_context_service=get_ticker_context_service(),
                     )
                     breach_result = await breach_svc.scan(str(user_id))
                     await session.commit()
@@ -757,6 +759,12 @@ class ThesisDriftScheduler:
                             "scheduler.drift.stop_breach_auto_invalidated",
                             count=len(breach_result.invalidated),
                             tickers=[o.ticker for o in breach_result.invalidated],
+                        )
+                    if breach_result.near_stop:
+                        logger.info(
+                            "scheduler.drift.near_stop",
+                            count=len(breach_result.near_stop),
+                            tickers=[o.ticker for o in breach_result.near_stop],
                         )
             except Exception as exc:
                 logger.warning("scheduler.drift.stop_breach_failed", error=str(exc))
