@@ -95,6 +95,38 @@ class BriefResult:
     output: Any | None = field(default=None)  # BriefOutput from BriefingAgent
 
 
+def _format_thesis_health_line(t: dict) -> str:
+    """Một dòng thesis cho prompt brief: urgency → health → verdict → stop → review."""
+    parts = [f"{t.get('ticker', '?')} [{t.get('status', 'OK')}]"]
+    score = t.get("health_score")
+    if isinstance(score, int | float):
+        parts.append(f"health={score:.2f}")
+    verdict = t.get("last_verdict")
+    if verdict and verdict != "UNREVIEWED":
+        parts.append(f"verdict={verdict}")
+    proximity = t.get("stop_proximity")
+    dist = t.get("distance_to_stop_pct")
+    if proximity == "BREACHED":
+        parts.append("stop ĐÃ XUYÊN")
+    elif isinstance(dist, int | float):
+        stop_str = f"cách stop {dist:.1f}%"
+        atr = t.get("stop_distance_atr")
+        if isinstance(atr, int | float):
+            stop_str += f" ({atr:.1f} ATR)"
+        if t.get("near_stop"):
+            stop_str += " SÁT STOP"
+        parts.append(stop_str)
+    invalid = t.get("assumptions_invalidated") or 0
+    total = t.get("assumption_count") or 0
+    if total:
+        parts.append(f"giả định {total - invalid}/{total} valid")
+    days = t.get("days_since_review")
+    parts.append(f"review {days}d trước" if days is not None else "chưa review")
+    if t.get("price_quality") in ("stale", "fallback"):
+        parts.append("dữ liệu giá cũ")
+    return " | ".join(parts)
+
+
 class BriefingService:
     """Orchestrates context collection and delegates generation to BriefingAgent.
 
@@ -558,16 +590,15 @@ class BriefingService:
         if not self._thesis_service:
             return ""
         try:
-            health = await self._thesis_service.get_thesis_health(user_id)
+            # Wave D4b: truyền quote_service để có giá + khoảng cách stop; keys
+            # status/health_score/last_verdict/stop_* do thesis.health_snapshot cung cấp
+            # (trước đây briefing đọc keys không tồn tại → "status=? score=?").
+            health = await self._thesis_service.get_thesis_health(
+                user_id, quote_service=self._quote_service
+            )
             if not health:
                 return ""
-            lines = []
-            for t in health:
-                ticker = t.get("ticker", "?")
-                status = t.get("status", "?")
-                score = t.get("health_score", "?")
-                lines.append(f"{ticker}: status={status} score={score}")
-            return "\n".join(lines)
+            return "\n".join(_format_thesis_health_line(t) for t in health)
         except Exception as exc:
             logger.warning("briefing.thesis_context.failed", error=str(exc))
             return ""

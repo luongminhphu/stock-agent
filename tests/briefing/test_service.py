@@ -173,3 +173,78 @@ async def test_agenda_empty_or_missing_sends_no_decide(sample_brief: BriefOutput
 
     agenda_context = agent.morning_brief.call_args.kwargs.get("agenda_context", "")
     assert "DECIDE" not in agenda_context
+
+
+# ── Wave D4b: thesis context đọc health thật từ thesis.health_snapshot ─────────
+
+
+def test_format_thesis_health_line_full() -> None:
+    from src.briefing.service import _format_thesis_health_line
+
+    line = _format_thesis_health_line(
+        {
+            "ticker": "HPG",
+            "status": "AT_RISK",
+            "health_score": 0.42,
+            "last_verdict": "WEAKENING",
+            "distance_to_stop_pct": 1.7,
+            "stop_distance_atr": 0.8,
+            "near_stop": True,
+            "stop_proximity": "NEAR",
+            "assumption_count": 3,
+            "assumptions_invalidated": 1,
+            "days_since_review": 2,
+            "price_quality": "stale",
+        }
+    )
+    assert line == (
+        "HPG [AT_RISK] | health=0.42 | verdict=WEAKENING | cách stop 1.7% (0.8 ATR) SÁT STOP"
+        " | giả định 2/3 valid | review 2d trước | dữ liệu giá cũ"
+    )
+
+
+def test_format_thesis_health_line_minimal_and_breached() -> None:
+    from src.briefing.service import _format_thesis_health_line
+
+    assert _format_thesis_health_line({"ticker": "SSI", "status": "OK"}) == (
+        "SSI [OK] | chưa review"
+    )
+    line = _format_thesis_health_line(
+        {"ticker": "VNM", "status": "AT_RISK", "stop_proximity": "BREACHED", "days_since_review": 0}
+    )
+    assert "stop ĐÃ XUYÊN" in line and "cách stop" not in line
+
+
+@pytest.mark.anyio
+async def test_build_thesis_context_passes_quote_service() -> None:
+    svc = BriefingService.__new__(BriefingService)
+    svc._quote_service = object()
+    svc._thesis_service = SimpleNamespace(
+        get_thesis_health=AsyncMock(
+            return_value=[
+                {
+                    "ticker": "HPG",
+                    "status": "REVIEW_DUE",
+                    "health_score": 0.7,
+                    "days_since_review": 9,
+                }
+            ]
+        )
+    )
+
+    text = await svc._build_thesis_context("u1")
+
+    svc._thesis_service.get_thesis_health.assert_awaited_once_with(
+        "u1", quote_service=svc._quote_service
+    )
+    assert text == "HPG [REVIEW_DUE] | health=0.70 | review 9d trước"
+
+
+@pytest.mark.anyio
+async def test_build_thesis_context_swallows_errors() -> None:
+    svc = BriefingService.__new__(BriefingService)
+    svc._quote_service = None
+    svc._thesis_service = SimpleNamespace(
+        get_thesis_health=AsyncMock(side_effect=RuntimeError("x"))
+    )
+    assert await svc._build_thesis_context("u1") == ""
