@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from src.ai.agents.briefing import BriefingAgent
+from src.ai.client import AIClient, AIError
 from src.ai.schemas import MarketSentiment
 from tests.ai.conftest import MockPerplexityClient
 
@@ -51,16 +52,10 @@ async def test_morning_brief_tickers_in_user_message(brief_payload):
     assert "VCB" in user_msg
 
 
-async def test_morning_brief_raises_on_bad_json():
-    class _BrokenClient:
-        async def chat_completion(self, **_):
-            return {"choices": [{"message": {"content": "{bad"}}]}
-
-        def extract_text(self, r):
-            return r["choices"][0]["message"]["content"]
-
-    agent = BriefingAgent(_BrokenClient())  # type: ignore[arg-type]
-    with pytest.raises(ValueError, match="Failed to parse"):
+async def test_morning_brief_raises_on_bad_payload():
+    """Schema-invalid payload → AIError from the client contract (chat())."""
+    agent = BriefingAgent(MockPerplexityClient({"headline": 123}))  # missing/invalid fields
+    with pytest.raises(AIError, match="Failed to parse"):
         await agent.morning_brief(market_context="", watchlist_tickers=[])
 
 
@@ -74,11 +69,13 @@ async def test_eod_brief_returns_typed_output(brief_payload):
     assert result.summary != ""
 
 
-async def test_eod_brief_uses_json_response_format(brief_payload):
+async def test_eod_brief_uses_complex_max_tokens(brief_payload):
+    """Briefing output is large → agent must request COMPLEX_MAX_TOKENS."""
     mock = MockPerplexityClient(brief_payload)
     agent = BriefingAgent(mock)
     await agent.eod_brief(market_context="EOD context", watchlist_tickers=[])
-    assert mock.calls[0].get("response_format") == {"type": "json_object"}
+    assert mock.calls[0].get("max_tokens") == AIClient.COMPLEX_MAX_TOKENS
+    assert "EOD context" in mock.calls[0]["messages"][1]["content"]
 
 
 async def test_brief_invalid_sentiment_raises():
@@ -88,5 +85,5 @@ async def test_brief_invalid_sentiment_raises():
         "summary": "...",
     }
     agent = BriefingAgent(MockPerplexityClient(bad_payload))
-    with pytest.raises(ValueError, match="Failed to parse"):
+    with pytest.raises(AIError, match="Failed to parse"):
         await agent.morning_brief(market_context="", watchlist_tickers=[])

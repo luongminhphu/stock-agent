@@ -25,21 +25,23 @@ def test_user_id_returns_string() -> None:
     assert isinstance(BaseCog.user_id(interaction), str)
 
 
-async def test_send_error_calls_send_message() -> None:
+async def test_send_error_uses_followup() -> None:
+    """Convention: mọi command safe_defer() trước → helper luôn gửi qua followup."""
     interaction = _make_interaction()
     await BaseCog.send_error(interaction, title="Oops", description="Something broke")
-    interaction.response.send_message.assert_called_once()
-    call_kwargs = interaction.response.send_message.call_args.kwargs
+    interaction.followup.send.assert_called_once()
+    interaction.response.send_message.assert_not_called()
+    call_kwargs = interaction.followup.send.call_args.kwargs
     assert call_kwargs["ephemeral"] is True
     embed = call_kwargs["embed"]
     assert "Oops" in embed.title
 
 
-async def test_send_ok_calls_send_message() -> None:
+async def test_send_ok_uses_followup() -> None:
     interaction = _make_interaction()
     await BaseCog.send_ok(interaction, title="Done", description="All good")
-    interaction.response.send_message.assert_called_once()
-    call_kwargs = interaction.response.send_message.call_args.kwargs
+    interaction.followup.send.assert_called_once()
+    call_kwargs = interaction.followup.send.call_args.kwargs
     assert call_kwargs["ephemeral"] is True
     embed = call_kwargs["embed"]
     assert "Done" in embed.title

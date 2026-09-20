@@ -363,9 +363,9 @@ class ContextBuilder:
 
         # --- Leg 2: pattern synthesis (Wave 8) ---
         try:
-            from src.ai.client import AIClient
             from src.ai.memory.consolidator import MemoryConsolidator
             from src.ai.memory.repository import MemorySnapshotRepository
+            from src.platform.bootstrap import get_ai_client
 
             # Check snapshot freshness — only synthesize when stale or missing
             snapshot_repo = MemorySnapshotRepository(self._session)
@@ -405,6 +405,7 @@ class ContextBuilder:
                     if behavioral:
                         try:
                             import json
+
                             from src.ai.memory.consolidator import PatternSynthesisOutput
 
                             stored = json.loads(behavioral)
@@ -420,7 +421,8 @@ class ContextBuilder:
                             getattr(latest, "period_end", None)
                         ),
                     )
-                    ai_client = AIClient()
+                    # Dung singleton da bootstrap (co api_key); AIClient() tran se TypeError.
+                    ai_client = get_ai_client()
                     consolidator = MemoryConsolidator(
                         client=ai_client, user_id=user_id
                     )
@@ -434,6 +436,7 @@ class ContextBuilder:
                         if latest is not None:
                             try:
                                 from sqlalchemy import update as _update
+
                                 from src.ai.memory.models import MemorySnapshot as _MS
 
                                 await self._session.execute(
@@ -456,6 +459,7 @@ class ContextBuilder:
                 if behavioral:
                     try:
                         import json
+
                         from src.ai.memory.consolidator import PatternSynthesisOutput
 
                         stored = json.loads(behavioral)

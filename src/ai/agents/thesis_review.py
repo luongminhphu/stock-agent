@@ -328,21 +328,22 @@ async def _log_thesis_review_interaction(
     if session is None or not user_id:
         return
     try:
-        from src.ai.memory.memory_service import MemoryService
+        from src.ai.memory.memory_service import InteractionEntry, MemoryService
 
-        await MemoryService.log_interaction(
-            session,
+        # InteractionEntry là contract duy nhất của log_interaction(session, entry).
+        # action_recommendation gộp vào key_points vì entry không có field riêng.
+        entry = InteractionEntry(
             user_id=user_id,
             agent_type="thesis_review",
+            trigger=trigger,
             tickers=[ticker],
             thesis_id=thesis_id,
-            trigger=trigger,
             ai_verdict=str(result.overall_verdict),
             ai_confidence=result.confidence,
-            ai_key_points=result.summary,
-            ai_risk_signals="\n".join(result.key_risks or []),
-            ai_action=result.action_recommendation,
+            ai_key_points=f"[{result.action_recommendation}] {result.summary}",
+            ai_risk_signals="\n".join(result.key_risks or []) or None,
         )
+        await MemoryService.log_interaction(session, entry)
     except Exception as exc:
         logger.warning(
             "thesis_review_agent.memory_log_failed",

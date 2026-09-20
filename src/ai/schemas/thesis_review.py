@@ -202,3 +202,13 @@ class ThesisReviewOutput(BaseModel):
         if not isinstance(v, list):
             return []
         return v  # type: ignore[return-value]
+
+    @field_validator("key_risks", mode="before")
+    @classmethod
+    def coerce_key_risks(cls, v: object) -> list[str]:
+        """LLM đôi khi trả 1 string thay vì list → bọc lại; kiểu khác → []."""
+        if isinstance(v, str):
+            return [v] if v.strip() else []
+        if isinstance(v, list):
+            return [str(x) for x in v if str(x).strip()]
+        return []

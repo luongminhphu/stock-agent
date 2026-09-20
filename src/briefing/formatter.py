@@ -105,8 +105,11 @@ def _build_sections(brief: BriefOutput, brief_type: str) -> list[list[str]]:
     emoji = _SENTIMENT_EMOJI.get(brief.sentiment, "⚪")
     label = _SENTIMENT_LABEL.get(brief.sentiment, str(brief.sentiment))
 
+    # Giữ nguyên label caller truyền ("EOD Brief" không được title() thành "Eod Brief");
+    # chỉ capitalize khi label toàn chữ thường (default "brief").
+    display_type = brief_type if brief_type != brief_type.lower() else brief_type.title()
     header: list[str] = [
-        f"**\ud83d\udcc8 {brief_type.title()}** \u2014 {emoji} `{label}`",
+        f"**\ud83d\udcc8 {display_type}** \u2014 {emoji} `{label}`",
         "",
         f"**{brief.headline}**",
         "",

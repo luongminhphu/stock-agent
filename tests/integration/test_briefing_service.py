@@ -58,6 +58,7 @@ async def test_morning_brief_with_watchlist(session):
     mock = MockPerplexityClient(_make_brief_payload())
     agent = BriefingAgent(mock)
     svc = BriefingService(
+        session=session,
         watchlist_service=wl_svc,
         quote_service=_StubQuoteService(["HPG", "VCB"]),
         briefing_agent=agent,
@@ -65,9 +66,12 @@ async def test_morning_brief_with_watchlist(session):
 
     result = await svc.generate_morning_brief(user_id=USER)
 
-    assert result.sentiment == MarketSentiment.MIXED
-    assert result.headline != ""
-    assert len(result.key_movers) == 2
+    assert result.output is not None
+    assert result.output.sentiment == MarketSentiment.MIXED
+    assert result.output.headline != ""
+    assert len(result.output.key_movers) == 2
+    assert result.tickers == ["HPG", "VCB"]
+    assert result.text != ""
 
 
 async def test_morning_brief_tickers_in_agent_message(session):
@@ -78,6 +82,7 @@ async def test_morning_brief_tickers_in_agent_message(session):
     mock = MockPerplexityClient(_make_brief_payload())
     agent = BriefingAgent(mock)
     svc = BriefingService(
+        session=session,
         watchlist_service=wl_svc,
         quote_service=_StubQuoteService(["FPT"]),
         briefing_agent=agent,
@@ -92,12 +97,17 @@ async def test_morning_brief_empty_watchlist(session):
     mock = MockPerplexityClient(_make_brief_payload("UNCERTAIN"))
     agent = BriefingAgent(mock)
     svc = BriefingService(
+        session=session,
         watchlist_service=WatchlistService(session),
         quote_service=_StubQuoteService([]),
         briefing_agent=agent,
     )
     result = await svc.generate_morning_brief(user_id=USER)
-    assert result.sentiment == MarketSentiment.UNCERTAIN
+    # Agent vẫn được gọi với "(không có watchlist)" — output theo payload mock.
+    assert result.tickers == []
+    assert result.output.sentiment == MarketSentiment.UNCERTAIN
+    user_msg = mock.calls[0]["messages"][1]["content"]
+    assert "(không có watchlist)" in user_msg
 
 
 async def test_eod_brief_with_watchlist(session):
@@ -108,12 +118,13 @@ async def test_eod_brief_with_watchlist(session):
     mock = MockPerplexityClient(_make_brief_payload("RISK_OFF"))
     agent = BriefingAgent(mock)
     svc = BriefingService(
+        session=session,
         watchlist_service=wl_svc,
         quote_service=_StubQuoteService(["VNM"]),
         briefing_agent=agent,
     )
     result = await svc.generate_eod_brief(user_id=USER)
-    assert result.sentiment == MarketSentiment.RISK_OFF
+    assert result.output.sentiment == MarketSentiment.RISK_OFF
 
 
 async def test_brief_quote_failure_degrades_gracefully(session):
@@ -130,6 +141,7 @@ async def test_brief_quote_failure_degrades_gracefully(session):
     mock = MockPerplexityClient(_make_brief_payload())
     agent = BriefingAgent(mock)
     svc = BriefingService(
+        session=session,
         watchlist_service=wl_svc,
         quote_service=_FailingQuoteService(),
         briefing_agent=agent,
@@ -139,7 +151,7 @@ async def test_brief_quote_failure_degrades_gracefully(session):
     assert result is not None
 
     user_msg = mock.calls[0]["messages"][1]["content"]
-    assert "thiếu dữ liệu" in user_msg
+    assert "Chưa có dữ liệu pre-market" in user_msg
 
 
 async def test_eod_brief_market_context_contains_snapshot(session):
@@ -151,6 +163,7 @@ async def test_eod_brief_market_context_contains_snapshot(session):
     mock = MockPerplexityClient(_make_brief_payload())
     agent = BriefingAgent(mock)
     svc = BriefingService(
+        session=session,
         watchlist_service=wl_svc,
         quote_service=_StubQuoteService(["MSN"]),
         briefing_agent=agent,
@@ -159,4 +172,4 @@ async def test_eod_brief_market_context_contains_snapshot(session):
 
     user_msg = mock.calls[0]["messages"][1]["content"]
     assert "MSN" in user_msg
-    assert "giá=" in user_msg
+    assert "MSN: 50,000" in user_msg

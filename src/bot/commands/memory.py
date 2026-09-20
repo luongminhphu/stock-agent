@@ -92,6 +92,7 @@ class MemoryCog(BaseCog):
                 if behavioral:
                     try:
                         import json
+
                         from src.ai.memory.consolidator import PatternSynthesisOutput
                         stored = json.loads(behavioral)
                         synth = PatternSynthesisOutput(**stored)
@@ -141,11 +142,11 @@ class MemoryCog(BaseCog):
 
         try:
             async with self.db_session() as session:
-                from src.ai.client import AIClient
                 from src.ai.memory.consolidator import MemoryConsolidator
+                from src.platform.bootstrap import get_ai_client
 
                 consolidator = MemoryConsolidator(
-                    client=AIClient(), user_id=user_id
+                    client=get_ai_client(), user_id=user_id
                 )
                 output = await consolidator.synthesize_patterns(session)
 

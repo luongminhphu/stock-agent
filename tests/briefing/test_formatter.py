@@ -60,7 +60,8 @@ def test_format_brief_risk_off_emoji():
 
 def test_format_brief_uncertain_emoji():
     text = format_brief(_brief(MarketSentiment.UNCERTAIN))
-    assert "⚪" in text
+    assert "❓" in text
+    assert "`Uncertain`" in text
 
 
 def test_format_morning_brief_label():
