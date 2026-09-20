@@ -19,7 +19,8 @@ _NOISY_LOGGERS = [
 
 
 def configure_logging(level: str = "INFO") -> None:
-    logging.basicConfig(level=getattr(logging, level.upper(), logging.INFO))
+    numeric_level = getattr(logging, level.upper(), logging.INFO)
+    logging.basicConfig(level=numeric_level)
 
     # Suppress noisy third-party loggers — chỉ WARNING+ mới hiện
     for name in _NOISY_LOGGERS:
@@ -33,7 +34,10 @@ def configure_logging(level: str = "INFO") -> None:
             structlog.processors.format_exc_info,
             structlog.processors.JSONRenderer(),
         ],
-        wrapper_class=structlog.BoundLogger,
+        # FilteringBoundLogger hỗ trợ positional args (`logger.info("x=%s", x)`) —
+        # structlog.BoundLogger thuần thì raise TypeError ngay trong except-block của agent
+        # (mypy M2 phát hiện qua tests/core/test_engine_agent_contracts.py).
+        wrapper_class=structlog.make_filtering_bound_logger(numeric_level),
         context_class=dict,
         logger_factory=structlog.PrintLoggerFactory(),
     )

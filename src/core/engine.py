@@ -47,8 +47,10 @@ from src.ai.schemas import (
 from src.core.schemas import (
     EngineOutput,
     EngineVerdict,
+    InvalidationBatchOutput,
     RankedSignal,
     SystemSnapshot,
+    ThesisRef,
     VerdictType,
 )
 from src.core.signals import rank_signals
@@ -74,6 +76,13 @@ _VERDICT_PRIORITY: dict[str, int] = {
 # ---------------------------------------------------------------------------
 # Agent dispatch helpers
 # ---------------------------------------------------------------------------
+
+
+def _field(obj: Any, name: str, default: Any = None) -> Any:
+    """Đọc field từ dict hoặc object (agent output có thể là pydantic model hoặc dict)."""
+    if isinstance(obj, dict):
+        return obj.get(name, default)
+    return getattr(obj, name, default)
 
 
 async def _run_with_timeout(
@@ -278,49 +287,33 @@ class IntelligenceEngine:
         Each agent is only included when the snapshot has relevant data.
         This prevents unnecessary AI calls on empty contexts.
         """
-        from src.ai.agents.invalidation_detector import ThesisInvalidationDetector
         from src.ai.agents.next_action_suggester import NextActionSuggester
         from src.ai.agents.opportunity_screen_agent import (
             OpportunityScreenAgent,
             build_opportunity_screen_context,
         )
-        from src.ai.agents.portfolio_risk_narrator import PortfolioRiskNarrator
-        from src.ai.agents.thesis_judge import ThesisJudgeAgent
+
+        # mypy M2 (bug thật): bản cũ import `PortfolioRiskNarrator` (không tồn tại —
+        # tên đúng là PortfolioRiskNarratorAgent) và gọi ThesisJudgeAgent.run(snapshot=...),
+        # ThesisInvalidationDetector.run(...) — sai chữ ký. ImportError nổ ngay đầu hàm
+        # → run_cycle multi_agent luôn fail âm thầm (engine.run_cycle.snapshot_failed),
+        # chỉ còn heuristic path chạy. Ba adapter _judge_theses / _detect_invalidation /
+        # _narrate_portfolio_risk dưới đây gọi đúng contract thật của từng agent.
 
         tasks: list[tuple[str, Any]] = []
 
         # 1. ThesisJudge — run when there are thesis due for review
         if snapshot.thesis_due_review:
-            thesis_agent = ThesisJudgeAgent(self._ai_client)
-            # ThesisJudgeAgent.run() accepts snapshot directly
-            tasks.append(
-                (
-                    "thesis_judge",
-                    thesis_agent.run(
-                        snapshot=snapshot,
-                        session=self.session,
-                        user_id=self.user_id,
-                    ),
-                )
-            )
+            tasks.append(("thesis_judge", self._judge_theses(snapshot)))
         else:
             logger.debug("orchestrator.skip_thesis_judge", reason="no_thesis_due")
 
-        # 2. InvalidationDetector — run when thesis exist
-        if snapshot.thesis_due_review or any(s.source == "thesis" for s in signals):
-            invalidation_agent = ThesisInvalidationDetector(self._ai_client)
-            tasks.append(
-                (
-                    "invalidation_detector",
-                    invalidation_agent.run(
-                        snapshot=snapshot,
-                        session=self.session,
-                        user_id=self.user_id,
-                    ),
-                )
-            )
+        # 2. InvalidationDetector — chỉ khi có thesis quá hạn review > 30 ngày
+        overdue = [t for t in snapshot.thesis_due_review if t.days_overdue > 30]
+        if overdue:
+            tasks.append(("invalidation_detector", self._detect_invalidation(overdue)))
         else:
-            logger.debug("orchestrator.skip_invalidation", reason="no_thesis_signals")
+            logger.debug("orchestrator.skip_invalidation", reason="no_overdue_thesis")
 
         # 3. NextActionSuggester — always run if we have any signals
         if signals:
@@ -339,17 +332,7 @@ class IntelligenceEngine:
 
         # 4. PortfolioRiskNarrator — run when portfolio has positions
         if snapshot.portfolio.top_exposed_tickers:
-            narrator = PortfolioRiskNarrator(self._ai_client)
-            tasks.append(
-                (
-                    "portfolio_risk_narrator",
-                    narrator.run(
-                        snapshot=snapshot,
-                        session=self.session,
-                        user_id=self.user_id,
-                    ),
-                )
-            )
+            tasks.append(("portfolio_risk_narrator", self._narrate_portfolio_risk(snapshot)))
         else:
             logger.debug("orchestrator.skip_portfolio_risk", reason="no_positions")
 
@@ -380,6 +363,87 @@ class IntelligenceEngine:
             )
 
         return tasks
+
+    # ── agent adapters (contract thật của src.ai.agents) ─────────────────────
+
+    async def _judge_theses(self, snapshot: SystemSnapshot) -> Any:
+        """ThesisJudgeAgent.run_batch → trả về output "xấu nhất" làm đại diện.
+
+        Synthesizer chỉ đọc .verdict / .confidence, nên 1 ThesisJudgeOutput là đủ;
+        toàn bộ batch vẫn được agent ghi episodic memory qua session/user_id.
+        """
+        from src.ai.agents.thesis_judge import ThesisJudgeAgent
+
+        triggers = [
+            {"thesis_id": t.thesis_id, "ticker": t.ticker} for t in snapshot.thesis_due_review[:5]
+        ]
+        outputs = await ThesisJudgeAgent(self._ai_client).run_batch(
+            triggers,  # type: ignore[arg-type]
+            session=self.session,
+            user_id=self.user_id,
+        )
+        if not outputs:
+            return None
+        order = {"INVALIDATED": 3, "WEAKENING": 2, "ON_TRACK": 1, "STRENGTHENING": 0}
+        return max(outputs, key=lambda o: order.get(str(o.verdict), 0))
+
+    async def _detect_invalidation(self, overdue: list[ThesisRef]) -> Any:
+        """ThesisInvalidationDetector.detect per thesis quá hạn → InvalidationBatchOutput."""
+        from src.ai.agents.invalidation_detector import ThesisInvalidationDetector
+
+        detector = ThesisInvalidationDetector(self._ai_client)
+        signals_out = []
+        for ref in overdue[:3]:
+            sig = await detector.detect(
+                thesis_id=ref.thesis_id,
+                ticker=ref.ticker,
+                thesis_title=f"Thesis {ref.ticker}",
+                thesis_summary="",
+                breach_reason=f"Thesis chưa được review {ref.days_overdue} ngày",
+                session=self.session,
+                user_id=self.user_id,
+            )
+            if sig is not None:
+                signals_out.append(sig)
+        if not signals_out:
+            return None
+        order = {"CONFIRMED": 2, "SUSPECTED": 1, "CLEARED": 0}
+        worst = max(signals_out, key=lambda s: order.get(str(s.verdict), 0))
+        return InvalidationBatchOutput(
+            verdict=str(worst.verdict),
+            signals=[
+                {
+                    "thesis_id": str(s.thesis_id),
+                    "ticker": s.ticker,
+                    "verdict": str(s.verdict),
+                    "breach_type": str(s.breach_type),
+                    "description": s.breach_summary,
+                    "action": s.action,
+                    "confidence": s.confidence,
+                }
+                for s in signals_out
+            ],
+        )
+
+    async def _narrate_portfolio_risk(self, snapshot: SystemSnapshot) -> Any:
+        """PortfolioRiskNarratorAgent.narrate với PortfolioRiskNote dựng từ snapshot."""
+        from src.ai.agents.portfolio_risk_narrator import (
+            PortfolioRiskNarratorAgent,
+            PortfolioRiskNarratorContext,
+        )
+        from src.ai.schemas._base import PortfolioRiskNote
+
+        pf = snapshot.portfolio
+        note = PortfolioRiskNote(
+            top_concentration=list(pf.top_exposed_tickers[:3]),
+            total_pnl_pct=pf.unrealized_pnl_pct,
+            position_count=pf.total_positions,
+        )
+        ctx = PortfolioRiskNarratorContext(
+            portfolio_note=note,
+            portfolio_date=snapshot.captured_at.strftime("%Y-%m-%d"),
+        )
+        return await PortfolioRiskNarratorAgent(self._ai_client).narrate(ctx)
 
     def _build_next_action_contexts(
         self,
@@ -539,6 +603,7 @@ class IntelligenceEngine:
             "CONFIRMED_INVALID": "RISK_ALERT",
             "ON_TRACK": "HOLD",
             "IMPROVING": "BUY_SIGNAL",
+            "STRENGTHENING": "BUY_SIGNAL",
         }
         return mapping.get(raw)
 
@@ -617,8 +682,8 @@ class IntelligenceEngine:
         if inv_output is not None:
             inv_signals = getattr(inv_output, "signals", []) or []
             for sig in inv_signals[:5]:
-                breach = str(getattr(sig, "breach_type", "") or "")
-                ticker = getattr(sig, "ticker", None)
+                breach = str(_field(sig, "breach_type") or "")
+                ticker = _field(sig, "ticker")
                 if breach:
                     flag_type = (
                         "THESIS_INVALIDATED"
@@ -632,7 +697,7 @@ class IntelligenceEngine:
                             flag_type=flag_type,  # type: ignore[arg-type]
                             ticker=ticker,
                             severity="HIGH",
-                            description=str(getattr(sig, "description", "") or "")[:200],
+                            description=str(_field(sig, "description") or "")[:200],
                             confirmed_by=["invalidation_detector"],
                             is_new=True,
                         )
@@ -643,7 +708,9 @@ class IntelligenceEngine:
         if portfolio_output is not None:
             chapters = getattr(portfolio_output, "chapters", []) or []
             for chapter in chapters[:3]:
-                theme = str(getattr(chapter, "risk_theme", "") or "")
+                theme = str(
+                    getattr(chapter, "theme", None) or getattr(chapter, "risk_theme", "") or ""
+                )
                 if "concentration" in theme.lower():
                     flag_type = "CONCENTRATION_RISK"
                 elif "sector" in theme.lower():

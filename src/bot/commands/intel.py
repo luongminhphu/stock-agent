@@ -33,10 +33,12 @@ class IntelCog(BaseCog):
         user_id = self.user_id(interaction)
 
         try:
+            from src.platform.db import AsyncSessionLocal
             from src.readmodel.dashboard_service import DashboardService
 
-            svc = DashboardService()
-            data = await svc.get_intelligence(user_id)
+            # mypy M2: DashboardService() thiếu session → /intel luôn lỗi.
+            async with AsyncSessionLocal() as session:
+                data = await DashboardService(session).get_intelligence(user_id)
         except Exception as exc:
             logger.error("command.intel.service_error", user_id=user_id, error=str(exc))
             await self.send_error(

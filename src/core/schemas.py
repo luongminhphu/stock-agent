@@ -56,6 +56,17 @@ class ThesisRef(BaseModel):
     days_overdue: int = 0
 
 
+class InvalidationBatchOutput(BaseModel):
+    """Kết quả gộp của ThesisInvalidationDetector cho nhiều thesis (core adapter).
+
+    Synthesizer đọc .verdict (CONFIRMED|SUSPECTED|CLEARED — xấu nhất) và .signals
+    (mỗi phần tử: thesis_id, ticker, verdict, breach_type, description, action, confidence).
+    """
+
+    verdict: str
+    signals: list[dict[str, Any]] = Field(default_factory=list)
+
+
 class MarketSignal(BaseModel):
     ticker: str
     signal_type: str

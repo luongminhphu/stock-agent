@@ -445,9 +445,13 @@ class TradeUseCase:
             async def _run() -> None:
                 try:
                     from src.ai.agents.replay_agent import ReplayAgent  # noqa: PLC0415
+                    from src.platform.bootstrap import get_ai_client  # noqa: PLC0415
 
-                    agent = ReplayAgent(session=self._session)
+                    # mypy M2: trước đây gọi ReplayAgent(session=...) — sai chữ ký,
+                    # TypeError bị nuốt → replay sau SELL chưa bao giờ chạy.
+                    agent = ReplayAgent(client=get_ai_client())
                     await agent.run_for_trade(
+                        self._session,
                         user_id=user_id,
                         trade_snapshot=trade_snapshot,
                         thesis_snapshot=None,  # enriched inside run_for_trade if thesis_id set

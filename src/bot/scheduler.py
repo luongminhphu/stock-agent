@@ -573,13 +573,13 @@ class ThesisMaintenanceScheduler:
             from src.thesis.review_service import ReviewService
 
             async with AsyncSessionLocal() as session:
-                svc = ReviewService(
+                review_svc = ReviewService(
                     session=session,
                     agent=get_thesis_review_agent(),
                     quote_service=get_quote_service(),
                     ticker_context_service=get_ticker_context_service(),
                 )
-                reviews = await svc.review_stale_theses(
+                reviews = await review_svc.review_stale_theses(
                     user_id=str(user_id),
                     stale_days=_MAINTENANCE_STALE_DAYS,
                 )
@@ -1033,27 +1033,39 @@ class ReminderScheduler:
             return
 
         try:
+            from src.watchlist.models import ReminderFrequency
             from src.watchlist.reminder_service import ReminderService
 
+            # mypy M2: trước đây gọi svc.get_due_reminders(...) — method không tồn tại
+            # (ReminderService chỉ có list_due/mark_sent) → job reminder luôn fail âm thầm.
             async with AsyncSessionLocal() as session:
                 svc = ReminderService(session)
-                reminders = await svc.get_due_reminders(user_id=str(user_id), frequency=frequency)
+                due = await svc.list_due(frequencies=[ReminderFrequency(frequency)])
+                reminders = [r for r in due if str(r.user_id) == str(user_id)]
+
+                if not reminders:
+                    await self._monitor.record_success(task_name)
+                    return
+
+                channel = self._client.get_channel(int(channel_id))
+                if channel is None:
+                    logger.warning("scheduler.reminder.channel_not_found", channel_id=channel_id)
+                    await self._monitor.record_failure(
+                        task_name, RuntimeError(f"channel {channel_id} not found")
+                    )
+                    return
+
+                ict_time = datetime.datetime.now(
+                    tz=datetime.timezone(datetime.timedelta(hours=7))
+                ).strftime("%d/%m/%Y %H:%M")
+                freq_label = "hàng ngày" if frequency == "daily" else "hàng tuần"
+                for reminder in reminders:
+                    ticker = getattr(reminder.watchlist_item, "ticker", "?")
+                    embed = build_reminder_embed(str(ticker), freq_label, ict_time)
+                    await channel.send(embed=embed)  # type: ignore[union-attr]
+                    await svc.mark_sent(reminder)
                 await session.commit()
 
-            if not reminders:
-                await self._monitor.record_success(task_name)
-                return
-
-            channel = self._client.get_channel(int(channel_id))
-            if channel is None:
-                logger.warning("scheduler.reminder.channel_not_found", channel_id=channel_id)
-                await self._monitor.record_failure(
-                    task_name, RuntimeError(f"channel {channel_id} not found")
-                )
-                return
-
-            embed = build_reminder_embed(reminders, frequency)
-            await channel.send(embed=embed)  # type: ignore[union-attr]
             logger.info(
                 "scheduler.reminder.notified",
                 frequency=frequency,
