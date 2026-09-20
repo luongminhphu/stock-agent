@@ -15,19 +15,25 @@ Non-responsibilities:
 - Does NOT mutate thesis state — pure read path.
 
 Design:
-  build_thesis_health_snapshots(session, user_id)
-    └─ ThesisService.list_active()          → list of ORM thesis objects
+  build_thesis_health_snapshots(session, user_id, ticker_context_service=, quote_service=)
+    └─ ThesisService.list_active()          → list of ORM thesis objects (reviews eager)
+    └─ load_price_snapshots(tickers)        → giá + ATR14 theo lô (Wave D4; None → không giá)
     └─ ScoringService.compute(thesis)       → float 0.0–100.0, normalized to 0.0–1.0
-    └─ _compute_snapshot(thesis, score)     → ThesisHealthSnapshot
+    └─ _compute_snapshot(thesis, score, price_snapshot) → ThesisHealthSnapshot
     └─ sort by urgency DESC, cap at MAX_THESES
 
 urgency_flag priority order (highest → lowest):
   INVALIDATED  → thesis.status == "invalidated" (should not appear in active list
                  but guard anyway)
-  AT_RISK      → distance_to_stop_pct is not None and <= AT_RISK_STOP_PCT_THRESHOLD
-                 OR health_score <= AT_RISK_SCORE_THRESHOLD
+  AT_RISK      → stop_proximity in (BREACHED, CRITICAL, NEAR) — rule chung
+                 thesis.price_snapshot (ATR14, fallback %) — OR health_score <= AT_RISK_SCORE_THRESHOLD
   REVIEW_DUE   → days_since_review >= REVIEW_DUE_DAYS
   OK           → everything else
+
+Wave D4: trước đây ``current_price`` đọc từ attribute không tồn tại trên ORM →
+distance_to_stop luôn None, AT_RISK theo stop không bao giờ bật; ``last_verdict``
+đọc ``thesis.last_verdict`` (không tồn tại) → luôn UNREVIEWED. Nay lấy giá qua
+PriceSnapshot và verdict từ review mới nhất (ReviewVerdict).
 
 Wave (actual_entry_price):
   - entry_price: giá tham chiếu thesis gốc (immutable, set khi tạo thesis).
@@ -40,20 +46,31 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.logging import get_logger
+from src.thesis.price_snapshot import (
+    STOP_BREACHED,
+    STOP_CRITICAL,
+    STOP_NEAR,
+    PriceSnapshot,
+    load_price_snapshots,
+)
 
 logger = get_logger(__name__)
 
 # ── tuneable constants ────────────────────────────────────────────────────────
 MAX_THESES = 8  # cap to avoid prompt bloat
 REVIEW_DUE_DAYS = 7  # days without review → REVIEW_DUE flag
-AT_RISK_STOP_PCT_THRESHOLD = 5.0  # ≤5% from stop_loss → AT_RISK
 AT_RISK_SCORE_THRESHOLD = 0.35  # health_score ≤ 0.35 → AT_RISK (0.0–1.0 scale)
+# Ngưỡng stop: KHÔNG định nghĩa ở đây — dùng thesis.price_snapshot.stop_proximity.
+_AT_RISK_PROXIMITIES = frozenset({STOP_BREACHED, STOP_CRITICAL, STOP_NEAR})
+_KNOWN_VERDICTS = frozenset(
+    {"BULLISH", "BEARISH", "NEUTRAL", "WATCHLIST", "WEAKENING", "INVALIDATED", "INSUFFICIENT_DATA"}
+)
 
 # urgency ordering (higher = more urgent, used for sort)
 _URGENCY_ORDER = {
@@ -80,12 +97,18 @@ class ThesisHealthSnapshot:
                                None if stop_loss not set or price unavailable
         assumptions_total    : total assumption count
         assumptions_invalidated : count of invalidated assumptions
-        last_verdict         : VALID | WEAKENING | INVALID | UNREVIEWED
+        last_verdict         : ReviewVerdict của review mới nhất
+                               (BULLISH|BEARISH|NEUTRAL|WATCHLIST|WEAKENING|INVALIDATED|
+                               INSUFFICIENT_DATA) hoặc UNREVIEWED
         urgency_flag         : OK | REVIEW_DUE | AT_RISK | INVALIDATED
         stop_loss            : raw stop_loss value (for display), None if not set
         target_price         : raw target_price value, None if not set
         entry_price          : giá tham chiếu thesis gốc, None nếu không set
         actual_entry_price   : giá vào lệnh thực tế (/buy), None nếu chưa có lệnh
+        current_price        : giá hiện tại từ PriceSnapshot, None nếu không lấy được
+        stop_distance_atr    : (price - stop) / ATR14, None nếu thiếu ATR/stop
+        stop_proximity       : FAR | NEAR | CRITICAL | BREACHED | None (rule price_snapshot)
+        price_quality        : live | stale | fallback | quote | None
     """
 
     thesis_id: str
@@ -103,6 +126,19 @@ class ThesisHealthSnapshot:
     target_price: float | None = None
     entry_price: float | None = None
     actual_entry_price: float | None = None
+    current_price: float | None = None
+    stop_distance_atr: float | None = None
+    stop_proximity: str | None = None
+    price_quality: str | None = None
+
+    @property
+    def near_stop(self) -> bool:
+        """Sát stop theo rule chung (NEAR hoặc CRITICAL) — chưa xuyên."""
+        return self.stop_proximity in (STOP_NEAR, STOP_CRITICAL)
+
+    @property
+    def stop_breached(self) -> bool:
+        return self.stop_proximity == STOP_BREACHED
 
     def format_for_prompt(self) -> str:
         """
@@ -164,11 +200,23 @@ class ThesisHealthSnapshot:
             # Only thesis reference price — no actual execution yet
             details.append(f"entry={self.entry_price:,.0f} (chưa vào lệnh)")
 
-        # Stop-loss proximity
+        # Giá hiện tại + chất lượng dữ liệu
+        if self.current_price is not None:
+            price_str = f"giá={self.current_price:,.0f}"
+            if self.price_quality in ("stale", "fallback"):
+                price_str += " (dữ liệu cũ)"
+            details.append(price_str)
+
+        # Stop-loss proximity — cùng rule với StopBreach/Watchdog
         if self.stop_loss is not None:
             sl_str = f"stop_loss={self.stop_loss:,.0f}"
-            if self.distance_to_stop_pct is not None:
-                sl_str += f" (còn {self.distance_to_stop_pct:.1f}%)"
+            if self.stop_breached:
+                sl_str += " (ĐÃ XUYÊN)"
+            elif self.distance_to_stop_pct is not None:
+                sl_str += f" (còn {self.distance_to_stop_pct:.1f}%"
+                if self.stop_distance_atr is not None:
+                    sl_str += f", {self.stop_distance_atr:.1f} ATR"
+                sl_str += ", SÁT STOP)" if self.near_stop else ")"
             details.append(sl_str)
 
         # Target
@@ -192,6 +240,11 @@ class ThesisHealthSnapshot:
 async def build_thesis_health_snapshots(
     session: AsyncSession,
     user_id: str | None,
+    *,
+    ticker_context_service: Any | None = None,
+    quote_service: Any | None = None,
+    max_theses: int = MAX_THESES,
+    theses: list | None = None,
 ) -> list[ThesisHealthSnapshot]:
     """
     Build ThesisHealthSnapshot list for a user's active theses.
@@ -199,6 +252,11 @@ async def build_thesis_health_snapshots(
     Args:
         session:  AsyncSession — for ThesisService queries.
         user_id:  target user. Returns [] if None.
+        ticker_context_service / quote_service: nguồn giá theo lô (Wave D4).
+                  Cả hai None → không có giá, stop_proximity None (không bật AT_RISK theo stop).
+        max_theses: cap số thesis trả về (prompt) — consumer briefing có thể nâng.
+        theses:   danh sách thesis ACTIVE đã load (reviews/assumptions eager) — truyền
+                  vào để không query lần hai; None → tự query qua ThesisService.
 
     Returns:
         List of ThesisHealthSnapshot sorted by urgency DESC, capped at MAX_THESES.
@@ -207,22 +265,34 @@ async def build_thesis_health_snapshots(
     if not user_id:
         return []
 
-    try:
-        from src.thesis.service import ThesisService
+    if theses is None:
+        try:
+            from src.thesis.service import ThesisService
 
-        svc = ThesisService(session)
-        theses = await svc.list_active(user_id=user_id)
-        if not theses:
+            svc = ThesisService(session)
+            theses = await svc.list_active(user_id=user_id)
+        except Exception as exc:
+            logger.warning("thesis_health.list_active_failed", user_id=user_id, error=str(exc))
             return []
-    except Exception as exc:
-        logger.warning("thesis_health.list_active_failed", user_id=user_id, error=str(exc))
+    if not theses:
         return []
+
+    prices: dict[str, PriceSnapshot] = {}
+    if ticker_context_service is not None or quote_service is not None:
+        prices = await load_price_snapshots(
+            [t.ticker for t in theses],
+            ticker_context_service=ticker_context_service,
+            quote_service=quote_service,
+            log_event="thesis_health.price_snapshot",
+        )
 
     snapshots: list[ThesisHealthSnapshot] = []
     for thesis in theses:
         try:
             score = await _fetch_score(thesis)
-            snap = _compute_snapshot(thesis, score)
+            snap = _compute_snapshot(
+                thesis, score, prices.get(str(getattr(thesis, "ticker", "")).upper())
+            )
             snapshots.append(snap)
         except Exception as exc:
             logger.warning(
@@ -234,7 +304,7 @@ async def build_thesis_health_snapshots(
 
     # Sort by urgency DESC, then health_score ASC (worst first within same urgency)
     snapshots.sort(key=lambda s: (-_URGENCY_ORDER.get(s.urgency_flag, 0), s.health_score))
-    return snapshots[:MAX_THESES]
+    return snapshots[:max_theses]
 
 
 async def _fetch_score(thesis: object) -> float:
@@ -254,24 +324,48 @@ async def _fetch_score(thesis: object) -> float:
         return 0.5  # neutral fallback — don't penalise for missing score
 
 
-def _compute_snapshot(thesis: object, health_score: float) -> ThesisHealthSnapshot:
-    """Compute ThesisHealthSnapshot from a thesis ORM object + health score."""
+def _latest_verdict(thesis: object) -> str:
+    """ReviewVerdict của review mới nhất (theo reviewed_at), UNREVIEWED nếu chưa có."""
+    reviews = getattr(thesis, "reviews", None) or []
+    latest = None
+    for r in reviews:
+        ts = getattr(r, "reviewed_at", None) or getattr(r, "created_at", None)
+        if ts is None:
+            continue
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=UTC)
+        if latest is None or ts > latest[0]:
+            latest = (ts, r)
+    if latest is None:
+        return "UNREVIEWED"
+    raw = getattr(latest[1], "verdict", None)
+    verdict = str(getattr(raw, "value", raw) or "").upper()
+    return verdict if verdict in _KNOWN_VERDICTS else "UNREVIEWED"
+
+
+def _compute_snapshot(
+    thesis: object,
+    health_score: float,
+    price: PriceSnapshot | None = None,
+) -> ThesisHealthSnapshot:
+    """Compute ThesisHealthSnapshot from a thesis ORM object + health score + giá."""
     thesis_id = str(getattr(thesis, "id", ""))
     ticker = str(getattr(thesis, "ticker", ""))
     title = str(getattr(thesis, "title", "") or "")
-    direction = str(getattr(thesis, "direction", "BULLISH") or "BULLISH").upper()
+    raw_dir = getattr(thesis, "direction", None) or "BULLISH"
+    direction = str(getattr(raw_dir, "value", raw_dir)).upper()
 
     # Price fields
     stop_loss: float | None = getattr(thesis, "stop_loss", None)
     target_price: float | None = getattr(thesis, "target_price", None)
     entry_price: float | None = getattr(thesis, "entry_price", None)
     actual_entry_price: float | None = getattr(thesis, "actual_entry_price", None)
-    current_price: float | None = getattr(thesis, "current_price", None)
 
-    # Distance to stop as % of current price
-    distance_to_stop_pct: float | None = None
-    if stop_loss is not None and current_price and current_price > 0:
-        distance_to_stop_pct = abs((current_price - stop_loss) / current_price * 100)
+    # Wave D4: giá + khoảng cách stop từ PriceSnapshot (rule chung thesis segment)
+    current_price: float | None = price.price if price else None
+    distance_to_stop_pct = price.stop_distance_pct(stop_loss) if price else None
+    stop_distance_atr = price.stop_distance_atr(stop_loss) if price else None
+    proximity = price.stop_proximity(stop_loss) if price else None
 
     # Days since last review
     last_reviewed_at = getattr(thesis, "last_reviewed_at", None)
@@ -286,27 +380,22 @@ def _compute_snapshot(thesis: object, health_score: float) -> ThesisHealthSnapsh
     # Assumptions
     assumptions = getattr(thesis, "assumptions", []) or []
     assumptions_total = len(assumptions)
+    # AssumptionStatus.INVALID == "invalid" (trước D4 so với "invalidated" → luôn 0)
     assumptions_invalidated = sum(
         1
         for a in assumptions
-        if str(getattr(a, "status", "")).lower() in ("invalidated", "false", "failed")
+        if str(getattr(getattr(a, "status", ""), "value", getattr(a, "status", ""))).lower()
+        in ("invalid", "invalidated")
     )
 
-    # Last verdict from thesis object or default
-    last_verdict_raw = (
-        getattr(thesis, "last_verdict", None) or getattr(thesis, "verdict", None) or "UNREVIEWED"
-    )
-    last_verdict = str(last_verdict_raw).upper()
-    if last_verdict not in ("VALID", "WEAKENING", "INVALID", "UNREVIEWED"):
-        last_verdict = "UNREVIEWED"
+    last_verdict = _latest_verdict(thesis)
 
     # Status guard — if somehow invalidated thesis sneaks in
-    status = str(getattr(thesis, "status", "active")).lower()
+    raw_status = getattr(thesis, "status", "active")
+    status = str(getattr(raw_status, "value", raw_status) or "active").lower()
     if status == "invalidated":
         urgency_flag = "INVALIDATED"
-    elif (
-        distance_to_stop_pct is not None and distance_to_stop_pct <= AT_RISK_STOP_PCT_THRESHOLD
-    ) or health_score <= AT_RISK_SCORE_THRESHOLD:
+    elif proximity in _AT_RISK_PROXIMITIES or health_score <= AT_RISK_SCORE_THRESHOLD:
         urgency_flag = "AT_RISK"
     elif days_since_review >= REVIEW_DUE_DAYS:
         urgency_flag = "REVIEW_DUE"
@@ -329,4 +418,8 @@ def _compute_snapshot(thesis: object, health_score: float) -> ThesisHealthSnapsh
         target_price=target_price,
         entry_price=entry_price,
         actual_entry_price=actual_entry_price,
+        current_price=current_price,
+        stop_distance_atr=stop_distance_atr,
+        stop_proximity=proximity,
+        price_quality=price.source_quality if price else None,
     )

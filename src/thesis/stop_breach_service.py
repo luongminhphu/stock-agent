@@ -36,7 +36,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.platform.logging import get_logger
 from src.thesis.invalidation_service import InvalidationService
 from src.thesis.models import Thesis, ThesisStatus
-from src.thesis.price_snapshot import PriceSnapshot, load_price_snapshots
+from src.thesis.price_snapshot import (
+    NEAR_STOP_ATR,  # noqa: F401 — re-export: consumer cũ import từ đây
+    PriceSnapshot,
+    load_price_snapshots,
+)
 
 if TYPE_CHECKING:
     from src.ai.agents.invalidation_detector import ThesisInvalidationDetector
@@ -71,9 +75,8 @@ class StopBreachOutcome:
     source_quality: str = "quote"
 
 
-# Wave C3: cảnh báo sớm khi giá còn cách stop dưới 1 ATR14 — chỉ quan sát,
-# không bao giờ invalidate. Ngưỡng nằm ở thesis, không ở bot/scheduler.
-NEAR_STOP_ATR = 1.0
+# Wave C3: NEAR_STOP_ATR — ngưỡng cảnh báo sớm; từ Wave D4 định nghĩa tại
+# thesis.price_snapshot (dùng chung với WatchdogService, health_snapshot).
 
 
 @dataclass

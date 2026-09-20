@@ -20,6 +20,44 @@ from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
 
+# ── Ngưỡng khoảng cách stop — một nơi duy nhất cho toàn thesis segment ────────
+# Cảnh báo sớm khi giá còn cách stop dưới 1 ATR14 — chỉ quan sát, không invalidate.
+# Dùng bởi StopBreachService (near_stop), WatchdogService, health_snapshot, readmodel.
+NEAR_STOP_ATR = 1.0
+# Fallback theo % khi không có OHLCV/ATR14 (đường get_quote cũ).
+NEAR_STOP_PCT_FALLBACK = 5.0
+CRITICAL_STOP_PCT_FALLBACK = 2.0
+
+# Mức gần stop (thứ tự tăng dần độ khẩn): FAR < NEAR < CRITICAL < BREACHED
+STOP_FAR = "FAR"
+STOP_NEAR = "NEAR"
+STOP_CRITICAL = "CRITICAL"  # chỉ xuất hiện ở đường fallback % (< 2%)
+STOP_BREACHED = "BREACHED"
+
+
+def stop_proximity(
+    distance_pct: float | None,
+    distance_atr: float | None,
+) -> str | None:
+    """Phân loại khoảng cách stop. None = không có dữ liệu (thiếu stop hoặc giá).
+
+    - Có ATR14 (ưu tiên): <= 0 → BREACHED; < NEAR_STOP_ATR → NEAR; còn lại FAR.
+    - Không có ATR14: dùng %: <= 0 → BREACHED; < 2% → CRITICAL; < 5% → NEAR; FAR.
+    """
+    if distance_atr is not None:
+        if distance_atr <= 0:
+            return STOP_BREACHED
+        return STOP_NEAR if distance_atr < NEAR_STOP_ATR else STOP_FAR
+    if distance_pct is not None:
+        if distance_pct <= 0:
+            return STOP_BREACHED
+        if distance_pct < CRITICAL_STOP_PCT_FALLBACK:
+            return STOP_CRITICAL
+        if distance_pct < NEAR_STOP_PCT_FALLBACK:
+            return STOP_NEAR
+        return STOP_FAR
+    return None
+
 
 @dataclass(frozen=True)
 class PriceSnapshot:
@@ -41,6 +79,16 @@ class PriceSnapshot:
         if stop_loss is None or not self.atr14 or self.atr14 <= 0:
             return None
         return (self.price - stop_loss) / self.atr14
+
+    def stop_distance_pct(self, stop_loss: float | None) -> float | None:
+        """(price - stop_loss) / price * 100 — dương = còn cách, âm = đã xuyên."""
+        if stop_loss is None or self.price <= 0:
+            return None
+        return (self.price - stop_loss) / self.price * 100
+
+    def stop_proximity(self, stop_loss: float | None) -> str | None:
+        """FAR | NEAR | CRITICAL | BREACHED | None — xem ``stop_proximity()``."""
+        return stop_proximity(self.stop_distance_pct(stop_loss), self.stop_distance_atr(stop_loss))
 
 
 async def load_price_snapshots(

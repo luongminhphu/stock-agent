@@ -398,62 +398,72 @@ class ThesisService:
         """
         return await self.list_for_user(user_id=user_id, status=ThesisStatus.ACTIVE)
 
-    async def get_thesis_health(self, user_id: str | None = None) -> list[dict]:
-        """Return health snapshot of all active theses.
+    async def get_thesis_health(
+        self,
+        user_id: str | None = None,
+        *,
+        quote_service: object | None = None,
+        ticker_context_service: object | None = None,
+    ) -> list[dict]:
+        """Return health snapshot of all active theses (dict form).
 
         Called by BriefingService._build_thesis_context().
-        Returns list of dicts with keys:
-          id, ticker, entry_thesis, target_price, stop_loss,
-          assumption_count, days_since_review.
 
-        Reads assumptions and reviews from ORM relationships
-        (thesis.assumptions, thesis.reviews) — NOT from ComponentService
-        which only exposes write/mutation methods.
-        Theses must be loaded with selectinload for relationships to be
-        available; ThesisRepository.list_by_user uses selectinload by default.
+        Wave D4: delegate sang ``thesis.health_snapshot.build_thesis_health_snapshots``
+        — cùng projection với ai.context_builder, không nhân đôi rule. Truyền
+        quote_service / ticker_context_service để có giá + khoảng cách stop.
+
+        Keys giữ tương thích: id, ticker, entry_thesis, target_price, stop_loss,
+        target_date, assumption_count, last_review_at, days_since_review.
+        Keys mới: status (urgency_flag), health_score (0–1), last_verdict,
+        current_price, distance_to_stop_pct, stop_distance_atr, stop_proximity,
+        near_stop, price_quality, title, direction, assumptions_invalidated.
         """
-        theses = await self.list_active(user_id=user_id)
-        results = []
-        for thesis in theses:
-            # assumptions: read from ORM relationship
-            assumptions = getattr(thesis, "assumptions", None) or []
+        from src.thesis.health_snapshot import build_thesis_health_snapshots
 
-            # reviews: read from ORM relationship
-            reviews = getattr(thesis, "reviews", None) or []
-
+        active = await self.list_active(user_id=user_id)
+        snapshots = await build_thesis_health_snapshots(
+            self._session,
+            user_id=_resolve_user_id(user_id),
+            ticker_context_service=ticker_context_service,
+            quote_service=quote_service,
+            max_theses=10_000,  # briefing cần toàn bộ, không cap theo prompt
+            theses=active,
+        )
+        theses = {str(t.id): t for t in active}
+        results: list[dict] = []
+        for snap in snapshots:
+            thesis = theses.get(snap.thesis_id)
             last_review_at = None
-            if reviews:
-                valid_dates = [
-                    getattr(r, "created_at", None)
-                    for r in reviews
-                    if getattr(r, "created_at", None) is not None
-                ]
-                last_review_at = max(valid_dates) if valid_dates else None
-
-            days_since_review = None
-            if last_review_at is not None:
-                now = datetime.now(UTC)
+            if thesis is not None and thesis.last_reviewed_at is not None:
+                last_review_at = thesis.last_reviewed_at
                 if last_review_at.tzinfo is None:
                     last_review_at = last_review_at.replace(tzinfo=UTC)
-                days_since_review = (now - last_review_at).days
-
             results.append(
                 {
-                    "id": thesis.id,
-                    "ticker": thesis.ticker,
-                    "entry_thesis": (
-                        getattr(thesis, "entry_thesis", None)
-                        or getattr(thesis, "summary", "")
-                        or ""
-                    ),
-                    "target_price": thesis.target_price,
-                    "stop_loss": thesis.stop_loss,
-                    # time_horizon is not a DB column — omitted.
-                    # Use target_date if callers need a deadline reference.
+                    "id": thesis.id if thesis is not None else snap.thesis_id,
+                    "ticker": snap.ticker,
+                    "title": snap.title,
+                    "direction": snap.direction,
+                    "entry_thesis": (getattr(thesis, "summary", None) or "") if thesis else "",
+                    "target_price": snap.target_price,
+                    "stop_loss": snap.stop_loss,
                     "target_date": getattr(thesis, "target_date", None),
-                    "assumption_count": len(assumptions),
+                    "assumption_count": snap.assumptions_total,
+                    "assumptions_invalidated": snap.assumptions_invalidated,
                     "last_review_at": last_review_at,
-                    "days_since_review": days_since_review,
+                    "days_since_review": (
+                        snap.days_since_review if snap.days_since_review < 999 else None
+                    ),
+                    "status": snap.urgency_flag,
+                    "health_score": snap.health_score,
+                    "last_verdict": snap.last_verdict,
+                    "current_price": snap.current_price,
+                    "distance_to_stop_pct": snap.distance_to_stop_pct,
+                    "stop_distance_atr": snap.stop_distance_atr,
+                    "stop_proximity": snap.stop_proximity,
+                    "near_stop": snap.near_stop,
+                    "price_quality": snap.price_quality,
                 }
             )
         return results

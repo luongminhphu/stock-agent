@@ -41,9 +41,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.logging import get_logger
 from src.thesis.models import AssumptionStatus, Thesis, ThesisStatus
-from src.thesis.price_snapshot import PriceSnapshot, load_price_snapshots
+from src.thesis.price_snapshot import (
+    NEAR_STOP_ATR,
+    NEAR_STOP_PCT_FALLBACK,
+    STOP_BREACHED,
+    STOP_CRITICAL,
+    STOP_NEAR,
+    PriceSnapshot,
+    load_price_snapshots,
+    stop_proximity,
+)
 from src.thesis.repository import ThesisRepository
-from src.thesis.stop_breach_service import NEAR_STOP_ATR
 
 if TYPE_CHECKING:
     from src.ai.schemas.invalidation import InvalidationSignal
@@ -51,9 +59,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Fallback theo % khi không có ATR14 (giữ hành vi cũ cho data quote-only)
-_STOP_LOSS_URGENT_PCT = 2.0  # < 2% từ stop-loss → URGENT_ALERT
-_STOP_LOSS_WARNING_PCT = 5.0  # < 5% từ stop-loss → SILENT_WARNING
+# Ngưỡng stop (ATR + fallback %) nằm ở thesis.price_snapshot.stop_proximity — dùng chung.
 _STALE_REVIEW_DAYS = 14  # chưa review 14 ngày → stale
 
 _LEVEL_ORDER = {"OK": 0, "SILENT_WARNING": 1, "URGENT_ALERT": 2}
@@ -405,19 +411,17 @@ class WatchdogService:
           không alert đôi); near_stop (< NEAR_STOP_ATR) → SILENT_WARNING.
         - Không có ATR14: fallback % (< 2% URGENT, < 5% WARNING).
         """
-        if stop_distance_atr is not None:
-            if stop_distance_atr <= 0:
-                return "OK"
-            if stop_distance_atr < NEAR_STOP_ATR:
-                return "SILENT_WARNING"
+        proximity = stop_proximity(stop_loss_distance_pct, stop_distance_atr)
+        if proximity is None:
+            return None
+        if proximity == STOP_BREACHED:
+            # StopBreachService sở hữu tín hiệu xuyên stop — watchdog không alert đôi
             return "OK"
-        if stop_loss_distance_pct is not None:
-            if stop_loss_distance_pct < _STOP_LOSS_URGENT_PCT:
-                return "URGENT_ALERT"
-            if stop_loss_distance_pct < _STOP_LOSS_WARNING_PCT:
-                return "SILENT_WARNING"
-            return "OK"
-        return None
+        if proximity == STOP_CRITICAL:
+            return "URGENT_ALERT"
+        if proximity == STOP_NEAR:
+            return "SILENT_WARNING"
+        return "OK"
 
     def _rule_based_check(self, thesis: Thesis, stop_level: str | None) -> str:
         """Alert level rule-based (không AI) = max(stop, assumptions, stale)."""
@@ -442,7 +446,7 @@ class WatchdogService:
 
     def _rule_based_summary(self, thesis: Thesis, stop_dist: float | None) -> str:
         parts = [f"🔴 **{thesis.ticker}** — Rule-based watchdog alert"]
-        if stop_dist is not None and stop_dist < _STOP_LOSS_WARNING_PCT:
+        if stop_dist is not None and stop_dist < NEAR_STOP_PCT_FALLBACK:
             parts.append(f"⚠️ Cách stop-loss: {stop_dist:.1f}%")
         invalid = [
             a.description for a in thesis.assumptions if a.status == AssumptionStatus.INVALID
