@@ -16,6 +16,7 @@ import { el, showToast, openModal, closeModal } from '../../utils/dom.js?v=1';
 import { esc } from '../../utils/format.js?v=1';
 import { thesisApiBase, getJson, sendJson } from '../../api/client.js?v=1';
 import { state } from '../../state/dashboard-state.js?v=1';
+import { icon as ic } from '../../utils/icons.js?v=1';
 import {
   confirmDeleteThesis,
   confirmDeleteAssumption,
@@ -41,7 +42,7 @@ export function makeAssumptionRow(data = {}) {
       <textarea class="form-assumption-rationale" placeholder="Cơ sở / logic">${esc(data.rationale)}</textarea>
     </div>
     <div style="display:flex;align-items:flex-end;">
-      <button type="button" class="icon-btn danger remove-form-row-btn" title="Xóa dòng">🗑</button>
+      <button type="button" class="icon-btn danger remove-form-row-btn" title="Xóa dòng">${ic('trash', { size: 14 })}</button>
     </div>`;
   wrap.querySelector('.remove-form-row-btn').addEventListener('click', () => wrap.remove());
   return wrap;
@@ -64,7 +65,7 @@ export function makeCatalystRow(data = {}) {
       <input type="date" class="form-catalyst-date" value="${data.expected_date ? data.expected_date.slice(0,10) : ''}" />
     </div>
     <div style="display:flex;align-items:flex-end;">
-      <button type="button" class="icon-btn danger remove-form-row-btn" title="Xóa dòng">🗑</button>
+      <button type="button" class="icon-btn danger remove-form-row-btn" title="Xóa dòng">${ic('trash', { size: 14 })}</button>
     </div>`;
   wrap.querySelector('.remove-form-row-btn').addEventListener('click', () => wrap.remove());
   return wrap;
@@ -280,7 +281,7 @@ export function wireDetailActions(thesisId, wrap) {
  */
 async function _confirmLifecycle(thesisId, action) {
   const label    = action === 'close' ? 'đóng' : 'invalidate';
-  const icon     = action === 'close' ? '✅' : '⚠️';
+  const icon     = action === 'close' ? ic('check-circle') : ic('alert-triangle');
   const msgEl    = el('deleteModalMsg');
   const t        = state.theses?.find(x => x.id === thesisId);
   if (msgEl) {
@@ -322,7 +323,7 @@ export async function openDebateModal(thesisId) {
     modal.innerHTML = `
       <div class="modal-box modal-box--wide">
         <div class="modal-header">
-          <h2 class="modal-title">🤺 AI Debate — Devil's Advocate</h2>
+          <h2 class="modal-title">AI phản biện — Devil's Advocate</h2>
           <button class="modal-close" data-close="debateModal" aria-label="Đóng">&#x2715;</button>
         </div>
         <div class="modal-body">
@@ -334,7 +335,7 @@ export async function openDebateModal(thesisId) {
             <button class="ghost-btn ghost-btn--sm debate-focus-btn" data-focus="exit">Exit</button>
             <button class="ghost-btn ghost-btn--sm debate-focus-btn" data-focus="sizing">Sizing</button>
           </div>
-          <button class="primary-btn" id="debateRunBtn" style="width:100%;margin-bottom:16px;">🤺 Chạy Debate</button>
+          <button class="primary-btn" id="debateRunBtn" style="width:100%;margin-bottom:16px;">Chạy phản biện</button>
           <div id="debateResult" style="min-height:60px;"></div>
         </div>
       </div>`;
@@ -369,7 +370,7 @@ export async function openDebateModal(thesisId) {
     const focusBtn = modal.querySelector('.debate-focus-btn.active');
     const focus    = focusBtn?.dataset.focus || null;
     newRunBtn.disabled  = true;
-    newRunBtn.textContent = '⏳ Đang phân tích…';
+    newRunBtn.textContent = 'Đang phân tích…';
     resultEl.innerHTML  = '<p class="muted" style="padding:8px">AI đang phản biện thesis…</p>';
     try {
       const data = await sendJson(
@@ -382,7 +383,7 @@ export async function openDebateModal(thesisId) {
       resultEl.innerHTML = `<div class="error-banner" style="margin:0">Lỗi: ${esc(err.message)}</div>`;
     } finally {
       newRunBtn.disabled  = false;
-      newRunBtn.textContent = '🤺 Chạy lại';
+      newRunBtn.textContent = 'Chạy lại';
     }
   });
 
@@ -391,7 +392,7 @@ export async function openDebateModal(thesisId) {
 
 /** Render DebateOutput into readable HTML. */
 function _renderDebateOutput(d) {
-  const stanceIcon = { bull: '🟢', bear: '🔴', neutral: '🟡' }[d.overall_stance] ?? '⚪';
+  const stanceIcon = { bull: ic('trending-up'), bear: ic('trending-down'), neutral: ic('arrow-right') }[d.overall_stance] ?? ic('circle');
   const strengthClass = { critical: 'badge-danger', significant: 'badge-warn', moderate: 'badge-info', minor: 'badge-muted' };
   const challenges = (d.challenges ?? []).map(c => `
     <div class="debate-challenge" style="margin-bottom:12px;padding:10px 12px;background:var(--surface-2,#1a1a2e);border-radius:6px;border-left:3px solid var(--border);">
@@ -400,7 +401,7 @@ function _renderDebateOutput(d) {
         <strong style="font-size:.88rem;">${esc(c.area)}</strong>
       </div>
       <p style="font-size:.84rem;margin:0 0 6px;">${esc(c.challenge)}</p>
-      ${c.counter_argument ? `<p style="font-size:.80rem;color:var(--muted);margin:0;">💡 ${esc(c.counter_argument)}</p>` : ''}
+      ${c.counter_argument ? `<p style="font-size:.80rem;color:var(--muted);margin:0;">${esc(c.counter_argument)}</p>` : ''}
     </div>`).join('');
   return `
     <div style="margin-bottom:12px;padding:10px 12px;background:var(--surface-2,#1a1a2e);border-radius:6px;">
@@ -502,7 +503,7 @@ export function bindThesisFormEvents({ onThesisSaved } = {}) {
         await sendJson(`${thesisApiBase()}/${thesisId}/catalysts`, 'POST', payload);
       }
       closeModal('catalystModal');
-      showToast('✅ Đã lưu catalyst');
+      showToast('Đã lưu catalyst');
       await loadThesisDetail(Number(thesisId));
     } catch (err) {
       showToast(`Lưu catalyst thất bại: ${err.message}`, 'error');
@@ -534,7 +535,7 @@ export function bindThesisFormEvents({ onThesisSaved } = {}) {
         await sendJson(`${thesisApiBase()}/${thesisId}/assumptions`, 'POST', payload);
       }
       closeModal('assumptionModal');
-      showToast('✅ Đã lưu assumption');
+      showToast('Đã lưu assumption');
       await loadThesisDetail(Number(thesisId));
     } catch (err) {
       showToast(`Lưu assumption thất bại: ${err.message}`, 'error');

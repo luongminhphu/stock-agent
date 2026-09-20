@@ -19,6 +19,7 @@
 
 import { readmodelApiBase, getJson } from '../../api/client.js?v=1';
 import { RefreshScheduler } from '../../utils/refresh-scheduler.js?v=1';
+import { icon as ic } from '../../utils/icons.js?v=1';
 
 const _API_URL       = `${readmodelApiBase()}/dashboard/recommendations`;
 const _POLL_MS       = 5 * 60 * 1000;  // 5 phút
@@ -26,20 +27,20 @@ const _POLL_MS       = 5 * 60 * 1000;  // 5 phút
 // ── Verdict config ────────────────────────────────────────────────────────────
 
 const _VERDICT_LABEL = {
-  BUY_SIGNAL:    { text: 'MUA',          cls: 'rec-verdict--buy',    icon: '📈' },
-  SELL_SIGNAL:   { text: 'BÁN',          cls: 'rec-verdict--sell',   icon: '📉' },
-  HOLD:          { text: 'GIỮ',          cls: 'rec-verdict--hold',   icon: '⏸' },
-  REVIEW_THESIS: { text: 'XEM LẠI THESIS', cls: 'rec-verdict--review', icon: '🔍' },
-  RISK_ALERT:    { text: 'CẢNH BÁO RỦI RO', cls: 'rec-verdict--risk', icon: '⚠️' },
+  BUY_SIGNAL:    { text: 'MUA',          cls: 'rec-verdict--buy',    icon: ic('trending-up') },
+  SELL_SIGNAL:   { text: 'BÁN',          cls: 'rec-verdict--sell',   icon: ic('trending-down') },
+  HOLD:          { text: 'GIỮ',          cls: 'rec-verdict--hold',   icon: ic('pause') },
+  REVIEW_THESIS: { text: 'XEM LẠI THESIS', cls: 'rec-verdict--review', icon: ic('search') },
+  RISK_ALERT:    { text: 'CẢNH BÁO RỦI RO', cls: 'rec-verdict--risk', icon: ic('alert-triangle') },
   NO_ACTION:     { text: 'CHƯA CÓ TÍN HIỆU', cls: 'rec-verdict--none', icon: '—' },
 };
 
 const _ACTION_TYPE_LABEL = {
-  REVIEW_THESIS:  { icon: '🔍', label: 'Review thesis' },
-  CHECK_STOP_LOSS:{ icon: '🛑', label: 'Kiểm tra SL'  },
-  CONSIDER_EXIT:  { icon: '🚪', label: 'Xem xét thoát'},
-  CONSIDER_ENTRY: { icon: '🎯', label: 'Xem xét vào'  },
-  MONITOR:        { icon: '👁',  label: 'Theo dõi'     },
+  REVIEW_THESIS:  { icon: ic('search'), label: 'Review thesis' },
+  CHECK_STOP_LOSS:{ icon: ic('alert-octagon'), label: 'Kiểm tra SL'  },
+  CONSIDER_EXIT:  { icon: ic('arrow-right'), label: 'Xem xét thoát'},
+  CONSIDER_ENTRY: { icon: ic('circle-dot'), label: 'Xem xét vào'  },
+  MONITOR:        { icon: ic('eye'),  label: 'Theo dõi'     },
   NO_ACTION:      { icon: '—',  label: 'Không cần làm' },
 };
 

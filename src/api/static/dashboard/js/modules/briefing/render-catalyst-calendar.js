@@ -15,6 +15,7 @@
 
 import { el } from '../../utils/dom.js?v=1';
 import { esc } from '../../utils/format.js?v=1';
+import { icon as ic } from '../../utils/icons.js?v=1';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -309,7 +310,7 @@ export function renderCatalystCalendar(raw, wrapId = 'catalystList') {
   if (!list.length) {
     wrap.innerHTML = `
       <div class="cc-empty">
-        <span>📅</span>
+        <span>${ic('calendar')}</span>
         <p>Không có catalyst nào trong 30 ngày tới.</p>
       </div>`;
     return;

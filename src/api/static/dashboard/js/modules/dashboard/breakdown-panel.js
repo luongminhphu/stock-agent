@@ -167,8 +167,8 @@ function _reviewSectionHTML(review) {
         <span class="bd-review-date">${_date(review.reviewed_at)}</span>
       </div>
       ${review.reasoning ? `<p class="bd-review-reasoning">${_esc(review.reasoning)}</p>` : ''}
-      ${riskItems  ? `<div class="bd-subhead">⚠ Risk signals</div><ul class="bd-list">${riskItems}</ul>`   : ''}
-      ${watchItems ? `<div class="bd-subhead">👁 Watch items</div><ul class="bd-list">${watchItems}</ul>` : ''}
+      ${riskItems  ? `<div class="bd-subhead">Tín hiệu rủi ro</div><ul class="bd-list">${riskItems}</ul>`   : ''}
+      ${watchItems ? `<div class="bd-subhead">Cần theo dõi</div><ul class="bd-list">${watchItems}</ul>` : ''}
     </div>`;
 }
 
@@ -213,10 +213,10 @@ async function _triggerReviewInPanel(thesis, panel) {
     reviewBody.innerHTML = _reviewSectionHTML(data);
     if (reviewTitle) reviewTitle.textContent = 'Latest AI review';
 
-    btn.innerHTML = '✓ Done';
+    btn.innerHTML = 'Đã xong';
     btn.classList.add('bd-review-btn--done');
     setTimeout(() => {
-      btn.innerHTML = '🧠 AI Review';
+      btn.innerHTML = 'AI Review';
       btn.classList.remove('bd-review-btn--done');
       btn.disabled = false;
     }, 2500);
@@ -229,7 +229,7 @@ async function _triggerReviewInPanel(thesis, panel) {
     reviewBody.innerHTML = `<div class="bd-error">Review lỗi: ${_esc(err.message)}</div>`;
     if (reviewTitle) reviewTitle.textContent = 'Latest AI review';
     btn.disabled  = false;
-    btn.innerHTML = '🧠 AI Review';
+    btn.innerHTML = 'AI Review';
   }
 }
 
@@ -254,14 +254,14 @@ function _renderPanel(panel, thesis, detail, review) {
       </div>
       <div class="bd-header-actions">
         <button class="bd-review-btn" id="bd-review-btn" title="Trigger AI review for this thesis">
-          🧠 AI Review
+          AI Review
         </button>
-        <button class="bd-close" id="bd-close-btn" aria-label="Close">✕</button>
+        <button class="bd-close" id="bd-close-btn" aria-label="Đóng">✕</button>
       </div>
     </div>
 
     <div class="bd-section">
-      <div class="bd-section-title">Health breakdown</div>
+      <div class="bd-section-title">Sức khỏe thesis</div>
       ${_scoreBar(bd)}
     </div>
 

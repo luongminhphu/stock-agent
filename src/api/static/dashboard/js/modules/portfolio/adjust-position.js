@@ -21,6 +21,8 @@
  *   'trade:confirmed' — để app.js refresh holdings + attention (cùng hook với quick-trade)
  */
 
+import { icon as ic } from '../../utils/icons.js?v=1';
+
 const MODAL_ID = 'adj-modal';
 
 // ---------------------------------------------------------------------------
@@ -239,7 +241,7 @@ async function _handleConfirm() {
     const result = await res.json();
     _closeModal();
     _showToast(
-      `✅ Đã điều chỉnh ${result.ticker}: ` +
+      `Đã điều chỉnh ${result.ticker}: ` +
       `${result.old_qty.toLocaleString('vi-VN')} → ${result.new_qty.toLocaleString('vi-VN', { maximumFractionDigits: 0 })} cp · ` +
       `giá vốn ${result.old_avg_cost.toLocaleString('vi-VN', { maximumFractionDigits: 0 })} → ` +
       `${result.new_avg_cost.toLocaleString('vi-VN', { maximumFractionDigits: 0 })} ₫`,
@@ -288,7 +290,7 @@ async function _handleEditConfirm() {
     const result = await res.json();
     _closeModal();
     _showToast(
-      `✏️ Đã sửa ${result.ticker}: ${result.qty.toLocaleString('vi-VN')} cp @ ` +
+      `Đã sửa ${result.ticker}: ${result.qty.toLocaleString('vi-VN')} cp @ ` +
       `${result.avg_cost.toLocaleString('vi-VN', { maximumFractionDigits: 0 })} ₫`,
     );
 
@@ -308,10 +310,10 @@ async function _handleEditConfirm() {
 // History mode — GET /portfolio/trades?ticker=…
 // ---------------------------------------------------------------------------
 const _HIST_META = {
-  buy:    { icon: '🟢', label: 'MUA',    cls: 'hist-buy'    },
-  sell:   { icon: '🔴', label: 'BÁN',    cls: 'hist-sell'   },
-  adjust: { icon: '⚖️', label: 'ĐIỀU CHỈNH', cls: 'hist-adjust' },
-  edit:   { icon: '\u270e',  label: 'SỬA TAY',  cls: 'hist-edit'   },
+  buy:    { icon: ic('arrow-up'), label: 'MUA',    cls: 'hist-buy'    },
+  sell:   { icon: ic('arrow-down'), label: 'BÁN',    cls: 'hist-sell'   },
+  adjust: { icon: ic('wrench'), label: 'ĐIỀU CHỈNH', cls: 'hist-adjust' },
+  edit:   { icon: ic('pencil'),  label: 'SỬA TAY',  cls: 'hist-edit'   },
 };
 
 async function _loadHistory() {

@@ -11,16 +11,17 @@
 
 import { esc, fmtDate } from '../../utils/format.js?v=1';
 import { readmodelApiBase, getJson } from '../../api/client.js?v=1';
+import { icon as ic } from '../../utils/icons.js?v=1';
 
 // ---------------------------------------------------------------------------
 // Verdict helpers
 // ---------------------------------------------------------------------------
 
 const VERDICT_META = {
-  BULLISH:   { cls: 'rv-verdict--bull',  icon: '🟢' },
-  BEARISH:   { cls: 'rv-verdict--bear',  icon: '🔴' },
-  NEUTRAL:   { cls: 'rv-verdict--neut',  icon: '🟡' },
-  WATCHLIST: { cls: 'rv-verdict--watch', icon: '👁' },
+  BULLISH:   { cls: 'rv-verdict--bull',  icon: ic('trending-up') },
+  BEARISH:   { cls: 'rv-verdict--bear',  icon: ic('trending-down') },
+  NEUTRAL:   { cls: 'rv-verdict--neut',  icon: ic('arrow-right') },
+  WATCHLIST: { cls: 'rv-verdict--watch', icon: ic('eye') },
 };
 
 function verdictTag(verdict) {
@@ -42,14 +43,14 @@ function reviewCardHTML(item) {
 
   const risks = item.risk_signals?.length
     ? `<div class="rv-signals">
-        <span class="rv-signals-label">⚠ Risks</span>
+        <span class="rv-signals-label">Rủi ro</span>
         ${item.risk_signals.map(r => `<span class="rv-signal-tag">${esc(r)}</span>`).join('')}
        </div>`
     : '';
 
   const watches = item.next_watch_items?.length
     ? `<div class="rv-signals">
-        <span class="rv-signals-label">👁 Watch</span>
+        <span class="rv-signals-label">Theo dõi</span>
         ${item.next_watch_items.map(w => `<span class="rv-signal-tag rv-signal-tag--watch">${esc(w)}</span>`).join('')}
        </div>`
     : '';
@@ -82,7 +83,7 @@ export function reviewTimelineSlotHTML(thesisId) {
   return `
     <div id="reviewTimelineSlot-${thesisId}" class="rv-slot" aria-live="polite">
       <div class="rv-section">
-        <div class="rv-section-title">🔍 AI Reviews gần nhất</div>
+        <div class="rv-section-title">AI Review gần nhất</div>
         <div class="rv-skeleton">
           <div class="skel skel-text" style="width:60%;"></div>
           <div class="skel skel-text" style="width:45%;"></div>
@@ -102,7 +103,7 @@ export async function loadReviewTimeline(thesisId) {
     if (!data || !Array.isArray(data.items) || !data.items.length) {
       slot.innerHTML = `
         <div class="rv-section">
-          <div class="rv-section-title">🔍 AI Reviews gần nhất</div>
+          <div class="rv-section-title">AI Review gần nhất</div>
           <p class="empty-state">Chưa có AI review nào. Trigger review để bắt đầu.</p>
         </div>`;
       return;
@@ -111,7 +112,7 @@ export async function loadReviewTimeline(thesisId) {
     slot.innerHTML = `
       <div class="rv-section">
         <div class="rv-section-title">
-          🔍 AI Reviews gần nhất
+          AI Review gần nhất
           <span class="rv-count-badge">${data.items.length}${
             data.total > data.items.length ? `/${data.total}` : ''
           }</span>
@@ -124,7 +125,7 @@ export async function loadReviewTimeline(thesisId) {
   } catch (err) {
     slot.innerHTML = `
       <div class="rv-section">
-        <div class="rv-section-title">🔍 AI Reviews gần nhất</div>
+        <div class="rv-section-title">AI Review gần nhất</div>
         <p class="error-text">Lỗi load reviews: ${esc(err.message)}</p>
       </div>`;
   }

@@ -6,6 +6,7 @@
 
 import { fetchMemorySnapshot, fetchBehavioralDNA, bindRefreshButton } from './memory-api.js?v=1';
 import { esc } from '../../utils/format.js?v=1';
+import { icon as ic } from '../../utils/icons.js?v=1';
 
 let _refreshWired = false;
 
@@ -94,7 +95,7 @@ function _renderContextSummary(data) {
     textEl.textContent = text;
   } else {
     wrap.innerHTML = `
-      <div class="mem-section-title">\ud83d\udca1 T\u00f3m t\u1eaft h\u00e0nh vi</div>
+      <div class="mem-section-title">Tóm tắt hành vi</div>
       <p class="mem-context-text">${esc(text)}</p>
     `;
   }
@@ -146,7 +147,7 @@ function _episodeCard(ep) {
     : '';
 
   const riskSnippet = riskSnip
-    ? `<span class="mem-ep-risk-snip">\u26a0\ufe0f ${esc(riskSnip)}</span>` : '';
+    ? `<span class="mem-ep-risk-snip">${esc(riskSnip)}</span>` : '';
 
   // Fix: append % unit; handle float rounding for clean display
   const outcomeTag = ep.outcome != null
@@ -274,7 +275,7 @@ function _renderBehavioralDNA(dna) {
   if (!dna || !dna.has_data) {
     wrap.innerHTML = `
       <div class="dna-empty">
-        <div class="dna-empty-icon">🧬</div>
+        <div class="dna-empty-icon">${ic('dna', { size: 24 })}</div>
         <div class="dna-empty-title">Chưa đủ dữ liệu</div>
         <div class="dna-empty-desc">AI cần ít nhất 3 quyết định đã đánh giá để xây dựng hồ sơ hành vi của bạn. Hồ sơ sẽ tự cập nhật sau 15:15 mỗi ngày.</div>
       </div>`;
@@ -289,8 +290,8 @@ function _renderBehavioralDNA(dna) {
   let holdRatioNote = '';
   if (dna.avg_hold_days_winners != null && dna.avg_hold_days_losers != null) {
     const ratio = dna.avg_hold_days_losers / Math.max(dna.avg_hold_days_winners, 0.1);
-    if (ratio > 1.5) holdRatioNote = `<span class="dna-warn">⚠ Giữ loser lâu hơn winner ${ratio.toFixed(1)}x</span>`;
-    else if (ratio < 0.7) holdRatioNote = `<span class="dna-good">✓ Cắt loser nhanh hơn winner</span>`;
+    if (ratio > 1.5) holdRatioNote = `<span class="dna-warn">Giữ loser lâu hơn winner ${ratio.toFixed(1)}x</span>`;
+    else if (ratio < 0.7) holdRatioNote = `<span class="dna-good">Cắt loser nhanh hơn winner</span>`;
   }
 
   // Top patterns
@@ -320,7 +321,7 @@ function _renderBehavioralDNA(dna) {
 
   wrap.innerHTML = `
     <div class="dna-header">
-      <span class="dna-title">🧬 Behavioral DNA</span>
+      <span class="dna-title">Behavioral DNA</span>
       <span class="dna-meta">${dna.lookback_days} ngày · ${dna.total_evaluated} giao dịch đánh giá</span>
     </div>
 
@@ -368,7 +369,7 @@ function _renderError(message) {
   const errEl = document.createElement('div');
   errEl.className = 'mem-empty mem-load-error';
   errEl.style.cssText = 'color:var(--red,#f87171);';
-  errEl.innerHTML = `<div class="mem-empty-icon">\u26a0\ufe0f</div><div>${esc(message)}</div>`;
+  errEl.innerHTML = `<div class="mem-empty-icon">${ic('alert-triangle', { size: 24 })}</div><div>${esc(message)}</div>`;
   target.appendChild(errEl);
 }
 
@@ -377,7 +378,7 @@ function _renderError(message) {
 // ---------------------------------------------------------------------------
 
 function _actionIcon(action) {
-  return { BUY: '\ud83d\udfe2', SELL: '\ud83d\udd34', HOLD: '\ud83d\udfe1', SKIP: '\u26ab' }[action] ?? '\u26aa';
+  return { BUY: ic('arrow-up'), SELL: ic('arrow-down'), HOLD: ic('pause'), SKIP: ic('ban') }[action] ?? ic('circle');
 }
 
 function _verdictClass(verdict) {

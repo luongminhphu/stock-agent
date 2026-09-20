@@ -98,30 +98,28 @@ main {
   gap: var(--gap, 12px);
 }
 
+/* UI Wave U1: cluster label = section heading thật (không uppercase 11px
+   mờ). Khoảng cách trên lớn hơn dưới để mắt nhóm heading với nội dung dưới nó. */
 .cluster-label {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: var(--text-xs);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .08em;
-  color: var(--faint);
-  padding: var(--space-1) 0 var(--space-1);
+  gap: 10px;
+  padding: var(--space-4) 0 var(--space-2);
   border-bottom: 1px solid var(--line);
 }
+.cluster:first-of-type .cluster-label { padding-top: 0; }
 
 .cluster-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: var(--radius-xs);
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
   background: var(--brand);
-  color: #000;
-  font-size: var(--text-2xs);
-  font-weight: 800;
+  color: #fff;
+  font-size: var(--text-sm);
+  font-weight: 700;
   flex-shrink: 0;
 }
 
@@ -144,9 +142,16 @@ main {
   background: var(--surface);
 }
 
+/* Panel header chuẩn: eyebrow 12px uppercase muted + h2 16/600.
+   Khoảng cách dưới 12px để tách header khỏi bảng/nội dung. */
 .panel-header {
-  padding: var(--panel-pad, 16px) var(--panel-pad, 16px) 8px;
+  padding: var(--panel-pad, 16px) var(--panel-pad, 16px) 12px;
 }
+.panel-header h2 {
+  margin: 0;
+  color: var(--text);
+}
+.panel-header .eyebrow + h2 { margin-top: 2px; }
 
 .panel-body {
   padding: 0 var(--panel-pad, 16px) var(--panel-pad, 16px);
@@ -169,11 +174,12 @@ main {
 }
 
 .eyebrow {
-  font-size: var(--text-xs);
-  font-weight: 700;
+  font-size: var(--text-sm);
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: .08em;
-  color: var(--faint);
+  letter-spacing: .06em;
+  color: var(--muted);
+  line-height: 16px;
   margin-bottom: 2px;
 }
 
@@ -370,4 +376,12 @@ main {
   .panel-body {
     padding-inline: 12px;
   }
+}
+
+/* ── Inline SVG icon (js/utils/icons.js) ───────────────────────────
+   Icon kế thừa currentColor, canh giữa theo dòng chữ, không co lại. */
+.ic {
+  display: inline-block;
+  vertical-align: -0.125em;
+  flex-shrink: 0;
 }

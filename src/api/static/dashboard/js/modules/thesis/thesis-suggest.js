@@ -26,12 +26,12 @@ export function renderSuggestResult(d) {
   const cats = (d.catalysts ?? []).map(c => `
     <div class="suggest-item">
       <strong>${esc(c.catalyst_text)}</strong>
-      <span>${c.expected_timeline ? `📅 ${esc(c.expected_timeline)} — ` : ''}${esc(c.rationale ?? '')}</span>
+      <span>${c.expected_timeline ? `${esc(c.expected_timeline)} — ` : ''}${esc(c.rationale ?? '')}</span>
     </div>`).join('');
 
   return `
     <div class="suggest-result-header">
-      <strong>✨ AI gợi ý cho ${esc(d.ticker)}</strong>
+      <strong>AI gợi ý cho ${esc(d.ticker)}</strong>
       <button class="apply-suggest-btn">↓ Điền vào form</button>
     </div>
     <div class="suggest-body">
@@ -69,7 +69,7 @@ export function renderCatalystSuggestResult(items) {
   return items.map((c, idx) => `
     <div class="suggest-item">
       <strong>${idx + 1}. ${esc(c.catalyst_text)}</strong>
-      <span>${c.expected_timeline ? `📅 ${esc(c.expected_timeline)} — ` : ''}${esc(c.rationale ?? '')}</span>
+      <span>${c.expected_timeline ? `${esc(c.expected_timeline)} — ` : ''}${esc(c.rationale ?? '')}</span>
       <button type="button" class="ghost-btn apply-catalyst-suggest-btn" data-index="${idx}"
         style="margin-top:8px;min-height:32px;padding:0 10px;font-size:.8rem;">Điền vào form</button>
     </div>`).join('');
@@ -103,7 +103,7 @@ export function applySuggestToThesisForm(data, fallbackTicker) {
     })
   ));
   seedBlankFormRows();
-  showToast('✨ Đã điền thesis form, assumptions và catalysts từ AI suggest');
+  showToast('Đã điền thesis form, assumptions và catalysts từ AI suggest');
 }
 
 // ---------------------------------------------------------------------------
@@ -154,7 +154,7 @@ export function bindSuggestEvents() {
           // fix: schema dùng assumption_text
           el('assumptionDescField').value      = item?.assumption_text ?? '';
           el('assumptionRationaleField').value = item?.rationale ?? '';
-          showToast('✨ Đã điền assumption từ AI');
+          showToast('Đã điền assumption từ AI');
         }));
     } catch (err) {
       result.innerHTML = `<div class="error-banner" style="margin:0;">AI suggest lỗi: ${err.message}</div>`;
@@ -184,7 +184,7 @@ export function bindSuggestEvents() {
           el('catalystDescField').value      = item?.catalyst_text ?? '';
           el('catalystRationaleField').value = item?.rationale ?? '';
           el('catalystDateField').value  = item?.expected_date ? item.expected_date.slice(0, 10) : '';
-          showToast('✨ Đã điền catalyst từ AI');
+          showToast('Đã điền catalyst từ AI');
         }));
     } catch (err) {
       result.innerHTML = `<div class="error-banner" style="margin:0;">AI suggest lỗi: ${err.message}</div>`;

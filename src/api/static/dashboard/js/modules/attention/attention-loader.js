@@ -10,6 +10,7 @@
 
 import { apiBase } from '../../api/client.js?v=1';
 import { RefreshScheduler } from '../../utils/refresh-scheduler.js?v=1';
+import { icon as ic } from '../../utils/icons.js?v=1';
 
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000; // 5 phút
 let _refreshTimer = null;
@@ -31,11 +32,11 @@ async function fetchAttentionPanel(limit = 20) {
 // ---------------------------------------------------------------------------
 
 const KIND_META = {
-  triggered_alert:    { icon: '🔔', label: 'Alert kích hoạt' },
-  stop_loss_proximity:{ icon: '🛑', label: 'Stop-loss gần' },
-  stop_loss_breach:   { icon: '🛑', label: 'Xuyên stop-loss' },
-  overdue_review:     { icon: '📋', label: 'Cần review' },
-  upcoming_catalyst:  { icon: '📅', label: 'Catalyst sắp tới' },
+  triggered_alert:    { icon: ic('bell'), label: 'Alert kích hoạt' },
+  stop_loss_proximity:{ icon: ic('alert-triangle'), label: 'Stop-loss gần' },
+  stop_loss_breach:   { icon: ic('alert-octagon'), label: 'Xuyên stop-loss' },
+  overdue_review:     { icon: ic('clipboard'), label: 'Cần review' },
+  upcoming_catalyst:  { icon: ic('calendar'), label: 'Catalyst sắp tới' },
 };
 
 const URGENCY_LABEL = {
@@ -82,7 +83,7 @@ function displayMessage(item) {
 }
 
 function renderItem(item) {
-  const { icon, label } = KIND_META[item.kind] ?? { icon: '⚡', label: item.kind };
+  const { icon, label } = KIND_META[item.kind] ?? { icon: ic('zap'), label: item.kind };
   const urgency = URGENCY_LABEL[item.urgency] ?? { text: item.urgency, cls: 'attn-badge--medium' };
   const meta    = renderMeta(item);
   const relTime = fmtRelTime(item.ts);
@@ -143,7 +144,7 @@ function renderEmpty() {
       <tbody>
         <tr>
           <td class="attn-empty-table__cell">
-            <div class="attn-empty__icon" aria-hidden="true">✅</div>
+            <div class="attn-empty__icon" aria-hidden="true">${ic('check-circle', { size: 24 })}</div>
             <div class="attn-empty__text">Không có việc cần làm hôm nay.</div>
             <div class="attn-empty__hint">Hệ thống sẽ cảnh báo khi có alert, stop-loss gần, thesis overdue hoặc catalyst sắp tới.</div>
           </td>
@@ -165,7 +166,7 @@ function showSkeleton(container) {
   container.innerHTML = `
     <div class="attn-panel">
       <div class="attn-panel__header">
-        <span class="attn-panel__title">⚡ Việc cần làm hôm nay</span>
+        <span class="attn-panel__title">Việc cần làm hôm nay</span>
       </div>
       <ul class="attn-group__list" aria-busy="true" aria-label="Đang tải…">
         ${renderSkeleton()}
@@ -184,7 +185,7 @@ function mount(data, container) {
     container.innerHTML = `
       <div class="attn-panel">
         <div class="attn-panel__header">
-          <span class="attn-panel__title">⚡ Việc cần làm hôm nay</span>
+          <span class="attn-panel__title">Việc cần làm hôm nay</span>
           ${generatedAt ? `<span class="attn-panel__ts">cập nhật ${generatedAt}</span>` : ''}
         </div>
         ${renderEmpty()}
@@ -200,7 +201,7 @@ function mount(data, container) {
   container.innerHTML = `
     <div class="attn-panel">
       <div class="attn-panel__header">
-        <span class="attn-panel__title">⚡ Việc cần làm hôm nay</span>
+        <span class="attn-panel__title">Việc cần làm hôm nay</span>
         <span class="attn-panel__count">${items.length} mục</span>
         ${generatedAt ? `<span class="attn-panel__ts">cập nhật ${generatedAt}</span>` : ''}
       </div>

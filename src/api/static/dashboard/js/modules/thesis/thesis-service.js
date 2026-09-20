@@ -24,6 +24,7 @@ import { fetchQuote, renderQuoteStrip } from './market-quote.js?v=1';
 import { loadConvictionTimeline } from './conviction-timeline/index.js?v=1';
 import { loadReviewTimeline } from './review-timeline.js?v=1';
 import { loadPriceMiniChart, destroyPriceChart } from './render-price-chart.js?v=1';
+import { icon as ic } from '../../utils/icons.js?v=1';
 
 // ---------------------------------------------------------------------------
 // Skeleton HTML
@@ -73,15 +74,15 @@ function detailSkeletonHTML() {
 // Wave C: render thesis event timeline từ /readmodel/thesis/{id}/timeline
 // ---------------------------------------------------------------------------
 const TIMELINE_EVENT_META = {
-  created:              { icon: '🚀', label: 'Tạo thesis'           },
-  assumption_changed:   { icon: '🔄', label: 'Assumption thay đổi'  },
-  catalyst_triggered:   { icon: '⚡', label: 'Catalyst kích hoạt'   },
-  review_added:         { icon: '📋', label: 'AI Review'             },
-  verdict_changed:      { icon: '🎯', label: 'Verdict đổi'          },
-  score_updated:        { icon: '📊', label: 'Score cập nhật'       },
-  status_changed:       { icon: '🏷',  label: 'Trạng thái đổi'      },
-  decision_logged:      { icon: '📝', label: 'Decision ghi lại'     },
-  invalidated:          { icon: '❌', label: 'Thesis bị invalidate'  },
+  created:              { icon: ic('rocket'), label: 'Tạo thesis'           },
+  assumption_changed:   { icon: ic('refresh'), label: 'Assumption thay đổi'  },
+  catalyst_triggered:   { icon: ic('zap'), label: 'Catalyst kích hoạt'   },
+  review_added:         { icon: ic('clipboard'), label: 'AI Review'             },
+  verdict_changed:      { icon: ic('circle-dot'), label: 'Verdict đổi'          },
+  score_updated:        { icon: ic('bar-chart'), label: 'Score cập nhật'       },
+  status_changed:       { icon: ic('info'), label: 'Trạng thái đổi'      },
+  decision_logged:      { icon: ic('pencil'), label: 'Decision ghi lại'     },
+  invalidated:          { icon: ic('x-circle'), label: 'Thesis bị invalidate'  },
 };
 
 const TIMELINE_MAX = 30;
@@ -112,7 +113,7 @@ function formatEventDetailHTML(eventType, detail, summary) {
     let risks = detail.risk_signals;
     if (typeof risks === 'string') { try { risks = JSON.parse(risks); } catch { risks = []; } }
     const riskHTML = Array.isArray(risks) && risks.length
-      ? `<div class="tl-risks">${risks.slice(0, 2).map(r => `<span class="tl-risk-pill">⚠ ${esc(String(r).length > 80 ? String(r).slice(0, 80) + '…' : r)}</span>`).join('')}${risks.length > 2 ? `<span class="tl-risk-more">+${risks.length - 2} rủi ro khác</span>` : ''}</div>` : '';
+      ? `<div class="tl-risks">${risks.slice(0, 2).map(r => `<span class="tl-risk-pill">${esc(String(r).length > 80 ? String(r).slice(0, 80) + '…' : r)}</span>`).join('')}${risks.length > 2 ? `<span class="tl-risk-more">+${risks.length - 2} rủi ro khác</span>` : ''}</div>` : '';
     return `<div class="tl-review-detail">${vtag}${conf}${riskHTML}</div>`;
   }
 
@@ -182,7 +183,7 @@ function renderThesisTimeline(slot, rawEvents) {
   slot.innerHTML = `
     <div class="tl-section">
       <div class="tl-section-title">
-        📅 Lịch sử thesis
+        Lịch sử thesis
         <span class="tl-count-badge">${events.length}${truncated > 0 ? `/${totalVisible}` : ''} sự kiện</span>
       </div>
       <ol class="tl-list">
@@ -434,7 +435,7 @@ export function confirmDeleteThesis(thesisId) {
     await sendJson(`${thesisApiBase()}/${thesisId}`, 'DELETE');
     state.selectedThesisId = null;
     closeModal('deleteModal');
-    showToast('🗑 Đã xóa thesis');
+    showToast('Đã xóa thesis');
   };
   openModal('deleteModal');
 }
@@ -444,7 +445,7 @@ export function confirmDeleteAssumption(thesisId, assumId) {
   state.deleteCallback = async () => {
     await sendJson(`${thesisApiBase()}/${thesisId}/assumptions/${assumId}`, 'DELETE');
     closeModal('deleteModal');
-    showToast('🗑 Đã xóa assumption');
+    showToast('Đã xóa assumption');
     await loadThesisDetail(thesisId);
   };
   openModal('deleteModal');
@@ -455,7 +456,7 @@ export function confirmDeleteCatalyst(thesisId, catId) {
   state.deleteCallback = async () => {
     await sendJson(`${thesisApiBase()}/${thesisId}/catalysts/${catId}`, 'DELETE');
     closeModal('deleteModal');
-    showToast('🗑 Đã xóa catalyst');
+    showToast('Đã xóa catalyst');
     await loadThesisDetail(thesisId);
   };
   openModal('deleteModal');
@@ -476,12 +477,12 @@ export function bindLessonPersistedEvent() {
       const badge = document.createElement('span');
       badge.className = 'thesis-lesson-badge';
       badge.title = 'Có AI lesson mới từ Decision Replay — cân nhắc review thesis';
-      badge.textContent = '🧠';
+      badge.innerHTML = ic('brain', { size: 12 });
       const firstCell = row.querySelector('td');
       if (firstCell) firstCell.appendChild(badge);
     }
 
-    showToast(`🧠 AI lesson mới cho ${ticker ?? 'thesis'} — xem lại thesis để cập nhật assumptions.`);
+    showToast(`AI lesson mới cho ${ticker ?? 'thesis'} — xem lại thesis để cập nhật assumptions.`);
 
     if (state.selectedThesisId === thesisId) {
       loadThesisDetail(thesisId);

@@ -28,6 +28,8 @@
 // ---------------------------------------------------------------------------
 // Format helpers (inline để tránh import)
 // ---------------------------------------------------------------------------
+import { icon as ic } from '../../utils/icons.js?v=1';
+
 const _fmtNum = n => (n == null ? '—' : Number(n).toLocaleString('vi-VN'));
 const _fmtPct = p => (p == null ? '—' : (p >= 0 ? '+' : '') + p.toFixed(1) + '%');
 const _esc    = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -51,7 +53,7 @@ export function renderPortfolio(container, { trades, thesis }) {
   container.innerHTML = `
     ${renderErrorBanner(errors)}
     <div class="tab-bar" role="tablist" aria-label="Portfolio views">
-      <button class="tab-btn" role="tab" data-tab="trades"  aria-selected="false">Trades${tradeBadge}</button>
+      <button class="tab-btn" role="tab" data-tab="trades"  aria-selected="false">Giao dịch${tradeBadge}</button>
       <button class="tab-btn" role="tab" data-tab="thesis" aria-selected="false">Thesis${thesisBadge}</button>
     </div>
     <div class="tab-pane" data-tab-pane="trades">
@@ -201,7 +203,7 @@ function _buildThesisRows(data) {
     return {
       hasError: errors.length > 0,
       html: `<tr data-ticker="${_esc(ticker)}"${thesisAttr}>
-        <td class="col-left"><strong>${_esc(ticker)}</strong>${errors.includes('ticker') ? ' <span class="cell-error">⚠</span>' : ''}</td>
+        <td class="col-left"><strong>${_esc(ticker)}</strong>${errors.includes('ticker') ? ` <span class="cell-error">${ic('alert-triangle', { size: 12 })}</span>` : ''}</td>
         <td class="num">${qty != null ? _fmtNum(qty) : '<span class="muted">—</span>'}</td>
         <td class="currency">${avgCost != null ? _fmtNum(avgCost) : '<span class="muted">—</span>'}</td>
         <td class="currency">${currPrice != null ? _fmtNum(currPrice) : '<span class="muted">—</span>'}</td>
@@ -224,12 +226,12 @@ function _buildTradesTable(rows) {
   return `<div class="portfolio-pane"><div class="table-scroll">
     <table class="data-table">
       <thead><tr>
-        <th class="col-left">Ticker</th>
+        <th class="col-left">Mã</th>
         <th class="num">SL (cp)</th>
         <th class="currency">Giá vốn</th>
         <th class="currency">Thị giá</th>
-        <th class="currency">P&amp;L (₫)</th>
-        <th class="num">P&amp;L (%)</th>
+        <th class="currency">Lãi/lỗ (₫)</th>
+        <th class="num">Lãi/lỗ (%)</th>
         <th class="col-center">Thesis</th>
         <th class="col-center"></th>
       </tr></thead>
@@ -245,12 +247,12 @@ function _buildThesisTable(rows) {
   return `<div class="portfolio-pane"><div class="table-scroll">
     <table class="data-table">
       <thead><tr>
-        <th class="col-left">Ticker</th>
+        <th class="col-left">Mã</th>
         <th class="num">SL (cp)</th>
         <th class="currency">Giá vốn</th>
         <th class="currency">Thị giá</th>
-        <th class="currency">P&amp;L (₫)</th>
-        <th class="num">P&amp;L (%)</th>
+        <th class="currency">Lãi/lỗ (₫)</th>
+        <th class="num">Lãi/lỗ (%)</th>
         <th class="col-center">Verdict</th>
         <th class="col-center"></th>
       </tr></thead>
@@ -271,7 +273,7 @@ function _renderExposureBar(positions) {
   const palette = ['#4f98a3','#d19900','#6daa45','#bb653b','#5591c7','#a86fdf','#dd6974','#fdab43','#6daa45','#4f98a3'];
 
   const warnChip = sorted.some(p => (p.market_value / total) >= 0.3)
-    ? '<span class="exposure-warn-chip" title="1 mã chiếm ≥30% danh mục">⚠️ Over-concentrated</span>'
+    ? '<span class="exposure-warn-chip" title="1 mã chiếm ≥30% danh mục">Tập trung quá mức</span>'
     : '';
 
   const segments = sorted.map((p, i) => {
@@ -291,7 +293,7 @@ function _renderExposureBar(positions) {
 
   return `<div class="exposure-bar-block">
     <div class="exposure-bar-header">
-      <span class="exposure-label">Concentration</span>
+      <span class="exposure-label">Mức tập trung</span>
       ${warnChip}
     </div>
     <div class="exposure-bar-track">${segments}</div>
@@ -328,7 +330,7 @@ export function renderErrorBanner(errors) {
     `<li><span class="badge-scope">${_esc(e.scope)}</span> ${_esc(e.message)}</li>`
   ).join('');
   return `<details class="error-banner ${severityClass}" open>
-    <summary>${hasError ? '❌' : '⚠️'} ${errors.length} vấn đề dữ liệu</summary>
+    <summary>${errors.length} vấn đề dữ liệu</summary>
     <ul>${rows}</ul>
   </details>`;
 }

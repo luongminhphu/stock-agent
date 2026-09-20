@@ -24,7 +24,7 @@
          Đổi IBM Plex Mono (có Vietnamese, tabular nums). -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Display:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" />
     <!-- CSS bundle: link thẳng bundle (1 request, bỏ @import hop) — Wave 5d -->
-    <link rel="stylesheet" href="/static/dashboard/dashboard.bundle.css?v=46" />
+    <link rel="stylesheet" href="/static/dashboard/dashboard.bundle.css?v=47" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">Bỏ qua điều hướng</a>
@@ -45,7 +45,7 @@
 
         <!-- Nav clusters -->
         <nav class="sidebar-scroll" aria-label="Cluster navigation">
-          <span class="nav-section-label">Clusters</span>
+          <span class="nav-section-label">Luồng làm việc</span>
 
           <a class="nav-item active" href="#cluster-a" aria-label="Cluster A: Hôm nay cần làm gì?">
             <span class="nav-cluster-badge" aria-hidden="true">A</span>
@@ -69,10 +69,10 @@
 
           <a class="nav-item" href="#cluster-e" aria-label="Cluster E: Thesis đang quay vòng thế nào?">
             <span class="nav-cluster-badge" aria-hidden="true">E</span>
-            <span>Rotation graph</span>
+            <span>Vòng quay ngành</span>
           </a>
 
-          <span class="nav-section-label">Modules</span>
+          <span class="nav-section-label">Truy cập nhanh</span>
 
           <a class="nav-item" href="#intelligencePanel">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
@@ -81,22 +81,22 @@
 
           <a class="nav-item" href="#watchlistSection">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-            Watchlist
+            Danh sách theo dõi
           </a>
 
           <a class="nav-item" href="#thesesTableWrap">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-            Thesis board
+            Bảng thesis
           </a>
 
           <a class="nav-item" href="#decisionsTableWrap">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-            Decision log
+            Nhật ký quyết định
           </a>
 
           <a class="nav-item" href="#episodicFeed">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-            Memory
+            Bộ nhớ AI
           </a>
         </nav>
 
@@ -114,7 +114,7 @@
             class="quick-action-btn engine-run-btn"
             type="button"
             aria-label="Chạy Intelligence Engine thủ công"
-            title="Trigger engine cycle ngay bây giờ">
+            title="Chạy một vòng Intelligence Engine ngay">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
             Chạy Engine
           </button>
@@ -122,15 +122,15 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Thesis mới
           </button>
-          <button class="quick-action-btn" id="newDecisionBtnSidebar" type="button" aria-label="Log quyết định mới"
+          <button class="quick-action-btn" id="newDecisionBtnSidebar" type="button" aria-label="Ghi quyết định mới"
             onclick="document.getElementById('newDecisionBtn').click()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Log Decision
+            Ghi quyết định
           </button>
-          <button class="quick-action-btn" type="button" aria-label="Thêm vào watchlist"
+          <button class="quick-action-btn" type="button" aria-label="Thêm mã vào danh sách theo dõi"
             onclick="document.querySelector('[data-open-watchlist]')?.click() || document.getElementById('watchlistSection')?.scrollIntoView({behavior:'smooth'})">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Watchlist
+            Thêm mã theo dõi
           </button>
         </div>
       </aside>
@@ -177,7 +177,7 @@
           </button>
           <button id="reloadBtn" class="icon-text-btn" type="button" aria-label="Tải lại dữ liệu">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-            Reload
+            Tải lại
           </button>
           <!-- Mobile-only: new thesis btn (hidden on desktop via topbar.css) -->
           <button id="newThesisBtnTopbar" class="primary-btn" type="button" aria-label="Tạo thesis mới"
@@ -198,7 +198,7 @@
             <span class="cluster-badge">A</span>
             <div class="cluster-label-content">
               <span class="cluster-label-title">Hôm nay cần làm gì?</span>
-              <span class="cluster-label-desc">Command center · KPIs · Action surface · Briefing</span>
+              <span class="cluster-label-desc">Việc cần làm · Tổng quan danh mục · Bản tin</span>
             </div>
           </div>
 
@@ -254,18 +254,17 @@
             <!-- #thesisDigestStrip injected here by today-loop-renderer.js -->
           </div>
 
-          <!-- ── 3. KPI STRIP — 2 rows ─────────────────────────────────── -->
+          <!-- ── 3. KPI STRIP — 1 hàng 7 ô, cột đều ─────────────────────── -->
           <section class="command-strip kpi-strip" aria-label="Tổng quan danh mục">
 
-            <!-- ── Row 1: 5 cards ── -->
             <article class="signal-card signal-card--portfolio">
-              <span class="signal-label">Portfolio value</span>
+              <span class="signal-label">Giá trị danh mục</span>
               <strong class="signal-value" id="portfolioValue">—</strong>
               <span class="signal-sub" id="portfolioValueSub"></span>
             </article>
 
             <article class="signal-card signal-card--pnl">
-              <span class="signal-label">Unrealized P&amp;L</span>
+              <span class="signal-label">Lãi/lỗ chưa thực hiện</span>
               <strong class="signal-value" id="unrealizedPnl">—</strong>
               <span class="signal-sub kpi-trend" id="unrealizedPnlPct"></span>
             </article>
@@ -273,36 +272,31 @@
             <article class="signal-card signal-card--risk" id="attentionKpiCard">
               <span class="signal-label">Cần xử lý</span>
               <strong class="signal-value" id="attentionKpi">—</strong>
-              <span class="signal-sub" id="attentionKpiSub">risky + chưa review</span>
+              <span class="signal-sub" id="attentionKpiSub">rủi ro + chưa review</span>
             </article>
 
             <article class="signal-card">
-              <span class="signal-label">Open theses</span>
+              <span class="signal-label">Thesis đang mở</span>
               <strong class="signal-value" id="openTheses">—</strong>
               <span class="signal-sub" id="reviewsToday"></span>
             </article>
 
-            <!-- ── Row divider ── -->
-            <div class="kpi-row-divider" aria-hidden="true"></div>
-
-            <!-- ── Row 2: 3×(span 1) + 1×(span 2) = 5 cols ── -->
             <article class="signal-card">
-              <span class="signal-label">Upcoming 7d</span>
+              <span class="signal-label">Sự kiện 7 ngày tới</span>
               <strong class="signal-value" id="upcoming7d">—</strong>
-              <span class="signal-sub">catalysts</span>
+              <span class="signal-sub">catalyst</span>
             </article>
 
             <article class="signal-card" id="briefFeedbackCard">
-              <span class="signal-label">Brief acted</span>
+              <span class="signal-label">Brief đã xử lý</span>
               <strong class="signal-value" id="briefActedRate">—</strong>
-              <span class="signal-sub" id="briefActedSub">acted / total</span>
+              <span class="signal-sub" id="briefActedSub">đã xử lý / tổng</span>
             </article>
 
-            <!-- Latest Scan: span 2 — cùng dòng với Upcoming/Review/Brief -->
             <article class="signal-card signal-card--scan" id="latestScanCard">
-              <span class="signal-label">Latest scan</span>
+              <span class="signal-label">Lần quét gần nhất</span>
               <strong class="signal-value" id="latestScanAt">—</strong>
-              <span class="signal-sub" id="latestScanSummary">Chưa có scan snapshot.</span>
+              <span class="signal-sub" id="latestScanSummary">Chưa có dữ liệu quét.</span>
             </article>
 
           </section>
@@ -334,14 +328,14 @@
           <details class="brief-collapsible" id="briefCollapsible">
             <summary>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-              Morning / EOD Brief
+              Bản tin sáng / cuối ngày
               <!-- Brief phase tabs — live here, not in topbar -->
               <div class="brief-tab-bar brief-tab-bar--inline" role="tablist" aria-label="Brief phase"
                    onclick="event.stopPropagation()">
                 <button class="brief-tab active" role="tab" aria-selected="true"
-                  aria-controls="morningBriefWrap" data-tab="morning">🌅 Morning</button>
+                  aria-controls="morningBriefWrap" data-tab="morning">Sáng</button>
                 <button class="brief-tab" role="tab" aria-selected="false"
-                  aria-controls="eodBriefWrap" data-tab="eod">🌙 EOD</button>
+                  aria-controls="eodBriefWrap" data-tab="eod">Cuối ngày</button>
               </div>
             </summary>
             <div class="brief-inner">
@@ -374,12 +368,12 @@
           <section class="panel glass portfolio-layer" aria-labelledby="portfolioTitle">
             <div class="panel-header split-header">
               <div>
-                <p class="eyebrow">① Danh mục đầu tư</p>
-                <h2 id="portfolioTitle">Holdings &amp; P&amp;L realtime</h2>
+                <p class="eyebrow">Danh mục đầu tư</p>
+                <h2 id="portfolioTitle">Vị thế &amp; Lãi/lỗ</h2>
               </div>
               <p class="muted panel-hint">
-                <strong>Trades</strong>: P&amp;L unrealized theo giao dịch thực tế.
-                <strong>Thesis</strong>: Conviction + score từ thesis active.
+                <strong>Giao dịch</strong>: lãi/lỗ chưa thực hiện theo giao dịch thực tế.
+                <strong>Thesis</strong>: conviction và điểm từ thesis đang mở.
               </p>
             </div>
             <div class="panel-body">
@@ -392,8 +386,8 @@
             <section class="panel glass watchlist-layer" aria-labelledby="watchlistTitle">
               <div class="panel-header split-header">
                 <div>
-                  <p class="eyebrow">② Watchlist &amp; Tín hiệu</p>
-                  <h2 id="watchlistTitle">👁 Mã đang theo dõi</h2>
+                  <p class="eyebrow">Danh sách theo dõi</p>
+                  <h2 id="watchlistTitle">Mã đang theo dõi</h2>
                 </div>
                 <div class="panel-actions"></div>
               </div>
@@ -403,8 +397,8 @@
             <section class="panel glass watchlist-layer" aria-labelledby="catalystPanelTitle">
               <div class="panel-header split-header">
                 <div>
-                  <p class="eyebrow">③ Catalyst Calendar</p>
-                  <h2 id="catalystPanelTitle">Upcoming catalysts</h2>
+                  <p class="eyebrow">Lịch sự kiện</p>
+                  <h2 id="catalystPanelTitle">Catalyst sắp tới</h2>
                 </div>
               </div>
               <div id="catalystList" class="list empty-state">Chưa tải dữ liệu…</div>
@@ -421,15 +415,15 @@
             <span class="cluster-badge">B</span>
             <div class="cluster-label-content">
               <span class="cluster-label-title">Thesis của tôi đang ở đâu?</span>
-              <span class="cluster-label-desc">Thesis board · Leaderboard · Backtesting</span>
+              <span class="cluster-label-desc">Bảng thesis · Xếp hạng · Độ chính xác</span>
             </div>
           </div>
 
           <section class="panel glass watchlist-layer" aria-labelledby="thesisBoardTitle">
             <div class="panel-header split-header">
               <div>
-                <p class="eyebrow">④ Portfolio theses</p>
-                <h2 id="thesisBoardTitle">Thesis board</h2>
+                <p class="eyebrow">Thesis danh mục</p>
+                <h2 id="thesisBoardTitle">Bảng thesis</h2>
               </div>
               <div class="panel-actions thesis-status-filter">
                 <span class="filter-label">Status</span>
@@ -450,7 +444,7 @@
               <div id="thesisDetail" class="detail-shell empty-detail">
                 <div class="empty-detail-copy">
                   <h3>Chọn một thesis</h3>
-                  <p>Xem assumptions, catalysts, reasoning và các điểm cần theo dõi tiếp theo.</p>
+                  <p>Xem giả định, catalyst, lập luận và các điểm cần theo dõi tiếp theo.</p>
                 </div>
               </div>
             </div>
@@ -461,12 +455,12 @@
               aria-labelledby="lbStripTitle" aria-live="polite">
               <div class="panel-header split-header">
                 <div>
-                  <p class="eyebrow">⑤ 🏆 Thesis Leaderboard</p>
-                  <h2 id="lbStripTitle">Top theses theo score</h2>
+                  <p class="eyebrow">Xếp hạng thesis</p>
+                  <h2 id="lbStripTitle">Thesis dẫn đầu theo điểm</h2>
                 </div>
                 <div class="lb-sort-bar" role="group" aria-label="Sắp xếp leaderboard">
-                  <button class="lb-sort-btn active" data-lb-sort="score" type="button">Score</button>
-                  <button class="lb-sort-btn" data-lb-sort="pnl" type="button">P&amp;L</button>
+                  <button class="lb-sort-btn active" data-lb-sort="score" type="button">Điểm</button>
+                  <button class="lb-sort-btn" data-lb-sort="pnl" type="button">Lãi/lỗ</button>
                 </div>
               </div>
               <ol id="leaderboardList" class="lb-list" aria-label="Danh sách leaderboard">
@@ -481,26 +475,26 @@
             <details class="panel glass validation-layer backtesting-panel collapsible-panel" id="backtestDetails">
               <summary class="panel-header split-header collapsible-summary">
                 <div>
-                  <p class="eyebrow">⑥ Backtesting</p>
-                  <h2 id="backtestTitle">Review accuracy &amp; thesis performance</h2>
+                  <p class="eyebrow">Độ chính xác</p>
+                  <h2 id="backtestTitle">Độ chính xác AI Review &amp; hiệu suất thesis</h2>
                 </div>
-                <p class="muted panel-hint">Verdict quality · Worst &amp; Best calls theo avg PnL snapshot.</p>
+                <p class="muted panel-hint">Chất lượng verdict · Lệnh tốt/kém nhất theo lãi/lỗ trung bình.</p>
               </summary>
               <div class="panel-body">
                 <div class="backtesting-grid">
                   <div class="subpanel">
-                    <h3>📊 Verdict accuracy</h3>
+                    <h3>Độ chính xác verdict</h3>
                     <div id="accuracyWrap" class="empty-state">Chưa tải dữ liệu…</div>
                   </div>
                   <div class="subpanel" id="callsPanel">
                     <div class="calls-tab-bar" role="tablist" aria-label="Calls view">
                       <button class="calls-tab active" role="tab" aria-selected="true"
                         aria-controls="worstCallsPane" data-calls-tab="worst">
-                        🔴 Worst calls
+                        Kém nhất
                       </button>
                       <button class="calls-tab" role="tab" aria-selected="false"
                         aria-controls="bestCallsPane" data-calls-tab="best">
-                        🟢 Best calls
+                        Tốt nhất
                       </button>
                     </div>
                     <div id="worstCallsPane" class="calls-pane" role="tabpanel">
@@ -525,44 +519,44 @@
             <span class="cluster-badge">C</span>
             <div class="cluster-label-content">
               <span class="cluster-label-title">Tôi đã quyết định gì?</span>
-              <span class="cluster-label-desc">Decision log · Win rate · AI Lessons</span>
+              <span class="cluster-label-desc">Nhật ký quyết định · Tỷ lệ thắng · Bài học AI</span>
             </div>
           </div>
 
           <section class="panel glass decision-layer" aria-labelledby="decisionTitle">
             <div class="panel-header split-header">
               <div>
-                <p class="eyebrow">⑦ Decision Log &amp; AI Lessons</p>
-                <h2 id="decisionTitle">Ghi lại quyết định &amp; Bài học từ AI Replay</h2>
+                <p class="eyebrow">Nhật ký quyết định</p>
+                <h2 id="decisionTitle">Quyết định đã ghi &amp; bài học từ AI Replay</h2>
               </div>
-              <button id="newDecisionBtn" class="primary-btn" type="button">+ Log Decision</button>
+              <button id="newDecisionBtn" class="primary-btn" type="button">+ Ghi quyết định</button>
             </div>
             <div class="panel-body">
               <div id="decisionKpiStrip" class="dec-kpi-strip"
                 aria-label="Decision KPI tổng quan" aria-live="polite">
                 <article class="dec-kpi-card" id="dkpiTotal">
-                  <span class="dec-kpi-label">Tổng decisions</span>
+                  <span class="dec-kpi-label">Tổng quyết định</span>
                   <strong class="dec-kpi-value"><div class="skel skel-text"></div></strong>
                 </article>
                 <article class="dec-kpi-card" id="dkpiWinRate">
-                  <span class="dec-kpi-label">Win rate</span>
+                  <span class="dec-kpi-label">Tỷ lệ thắng</span>
                   <strong class="dec-kpi-value"><div class="skel skel-text"></div></strong>
-                  <span class="dec-kpi-sub">evaluated</span>
+                  <span class="dec-kpi-sub">đã đánh giá</span>
                 </article>
                 <article class="dec-kpi-card" id="dkpiBuyCount">
                   <span class="dec-kpi-label">MUA / BÁN</span>
                   <strong class="dec-kpi-value"><div class="skel skel-text"></div></strong>
                 </article>
                 <article class="dec-kpi-card dec-kpi-card--alert" id="dkpiPending">
-                  <span class="dec-kpi-label">Chờ evaluate</span>
+                  <span class="dec-kpi-label">Chờ đánh giá</span>
                   <strong class="dec-kpi-value"><div class="skel skel-text"></div></strong>
                   <span class="dec-kpi-sub">quá hạn review</span>
                 </article>
               </div>
 
               <div class="dec-tab-bar" role="tablist" aria-label="Decision views">
-                <button class="dec-tab active" role="tab" data-tab="decisions">📋 Decisions</button>
-                <button class="dec-tab" role="tab" data-tab="lessons">🧠 AI Lessons</button>
+                <button class="dec-tab active" role="tab" data-tab="decisions">Quyết định</button>
+                <button class="dec-tab" role="tab" data-tab="lessons">Bài học AI</button>
               </div>
 
               <div id="decisionsPane">
@@ -583,13 +577,13 @@
             <span class="cluster-badge">D</span>
             <div class="cluster-label-content">
               <span class="cluster-label-title">AI đã học được gì từ tôi?</span>
-              <span class="cluster-label-desc">Episodic memory · Semantic patterns · Bias warnings</span>
+              <span class="cluster-label-desc">Lịch sử hành động · Mẫu hành vi · Cảnh báo thiên kiến</span>
             </div>
           </div>
 
           <details class="collapsible-panel cluster-collapse" id="memoryDetails">
             <summary class="collapsible-summary collapsible-summary--cluster">
-              <span class="collapse-hint">Nhấn để xem: Episodic memory · Patterns · Bias · Behavioral DNA</span>
+              <span class="collapse-hint">Nhấn để xem: Lịch sử hành động · Mẫu hành vi · Thiên kiến · Hồ sơ hành vi</span>
             </summary>
           <div class="memory-kpi-strip" id="memoryKpiStrip" aria-label="Memory overview">
             <article class="mem-kpi-card" id="memKpiEpisodes">
@@ -627,7 +621,7 @@
             <section class="panel glass mem-episodic" aria-labelledby="memEpisodicTitle">
               <div class="panel-header split-header">
                 <div>
-                  <p class="eyebrow">⑧ Episodic Memory</p>
+                  <p class="eyebrow">Lịch sử hành động</p>
                   <h2 id="memEpisodicTitle">Lịch sử hành động &amp; kết quả</h2>
                 </div>
                 <button class="mem-refresh-btn" id="memRefreshBtn" type="button"
@@ -668,7 +662,7 @@
                   </div>
                 </div>
                 <div id="episodicEmpty" class="mem-empty hidden">
-                  <div class="mem-empty-icon">🧩</div>
+                  <div class="mem-empty-icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
                   <div>Chưa có episode nào được ghi nhận.</div>
                   <div class="mem-empty-hint">Hệ thống sẽ tự động ghi lại khi bạn react với briefing hoặc log decision đầu tiên.</div>
                 </div>
@@ -677,8 +671,8 @@
 
             <section class="panel glass" aria-labelledby="memPatternsTitle">
               <div class="panel-header">
-                <p class="eyebrow">⑨ Semantic Patterns</p>
-                <h2 id="memPatternsTitle">Patterns AI học được</h2>
+                <p class="eyebrow">Mẫu hành vi</p>
+                <h2 id="memPatternsTitle">Mẫu hành vi AI đã học</h2>
               </div>
               <div class="panel-body">
                 <div id="patternsList" class="mem-pattern-list" aria-live="polite">
@@ -702,7 +696,7 @@
                   </div>
                 </div>
                 <div id="patternsEmpty" class="mem-empty hidden">
-                  <div class="mem-empty-icon">🔬</div>
+                  <div class="mem-empty-icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/><path d="M8.5 2h7"/><path d="M7 16h10"/></svg></div>
                   <div>Chưa đủ dữ liệu để rút ra pattern.</div>
                   <div class="mem-empty-hint">Cần ít nhất 5 episodes cùng loại trước khi AI tổng hợp pattern.</div>
                 </div>
@@ -711,7 +705,7 @@
 
             <section class="panel glass" aria-labelledby="memBiasTitle">
               <div class="panel-header">
-                <p class="eyebrow">⑩ Bias Warnings</p>
+                <p class="eyebrow">Thiên kiến</p>
                 <h2 id="memBiasTitle">Cảnh báo thiên kiến đầu tư</h2>
               </div>
               <div class="panel-body">
@@ -728,7 +722,7 @@
                   </div>
                 </div>
                 <div id="biasEmpty" class="mem-empty hidden">
-                  <div class="mem-empty-icon">✅</div>
+                  <div class="mem-empty-icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.801 10A10 10 0 1 1 17 3.335"/><path d="m9 11 3 3L22 4"/></svg></div>
                   <div>Không phát hiện thiên kiến nào đang active.</div>
                   <div class="mem-empty-hint">Hệ thống sẽ cảnh báo khi nhận ra xu hướng lặp lại trong decision của bạn.</div>
                 </div>
@@ -763,11 +757,11 @@
 
           <details id="rrgPanel" class="panel glass collapsible-panel">
             <summary class="collapsible-summary collapsible-summary--cluster">
-              <span class="collapse-hint">Nhấn để xem: Relative Rotation Graph (VNINDEX benchmark)</span>
+              <span class="collapse-hint">Nhấn để xem: Đồ thị xoay vòng tương đối (so với VNINDEX)</span>
             </summary>
             <div class="panel-header split-header">
               <div>
-                <p class="eyebrow">⑦ 📡 RRG</p>
+                <p class="eyebrow">Vòng quay ngành</p>
                 <h2 id="rrgPanelTitle">Relative Rotation Graph</h2>
               </div>
               <p class="muted panel-hint">VNINDEX benchmark</p>
@@ -793,7 +787,7 @@
         <!-- Header -->
         <div class="modal-header">
           <div class="modal-header-meta">
-            <p class="modal-eyebrow">✦ Thesis</p>
+            <p class="modal-eyebrow">Thesis</p>
             <h2 id="thesisModalTitle">Tạo Thesis mới</h2>
           </div>
           <button class="modal-close" data-close="thesisModal" aria-label="Đóng">&#x2715;</button>
@@ -802,7 +796,7 @@
         <!-- AI Suggest bar -->
         <div class="ai-bar">
           <div>
-            <p class="ai-bar__label">✨ AI Gợi ý theo mã CK</p>
+            <p class="ai-bar__label">AI gợi ý theo mã</p>
             <input id="suggestTicker" class="ticker-input" placeholder="VNM, HPG, VIC…" />
           </div>
           <button type="button" id="aiSuggestBtn" class="suggest-btn">
@@ -913,7 +907,7 @@
         <!-- Header -->
         <div class="modal-header">
           <div class="modal-header-meta">
-            <p class="modal-eyebrow">📌 Assumption</p>
+            <p class="modal-eyebrow">Assumption</p>
             <h2 id="assumptionModalTitle">Thêm Assumption</h2>
           </div>
           <button class="modal-close" data-close="assumptionModal" aria-label="Đóng">&#x2715;</button>
@@ -922,7 +916,7 @@
         <!-- AI bar -->
         <div class="ai-bar">
           <div>
-            <p class="ai-bar__label">✨ AI gợi ý cho <span class="ai-bar__ticker" id="assumptionTickerDisplay">—</span></p>
+            <p class="ai-bar__label">AI gợi ý cho <span class="ai-bar__ticker" id="assumptionTickerDisplay">—</span></p>
             <input id="assumptionSuggestTicker" type="hidden" />
           </div>
           <button type="button" id="assumptionAiSuggestBtn" class="suggest-btn">AI gợi ý</button>
@@ -979,7 +973,7 @@
         <!-- Header -->
         <div class="modal-header">
           <div class="modal-header-meta">
-            <p class="modal-eyebrow">⚡ Catalyst</p>
+            <p class="modal-eyebrow">Catalyst</p>
             <h2 id="catalystModalTitle">Thêm Catalyst</h2>
           </div>
           <button class="modal-close" data-close="catalystModal" aria-label="Đóng">&#x2715;</button>
@@ -988,7 +982,7 @@
         <!-- AI bar -->
         <div class="ai-bar">
           <div>
-            <p class="ai-bar__label">✨ AI gợi ý cho <span class="ai-bar__ticker" id="catalystTickerDisplay">—</span></p>
+            <p class="ai-bar__label">AI gợi ý cho <span class="ai-bar__ticker" id="catalystTickerDisplay">—</span></p>
             <input id="catalystSuggestTicker" type="hidden" />
           </div>
           <button type="button" id="catalystAiSuggestBtn" class="suggest-btn">AI gợi ý</button>
@@ -1064,7 +1058,7 @@
     <dialog id="decisionModal" aria-labelledby="decisionModalTitle">
       <div class="modal-inner">
         <div class="modal-header">
-          <h2 id="decisionModalTitle">Log Decision</h2>
+          <h2 id="decisionModalTitle">Ghi quyết định</h2>
           <button class="modal-close" data-close="decisionModal" aria-label="Đóng">&#x2715;</button>
         </div>
         <form id="decisionForm" class="form-grid" novalidate>
@@ -1141,7 +1135,7 @@
 
     <!-- quick-trade.js đã được chuyển thành ES module tại modules/portfolio/quick-trade.js -->
     <!-- và được import trực tiếp bởi portfolio-loader.js + portfolio-renderer.js          -->
-    <script type="module" src="/static/dashboard/js/app.js?v=32" data-cfasync="false"></script>
+    <script type="module" src="/static/dashboard/js/app.js?v=33" data-cfasync="false"></script>
     <script>
       /* ── Sidebar toggle (mobile) ─────────────────────────────────────── */
       (function () {

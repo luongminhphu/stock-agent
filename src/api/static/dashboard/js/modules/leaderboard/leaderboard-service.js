@@ -65,9 +65,9 @@ export async function loadLeaderboard(sortBy = 'score') {
 // Compute tier client-side from score (0–100)
 const TIER_LABEL = score =>
   score == null  ? ''           :
-  score >= 80    ? '🔥 Strong'  :
-  score >= 60    ? '✅ Good'    :
-  score >= 40    ? '⚠️ Watch'   : '🔴 Risky';
+  score >= 80    ? 'Mạnh'  :
+  score >= 60    ? 'Tốt'    :
+  score >= 40    ? 'Theo dõi'   : 'Rủi ro';
 
 // Backend only supports sort_by: "score" | "pnl"
 function _metricDisplay(item, sortBy) {
@@ -75,14 +75,14 @@ function _metricDisplay(item, sortBy) {
     const pnl = item.pnl_pct;
     return {
       value : pnl != null ? `${pnl > 0 ? '+' : ''}${pnl.toFixed(1)}%` : '—',
-      label : 'P&L',
+      label : 'Lãi/lỗ',
       cls   : pnl == null ? '' : pnl > 0 ? 'up' : 'down',
     };
   }
   // default: score
   return {
     value : item.score != null ? item.score : '—',
-    label : 'Score',
+    label : 'Điểm',
     cls   : '',
   };
 }

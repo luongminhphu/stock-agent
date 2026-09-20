@@ -14,6 +14,7 @@
 
 import { el } from '../../utils/dom.js?v=1';
 import { esc } from '../../utils/format.js?v=1';
+import { icon as ic } from '../../utils/icons.js?v=1';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -65,7 +66,7 @@ export function renderAccuracy(rows) {
       ? `<span class="${accNum >= 50 ? 'bt-pos' : 'bt-neg'}">${accNum.toFixed(0)}%</span>`
       : '<span class="bt-na">—</span>';
     const warn     = accNum != null && accNum < 50
-      ? ' <span class="bt-warn" title="Accuracy &lt; 50%">⚠</span>' : '';
+      ? ` <span class="bt-warn" title="Accuracy &lt; 50%">${ic('alert-triangle', { size: 12 })}</span>` : '';
 
     return `<tr>
       <td class="col-left">${_verdictBadge(r.verdict)}${warn}</td>

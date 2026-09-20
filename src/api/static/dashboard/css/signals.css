@@ -49,28 +49,34 @@
 .signal-card {
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 0.65rem 0.75rem;
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  transition: border-color 150ms ease, box-shadow 150ms ease;
+  gap: 4px;
+  min-width: 0;
+  transition: border-color var(--transition-fast, 150ms ease);
 }
 
+/* Borders over shadows (HSC): panel trong terminal không đổ bóng khi hover */
 .signal-card:hover {
   border-color: var(--line-strong);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
 
 /* ── KPI card typography ──────────────────────────────────────────── */
 /* signal-label: eyebrow — small uppercase descriptor above the value  */
+/* UI Wave U1: nhãn sentence-case 12px, cho phép xuống dòng 2 hàng (không cắt
+   "Giá trị danh mục" khi 7 cột ở 1440px). */
 .signal-label {
   font-size: var(--text-sm);
   font-weight: 500;
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  line-height: 1.3;
+  line-height: 16px;
+  min-height: 16px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 /* signal-value: primary metric — large, bold, tabular                 */
@@ -83,6 +89,8 @@
   line-height: 1.3;
   overflow: visible;
   letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums lining-nums;
+  white-space: nowrap;
 }
 
 /* signal-sub: secondary note — small, muted, below the value          */
@@ -90,7 +98,10 @@
   font-size: var(--text-sm);
   font-weight: 400;
   color: var(--muted);
-  line-height: 1.3;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ── Card top row: ticker + count badge + time ────────────────────── */

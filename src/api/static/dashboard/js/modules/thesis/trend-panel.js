@@ -207,7 +207,7 @@ function renderTrendPanel(data) {
   <!-- ── Next watch ────────────────────────────────────────────────────────── -->
   ${s.next_watch ? `
   <div class="trend-section trend-section--watch">
-    <span class="trend-section-title">👁 Theo dõi tiếp</span>
+    <span class="trend-section-title">Theo dõi tiếp</span>
     <p class="trend-ind-note">${esc(s.next_watch)}</p>
   </div>` : ''}
 

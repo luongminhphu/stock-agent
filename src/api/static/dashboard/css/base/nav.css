@@ -58,11 +58,11 @@
 
 /* ── Section label ───────────────────────────────────────────────────────── */
 .nav-section-label {
-  font-size: var(--text-2xs);
-  font-weight: 700;
+  font-size: var(--text-xs);
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--faint);
+  letter-spacing: 0.08em;
+  color: var(--muted);
   padding: var(--space-3) var(--space-4) var(--space-1);
   margin-top: var(--space-2);
 }
@@ -72,8 +72,8 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 7px var(--space-4);
-  font-size: var(--text-sm);
+  padding: 8px var(--space-4);
+  font-size: var(--text-base);
   font-weight: 500;
   color: var(--muted);
   border-radius: 0;

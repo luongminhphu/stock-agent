@@ -18,7 +18,7 @@
      .attn-item                 → single item row
      .attn-item--clickable      → hover/focus state for navigable items
      .attn-item--skel           → skeleton state
-     .attn-item__icon           → emoji
+     .attn-item__icon           → SVG icon (js/utils/icons.js)
      .attn-item__body           → flex-1 content
      .attn-item__top            → ticker + message
      .attn-item__ticker         → e.g. "FPT"
@@ -202,13 +202,15 @@
 /* ── Icon ────────────────────────────────────────────────────────────────── */
 
 .attn-item__icon {
-  font-size: var(--text-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
   width: 22px;
-  text-align: center;
-  line-height: 1;
-  opacity: 0.85;
+  height: 22px;
+  color: var(--muted);
 }
+.attn-item__icon svg { width: 16px; height: 16px; }
 
 /* ── Body ────────────────────────────────────────────────────────────────── */
 
@@ -439,7 +441,19 @@
 .as-item--danger { border-left: 3px solid var(--danger);  }
 .as-item--info   { border-left: 3px solid var(--brand);   }
 
-.as-icon { font-size: var(--text-lg); flex-shrink: 0; }
+.as-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.as-icon svg { width: 16px; height: 16px; }
+.as-item--warn   .as-icon { color: var(--warning); }
+.as-item--danger .as-icon { color: var(--danger); }
+.as-item--info   .as-icon { color: var(--brand); }
 
 .as-text {
   flex: 1;
@@ -505,59 +519,16 @@
   border-bottom: none;
 }
 
-.attn-group[data-urgency="medium"]   .attn-group__label { color: var(--muted); }
+.attn-group[data-urgency="medium"] .attn-group__label { color: var(--muted); }
 
-.attn-item::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 6px;
-  bottom: 6px;
-  width: 2.5px;
-  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
-  opacity: 0;
-  transition: opacity .14s ease;
-}
-
-.attn-item[data-urgency="critical"]::before {
-  background: var(--danger);
-  opacity: 1;
-  box-shadow: 1px 0 6px rgba(var(--down-rgb), .5);
-}
-
-.attn-item[data-urgency="high"]::before {
-  background: var(--warning);
-  opacity: 1;
-  box-shadow: 1px 0 6px rgba(var(--ref-rgb), .4);
-}
-
-.attn-item[data-urgency="medium"]::before {
-  background: var(--muted);
-  opacity: .4;
-}
+/* UI Wave U1: urgency = 1 vạch trái duy nhất (đã có ở .attn-item border-left).
+   Bỏ ::before glow + chấm đỏ pseudo trên icon (bị lệch sang mép phải vì
+   icon không position:relative). Icon lấy màu theo urgency. */
+.attn-item[data-urgency="critical"] .attn-item__icon { color: var(--danger); }
+.attn-item[data-urgency="high"]     .attn-item__icon { color: var(--warning); }
+.attn-item[data-urgency="medium"]   .attn-item__icon { color: var(--muted); }
 
 .attn-item:last-child { border-bottom: none; }
-
-.attn-item--clickable:hover::before {
-  opacity: 1 !important;
-}
-
-.attn-item[data-urgency="critical"] .attn-item__icon::before {
-  content: '';
-  display: block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--danger);
-  box-shadow: 0 0 4px rgba(var(--down-rgb), .7);
-  position: absolute;
-  top: 2px;
-  right: -1px;
-}
-
-0%, 100% { opacity: .75; transform: scale(1); }
-
-50%       { opacity: 1;   transform: scale(1.08); }
 
 .attn-empty-table__cell > * + * {
   margin-top: 0;
@@ -577,8 +548,8 @@
   margin: 0 auto;
 }
 
-.attn-item::before { transition: none; }
-
-.attn-empty {
+@media (max-width: 600px) {
+  .attn-empty {
     padding: 12px 14px;
   }
+}

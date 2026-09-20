@@ -15,7 +15,7 @@
  *   ratio >= 0.70  ->  green  (healthy)
  *   ratio >= 0.40  ->  yellow (weak)
  *   ratio <  0.40  ->  red    (critical)
- *   null / missing ->  gray   (no data)
+ *   null / missing ->  gray   (chưa có dữ liệu)
  *
  * Public API:
  *   renderHealthHeatmap(theses)       — initial render, called by dashboard-loader
@@ -48,7 +48,7 @@ function buildHeatmapRow(thesis) {
     const pct   = ratio != null ? Math.round(ratio * 100) : null;
     const tip   = pct != null
       ? `${d.label}: ${val} / ${d.max} pts (${pct}%) — click to see detail`
-      : `${d.label}: no data — click to see detail`;
+      : `${d.label}: chưa có dữ liệu — click to see detail`;
     // data-thesis-id on each cell enables refreshHeatmapCell() to target them
     return `<div class="hm-cell hm-cell--clickable ${cellClass(ratio)}" title="${tip}" aria-label="${tip}" data-dim="${d.key}" data-thesis-id="${thesis.id}"></div>`;
   }).join('');
@@ -145,7 +145,7 @@ export async function refreshHeatmapCell(thesisId) {
       // Update tooltip
       const tip = pct != null
         ? `${d.label}: ${val} / ${d.max} pts (${pct}%) — click to see detail`
-        : `${d.label}: no data — click to see detail`;
+        : `${d.label}: chưa có dữ liệu — click to see detail`;
       cell.title       = tip;
       cell.ariaLabel   = tip;
     });
@@ -171,12 +171,12 @@ function _renderLegend() {
   legend.id = legendId;
   legend.className = 'hm-legend';
   legend.innerHTML = `
-    <span class="hm-legend-label">Health breakdown:</span>
+    <span class="hm-legend-label">Sức khỏe thesis:</span>
     <span class="hm-legend-item"><span class="hm-cell hm-cell--green hm-cell--sm"></span> &ge;70%</span>
     <span class="hm-legend-item"><span class="hm-cell hm-cell--yellow hm-cell--sm"></span> 40&ndash;69%</span>
     <span class="hm-legend-item"><span class="hm-cell hm-cell--red hm-cell--sm"></span> &lt;40%</span>
-    <span class="hm-legend-item"><span class="hm-cell hm-cell--none hm-cell--sm"></span> no data</span>
-    <span class="hm-legend-hint muted">Click cells for detail</span>
+    <span class="hm-legend-item"><span class="hm-cell hm-cell--none hm-cell--sm"></span> chưa có dữ liệu</span>
+    <span class="hm-legend-hint muted">Nhấn ô để xem chi tiết</span>
   `;
   wrap.insertAdjacentElement('beforebegin', legend);
 }

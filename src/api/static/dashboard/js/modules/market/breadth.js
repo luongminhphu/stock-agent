@@ -66,28 +66,30 @@ function renderBreadthRow(d, exchange, divider = false) {
   const decPct  = d.decline_pct   ?? 0;
   const unchPct = d.unchanged_pct ?? 0;
 
-  const sentiment =
-    advPct >= 60 ? '\uD83D\uDFE2 Tích cực' :
-    decPct >= 60 ? '\uD83D\uDD34 Tiêu cực' :
-    '\uD83D\uDFE1 Trung tính';
+  // UI Wave U1: sentiment = chữ + class màu (không emoji). Màu theo token
+  // giá HSC (--up-rgb / --down-rgb / --ref-rgb) để khớp bảng giá.
+  const [sentiment, sentimentCls] =
+    advPct >= 60 ? ['Tích cực',   'breadth-sentiment--pos'] :
+    decPct >= 60 ? ['Tiêu cực',   'breadth-sentiment--neg'] :
+                   ['Trung tính', 'breadth-sentiment--neu'];
 
   return `
     <div class="breadth-row${divider ? ' breadth-row--divider' : ''}">
       <div class="breadth-header">
-        <span class="breadth-title">${exchange} <span class="breadth-universe">(${d.total} mã)</span></span>
-        <span class="breadth-sentiment">${sentiment}</span>
+        <span class="breadth-title">${exchange} <span class="breadth-universe">${d.total} mã</span></span>
+        <span class="breadth-sentiment ${sentimentCls}">${sentiment}</span>
       </div>
-      <div class="breadth-track" role="img" aria-label="${exchange} — Advance ${d.advance}, Decline ${d.decline}, Unchanged ${d.unchanged}">
+      <div class="breadth-track" role="img" aria-label="${exchange} — Tăng ${d.advance}, Giảm ${d.decline}, Đứng ${d.unchanged}">
         <div class="breadth-seg breadth-seg--advance" style="width:${advPct}%" title="Tăng: ${d.advance} (${advPct}%)"></div>
         <div class="breadth-seg breadth-seg--unchanged" style="width:${unchPct}%" title="Đứng: ${d.unchanged} (${unchPct}%)"></div>
         <div class="breadth-seg breadth-seg--decline" style="width:${decPct}%" title="Giảm: ${d.decline} (${decPct}%)"></div>
       </div>
       <div class="breadth-legend">
-        <span class="breadth-chip breadth-chip--advance">⬆ ${d.advance} tăng</span>
-        <span class="breadth-chip breadth-chip--unchanged">● ${d.unchanged} đứng</span>
-        <span class="breadth-chip breadth-chip--decline">⬇ ${d.decline} giảm</span>
-        ${d.ceiling > 0 ? `<span class="breadth-chip breadth-chip--ceiling">🔼 Trần ${d.ceiling}</span>` : ''}
-        ${d.floor   > 0 ? `<span class="breadth-chip breadth-chip--floor">🔽 Sàn ${d.floor}</span>`   : ''}
+        <span class="breadth-chip breadth-chip--advance">${d.advance} tăng</span>
+        <span class="breadth-chip breadth-chip--unchanged">${d.unchanged} đứng</span>
+        <span class="breadth-chip breadth-chip--decline">${d.decline} giảm</span>
+        ${d.ceiling > 0 ? `<span class="breadth-chip breadth-chip--ceiling">${d.ceiling} trần</span>` : ''}
+        ${d.floor   > 0 ? `<span class="breadth-chip breadth-chip--floor">${d.floor} sàn</span>`   : ''}
       </div>
     </div>
   `;

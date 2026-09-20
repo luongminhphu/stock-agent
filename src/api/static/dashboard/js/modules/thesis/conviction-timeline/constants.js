@@ -4,6 +4,8 @@
  * Responsibility: Static config — tier zones, verdict/event/trend metadata.
  */
 
+import { icon as ic } from '../../../utils/icons.js?v=1';
+
 export const TIER = [
   { min: 0,  max: 30,  label: 'Critical', color: '#d163a7' },
   { min: 30, max: 50,  label: 'Weak',     color: '#fdab43' },
@@ -38,10 +40,10 @@ export const VERDICT_CLS = {
 };
 
 export const EVENT_KIND_ICON = {
-  reviewed: '🤖',
-  snapshot: '📸',
-  created:  '🔬',
-  updated:  '✏️',
+  reviewed: ic('brain'),
+  snapshot: ic('camera'),
+  created:  ic('flask'),
+  updated:  ic('pencil'),
 };
 
 /** Map conviction score → tier color. */

@@ -59,9 +59,9 @@ export function bindRefreshButton(onSuccess) {
     try {
       const result = await triggerMemoryRefresh();
       if (result?.status === 'insufficient_data') {
-        showToast(`⚠️ ${result.detail}`, 'warning');
+        showToast(`${result.detail}`, 'warning');
       } else {
-        showToast('✅ Bộ nhớ đã được cập nhật');
+        showToast('Bộ nhớ đã được cập nhật');
         onSuccess?.(result);
       }
     } catch (err) {

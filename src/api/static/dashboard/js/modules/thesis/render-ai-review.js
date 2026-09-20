@@ -68,7 +68,7 @@ export function renderReviewRecommendResult(thesisId, d) {
   // Quick-trade buttons — chỉ hiện nếu verdict là BUY hoặc SELL
   const quickTradeHTML = ticker ? `
     <div class="review-quick-trade" style="display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap;">
-      <span style="font-size:.8rem;color:var(--muted);">📌 Ghi nhanh lệnh cho <strong>${esc(ticker)}</strong>:</span>
+      <span style="font-size:.8rem;color:var(--muted);">Ghi nhanh lệnh cho <strong>${esc(ticker)}</strong>:</span>
       <button
         class="review-trade-btn review-trade-btn--buy ghost-btn"
         data-trade-ticker="${esc(ticker)}"

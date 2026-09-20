@@ -74,7 +74,7 @@ function updateDecisionKpis(items) {
   }).length;
 
   setKpi('dkpiTotal',    total,    undefined);
-  setKpi('dkpiWinRate',  winRate !== null ? `${winRate}%` : '—', `${evaluated.length} evaluated`);
+  setKpi('dkpiWinRate',  winRate !== null ? `${winRate}%` : '—', `${evaluated.length} đã đánh giá`);
   setKpi('dkpiBuyCount', `${buyCount} / ${sellCount}`);
   setKpi('dkpiPending',  pending,  'quá hạn review', pending > 0);
 
@@ -326,7 +326,7 @@ export async function replayDecision(decisionId, replayWrap, btnEl) {
   } catch (err) {
     if (replayWrap) replayWrap.innerHTML = `<p class="error-text">Lỗi replay: ${err.message}</p>`;
   } finally {
-    if (btnEl) { btnEl.disabled = false; btnEl.textContent = '🧠 Replay'; }
+    if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'AI Replay'; }
   }
 }
 

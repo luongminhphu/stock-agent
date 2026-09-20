@@ -64,7 +64,7 @@ export function renderCatalystUrgentStrip(catalysts) {
 
   wrap.classList.remove('hidden');
   wrap.innerHTML = `
-    <span class="cu-strip__label">⚡ Catalyst sắp đến</span>
+    <span class="cu-strip__label">Catalyst sắp đến</span>
     ${shown.map(item => _buildChip(item)).join('')}
     ${overflow > 0 ? `<span class="cu-strip__more">+${overflow} khác</span>` : ''}
   `;

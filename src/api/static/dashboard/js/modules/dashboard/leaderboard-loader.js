@@ -9,6 +9,7 @@
 
 import { getJson } from '../../api/client.js?v=1';
 import { esc } from '../../utils/format.js?v=1';
+import { icon as ic } from '../../utils/icons.js?v=1';
 
 const SCORE_CLS = score =>
   score >= 75 ? 'lb-score-high'
@@ -16,13 +17,13 @@ const SCORE_CLS = score =>
   : 'lb-score-low';
 
 const VERDICT_ICON = {
-  BULLISH:      '🟢',
-  BEARISH:      '🔴',
-  NEUTRAL:      '⚪',
-  WATCH:        '👀',
-  ACCUMULATE:   '📈',
-  REDUCE:       '📉',
-  HOLD:         '🤝',
+  BULLISH:      ic('trending-up'),
+  BEARISH:      ic('trending-down'),
+  NEUTRAL:      ic('arrow-right'),
+  WATCH:        ic('eye'),
+  ACCUMULATE:   ic('arrow-up'),
+  REDUCE:       ic('arrow-down'),
+  HOLD:         ic('pause'),
 };
 
 function renderLeaderboardCards(wrap, items) {
@@ -43,7 +44,7 @@ function renderLeaderboardCards(wrap, items) {
   items.slice(0, 5).forEach((t, idx) => {
     const score   = t.composite_score ?? t.score ?? null;
     const verdict = t.latest_verdict  ?? null;
-    const vicon   = verdict ? (VERDICT_ICON[verdict.toUpperCase()] ?? '•') : '•';
+    const vicon   = verdict ? (VERDICT_ICON[verdict.toUpperCase()] ?? '') : '';
     const scoreCls = score != null ? SCORE_CLS(score) : '';
     const pnl      = t.avg_pnl_pct ?? null;
     const pnlHtml  = pnl != null

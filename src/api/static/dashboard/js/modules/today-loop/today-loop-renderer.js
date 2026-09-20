@@ -12,9 +12,11 @@
 // 1. Thesis Digest Strip
 // ---------------------------------------------------------------------------
 
+import { icon as ic } from '../../utils/icons.js?v=1';
+
 const FLAG_META = {
-  low_conviction: { icon: '📉', label: 'Conviction thấp', cls: 'tds-flag--conviction' },
-  overdue_review: { icon: '📋', label: 'Chưa review',     cls: 'tds-flag--overdue'    },
+  low_conviction: { icon: ic('trending-down'), label: 'Conviction thấp', cls: 'tds-flag--conviction' },
+  overdue_review: { icon: ic('clipboard'), label: 'Chưa review',     cls: 'tds-flag--overdue'    },
 };
 
 const VERDICT_LABEL = {
@@ -34,7 +36,7 @@ function _fmtPnl(pnl) {
 function _buildDigestItem(t) {
   const flags = (t.flags ?? [])
     .map(f => {
-      const m = FLAG_META[f] ?? { icon: '⚠️', label: f, cls: '' };
+      const m = FLAG_META[f] ?? { icon: ic('alert-triangle'), label: f, cls: '' };
       return `<span class="tds-flag ${m.cls}" title="${m.label}">${m.icon} ${m.label}</span>`;
     })
     .join('');
@@ -99,7 +101,7 @@ export function renderThesisDigest(items, { generatedAt } = {}) {
   strip.classList.remove('hidden');
   strip.innerHTML = `
     <div class="tds-header">
-      <span class="tds-title">⚠️ Thesis cần chú ý</span>
+      <span class="tds-title">Thesis cần chú ý</span>
       <span class="tds-count">${items.length} mã</span>
       ${ts ? `<span class="tds-ts muted">${ts}</span>` : ''}
     </div>
@@ -174,7 +176,7 @@ export function updateSignalsBadge(topSignals, meta = {}) {
     const badge = document.createElement('span');
     badge.className = 'tl-signal-badge';
     badge.title = `${topSignals.length} tín hiệu mạnh nhất hôm nay từ today-loop`;
-    badge.textContent = `⚡ Top ${topSignals.length}`;
+    badge.textContent = `Top ${topSignals.length}`;
     header.appendChild(badge);
   };
 

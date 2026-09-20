@@ -22,6 +22,7 @@ import { loadIntelligencePanel } from '../intelligence/intelligence-panel.js?v=1
 import { loadLeaderboard } from '../leaderboard/leaderboard-service.js?v=1';
 import { renderHealthHeatmap, refreshHeatmapCell } from './render-heatmap.js?v=1';
 import { countUp, flashValue } from '../../utils/animate.js?v=1';
+import { icon as ic } from '../../utils/icons.js?v=1';
 
 function wireDeleteThesis(id) {
   const msg = el('deleteModalMsg');
@@ -36,7 +37,7 @@ function wireDeleteThesis(id) {
       try {
         await sendJson(`${thesisApiBase()}/${id}`, 'DELETE');
         closeModal('deleteModal');
-        showToast('\ud83d\uddd1 Đã xóa thesis');
+        showToast('Đã xóa thesis');
         state.selectedThesisId = null;
         await loadDashboard();
       } catch (err) {
@@ -129,7 +130,6 @@ export function renderAlertsStrip(alerts) {
   if (!items.length) { wrap.classList.add('hidden'); return; }
 
   const priorityCls  = { HIGH: 'alert-chip--high', MEDIUM: 'alert-chip--medium', LOW: 'alert-chip--low' };
-  const priorityIcon = { HIGH: '\ud83d\udd34', MEDIUM: '\ud83d\udfe1', LOW: '\ud83d\udd35' };
 
   const shown    = items.slice(0, 5);
   const overflow = items.length - shown.length;
@@ -147,7 +147,7 @@ export function renderAlertsStrip(alerts) {
         : null;
       return `
         <div class="alert-chip ${priorityCls[p] ?? 'alert-chip--medium'}" title="${a.ticker} \u00b7 ${a.label ?? a.condition_type ?? ''} \u00b7 ${at ?? ''}">
-          <span class="alert-chip__ticker">${priorityIcon[p] ?? '\ud83d\udfe1'} ${a.ticker ?? '\u2014'}</span>
+          <span class="alert-chip__ticker"><span class="alert-chip__dot" aria-hidden="true"></span>${a.ticker ?? '—'}</span>
           <span class="alert-chip__label">${a.label ?? a.condition_type ?? ''}</span>
           ${price ? `<span class="alert-chip__price">@ ${price}</span>` : ''}
         </div>`;
@@ -288,23 +288,23 @@ export function renderActionSurface(stats, catalysts) {
   const items = [];
 
   if (reviewsToday > 0) {
-    items.push({ icon: '\u26a0\ufe0f', cls: 'as-item--warn', text: `${reviewsToday} thesis cần review hôm nay`, target: 'thesesTableWrap', label: 'Review ngay' });
+    items.push({ icon: ic('clipboard'), cls: 'as-item--warn', text: `${reviewsToday} thesis cần review hôm nay`, target: 'thesesTableWrap', label: 'Review ngay' });
   }
   if (staleCount > 0) {
-    items.push({ icon: '\ud83d\udd50', cls: 'as-item--warn', text: `${staleCount} thesis chưa review trong ${staleDays} ngày`, target: 'thesesTableWrap', label: 'Review ngay' });
+    items.push({ icon: ic('clock'), cls: 'as-item--warn', text: `${staleCount} thesis chưa review trong ${staleDays} ngày`, target: 'thesesTableWrap', label: 'Review ngay' });
   }
   if (riskyCount > 0) {
-    items.push({ icon: '\ud83d\udd34', cls: 'as-item--danger', text: `${riskyCount} thesis có score thấp (< 40)`, target: 'thesesTableWrap', label: 'Xem thesis' });
+    items.push({ icon: ic('alert-triangle'), cls: 'as-item--danger', text: `${riskyCount} thesis có score thấp (< 40)`, target: 'thesesTableWrap', label: 'Xem thesis' });
   }
   if (upcoming7d > 0) {
-    items.push({ icon: '\ud83d\udcc5', cls: 'as-item--info', text: `${upcoming7d} catalyst trong 7 ngày tới`, target: 'catalystList', label: 'Xem lịch' });
+    items.push({ icon: ic('calendar'), cls: 'as-item--info', text: `${upcoming7d} catalyst trong 7 ngày tới`, target: 'catalystList', label: 'Xem lịch' });
   }
 
   if (!items.length) { wrap.classList.add('hidden'); wrap.innerHTML = ''; return; }
 
   wrap.classList.remove('hidden');
   wrap.innerHTML = `
-    <div class="as-label">\ud83c\udfaf Việc cần làm hôm nay</div>
+    <div class="as-label">Việc cần làm hôm nay</div>
     <div class="as-items">
       ${items.map(item => `
         <div class="as-item ${item.cls}">
@@ -569,7 +569,7 @@ export function renderSummary(s, portfolio, briefFeedback) {
     }
     if (subEl) {
       subEl.textContent = acted != null && total != null
-        ? `${acted}/${total} briefs`
+        ? `${acted}/${total} brief`
         : 'acted rate';
     }
     if (card) {

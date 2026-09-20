@@ -144,7 +144,7 @@ function _updateRationaleHint(thesisSelected) {
   const hint = document.getElementById('qt-rationale-hint');
   if (!hint) return;
   if (thesisSelected) {
-    hint.textContent   = '— điền để log decision ✓';
+    hint.textContent   = '— điền để ghi quyết định';
     hint.style.color      = 'var(--color-primary, #01696f)';
     hint.style.fontWeight = '500';
   } else {
@@ -329,7 +329,7 @@ function _sizingHTML(d) {
     const msg = (d.warnings ?? []).join('; ');
     return `
       <div class="qt-sizing-title">Position sizing (tham khảo)</div>
-      <div class="qt-sizing-blocked">⛔ ${_escQt(msg)}</div>`;
+      <div class="qt-sizing-blocked">${_escQt(msg)}</div>`;
   }
 
   const capLabel = {
@@ -340,14 +340,14 @@ function _sizingHTML(d) {
   }[d.cap_reason] ?? d.cap_reason;
 
   const warn = (d.warnings ?? [])
-    .map(w => `<div class="qt-sizing-warn">⚠ ${_escQt(w)}</div>`).join('');
+    .map(w => `<div class="qt-sizing-warn">${_escQt(w)}</div>`).join('');
   // Wave 8.3 + 8.4 — advisory-only Livermore nudges (pyramiding discipline,
   // sector concentration). Never block sizing, so styled as amber advisory
   // (qt-sizing-livermore) rather than qt-sizing-warn's danger red, which is
   // reserved for invalid-data warnings.
   const livermoreNotes = [d.pyramiding_note, d.sector_note]
     .filter(Boolean)
-    .map(n => `<div class="qt-sizing-livermore">⚠️ ${_escQt(n)}</div>`).join('');
+    .map(n => `<div class="qt-sizing-livermore">${_escQt(n)}</div>`).join('');
   const stopLabel = d.stop_source === 'thesis' ? 'thesis' : 'mặc định';
   const cashNote  = d.cash_known
     ? ''

@@ -277,7 +277,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.error('[stock-agent] openNewThesisModal failed:', err);
       const banner = document.getElementById('errorBanner');
       if (banner) {
-        banner.textContent = `⚠️ Không thể mở modal Thesis mới: ${err.message}`;
+        banner.textContent = `Không thể mở modal Thesis mới: ${err.message}`;
         banner.classList.remove('hidden');
       }
     }
@@ -352,7 +352,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       );
       closeModal('aiApplyModal');
       const { showToast } = await import('./utils/dom.js?v=1');
-      showToast('✅ Đã áp dụng gợi ý AI');
+      showToast('Đã áp dụng gợi ý AI');
       await loadThesisDetail(state.aiApplyThesisId);
     } catch (err) {
       const { showToast } = await import('./utils/dom.js?v=1');

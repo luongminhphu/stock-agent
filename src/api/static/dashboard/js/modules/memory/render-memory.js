@@ -5,6 +5,7 @@
 
 import { fetchMemorySnapshot } from './memory-api.js?v=1';
 import { bindRefreshButton } from './memory-api.js?v=1';
+import { icon as ic } from '../../utils/icons.js?v=1';
 
 const PANEL_ID = 'memory-panel';
 
@@ -22,7 +23,7 @@ export function renderMemoryLoading() {
   if (!el) return;
   el.innerHTML = `
     <div class="memory-header">
-      <h2 class="section-title">🧠 Investor Memory</h2>
+      <h2 class="section-title">Bộ nhớ nhà đầu tư</h2>
     </div>
     <div class="memory-skeleton">
       <div class="skeleton skeleton-bar" style="width:60%;height:1.2rem;margin-bottom:.75rem"></div>
@@ -39,11 +40,11 @@ export function renderMemoryEmpty() {
   if (!el) return;
   el.innerHTML = `
     <div class="memory-header">
-      <h2 class="section-title">🧠 Investor Memory</h2>
-      <button class="btn btn-sm" data-memory-refresh>↻ Refresh</button>
+      <h2 class="section-title">Bộ nhớ nhà đầu tư</h2>
+      <button class="btn btn-sm" data-memory-refresh>Làm mới</button>
     </div>
     <div class="memory-empty">
-      <div class="memory-empty-icon">🧠</div>
+      <div class="memory-empty-icon">${ic('brain', { size: 24 })}</div>
       <p class="memory-empty-title">Chưa có bộ nhớ</p>
       <p class="memory-empty-desc">
         Hệ thống sẽ tự động tích lũy sau khi bạn sử dụng
@@ -59,11 +60,11 @@ export function renderMemoryError(message) {
   if (!el) return;
   el.innerHTML = `
     <div class="memory-header">
-      <h2 class="section-title">🧠 Investor Memory</h2>
-      <button class="btn btn-sm" data-memory-refresh>↻ Refresh</button>
+      <h2 class="section-title">Bộ nhớ nhà đầu tư</h2>
+      <button class="btn btn-sm" data-memory-refresh>Làm mới</button>
     </div>
     <div class="memory-error">
-      <span class="memory-error-icon">⚠️</span>
+      <span class="memory-error-icon">${ic('alert-triangle')}</span>
       <span>${message ?? 'Không thể tải bộ nhớ.'}</span>
     </div>`;
 }
@@ -99,7 +100,7 @@ export function renderMemoryPanel(data) {
 
   const biasHtml = (data.bias_warnings ?? []).length
     ? (data.bias_warnings).map(w =>
-        `<li class="memory-list-item memory-bias-item">⚠️ ${_esc(w)}</li>`
+        `<li class="memory-list-item memory-bias-item">${_esc(w)}</li>`
       ).join('')
     : '';
 
@@ -110,7 +111,7 @@ export function renderMemoryPanel(data) {
   // #1 FIX: render context_summary khi có — AI-generated tóm tắt hành vi nhà đầu tư
   const contextHtml = data.context_summary
     ? `<div class="memory-section memory-context-summary">
-        <div class="memory-section-title">💡 Tóm tắt hành vi</div>
+        <div class="memory-section-title">Tóm tắt hành vi</div>
         <p class="memory-context-text">${_esc(data.context_summary)}</p>
       </div>`
     : '';
@@ -124,8 +125,8 @@ export function renderMemoryPanel(data) {
 
   el.innerHTML = `
     <div class="memory-header">
-      <h2 class="section-title">🧠 Investor Memory</h2>
-      <button class="btn btn-sm" data-memory-refresh>↻ Refresh</button>
+      <h2 class="section-title">Bộ nhớ nhà đầu tư</h2>
+      <button class="btn btn-sm" data-memory-refresh>Làm mới</button>
     </div>
 
     ${
@@ -147,14 +148,14 @@ export function renderMemoryPanel(data) {
     ${contextHtml}
 
     <div class="memory-section">
-      <div class="memory-section-title">🔄 Patterns</div>
+      <div class="memory-section-title">Mẫu hành vi</div>
       <ul class="memory-list">${patternsHtml}</ul>
     </div>
 
     ${
       biasHtml ? `
     <div class="memory-section">
-      <div class="memory-section-title">🧠 Bias warnings</div>
+      <div class="memory-section-title">Cảnh báo thiên kiến</div>
       <ul class="memory-list">${biasHtml}</ul>
     </div>` : ''
     }

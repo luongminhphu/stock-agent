@@ -84,7 +84,7 @@ export async function handleAddTicker(ticker, note = '') {
       ticker: ticker.toUpperCase().trim(),
       note,
     });
-    showToast(`✅ Đã thêm ${ticker.toUpperCase()} vào watchlist`);
+    showToast(`Đã thêm ${ticker.toUpperCase()} vào watchlist`);
     await loadWatchlist();
     dispatchWatchlistEvent('watchlist:changed', { action: 'add', ticker: ticker.toUpperCase() });
   } catch (err) {
@@ -102,7 +102,7 @@ export async function handleAddTicker(ticker, note = '') {
 async function handleRemove(ticker) {
   try {
     await sendJson(`${WATCHLIST_BASE}/${encodeURIComponent(ticker)}`, 'DELETE');
-    showToast(`🗑 Đã xóa ${ticker} khỏi watchlist`);
+    showToast(`Đã xóa ${ticker} khỏi watchlist`);
     await loadWatchlist();
     dispatchWatchlistEvent('watchlist:changed', { action: 'remove', ticker });
   } catch (err) {
@@ -139,7 +139,7 @@ async function handleEditNote(ticker, currentNote, cardEl) {
       noteEl.classList.toggle('wl-note--empty', !updated.note);
     }
 
-    showToast(`✏️ Đã cập nhật ghi chú ${ticker}`);
+    showToast(`Đã cập nhật ghi chú ${ticker}`);
   } catch (err) {
     showToast(`Lỗi cập nhật ghi chú: ${err.message}`, 'error');
   }
@@ -152,7 +152,7 @@ async function handleEditNote(ticker, currentNote, cardEl) {
  */
 async function handleScan(resultEl, btnEl) {
   btnEl.classList.add('scanning');
-  btnEl.textContent = '⏳ Đang scan…';
+  btnEl.textContent = 'Đang scan…';
   resultEl.classList.add('hidden');
 
   try {
@@ -182,6 +182,6 @@ async function handleScan(resultEl, btnEl) {
         <circle cx="11" cy="11" r="8"/>
         <path d="m21 21-4.35-4.35"/>
       </svg>
-      Scan now`;
+      Quét ngay`;
   }
 }

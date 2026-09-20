@@ -211,7 +211,7 @@ export function buildDualChart(canvasEl, { labels, scores, prices, events, entry
           borderWidth: 1,
           padding: 10,
           callbacks: {
-            title: c => '📅 ' + c[0].label,
+            title: c => c[0].label,
             label: c => {
               if (c.dataset.label === 'Conviction') {
                 return `Conviction: ${Number(c.parsed.y).toFixed(1)}`;

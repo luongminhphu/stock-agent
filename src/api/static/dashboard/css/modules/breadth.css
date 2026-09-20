@@ -3,15 +3,20 @@
    Scope: .market-breadth-bar  (all selectors prefixed — no bleed)
 ──────────────────────────────────────────────────────────────────────────── */
 
+/* UI Wave U1: 3 sàn xếp ngang trên 1 hàng (grid 3 cột) thay vì 3 hàng dọc
+   chiếm ~230px vùng đầu trang. Dưới 900px quay về xếp dọc. */
 .market-breadth-bar {
-  margin-block: var(--space-2);
+  margin-block: 0;
   padding: var(--space-3) var(--space-4);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+@media (max-width: 900px) {
+  .market-breadth-bar { grid-template-columns: 1fr; gap: var(--space-3); }
 }
 
 .market-breadth-bar.hidden {
@@ -25,9 +30,18 @@
   gap: var(--space-2);
 }
 
+/* Ngăn cách dọc giữa các cột (thay divider ngang cũ) */
 .breadth-row--divider {
-  padding-block-end: var(--space-2);
-  border-bottom: 1px solid var(--color-border);
+  padding-inline-end: var(--space-4);
+  border-right: 1px solid var(--color-border);
+}
+@media (max-width: 900px) {
+  .breadth-row--divider {
+    padding-inline-end: 0;
+    border-right: none;
+    padding-block-end: var(--space-3);
+    border-bottom: 1px solid var(--color-border);
+  }
 }
 
 /* ── Header row ── */
@@ -56,6 +70,9 @@
   font-weight: 600;
   color: var(--color-text-muted);
 }
+.breadth-sentiment--pos { color: rgb(var(--up-rgb)); }
+.breadth-sentiment--neg { color: rgb(var(--down-rgb)); }
+.breadth-sentiment--neu { color: rgb(var(--ref-rgb)); }
 
 /* ── Progress track ── */
 .breadth-track {
@@ -73,7 +90,7 @@
 }
 
 .breadth-seg--advance {
-  background: var(--color-success, #437a22);
+  background: rgb(var(--up-rgb));
 }
 
 .breadth-seg--unchanged {
@@ -81,7 +98,7 @@
 }
 
 .breadth-seg--decline {
-  background: var(--color-notification, #a13544);
+  background: rgb(var(--down-rgb));
 }
 
 /* ── Legend chips ── */
@@ -94,21 +111,22 @@
 
 .breadth-chip {
   font-size: var(--text-xs, 0.75rem);
+  font-variant-numeric: tabular-nums;
   padding: 2px var(--space-2);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-tag, 2px);
   background: var(--color-surface-offset);
   color: var(--color-text-muted);
   white-space: nowrap;
 }
 
 .breadth-chip--advance {
-  background: color-mix(in oklch, var(--color-success, #437a22) 12%, var(--color-surface));
-  color: var(--color-success, #437a22);
+  background: rgba(var(--up-rgb), .12);
+  color: rgb(var(--up-rgb));
 }
 
 .breadth-chip--decline {
-  background: color-mix(in oklch, var(--color-notification, #a13544) 12%, var(--color-surface));
-  color: var(--color-notification, #a13544);
+  background: rgba(var(--down-rgb), .12);
+  color: rgb(var(--down-rgb));
 }
 
 .breadth-chip--unchanged {
@@ -116,28 +134,15 @@
   color: var(--color-text-muted);
 }
 
+/* Trần / sàn theo quy ước sàn Việt Nam (HSC): magenta / cyan */
 .breadth-chip--ceiling {
-  background: color-mix(in oklch, var(--color-warning, #964219) 12%, var(--color-surface));
-  color: var(--color-warning, #964219);
+  background: rgba(var(--ceil-rgb), .12);
+  color: rgb(var(--ceil-rgb));
 }
 
 .breadth-chip--floor {
-  background: color-mix(in oklch, var(--color-primary, #01696f) 12%, var(--color-surface));
-  color: var(--color-primary, #01696f);
-}
-
-/* ── Dark mode overrides ── */
-[data-theme="dark"] .breadth-chip--advance {
-  background: color-mix(in oklch, var(--color-success) 18%, var(--color-surface));
-}
-[data-theme="dark"] .breadth-chip--decline {
-  background: color-mix(in oklch, var(--color-notification) 18%, var(--color-surface));
-}
-[data-theme="dark"] .breadth-chip--ceiling {
-  background: color-mix(in oklch, var(--color-warning) 18%, var(--color-surface));
-}
-[data-theme="dark"] .breadth-chip--floor {
-  background: color-mix(in oklch, var(--color-primary) 18%, var(--color-surface));
+  background: rgba(var(--floor-rgb), .12);
+  color: rgb(var(--floor-rgb));
 }
 
 /* ── Responsive: compact on small screens ── */

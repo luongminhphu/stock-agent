@@ -8,6 +8,7 @@
 import { el } from '../../utils/dom.js?v=1';
 import { esc, fmtDate } from '../../utils/format.js?v=1';
 import { renderCatalystCalendar } from './render-catalyst-calendar.js?v=1';
+import { icon as ic } from '../../utils/icons.js?v=1';
 
 // Re-export renderCatalystCalendar so existing callers using render-brief.js
 // as entry point keep working without import changes.
@@ -52,9 +53,9 @@ export function renderCatalystList(raw) {
 // Sentiment metadata
 // ---------------------------------------------------------------------------
 const SENTIMENT_META = {
-  RISK_ON:   { cls: 'sent-risk-on',   icon: '\ud83d\udfe2', label: 'Risk-On'   },
-  RISK_OFF:  { cls: 'sent-risk-off',  icon: '\ud83d\udd34', label: 'Risk-Off'  },
-  MIXED:     { cls: 'sent-mixed',     icon: '\u26a1',  label: 'Mixed'     },
+  RISK_ON:   { cls: 'sent-risk-on',   icon: '', label: 'Risk-On'   },
+  RISK_OFF:  { cls: 'sent-risk-off',  icon: '', label: 'Risk-Off'  },
+  MIXED:     { cls: 'sent-mixed',     icon: '',  label: 'Mixed'     },
   UNCERTAIN: { cls: 'sent-uncertain', icon: '\u2753',  label: 'Uncertain' },
 };
 
@@ -103,10 +104,10 @@ function renderScanDigest(scan) {
       : null;
 
     const metaParts = [];
-    if (timeLabel)    metaParts.push(`\ud83d\udd50 ${timeLabel}`);
+    if (timeLabel)    metaParts.push(`${timeLabel}`);
     if (tickerCount)  metaParts.push(`${tickerCount} tickers`);
-    if (signalCount)  metaParts.push(`<span class="scan-badge scan-badge--signal">\ud83d\udcf6 ${signalCount} signals</span>`);
-    if (alertCount)   metaParts.push(`<span class="scan-badge scan-badge--alert">\u26a0\ufe0f ${alertCount} alerts</span>`);
+    if (signalCount)  metaParts.push(`<span class="scan-badge scan-badge--signal">${signalCount} signals</span>`);
+    if (alertCount)   metaParts.push(`<span class="scan-badge scan-badge--alert">${alertCount} alerts</span>`);
 
     let picksHtml = '';
     if (topPicks && topPicks.length) {
@@ -145,9 +146,9 @@ function renderScanDigest(scan) {
 // Wave A: Brief Feedback KPI strip
 // ---------------------------------------------------------------------------
 const OUTCOME_META = {
-  acted:    { icon: '\u2705', label: '\u0110ã hành động', cls: 'fb-acted'   },
-  watching: { icon: '\ud83d\udc40', label: '\u0110ang theo dõi', cls: 'fb-watching' },
-  skipped:  { icon: '\u23ed',  label: 'Bỏ qua',        cls: 'fb-skipped'  },
+  acted:    { icon: '\u2713', label: 'Đã hành động', cls: 'fb-acted'   },
+  watching: { icon: '○', label: '\u0110ang theo dõi', cls: 'fb-watching' },
+  skipped:  { icon: '–',  label: 'Bỏ qua',        cls: 'fb-skipped'  },
 };
 
 export function renderFeedbackKpi(data) {
@@ -209,7 +210,7 @@ function fmtReviewAge(isoStr) {
 export function renderBriefCard(phase, brief, dateStr, existingOutcome = null) {
   const isEod = phase === 'eod';
   const label = isEod ? 'End-of-Day Brief' : 'Morning Brief';
-  const icon  = isEod ? '\ud83c\udf19' : '\ud83c\udf05';
+  const icon  = isEod ? ic('moon') : ic('sun');
 
   if (!brief) {
     return `<div class="brief-empty">Chưa có brief.</div>`;
@@ -236,14 +237,14 @@ export function renderBriefCard(phase, brief, dateStr, existingOutcome = null) {
         <div>
           <div class="brief-phase-label">${label}</div>
           <div class="brief-date-row">
-            <span class="brief-date" title="Thời điểm generate brief">\ud83d\udd50 ${clockLabel}</span>
+            <span class="brief-date" title="Thời điểm tạo brief">${clockLabel}</span>
             ${ageBadge
               ? `<span class="brief-age-badge ${ageBadge.cls}">${ageBadge.label}</span>`
               : ''}
           </div>
         </div>
         ${smeta
-          ? `<span class="sentiment-badge ${smeta.cls}">${smeta.icon} ${smeta.label}</span>`
+          ? `<span class="sentiment-badge ${smeta.cls}">${smeta.label}</span>`
           : ''}
       </div>
 
@@ -258,7 +259,7 @@ export function renderBriefCard(phase, brief, dateStr, existingOutcome = null) {
 
         ${keyMovers.length ? `
           <div class="brief-section">
-            <div class="brief-section-title">\ud83d\udccc Key Movers</div>
+            <div class="brief-section-title">Mã biến động mạnh</div>
             <div class="brief-movers">
               ${keyMovers.map(s => {
                 const isStr = typeof s === 'string';
@@ -275,7 +276,7 @@ export function renderBriefCard(phase, brief, dateStr, existingOutcome = null) {
 
         ${watchlistAlerts.length ? `
           <div class="brief-section">
-            <div class="brief-section-title">\u26a0\ufe0f Watchlist Alerts</div>
+            <div class="brief-section-title">Cảnh báo danh sách theo dõi</div>
             ${watchlistAlerts.map(a =>
               `<div class="brief-item">${esc(a)}</div>`
             ).join('')}
@@ -283,7 +284,7 @@ export function renderBriefCard(phase, brief, dateStr, existingOutcome = null) {
 
         ${actionItems.length ? `
           <div class="brief-section">
-            <div class="brief-section-title">\u2705 Action Items</div>
+            <div class="brief-section-title">Việc cần làm</div>
             ${actionItems.map(a => {
               const tickerMatch = typeof a === 'string' && a.match(/^([A-Z]{2,5})\b/);
               return tickerMatch
@@ -296,7 +297,7 @@ export function renderBriefCard(phase, brief, dateStr, existingOutcome = null) {
 
         ${tickerSummaries.length ? `
           <div class="brief-section">
-            <div class="brief-section-title">\ud83d\udcca Ticker Summaries</div>
+            <div class="brief-section-title">Tóm tắt theo mã</div>
             <table class="brief-ticker-table">
               <thead>
                 <tr>
@@ -334,9 +335,9 @@ export function renderBriefCard(phase, brief, dateStr, existingOutcome = null) {
           ${ometa
             ? `<span class="fb-confirmed">${ometa.icon} ${ometa.label}</span>`
             : `<span class="fb-prompt">Brief n\u00e0y c\u00f3 h\u1eefu \u00edch kh\u00f4ng?</span>
-               <button class="fb-btn" data-outcome="acted">\u2705 \u0110\u00e3 h\u00e0nh \u0111\u1ed9ng</button>
-               <button class="fb-btn" data-outcome="watching">\ud83d\udc40 Theo d\u00f5i</button>
-               <button class="fb-btn" data-outcome="skipped">\u23ed B\u1ecf qua</button>`
+               <button class="fb-btn" data-outcome="acted">Đã hành động</button>
+               <button class="fb-btn" data-outcome="watching">Theo dõi</button>
+               <button class="fb-btn" data-outcome="skipped">Bỏ qua</button>`
           }
         </div>` : ''}
     </div>`;

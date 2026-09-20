@@ -6,9 +6,10 @@ import { reviewTimelineSlotHTML } from './review-timeline.js?v=1';
 import { quoteStripSkeletonHTML } from './market-quote.js?v=1';
 import { priceMiniChartSlotHTML } from './render-price-chart.js?v=1';
 import { state } from '../../state/dashboard-state.js?v=1';
+import { icon as ic } from '../../utils/icons.js?v=1';
 
 export function emptyDetailHTML() {
-  return `<div class="empty-detail"><div class="empty-detail-copy"><h3>Chọn một thesis</h3><p>Xem assumptions, catalysts và review history.</p></div></div>`;
+  return `<div class="empty-detail"><div class="empty-detail-copy"><h3>Chọn một thesis</h3><p>Xem giả định, catalyst và lịch sử review.</p></div></div>`;
 }
 
 export function thesisTableSkeletonHTML(rows = 5) {
@@ -39,7 +40,7 @@ function thesisTimelineSlotHTML(thesisId) {
   return `
     <div id="thesisTimelineSlot-${thesisId}" class="tl-slot" aria-live="polite">
       <div class="tl-section">
-        <div class="tl-section-title">📅 Lịch sử thesis</div>
+        <div class="tl-section-title">Lịch sử thesis</div>
         <div class="tl-skeleton">
           <div class="skel skel-text" style="width:55%;"></div>
           <div class="skel skel-text" style="width:40%;"></div>
@@ -121,24 +122,24 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
     </div>
 
     <nav class="detail-tab-nav" role="tablist" aria-label="Thesis sections">
-      <button class="dtab active" role="tab" aria-selected="true"  data-tab="overview"     aria-controls="dtab-overview">📊 Overview</button>
+      <button class="dtab active" role="tab" aria-selected="true"  data-tab="overview"     aria-controls="dtab-overview">Tổng quan</button>
       <button class="dtab"        role="tab" aria-selected="false" data-tab="assumptions"  aria-controls="dtab-assumptions">
         Assumptions <span class="dtab-count ${assumInvalid > 0 ? 'dtab-count--warn' : ''}">${assumList.length}</span>
       </button>
       <button class="dtab"        role="tab" aria-selected="false" data-tab="catalysts"    aria-controls="dtab-catalysts">
         Catalysts <span class="dtab-count ${catExpired > 0 ? 'dtab-count--danger' : catPending > 0 ? 'dtab-count--warn' : ''}">${catList.length}</span>
       </button>
-      <button class="dtab"        role="tab" aria-selected="false" data-tab="reviews"      aria-controls="dtab-reviews">🔍 Reviews</button>
-      <button class="dtab"        role="tab" aria-selected="false" data-tab="trend"        aria-controls="dtab-trend">📈 Trend</button>
-      <button class="dtab"        role="tab" aria-selected="false" data-tab="history"      aria-controls="dtab-history">📅 History</button>
+      <button class="dtab"        role="tab" aria-selected="false" data-tab="reviews"      aria-controls="dtab-reviews">AI Review</button>
+      <button class="dtab"        role="tab" aria-selected="false" data-tab="trend"        aria-controls="dtab-trend">Xu hướng</button>
+      <button class="dtab"        role="tab" aria-selected="false" data-tab="history"      aria-controls="dtab-history">Lịch sử</button>
       <div class="dtab-nav-actions" role="none">
-        <button class="ghost-btn ghost-btn--sm" id="detailEditBtn" type="button">✏️ Sửa</button>
+        <button class="ghost-btn ghost-btn--sm" id="detailEditBtn" type="button">Sửa</button>
         ${t.status === 'active' ? `
-        <button class="ghost-btn ghost-btn--sm ghost-btn--debate" id="detailDebateBtn" type="button" title="AI phản biện thesis này (devil's advocate)">🤺 Debate</button>
-        <button class="ghost-btn ghost-btn--sm ghost-btn--warn" id="detailCloseBtn" type="button" title="Đóng thesis — đã hoàn thành">✅ Đóng</button>
-        <button class="ghost-btn ghost-btn--sm ghost-btn--warn" id="detailInvalidateBtn" type="button" title="Invalidate thesis — luận điểm đã sai">⚠️ Invalidate</button>
+        <button class="ghost-btn ghost-btn--sm ghost-btn--debate" id="detailDebateBtn" type="button" title="AI phản biện thesis này (devil's advocate)">Phản biện</button>
+        <button class="ghost-btn ghost-btn--sm ghost-btn--warn" id="detailCloseBtn" type="button" title="Đóng thesis — đã hoàn thành">Đóng thesis</button>
+        <button class="ghost-btn ghost-btn--sm ghost-btn--warn" id="detailInvalidateBtn" type="button" title="Invalidate thesis — luận điểm đã sai">Invalidate</button>
         ` : ''}
-        <button class="danger-btn danger-btn--sm" id="detailDeleteBtn" type="button">🗑 Xóa</button>
+        <button class="danger-btn danger-btn--sm" id="detailDeleteBtn" type="button">Xóa</button>
       </div>
     </nav>
 
@@ -188,8 +189,8 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
                 </div>
               </div>
               <div class="item-card-actions">
-                <button class="icon-btn edit-assum-btn" data-id="${a.id}" title="Sửa">✏️</button>
-                <button class="icon-btn danger delete-assum-btn" data-id="${a.id}" title="Xóa">🗑</button>
+                <button class="icon-btn edit-assum-btn" data-id="${a.id}" title="Sửa">${ic('pencil', { size: 14 })}</button>
+                <button class="icon-btn danger delete-assum-btn" data-id="${a.id}" title="Xóa">${ic('trash', { size: 14 })}</button>
               </div>
             </div>`).join('') : '<p class="empty-state">Chưa có assumption nào.</p>'}
         </div>
@@ -208,12 +209,12 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
                 <span class="item-card-text">${esc(c.description ?? '—')}</span>
                 <div class="item-card-meta">
                   <span class="badge badge--${c.status?.toLowerCase() ?? 'unknown'}">${esc(c.status ?? '—')}</span>
-                  ${c.expected_date ? `<span class="item-card-date">📅 ${fmtDate(c.expected_date)}</span>` : ''}
+                  ${c.expected_date ? `<span class="item-card-date">${fmtDate(c.expected_date)}</span>` : ''}
                 </div>
               </div>
               <div class="item-card-actions">
-                <button class="icon-btn edit-cat-btn" data-id="${c.id}" title="Sửa">✏️</button>
-                <button class="icon-btn danger delete-cat-btn" data-id="${c.id}" title="Xóa">🗑</button>
+                <button class="icon-btn edit-cat-btn" data-id="${c.id}" title="Sửa">${ic('pencil', { size: 14 })}</button>
+                <button class="icon-btn danger delete-cat-btn" data-id="${c.id}" title="Xóa">${ic('trash', { size: 14 })}</button>
               </div>
             </div>`).join('') : '<p class="empty-state">Chưa có catalyst nào.</p>'}
         </div>
@@ -313,11 +314,11 @@ export function renderThesesTable(list, callbacks = {}) {
           // cho cảnh báo giá đã xuyên stop (thesis chết theo điều kiện của nó).
           let tierBadge = '';
           if (breached) {
-            tierBadge = `<span class="badge badge--stop-breach" style="font-size:.72rem;" title="Giá hiện tại đã xuyên stop_loss — thesis cần invalidate hoặc điều chỉnh">🛑 STOP BREACH</span>`;
+            tierBadge = `<span class="badge badge--stop-breach" style="font-size:.72rem;" title="Giá hiện tại đã xuyên stop-loss — thesis cần vô hiệu hoặc điều chỉnh">XUYÊN STOP</span>`;
           } else if (tier === 'CRITICAL') {
-            tierBadge = `<span class="badge score-low" style="font-size:.72rem;">🔴 CRITICAL</span>`;
+            tierBadge = `<span class="badge score-low" style="font-size:.72rem;">CRITICAL</span>`;
           } else if (tier === 'AT_RISK') {
-            tierBadge = `<span class="badge score-mid" style="font-size:.72rem;">⚠ AT_RISK</span>`;
+            tierBadge = `<span class="badge score-mid" style="font-size:.72rem;">AT_RISK</span>`;
           } else if (tier || t.score_tier_icon) {
             tierBadge = `<span style="font-size:.78rem;color:var(--muted);">${esc(t.score_tier_icon ?? '')} ${esc(tier)}</span>`;
           }
@@ -350,8 +351,8 @@ export function renderThesesTable(list, callbacks = {}) {
             <td class="col-actions col-heatmap-actions">
               <div class="thesis-row-actions">
                 <div class="hm-slot" data-thesis-id="${t.id}"></div>
-                <button class="icon-btn edit-thesis-btn" data-id="${t.id}" title="Sửa thesis">✏️</button>
-                <button class="icon-btn danger delete-thesis-btn" data-id="${t.id}" title="Xóa thesis">🗑</button>
+                <button class="icon-btn edit-thesis-btn" data-id="${t.id}" title="Sửa thesis">${ic('pencil', { size: 14 })}</button>
+                <button class="icon-btn danger delete-thesis-btn" data-id="${t.id}" title="Xóa thesis">${ic('trash', { size: 14 })}</button>
               </div>
             </td>
           </tr>`;

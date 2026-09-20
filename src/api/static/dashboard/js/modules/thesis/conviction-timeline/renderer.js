@@ -16,6 +16,7 @@ import {
   TIER, TREND_META, BD_META, VERDICT_CLS, EVENT_KIND_ICON, tierColor,
 } from './constants.js?v=1';
 import { ensureChartJs, destroyCharts, buildDualChart, hexToRgba } from './chart-utils.js?v=1';
+import { icon as ic } from '../../../utils/icons.js?v=1';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Data parser
@@ -55,7 +56,7 @@ export function renderEventList(events) {
   const list  = shown.length ? shown : events.slice(-5);
 
   return list.slice().reverse().map(e => {
-    const icon  = EVENT_KIND_ICON[e.kind] || '📌';
+    const icon  = EVENT_KIND_ICON[e.kind] || ic('pin');
     const isReview = e.kind === 'reviewed' || e.verdict != null;
 
     // ─ Meta row: date · verdict · score · conf · price ─────────────
@@ -79,7 +80,7 @@ export function renderEventList(events) {
     // ─ Risk signals (compact pills) ─────────────────────
     const risksHTML = e.risks?.length
       ? `<div class="cv-cf-risks">${e.risks.slice(0, 3).map(r =>
-          `<span class="cv-cf-risk-pill">⚠️ ${esc(typeof r === 'string' ? r : r.label ?? r.signal ?? String(r))}</span>`
+          `<span class="cv-cf-risk-pill">${esc(typeof r === 'string' ? r : r.label ?? r.signal ?? String(r))}</span>`
         ).join('')}</div>`
       : '';
 
@@ -120,7 +121,7 @@ export function renderDrawer(e) {
 
   const risks = e.risks?.length
     ? `<div class="cv-risk-block">
-        <div class="cv-risk-title">⚠ Risk signals</div>
+        <div class="cv-risk-title">Tín hiệu rủi ro</div>
         ${e.risks.map(r => `<div class="cv-risk-item">${esc(r)}</div>`).join('')}
        </div>`
     : '';
@@ -132,7 +133,7 @@ export function renderDrawer(e) {
   return `
     <div class="cv-drawer">
       <div class="cv-drawer-hd">
-        <span class="cv-drawer-kind">${EVENT_KIND_ICON[e.kind] || '📌'} ${esc(e.kind)}</span>
+        <span class="cv-drawer-kind">${EVENT_KIND_ICON[e.kind] || ic('pin')} ${esc(e.kind)}</span>
         <span class="cv-drawer-date">${fmtDate(e.date)}</span>
       </div>
       <div class="cv-bd-grid">${bdBars}</div>

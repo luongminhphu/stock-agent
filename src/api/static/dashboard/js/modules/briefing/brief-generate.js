@@ -28,7 +28,7 @@ export function bindGenerateBriefButtons() {
 
     try {
       await sendJson(`${briefingApiBase()}/${phase}/generate`, 'POST', {});
-      showToast(`✅ ${phase === 'morning' ? 'Morning' : 'EOD'} Brief đã tạo xong`);
+      showToast(`${phase === 'morning' ? 'Morning' : 'EOD'} Brief đã tạo xong`);
 
       // Wave 2 wire: brief generate xong → notify app → AttentionPanel refresh
       // Brief mới có thể chứa action items mới cho nhà đầu tư.

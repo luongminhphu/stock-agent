@@ -1166,7 +1166,7 @@ function _predictTrajectory(tickerObj) {
     const fromL = QUADRANT_LABELS[curQ];
     const toL   = QUADRANT_LABELS[nextQ];
     description = `Dự kiến chuyển sang <b>${toL}</b> sau ~${weeksEst} tuần, momentum ${momentum_strength}.`;
-    if (nearBoundary) description += ' ⚠️ Đang gần biên — có thể dao động qua lại.';
+    if (nearBoundary) description += ' Đang gần biên — có thể dao động qua lại.';
   }
 
   return { nextQuadrant: nextQ, weeksEst, momentum_strength, description, stayStable: nextQ === curQ };
@@ -1296,7 +1296,7 @@ async function _loadChartSummary(wrap) {
   // Show skeleton while loading
   panel.innerHTML = `
     <div class="rrg-cs-header">
-      <span class="rrg-cs-title">🧠 AI Đọc Chart</span>
+      <span class="rrg-cs-title">AI đọc biểu đồ</span>
       <span class="rrg-cs-loading">Đang phân tích…</span>
     </div>`;
   panel.classList.remove('rrg-chart-summary--hidden');
@@ -1319,7 +1319,7 @@ async function _loadChartSummary(wrap) {
       </div>`).join('');
 
     const alertHTML = d.portfolio_alert
-      ? `<div class="rrg-cs-alert">⚠️ ${_esc(d.portfolio_alert)}</div>`
+      ? `<div class="rrg-cs-alert">${_esc(d.portfolio_alert)}</div>`
       : '';
 
     const rotateHTML = d.rotate_from
@@ -1328,7 +1328,7 @@ async function _loadChartSummary(wrap) {
 
     panel.innerHTML = `
       <div class="rrg-cs-header">
-        <span class="rrg-cs-title">🧠 AI Đọc Chart</span>
+        <span class="rrg-cs-title">AI đọc biểu đồ</span>
         <span class="rrg-cs-market-read">${_esc(d.market_read ?? '')}</span>
       </div>
       ${alertHTML}

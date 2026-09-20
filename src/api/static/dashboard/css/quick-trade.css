@@ -557,11 +557,17 @@
   cursor: pointer;
   list-style: none;
   user-select: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
 }
+.collapsible-panel > .collapsible-summary > div:first-child { flex: 1; min-width: 0; }
+.collapsible-panel > .collapsible-summary .panel-hint { max-width: 260px; margin-left: 0; }
 .collapsible-panel > .collapsible-summary::-webkit-details-marker { display: none; }
 .collapsible-panel > .collapsible-summary::after {
   content: '▸';
-  margin-left: auto;
+  margin-left: var(--space-2);
+  flex-shrink: 0;
   color: var(--faint);
   transition: transform 0.15s ease;
   font-size: 0.9rem;
@@ -578,8 +584,11 @@
 }
 .collapse-hint { color: var(--muted); font-size: 0.85rem; }
 
-/* Backtesting summary giữ layout panel-header */
-details.backtesting-panel > summary.panel-header { padding: inherit; }
+/* Backtesting summary giữ layout panel-header (UI Wave U1: bỏ padding:inherit
+   — details.panel có padding 0 nên summary mất lề; dùng padding chuẩn header) */
+details.backtesting-panel > summary.panel-header {
+  padding: var(--panel-pad, 16px) var(--panel-pad, 16px) 12px;
+}
 
 /* ─── Wave 9.3 — Lock warning (HSC tone: cảnh báo = yellow, caption type) ── */
 .qt-lock-warn {

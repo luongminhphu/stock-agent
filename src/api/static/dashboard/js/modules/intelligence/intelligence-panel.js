@@ -12,6 +12,7 @@
 import { el, showToast } from '../../utils/dom.js?v=1';
 import { esc }           from '../../utils/format.js?v=1';
 import { getJson, sendJson, coreApiBase } from '../../api/client.js?v=1';
+import { icon as ic } from '../../utils/icons.js?v=1';
 
 const PANEL_ID = 'intelligencePanel';
 
@@ -20,7 +21,7 @@ const PANEL_ID = 'intelligencePanel';
 const VERDICT_META = {
   BUY_SIGNAL:    { cls: 'iv--buy',    icon: '▲', label: 'Mua vào',          sub: 'Tín hiệu mua xuất hiện — xem xét mở vị thế' },
   SELL_SIGNAL:   { cls: 'iv--sell',   icon: '▼', label: 'Bán ra',           sub: 'Tín hiệu bán xuất hiện — xem xét cắt lỗ / chốt lời' },
-  RISK_ALERT:    { cls: 'iv--risk',   icon: '⚠', label: 'Cảnh báo rủi ro', sub: 'Phát hiện rủi ro — cần kiểm tra danh mục' },
+  RISK_ALERT:    { cls: 'iv--risk',   icon: ic('alert-triangle'), label: 'Cảnh báo rủi ro', sub: 'Phát hiện rủi ro — cần kiểm tra danh mục' },
   REVIEW_THESIS: { cls: 'iv--review', icon: '⟳', label: 'Xem lại thesis',  sub: 'Có thesis cần review hoặc cập nhật luận điểm' },
   HOLD:          { cls: 'iv--hold',   icon: '◆', label: 'Giữ nguyên',       sub: 'Không có tín hiệu mới — duy trì trạng thái hiện tại' },
   NO_ACTION:     { cls: 'iv--none',   icon: '—', label: 'Không hành động',  sub: 'Hệ thống không phát hiện tín hiệu đáng chú ý' },
@@ -102,7 +103,7 @@ function _wireFeedback(panel) {
         outcome,
         trigger_source: 'api',
       });
-      showToast('✅ Đã ghi nhận phản hồi');
+      showToast('Đã ghi nhận phản hồi');
     } catch (err) {
       btn.classList.remove('intel-fb-btn--active');
       btn.disabled = false;
@@ -131,7 +132,7 @@ function _renderHTML(d) {
 
   const tsLabel  = d.generated_at ? _fmtTs(d.generated_at) : '';
   const staleBadge = d.is_stale
-    ? `<span class="intel-stale">⚠ Dữ liệu cũ</span>` : '';
+    ? `<span class="intel-stale">${ic('clock', { size: 12 })} Dữ liệu cũ</span>` : '';
 
   const actionsArr  = Array.isArray(d.priority_actions) ? d.priority_actions : [];
   const riskArr     = Array.isArray(d.risk_flags)        ? d.risk_flags       : [];
@@ -184,15 +185,15 @@ function _renderHTML(d) {
   const feedbackHTML = `
     <div class="intel-feedback" data-verdict-event-id="${esc(String(verdictEventId))}" data-verdict="${esc(rawVerdict)}">
       <span class="intel-feedback-label">Verdict này:</span>
-      <button class="intel-fb-btn" data-outcome="correct">✅ Đúng</button>
-      <button class="intel-fb-btn" data-outcome="incorrect">❌ Sai</button>
-      <button class="intel-fb-btn" data-outcome="not_acted">⏸ Không hành động</button>
+      <button class="intel-fb-btn" data-outcome="correct">Đúng</button>
+      <button class="intel-fb-btn" data-outcome="incorrect">Sai</button>
+      <button class="intel-fb-btn" data-outcome="not_acted">Không hành động</button>
     </div>`;
 
   return `
     <div class="intel-header">
       <div class="intel-title-row">
-        <span class="intel-icon" aria-hidden="true">🧠</span>
+        <span class="intel-icon" aria-hidden="true">${ic('brain', { size: 18 })}</span>
         <h2 class="intel-title">AI Phân tích</h2>
         ${staleBadge}
         ${tsLabel ? `<span class="intel-ts">Cập nhật ${esc(tsLabel)}</span>` : ''}
@@ -217,19 +218,19 @@ function _renderStatBar(actions, risks, watches, d) {
       val: actions.length,
       label: 'Hành động',
       cls: actions.length > 0 ? 'isb--active' : 'isb--zero',
-      icon: '⚡',
+      icon: ic('zap'),
     },
     {
       val: risks.length,
       label: 'Rủi ro',
       cls: risks.length > 0 ? 'isb--risk' : 'isb--zero',
-      icon: '⚠',
+      icon: ic('alert-triangle'),
     },
     {
       val: watches.length,
       label: 'Theo dõi',
       cls: watches.length > 0 ? 'isb--watch' : 'isb--zero',
-      icon: '👁',
+      icon: ic('eye'),
     },
   ];
 
@@ -371,7 +372,7 @@ function _renderWatchList(tickers) {
     const sym = String(t).toUpperCase();
     return `
       <span class="intel-watch-chip" title="Theo dõi ${sym}">
-        <span class="iwc-icon">👁</span>
+        <span class="iwc-icon">${ic('eye')}</span>
         <span class="iwc-sym">${esc(sym)}</span>
       </span>`;
   }).join('');
@@ -392,7 +393,7 @@ function _skeletonHTML() {
   return `
     <div class="intel-header">
       <div class="intel-title-row">
-        <span class="intel-icon" aria-hidden="true">🧠</span>
+        <span class="intel-icon" aria-hidden="true">${ic('brain', { size: 18 })}</span>
         <h2 class="intel-title">AI Phân tích</h2>
       </div>
     </div>

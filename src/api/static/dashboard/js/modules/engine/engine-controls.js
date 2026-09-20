@@ -23,7 +23,7 @@ export function initEngineControls() {
 
     try {
       await sendJson(`${coreApiBase()}/engine/run`, 'POST', null);
-      showToast('🚀 Engine đang chạy — đang tải lại dữ liệu…');
+      showToast('Engine đang chạy — đang tải lại dữ liệu…');
       document.dispatchEvent(new CustomEvent('engine:run-complete'));
     } catch (err) {
       showToast(`Lỗi chạy engine: ${err.message}`, 'error');

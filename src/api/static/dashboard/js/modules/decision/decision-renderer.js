@@ -35,8 +35,8 @@ export function renderDecisionsTable(container, decisions, { onEvaluate, onRepla
   if (!decisions.length) {
     container.innerHTML = `
       <div class="dec-empty">
-        <strong>Chưa có decision nào</strong>
-        <span>Log một decision đầu tiên để bắt đầu theo dõi.</span>
+        <strong>Chưa có quyết định nào</strong>
+        <span>Ghi quyết định đầu tiên để bắt đầu theo dõi.</span>
       </div>
     `;
     return;
@@ -85,7 +85,7 @@ export function renderDecisionsTable(container, decisions, { onEvaluate, onRepla
       <td>${d.outcome_verdict ? `<span class="dec-verdict ${verdictCls}">${esc(d.outcome_verdict)}</span>` : '<span class="muted">chưa</span>'}</td>
       <td class="dec-thesis-col">${d.thesis_title ? `<span class="dec-thesis-link" title="${esc(d.thesis_title)}">${esc(d.thesis_title.slice(0, 24))}${d.thesis_title.length > 24 ? '…' : ''}</span>` : '<span class="muted">—</span>'}</td>
       <td class="dec-actions">
-        ${!evaluated ? `<button class="btn-sm btn-evaluate" data-id="${d.id}" title="Evaluate outcome">Eval</button>` : ''}
+        ${!evaluated ? `<button class="btn-sm btn-evaluate" data-id="${d.id}" title="Đánh giá kết quả">Đánh giá</button>` : ''}
         <button class="btn-sm btn-replay" data-id="${d.id}" title="AI Replay">Replay</button>
       </td>
     `;
@@ -164,15 +164,15 @@ export function renderLessonsCards(container, lessons) {
       </div>
       <p class="lesson-text">${esc(l.key_lesson ?? '—')}</p>
       ${l.pattern_detected
-        ? `<div class="lesson-pattern">📌 <em>${esc(l.pattern_detected)}</em></div>`
+        ? `<div class="lesson-pattern"><em>${esc(l.pattern_detected)}</em></div>`
         : ''}
       ${(wentRight || wentWrong) ? `
         <div class="lesson-columns">
-          ${wentRight ? `<div class="lesson-col lesson-col--right"><span class="lesson-col-label">✅ Đúng</span><ul>${wentRight}</ul></div>` : ''}
-          ${wentWrong ? `<div class="lesson-col lesson-col--wrong"><span class="lesson-col-label">❌ Sai</span><ul>${wentWrong}</ul></div>` : ''}
+          ${wentRight ? `<div class="lesson-col lesson-col--right"><span class="lesson-col-label">Đúng</span><ul>${wentRight}</ul></div>` : ''}
+          ${wentWrong ? `<div class="lesson-col lesson-col--wrong"><span class="lesson-col-label">Sai</span><ul>${wentWrong}</ul></div>` : ''}
         </div>` : ''}
       ${l.suggested_adjustment
-        ? `<div class="lesson-adjust">🔧 <strong>Điều chỉnh:</strong> ${esc(l.suggested_adjustment)}</div>`
+        ? `<div class="lesson-adjust"><strong>Điều chỉnh:</strong> ${esc(l.suggested_adjustment)}</div>`
         : ''}
     `;
     grid.appendChild(card);
@@ -197,7 +197,7 @@ export function renderReplayPanel(wrap, result) {
   wrap.innerHTML = `
     <div class="replay-panel">
       <div class="replay-header">
-        <strong>🧠 AI Replay Analysis</strong>
+        <strong>Phân tích AI Replay</strong>
         ${result.outcome_verdict ? `<span class="dec-verdict ${verdictCls}">${esc(result.outcome_verdict)}</span>` : ''}
         <span class="replay-confidence">Confidence: ${confidence}</span>
         ${result.outcome_pnl_pct != null
@@ -207,18 +207,18 @@ export function renderReplayPanel(wrap, result) {
       <div class="replay-columns">
         ${wentRight ? `
           <div class="replay-col">
-            <h4>✅ Đúng ở đâu</h4>
+            <h4>Đúng ở đâu</h4>
             <ul>${wentRight}</ul>
           </div>` : ''}
         ${wentWrong ? `
           <div class="replay-col">
-            <h4>❌ Sai ở đâu</h4>
+            <h4>Sai ở đâu</h4>
             <ul>${wentWrong}</ul>
           </div>` : ''}
       </div>
-      ${result.key_lesson ? `<div class="replay-lesson"><strong>💡 Key Lesson:</strong> ${esc(result.key_lesson)}</div>` : ''}
-      ${result.pattern_detected ? `<div class="replay-pattern">📌 Pattern: <em>${esc(result.pattern_detected)}</em></div>` : ''}
-      ${result.suggested_adjustment ? `<div class="replay-adjust">🔧 Suggested adjustment: ${esc(result.suggested_adjustment)}</div>` : ''}
+      ${result.key_lesson ? `<div class="replay-lesson"><strong>Bài học chính:</strong> ${esc(result.key_lesson)}</div>` : ''}
+      ${result.pattern_detected ? `<div class="replay-pattern">Mẫu hình: <em>${esc(result.pattern_detected)}</em></div>` : ''}
+      ${result.suggested_adjustment ? `<div class="replay-adjust">Điều chỉnh đề xuất: ${esc(result.suggested_adjustment)}</div>` : ''}
     </div>
   `;
   wrap.classList.remove('hidden');
