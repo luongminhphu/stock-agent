@@ -21,6 +21,7 @@ Boundary:
 from __future__ import annotations
 
 import json
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -112,14 +113,19 @@ class ProactiveDiscoveryService:
     def __init__(
         self,
         ai_agent: Any,  # ProactiveDiscoveryAgent
-        session_factory: Any,  # AsyncSessionLocal (async context manager)
         quote_service: Any,  # QuoteService
         registry: Any,  # SymbolRegistry instance
+        portfolio_provider: Callable[[str], Awaitable[dict[str, Any]]] | None = None,
     ) -> None:
+        """
+        portfolio_provider: async callable(user_id) -> dict portfolio (positions, ...).
+            Inject từ bootstrap (readmodel.PortfolioQueryService) — market là upstream,
+            không import readmodel (boundary fix B6). None → không có portfolio context.
+        """
         self._agent = ai_agent
-        self._session_factory = session_factory
         self._quote_service = quote_service
         self._registry = registry
+        self._portfolio_provider = portfolio_provider
 
     async def run(self, user_id: str) -> bool:
         """Run full pipeline and emit ProactiveDiscoveryReadyEvent.
@@ -147,12 +153,8 @@ class ProactiveDiscoveryService:
             # ── Step 2: Portfolio context ─────────────────────────────────────
             portfolio: dict[str, Any] = {}
             try:
-                async with self._session_factory() as session:
-                    from src.readmodel.portfolio_query_service import PortfolioQueryService
-
-                    # Fetch live prices for holdings
-                    pqs = PortfolioQueryService(session)
-                    raw_port = await pqs.get_portfolio(user_id=user_id)
+                if self._portfolio_provider is not None:
+                    raw_port = await self._portfolio_provider(user_id)
 
                     # Enrich with sector from registry
                     positions_with_sector = []

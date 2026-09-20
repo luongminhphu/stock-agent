@@ -27,7 +27,7 @@ Sector mapping:
     Unknown industry strings → Sector.OTHER (never raises).
 
 Usage:
-    loader = RegistryLoader(session_factory=get_session)
+    loader = RegistryLoader(known_tickers_provider=provider)  # provider inject từ bootstrap
     entries = await loader.load(static_seed)
     # entries: dict[str, SymbolInfo]
 """
@@ -35,8 +35,8 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING
 
 from src.market.registry_types import Exchange, Sector, SymbolInfo
 from src.platform.logging import get_logger
@@ -215,15 +215,17 @@ class RegistryLoader:
     """Load SymbolInfo entries from vnstock Listing API + DB tickers.
 
     Args:
-        session_factory: Callable that returns an async SQLAlchemy session.
-                         Pass None to skip DB enrichment (e.g. in tests).
+        known_tickers_provider: async callable trả set[str] ticker đã có trong DB
+            (portfolio/watchlist/thesis) — inject từ bootstrap qua
+            ``readmodel.universe_query.make_known_tickers_provider``. None → bỏ qua
+            DB enrichment (tests). market không import segment hạ nguồn.
     """
 
     def __init__(
         self,
-        session_factory: Callable[[], Any] | None = None,
+        known_tickers_provider: Callable[[], Awaitable[set[str]]] | None = None,
     ) -> None:
-        self._session_factory = session_factory
+        self._known_tickers_provider = known_tickers_provider
 
     async def load(
         self,
@@ -298,12 +300,11 @@ class RegistryLoader:
         For new tickers: register with Sector.OTHER until vnstock/VCI enriches them.
         Returns only the NEW entries to add.
         """
-        if self._session_factory is None:
+        if self._known_tickers_provider is None:
             return {}
 
         try:
-            async with self._session_factory() as session:
-                tickers = await _query_db_tickers(session)
+            tickers = await self._known_tickers_provider()
         except Exception as exc:  # noqa: BLE001
             logger.warning("registry_loader.db_failed", error=str(exc))
             return {}
@@ -319,39 +320,3 @@ class RegistryLoader:
                     key_metrics="",
                 )
         return new_entries
-
-
-async def _query_db_tickers(session: Any) -> set[str]:
-    """Collect all distinct tickers from Position, WatchlistItem, and Thesis tables."""
-    from sqlalchemy import select
-
-    from src.portfolio.models import Position
-    from src.watchlist.models import WatchlistItem
-
-    tickers: set[str] = set()
-
-    try:
-        from src.thesis.models import Thesis
-
-        has_thesis = True
-    except ImportError:
-        has_thesis = False
-
-    try:
-        # Position tickers
-        pos_result = await session.execute(select(Position.ticker).distinct())
-        tickers.update(r[0].upper() for r in pos_result.all() if r[0])
-
-        # Watchlist tickers
-        wl_result = await session.execute(select(WatchlistItem.ticker).distinct())
-        tickers.update(r[0].upper() for r in wl_result.all() if r[0])
-
-        # Thesis tickers
-        if has_thesis:
-            th_result = await session.execute(select(Thesis.ticker).distinct())
-            tickers.update(r[0].upper() for r in th_result.all() if r[0])
-
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("registry_loader.db_query_failed", error=str(exc))
-
-    return tickers

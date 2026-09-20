@@ -69,7 +69,11 @@ async def bootstrap() -> None:
             mock_market=_reg_settings.mock_market,
         )
     else:
-        await _symbol_registry.initialize(session_factory=_AsyncSessionLocal)
+        from src.readmodel.universe_query import make_known_tickers_provider
+
+        await _symbol_registry.initialize(
+            known_tickers_provider=make_known_tickers_provider(_AsyncSessionLocal)
+        )
         logger.info(
             "platform.bootstrap.symbol_registry_ready",
             size=_symbol_registry.size(),
@@ -160,9 +164,11 @@ async def bootstrap() -> None:
             container.session_factory = AsyncSessionLocal
             logger.info("platform.bootstrap.session_factory_cached")
 
+        from src.thesis.snapshot_job import run_snapshot_job
+
+        _qs = container.quote_service
         container.snapshot_scheduler = SnapshotScheduler(
-            quote_service=container.quote_service,
-            session_factory=AsyncSessionLocal,
+            job=lambda: run_snapshot_job(_qs, AsyncSessionLocal),
         )
         logger.info("platform.bootstrap.snapshot_scheduler_ready")
 
@@ -446,13 +452,18 @@ async def bootstrap() -> None:
         from src.market.proactive_discovery_service import ProactiveDiscoveryService
         from src.market.registry import registry as _reg
         from src.platform.db import AsyncSessionLocal
+        from src.readmodel.portfolio_query_service import PortfolioQueryService
+
+        async def _portfolio_provider(user_id: str) -> dict:
+            async with AsyncSessionLocal() as session:
+                return await PortfolioQueryService(session).get_portfolio(user_id=user_id)
 
         _discovery_agent = ProactiveDiscoveryAgent(ai_client=container.ai_client)  # type: ignore[arg-type]
         container.proactive_discovery_service = ProactiveDiscoveryService(
             ai_agent=_discovery_agent,
-            session_factory=AsyncSessionLocal,
             quote_service=container.quote_service,
             registry=_reg,  # dynamic singleton
+            portfolio_provider=_portfolio_provider,
         )
         logger.info("platform.bootstrap.proactive_discovery_service_ready")
 

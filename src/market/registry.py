@@ -17,7 +17,7 @@ Runtime enrich:
     a ticker at runtime (e.g. when user adds a new watchlist/thesis entry).
 
 Startup:
-    await registry.initialize(session_factory=...) — called from bootstrap.
+    await registry.initialize(known_tickers_provider=...) — called from bootstrap.
     Safe to call multiple times; subsequent calls are no-ops within TTL window.
 
 Sync reads (after init):
@@ -39,9 +39,8 @@ Backward compatibility:
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 from src.market.registry_types import Exchange, Sector, SymbolInfo
 from src.platform.logging import get_logger
@@ -540,15 +539,15 @@ class SymbolRegistry:
 
     async def initialize(
         self,
-        session_factory: Callable[[], Any] | None = None,
+        known_tickers_provider: Callable[[], Awaitable[set[str]]] | None = None,
         force: bool = False,
     ) -> None:
         """Populate cache from HTTP + DB. Safe to call multiple times.
 
         Args:
-            session_factory: Async context manager factory for DB session.
-                             Pass None to skip DB enrichment.
-            force:           If True, refresh even within TTL window.
+            known_tickers_provider: async callable trả set ticker đã có trong DB
+                (inject từ bootstrap: readmodel.universe_query). None → bỏ DB enrichment.
+            force: If True, refresh even within TTL window.
         """
         async with self._lock:
             if not force and self._initialized_at is not None:
@@ -564,7 +563,7 @@ class SymbolRegistry:
             try:
                 from src.market.registry_loader import RegistryLoader
 
-                loader = RegistryLoader(session_factory=session_factory)
+                loader = RegistryLoader(known_tickers_provider=known_tickers_provider)
                 merged = await loader.load(static_seed=_STATIC_SEED)
                 self._cache = merged
                 self._initialized_at = datetime.now(UTC)
@@ -583,9 +582,11 @@ class SymbolRegistry:
                 self._cache = dict(_STATIC_SEED)
                 self._initialized_at = datetime.now(UTC)
 
-    async def refresh(self, session_factory: Callable[[], Any] | None = None) -> None:
+    async def refresh(
+        self, known_tickers_provider: Callable[[], Awaitable[set[str]]] | None = None
+    ) -> None:
         """Force refresh from HTTP + DB regardless of TTL."""
-        await self.initialize(session_factory=session_factory, force=True)
+        await self.initialize(known_tickers_provider=known_tickers_provider, force=True)
 
     # ------------------------------------------------------------------
     # Runtime enrich — called when user adds watchlist/thesis/position
