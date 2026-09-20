@@ -2123,20 +2123,12 @@ class EodPortfolioSnapshotScheduler:
             return
 
         try:
-            from sqlalchemy import select
-
             from src.platform.db import AsyncSessionLocal
-            from src.portfolio.models import PositionDailySnapshot
+            from src.portfolio.repository import PortfolioRepository
 
             today = now_ict.date()
             async with AsyncSessionLocal() as session:
-                existing = await session.execute(
-                    select(PositionDailySnapshot.id)
-                    .where(PositionDailySnapshot.user_id == str(user_id))
-                    .where(PositionDailySnapshot.snapshot_date == today)
-                    .limit(1)
-                )
-                if existing.scalar_one_or_none() is not None:
+                if await PortfolioRepository(session).has_snapshot_for_date(str(user_id), today):
                     logger.info(
                         "scheduler.eod_portfolio_snapshot.catchup_skipped",
                         reason="snapshot already exists for today",

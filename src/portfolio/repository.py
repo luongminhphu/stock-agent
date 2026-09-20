@@ -6,12 +6,19 @@ Called only by PortfolioService and PnlService — never by bot/api directly.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.portfolio.models import DividendRecord, Position, PositionEdit, Trade, TradeType
+from src.portfolio.models import (
+    DividendRecord,
+    Position,
+    PositionDailySnapshot,
+    PositionEdit,
+    Trade,
+    TradeType,
+)
 
 
 class PortfolioRepository:
@@ -169,6 +176,16 @@ class PortfolioRepository:
             stmt = stmt.where(DividendRecord.ticker == ticker.upper())
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
+
+    async def has_snapshot_for_date(self, user_id: str, snapshot_date: date) -> bool:
+        """True nếu đã có PositionDailySnapshot của user trong ngày (dùng cho catch-up EOD)."""
+        stmt = (
+            select(PositionDailySnapshot.id)
+            .where(PositionDailySnapshot.user_id == user_id)
+            .where(PositionDailySnapshot.snapshot_date == snapshot_date)
+            .limit(1)
+        )
+        return (await self._session.execute(stmt)).scalar_one_or_none() is not None
 
     async def get_dividend_total(self, user_id: str, ticker: str | None = None) -> float:
         """Return sum of total_amount across all cash dividends for a user (optionally per ticker)."""

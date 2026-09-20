@@ -24,7 +24,7 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.market.quote_service import QuoteService
-from src.portfolio.models import PortfolioContext, PositionSummary
+from src.portfolio.models import DividendType, PortfolioContext, PositionSummary
 from src.portfolio.pnl_service import PnlService, PortfolioPnl, PositionPnl, RealizedSummary
 from src.portfolio.service import PortfolioService
 
@@ -40,6 +40,8 @@ __all__ = [
     # AI context contract
     "PortfolioContext",
     "PositionSummary",
+    # Enum công khai cho adapter
+    "DividendType",
     "get_portfolio_context",
 ]
 

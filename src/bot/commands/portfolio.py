@@ -29,7 +29,7 @@ from discord.ext import commands
 
 from src.bot.commands.base import BaseCog
 from src.platform.bootstrap import get_quote_service
-from src.portfolio.models import DividendType
+from src.portfolio import DividendType
 from src.portfolio.pnl_service import PnlService
 from src.portfolio.service import (
     InsufficientQtyError,
@@ -345,9 +345,9 @@ class PortfolioCog(BaseCog):
                     return
 
                 # Validate thesis ownership + ticker match
-                from src.thesis.models import Thesis  # noqa: PLC0415
+                from src.thesis import ThesisRepository  # noqa: PLC0415
 
-                thesis = await session.get(Thesis, thesis_id)
+                thesis = await ThesisRepository(session).get_by_id(thesis_id)
                 if thesis is None:
                     await self.send_error(
                         interaction,
