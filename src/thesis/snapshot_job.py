@@ -34,7 +34,7 @@ async def run_snapshot_job(quote_service: object, session_factory: object) -> in
 
     logger.info("thesis.snapshot_job.run_start")
 
-    async with session_factory() as session:  # type: ignore[attr-defined]
+    async with session_factory() as session:
         snapshot_svc = ThesisSnapshotService(session)
 
         # 1. Resolve tickers — thesis segment owns this query

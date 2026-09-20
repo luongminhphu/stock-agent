@@ -70,7 +70,7 @@ from __future__ import annotations
 import contextlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from src.platform.logging import get_logger
 
@@ -190,7 +190,7 @@ class ContextBuilder:
     # Private fetch methods — each returns a plain value or raises
     # ------------------------------------------------------------------
 
-    async def _fetch_investor_profile(self, user_id: str | None) -> dict:
+    async def _fetch_investor_profile(self, user_id: str | None) -> dict[str, Any]:
         """Fetch investor profile dict from InvestorProfileService.
 
         Wave 3: calls svc.get_profile(user_id=user_id) — the correct

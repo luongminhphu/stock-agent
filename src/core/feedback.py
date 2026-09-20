@@ -33,7 +33,7 @@ from __future__ import annotations
 import contextlib
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from src.core.models import CoreFeedback
 from src.core.schemas import FeedbackEntry, FeedbackOutcome
@@ -49,7 +49,7 @@ class FeedbackStore:
     """
 
     # Fallback buffer — populated only when DB write fails
-    _store: ClassVar[list[dict]] = []
+    _store: ClassVar[list[dict[str, Any]]] = []
 
     # ---------------------------------------------------------------------------
     # Write path
@@ -195,7 +195,7 @@ class FeedbackStore:
     async def get_by_verdict_event(
         cls,
         verdict_event_id: str,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Return all feedback records for a given verdict_event_id.
 
         Replaces the old get_by_verdict(verdict_id) — field renamed to

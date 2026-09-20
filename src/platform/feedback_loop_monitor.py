@@ -39,7 +39,7 @@ import asyncio
 import datetime
 from collections import deque
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import discord
@@ -179,10 +179,10 @@ class FeedbackLoopMonitor:
     # Stats (for health embed / debug)
     # ------------------------------------------------------------------
 
-    def get_stats(self) -> dict[str, dict]:
+    def get_stats(self) -> dict[str, dict[str, Any]]:
         """Return current window stats for all adapters. Not async — read-only snapshot."""
         now = datetime.datetime.now(tz=datetime.UTC)
-        out: dict[str, dict] = {}
+        out: dict[str, dict[str, Any]] = {}
         for name, w in self._adapters.items():
             w.trim(now - datetime.timedelta(seconds=self._window))
             total, errors, rate = w.rate()

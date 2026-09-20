@@ -9,6 +9,8 @@ formatter.py owns the string rendering.
 
 from __future__ import annotations
 
+from typing import Any
+
 import discord
 from discord import app_commands
 
@@ -64,20 +66,22 @@ class BriefFeedbackView(discord.ui.View):
     @discord.ui.button(
         label="\u2705 \u0110\u00e3 th\u1ef1c hi\u1ec7n", style=discord.ButtonStyle.success
     )
-    async def btn_acted(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+    async def btn_acted(
+        self, interaction: discord.Interaction, button: discord.ui.Button[Any]
+    ) -> None:
         await self._record(interaction, outcome="acted")
 
     @discord.ui.button(
         label="\U0001f440 \u0110ang theo d\u00f5i", style=discord.ButtonStyle.secondary
     )
     async def btn_watching(
-        self, interaction: discord.Interaction, button: discord.ui.Button
+        self, interaction: discord.Interaction, button: discord.ui.Button[Any]
     ) -> None:
         await self._record(interaction, outcome="watching")
 
     @discord.ui.button(label="\u23ed Skip h\u00f4m nay", style=discord.ButtonStyle.danger)
     async def btn_skipped(
-        self, interaction: discord.Interaction, button: discord.ui.Button
+        self, interaction: discord.Interaction, button: discord.ui.Button[Any]
     ) -> None:
         await self._record(interaction, outcome="skipped")
 
@@ -107,7 +111,7 @@ class BriefFeedbackView(discord.ui.View):
         label = _OUTCOME_LABEL.get(outcome, outcome)
         await interaction.response.send_message(f"Ghi nh\u1eadn: **{label}**", ephemeral=True)
         for child in self.children:
-            if isinstance(child, discord.ui.Button):
+            if isinstance(child, discord.ui.Button[Any]):
                 child.disabled = True
         await interaction.message.edit(view=self)  # type: ignore[union-attr]
         self.stop()

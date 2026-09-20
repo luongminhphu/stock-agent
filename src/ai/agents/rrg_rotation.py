@@ -202,7 +202,7 @@ class RRGRotationAgent:
         )
 
         try:
-            result: RRGRotationSignal = await self._client.chat(  # type: ignore[attr-defined]
+            result: RRGRotationSignal = await self._client.chat(
                 system_prompt=_SYSTEM_PROMPT,
                 user_prompt=user_prompt,
                 response_schema=RRGRotationSignal,

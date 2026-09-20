@@ -82,7 +82,7 @@ class RiskChapter(BaseModel):
     def ensure_list(cls, v: object) -> list[object]:
         if not isinstance(v, list):
             return []
-        return v  # type: ignore[return-value]
+        return v
 
 
 # ---------------------------------------------------------------------------
@@ -175,7 +175,7 @@ class PortfolioRiskNarrativeOutput(BaseModel):
     def ensure_lists(cls, v: object) -> list[object]:
         if not isinstance(v, list):
             return []
-        return v  # type: ignore[return-value]
+        return v
 
     @model_validator(mode="after")
     def sort_and_cap_chapters(self) -> "PortfolioRiskNarrativeOutput":

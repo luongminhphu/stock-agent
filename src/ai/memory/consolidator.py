@@ -436,5 +436,5 @@ def _compute_avg_confidence(episodes: list[AIInteractionLog]) -> float | None:
     with_confidence = [e for e in episodes if e.ai_confidence is not None]
     if not with_confidence:
         return None
-    avg = sum(e.ai_confidence for e in with_confidence) / len(with_confidence)  # type: ignore[arg-type]
+    avg = sum(e.ai_confidence for e in with_confidence) / len(with_confidence)
     return round(avg, 3)

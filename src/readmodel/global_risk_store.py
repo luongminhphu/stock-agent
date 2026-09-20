@@ -38,7 +38,9 @@ _TTL_HOURS = 4
 # ---------------------------------------------------------------------------
 
 
-async def _persist_risk_snapshot(session_factory, user_id: str, flagged: set, verdict) -> None:
+async def _persist_risk_snapshot(
+    session_factory: Any, user_id: str, flagged: set[Any], verdict: Any
+) -> None:
     """Upsert a GlobalRiskSnapshot row qua platform.db.upsert_rows — never raises."""
     import json as _json
     from datetime import UTC
@@ -69,7 +71,7 @@ async def _persist_risk_snapshot(session_factory, user_id: str, flagged: set, ve
     )
 
 
-async def load_risk_snapshots_from_db(session_factory) -> list[dict]:
+async def load_risk_snapshots_from_db(session_factory: Any) -> list[dict[str, Any]]:
     """Load non-stale risk snapshots from DB on startup. Returns list of row dicts."""
     if session_factory is None:
         return []
@@ -136,7 +138,7 @@ class GlobalRiskStore:
         flagged = store.get_flagged_tickers(user_id)  # set[str]
     """
 
-    def __init__(self, session_factory=None) -> None:
+    def __init__(self, session_factory: Any = None) -> None:
         self._entries: dict[str, _RiskEntry] = {}
         self._session_factory = session_factory
 

@@ -153,11 +153,11 @@ class SectorRotationOutput(BaseModel):
 
         raw_signals = data.get("sector_signals")
         if isinstance(raw_signals, dict):
-            sector_analysis: list[dict] = data.get("sector_analysis", [])
-            analysis_map: dict[str, dict] = {
+            sector_analysis: list[dict[str, Any]] = data.get("sector_analysis", [])
+            analysis_map: dict[str, dict[str, Any]] = {
                 s["sector"]: s for s in sector_analysis if isinstance(s, dict) and "sector" in s
             }
-            normalized: list[dict] = []
+            normalized: list[dict[str, Any]] = []
             for signal_type, sectors in raw_signals.items():
                 if not isinstance(sectors, list):
                     continue
@@ -243,7 +243,7 @@ class SectorRotationAgent:
 
     async def analyze(
         self,
-        sector_performance: list[dict],
+        sector_performance: list[dict[str, Any]],
         macro_context: str,
         foreign_flow: str = "",
         session: Any = None,

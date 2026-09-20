@@ -54,7 +54,7 @@ from __future__ import annotations
 
 import contextlib
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from src.platform.logging import get_logger
 from src.readmodel.cache import DashboardTTLCache
@@ -67,7 +67,7 @@ logger = get_logger(__name__)
 
 
 async def _persist_intelligence_snapshot(
-    session_factory, user_id: str, report, trigger_source: str
+    session_factory: Any, user_id: str, report: Any, trigger_source: str
 ) -> None:
     """Upsert an IntelligenceSnapshot row qua platform.db.upsert_rows — never raises."""
     import json as _json
@@ -96,7 +96,7 @@ async def _persist_intelligence_snapshot(
     )
 
 
-async def load_intelligence_snapshots_from_db(session_factory) -> dict[str, dict]:
+async def load_intelligence_snapshots_from_db(session_factory: Any) -> dict[str, dict[str, Any]]:
     """Load persisted intelligence snapshots on startup. Returns {user_id: row_dict}."""
     if session_factory is None:
         return {}
@@ -138,7 +138,7 @@ class IntelligenceSnapshotStore:
         invalidate() — called on explicit refresh requests
     """
 
-    def __init__(self, cache: DashboardTTLCache | None = None, session_factory=None) -> None:
+    def __init__(self, cache: DashboardTTLCache | None = None, session_factory: Any = None) -> None:
         self._cache = cache or DashboardTTLCache()
         # warm layer: user_id -> (report, stored_at)
         self._warm: dict[str, tuple[IntelligenceReport, datetime]] = {}
@@ -382,12 +382,12 @@ class IntelligenceSnapshotStore:
 class _DictReport:
     """Minimal dict-backed IntelligenceReport stub for warm-load restore."""
 
-    def __init__(self, data: dict) -> None:
+    def __init__(self, data: dict[str, Any]) -> None:
         self._data = data
         for k, v in data.items():
             setattr(self, k, v)
 
-    def model_dump(self) -> dict:
+    def model_dump(self) -> dict[str, Any]:
         return self._data
 
 

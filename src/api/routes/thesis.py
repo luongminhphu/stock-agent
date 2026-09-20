@@ -129,7 +129,7 @@ def _conflict(exc: Exception) -> HTTPException:
 async def suggest_thesis(
     ticker: str = Query(..., description="Mã cổ phiếu, VD: VNM, HPG, MWG"),
     _user_id: str = Depends(get_current_user_id),
-    agent: ThesisSuggestAgent = Depends(get_thesis_suggest_agent),  # type: ignore[type-arg]
+    agent: ThesisSuggestAgent = Depends(get_thesis_suggest_agent),
     sym_registry: SymbolRegistry = Depends(get_symbol_registry),
 ) -> ThesisSuggestionResult:
     """Ask AI to draft an investment thesis for a ticker.
@@ -831,7 +831,7 @@ async def debate_thesis(
     body: DebateRequest,
     user_id: str = Depends(get_current_user_id),
     svc: ThesisService = Depends(get_thesis_service),
-    agent: ThesisDebateAgent = Depends(get_thesis_debate_agent),  # type: ignore[type-arg]
+    agent: ThesisDebateAgent = Depends(get_thesis_debate_agent),
 ) -> DebateOutput:
     """Trigger AI debate (devil's advocate) for a thesis.
 

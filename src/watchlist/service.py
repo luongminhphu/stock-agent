@@ -139,7 +139,7 @@ class WatchlistService:
 
         tickers = [i.ticker for i in items]
         try:
-            quotes = await quote_service.get_bulk_quotes(tickers)  # type: ignore[union-attr]
+            quotes = await quote_service.get_bulk_quotes(tickers)
             price_map = {q.ticker: q for q in quotes}
         except Exception as exc:
             logger.warning(

@@ -124,7 +124,7 @@ class MarketCog(BaseCog):
 # ---------------------------------------------------------------------------
 
 
-def _build_quote_embed(q: object) -> discord.Embed:  # type: ignore[type-arg]
+def _build_quote_embed(q: object) -> discord.Embed:
     """Build a rich Discord embed for a single Quote."""
     change = getattr(q, "change", 0.0)
     change_pct = getattr(q, "change_pct", 0.0)

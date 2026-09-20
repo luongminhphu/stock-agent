@@ -51,7 +51,7 @@ class RecommendationListener:
 
     # ── internal ───────────────────────────────────────────────────────────
 
-    async def _handle(self, event: RecommendationReadyEvent) -> None:  # type: ignore[override]
+    async def _handle(self, event: RecommendationReadyEvent) -> None:
         urgency = event.urgency.upper()
 
         # MONITORING urgency: skip immediate push, let briefing segment pick it up

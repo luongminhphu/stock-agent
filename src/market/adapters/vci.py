@@ -86,7 +86,7 @@ class VCIAdapter(MarketDataAdapter):
             tickers[i : i + _BULK_CHUNK_SIZE] for i in range(0, len(tickers), _BULK_CHUNK_SIZE)
         ]
 
-        async def _fetch_with_sem(chunk: list[str]) -> list[dict]:
+        async def _fetch_with_sem(chunk: list[str]) -> list[dict[str, Any]]:
             async with self._sem:
                 return await self._fetch_price_board(chunk)
 

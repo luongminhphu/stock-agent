@@ -12,6 +12,7 @@ Responsibilities:
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,7 +48,7 @@ class AgendaService:
         self,
         session: AsyncSession,
         agenda_agent: AgendaBuilderAgent,
-        memory_service=None,
+        memory_service: Any = None,
     ) -> None:
         self._session = session
         self._agent = agenda_agent

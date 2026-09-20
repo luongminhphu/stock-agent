@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import UTC, timedelta, timezone
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,7 +36,7 @@ _ICT = timezone(timedelta(hours=7))
 async def get_memory_snapshot(
     user_id: str = Depends(get_current_user_id),
     session: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     """Return latest persisted MemorySnapshot + MemoryContext.
 
     Never calls AI. Used by dashboard Memory panel on load.
@@ -69,7 +70,7 @@ async def refresh_memory(
     user_id: str = Depends(get_current_user_id),
     session: AsyncSession = Depends(get_db),
     ai_client: object = Depends(get_ai_client),
-) -> dict:
+) -> dict[str, Any]:
     """Trigger on-demand pattern synthesis and persist snapshot.
 
     Calls AI. Only on explicit user intent (button click).
@@ -117,7 +118,7 @@ async def refresh_memory(
 # ── Helpers ────────────────────────────────────────────────────────────────────────────────────
 
 
-def _build_snapshot_response(snapshot: object | None) -> dict:
+def _build_snapshot_response(snapshot: object | None) -> dict[str, Any]:
     """Serialise a MemorySnapshot ORM row into the canonical snapshot dict."""
     import json as _json
 
@@ -159,7 +160,7 @@ def _build_snapshot_response(snapshot: object | None) -> dict:
     }
 
 
-def _serialize_episode(ep: object) -> dict:
+def _serialize_episode(ep: object) -> dict[str, Any]:
     """Serialise one AIInteractionLog row for the dashboard episodic feed.
 
     Cleans ai_verdict and ai_risk_signals so the dashboard receives plain text
@@ -314,7 +315,7 @@ async def get_behavioral_dna(
     user_id: str = Depends(get_current_user_id),
     session: AsyncSession = Depends(get_db),
     lookback_days: int = 365,
-) -> dict:
+) -> dict[str, Any]:
     """Return BehavioralDNA profile for the current investor.
 
     Aggregates DecisionLog history into win rates, hold duration patterns,

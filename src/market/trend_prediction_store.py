@@ -46,7 +46,7 @@ logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 
-async def _persist_prediction(session_factory, symbol: str, prediction) -> None:
+async def _persist_prediction(session_factory: Any, symbol: str, prediction: Any) -> None:
     """Upsert a TrendPrediction row qua platform.db.upsert_rows — never raises."""
     import json as _json
     from datetime import timedelta as _td
@@ -75,7 +75,7 @@ async def _persist_prediction(session_factory, symbol: str, prediction) -> None:
     )
 
 
-async def load_predictions_from_db(session_factory) -> list[dict]:
+async def load_predictions_from_db(session_factory: Any) -> list[dict[str, Any]]:
     """Load non-expired predictions from DB on startup. Returns list of row dicts."""
     if session_factory is None:
         return []
@@ -128,13 +128,13 @@ class _RestoredPrediction:
     Downstream callers that need the full model should filter on type checks.
     """
 
-    def __init__(self, symbol: str, verdict: str, confidence: float, _data: dict) -> None:
+    def __init__(self, symbol: str, verdict: str, confidence: float, _data: dict[str, Any]) -> None:
         self.symbol = symbol
         self.verdict = verdict
         self.confidence = confidence
         self._data = _data
 
-    def model_dump(self) -> dict:
+    def model_dump(self) -> dict[str, Any]:
         return self._data
 
     def __repr__(self) -> str:

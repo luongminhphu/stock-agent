@@ -62,7 +62,7 @@ class DashboardTTLCache:
 
     def __init__(self) -> None:
         # _store: key -> (payload, expires_at)
-        self._store: dict[tuple, tuple[Any, datetime]] = {}
+        self._store: dict[tuple[Any, ...], tuple[Any, datetime]] = {}
         self._set_count: int = 0
 
     # ------------------------------------------------------------------

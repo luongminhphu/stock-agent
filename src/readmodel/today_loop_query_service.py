@@ -189,7 +189,7 @@ class TodayLoopQueryService:
         # directly here for freshness (snapshot may be up to 300s old).
         # ————————————————————————————————————————————————————
         try:
-            from src.watchlist.models import Alert, WatchlistItem  # type: ignore[import]
+            from src.watchlist.models import Alert, WatchlistItem
 
             today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
 

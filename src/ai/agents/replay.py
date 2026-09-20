@@ -23,7 +23,7 @@ Schema note:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from src.ai.client import AIClient
 from src.ai.prompts.replay import SYSTEM_PROMPT, ReplayContext, build_user_prompt
@@ -137,7 +137,7 @@ class ReplayAgent:
 
 
 async def _log_replay_interaction(
-    session,
+    session: Any,
     user_id: str | None,
     result: DecisionReplayResult,
     trigger: str,

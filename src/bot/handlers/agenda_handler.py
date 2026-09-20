@@ -7,6 +7,8 @@ Contains no business logic — pure presentation adapter.
 
 from __future__ import annotations
 
+from typing import Any
+
 from src.ai.prompts.agenda import AgendaItem, DailyAgendaResult
 from src.platform.logging import get_logger
 
@@ -19,7 +21,7 @@ _PRIORITY_LABEL = {"DECIDE": "QUYẾT ĐỊNH", "WATCH": "THEO DÕI", "DEFER": "
 class AgendaHandler:
     """Renders and pushes a DailyAgendaResult to a Discord channel."""
 
-    def __init__(self, channel) -> None:
+    def __init__(self, channel: Any) -> None:
         self._channel = channel  # discord.TextChannel or equivalent
 
     async def push_agenda(self, user_id: str, agenda: DailyAgendaResult) -> None:

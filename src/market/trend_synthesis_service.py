@@ -141,7 +141,7 @@ class TrendSynthesisService:
         bundle_failed = isinstance(bundle_obj, BaseException)
         rrg_failed = isinstance(rrg_response, BaseException)
         if bundle_failed and rrg_failed:
-            raise bundle_obj  # type: ignore[misc]
+            raise bundle_obj
 
         if bundle_failed:
             logger.warning(
@@ -160,7 +160,7 @@ class TrendSynthesisService:
         if not bundle_failed:
             bundle_dict = (
                 bundle_obj.model_dump() if hasattr(bundle_obj, "model_dump") else dict(bundle_obj)
-            )  # type: ignore[union-attr]
+            )
         else:
             bundle_dict = {}
         raw_indicators = bundle_dict.get("raw_indicators") or {}

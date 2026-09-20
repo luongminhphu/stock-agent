@@ -42,7 +42,9 @@ class ProactiveWatchSubscriber:
     def __init__(self, channel_id: int | None = None) -> None:
         self._channel_id = channel_id
         self._client: discord.Client | None = None
-        self._pending: dict[str, tuple[asyncio.Task, list[ProactiveWatchAlertFiredEvent]]] = {}
+        self._pending: dict[
+            str, tuple[asyncio.Task[None], list[ProactiveWatchAlertFiredEvent]]
+        ] = {}
 
     def set_client(self, client: discord.Client) -> None:
         self._client = client

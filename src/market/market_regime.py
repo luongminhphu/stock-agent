@@ -16,7 +16,7 @@ Design: không gọi AI, không import thesis/watchlist/briefing.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 from src.market.quote_service import QuoteService
 from src.platform.logging import get_logger
@@ -91,11 +91,11 @@ class MarketRegimeService:
         """Force refresh — dùng sau market open/close."""
         self._cache.invalidate(_REGIME_CACHE_KEY)
 
-    def cache_stats(self) -> dict:
+    def cache_stats(self) -> dict[str, Any]:
         return self._cache.stats()
 
 
-def _compute_regime(quote_map: dict) -> MarketRegime:
+def _compute_regime(quote_map: dict[str, Any]) -> MarketRegime:
     vni = quote_map.get(_VNINDEX)
     vn30 = quote_map.get("VN30")
 

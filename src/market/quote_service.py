@@ -482,7 +482,7 @@ class QuoteService:
         if not self._guard.is_market_open():
             last_quotes = [self._cache.get_last_known(s) for s in syms]
             if all(q is not None for q in last_quotes):
-                return [q for q in last_quotes if q is not None]  # type: ignore[misc]
+                return [q for q in last_quotes if q is not None]
             # partial hit: return what we have, raise only if nothing at all
             known = [q for q in last_quotes if q is not None]
             if known:

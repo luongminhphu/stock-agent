@@ -10,6 +10,8 @@ Data (HELP_DATA) lives in help_data.py — update that file when commands change
 
 from __future__ import annotations
 
+from typing import Any
+
 import discord
 from discord import app_commands
 
@@ -30,7 +32,7 @@ __all__ = ["HelpCog", "HelpView", "HELP_DATA", "CommandEntry", "GroupEntry"]
 # ---------------------------------------------------------------------------
 
 
-class _GroupSelect(discord.ui.Select):
+class _GroupSelect(discord.ui.Select[Any]):
     """Dropdown chọn nhóm command."""
 
     def __init__(self) -> None:

@@ -20,6 +20,8 @@ AI prompt contract:
 
 from __future__ import annotations
 
+from typing import Any
+
 from src.ai.client import AIClient
 from src.ai.schemas import PostMortemOutput
 from src.platform.db import AsyncSessionLocal
@@ -37,7 +39,7 @@ class PostMortemService:
     to avoid holding a long-lived session across the event bus queue.
     """
 
-    def __init__(self, ai_client: AIClient, session_factory=None) -> None:
+    def __init__(self, ai_client: AIClient, session_factory: Any = None) -> None:
         self._ai = ai_client
         self._session_factory = session_factory or AsyncSessionLocal
 

@@ -41,6 +41,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 
 # ── Signal Types ─────────────────────────────────────────────────────────────────
 
@@ -70,7 +71,7 @@ class SignalReport:
     source: str  # "technical" | "alert" | "combined"
     description: str  # human-readable — used in Discord / briefing
     detected_at: datetime = field(default_factory=lambda: datetime.now(UTC))
-    metadata: dict = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict[str, Any])
 
     @property
     def dedup_key(self) -> str:
@@ -149,11 +150,11 @@ class SignalEngine:
         """
         reports: list[SignalReport] = []
 
-        symbol: str = scan_signal.ticker  # type: ignore[union-attr]
-        change_pct: float = scan_signal.change_pct  # type: ignore[union-attr]
-        current_price: float = scan_signal.current_price  # type: ignore[union-attr]
+        symbol: str = scan_signal.ticker
+        change_pct: float = scan_signal.change_pct
+        current_price: float = scan_signal.current_price
         volume_ratio: float = getattr(scan_signal, "_volume_ratio", 1.0)
-        triggered_alerts: list = getattr(scan_signal, "triggered_alerts", [])
+        triggered_alerts: list[Any] = getattr(scan_signal, "triggered_alerts", [])
         credibility = getattr(scan_signal, "credibility", None)
 
         # Wave 1 enrichment fields — safe defaults when not injected

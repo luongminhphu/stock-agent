@@ -84,6 +84,7 @@ Wave E (Thesis Score Sensitivity):
 from __future__ import annotations
 
 import datetime
+from typing import Any
 
 import discord
 from discord.ext import tasks
@@ -515,8 +516,8 @@ class ThesisMaintenanceScheduler:
         self._reset_dedup_if_new_day(today)
 
         expired_count = 0
-        reviews: list = []
-        upcoming_catalysts: list[dict] = []
+        reviews: list[Any] = []
+        upcoming_catalysts: list[dict[str, Any]] = []
 
         # -- Step 1: Auto-expire overdue catalysts (no AI, no token cost) --
         try:
@@ -574,7 +575,7 @@ class ThesisMaintenanceScheduler:
             async with AsyncSessionLocal() as session:
                 svc = ReviewService(
                     session=session,
-                    agent=get_thesis_review_agent(),  # type: ignore[arg-type]
+                    agent=get_thesis_review_agent(),
                     quote_service=get_quote_service(),
                     ticker_context_service=get_ticker_context_service(),
                 )
@@ -781,7 +782,7 @@ class ThesisDriftScheduler:
                     async with AsyncSessionLocal() as session:
                         review_svc = ReviewService(
                             session=session,
-                            agent=get_thesis_review_agent(),  # type: ignore[arg-type]
+                            agent=get_thesis_review_agent(),
                             quote_service=get_quote_service(),
                             ticker_context_service=get_ticker_context_service(),
                         )
@@ -1301,7 +1302,7 @@ class MemoryConsolidatorScheduler:
 
         try:
             async with AsyncSessionLocal() as session:
-                snapshot = await consolidator.run(session)  # type: ignore[union-attr]
+                snapshot = await consolidator.run(session)
 
             if snapshot is None:
                 await self._monitor.record_success(task_name)

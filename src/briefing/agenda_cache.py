@@ -23,6 +23,7 @@ Wave B.1 — AgendaBuckets struct:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
@@ -65,7 +66,7 @@ def set_agenda(
     user_id: str,
     summary: str | None,
     buckets: AgendaBuckets | None = None,
-    session_factory=None,
+    session_factory: Any = None,
 ) -> None:
     """Set or clear the cached agenda for a user.
 
@@ -99,7 +100,7 @@ def get_agenda(user_id: str) -> CachedAgenda | None:
 
 
 async def persist_agenda(
-    session_factory, user_id: str, summary: str, buckets: AgendaBuckets | None
+    session_factory: Any, user_id: str, summary: str, buckets: AgendaBuckets | None
 ) -> None:
     """Upsert today's agenda qua platform.db.upsert_rows — never raises."""
     if not summary:
@@ -133,7 +134,7 @@ async def persist_agenda(
     )
 
 
-async def load_today_agendas_from_db(session_factory) -> dict[str, CachedAgenda]:
+async def load_today_agendas_from_db(session_factory: Any) -> dict[str, CachedAgenda]:
     """Load today's agendas from DB on startup. Returns {user_id: CachedAgenda}."""
     if session_factory is None:
         return {}
@@ -179,7 +180,7 @@ async def load_today_agendas_from_db(session_factory) -> dict[str, CachedAgenda]
         return {}
 
 
-async def warm_load_agendas(session_factory) -> int:
+async def warm_load_agendas(session_factory: Any) -> int:
     """Populate _AgendaCache from DB for today. Returns number of users loaded."""
     loaded = await load_today_agendas_from_db(session_factory)
     for user_id, cached in loaded.items():

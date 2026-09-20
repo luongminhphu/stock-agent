@@ -232,7 +232,7 @@ class BriefOutput(BaseModel):
     def ensure_prioritized_list(cls, v: object) -> list[object]:
         if not isinstance(v, list):
             return []
-        return v  # type: ignore[return-value]
+        return v
 
     @model_validator(mode="after")
     def build_action_queue(self) -> BriefOutput:

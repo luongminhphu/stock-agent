@@ -26,7 +26,8 @@ from src.platform.events import DomainEvent
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=DomainEvent)
-Handler = Callable[[DomainEvent], Coroutine[Any, Any, None]]
+Handler = Callable[[Any], Coroutine[Any, Any, None]]
+TypedHandler = Callable[[T], Coroutine[Any, Any, None]]
 
 # Dedup window: same (event_type, dedup_key) won't re-trigger within this window.
 DEFAULT_DEDUP_WINDOW = timedelta(minutes=60)
@@ -67,7 +68,7 @@ class EventBus:
         self._dedup: dict[str, datetime] = {}  # dedup_key → last_seen
         self._dead_letters: list[DeadLetterEntry] = []
         self._running = False
-        self._worker_task: asyncio.Task | None = None
+        self._worker_task: asyncio.Task[None] | None = None
 
     # ── subscription ──────────────────────────────────────────────────────────
 
@@ -75,7 +76,7 @@ class EventBus:
         self,
         event_type: type[T],
         dedup_window: timedelta | None = None,
-    ) -> Callable[[Handler], Handler]:
+    ) -> Callable[[TypedHandler[T]], TypedHandler[T]]:
         """
         Decorator to register an async handler for an event type.
 
@@ -83,7 +84,7 @@ class EventBus:
             async def my_handler(event: SignalDetectedEvent): ...
         """
 
-        def decorator(fn: Handler) -> Handler:
+        def decorator(fn: TypedHandler[T]) -> TypedHandler[T]:
             if not inspect.iscoroutinefunction(fn):
                 raise TypeError(
                     f"Handler {fn.__name__!r} must be an async function. "
@@ -95,7 +96,7 @@ class EventBus:
 
         return decorator
 
-    def subscribe_handler(self, event_type: type[T], handler: Handler) -> None:
+    def subscribe_handler(self, event_type: type[T], handler: TypedHandler[T]) -> None:
         """Programmatic subscription (no decorator syntax)."""
         if not inspect.iscoroutinefunction(handler):
             raise TypeError(f"Handler {handler.__name__!r} must be async.")

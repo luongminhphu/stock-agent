@@ -33,7 +33,7 @@ Prompt note:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
@@ -125,7 +125,7 @@ class StressTestAgent:
         ticker: str,
         thesis_title: str,
         thesis_summary: str,
-        assumptions: list[dict],
+        assumptions: list[dict[str, Any]],
         catalysts: list[str],
         current_price: float | None = None,
         entry_price: float | None = None,
@@ -287,7 +287,7 @@ class StressTestAgent:
     # Private helpers
     # ------------------------------------------------------------------
 
-    async def _build_investor_profile(self, session, user_id: str | None) -> str:
+    async def _build_investor_profile(self, session: Any, user_id: str | None) -> str:
         if session is None:
             return ""
         try:
@@ -300,7 +300,7 @@ class StressTestAgent:
             return ""
 
     async def _log_interaction_canonical(
-        self, session, user_id: str | None, ticker: str, result
+        self, session: Any, user_id: str | None, ticker: str, result: Any
     ) -> None:
         if session is None or not user_id:
             return
@@ -332,7 +332,7 @@ class StressTestAgent:
             )
 
     async def _log_interaction(
-        self, session, user_id: str | None, ticker: str, result: StressTestOutput, trigger: str
+        self, session: Any, user_id: str | None, ticker: str, result: StressTestOutput, trigger: str
     ) -> None:
         if session is None or not user_id:
             return

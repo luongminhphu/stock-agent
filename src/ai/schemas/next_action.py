@@ -102,7 +102,7 @@ class SuggestedAction(BaseModel):
             return [v]
         if not isinstance(v, list):
             return []
-        return v  # type: ignore[return-value]
+        return v
 
 
 class NextActionPlan(BaseModel):
@@ -129,4 +129,4 @@ class NextActionPlan(BaseModel):
     def ensure_actions_list(cls, v: object) -> list[object]:
         if not isinstance(v, list):
             return []
-        return v  # type: ignore[return-value]
+        return v

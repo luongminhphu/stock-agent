@@ -32,7 +32,7 @@ Error handling:
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from src.platform.logging import get_logger
 
@@ -64,9 +64,9 @@ class TrendBatchScheduler:
         trend_engine: TrendEngine,
         reasoning_agent: TrendReasoningAgent,
         prediction_store: TrendPredictionStore,
-        watchlist_service,
-        bot_notifier=None,
-        thesis_query=None,
+        watchlist_service: Any,
+        bot_notifier: Any = None,
+        thesis_query: Any = None,
     ) -> None:
         self._engine = trend_engine
         self._agent = reasoning_agent
@@ -82,7 +82,7 @@ class TrendBatchScheduler:
     async def run_for_user(
         self,
         user_id: str,
-        session=None,
+        session: Any = None,
     ) -> list[TrendPrediction]:
         """Pre-compute trend predictions for all watchlist symbols of one user.
 
@@ -140,7 +140,7 @@ class TrendBatchScheduler:
     async def run_all(
         self,
         user_ids: list[str],
-        session=None,
+        session: Any = None,
     ) -> None:
         """Batch run for multiple users. Error per user is isolated."""
         for uid in user_ids:
@@ -158,7 +158,7 @@ class TrendBatchScheduler:
     # Private helpers
     # ------------------------------------------------------------------
 
-    async def _get_symbols(self, user_id: str, session) -> list[str]:
+    async def _get_symbols(self, user_id: str, session: Any) -> list[str]:
         """Fetch watchlist symbols. Returns [] on failure."""
         try:
             items = await self._watchlist.get_watchlist(user_id=user_id, session=session)
@@ -225,8 +225,8 @@ class TrendBatchScheduler:
 
     async def _run_reasoning_batch(
         self,
-        bundles: list,
-        session,
+        bundles: list[Any],
+        session: Any,
         user_id: str,
         thesis_context: str = "N/A",
     ) -> list[TrendPrediction]:
@@ -238,7 +238,7 @@ class TrendBatchScheduler:
         """
         from src.ai.agents.trend_reasoning import _fallback_prediction
 
-        async def _analyze_one(bundle) -> TrendPrediction:
+        async def _analyze_one(bundle: Any) -> TrendPrediction:
             return await self._agent.analyze(
                 bundle=bundle,
                 thesis_context=thesis_context,

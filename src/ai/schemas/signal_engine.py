@@ -9,7 +9,7 @@ with any internal references, and exported from __init__.py as before.
 """
 
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -68,7 +68,7 @@ class Signal(BaseModel):
     def ensure_lists(cls, v: object) -> list[object]:
         if not isinstance(v, list):
             return []
-        return v  # type: ignore[return-value]
+        return v
 
 
 class RankedSignal(Signal):
@@ -164,7 +164,7 @@ class ThesisReviewTrigger(BaseModel):
     )
 
     @classmethod
-    def __get_validators__(cls):
+    def __get_validators__(cls) -> Any:
         """Allow Pydantic v1-style coercion from plain str (legacy AI output)."""
         yield cls._coerce
 
@@ -217,7 +217,7 @@ class SignalEngineOutput(BaseModel):
     def ensure_lists(cls, v: object) -> list[object]:
         if not isinstance(v, list):
             return []
-        return v  # type: ignore[return-value]
+        return v
 
     @field_validator("thesis_review_triggers", mode="before")
     @classmethod

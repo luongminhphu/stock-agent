@@ -75,7 +75,9 @@ class BacktestingService:
             )
         ).all()
 
-        stats: dict[str, dict] = defaultdict(lambda: {"total": 0, "hits": 0, "pnl_sum": 0.0})
+        stats: dict[str, dict[str, Any]] = defaultdict(
+            lambda: {"total": 0, "hits": 0, "pnl_sum": 0.0}
+        )
 
         for snap in snap_rows:
             verdict = thesis_verdict.get(snap.thesis_id)
@@ -159,7 +161,9 @@ class BacktestingService:
             )
         ).all()
 
-        agg: dict[int, dict] = defaultdict(lambda: {"pnl_values": [], "last_snapshot_at": None})
+        agg: dict[int, dict[str, Any]] = defaultdict(
+            lambda: {"pnl_values": [], "last_snapshot_at": None}
+        )
 
         for s in snap_rows:
             bucket = agg[s.thesis_id]

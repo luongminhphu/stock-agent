@@ -15,6 +15,8 @@ Endpoints:
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -60,7 +62,7 @@ async def get_latest_brief(
 async def get_brief_feedback_summary(
     user_id: str = Depends(get_current_user_id),
     session: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     """Return brief feedback summary (acted_rate, counts).
 
     Used by dashboard-loader.js on page load.
@@ -78,7 +80,7 @@ async def get_brief_feedback_summary(
 async def generate_brief(
     phase: str,
     user_id: str = Depends(get_current_user_id),
-    briefing_svc=Depends(get_briefing_service),
+    briefing_svc: Any = Depends(get_briefing_service),
 ) -> BriefResponse:
     """Trigger AI brief generation and persist snapshot.
 
@@ -109,7 +111,7 @@ async def generate_brief(
 @router.get("/morning", response_model=BriefResponse)
 async def get_morning_brief(
     user_id: str = Depends(get_current_user_id),
-    briefing_svc=Depends(get_briefing_service),
+    briefing_svc: Any = Depends(get_briefing_service),
 ) -> BriefResponse:
     """Generate + return morning brief. Kept for bot adapters."""
     try:
@@ -125,7 +127,7 @@ async def get_morning_brief(
 @router.get("/eod", response_model=BriefResponse)
 async def get_eod_brief(
     user_id: str = Depends(get_current_user_id),
-    briefing_svc=Depends(get_briefing_service),
+    briefing_svc: Any = Depends(get_briefing_service),
 ) -> BriefResponse:
     """Generate + return EOD brief. Kept for bot adapters."""
     try:
@@ -146,7 +148,7 @@ async def post_brief_feedback(
     snapshot_id: int,
     body: FeedbackRequest,
     user_id: str = Depends(get_current_user_id),
-    briefing_svc=Depends(get_briefing_service),
+    briefing_svc: Any = Depends(get_briefing_service),
 ) -> None:
     """Record user feedback for a brief snapshot.
 

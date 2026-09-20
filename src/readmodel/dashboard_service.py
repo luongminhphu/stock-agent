@@ -95,7 +95,7 @@ except ImportError:  # pragma: no cover
 class QuoteBatchReader(Protocol):
     """Minimal batch-quote interface required by DashboardService."""
 
-    async def get_quotes(self, tickers: list[str]): ...  # noqa: D102
+    async def get_quotes(self, tickers: list[str]) -> Any: ...  # noqa: D102
 
 
 # ---------------------------------------------------------------------------

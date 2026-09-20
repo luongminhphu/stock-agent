@@ -288,7 +288,7 @@ class ThesisReviewListener:
     # ── helpers ───────────────────────────────────────────────────────────────
 
     @asynccontextmanager
-    async def _open_session(self):
+    async def _open_session(self) -> Any:
         """Open a fresh AsyncSession from the factory. Always closes on exit."""
         async with self._session_factory() as session:
             yield session

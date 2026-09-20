@@ -99,7 +99,7 @@ async def get_trend_analysis(
 
     service = TrendSynthesisService(
         rrg_service=RRGService(ohlcv_svc),  # type: ignore[arg-type]
-        trend_engine=TrendEngine(ohlcv_svc),  # type: ignore[arg-type]
+        trend_engine=TrendEngine(ohlcv_svc),
         synthesis_agent=TrendSynthesisAgent(ai_client),  # type: ignore[arg-type]
     )
 

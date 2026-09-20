@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import enum
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     DateTime,
@@ -31,7 +32,7 @@ from src.platform.db import Base
 # ---------------------------------------------------------------------------
 
 
-def _enum_values(x):
+def _enum_values(x: Any) -> Any:
     """Return .value list for SAEnum so asyncpg binds lowercase strings."""
     return [e.value for e in x]
 

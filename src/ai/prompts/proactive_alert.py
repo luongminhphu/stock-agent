@@ -10,6 +10,8 @@ Boundary: pure data + string builders. No I/O, no DB, no bus imports.
 
 from __future__ import annotations
 
+from typing import Any
+
 from src.ai.prompts._spec import PromptSpec, schema_block, with_persona
 from src.ai.schemas import ProactiveAlertOutput
 
@@ -51,7 +53,7 @@ def build_user_prompt(
     strength: float,
     confidence: float,
     source: str,
-    metadata: dict,
+    metadata: dict[str, Any],
     investor_context: str = "",
 ) -> str:
     """Build user prompt từ SignalDetectedEvent fields.

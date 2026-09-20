@@ -306,10 +306,10 @@ class PnlService:
                 f"qty={position.qty}, avg_cost={position.avg_cost} — "
                 "both must be positive."
             )
-        market_open = self._quote_service.is_market_open()  # type: ignore[attr-defined]
+        market_open = self._quote_service.is_market_open()
         try:
             quote = await self._quote_service.get_quote(position.ticker)
-            current_price = quote.price  # type: ignore[union-attr]
+            current_price = quote.price
             # Ngoài giờ giao dịch: get_quote trả về last_known — đánh dấu stale
             price_stale = not market_open
             if price_stale:

@@ -320,7 +320,7 @@ async def get_rrg_chart_summary(
         )
 
     # 5. Call AI agent
-    agent = RRGChartSummaryAgent(ai_client=ai_client)  # type: ignore[arg-type]
+    agent = RRGChartSummaryAgent(ai_client=ai_client)
     summary = await agent.analyze(
         tickers_context=tickers_context,
         held_tickers=list(held_set),

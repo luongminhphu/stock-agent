@@ -85,7 +85,7 @@ class _CacheBustedStaticFiles(StaticFiles):
     - Everything else: 10-minute cache — safe default for images/fonts.
     """
 
-    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:  # type: ignore[override]
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
         async def _send_with_cache_header(message: Any) -> None:
             if message["type"] == "http.response.start":
                 path: str = scope.get("path", "")
@@ -201,7 +201,7 @@ def create_app() -> FastAPI:
     app.include_router(trend_router, prefix="/api/v1")  # Trend Analysis panel
 
     @app.exception_handler(Exception)
-    async def unhandled_exception_handler(request, exc: Exception) -> JSONResponse:
+    async def unhandled_exception_handler(request: Any, exc: Exception) -> JSONResponse:
         logger.error("api.unhandled_exception", path=str(request.url), error=str(exc))
         return JSONResponse(
             status_code=500,

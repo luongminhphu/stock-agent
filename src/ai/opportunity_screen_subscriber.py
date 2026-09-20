@@ -160,7 +160,7 @@ class OpportunityScreenSubscriber:
                 if investor_context
                 else candidates_block
             )
-            result = await self._agent.analyze(  # type: ignore[union-attr]
+            result = await self._agent.analyze(
                 context=prompt_context,
                 event_trigger=f"daily_screen:{event.event_id[:8]}",
             )
@@ -183,7 +183,7 @@ class OpportunityScreenSubscriber:
             )
             return
         try:
-            channel = self._discord_client.get_channel(self._morning_channel_id)  # type: ignore[union-attr]
+            channel = self._discord_client.get_channel(self._morning_channel_id)
             if channel is None:
                 logger.warning(
                     "opportunity_screen_subscriber.channel_not_found",
@@ -201,7 +201,7 @@ class OpportunityScreenSubscriber:
 
             # Discord 2000-char limit — split if needed
             for chunk in _split_discord_message(full_message):
-                await channel.send(chunk)  # type: ignore[union-attr]
+                await channel.send(chunk)
 
             logger.info(
                 "opportunity_screen_subscriber.discord_sent",

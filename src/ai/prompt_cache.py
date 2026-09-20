@@ -119,7 +119,7 @@ class PromptCache[T: BaseModel]:
             ttl_remaining=round(expires_at - time.monotonic()),
             total_hits=self._hits,
         )
-        return result  # type: ignore[return-value]
+        return result
 
     def set(self, system_prompt: str, user_prompt: str, result: T) -> None:
         """Store result with TTL. Evicts LRU entry if at capacity."""

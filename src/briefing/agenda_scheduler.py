@@ -14,6 +14,8 @@ Wave B:
 
 from __future__ import annotations
 
+from typing import Any
+
 from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
@@ -22,7 +24,7 @@ logger = get_logger(__name__)
 class AgendaScheduler:
     """Orchestrates the daily agenda build for one or many users."""
 
-    def __init__(self, agenda_service, bot_notifier=None) -> None:
+    def __init__(self, agenda_service: Any, bot_notifier: Any = None) -> None:
         self._svc = agenda_service
         self._notifier = bot_notifier  # optional — push to Discord
 
@@ -60,7 +62,7 @@ class AgendaScheduler:
                     exc_info=True,
                 )
 
-    async def _emit_event(self, user_id: str, result) -> None:
+    async def _emit_event(self, user_id: str, result: Any) -> None:
         """Publish DailyAgendaCompletedEvent to the event bus.
 
         Non-blocking: any failure is logged and swallowed so a bus error

@@ -7,6 +7,7 @@ Exposes watchlist CRUD via WatchlistService.
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -116,8 +117,8 @@ async def update_watchlist_note(
 @router.post("/scan", status_code=status.HTTP_200_OK)
 async def trigger_scan(
     user_id: str = Depends(get_current_user_id),
-    scan_svc=Depends(get_scan_service),
-) -> dict:
+    scan_svc: Any = Depends(get_scan_service),
+) -> dict[str, Any]:
     """Trigger watchlist scan thủ công, persist snapshot vào DB."""
     result = await scan_svc.scan_user(user_id=user_id)
     return {

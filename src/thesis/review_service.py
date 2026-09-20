@@ -78,7 +78,7 @@ class QuoteReader(Protocol):
     Keeps ReviewService loosely coupled from the market segment.
     """
 
-    async def get_quote(self, ticker: str): ...  # noqa: D102
+    async def get_quote(self, ticker: str) -> Any: ...  # noqa: D102
 
 
 class ReviewNotAllowedError(Exception):
@@ -375,7 +375,7 @@ class ReviewService:
             if adapter is None:
                 return theses
 
-            holdings = await adapter.get_holdings(user_id=user_id)  # type: ignore[union-attr]
+            holdings = await adapter.get_holdings(user_id=user_id)
             high_exposure: set[str] = {
                 h.ticker
                 for h in holdings
@@ -455,7 +455,7 @@ class ReviewService:
         # Propagate last_reviewed_at up to Thesis row so:
         #  - snapshot stale detection reads from column (no subquery)
         #  - Wave 4 dedup guard in ThesisJudgeAgent.run_batch() fires correctly
-        thesis.last_reviewed_at = review_ts  # type: ignore[assignment]
+        thesis.last_reviewed_at = review_ts
 
         # W5C: log verdict_flip event if direction changed from previous review.
         # Skipped on first-ever review (prev_verdict is None).

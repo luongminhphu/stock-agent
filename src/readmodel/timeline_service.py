@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from datetime import timedelta
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -442,9 +443,9 @@ def _truncate(text: str | None, max_chars: int) -> str | None:
 
 def _nearest_prior_review(
     reviews: list,  # type: ignore[type-arg]
-    snapshot_ts,
+    snapshot_ts: Any,
     lookahead_secs: int = 14400,
-) -> object | None:  # type: ignore[type-arg]
+) -> object | None:
     """Return the review closest to snapshot_ts within the search window.
 
     Search window: [snapshot_ts - ∞, snapshot_ts + lookahead_secs].

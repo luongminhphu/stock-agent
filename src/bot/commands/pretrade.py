@@ -4,6 +4,8 @@ Owner: bot segment. Adapter only — no domain logic.
 
 from __future__ import annotations
 
+from typing import Any
+
 import discord
 from discord import app_commands
 
@@ -19,7 +21,7 @@ from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
 
-_DECISION_META: dict[TradeDecision, dict] = {
+_DECISION_META: dict[TradeDecision, dict[str, Any]] = {
     TradeDecision.BUY: {
         "emoji": "\u2705",
         "label": "GO",
@@ -111,7 +113,7 @@ def _clamp(text: str, limit: int = 1000) -> str:
     return cut.rstrip() + "…"
 
 
-def _build_pretrade_embed(result) -> discord.Embed:
+def _build_pretrade_embed(result: Any) -> discord.Embed:
     """Build Discord embed from PreTradeCheckOutput (current schema)."""
     # intended_action: TradeDecision (BUY/SELL/REDUCE/HOLD)
     meta = _DECISION_META.get(result.intended_action, _DECISION_META[TradeDecision.HOLD])

@@ -23,6 +23,8 @@ Threshold defaults (override via constructor for tests):
 
 from __future__ import annotations
 
+from typing import Any
+
 from src.platform.event_bus import get_event_bus
 from src.platform.events import StressTestCompletedEvent
 from src.platform.logging import get_logger
@@ -43,7 +45,7 @@ class StressTestSubscriber:
 
     def __init__(
         self,
-        session_factory,
+        session_factory: Any,
         min_invalidation_prob: float = 0.25,
         max_triggers_per_test: int = 5,
     ) -> None:

@@ -17,6 +17,7 @@ Quy ước:
 from __future__ import annotations
 
 from dataclasses import dataclass, fields
+from typing import Any
 
 
 @dataclass
@@ -58,7 +59,7 @@ class AppContainer:
     user_action_listener: object | None = None  # core: UserActionFeedbackListener (feedback loop)
     feedback_ledger_subscriber: object | None = None  # ai.memory: FeedbackLedgerSubscriber (E3a)
     # ── thesis ──
-    investor_profile_service: tuple | None = None
+    investor_profile_service: tuple[Any, ...] | None = None
     thesis_review_listener: object | None = None
     signal_review_trigger_listener: object | None = None  # Wave C: SignalEngine → ThesisReview
     post_mortem_service: object | None = None  # Wave E: PostMortemService singleton

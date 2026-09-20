@@ -101,7 +101,7 @@ class AttentionService:
         cache_extra = str(limit)
         cached = _cache.get("attention", user_id, extra=cache_extra)
         if cached is not None:
-            return cached  # type: ignore[return-value]
+            return cached
 
         now = datetime.now(UTC)
         items: list[AttentionItem] = []

@@ -27,6 +27,8 @@ Changelog:
 
 from __future__ import annotations
 
+from typing import Any
+
 from src.ai.prompts._spec import PromptSpec, schema_block, with_persona
 from src.ai.schemas import SignalEngineOutput
 
@@ -74,10 +76,10 @@ SPEC = PromptSpec(
 
 
 def build_user_prompt(
-    watchdog_outputs: list[dict],
-    stress_outputs: list[dict],
-    active_theses: list[dict],
-    portfolio_risk_context: dict,
+    watchdog_outputs: list[dict[str, Any]],
+    stress_outputs: list[dict[str, Any]],
+    active_theses: list[dict[str, Any]],
+    portfolio_risk_context: dict[str, Any],
     generated_at: str,
     feedback_summary: str = "",
 ) -> str:

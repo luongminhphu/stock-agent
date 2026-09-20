@@ -16,7 +16,7 @@ No business logic, no DB access, no Discord formatting.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from src.ai.client import AIClient
 from src.ai.prompts.brief import (
@@ -327,7 +327,7 @@ async def _attach_portfolio_narrative(
 
 
 async def _log_brief_interaction(
-    session,
+    session: Any,
     user_id: str | None,
     result: BriefOutput,
     tickers: list[str],

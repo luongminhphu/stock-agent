@@ -24,6 +24,8 @@ Event chain:
 
 from __future__ import annotations
 
+from typing import Any
+
 from src.platform.event_bus import get_event_bus
 from src.platform.events import ProactiveWatchAlertFiredEvent, ProactiveWatchRequestedEvent
 from src.platform.logging import get_logger
@@ -39,7 +41,9 @@ class ProactiveWatchListener:
         session_factory — AsyncSessionLocal
     """
 
-    def __init__(self, quote_service, session_factory, ticker_context_service=None) -> None:
+    def __init__(
+        self, quote_service: Any, session_factory: Any, ticker_context_service: Any = None
+    ) -> None:
         self._quote_service = quote_service
         self._session_factory = session_factory
         self._ticker_context_service = ticker_context_service

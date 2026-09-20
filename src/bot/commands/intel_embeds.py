@@ -14,6 +14,8 @@ A stale-data footer is appended to embed[0] when is_stale=True.
 
 from __future__ import annotations
 
+from typing import Any
+
 import discord
 
 _VERDICT_COLOR: dict[str, discord.Color] = {
@@ -31,7 +33,7 @@ _VERDICT_EMOJI: dict[str, str] = {
 }
 
 
-def build_intel_embeds(data: dict) -> list[discord.Embed]:
+def build_intel_embeds(data: dict[str, Any]) -> list[discord.Embed]:
     """Convert intelligence dict → list of Discord Embeds."""
     embeds: list[discord.Embed] = []
 
@@ -53,7 +55,7 @@ def build_intel_embeds(data: dict) -> list[discord.Embed]:
 # ---------------------------------------------------------------------------
 
 
-def _build_verdict_embed(data: dict) -> discord.Embed:
+def _build_verdict_embed(data: dict[str, Any]) -> discord.Embed:
     verdict_raw = (data.get("overall_verdict") or "neutral").lower()
     verdict = verdict_raw if verdict_raw in _VERDICT_COLOR else "neutral"
     emoji = _VERDICT_EMOJI[verdict]
@@ -92,8 +94,8 @@ def _build_verdict_embed(data: dict) -> discord.Embed:
     return embed
 
 
-def _build_actions_embed(data: dict) -> discord.Embed | None:
-    actions: list = data.get("priority_actions") or []
+def _build_actions_embed(data: dict[str, Any]) -> discord.Embed | None:
+    actions: list[Any] = data.get("priority_actions") or []
     if not actions:
         return None
 
@@ -113,8 +115,8 @@ def _build_actions_embed(data: dict) -> discord.Embed | None:
     return embed
 
 
-def _build_risk_embed(data: dict) -> discord.Embed | None:
-    flags: list = data.get("risk_flags") or []
+def _build_risk_embed(data: dict[str, Any]) -> discord.Embed | None:
+    flags: list[Any] = data.get("risk_flags") or []
     if not flags:
         return None
 
@@ -132,7 +134,7 @@ def _build_risk_embed(data: dict) -> discord.Embed | None:
 # ---------------------------------------------------------------------------
 
 
-def _fmt_action(action: str | dict) -> str:
+def _fmt_action(action: str | dict[str, Any]) -> str:
     if isinstance(action, str):
         return action
     symbol = action.get("symbol", "")
@@ -140,7 +142,7 @@ def _fmt_action(action: str | dict) -> str:
     return f"**{symbol}** — {text}" if symbol else text
 
 
-def _fmt_flag(flag: str | dict) -> str:
+def _fmt_flag(flag: str | dict[str, Any]) -> str:
     if isinstance(flag, str):
         return flag
     symbol = flag.get("symbol", "")

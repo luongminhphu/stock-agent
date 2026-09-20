@@ -13,6 +13,8 @@ Design:
 
 from __future__ import annotations
 
+from typing import Any
+
 import structlog
 
 from src.ai.schemas.rrg_chart_summary import RRGChartSummary, RRGTickerInsight
@@ -51,7 +53,7 @@ Không được dùng key khác. Không trả về markdown, không prose thêm.
 
 
 def _build_prompt(
-    tickers_context: list[dict],
+    tickers_context: list[dict[str, Any]],
     held_tickers: list[str],
 ) -> str:
     lines = ["## Trạng thái RRG hiện tại\n"]
@@ -79,7 +81,7 @@ def _build_prompt(
 
 
 def _heuristic_fallback(
-    tickers_context: list[dict],
+    tickers_context: list[dict[str, Any]],
     held_tickers: list[str],
 ) -> RRGChartSummary:
     """Rule-based fallback when AI fails."""
@@ -158,7 +160,7 @@ class RRGChartSummaryAgent:
 
     async def analyze(
         self,
-        tickers_context: list[dict],
+        tickers_context: list[dict[str, Any]],
         held_tickers: list[str],
     ) -> RRGChartSummary:
         """

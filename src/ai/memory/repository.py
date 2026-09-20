@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import desc, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -82,7 +83,7 @@ class InteractionLogRepository:
         await self._session.execute(stmt)
         await self._session.flush()
 
-    async def set_outcome(self, log_id: int, outcome: dict) -> None:
+    async def set_outcome(self, log_id: int, outcome: dict[str, Any]) -> None:
         """Persist price outcome dict as JSON. Caller must check idempotency."""
         stmt = (
             update(AIInteractionLog)

@@ -499,7 +499,7 @@ class DecisionService:
             outcome_horizon_days=row.review_horizon_days,
             outcome_verdict_hint=row.outcome_verdict,
         )
-        replay = await self._replay_agent.analyze(  # type: ignore[func-returns-value]
+        replay = await self._replay_agent.analyze(
             ctx,
             session=self._session,
             user_id=str(row.user_id),

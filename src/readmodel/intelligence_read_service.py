@@ -85,7 +85,7 @@ class IntelligenceReadService:
             report, is_stale = snap_result
             generated_at = store.last_updated_at(user_id)
 
-            def _serialize_actions(actions: list | None) -> list[dict]:
+            def _serialize_actions(actions: list[Any] | None) -> list[dict[str, Any]]:
                 if not actions:
                     return []
                 return [
@@ -98,7 +98,7 @@ class IntelligenceReadService:
                     for a in actions
                 ]
 
-            def _serialize_risk_flags(flags: list | None) -> list[dict]:
+            def _serialize_risk_flags(flags: list[Any] | None) -> list[dict[str, Any]]:
                 if not flags:
                     return []
                 return [

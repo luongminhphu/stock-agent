@@ -14,6 +14,7 @@ Prompt strategy:
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from src.ai.prompts._spec import with_persona
 
@@ -54,7 +55,7 @@ def build_user_prompt(
     ticker: str,
     thesis_title: str,
     thesis_summary: str,
-    assumptions: list[dict],
+    assumptions: list[dict[str, Any]],
     catalysts: list[str],
     current_price: float | None,
     entry_price: float | None,

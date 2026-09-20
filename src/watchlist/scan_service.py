@@ -53,6 +53,7 @@ import json
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -337,7 +338,7 @@ class ScanService:
         if not bulk_quote_map:
             # Bulk-fetch all quotes in a single call — avoids N serial round-trips.
             try:
-                bulk_quotes = await self._quote_service.get_bulk_quotes(tickers)  # type: ignore[union-attr]
+                bulk_quotes = await self._quote_service.get_bulk_quotes(tickers)
                 bulk_quote_map = {q.ticker: q for q in bulk_quotes}
             except Exception as exc:
                 logger.warning("scan.bulk_quote_failed", tickers=tickers, error=str(exc))
@@ -359,7 +360,7 @@ class ScanService:
         thesis_direction_map: dict[str, str] = {}
         if self._ticker_direction_query is not None:
             try:
-                thesis_direction_map = await self._ticker_direction_query.get_direction_map(  # type: ignore[union-attr]
+                thesis_direction_map = await self._ticker_direction_query.get_direction_map(
                     user_id, tickers
                 )
             except Exception as exc:
@@ -369,9 +370,7 @@ class ScanService:
         thesis_score_map: dict[str, float] = {}
         if self._thesis_score_query is not None:
             try:
-                thesis_score_map = await self._thesis_score_query.get_score_map(  # type: ignore[union-attr]
-                    user_id, tickers
-                )
+                thesis_score_map = await self._thesis_score_query.get_score_map(user_id, tickers)
                 weak_tickers = [t for t, s in thesis_score_map.items() if s < _WEAK_SCORE_THRESHOLD]
                 if weak_tickers:
                     logger.info(
@@ -482,7 +481,7 @@ class ScanService:
     async def _scan_ticker(
         self,
         ticker: str,
-        items: list,
+        items: list[Any],
         bulk_quote_map: dict[str, object],
         ctx: object | None = None,
     ) -> ScanSignal:
@@ -501,8 +500,8 @@ class ScanService:
 
         signal = ScanSignal(
             ticker=ticker,
-            current_price=quote.price,  # type: ignore[union-attr]
-            change_pct=quote.change_pct,  # type: ignore[union-attr]
+            current_price=quote.price,
+            change_pct=quote.change_pct,
             _volume_ratio=_resolve_volume_ratio(quote, ctx),
         )
 
@@ -513,8 +512,8 @@ class ScanService:
 
         for alert in all_alerts:
             if alert.is_triggered_by(
-                current_price=quote.price,  # type: ignore[union-attr]
-                change_pct=quote.change_pct,  # type: ignore[union-attr]
+                current_price=quote.price,
+                change_pct=quote.change_pct,
                 volume_ratio=signal._volume_ratio,
             ):
                 signal.triggered_alerts.append(alert)

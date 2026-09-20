@@ -95,7 +95,7 @@ class BriefResult:
     output: Any | None = field(default=None)  # BriefOutput from BriefingAgent
 
 
-def _format_thesis_health_line(t: dict) -> str:
+def _format_thesis_health_line(t: dict[str, Any]) -> str:
     """Một dòng thesis cho prompt brief: urgency → health → verdict → stop → review."""
     parts = [f"{t.get('ticker', '?')} [{t.get('status', 'OK')}]"]
     score = t.get("health_score")
@@ -321,7 +321,7 @@ class BriefingService:
 
     def _build_market_context(
         self,
-        quotes: list,
+        quotes: list[Any],
         sector_context: str = "",
         judge_context: str = "",
         risk_context: str = "",
@@ -625,7 +625,7 @@ class BriefingService:
             logger.warning("briefing.thesis_context.failed", error=str(exc))
             return ""
 
-    async def _build_quote_context(self, tickers: list[str]) -> list:
+    async def _build_quote_context(self, tickers: list[str]) -> list[Any]:
         if not self._quote_service or not tickers:
             return []
         try:

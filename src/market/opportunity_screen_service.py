@@ -201,7 +201,7 @@ class OpportunityScreenService:
 
         # Bulk fetch — single round-trip
         try:
-            quotes = await self._quote_service.get_bulk_quotes(tickers)  # type: ignore[union-attr]
+            quotes = await self._quote_service.get_bulk_quotes(tickers)
         except Exception as exc:
             logger.error("opportunity_screen.bulk_fetch_failed", error=str(exc))
             return ScreenResult(

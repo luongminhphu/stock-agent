@@ -28,6 +28,7 @@ from __future__ import annotations
 import datetime
 import json
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy import DateTime, Float, Integer, String, Text, select
 from sqlalchemy.orm import Mapped, mapped_column
@@ -186,7 +187,7 @@ class InvestorProfileService:
     Dependency direction: platform ← thesis/portfolio (read-only imports inside methods).
     """
 
-    def __init__(self, session) -> None:  # AsyncSession typed loosely to avoid circular import
+    def __init__(self, session: Any) -> None:  # AsyncSession typed loosely to avoid circular import
         self._session = session
 
     # ------------------------------------------------------------------
@@ -208,7 +209,7 @@ class InvestorProfileService:
         snapshot = await self.get_latest()
         return InvestorContext(static=static, snapshot=snapshot)
 
-    async def get_profile(self, user_id: str | None = None) -> dict:
+    async def get_profile(self, user_id: str | None = None) -> dict[str, Any]:
         """Return investor profile as a dict compatible with ContextBuilder._apply_profile().
 
         Wave 3: this is the contract method called by ai.ContextBuilder.

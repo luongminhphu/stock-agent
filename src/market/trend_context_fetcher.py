@@ -16,6 +16,7 @@ Design:
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
 from src.market.market_regime import MarketRegimeService
 from src.market.news_adapter import TCBSNewsAdapter
@@ -76,7 +77,7 @@ class TrendContextFetcher:
         return news_str, market_str
 
 
-def _render_news(items: list) -> str:
+def _render_news(items: list[Any]) -> str:
     if not items:
         return _EMPTY_NEWS
     return "\n".join(item.format_for_prompt() for item in items)

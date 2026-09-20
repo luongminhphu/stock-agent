@@ -4,6 +4,8 @@ Owner: bot segment. Adapter only — no domain logic.
 
 from __future__ import annotations
 
+from typing import Any
+
 import discord
 from discord import app_commands
 
@@ -52,7 +54,7 @@ class WhyCog(BaseCog):
         await interaction.followup.send(embed=embed, ephemeral=False)
 
 
-def _build_why_embed(result, change_pct: float) -> discord.Embed:
+def _build_why_embed(result: Any, change_pct: float) -> discord.Embed:
     emoji = _DIR_EMOJI.get(result.direction, "❓")
     color = _DIR_COLOR.get(result.direction, discord.Color.blurple())
     sign = "+" if change_pct > 0 else ""

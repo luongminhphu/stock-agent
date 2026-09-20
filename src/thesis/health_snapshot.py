@@ -244,7 +244,7 @@ async def build_thesis_health_snapshots(
     ticker_context_service: Any | None = None,
     quote_service: Any | None = None,
     max_theses: int = MAX_THESES,
-    theses: list | None = None,
+    theses: list[Any] | None = None,
 ) -> list[ThesisHealthSnapshot]:
     """
     Build ThesisHealthSnapshot list for a user's active theses.

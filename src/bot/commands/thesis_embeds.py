@@ -10,6 +10,7 @@ from __future__ import annotations
 import datetime
 import json
 import logging
+from typing import Any
 
 import discord
 
@@ -77,7 +78,7 @@ _CONVICTION_SEVERITY_ICON: dict[str, str] = {
 }
 
 
-def _parse_json_list(raw: str | list | None) -> list:
+def _parse_json_list(raw: str | list[Any] | None) -> list[Any]:
     """Safely parse a JSON-encoded list or return the value if already a list.
 
     ORM columns may store lists as JSON strings. This adapter normalises both
@@ -95,7 +96,7 @@ def _parse_json_list(raw: str | list | None) -> list:
         return []
 
 
-def _dominant_verdict_color(reviews: list) -> int:
+def _dominant_verdict_color(reviews: list[Any]) -> int:
     """Derive sidebar color from dominant verdict in a list of ThesisReview objects."""
     bullish = sum(1 for r in reviews if str(r.verdict).upper() == "BULLISH")
     bearish = sum(1 for r in reviews if str(r.verdict).upper() == "BEARISH")
@@ -106,7 +107,7 @@ def _dominant_verdict_color(reviews: list) -> int:
     return COLORS.TEAL  # neutral/mixed → default info color
 
 
-def _dominant_drift_color(reviewed_signals: list[tuple]) -> int:
+def _dominant_drift_color(reviewed_signals: list[tuple[Any, ...]]) -> int:
     """Derive sidebar color from dominant drift verdict in (DriftSignal, ThesisReview) tuples."""
     bullish = sum(1 for _, r in reviewed_signals if r and str(r.verdict).upper() == "BULLISH")
     bearish = sum(1 for _, r in reviewed_signals if r and str(r.verdict).upper() == "BEARISH")
@@ -179,9 +180,9 @@ def build_review_embed(review: object) -> discord.Embed:
 
 def build_maintenance_embed(
     expired_count: int,
-    reviews: list,
+    reviews: list[Any],
     now_utc: datetime.datetime,
-    upcoming_catalysts: list[dict] | None = None,
+    upcoming_catalysts: list[dict[str, Any]] | None = None,
     catalyst_lookahead_days: int = 30,
 ) -> discord.Embed:
     """Build embed for ThesisMaintenanceScheduler daily summary."""
@@ -263,9 +264,9 @@ def build_maintenance_embed(
 
 
 def build_drift_embed(
-    reviewed_signals: list[tuple],
+    reviewed_signals: list[tuple[Any, ...]],
     now_utc: datetime.datetime,
-    conviction_signals: list | None = None,
+    conviction_signals: list[Any] | None = None,
     drift_threshold_pct: float | None = None,
 ) -> discord.Embed:
     """Build embed for ThesisDriftScheduler drift alert notification.
@@ -330,7 +331,7 @@ def build_drift_embed(
     return embed
 
 
-def build_stop_breach_embed(outcomes: list, now_utc: datetime.datetime) -> discord.Embed:
+def build_stop_breach_embed(outcomes: list[Any], now_utc: datetime.datetime) -> discord.Embed:
     """Wave 6c: embed cho stop-breach auto-invalidation outcomes.
 
     Mỗi outcome là StopBreachOutcome từ thesis.stop_breach_service.
@@ -432,7 +433,7 @@ _WATCHDOG_ACTION_VN: dict[str, str] = {
 }
 
 
-def _watchdog_line(r) -> str:  # noqa: ANN001 — WatchdogTickerResult (duck-typed)
+def _watchdog_line(r: Any) -> str:  # noqa: ANN001 — WatchdogTickerResult (duck-typed)
     """Một dòng cho một thesis: health → hành động → stop/dữ liệu → auto-invalidate."""
     if r.health_score is not None:
         head = f"**{r.ticker}** — {r.overall_health} ({r.health_score}/100)"
@@ -458,7 +459,7 @@ def _watchdog_line(r) -> str:  # noqa: ANN001 — WatchdogTickerResult (duck-typ
     return line
 
 
-def build_watchdog_urgent_embed(run_result, now_utc: datetime.datetime) -> discord.Embed:  # noqa: ANN001
+def build_watchdog_urgent_embed(run_result: Any, now_utc: datetime.datetime) -> discord.Embed:  # noqa: ANN001
     """Embed cảnh báo khẩn — chỉ URGENT_ALERT, đẩy vào alert channel ngay khi có."""
     urgent = run_result.urgent_alerts
     embed = discord.Embed(
@@ -471,7 +472,7 @@ def build_watchdog_urgent_embed(run_result, now_utc: datetime.datetime) -> disco
     return embed
 
 
-def build_watchdog_digest_embed(run_result, now_utc: datetime.datetime) -> discord.Embed:  # noqa: ANN001
+def build_watchdog_digest_embed(run_result: Any, now_utc: datetime.datetime) -> discord.Embed:  # noqa: ANN001
     """Embed tổng hợp buổi sáng — SILENT_WARNING + đếm OK/lỗi. Không lặp lại URGENT."""
     warnings = run_result.silent_warnings
     healthy = run_result.healthy

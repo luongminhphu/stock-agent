@@ -67,7 +67,7 @@ def _build_portfolio_context(portfolio_data: dict[str, Any]) -> PortfolioRiskNot
       - Losing: pnl_pct < -5%
       - Misaligned: holding position but last_verdict is BEARISH
     """
-    positions: list[dict] = portfolio_data.get("positions", [])
+    positions: list[dict[str, Any]] = portfolio_data.get("positions", [])
 
     top_concentration = [p["ticker"] for p in positions if (p.get("weight_pct") or 0) > 25]
     losing_positions = [p["ticker"] for p in positions if (p.get("pnl_pct") or 0) < -5]

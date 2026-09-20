@@ -301,7 +301,7 @@ class EodSnapshotService:
             self._quote_service.get_quote(position.ticker),
             timeout=_QUOTE_TIMEOUT_SECS,
         )
-        return float(quote.price)  # type: ignore[union-attr]
+        return float(quote.price)
 
     async def _upsert_snapshot(
         self,

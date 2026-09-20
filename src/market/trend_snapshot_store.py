@@ -40,7 +40,7 @@ logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 
-async def _persist_snapshot(session_factory, symbol: str, bundle_dict: dict) -> None:
+async def _persist_snapshot(session_factory: Any, symbol: str, bundle_dict: dict[str, Any]) -> None:
     """Upsert a TrendSnapshot row qua platform.db.upsert_rows — never raises."""
     import json as _json
 
@@ -60,7 +60,7 @@ async def _persist_snapshot(session_factory, symbol: str, bundle_dict: dict) -> 
     )
 
 
-async def load_snapshots_from_db(session_factory) -> dict[str, dict]:
+async def load_snapshots_from_db(session_factory: Any) -> dict[str, dict[str, Any]]:
     """Load all persisted snapshots on startup. Returns {symbol: bundle_dict}."""
     if session_factory is None:
         return {}

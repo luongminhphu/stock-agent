@@ -62,4 +62,4 @@ class SignalCredibilityOutput(BaseModel):
     def ensure_lists(cls, v: object) -> list[object]:
         if not isinstance(v, list):
             return []
-        return v  # type: ignore[return-value]
+        return v

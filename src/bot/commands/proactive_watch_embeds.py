@@ -9,6 +9,7 @@ Used by: bot.ProactiveWatchSubscriber
 from __future__ import annotations
 
 import datetime
+from typing import Any
 
 import discord
 
@@ -89,7 +90,7 @@ def build_proactive_watch_embed(
 
 
 def build_proactive_watch_batch_embed(
-    alerts: list,
+    alerts: list[Any],
     now_utc: datetime.datetime,
 ) -> discord.Embed:
     """Build embed for a batch of proactive watch alerts.

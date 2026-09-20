@@ -47,7 +47,7 @@ _OVERDUE_REVIEW_DAYS = 14  # mirror dashboard_service constant
 _LOW_CONVICTION_THRESHOLD = 70  # score < 70 → flag low_conviction
 
 
-async def _safe(coro, label: str, stale_sources: list[str]) -> Any:
+async def _safe(coro: Any, label: str, stale_sources: list[str]) -> Any:
     """Await coro; on any exception append label to stale_sources and return None."""
     try:
         return await coro
@@ -83,12 +83,12 @@ async def _build_today_loop(
         label="attention",
         stale_sources=stale_sources,
     )
-    attention_items: list[dict] = []
+    attention_items: list[dict[str, Any]] = []
     if attention_result is not None:
         for item in attention_result.items:
             attention_items.append(item.model_dump() if hasattr(item, "model_dump") else dict(item))
 
-    top_signals: list[dict] = (
+    top_signals: list[dict[str, Any]] = (
         await _safe(
             svc.get_recent_signals(user_id, days=7, limit=signal_limit, stale_days=3),
             label="top_signals",
@@ -127,7 +127,7 @@ async def _build_today_loop(
             "feedback_outcome": brief_raw.get("feedback_outcome"),
         }
 
-    thesis_digest: list[dict] = []
+    thesis_digest: list[dict[str, Any]] = []
     try:
         all_active = await svc.get_theses_list(
             user_id,

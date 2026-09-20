@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -136,7 +136,7 @@ class TimelineEvent(BaseModel):
     kind: str = Field(serialization_alias="event_type")
     ts: datetime = Field(serialization_alias="occurred_at")
     summary: str
-    detail: dict | None
+    detail: dict[str, Any] | None
 
 
 class ThesisTimelineResponse(BaseModel):
@@ -316,7 +316,7 @@ class AttentionItem(BaseModel):
     message: str
     urgency: str  # AttentionUrgency value
     ts: datetime  # thời điểm phát sinh (alert.triggered_at, catalyst.deadline, ...)
-    metadata: dict | None = None
+    metadata: dict[str, Any] | None = None
 
 
 class AttentionPanelResponse(BaseModel):

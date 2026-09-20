@@ -8,6 +8,7 @@ Imported by scheduler.py (WatchlistScanScheduler).
 from __future__ import annotations
 
 import datetime
+from typing import Any
 
 import discord
 
@@ -21,7 +22,7 @@ def _price_icon(change_pct: float, has_alerts: bool) -> str:
     return "\U0001f7e2" if change_pct >= 0 else "\U0001f534"  # 🟢 / 🔴
 
 
-def _dominant_color(signals: list) -> int:
+def _dominant_color(signals: list[Any]) -> int:
     """Return embed sidebar color based on majority direction of signals."""
     if not signals:
         return COLORS.TEAL

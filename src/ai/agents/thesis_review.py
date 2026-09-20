@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
@@ -64,9 +64,9 @@ def _extract_json(text: str) -> str:
 
 
 def _extract_previous_review(
-    episodes: list,
+    episodes: list[Any],
     thesis_id: int | None,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """Extract the most recent thesis_review episode as a previous verdict anchor.
 
     Scans the already-filtered episode list (scoped to ticker + thesis_id by
@@ -257,11 +257,11 @@ class ThesisReviewAgent:
 
 
 async def _fetch_memory_for_review_full(
-    session,
+    session: Any,
     user_id: str | None,
     ticker: str,
     thesis_id: int | None = None,
-) -> tuple[list, str]:
+) -> tuple[list[Any], str]:
     """Fetch episodic + semantic memory and return both raw episodes and rendered string.
 
     Returns:
@@ -320,7 +320,7 @@ async def _fetch_memory_for_review_full(
 
 
 async def _log_thesis_review_interaction(
-    session,
+    session: Any,
     user_id: str | None,
     ticker: str,
     result: ThesisReviewOutput,

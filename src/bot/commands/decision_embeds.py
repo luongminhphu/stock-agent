@@ -9,6 +9,7 @@ bot/commands/decision.py.
 from __future__ import annotations
 
 import datetime
+from typing import Any
 
 import discord
 
@@ -18,12 +19,12 @@ from src.bot.discord_helper import COLORS, VERDICT_ICONS, confidence_bar, fmt_ic
 # Shared verdict metadata
 # ---------------------------------------------------------------------------
 
-VERDICT_META: dict[str, dict] = {
+VERDICT_META: dict[str, dict[str, Any]] = {
     "CORRECT": {"emoji": VERDICT_ICONS["CORRECT"], "color": discord.Color.green()},
     "INCORRECT": {"emoji": VERDICT_ICONS["INCORRECT"], "color": discord.Color.red()},
     "MIXED": {"emoji": VERDICT_ICONS["MIXED"], "color": discord.Color.orange()},
 }
-DEFAULT_VERDICT_META: dict = {"emoji": "\U0001f4cb", "color": discord.Color.blue()}  # 📋
+DEFAULT_VERDICT_META: dict[str, Any] = {"emoji": "\U0001f4cb", "color": discord.Color.blue()}  # 📋
 
 _VERDICT_ICON: dict[str, str] = {
     "CORRECT": VERDICT_ICONS["CORRECT"],
@@ -32,7 +33,7 @@ _VERDICT_ICON: dict[str, str] = {
 }
 
 
-def _batch_outcome_color(results: list[dict]) -> int:
+def _batch_outcome_color(results: list[dict[str, Any]]) -> int:
     """Derive sidebar color from majority outcome in a batch replay list."""
     correct = sum(
         1
@@ -57,7 +58,7 @@ def _batch_outcome_color(results: list[dict]) -> int:
 
 
 def build_replay_embed(
-    results: list[dict],
+    results: list[dict[str, Any]],
     now_utc: datetime.datetime,
 ) -> discord.Embed:
     """Build embed for DecisionReplayScheduler end-of-day summary."""
@@ -90,7 +91,7 @@ def build_replay_embed(
 # ---------------------------------------------------------------------------
 
 
-def build_single_replay_embed(decision_id: int, envelope) -> discord.Embed:
+def build_single_replay_embed(decision_id: int, envelope: Any) -> discord.Embed:
     """Build Discord embed for /replay command result."""
     verdict = envelope.outcome_verdict or "MIXED"
     meta = VERDICT_META.get(verdict, DEFAULT_VERDICT_META)
@@ -145,7 +146,7 @@ def build_single_replay_embed(decision_id: int, envelope) -> discord.Embed:
 
 
 def build_lessons_embed(
-    rows: list,
+    rows: list[Any],
     *,
     ticker: str | None,
     limit: int,

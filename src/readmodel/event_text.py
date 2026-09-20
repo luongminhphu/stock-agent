@@ -102,7 +102,7 @@ def _fmt_value(key: str, v: Any) -> str:
 # ---------------------------------------------------------------------------
 
 
-def flatten_detail(detail: dict | None) -> str:
+def flatten_detail(detail: dict[str, Any] | None) -> str:
     """Convert TimelineEvent.detail dict → human-readable single string.
 
     - Bỏ qua keys có value null / rỗng / NaN / list rỗng / dict rỗng.

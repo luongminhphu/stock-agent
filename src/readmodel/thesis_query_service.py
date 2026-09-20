@@ -34,7 +34,7 @@ def _today_utc() -> date:
     return datetime.now(UTC).date()
 
 
-def _parse_json_field(value: str | None) -> list | dict | None:
+def _parse_json_field(value: str | None) -> list[Any] | dict[str, Any] | None:
     if not value:
         return None
     try:
@@ -427,7 +427,7 @@ class ThesisQueryService:
             key=lambda c: (c.expected_date is None, c.expected_date),
         )
 
-        def _review_dict(r: Any) -> dict:
+        def _review_dict(r: Any) -> dict[str, Any]:
             return {
                 "id": r.id,
                 "verdict": str(r.verdict.value) if hasattr(r.verdict, "value") else str(r.verdict),
@@ -439,7 +439,7 @@ class ThesisQueryService:
                 "reviewed_price": r.reviewed_price,
             }
 
-        def _assumption_dict(a: Assumption) -> dict:
+        def _assumption_dict(a: Assumption) -> dict[str, Any]:
             return {
                 "id": a.id,
                 "description": a.description,
@@ -448,7 +448,7 @@ class ThesisQueryService:
                 "updated_at": a.updated_at.isoformat() if a.updated_at else None,
             }
 
-        def _catalyst_dict(c: Catalyst) -> dict:
+        def _catalyst_dict(c: Catalyst) -> dict[str, Any]:
             return {
                 "id": c.id,
                 "description": c.description,

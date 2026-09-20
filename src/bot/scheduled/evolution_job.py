@@ -34,7 +34,7 @@ class EvolutionScheduler:
 
     def __init__(self, bot: commands.Bot) -> None:
         self._bot = bot
-        self._task: asyncio.Task | None = None
+        self._task: asyncio.Task[None] | None = None
 
     def start(self) -> None:
         self._task = asyncio.get_event_loop().create_task(self._loop())

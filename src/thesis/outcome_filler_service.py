@@ -25,6 +25,7 @@ Segment boundary: imports only thesis.models and market.quote_service (via DI).
 from __future__ import annotations
 
 import datetime
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,7 +48,7 @@ class OutcomeFillerService:
         quote_service: QuoteService instance (injected, not imported).
     """
 
-    def __init__(self, session: AsyncSession, quote_service) -> None:
+    def __init__(self, session: AsyncSession, quote_service: Any) -> None:
         self._session = session
         self._quote_service = quote_service
 

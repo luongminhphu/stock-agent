@@ -23,6 +23,7 @@ Memory format injected::
 from __future__ import annotations
 
 import datetime
+from typing import Any
 
 from src.ai.memory.memory_service import MemoryService
 from src.platform.db import AsyncSessionLocal
@@ -39,7 +40,7 @@ class MemoryInjectionListener:
     session_factory injected for testability; defaults to AsyncSessionLocal.
     """
 
-    def __init__(self, session_factory=None) -> None:
+    def __init__(self, session_factory: Any = None) -> None:
         self._session_factory = session_factory or AsyncSessionLocal
 
     def register(self) -> None:

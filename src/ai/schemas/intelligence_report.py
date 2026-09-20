@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -75,7 +75,7 @@ class AgentSlot(BaseModel):
 
     agent_name: str = Field(description="Tên agent, VD: 'thesis_judge', 'signal_engine'")
     status: AGENT_SLOT_STATUS = Field(default="not_triggered")
-    output: dict | None = Field(
+    output: dict[str, Any] | None = Field(
         default=None,
         description=(
             "Raw output dict của agent — serialized từ Pydantic model. None khi status != 'ran'."

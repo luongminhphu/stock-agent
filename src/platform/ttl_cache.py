@@ -21,7 +21,7 @@ import asyncio
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from src.platform.logging import get_logger
 
@@ -121,7 +121,7 @@ class AsyncTTLCache[K, V]:
         """Xóa toàn bộ cache — dùng sau market close."""
         self._store.clear()
 
-    def stats(self) -> dict:
+    def stats(self) -> dict[str, Any]:
         now = time.monotonic()
         live = sum(1 for e in self._store.values() if now < e.expires_at)
         return {

@@ -1,5 +1,6 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import Any
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -12,7 +13,7 @@ from sqlalchemy.pool import StaticPool
 from src.platform.config import settings
 
 
-def _build_engine():
+def _build_engine() -> Any:
     url = settings.database_url
     is_sqlite = url.startswith("sqlite")
 
@@ -78,15 +79,15 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def upsert_rows(
-    session_factory,
-    model,
-    rows: list[dict] | dict,
+    session_factory: Any,
+    model: Any,
+    rows: list[dict[str, Any]] | dict[str, Any],
     *,
     conflict_columns: list[str] | None = None,
     constraint: str | None = None,
     update_columns: list[str] | None = None,
     log_event: str = "platform.db.upsert_failed",
-    **log_ctx,
+    **log_ctx: Any,
 ) -> bool:
     """Upsert một hoặc nhiều row (INSERT ... ON CONFLICT DO UPDATE), fire-and-forget.
 
@@ -139,7 +140,7 @@ async def upsert_rows(
         return False
 
 
-def _constraint_columns(model, constraint_name: str | None) -> list[str]:
+def _constraint_columns(model: Any, constraint_name: str | None) -> list[str]:
     """SQLite không hỗ trợ ON CONFLICT ON CONSTRAINT → tra cột của UniqueConstraint theo tên."""
     for c in model.__table__.constraints:
         if getattr(c, "name", None) == constraint_name:

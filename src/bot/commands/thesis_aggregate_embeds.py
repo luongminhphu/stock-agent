@@ -11,6 +11,7 @@ Output: discord.Embed ready to send
 from __future__ import annotations
 
 import datetime
+from typing import Any
 
 import discord
 
@@ -53,7 +54,7 @@ def _breakdown_bar(counts: dict[str, int], keys: list[str], icons: dict[str, str
     return "  ".join(parts) if parts else "—"
 
 
-def build_aggregate_embed(data: dict) -> discord.Embed:
+def build_aggregate_embed(data: dict[str, Any]) -> discord.Embed:
     """Build a Discord Embed from a thesis portfolio aggregate dict."""
     total = data.get("total_theses", 0)
     pnl_pct = data.get("total_pnl_pct")

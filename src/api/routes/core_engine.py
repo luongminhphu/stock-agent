@@ -12,7 +12,7 @@ Endpoints:
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -80,7 +80,7 @@ async def get_system_snapshot(
 @router.post("/feedback")
 async def submit_feedback(
     entry: FeedbackEntry,
-) -> dict:
+) -> dict[str, Any]:
     """Ghi nhận outcome của một verdict.
 
     Publishes EngineFeedbackSubmittedEvent → EngineFeedbackListener → FeedbackStore.record().

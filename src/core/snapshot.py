@@ -135,7 +135,7 @@ class SystemSnapshotBuilder:
     async def _fetch_alerts(self) -> list[WatchlistAlert]:
         """Alerts đã trigger, chưa được dismiss, và ticker chưa bị snooze."""
         try:
-            from src.watchlist.models import Alert  # type: ignore[import]
+            from src.watchlist.models import Alert
 
             rows = (
                 (
@@ -159,7 +159,7 @@ class SystemSnapshotBuilder:
             # degrades gracefully — alerts are returned unfiltered.
             snoozed_tickers: set[str] = set()
             try:
-                from src.watchlist.models import WatchlistItem  # type: ignore[import]
+                from src.watchlist.models import WatchlistItem
 
                 now = datetime.now(UTC)
                 snoozed_rows = (
@@ -195,7 +195,7 @@ class SystemSnapshotBuilder:
     async def _fetch_overdue_thesis(self) -> list[ThesisRef]:
         """Active theses chưa có AI review trong OVERDUE_DAYS ngày."""
         try:
-            from src.thesis.models import Thesis, ThesisReview  # type: ignore[import]
+            from src.thesis.models import Thesis, ThesisReview
 
             cutoff = datetime.now(UTC) - timedelta(days=self.OVERDUE_DAYS)
             theses = (
@@ -243,7 +243,7 @@ class SystemSnapshotBuilder:
     async def _fetch_market_signals(self) -> list[MarketSignal]:
         """Delegate to DashboardService scan snapshot."""
         try:
-            from src.readmodel.dashboard_service import DashboardService  # type: ignore[import]
+            from src.readmodel.dashboard_service import DashboardService
 
             svc = DashboardService(self.session)
             snap = await svc.get_scan_latest(self.user_id)
@@ -272,7 +272,7 @@ class SystemSnapshotBuilder:
         is not surfaced by get_portfolio_context().
         """
         try:
-            from src.portfolio import get_portfolio_context  # type: ignore[import]
+            from src.portfolio import get_portfolio_context
 
             pf = await get_portfolio_context(
                 self.session,
@@ -289,7 +289,7 @@ class SystemSnapshotBuilder:
             # risk_breach_count: separate query — stop_loss_breached not in public interface
             risk_breach = 0
             try:
-                from src.portfolio.models import Position  # type: ignore[import]
+                from src.portfolio.models import Position
 
                 breached = (
                     (

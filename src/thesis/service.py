@@ -14,6 +14,7 @@ Timeline string parser                   → timeline_parser.py
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -262,8 +263,8 @@ class ThesisService:
         # last_reviewed_at is the persistent source-of-truth for the Wave 4
         # dedup guard and snapshot stale detection.
         now = datetime.now(UTC)
-        thesis.updated_at = now  # type: ignore[assignment]
-        thesis.last_reviewed_at = now  # type: ignore[assignment]
+        thesis.updated_at = now
+        thesis.last_reviewed_at = now
         await self._repo.save(thesis)
         logger.info(
             "thesis.touch_reviewed_at.done",
@@ -404,7 +405,7 @@ class ThesisService:
         *,
         quote_service: object | None = None,
         ticker_context_service: object | None = None,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Return health snapshot of all active theses (dict form).
 
         Called by BriefingService._build_thesis_context().
@@ -431,7 +432,7 @@ class ThesisService:
             theses=active,
         )
         theses = {str(t.id): t for t in active}
-        results: list[dict] = []
+        results: list[dict[str, Any]] = []
         for snap in snapshots:
             thesis = theses.get(snap.thesis_id)
             last_review_at = None

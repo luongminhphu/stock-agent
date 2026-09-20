@@ -103,7 +103,7 @@ class ReplayOutput(BaseModel):
     def ensure_lists(cls, v: object) -> list[object]:
         if not isinstance(v, list):
             return []
-        return v  # type: ignore[return-value]
+        return v
 
     @field_validator("pattern_tag", mode="before")
     @classmethod

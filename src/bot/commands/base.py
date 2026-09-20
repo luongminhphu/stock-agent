@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator, Sequence
 from contextlib import asynccontextmanager
+from typing import Any
 
 import discord
 from discord.ext import commands
@@ -70,7 +71,7 @@ class BaseCog(commands.Cog):
     # ──────────────────────────────────────────────────────────────
 
     @asynccontextmanager
-    async def db_session(self) -> AsyncGenerator:
+    async def db_session(self) -> AsyncGenerator[Any, None]:
         """Async context manager for DB sessions with auto-commit/rollback."""
         async with AsyncSessionLocal() as session:
             try:

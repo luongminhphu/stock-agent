@@ -6,6 +6,8 @@ for thesis suggestion. Normalisation helpers and parsing logic stay in
 the agent where they belong.
 """
 
+from typing import Any
+
 SYSTEM_PROMPT = """\
 Bạn là chuyên gia phân tích đầu tư chứng khoán Việt Nam với 15 năm kinh nghiệm.
 Nhiệm vụ: xây dựng luận điểm đầu tư có cấu trúc cho cổ phiếu HOSE/HNX/UPCoM.
@@ -62,7 +64,7 @@ Quy tắc thêm:
 """
 
 # JSON Schema for Perplexity response_format (json_schema mode)
-RESPONSE_SCHEMA: dict = {
+RESPONSE_SCHEMA: dict[str, Any] = {
     "type": "json_schema",
     "json_schema": {
         "name": "thesis_suggestion",

@@ -101,7 +101,7 @@ class ThesisJudgeOutput(BaseModel):
     def ensure_challenged_list(cls, v: object) -> list[object]:
         if not isinstance(v, list):
             return []
-        return v  # type: ignore[return-value]
+        return v
 
     @field_validator("new_risks", mode="before")
     @classmethod
@@ -110,4 +110,4 @@ class ThesisJudgeOutput(BaseModel):
             return [v]
         if not isinstance(v, list):
             return []
-        return v  # type: ignore[return-value]
+        return v

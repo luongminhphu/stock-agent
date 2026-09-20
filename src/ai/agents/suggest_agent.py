@@ -19,7 +19,7 @@ Note on schema:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
@@ -275,7 +275,7 @@ class ThesisSuggestAgent:
     # Private helpers
     # ------------------------------------------------------------------
 
-    async def _build_investor_profile(self, session, user_id: str | None) -> str:
+    async def _build_investor_profile(self, session: Any, user_id: str | None) -> str:
         """Build investor profile block via ContextBuilder (includes memory).
 
         Returns empty string when session is None or any error occurs.
@@ -294,7 +294,7 @@ class ThesisSuggestAgent:
 
     async def _log_interaction(
         self,
-        session,
+        session: Any,
         user_id: str | None,
         ticker: str,
         result: ThesisDraft,

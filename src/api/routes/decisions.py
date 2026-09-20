@@ -24,7 +24,7 @@ Contract notes:
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -145,7 +145,7 @@ class LessonSnippetResponse(BaseModel):
 async def log_decision(
     body: LogDecisionRequest,
     user_id: Annotated[str, Depends(get_current_user_id)],
-    svc=Depends(get_decision_service),
+    svc: Any = Depends(get_decision_service),
 ) -> DecisionResponse:
     """Log a trade decision for future outcome evaluation and replay.
 
@@ -183,7 +183,7 @@ async def list_decisions(
     evaluated_only: bool = Query(False, description="Return only evaluated decisions"),
     ticker: str | None = Query(None, description="Filter by ticker"),
     limit: int = Query(50, ge=1, le=200),
-    svc=Depends(get_decision_service),
+    svc: Any = Depends(get_decision_service),
 ) -> list[DecisionResponse]:
     """List trade decisions for the current user."""
     decisions = await svc.list_decisions(
@@ -203,7 +203,7 @@ async def list_decisions(
 async def evaluate_decision(
     decision_id: int,
     user_id: Annotated[str, Depends(get_current_user_id)],
-    svc=Depends(get_decision_service),
+    svc: Any = Depends(get_decision_service),
 ) -> DecisionResponse:
     """Compute realized PnL and assign CORRECT/INCORRECT/MIXED verdict.
     No AI call — pure price comparison.
@@ -227,7 +227,7 @@ async def evaluate_decision(
 async def replay_decision(
     decision_id: int,
     user_id: Annotated[str, Depends(get_current_user_id)],
-    svc=Depends(get_decision_service),
+    svc: Any = Depends(get_decision_service),
 ) -> ReplayResponse:
     """Run ReplayAgent on an evaluated decision to extract key_lesson and pattern.
     Persists lesson back to DecisionLog automatically.
@@ -274,7 +274,7 @@ async def list_lessons(
     ticker: str | None = Query(None, description="Filter to a specific ticker"),
     limit: int = Query(10, ge=1, le=50),
     lookback_days: int = Query(90, ge=1, le=365),
-    lesson_svc=Depends(get_lesson_service),
+    lesson_svc: Any = Depends(get_lesson_service),
 ) -> list[LessonSnippetResponse]:
     """Return recent AI lessons from the Decision Replay loop."""
     snippets = await lesson_svc.get_recent_lessons(

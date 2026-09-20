@@ -528,7 +528,7 @@ class UserActionEvent(DomainEvent):
     """
 
     user_id: str = ""
-    action_type: ActionType = "DEFER"  # type: ignore[assignment]
+    action_type: ActionType = "DEFER"
     ticker: str = ""
     thesis_id: int | None = None
     alert_id: int | None = None

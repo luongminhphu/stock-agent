@@ -83,7 +83,7 @@ class TCBSNewsAdapter:
         for limit in (3, 5, 10):
             self._cache.invalidate(f"{symbol.upper()}:{limit}")
 
-    def cache_stats(self) -> dict:
+    def cache_stats(self) -> dict[str, Any]:
         return self._cache.stats()
 
 

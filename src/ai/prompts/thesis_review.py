@@ -240,7 +240,7 @@ def build_review_prompt(  # noqa: PLR0913
     entry_price: float | None = None,
     target_price: float | None = None,
     memory_context: str = "",
-    previous_review: dict | None = None,
+    previous_review: dict[str, Any] | None = None,
     ticker_context: str = "",
 ) -> str:
     """Build the full agent-facing prompt with memory and previous verdict context.

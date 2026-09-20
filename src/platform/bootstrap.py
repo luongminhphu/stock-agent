@@ -15,6 +15,8 @@ Lifecycle:
 
 from __future__ import annotations
 
+from typing import Any
+
 from src.platform.container import AppContainer
 from src.platform.logging import configure_logging, get_logger
 
@@ -255,7 +257,7 @@ async def bootstrap() -> None:
     if container.trend_reasoning_agent is None:
         from src.ai.agents.trend_reasoning import TrendReasoningAgent
 
-        container.trend_reasoning_agent = TrendReasoningAgent(client=container.ai_client)  # type: ignore[arg-type]
+        container.trend_reasoning_agent = TrendReasoningAgent(client=container.ai_client)
         logger.info("platform.bootstrap.trend_reasoning_agent_ready")
 
     # ── Wave 2b: SignalEngineAgent ───────────────────────────────────────────
@@ -377,7 +379,7 @@ async def bootstrap() -> None:
             quote_service=container.quote_service,
             ticker_context_service=container.ticker_context_service,
         )
-        container.signal_review_trigger_listener.register()  # type: ignore[union-attr]
+        container.signal_review_trigger_listener.register()
         logger.info("platform.bootstrap.signal_review_trigger_listener_ready")
 
     if container.briefing_listener is None:
@@ -443,7 +445,7 @@ async def bootstrap() -> None:
             ai_client=container.ai_client,  # type: ignore[arg-type]
             session_factory=AsyncSessionLocal,
         )
-        container.opportunity_analysis_handler.register()  # type: ignore[union-attr]
+        container.opportunity_analysis_handler.register()
         logger.info("platform.bootstrap.opportunity_analysis_handler_ready")
 
     # ── Proactive Discovery: portfolio-aware market scan + AI synthesis ────────
@@ -454,11 +456,11 @@ async def bootstrap() -> None:
         from src.platform.db import AsyncSessionLocal
         from src.readmodel.portfolio_query_service import PortfolioQueryService
 
-        async def _portfolio_provider(user_id: str) -> dict:
+        async def _portfolio_provider(user_id: str) -> dict[str, Any]:
             async with AsyncSessionLocal() as session:
                 return await PortfolioQueryService(session).get_portfolio(user_id=user_id)
 
-        _discovery_agent = ProactiveDiscoveryAgent(ai_client=container.ai_client)  # type: ignore[arg-type]
+        _discovery_agent = ProactiveDiscoveryAgent(ai_client=container.ai_client)
         container.proactive_discovery_service = ProactiveDiscoveryService(
             ai_agent=_discovery_agent,
             quote_service=container.quote_service,
@@ -495,7 +497,7 @@ async def bootstrap() -> None:
         from src.watchlist.watchlist_query_service import WatchlistQueryService
 
         _trend_engine = TrendEngine(
-            ohlcv_service=container.ohlcv_service,  # type: ignore[arg-type]
+            ohlcv_service=container.ohlcv_service,
         )
         container.trend_engine_listener = TrendEngineListener(
             trend_reasoning_agent=container.trend_reasoning_agent,  # type: ignore[arg-type]
@@ -516,7 +518,7 @@ async def bootstrap() -> None:
             ai_client=container.ai_client,  # type: ignore[arg-type]
             session_factory=AsyncSessionLocal,
         )
-        container.post_mortem_service.register()  # type: ignore[union-attr]
+        container.post_mortem_service.register()
         logger.info("platform.bootstrap.post_mortem_service_ready")
 
     if container.memory_injection_listener is None:
@@ -526,7 +528,7 @@ async def bootstrap() -> None:
         container.memory_injection_listener = MemoryInjectionListener(
             session_factory=AsyncSessionLocal,
         )
-        container.memory_injection_listener.register()  # type: ignore[union-attr]
+        container.memory_injection_listener.register()
         logger.info("platform.bootstrap.memory_injection_listener_ready")
 
     # ── core: IntelligenceEngineListener (Wave 2 AI active) ─────────────────
@@ -572,7 +574,7 @@ async def bootstrap() -> None:
         from src.core.user_action_listener import UserActionFeedbackListener
 
         container.user_action_listener = UserActionFeedbackListener()
-        container.user_action_listener.register()  # type: ignore[union-attr]
+        container.user_action_listener.register()
         logger.info("platform.bootstrap.user_action_listener_ready")
 
     # ── ai.memory: FeedbackLedgerSubscriber — S6 ledger hợp nhất (Wave E3a) ──
@@ -580,7 +582,7 @@ async def bootstrap() -> None:
         from src.ai.memory.feedback_ledger import FeedbackLedgerSubscriber
 
         container.feedback_ledger_subscriber = FeedbackLedgerSubscriber()
-        container.feedback_ledger_subscriber.register()  # type: ignore[union-attr]
+        container.feedback_ledger_subscriber.register()
         logger.info("platform.bootstrap.feedback_ledger_subscriber_ready")
 
     # ── watchlist: ProactiveWatchListener — closes the proactive watch chain ─
@@ -604,16 +606,16 @@ async def bootstrap() -> None:
         from src.portfolio.snapshot_listener import PortfolioSnapshotListener
 
         container.portfolio_snapshot_listener = PortfolioSnapshotListener()
-        container.portfolio_snapshot_listener.register()  # type: ignore[union-attr]
+        container.portfolio_snapshot_listener.register()
         logger.info("platform.bootstrap.portfolio_snapshot_listener_ready")
 
     logger.info("platform.bootstrap.complete")
 
 
 async def _warm_up_persisted_stores(
-    trend_snapshot_store,
-    trend_prediction_store,
-    session_factory,
+    trend_snapshot_store: Any,
+    trend_prediction_store: Any,
+    session_factory: Any,
 ) -> None:
     """Load all persisted in-memory stores from DB on startup.
 
@@ -711,124 +713,124 @@ async def shutdown() -> None:
 # ---------------------------------------------------------------------------
 
 
-def get_quote_service():
+def get_quote_service() -> Any:
     return container.require("quote_service")
 
 
-def get_ohlcv_service():
+def get_ohlcv_service() -> Any:
     return container.require("ohlcv_service")
 
 
-def get_ticker_context_service():
+def get_ticker_context_service() -> Any:
     return container.require("ticker_context_service")
 
 
-def get_market_regime_service():
+def get_market_regime_service() -> Any:
     return container.require("market_regime_service")
 
 
-def get_ai_client():
+def get_ai_client() -> Any:
     return container.require("ai_client")
 
 
-def get_thesis_review_agent():
+def get_thesis_review_agent() -> Any:
     return container.require("thesis_review_agent")
 
 
-def get_thesis_debate_agent():
+def get_thesis_debate_agent() -> Any:
     return container.require("thesis_debate_agent")
 
 
-def get_thesis_suggest_agent():
+def get_thesis_suggest_agent() -> Any:
     return container.require("thesis_suggest_agent")
 
 
-def get_briefing_agent():
+def get_briefing_agent() -> Any:
     return container.require("briefing_agent")
 
 
-def get_why_agent():
+def get_why_agent() -> Any:
     return container.require("why_agent")
 
 
-def get_pretrade_agent():
+def get_pretrade_agent() -> Any:
     return container.require("pretrade_agent")
 
 
-def get_stress_test_agent():
+def get_stress_test_agent() -> Any:
     return container.require("stress_test_agent")
 
 
-def get_replay_agent():
+def get_replay_agent() -> Any:
     return container.require("replay_agent")
 
 
-def get_sector_rotation_agent():
+def get_sector_rotation_agent() -> Any:
     return container.require("sector_rotation_agent")
 
 
-def get_snapshot_scheduler():
+def get_snapshot_scheduler() -> Any:
     return container.require("snapshot_scheduler")
 
 
-def get_pnl_service_class():
+def get_pnl_service_class() -> Any:
     return container.require("pnl_service_class")
 
 
-def get_pnl_service():
+def get_pnl_service() -> Any:
     """Alias for get_pnl_service_class() — returns the PnlService class."""
     return get_pnl_service_class()
 
 
-def get_session_factory():
+def get_session_factory() -> Any:
     if container.session_factory is None:
         raise RuntimeError("bootstrap() has not been called")
     return container.session_factory
 
 
-def get_trend_prediction_store():
+def get_trend_prediction_store() -> Any:
     if container.trend_prediction_store is None:
         raise RuntimeError("bootstrap() has not been called")
     return container.trend_prediction_store
 
 
-def get_trend_reasoning_agent():
+def get_trend_reasoning_agent() -> Any:
     if container.trend_reasoning_agent is None:
         raise RuntimeError("bootstrap() has not been called")
     return container.trend_reasoning_agent
 
 
-def get_opportunity_screen_scheduler():
+def get_opportunity_screen_scheduler() -> Any:
     if container.opportunity_screen_scheduler is None:
         raise RuntimeError("bootstrap() has not been called")
     return container.opportunity_screen_scheduler
 
 
-def get_opportunity_screen_subscriber():
+def get_opportunity_screen_subscriber() -> Any:
     if container.opportunity_screen_subscriber is None:
         raise RuntimeError("bootstrap() has not been called")
     return container.opportunity_screen_subscriber
 
 
-def get_recent_reviews_store():
+def get_recent_reviews_store() -> Any:
     if container.recent_reviews_store is None:
         raise RuntimeError("bootstrap() has not been called")
     return container.recent_reviews_store
 
 
-def get_portfolio_query_adapter():
+def get_portfolio_query_adapter() -> Any:
     if container.portfolio_query_adapter is None:
         raise RuntimeError("bootstrap() has not been called")
     return container.portfolio_query_adapter
 
 
-def get_agenda_service_factory():
+def get_agenda_service_factory() -> Any:
     if container.agenda_service_factory is None:
         raise RuntimeError("bootstrap() has not been called")
     return container.agenda_service_factory
 
 
-def get_investor_profile_service() -> tuple | None:
+def get_investor_profile_service() -> tuple[Any, ...] | None:
     """Return (InvestorProfileService class, user_id str) or None if not initialised.
 
     Returns None (not raises) when scheduler_user_id is not configured —
@@ -837,7 +839,7 @@ def get_investor_profile_service() -> tuple | None:
     return container.investor_profile_service
 
 
-def get_memory_consolidator():
+def get_memory_consolidator() -> Any:
     """Return the MemoryConsolidator singleton or None if not initialised.
 
     Returns None (not raises) when scheduler_user_id is not configured —
@@ -846,7 +848,7 @@ def get_memory_consolidator():
     return container.memory_consolidator
 
 
-def get_briefing_listener():
+def get_briefing_listener() -> Any:
     """Return the BriefingListener singleton or None if not initialised.
 
     Returns None (not raises) when scheduler_user_id is not configured —
@@ -855,7 +857,7 @@ def get_briefing_listener():
     return container.briefing_listener
 
 
-def get_intelligence_engine_subscriber():
+def get_intelligence_engine_subscriber() -> Any:
     """Return the IntelligenceEngineSubscriber singleton or None if not initialised.
 
     Returns None (not raises) — bot caller checks for None before calling set_client().
@@ -863,12 +865,12 @@ def get_intelligence_engine_subscriber():
     return container.intelligence_engine_subscriber
 
 
-def get_proactive_discovery_service():
+def get_proactive_discovery_service() -> Any:
     """Return ProactiveDiscoveryService singleton or None if not initialised."""
     return container.proactive_discovery_service
 
 
-def get_trend_snapshot_store():
+def get_trend_snapshot_store() -> Any:
     """Return TrendSnapshotStore singleton (Wave D.1 — DB-backed)."""
     return container.require("trend_snapshot_store")
 
