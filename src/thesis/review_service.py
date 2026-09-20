@@ -704,8 +704,8 @@ class ReviewService:
             cat = catalysts_by_id.get(target_id)
             if cat:
                 try:
-                    new_status = CatalystStatus(crec.status.lower())
-                    cat.status = new_status
+                    new_cat_status = CatalystStatus(crec.status.lower())
+                    cat.status = new_cat_status
                     await self._repo.save_catalyst(cat)
 
                     # W5A: log cancellation event to episodic memory so the

@@ -7,6 +7,8 @@ No domain logic. No direct DB writes.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import discord
 from discord import app_commands
 
@@ -16,6 +18,9 @@ from src.bot.commands.conviction_timeline_embeds import (
     build_conviction_not_found_embed,
 )
 from src.platform.logging import get_logger
+
+if TYPE_CHECKING:
+    from src.readmodel.schemas import ConvictionTimelineResponse
 
 logger = get_logger(__name__)
 
@@ -59,7 +64,9 @@ class ConvictionTimelineCog(BaseCog, name="conviction"):
 
         await interaction.followup.send(embed=embed)
 
-    async def _fetch_timeline(self, ticker: str, limit: int) -> tuple[object | None, int | None]:
+    async def _fetch_timeline(
+        self, ticker: str, limit: int
+    ) -> tuple[ConvictionTimelineResponse | None, int | None]:
         """Query ThesisTimelineService via BaseCog.db_session().
 
         Returns (ConvictionTimelineResponse | None, thesis_id | None).

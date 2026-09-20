@@ -10,12 +10,15 @@ wrapper nhận ``job`` callable — bootstrap wire hai bên.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Any
+
 from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
 
 
-async def run_snapshot_job(quote_service: object, session_factory: object) -> int:
+async def run_snapshot_job(quote_service: object, session_factory: Callable[[], Any]) -> int:
     """Fetch live prices for active thesis tickers and write daily snapshots.
 
     Args:

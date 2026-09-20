@@ -88,7 +88,7 @@ class IntelligenceVerdictAgent:
 
         try:
             result: VerdictOutput = await self._client.structured_call(
-                spec=SPEC,
+                spec=SPEC,  # type: ignore[arg-type]  # mypy-baseline M3
                 user_prompt=user_prompt,
             )
             _verdict_cache.set(SPEC.system_prompt, user_prompt, result)

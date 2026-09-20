@@ -157,7 +157,8 @@ class TrendSynthesisService:
             )
 
         # 2. Extract indicator values — TechnicalSignalBundle is a Pydantic model
-        if not bundle_failed:
+        bundle_dict: dict[str, Any]
+        if not isinstance(bundle_obj, BaseException):
             bundle_dict = (
                 bundle_obj.model_dump() if hasattr(bundle_obj, "model_dump") else dict(bundle_obj)
             )

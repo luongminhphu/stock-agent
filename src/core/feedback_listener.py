@@ -47,7 +47,7 @@ class EngineFeedbackListener:
                 verdict_event_id=event.verdict_event_id,
                 user_id=event.user_id,
                 verdict=event.verdict,
-                outcome=event.outcome,
+                outcome=event.outcome,  # type: ignore[arg-type]  # mypy-baseline M3
                 trigger_source=event.trigger_source,
                 user_note=event.user_note or None,
             )

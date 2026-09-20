@@ -120,7 +120,7 @@ class ScanSignal:
     triggered_alerts: list[Alert] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     # Optional credibility enrichment — None if agent unavailable or evaluation failed
-    credibility: object | None = field(default=None, repr=False)
+    credibility: Any | None = field(default=None, repr=False)
     # Volume ratio vs average — set by _scan_ticker when available
     _volume_ratio: float = field(default=1.0, repr=False)
     # Typed signal reports from SignalEngine — populated by scan_user()
@@ -284,12 +284,12 @@ class ScanService:
     def __init__(
         self,
         session: AsyncSession,
-        quote_service: object | None = None,
-        credibility_agent: object | None = None,
+        quote_service: Any | None = None,
+        credibility_agent: Any | None = None,
         signal_engine: SignalEngine | None = None,
-        ticker_direction_query: object | None = None,
-        thesis_score_query: object | None = None,
-        ticker_context_service: object | None = None,
+        ticker_direction_query: Any | None = None,
+        thesis_score_query: Any | None = None,
+        ticker_context_service: Any | None = None,
     ) -> None:
         self._session = session
         self._repo = WatchlistRepository(session)
@@ -331,7 +331,7 @@ class ScanService:
         bulk_quote_map: dict[str, object] = {}
         if self._ticker_context_service is not None:
             try:
-                ctx_map = await self._ticker_context_service.get_many(tickers)  # type: ignore[attr-defined]
+                ctx_map = await self._ticker_context_service.get_many(tickers)
                 bulk_quote_map = {t: c.quote for t, c in ctx_map.items()}  # type: ignore[attr-defined]
             except Exception as exc:
                 logger.warning("scan.ticker_context_failed", tickers=tickers, error=str(exc))
@@ -482,8 +482,8 @@ class ScanService:
         self,
         ticker: str,
         items: list[Any],
-        bulk_quote_map: dict[str, object],
-        ctx: object | None = None,
+        bulk_quote_map: dict[str, Any],
+        ctx: Any | None = None,
     ) -> ScanSignal:
         """Fetch quote (from bulk map or per-ticker fallback) and detect triggered alerts.
 
@@ -548,7 +548,7 @@ class ScanService:
                 recent_news="N/A",
                 has_upcoming_earnings=False,
                 alert_note=(
-                    signal.triggered_alerts[0].note
+                    signal.triggered_alerts[0].note  # type: ignore[arg-type]  # mypy-baseline M3
                     if signal.triggered_alerts and hasattr(signal.triggered_alerts[0], "note")
                     else ""
                 ),
@@ -720,7 +720,7 @@ class ScanService:
             logger.error("scan.snapshot_stage_failed", user_id=user_id, error=str(exc))
 
 
-def _resolve_volume_ratio(quote: object, ctx: object | None) -> float:
+def _resolve_volume_ratio(quote: Any, ctx: Any | None) -> float:
     """vol_ratio_20 từ TickerContext nếu có; fallback thuộc tính `volume_ratio`
     trên quote (adapter tuỳ biến / test double); cuối cùng 1.0 (trung tính)."""
     if ctx is not None:

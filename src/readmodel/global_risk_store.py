@@ -228,7 +228,7 @@ class GlobalRiskStore:
             dummy_verdict = _DummyVerdict(row["flagged"])
             self._entries[user_id] = _RiskEntry(
                 verdict=dummy_verdict,
-                updated_at=row.get("updated_at"),
+                updated_at=row.get("updated_at"),  # type: ignore[arg-type]  # mypy-baseline M3
             )
         return len(rows)
 

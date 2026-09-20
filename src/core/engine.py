@@ -317,7 +317,7 @@ class IntelligenceEngine:
 
         # 3. NextActionSuggester — always run if we have any signals
         if signals:
-            suggester = NextActionSuggester(self._ai_client)
+            suggester = NextActionSuggester(self._ai_client)  # type: ignore[arg-type]  # mypy-baseline M3
             contexts = self._build_next_action_contexts(snapshot, signals)
             tasks.append(
                 (
@@ -349,7 +349,7 @@ class IntelligenceEngine:
                 portfolio_context=snapshot.portfolio_context,
             )
             if opp_ctx is not None:
-                opp_agent = OpportunityScreenAgent(self._ai_client)
+                opp_agent = OpportunityScreenAgent(self._ai_client)  # type: ignore[arg-type]  # mypy-baseline M3
                 tasks.append(("opportunity_screen", opp_agent.run(opp_ctx)))
             else:
                 logger.debug(
@@ -377,7 +377,7 @@ class IntelligenceEngine:
         triggers = [
             {"thesis_id": t.thesis_id, "ticker": t.ticker} for t in snapshot.thesis_due_review[:5]
         ]
-        outputs = await ThesisJudgeAgent(self._ai_client).run_batch(
+        outputs = await ThesisJudgeAgent(self._ai_client).run_batch(  # type: ignore[arg-type]  # mypy-baseline M3
             triggers,  # type: ignore[arg-type]
             session=self.session,
             user_id=self.user_id,
@@ -391,7 +391,7 @@ class IntelligenceEngine:
         """ThesisInvalidationDetector.detect per thesis quá hạn → InvalidationBatchOutput."""
         from src.ai.agents.invalidation_detector import ThesisInvalidationDetector
 
-        detector = ThesisInvalidationDetector(self._ai_client)
+        detector = ThesisInvalidationDetector(self._ai_client)  # type: ignore[arg-type]  # mypy-baseline M3
         signals_out = []
         for ref in overdue[:3]:
             sig = await detector.detect(
@@ -443,7 +443,7 @@ class IntelligenceEngine:
             portfolio_note=note,
             portfolio_date=snapshot.captured_at.strftime("%Y-%m-%d"),
         )
-        return await PortfolioRiskNarratorAgent(self._ai_client).narrate(ctx)
+        return await PortfolioRiskNarratorAgent(self._ai_client).narrate(ctx)  # type: ignore[arg-type]  # mypy-baseline M3
 
     def _build_next_action_contexts(
         self,
@@ -556,9 +556,9 @@ class IntelligenceEngine:
 
         return IntelligenceReport(
             user_id=self.user_id,
-            trigger_source=self._normalize_trigger_source(trigger_source),
-            top_verdict=top_verdict,
-            top_verdict_conviction=self._confidence_to_conviction(overall_confidence),
+            trigger_source=self._normalize_trigger_source(trigger_source),  # type: ignore[arg-type]  # mypy-baseline M3
+            top_verdict=top_verdict,  # type: ignore[arg-type]  # mypy-baseline M3
+            top_verdict_conviction=self._confidence_to_conviction(overall_confidence),  # type: ignore[arg-type]  # mypy-baseline M3
             overall_confidence=overall_confidence,
             priority_actions=priority_actions[:5],
             risk_flags=risk_flags[:10],
@@ -829,7 +829,7 @@ class IntelligenceEngine:
             next_watch_items=next_watch,
             action=self._derive_action(verdict_type, snap),
             reasoning_summary=summary,
-            sources=sources,
+            sources=sources,  # type: ignore[arg-type]  # mypy-baseline M3
             generated_at=datetime.now(UTC),
         )
 
@@ -854,9 +854,9 @@ class IntelligenceEngine:
 
         return IntelligenceReport(
             user_id=self.user_id,
-            trigger_source=self._normalize_trigger_source(trigger_source),
+            trigger_source=self._normalize_trigger_source(trigger_source),  # type: ignore[arg-type]  # mypy-baseline M3
             top_verdict=verdict.verdict,
-            top_verdict_conviction=self._confidence_to_conviction(verdict.confidence),
+            top_verdict_conviction=self._confidence_to_conviction(verdict.confidence),  # type: ignore[arg-type]  # mypy-baseline M3
             overall_confidence=verdict.confidence,
             priority_actions=priority_actions,
             risk_flags=risk_flags,
@@ -898,8 +898,8 @@ class IntelligenceEngine:
             PriorityAction(
                 rank=1,
                 ticker=None,
-                action_type=action_type_map.get(verdict.verdict, "MONITOR"),
-                urgency=urgency_map.get(verdict.verdict, "this_week"),
+                action_type=action_type_map.get(verdict.verdict, "MONITOR"),  # type: ignore[arg-type]  # mypy-baseline M3
+                urgency=urgency_map.get(verdict.verdict, "this_week"),  # type: ignore[arg-type]  # mypy-baseline M3
                 instruction=verdict.action,
                 source_agent="heuristic_engine",
                 reasoning=verdict.reasoning_summary[:150],
@@ -915,9 +915,9 @@ class IntelligenceEngine:
                 continue
             flags.append(
                 RiskFlag(
-                    flag_type=flag_type,
+                    flag_type=flag_type,  # type: ignore[arg-type]  # mypy-baseline M3
                     ticker=None,
-                    severity=severity,
+                    severity=severity,  # type: ignore[arg-type]  # mypy-baseline M3
                     description=signal.description[:200],
                     confirmed_by=[f"signal:{signal.source}"],
                     is_new=True,

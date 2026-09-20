@@ -150,7 +150,7 @@ class SignalEngineAgent:
 
         try:
             raw: SignalEngineOutput = await self._client.structured_call(
-                spec=SPEC,
+                spec=SPEC,  # type: ignore[arg-type]  # mypy-baseline M3
                 user_prompt=user_prompt,
             )
             # Enforce sort + cap regardless of what AI returned
@@ -243,7 +243,7 @@ class SignalEngineAgent:
                 ticker=s.ticker,
                 thesis_id="",
                 reason=s.trigger_reason,
-                urgency=s.urgency.value,
+                urgency=s.urgency.value,  # type: ignore[arg-type]  # mypy-baseline M3
             )
             for s in capped_signals
             if s.urgency in _TRIGGER_URGENCIES

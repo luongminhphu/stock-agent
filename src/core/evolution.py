@@ -459,6 +459,8 @@ class SelfImprovementAdvisor:
         run_id: str,
     ) -> list[ImprovementSuggestion]:
         """Call AI with PatternReport. Returns parsed ImprovementSuggestion list."""
+        if self._ai_client is None:
+            return []
         from src.ai.prompts.evolution_advisor import (
             build_system_prompt,
             build_user_prompt,

@@ -25,7 +25,7 @@ Does NOT own:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,8 +51,8 @@ class PreTradeService:
         session: AsyncSession,
         quote_service: QuoteService,
         pretrade_agent: PreTradeAgent,
-        market_regime_service: object | None = None,
-        ticker_context_service: object | None = None,
+        market_regime_service: Any | None = None,
+        ticker_context_service: Any | None = None,
     ) -> None:
         self._session = session
         self._quote_service = quote_service
@@ -226,12 +226,12 @@ class PreTradeService:
             logger.warning("pretrade_service.brief_context_error", ticker=ticker, error=str(exc))
             return ""
 
-    async def _fetch_ticker_context(self, ticker: str) -> object | None:
+    async def _fetch_ticker_context(self, ticker: str) -> Any | None:
         """Best-effort TickerContext; None → caller fallback get_quote."""
         if self._ticker_context_service is None:
             return None
         try:
-            return await self._ticker_context_service.get(ticker)  # type: ignore[attr-defined]
+            return await self._ticker_context_service.get(ticker)
         except Exception as exc:
             logger.warning("pretrade_service.ticker_context_failed", ticker=ticker, error=str(exc))
             return None

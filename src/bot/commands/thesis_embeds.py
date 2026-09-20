@@ -134,7 +134,7 @@ def build_review_embed(review: object) -> discord.Embed:
     # Normalise verdict — support both enum and string (e.g. from AI output)
     raw_verdict = getattr(review, "verdict", None)
     try:
-        verdict = ReviewVerdict(raw_verdict)
+        verdict = ReviewVerdict(raw_verdict)  # type: ignore[arg-type]  # mypy-baseline M3
     except (ValueError, KeyError):
         verdict = ReviewVerdict.NEUTRAL
 

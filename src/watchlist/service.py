@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -118,7 +119,7 @@ class WatchlistService:
     async def list_items_with_prices(
         self,
         user_id: str,
-        quote_service: object,
+        quote_service: Any,
     ) -> list[WatchlistItemWithPrice]:
         """Return watchlist items enriched with live price data.
 
@@ -140,14 +141,14 @@ class WatchlistService:
         tickers = [i.ticker for i in items]
         try:
             quotes = await quote_service.get_bulk_quotes(tickers)
-            price_map = {q.ticker: q for q in quotes}
+            price_map: dict[str, object] = {q.ticker: q for q in quotes}
         except Exception as exc:
             logger.warning(
                 "watchlist.list_with_prices.bulk_fetch_failed",
                 user_id=user_id,
                 error=str(exc),
             )
-            price_map: dict[str, object] = {}
+            price_map = {}
 
         result: list[WatchlistItemWithPrice] = []
         for item in items:

@@ -41,7 +41,7 @@ class WhyService:
         try:
             info = registry.resolve(ticker)
             company_name = info.name
-            sector = info.sector
+            sector = str(info.sector)
         except SymbolNotFoundError:
             company_name = ticker
             sector = "Unknown"

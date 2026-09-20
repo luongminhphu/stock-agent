@@ -90,8 +90,12 @@ class OutcomeFillerService:
                 # Wave 2: prefer close price to avoid intra-day noise.
                 # quote.close is the official end-of-session price.
                 # Fall back to quote.price when close is not available.
-                close_price: float = getattr(quote, "close", None) or getattr(quote, "price", None)
-                if close_price is None:
+                close_price: float | None = getattr(quote, "close", None) or getattr(
+                    quote, "price", None
+                )
+                # mypy M2: price_at_decision nullable → bản cũ chia cho None nếu decision
+                # log được ghi không kèm giá → ZeroDivision/TypeError làm hỏng cả batch.
+                if close_price is None or not log.price_at_decision:
                     logger.warning(
                         "outcome_filler.no_price",
                         ticker=log.ticker,

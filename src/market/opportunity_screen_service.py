@@ -37,7 +37,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from src.market.registry_types import Exchange
 from src.platform.logging import get_logger
@@ -140,7 +140,7 @@ class OpportunityScreenService:
 
     def __init__(
         self,
-        quote_service: object,
+        quote_service: Any,
         top_n: int = DEFAULT_TOP_N,
         momentum_min_pct: float = DEFAULT_MOMENTUM_MIN_PCT,
         breakout_min_pct: float = DEFAULT_BREAKOUT_MIN_PCT,
@@ -239,7 +239,7 @@ class OpportunityScreenService:
             trading_date=trading_date,
         )
 
-    def _screen_quote(self, quote: object) -> ScreenCandidate | None:
+    def _screen_quote(self, quote: Any) -> ScreenCandidate | None:
         """Apply all screens to a single quote. Returns None if no criterion matched."""
         ticker: str = getattr(quote, "ticker", "")
         change_pct: float = float(getattr(quote, "change_pct", 0.0))
@@ -294,7 +294,7 @@ class OpportunityScreenService:
 # ── job function ─────────────────────────────────────────────────────────────
 
 
-async def run_opportunity_screen_job(quote_service: object) -> ScreenResult:
+async def run_opportunity_screen_job(quote_service: Any) -> ScreenResult:
     """Pure async job function — no Discord imports, testable in isolation.
 
     After the scan completes, emits OpportunityScreenCompletedEvent via

@@ -678,7 +678,7 @@ def _wire_feedback_loop_monitor(bot: commands.Bot) -> None:
         )
         return
 
-    get_feedback_monitor().set_alert_channel(channel)
+    get_feedback_monitor().set_alert_channel(channel)  # type: ignore[arg-type]  # mypy-baseline M3
     logger.info("bot.feedback_loop_monitor.wired", channel_id=channel_id)
 
 

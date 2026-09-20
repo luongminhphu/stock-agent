@@ -134,10 +134,10 @@ def _rule_based_prediction(bundle: TechnicalSignalBundle) -> TrendPrediction:
     confidence = min(0.85, abs(c - 0.5) * 2 * 0.85)
     return TrendPrediction(
         symbol=bundle.symbol,
-        verdict=verdict,
-        direction=direction,
+        verdict=verdict,  # type: ignore[arg-type]  # mypy-baseline M3
+        direction=direction,  # type: ignore[arg-type]  # mypy-baseline M3
         confidence=round(confidence, 2),
-        horizon="SHORT_TERM",
+        horizon="SHORT_TERM",  # type: ignore[arg-type]  # mypy-baseline M3
         risk_signals=risks[:5],
         next_watch=next_watch[:3],
         reasoning=f"Composite {c:.2f} · Regime {bundle.regime} · Rule-based fallback",

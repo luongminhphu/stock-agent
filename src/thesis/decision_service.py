@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.ai.prompts.replay import ReplayContext
 from src.platform.logging import get_logger
-from src.thesis.models import DecisionLog, Thesis
+from src.thesis.models import DecisionLog, OutcomeVerdict, Thesis
 from src.thesis.repository import ThesisRepository
 
 logger = get_logger(__name__)
@@ -73,8 +73,8 @@ class DecisionService:
     def __init__(
         self,
         session: AsyncSession,
-        quote_service: object | None = None,
-        replay_agent: object | None = None,
+        quote_service: Any | None = None,
+        replay_agent: Any | None = None,
     ) -> None:
         self._session = session
         self._repo = ThesisRepository(session)
@@ -297,6 +297,7 @@ class DecisionService:
             raise PermissionError(f"Thesis #{thesis_id} does not belong to this user")
 
         # execution_price takes priority; fall back to live quote
+        current_price: float | None
         if execution_price is not None:
             current_price = float(execution_price)
         else:
@@ -453,7 +454,7 @@ class DecisionService:
         row.outcome_price = outcome_price
         row.outcome_pnl_pct = pnl_pct
         row.outcome_evaluated_at = datetime.now(UTC)
-        row.outcome_verdict = verdict
+        row.outcome_verdict = OutcomeVerdict(verdict)
         await self._session.commit()
         await self._session.refresh(row)
         logger.info(
@@ -484,7 +485,7 @@ class DecisionService:
 
         ctx = ReplayContext(
             decision_id=row.id,
-            thesis_id=row.thesis_id,
+            thesis_id=row.thesis_id,  # type: ignore[arg-type]  # mypy-baseline M3
             ticker=row.ticker,
             decision_type=row.decision_type,
             decision_at=row.decision_at.isoformat(),
@@ -629,7 +630,7 @@ class DecisionService:
         if self._quote_service is None:
             return None
         try:
-            quote = await self._quote_service.get_quote(ticker)  # type: ignore[attr-defined]
+            quote = await self._quote_service.get_quote(ticker)
             return float(quote.price)
         except Exception as exc:
             logger.warning("decision.price_lookup_failed", ticker=ticker, error=str(exc))

@@ -318,7 +318,7 @@ class ThesisTimelineService:
             breakdown = _parse_breakdown(snap.score_breakdown)
 
             nearest = _nearest_prior_review(
-                reviews,
+                reviews,  # type: ignore[arg-type]  # mypy-baseline M3
                 snap.snapshotted_at,
                 lookahead_secs=_NEAREST_REVIEW_LOOKAHEAD_SECS,
             )
@@ -445,7 +445,7 @@ def _nearest_prior_review(
     reviews: list,  # type: ignore[type-arg]
     snapshot_ts: Any,
     lookahead_secs: int = 14400,
-) -> object | None:
+) -> Any | None:
     """Return the review closest to snapshot_ts within the search window.
 
     Search window: [snapshot_ts - ∞, snapshot_ts + lookahead_secs].
@@ -464,8 +464,8 @@ def _nearest_prior_review(
                         no prior review exists. Default: 14400 (4 h).
     """
     lookahead = timedelta(seconds=lookahead_secs)
-    best_prior: object | None = None
-    first_after: object | None = None
+    best_prior: Any | None = None
+    first_after: Any | None = None
 
     for r in reviews:
         if r.reviewed_at <= snapshot_ts:

@@ -20,7 +20,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -48,7 +48,7 @@ def _today_ict() -> date:
 class QuoteServiceProtocol(Protocol):
     """Minimal contract EodSnapshotService needs from market segment."""
 
-    async def get_quote(self, ticker: str) -> object: ...
+    async def get_quote(self, ticker: str) -> Any: ...
 
 
 @dataclass

@@ -185,6 +185,12 @@ class BriefingCog(BaseCog):
             )
             return
 
+        if brief_result.output is None:
+            # BriefResult.output = None khi agent fallback về text thuần → gửi text,
+            # không đưa None vào build_brief_embeds (mypy M2).
+            await interaction.followup.send(brief_result.text[:1900] or "Không có nội dung brief.")
+            return
+
         embeds = build_brief_embeds(brief_result.output, phase=phase)
 
         # P1.5: prepend cached Daily Agenda block to first embed when available

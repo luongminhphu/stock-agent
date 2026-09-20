@@ -246,7 +246,7 @@ def _adx(
     last_atr = last_pdi = last_mdi = None
     for a, p, m in zip(atr_s, plus_s, minus_s, strict=False):
         last_atr, last_pdi, last_mdi = a, p, m
-    if last_atr is None or last_atr == 0:
+    if last_atr is None or last_atr == 0 or last_pdi is None or last_mdi is None:
         return 0.0, 0.0, 0.0
     plus_di = 100.0 * last_pdi / last_atr
     minus_di = 100.0 * last_mdi / last_atr

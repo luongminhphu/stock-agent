@@ -19,6 +19,7 @@ from datetime import UTC, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_ai_client, get_current_user_id, get_db
@@ -65,12 +66,12 @@ async def get_memory_snapshot(
 # ── REFRESH — explicit AI trigger ──────────────────────────────────────────────────────────────────────────────────────
 
 
-@router.post("/refresh")
+@router.post("/refresh", response_model=None)
 async def refresh_memory(
     user_id: str = Depends(get_current_user_id),
     session: AsyncSession = Depends(get_db),
     ai_client: object = Depends(get_ai_client),
-) -> dict[str, Any]:
+) -> dict[str, Any] | JSONResponse:
     """Trigger on-demand pattern synthesis and persist snapshot.
 
     Calls AI. Only on explicit user intent (button click).
@@ -93,8 +94,6 @@ async def refresh_memory(
         ) from exc
 
     if output is None:
-        from fastapi.responses import JSONResponse
-
         return JSONResponse(
             status_code=status.HTTP_202_ACCEPTED,
             content={

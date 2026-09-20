@@ -216,7 +216,7 @@ async def _refresh_snapshot_after_commit(
 
     try:
         async with AsyncSessionLocal() as snap_session:
-            eod_svc = EodSnapshotService(session=snap_session, quote_service=quote_svc)
+            eod_svc = EodSnapshotService(session=snap_session, quote_service=quote_svc)  # type: ignore[arg-type]  # mypy-baseline M3
             await eod_svc.refresh_after_trade(
                 user_id,
                 ticker,

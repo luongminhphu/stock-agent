@@ -33,6 +33,7 @@ from src.market.registry import SymbolRegistry
 from src.platform.event_bus import get_event_bus
 from src.platform.events import StressTestCompletedEvent
 from src.platform.logging import get_logger
+from src.thesis.models import ThesisStatus
 from src.thesis.repository import ThesisRepository
 
 logger = get_logger(__name__)
@@ -161,23 +162,37 @@ class StressTestService:
             macro_context=macro_context,
         )
 
+        # mypy M2: schema canonical StressTestOutput không có verdict/invalidation_probability
+        # (bản cũ → AttributeError sau khi agent trả về, event không bao giờ được publish).
+        # Ánh xạ: verdict := overall_threat; invalidation_probability := max prob của các
+        # assumption bị đe dọa; suggested_triggers := hedge_suggestions.
+        threatened = list(result.threatened_assumptions)
+        verdict = str(getattr(result.overall_threat, "value", result.overall_threat))
+        invalidation_probability = max(
+            (float(a.probability_of_invalidation) for a in threatened), default=0.0
+        )
         logger.info(
             "stress_test_service.complete",
             thesis_id=thesis_id,
             ticker=thesis.ticker,
-            verdict=result.verdict,
-            invalidation_prob=result.invalidation_probability,
+            overall_threat=verdict,
+            invalidation_prob=invalidation_probability,
         )
 
         # ── Emit StressTestCompletedEvent ──────────────────────────────────────
         # watchlist.StressTestSubscriber subscribes to this and auto-creates
         # ThesisTriggerAlert rules. thesis segment has zero knowledge of watchlist.
-        threatened = getattr(result, "threatened_assumptions", []) or []
         broken_count = sum(
-            1 for a in threatened if str(getattr(a, "threat_level", "")).upper() == "BROKEN"
+            1
+            for a in threatened
+            if str(getattr(a.threat_level, "value", a.threat_level)).upper()
+            in {"BROKEN", "CRITICAL"}
         )
         weakened_count = sum(
-            1 for a in threatened if str(getattr(a, "threat_level", "")).upper() == "WEAKENED"
+            1
+            for a in threatened
+            if str(getattr(a.threat_level, "value", a.threat_level)).upper()
+            in {"WEAKENED", "HIGH", "MEDIUM"}
         )
         await get_event_bus().publish(
             StressTestCompletedEvent(
@@ -185,13 +200,13 @@ class StressTestService:
                 user_id=str(user_id),
                 symbol=thesis.ticker,
                 thesis_title=thesis.title,
-                verdict=str(result.verdict),
-                invalidation_probability=float(result.invalidation_probability),
-                confidence=float(getattr(result, "confidence", 0.0)),
-                suggested_triggers=list(getattr(result, "suggested_triggers_to_watch", []) or []),
+                verdict=verdict,
+                invalidation_probability=invalidation_probability,
+                confidence=float(result.confidence),
+                suggested_triggers=list(result.hedge_suggestions),
                 broken_assumption_count=broken_count,
                 weakened_assumption_count=weakened_count,
-                stress_scenario=str(getattr(result, "stress_scenario", "") or ""),
+                stress_scenario=result.scenario,
             ),
             dedup_key=f"stress_test:{thesis_id}",
             dedup_window=_STRESS_TEST_DEDUP_WINDOW,
@@ -216,7 +231,7 @@ class StressTestService:
         """
         theses = await self._repo.list_by_user(
             user_id=user_id,
-            status="active",
+            status=ThesisStatus.ACTIVE,
         )
         matched = [t for t in theses if t.ticker.upper() == ticker.upper()]
         if not matched:

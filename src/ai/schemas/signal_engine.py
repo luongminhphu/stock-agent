@@ -221,11 +221,11 @@ class SignalEngineOutput(BaseModel):
 
     @field_validator("thesis_review_triggers", mode="before")
     @classmethod
-    def coerce_triggers(cls, v: object) -> list[object]:
+    def coerce_triggers(cls, v: object) -> list[ThesisReviewTrigger]:
         """Coerce list[str] (legacy AI output) or list[dict] (fallback) to list[ThesisReviewTrigger]."""
         if not isinstance(v, list):
             return []
-        result = []
+        result: list[ThesisReviewTrigger] = []
         for item in v:
             if isinstance(item, ThesisReviewTrigger):
                 result.append(item)

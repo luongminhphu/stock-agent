@@ -31,7 +31,7 @@ Fault tolerance:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from src.platform.logging import get_logger
 
@@ -54,8 +54,8 @@ class OpportunityScreenSubscriber:
 
     def __init__(
         self,
-        sector_rotation_agent: object,
-        session_factory: object,
+        sector_rotation_agent: Any,
+        session_factory: Any,
         morning_channel_id: int | None = None,
         user_id: str | None = None,
     ) -> None:
@@ -63,9 +63,9 @@ class OpportunityScreenSubscriber:
         self._session_factory = session_factory
         self._morning_channel_id = morning_channel_id
         self._user_id = user_id
-        self._discord_client: object | None = None
+        self._discord_client: Any | None = None
 
-    def set_client(self, client: object) -> None:
+    def set_client(self, client: Any) -> None:
         """Inject discord.Client after bot login. Safe to call multiple times."""
         self._discord_client = client
         logger.info("opportunity_screen_subscriber.client_set")
@@ -235,8 +235,8 @@ _subscriber: OpportunityScreenSubscriber | None = None
 
 
 def get_opportunity_screen_subscriber(
-    sector_rotation_agent: object | None = None,
-    session_factory: object | None = None,
+    sector_rotation_agent: Any | None = None,
+    session_factory: Any | None = None,
     morning_channel_id: int | None = None,
     user_id: str | None = None,
 ) -> OpportunityScreenSubscriber:

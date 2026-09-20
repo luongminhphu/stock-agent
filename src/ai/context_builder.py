@@ -286,7 +286,7 @@ class ContextBuilder:
             from src.thesis.lesson_service import LessonService
 
             svc = LessonService(self._session)
-            lessons = await svc.get_recent(user_id=user_id, limit=3)
+            lessons = await svc.get_recent(user_id=user_id, limit=3)  # type: ignore[arg-type]  # mypy-baseline M3
             if not lessons:
                 return ""
             lines = []
@@ -314,7 +314,7 @@ class ContextBuilder:
             from src.market.registry import registry
             from src.portfolio import get_portfolio_context
 
-            port_ctx = await get_portfolio_context(self._session, user_id)
+            port_ctx = await get_portfolio_context(self._session, user_id)  # type: ignore[arg-type]  # mypy-baseline M3
             if not port_ctx.has_positions:
                 return ""
 

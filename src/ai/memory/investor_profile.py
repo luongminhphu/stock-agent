@@ -373,8 +373,8 @@ class InvestorProfileService:
             recent_evaluated = [
                 d
                 for d in decisions
-                if d.decision_at
-                and _as_utc(d.decision_at) >= cutoff_30d
+                if (dec_at := _as_utc(d.decision_at)) is not None
+                and dec_at >= cutoff_30d
                 and d.outcome_verdict is not None
             ]
             if recent_evaluated:
@@ -393,9 +393,11 @@ class InvestorProfileService:
             ][:10]
             if closed:
                 holds = [
-                    (_as_utc(d.outcome_evaluated_at) - _as_utc(d.decision_at)).days
+                    delta_days
                     for d in closed
-                    if (_as_utc(d.outcome_evaluated_at) - _as_utc(d.decision_at)).days >= 0
+                    if (ev := _as_utc(d.outcome_evaluated_at)) is not None
+                    and (dec := _as_utc(d.decision_at)) is not None
+                    and (delta_days := (ev - dec).days) >= 0
                 ]
                 avg_hold = sum(holds) / len(holds) if holds else 0.0
             else:

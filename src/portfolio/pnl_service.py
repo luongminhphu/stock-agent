@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -55,7 +55,7 @@ _RISK_DEDUP_WINDOW = timedelta(hours=6)
 class QuoteServiceProtocol(Protocol):
     """Minimal contract PnlService cần từ market segment."""
 
-    async def get_quote(self, ticker: str) -> object: ...
+    async def get_quote(self, ticker: str) -> Any: ...
 
     def is_market_open(self) -> bool:
         """Return True nếu hiện tại đang trong giờ giao dịch."""

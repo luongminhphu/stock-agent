@@ -214,7 +214,7 @@ async def get_briefing_service(
     return BriefingService(
         watchlist_service=watchlist_service,
         quote_service=quote_svc,
-        briefing_agent=briefing_agent,
+        briefing_agent=briefing_agent,  # type: ignore[arg-type]  # mypy-baseline M3
         session=session,
     )
 

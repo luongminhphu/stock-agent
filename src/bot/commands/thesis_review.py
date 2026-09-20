@@ -153,12 +153,14 @@ class ThesisReviewCog(BaseCog):
             color=discord.Color.orange(),
         )
         for rec in recs[:10]:
-            icon = TARGET_ICON.get(rec.target_type, "•")
+            target_type = rec.target_type or "component"
+            target_desc = rec.target_description or ""
+            icon = TARGET_ICON.get(target_type, "•")
             field_name = (
-                f"{icon} #{rec.id} · {rec.target_type.capitalize()} → `{rec.recommended_status}`"
+                f"{icon} #{rec.id} · {target_type.capitalize()} → `{rec.recommended_status}`"
             )
             field_value = (
-                f"**{rec.target_description[:80]}**\n"
+                f"**{target_desc[:80]}**\n"
                 f"_{rec.reason[:120] if rec.reason else 'No reason provided'}_"
             )
             embed.add_field(name=field_name, value=field_value, inline=False)

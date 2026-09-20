@@ -155,7 +155,7 @@ def _heuristic_fallback(
 class RRGChartSummaryAgent:
     """Generate a chart-level AI summary for the full RRG."""
 
-    def __init__(self, ai_client: object) -> None:
+    def __init__(self, ai_client: Any) -> None:
         self._ai = ai_client
 
     async def analyze(

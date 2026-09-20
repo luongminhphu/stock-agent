@@ -82,11 +82,11 @@ class AsyncTTLCache[K, V]:
         # 2. Đang có coroutine khác fetch cùng key → piggyback
         if key in self._in_flight:
             logger.debug(f"{self._name}.piggyback", extra={"key": key})
-            flight = self._in_flight[key]
-            await flight.event.wait()
-            if flight.error is not None:
-                raise flight.error
-            return flight.result  # type: ignore[return-value]
+            existing = self._in_flight[key]
+            await existing.event.wait()
+            if existing.error is not None:
+                raise existing.error
+            return existing.result  # type: ignore[return-value]
 
         # 3. Tôi là người đầu tiên — fetch thật sự
         flight: _InFlight[V] = _InFlight()

@@ -437,7 +437,7 @@ async def _log_invalidation_interaction(
         action = str(getattr(result, "action", "") or "")
         confidence = getattr(result, "confidence", 0.0) or 0.0
         breach_type = getattr(result, "breach_type", None)
-        breach_str = breach_type.value if hasattr(breach_type, "value") else str(breach_type or "")
+        breach_str = str(getattr(breach_type, "value", breach_type) or "")
         breach_summary = str(getattr(result, "breach_summary", "") or "")
 
         entry = InteractionEntry(

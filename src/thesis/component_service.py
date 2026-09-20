@@ -316,10 +316,10 @@ class ComponentService:
         - accept=False → mark REJECTED, không thay đổi gì khác
         acted_at được set trong cả 2 nhánh để đảm bảo audit trail.
         """
+        from src.thesis.dtos import RecommendationNotFoundError
+
         rec = await self._repo.get_recommendation_by_id(recommendation_id)
         if rec is None:
-            from src.thesis.dtos import RecommendationNotFoundError
-
             raise RecommendationNotFoundError(f"Recommendation {recommendation_id} not found")
 
         now = datetime.now(UTC)
@@ -334,11 +334,15 @@ class ComponentService:
         # Accept: apply status change
         from src.thesis.models import AssumptionStatus, CatalystStatus
 
+        if rec.target_id is None:
+            raise RecommendationNotFoundError(
+                f"Recommendation {recommendation_id} has no target component"
+            )
         if rec.target_type == "assumption":
             assumption = await self._repo.get_assumption_by_id(rec.target_id, thesis_id)
             if assumption is not None:
                 try:
-                    assumption.status = AssumptionStatus(rec.recommended_status.lower())
+                    assumption.status = AssumptionStatus((rec.recommended_status or "").lower())
                     await self._repo.save_assumption(assumption)
                 except ValueError:
                     logger.warning(
@@ -350,7 +354,7 @@ class ComponentService:
             catalyst = await self._repo.get_catalyst_by_id(rec.target_id, thesis_id)
             if catalyst is not None:
                 try:
-                    catalyst.status = CatalystStatus(rec.recommended_status.lower())
+                    catalyst.status = CatalystStatus((rec.recommended_status or "").lower())
                     # Parse updated_timeline → expected_date khi AI suggest DELAYED
                     if rec.updated_timeline:
                         parsed_date = parse_timeline_to_date(rec.updated_timeline)

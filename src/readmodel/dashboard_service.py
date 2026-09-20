@@ -693,9 +693,9 @@ class DashboardService:
                 return []
 
             result = []
-            for r in agg_rows:
-                first_seen = r.first_seen
-                last_seen = r.last_seen
+            for agg in agg_rows:
+                first_seen = agg.first_seen
+                last_seen = agg.last_seen
 
                 if first_seen is not None and first_seen.tzinfo is None:
                     first_seen = first_seen.replace(tzinfo=UTC)
@@ -703,19 +703,19 @@ class DashboardService:
                     last_seen = last_seen.replace(tzinfo=UTC)
 
                 # array_agg returns a list or None; sort + deduplicate defensively.
-                raw_types = r.signal_types_agg or []
+                raw_types = agg.signal_types_agg or []
                 signal_types = sorted({st for st in raw_types if st is not None})
 
                 result.append(
                     {
-                        "ticker": r.ticker,
+                        "ticker": agg.ticker,
                         "signal_types": signal_types,
-                        "max_strength": round(r.max_strength or 0.0, 3),
-                        "max_confidence": round(r.max_confidence or 0.0, 3),
-                        "count": r.count,
+                        "max_strength": round(agg.max_strength or 0.0, 3),
+                        "max_confidence": round(agg.max_confidence or 0.0, 3),
+                        "count": agg.count,
                         "first_seen": first_seen.isoformat() if first_seen else None,
                         "last_seen": last_seen.isoformat() if last_seen else None,
-                        "source": r.source,
+                        "source": agg.source,
                     }
                 )
 
@@ -725,10 +725,10 @@ class DashboardService:
             if stale_days > 0:
                 stale_cutoff = datetime.now(UTC) - timedelta(days=stale_days)
                 result = [
-                    r
-                    for r in result
-                    if r["last_seen"] is not None
-                    and datetime.fromisoformat(r["last_seen"]) >= stale_cutoff
+                    agg
+                    for agg in result
+                    if agg["last_seen"] is not None
+                    and datetime.fromisoformat(agg["last_seen"]) >= stale_cutoff  # type: ignore[arg-type]  # mypy-baseline M3
                 ]
             # ------------------------------------------------------
 

@@ -362,6 +362,7 @@ class IntelligenceSnapshotStore:
 
                 data = _json.loads(row_data["report_json"])
                 # Attempt full model restore; fall back to dict-wrapper
+                report: Any
                 try:
                     from src.ai.schemas import IntelligenceReport as _IR
 
@@ -570,7 +571,7 @@ class IntelligenceSnapshotSubscriber:
             report = IntelligenceReport(
                 user_id=event.user_id,
                 trigger_source=(
-                    event.trigger_source
+                    event.trigger_source  # type: ignore[arg-type]  # mypy-baseline M3
                     if event.trigger_source
                     in (
                         "scheduler_morning",

@@ -1,4 +1,4 @@
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -116,11 +116,16 @@ async def upsert_rows(
             row_list.sort(key=lambda r: tuple(str(r.get(c, "")) for c in conflict_columns))
         async with session_factory() as session:
             dialect = session.bind.dialect.name if session.bind is not None else engine.dialect.name
+            dialect_insert: Callable[..., Any]
             if dialect == "sqlite":
-                from sqlalchemy.dialects.sqlite import insert as dialect_insert
+                from sqlalchemy.dialects.sqlite import insert as _sqlite_insert
+
+                dialect_insert = _sqlite_insert
             else:
-                from sqlalchemy.dialects.postgresql import insert as dialect_insert
-            stmt = dialect_insert(model).values(row_list)
+                from sqlalchemy.dialects.postgresql import insert as _pg_insert
+
+                dialect_insert = _pg_insert
+            stmt: Any = dialect_insert(model).values(row_list)
             cols = update_columns or [
                 c for c in row_list[0] if c not in set(conflict_columns or ())
             ]

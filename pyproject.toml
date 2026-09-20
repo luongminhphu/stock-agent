@@ -66,6 +66,10 @@ addopts = "-v --tb=short"
 [tool.mypy]
 python_version = "3.12"
 strict = true
+# mypy M3 (2026-09): strict bật toàn bộ trừ warn_return_any — ~40 chỗ trả Any từ
+# duck-typed collaborator (quote_service, ai_client...) là thiết kế có chủ đích tại
+# boundary; siết lại khi các collaborator có Protocol riêng.
+warn_return_any = false
 exclude = ["tests/"]
 namespace_packages = true
 explicit_package_bases = true

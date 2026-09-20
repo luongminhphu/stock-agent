@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re as _re
 from dataclasses import dataclass, field
-from typing import Any, TypeVar
+from typing import Any, Protocol, TypeVar
 
 import httpx
 from pydantic import BaseModel
@@ -239,7 +239,7 @@ class AIClient:
                 f"Failed to parse response into {response_schema.__name__}: {exc}\nRaw: {content}"
             ) from exc
 
-    async def structured_call(self, spec: AISpec, user_prompt: str) -> Any:
+    async def structured_call(self, spec: SpecLike, user_prompt: str) -> Any:
         """Convenience wrapper: call chat() using an AISpec bundle.
 
         Agents that declare a module-level SPEC (AISpec) use this instead of
@@ -330,6 +330,16 @@ def _repair_json(text: str) -> str:
     """
     repaired = _TRAILING_COMMA_RE.sub(r"\1", text)
     return repaired
+
+
+class SpecLike(Protocol):
+    """Structural contract cho structured_call — AISpec (client) và PromptSpec
+    (src/ai/prompts/_spec) đều thoả mãn; tránh ép agent import 1 trong 2."""
+
+    system_prompt: str
+    output_schema: type[BaseModel]
+    temperature: float
+    max_tokens: int
 
 
 @dataclass(frozen=True)

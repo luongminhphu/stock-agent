@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -104,7 +105,7 @@ class TradeUseCase:
         # map result → Discord embed
     """
 
-    def __init__(self, session: AsyncSession, quote_service: object) -> None:
+    def __init__(self, session: AsyncSession, quote_service: Any) -> None:
         self._session = session
         self._quote_service = quote_service
 
@@ -411,8 +412,8 @@ class TradeUseCase:
     def _dispatch_replay(
         self,
         user_id: str,
-        trade: object,
-        position: object,
+        trade: Any,
+        position: Any,
         thesis_id: int | None,
     ) -> None:
         """Schedule a ReplayAgent review as a fire-and-forget asyncio task.

@@ -185,7 +185,7 @@ class SystemSnapshotBuilder:
                 WatchlistAlert(
                     ticker=r.ticker,
                     alert_type=str(getattr(r.condition_type, "value", r.condition_type)),
-                    triggered_at=r.triggered_at,
+                    triggered_at=r.triggered_at or datetime.now(UTC),
                     note=getattr(r, "note", None),
                 )
                 for r in rows

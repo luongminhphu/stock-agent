@@ -776,7 +776,7 @@ class ThesisDriftScheduler:
                 await self._monitor.record_success(task_name)
                 return
 
-            reviewed_signals = []
+            reviewed_signals: list[tuple[Any, Any]] = []
             for signal in signals:
                 try:
                     async with AsyncSessionLocal() as session:

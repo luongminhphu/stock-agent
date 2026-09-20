@@ -60,10 +60,10 @@ _UPCOMING_CATALYST_HOURS: int = 72
 _STOP_LOSS_PROXIMITY_PCT: float = 3.0
 _ATTENTION_CACHE_TTL_SECS: int = 30
 
-_URGENCY_ORDER = {
-    AttentionUrgency.CRITICAL: 0,
-    AttentionUrgency.HIGH: 1,
-    AttentionUrgency.MEDIUM: 2,
+_URGENCY_ORDER: dict[str, int] = {
+    AttentionUrgency.CRITICAL.value: 0,
+    AttentionUrgency.HIGH.value: 1,
+    AttentionUrgency.MEDIUM.value: 2,
 }
 
 

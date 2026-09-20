@@ -303,7 +303,7 @@ class ThesisJudgeAgent:
 
         try:
             result: ThesisJudgeOutput = await self._client.structured_call(
-                spec=SPEC,
+                spec=SPEC,  # type: ignore[arg-type]  # mypy-baseline M3
                 user_prompt=user_prompt,
             )
             # Stamp thesis_id on result for downstream consumers
@@ -537,7 +537,7 @@ class ThesisJudgeAgent:
                 if verdict in (ThesisJudgeVerdict.WEAKENING, ThesisJudgeVerdict.INVALIDATED)
                 else []
             ),
-            action=action,
+            action=action,  # type: ignore[arg-type]  # mypy-baseline M3
             reasoning=f"Rule-based fallback — AI unavailable. Derived from: "
             f"watchdog={watchdog_verdict}, urgency={signal_urgency}.",
             confidence=0.3,
@@ -581,15 +581,15 @@ class ThesisJudgeAgent:
                     #   migration 0041). Falls back gracefully to None when column not yet
                     #   present (older DB) — dedup guard treats None as stale = always judge.
                     "last_reviewed_at": (
-                        getattr(t, "last_reviewed_at", None).isoformat()
-                        if getattr(t, "last_reviewed_at", None) is not None
+                        _dt.isoformat()
+                        if (_dt := getattr(t, "last_reviewed_at", None)) is not None
                         else None
                     ),
                     # last_judged_at: from Thesis.last_judged_at (persisted column,
                     #   migration 0041, written by _log_thesis_judge_interaction).
                     "last_judged_at": (
-                        getattr(t, "last_judged_at", None).isoformat()
-                        if getattr(t, "last_judged_at", None) is not None
+                        _dt.isoformat()
+                        if (_dt := getattr(t, "last_judged_at", None)) is not None
                         else None
                     ),
                 }

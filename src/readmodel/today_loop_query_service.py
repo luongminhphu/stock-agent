@@ -137,7 +137,7 @@ class TodayLoopQueryService:
 
                 # priority_actions → INTELLIGENCE signals
                 for idx, action in enumerate(report.priority_actions or []):
-                    severity = _URGENCY_MAP.get(
+                    severity: SignalSeverity = _URGENCY_MAP.get(
                         str(getattr(action, "urgency", "medium")).lower(), "MEDIUM"
                     )
                     ticker = getattr(action, "ticker", "") or ""
@@ -235,7 +235,7 @@ class TodayLoopQueryService:
                     continue
                 alert_type_raw = str(getattr(row.condition_type, "value", row.condition_type) or "")
                 alert_type = alert_type_raw.lower()
-                severity: SignalSeverity = (
+                severity = (
                     "HIGH"
                     if any(k in alert_type for k in ("breach", "stop", "critical"))
                     else "MEDIUM"

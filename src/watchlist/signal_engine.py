@@ -129,7 +129,7 @@ class SignalEngine:
         self._reversal_bounce_pct = reversal_bounce_pct
         self._thesis_divergence_min_pct = thesis_divergence_min_pct
 
-    def evaluate(self, scan_signal: object) -> list[SignalReport]:
+    def evaluate(self, scan_signal: Any) -> list[SignalReport]:
         """
         Classify a ScanSignal into zero or more SignalReports.
 

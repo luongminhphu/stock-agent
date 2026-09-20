@@ -115,7 +115,7 @@ class WatchlistCog(BaseCog):
                     AddToWatchlistInput(
                         user_id=user_id,
                         ticker=ticker.upper(),
-                        note=note or None,
+                        note=note or None,  # type: ignore[arg-type]  # mypy-baseline M3
                     )
                 )
         except WatchlistItemAlreadyExistsError:

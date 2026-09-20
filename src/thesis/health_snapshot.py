@@ -318,7 +318,7 @@ async def _fetch_score(thesis: object) -> float:
         from src.thesis.scoring_service import ScoringService
 
         svc = ScoringService()
-        raw = svc.compute(thesis)  # sync, returns 0.0–100.0
+        raw = svc.compute(thesis)  # type: ignore[arg-type]  # sync 0–100; mypy-baseline M3
         return round(raw / 100.0, 4)  # normalize → 0.0–1.0
     except Exception:
         return 0.5  # neutral fallback — don't penalise for missing score

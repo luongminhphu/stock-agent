@@ -293,7 +293,7 @@ class StopBreachService:
         )
 
         if not self._enabled:
-            return StopBreachOutcome(action="observed", **base)
+            return StopBreachOutcome(action="observed", **base)  # type: ignore[arg-type]  # mypy-baseline M3
 
         # AI confirmation layer — non-blocking; session+user_id để detector
         # log episodic memory (boundary: caller owns session, detector chỉ ghi log).
@@ -307,7 +307,7 @@ class StopBreachService:
 
         if signal is None:
             # Detector không được inject hoặc AI fail → không tự ý invalidate
-            return StopBreachOutcome(action="ai_failed", **base)
+            return StopBreachOutcome(action="ai_failed", **base)  # type: ignore[arg-type]  # mypy-baseline M3
 
         if signal.verdict != "CONFIRMED" or (signal.confidence or 0) < self._min_confidence:
             return StopBreachOutcome(
@@ -315,7 +315,7 @@ class StopBreachService:
                 ai_verdict=signal.verdict,
                 ai_confidence=signal.confidence,
                 ai_action=signal.action,
-                **base,
+                **base,  # type: ignore[arg-type]  # mypy-baseline M3
             )
 
         # CONFIRMED + đủ confidence → invalidate qua cùng path với thủ công
@@ -336,7 +336,7 @@ class StopBreachService:
             ai_verdict=signal.verdict,
             ai_confidence=signal.confidence,
             ai_action=signal.action,
-            **base,
+            **base,  # type: ignore[arg-type]  # mypy-baseline M3
         )
 
     async def _emit_closed(self, thesis: Thesis) -> None:
