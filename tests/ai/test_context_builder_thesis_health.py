@@ -31,8 +31,8 @@ def _snap(ticker: str, flag: str) -> ThesisHealthSnapshot:
 def test_resolve_price_sources_without_bootstrap(monkeypatch: pytest.MonkeyPatch) -> None:
     import src.platform.bootstrap as boot
 
-    monkeypatch.setattr(boot, "_ticker_context_service", None)
-    monkeypatch.setattr(boot, "_quote_service", None)
+    monkeypatch.setattr(boot.container, "ticker_context_service", None)
+    monkeypatch.setattr(boot.container, "quote_service", None)
     assert _resolve_price_sources() == (None, None)
 
 
@@ -40,8 +40,8 @@ def test_resolve_price_sources_with_bootstrap(monkeypatch: pytest.MonkeyPatch) -
     import src.platform.bootstrap as boot
 
     tcs, qs = object(), object()
-    monkeypatch.setattr(boot, "_ticker_context_service", tcs)
-    monkeypatch.setattr(boot, "_quote_service", qs)
+    monkeypatch.setattr(boot.container, "ticker_context_service", tcs)
+    monkeypatch.setattr(boot.container, "quote_service", qs)
     assert _resolve_price_sources() == (tcs, qs)
 
 
