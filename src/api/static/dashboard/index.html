@@ -580,9 +580,27 @@
             <span class="cluster-badge">D</span>
             <div class="cluster-label-content">
               <span class="cluster-label-title">AI đã học được gì từ tôi?</span>
-              <span class="cluster-label-desc">Lịch sử hành động · Mẫu hành vi · Cảnh báo thiên kiến</span>
+              <span class="cluster-label-desc">AI nói gì · Tôi làm gì · Kết quả · Mẫu hành vi · Cảnh báo thiên kiến</span>
             </div>
           </div>
+
+          <!-- Wave U3: vòng phản hồi — readmodel AccuracyProjection -->
+          <section class="panel glass acc-panel" id="accuracyPanel" aria-labelledby="accuracyTitle">
+            <div class="panel-header split-header">
+              <div>
+                <p class="eyebrow">Vòng phản hồi</p>
+                <h2 id="accuracyTitle">AI nói gì · Tôi làm gì · Kết quả</h2>
+              </div>
+              <div class="acc-range" id="accuracyRange" role="group" aria-label="Kỳ thống kê">
+                <button type="button" class="acc-range-btn" data-acc-days="7" aria-pressed="false">7 ngày</button>
+                <button type="button" class="acc-range-btn active" data-acc-days="30" aria-pressed="true">30 ngày</button>
+                <button type="button" class="acc-range-btn" data-acc-days="90" aria-pressed="false">90 ngày</button>
+              </div>
+            </div>
+            <div class="panel-body" id="accuracyBody" aria-live="polite">
+              <div class="acc-verdict"><span class="acc-skel" style="width:96px;height:20px"></span><span class="acc-skel" style="width:60%"></span></div>
+            </div>
+          </section>
 
           <details class="collapsible-panel cluster-collapse" id="memoryDetails">
             <summary class="collapsible-summary collapsible-summary--cluster">

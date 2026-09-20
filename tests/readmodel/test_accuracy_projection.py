@@ -94,3 +94,95 @@ async def test_counts_by_source_and_pretrade_hit_rates() -> None:
     assert pre["followed_hit_rate"] == 0.5 and pre["ignored_hit_rate"] == 1.0
     assert pre["advice_hit_rate"] == 0.667
     assert sum(t["total"] for t in out["trend"]) == 6
+
+
+# ── summary (Wave U3) — một kết luận dùng chung cho dashboard/bot ─────────────
+
+
+def _pre(**kw: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "total": 0,
+        "followed": 0,
+        "ignored": 0,
+        "follow_rate": None,
+        "evaluated": 0,
+        "followed_hit_rate": None,
+        "ignored_hit_rate": None,
+        "advice_hit_rate": None,
+    }
+    base.update(kw)
+    return base
+
+
+def _src(core_total: int = 0, brief_total: int = 0, **pre: object) -> dict[str, object]:
+    return {
+        "core": {"total": core_total},
+        "briefing": {"total": brief_total},
+        "pretrade": _pre(**pre),
+    }
+
+
+def test_summary_empty_when_no_signals() -> None:
+    from src.readmodel.accuracy_projection import build_summary
+
+    assert build_summary(_src())["verdict"] == "empty"
+
+
+def test_summary_insufficient_below_min_evaluated() -> None:
+    from src.readmodel.accuracy_projection import build_summary
+
+    out = build_summary(_src(core_total=3, total=4, evaluated=2))
+    assert out["verdict"] == "insufficient"
+    assert "2/5" in out["headline"]
+
+
+@pytest.mark.parametrize(
+    ("f_hit", "i_hit", "verdict"),
+    [
+        (0.70, 0.40, "ai_edge"),
+        (0.40, 0.70, "self_edge"),
+        (0.55, 0.50, "mixed"),
+    ],
+)
+def test_summary_edge_by_hit_rate_gap(f_hit: float, i_hit: float, verdict: str) -> None:
+    from src.readmodel.accuracy_projection import build_summary
+
+    out = build_summary(
+        _src(
+            total=10,
+            followed=6,
+            ignored=4,
+            follow_rate=0.6,
+            evaluated=10,
+            followed_hit_rate=f_hit,
+            ignored_hit_rate=i_hit,
+            advice_hit_rate=0.6,
+        )
+    )
+    assert out["verdict"] == verdict
+    assert f"{round(f_hit * 100)}%" in out["headline"]
+
+
+def test_summary_low_adoption_when_never_ignored_side_evaluated() -> None:
+    from src.readmodel.accuracy_projection import build_summary
+
+    out = build_summary(
+        _src(
+            total=10,
+            followed=3,
+            ignored=7,
+            follow_rate=0.3,
+            evaluated=6,
+            followed_hit_rate=0.5,
+            ignored_hit_rate=None,
+            advice_hit_rate=0.5,
+        )
+    )
+    assert out["verdict"] == "low_adoption"
+
+
+@pytest.mark.anyio
+async def test_get_includes_summary() -> None:
+    async with AsyncSessionLocal() as s:
+        out = await AccuracyProjection(s).get("nobody-2", days=7)
+    assert out["summary"]["verdict"] == "empty"

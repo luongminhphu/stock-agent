@@ -1,0 +1,216 @@
+/* ─── Accuracy — "AI nói gì · Tôi làm gì · Kết quả" (Wave U3) ───────────────
+   Owner: modules/accuracy (adapter cho readmodel AccuracyProjection)
+   Nguồn: GET /api/v1/readmodel/dashboard/accuracy?days=N
+   Quy tắc HSC: nền tối một lớp, hairline 1px, số tabular, tag radius 2px,
+   màu bão hòa chỉ cho tag kết luận — thanh tỷ lệ và số liệu trung tính.
+──────────────────────────────────────────────────────────────────────────── */
+
+.acc-panel .panel-body { display: flex; flex-direction: column; gap: var(--space-4); }
+
+/* Bộ chọn kỳ (7 · 30 · 90 ngày) — control 28px, radius 4px, hairline */
+.acc-range {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-btn, 4px);
+  overflow: hidden;
+}
+.acc-range-btn {
+  height: var(--btn-h-sm, 28px);
+  padding: 0 var(--space-3);
+  background: none;
+  border: none;
+  border-right: 1px solid var(--line);
+  color: var(--muted);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-variant-numeric: var(--hsc-numeric);
+  cursor: pointer;
+  transition: color var(--hsc-motion-fast) var(--hsc-ease-out),
+              background var(--hsc-motion-fast) var(--hsc-ease-out);
+}
+.acc-range-btn:last-child { border-right: none; }
+.acc-range-btn:hover { color: var(--text); }
+.acc-range-btn.active { background: var(--surface-2); color: var(--text); font-weight: 600; }
+.acc-range-btn:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+
+/* Kết luận — 1 dòng trả lời "nghe AI hay bỏ qua AI, bên nào đúng hơn" */
+.acc-verdict {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-2) var(--space-3);
+  align-items: start;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md, 8px);
+}
+.acc-verdict-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 var(--space-2);
+  border-radius: var(--hsc-radius-tag);
+  border: var(--hsc-hairline) var(--line-strong);
+  font-size: var(--hsc-fs-caption);
+  line-height: var(--hsc-lh-caption);
+  font-weight: var(--hsc-fw-semibold);
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  white-space: nowrap;
+  margin-top: 2px;
+}
+.acc-verdict-tag--ai_edge {
+  background: rgba(var(--up-rgb), 0.12);
+  color: var(--chip-up-text);
+  border-color: rgba(var(--up-rgb), 0.28);
+}
+.acc-verdict-tag--self_edge,
+.acc-verdict-tag--low_adoption {
+  background: rgba(var(--ref-rgb), 0.12);
+  color: var(--chip-ref-text);
+  border-color: rgba(var(--ref-rgb), 0.30);
+}
+.acc-verdict-headline {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.4;
+  font-variant-numeric: var(--hsc-numeric);
+}
+.acc-verdict-detail {
+  grid-column: 2;
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+/* Ba cột: AI nói gì · Tôi làm gì · Kết quả */
+.acc-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+.acc-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+}
+.acc-col-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.acc-col-title span:last-child { font-weight: 500; letter-spacing: 0; text-transform: none; }
+
+/* Hàng số liệu: nhãn trái, số phải, tabular */
+.acc-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-1) var(--space-3);
+  align-items: center;
+  min-height: 28px;
+  font-size: var(--text-base);
+}
+.acc-row-label { color: var(--text); }
+.acc-row-sub { display: block; font-size: var(--text-sm); color: var(--muted); line-height: 16px; }
+.acc-row-value {
+  font-weight: 600;
+  font-variant-numeric: var(--hsc-numeric);
+  color: var(--text);
+  text-align: right;
+}
+.acc-row-value--muted { color: var(--muted); font-weight: 500; }
+
+/* Thanh tỷ lệ — trung tính; nhóm thắng đậm hơn, không dùng màu giá */
+.acc-bar {
+  grid-column: 1 / -1;
+  height: 4px;
+  background: rgba(var(--ink-rgb), 0.10);
+  border-radius: var(--radius-xs, 2px);
+  overflow: hidden;
+}
+.acc-bar-fill {
+  height: 100%;
+  width: 0;
+  background: rgba(var(--ink-rgb), 0.45);
+  transition: width 200ms var(--hsc-ease-out);
+}
+.acc-bar-fill--lead { background: rgba(var(--ink-rgb), 0.85); }
+
+/* Sparkline tương tác theo ngày */
+.acc-spark-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+.acc-spark { flex: 0 1 auto; max-width: 60%; height: 28px; display: block; }
+.acc-spark rect { fill: rgba(var(--ink-rgb), 0.22); }
+.acc-spark rect.acc-spark-bar--today { fill: rgba(var(--ink-rgb), 0.75); }
+.acc-spark-wrap { justify-content: space-between; }
+.acc-spark-caption {
+  flex: 1 1 auto;
+  font-size: var(--text-sm);
+  color: var(--muted);
+  font-variant-numeric: var(--hsc-numeric);
+  line-height: 16px;
+}
+.acc-spark-title { display: block; color: var(--text); font-weight: 600; }
+
+/* Footer: cập nhật + CTA nối loop */
+.acc-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--muted);
+  font-variant-numeric: var(--hsc-numeric);
+}
+.acc-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--brand);
+  font: inherit;
+  cursor: pointer;
+}
+.acc-link:hover { text-decoration: underline; }
+
+/* Trạng thái: skeleton / lỗi */
+.acc-skel {
+  height: 12px;
+  border-radius: var(--radius-xs, 2px);
+  background: rgba(var(--ink-rgb), 0.08);
+  animation: acc-pulse 1.4s ease-in-out infinite;
+}
+@keyframes acc-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) { .acc-skel { animation: none; } .acc-bar-fill { transition: none; } }
+.acc-error {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-md, 8px);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 900px) {
+  .acc-grid { grid-template-columns: 1fr; }
+  .acc-verdict { grid-template-columns: 1fr; }
+  .acc-verdict-detail { grid-column: 1; }
+}

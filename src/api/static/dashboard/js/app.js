@@ -430,6 +430,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (det.open) { loaded = true; loader(); }
   };
   _lazyOnOpen('memoryDetails',   () => loadMemory().catch(() => null));
+  _observeLazy('#accuracyPanel', () =>
+    import('./modules/accuracy/accuracy-loader.js?v=1').then(m => m.loadAccuracy()).catch(() => null));
   _lazyOnOpen('rrgPanel',        () => import('./modules/leaderboard/rrg-chart.js?v=1').then(m => m.loadRRG()).catch(() => null));
   _lazyOnOpen('backtestDetails', () => loadBacktesting().catch(() => null));
   _observeLazy('#todayDuoRow',            () => {
