@@ -22,6 +22,7 @@ logger = get_logger(__name__)
 _quote_service: object | None = None
 _ohlcv_service: object | None = None
 _market_regime_service: object | None = None  # Wave 8.1: pretrade market-regime gate
+_ticker_context_service: object | None = None  # Wave B2: market context đã tinh chế
 _ai_client: object | None = None
 _thesis_review_agent: object | None = None
 _thesis_debate_agent: object | None = None
@@ -83,7 +84,7 @@ async def bootstrap() -> None:
     configure_logging()
 
     global _quote_service, _ohlcv_service, _market_regime_service, _ai_client, _thesis_review_agent
-    global _thesis_debate_agent
+    global _thesis_debate_agent, _ticker_context_service
     global _thesis_suggest_agent, _briefing_agent, _why_agent, _pretrade_agent
     global _stress_test_agent, _replay_agent, _snapshot_scheduler
     global _sector_rotation_agent, _investor_profile_service, _pnl_service_class
@@ -162,6 +163,15 @@ async def bootstrap() -> None:
 
         _ohlcv_service = OHLCVService(adapter=VCIOHLCVAdapter())
         logger.info("platform.bootstrap.ohlcv_service_ready")
+
+    if _ticker_context_service is None:
+        from src.market.ticker_context import TickerContextService
+
+        _ticker_context_service = TickerContextService(
+            quote_service=_quote_service,  # type: ignore[arg-type]
+            ohlcv_service=_ohlcv_service,  # type: ignore[arg-type]
+        )
+        logger.info("platform.bootstrap.ticker_context_service_ready")
 
     if _ai_client is None:
         from src.ai.client import AIClient
@@ -770,6 +780,12 @@ def get_ohlcv_service():
     return _ohlcv_service
 
 
+def get_ticker_context_service():
+    if _ticker_context_service is None:
+        raise RuntimeError("bootstrap() has not been called")
+    return _ticker_context_service
+
+
 def get_market_regime_service():
     if _market_regime_service is None:
         raise RuntimeError("bootstrap() has not been called")
@@ -956,6 +972,7 @@ _SINGLETON_NAMES: tuple[str, ...] = (
     "_quote_service",
     "_ohlcv_service",
     "_market_regime_service",
+    "_ticker_context_service",
     "_ai_client",
     "_thesis_review_agent",
     "_thesis_debate_agent",

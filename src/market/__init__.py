@@ -16,6 +16,9 @@ Public API:
     OHLCVService              — historical price service
     OHLCVAdapter              — ABC for OHLCV adapters
     OHLCVServiceNotConfiguredError
+
+    TickerContext             — market data đã tinh chế (quote + MA/RSI/ATR/vol/52w)
+    TickerContextService      — get_many(tickers) → dict[str, TickerContext]
 """
 
 from src.market.ohlcv_service import (
@@ -39,6 +42,7 @@ from src.market.registry import (
     SymbolRegistry,
     registry,
 )
+from src.market.ticker_context import TickerContext, TickerContextService
 
 __all__ = [
     "Exchange",
@@ -56,4 +60,6 @@ __all__ = [
     "OHLCVService",
     "OHLCVAdapter",
     "OHLCVServiceNotConfiguredError",
+    "TickerContext",
+    "TickerContextService",
 ]
