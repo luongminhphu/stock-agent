@@ -77,9 +77,8 @@ jobs:
     name: Type check (mypy)
     runs-on: ubuntu-latest
     needs: lint
-    # TODO(wave B-E): mypy strict hiện còn ~680 lỗi legacy — báo cáo nhưng không chặn CI.
-    # Trả lại blocking (xoá continue-on-error) khi từng segment đã sạch mypy.
-    continue-on-error: true
+    # mypy M3 (2026-09-20): 715 → 0 lỗi, job này blocking. Baseline còn lại đánh dấu
+    # "mypy-baseline M3" (inline ignore) — siết dần, không thêm ignore mới.
     steps:
       - uses: actions/checkout@v4
         with:
