@@ -35,6 +35,7 @@ from src.portfolio.repository import PortfolioRepository
 from src.readmodel.dashboard_service import DashboardService
 from src.readmodel.enrichment import (
     build_price_map,
+    fetch_market_context_and_position,
     fetch_price_and_position,
     list_thesis_tickers,
     resolve_thesis_ticker,
@@ -128,13 +129,17 @@ async def get_theses_list(
 ) -> dict[str, Any]:
     price_map: dict[str, float] = {}
     position_map: dict[str, tuple[float, float]] = {}
+    context_map: dict[str, Any] = {}
 
     if enrich_prices:
         # Wave A: query nhe lay ticker thay cho full get_theses_list lan 1.
         tickers = await list_thesis_tickers(
             session, user_id, status=status, ticker=ticker, limit=limit
         )
-        price_map, position_map = await fetch_price_and_position(session, user_id, tickers)
+        # Wave U2a: TickerContext (quote + indicator + source_quality) thay quote thuan.
+        context_map, price_map, position_map = await fetch_market_context_and_position(
+            session, user_id, tickers
+        )
 
     items = await DashboardService(session).get_theses_list(
         user_id,
@@ -143,6 +148,7 @@ async def get_theses_list(
         limit=limit,
         price_map=price_map,
         position_map=position_map,
+        context_map=context_map,
     )
     return _paginated(items)
 

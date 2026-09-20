@@ -160,6 +160,7 @@ class DashboardService:
         limit: int = 200,
         price_map: dict[str, float] | None = None,
         position_map: dict[str, tuple[float, float]] | None = None,
+        context_map: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         return await self._thesis_query.get_theses_list(
             user_id=user_id,
@@ -168,6 +169,7 @@ class DashboardService:
             limit=limit,
             price_map=price_map,
             position_map=position_map,
+            context_map=context_map,
         )
 
     async def get_thesis_detail(self, user_id: str, thesis_id: int) -> dict[str, Any] | None:

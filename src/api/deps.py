@@ -109,6 +109,14 @@ def get_quote_service() -> object:
     return _get_qs()
 
 
+def get_ticker_context_service() -> object:
+    """Return the TickerContextService singleton (Wave B2).
+
+    Owner: market segment. Used by GET /market/context/{ticker}.
+    """
+    return _get_tcs()
+
+
 def get_ohlcv_service() -> object:
     """Return the OHLCVService singleton (initialised at bootstrap).
 

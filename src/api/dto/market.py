@@ -44,6 +44,45 @@ class QuoteResponse(BaseModel):
     note: str | None = None
 
 
+class TickerContextResponse(BaseModel):
+    """Wave U2a: market.TickerContext cho FE — cùng bối cảnh kỹ thuật AI đang đọc.
+
+    Mọi indicator có thể None (thiếu OHLCV / market đóng) — FE hiện "—".
+    """
+
+    ticker: str
+    name: str
+    as_of: datetime | None = None
+    # Quote
+    price: float | None
+    change: float | None
+    change_pct: float | None
+    volume: int | None
+    open: float | None = None
+    high: float | None = None
+    low: float | None = None
+    ref_price: float | None = None
+    ceiling: float | None = None
+    floor: float | None = None
+    is_ceiling: bool | None = None
+    is_floor: bool | None = None
+    formatted_price: str | None = None
+    # Indicators (D1)
+    ma20: float | None = None
+    ma50: float | None = None
+    rsi14: float | None = None
+    atr14: float | None = None
+    vol_ratio_20: float | None = None
+    hi_52w: float | None = None
+    lo_52w: float | None = None
+    dist_to_ma20_pct: float | None = None
+    dist_to_hi_52w_pct: float | None = None
+    bars: int = 0
+    # Đánh giá
+    trend_state: str = "UNKNOWN"
+    source_quality: str = "fallback"
+
+
 class CandleResponse(BaseModel):
     """Single OHLCV candle — minimal shape for FE price chart."""
 

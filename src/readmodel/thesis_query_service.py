@@ -21,7 +21,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.platform.logging import get_logger
+from src.thesis.price_snapshot import PriceSnapshot
 from src.thesis.scoring_service import ScoringService, score_tier
+from src.thesis.stop_breach_service import NEAR_STOP_ATR
 
 logger = get_logger(__name__)
 
@@ -39,6 +41,76 @@ def _parse_json_field(value: str | None) -> list | dict | None:
         return json.loads(value)
     except (json.JSONDecodeError, TypeError):
         return value  # type: ignore[return-value]
+
+
+def _market_context_fields(
+    ctx: Any | None,
+    *,
+    current_price: float | None,
+    stop_loss: float | None,
+    direction_upper: str,
+) -> dict[str, Any]:
+    """Wave U2a: chiếu market.TickerContext vào row thesis.
+
+    Cùng bối cảnh kỹ thuật mà AI review / stop-breach scanner đang dùng (Wave C),
+    để dashboard và AI nhìn cùng một dữ liệu. Rule near_stop mượn từ thesis
+    (PriceSnapshot.stop_distance_atr + NEAR_STOP_ATR) — readmodel không định nghĩa lại.
+    Mọi field None khi thiếu ctx / OHLCV; UI hiện "—" thay vì bịa số.
+    """
+    out: dict[str, Any] = {
+        "change": None,
+        "change_pct": None,
+        "volume": None,
+        "is_ceiling": None,
+        "is_floor": None,
+        "market_as_of": None,
+        "source_quality": None,
+        "trend_state": None,
+        "ma20": None,
+        "ma50": None,
+        "rsi14": None,
+        "atr14": None,
+        "vol_ratio_20": None,
+        "dist_to_ma20_pct": None,
+        "stop_distance_atr": None,
+        "near_stop": None,
+    }
+    if ctx is None:
+        return out
+    q = ctx.quote
+    out.update(
+        {
+            "change": q.change,
+            "change_pct": q.change_pct,
+            "volume": q.volume,
+            "is_ceiling": q.is_ceiling,
+            "is_floor": q.is_floor,
+            "market_as_of": ctx.as_of.isoformat() if ctx.as_of else None,
+            "source_quality": str(ctx.source_quality),
+            "trend_state": str(ctx.trend_state),
+            "ma20": ctx.ma20,
+            "ma50": ctx.ma50,
+            "rsi14": round(ctx.rsi14, 1) if ctx.rsi14 is not None else None,
+            "atr14": ctx.atr14,
+            "vol_ratio_20": round(ctx.vol_ratio_20, 2) if ctx.vol_ratio_20 is not None else None,
+            "dist_to_ma20_pct": round(ctx.dist_to_ma20_pct, 2)
+            if ctx.dist_to_ma20_pct is not None
+            else None,
+        }
+    )
+    if current_price and stop_loss:
+        snap = PriceSnapshot(
+            price=current_price, atr14=ctx.atr14, source_quality=str(ctx.source_quality)
+        )
+        dist = snap.stop_distance_atr(stop_loss)
+        if dist is not None:
+            # PriceSnapshot đo theo hướng BULLISH (price - stop); BEARISH đảo dấu
+            # để "dương = còn cách stop" giữ nguyên ý nghĩa cho UI.
+            if direction_upper == "BEARISH":
+                dist = -dist
+            out["stop_distance_atr"] = round(dist, 2)
+            out["near_stop"] = bool(0 < dist < NEAR_STOP_ATR)
+    return out
 
 
 def _pnl_status(pnl_pct: float | None) -> str | None:
@@ -95,6 +167,7 @@ class ThesisQueryService:
         limit: int = 200,
         price_map: dict[str, float] | None = None,
         position_map: dict[str, tuple[float, float]] | None = None,
+        context_map: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         from src.thesis.models import (
             Assumption,
@@ -106,6 +179,9 @@ class ThesisQueryService:
 
         price_map = price_map or {}
         position_map = position_map or {}
+        # Wave U2a: context_map (ticker → market.TickerContext) là nguồn giá ưu tiên;
+        # price_map giữ cho caller cũ / fallback khi thiếu OHLCV.
+        context_map = context_map or {}
 
         filters = [Thesis.user_id == user_id]
         if status and status != "all":
@@ -182,7 +258,10 @@ class ThesisQueryService:
             t = r.Thesis
             tier_label, tier_icon = score_tier(t.score) if t.score is not None else (None, None)
 
+            ctx = context_map.get(t.ticker)
             current_price: float | None = price_map.get(t.ticker)
+            if current_price is None and ctx is not None and ctx.price:
+                current_price = ctx.price
             pos_data = position_map.get(t.ticker)
             quantity: float | None = pos_data[0] if pos_data else None
             avg_cost: float | None = pos_data[1] if pos_data else None
@@ -233,8 +312,8 @@ class ThesisQueryService:
             # None khi thiếu stop_loss hoặc chưa có giá — dashboard chỉ hiện
             # badge khi True, không hiện gì khi None/False.
             stop_breached: bool | None = None
+            _dir_upper = str(getattr(t.direction, "value", t.direction) or "").upper()
             if t.stop_loss and current_price and current_price > 0:
-                _dir_upper = str(getattr(t.direction, "value", t.direction) or "").upper()
                 if _dir_upper == "BEARISH":
                     stop_breached = bool(current_price >= t.stop_loss)
                 else:
@@ -286,12 +365,13 @@ class ThesisQueryService:
                     "invalid_assumption_count": invalid_assumption_count,
                     "catalyst_count": r.n_catalysts,
                     "triggered_catalyst_count": triggered_catalyst_count,
-                    # market data — enriched externally via price_map; None until available
-                    "change": None,
-                    "change_pct": None,
-                    "volume": None,
-                    "is_ceiling": None,
-                    "is_floor": None,
+                    # market data (Wave U2a) — từ context_map; None khi chưa có
+                    **_market_context_fields(
+                        ctx,
+                        current_price=current_price,
+                        stop_loss=t.stop_loss,
+                        direction_upper=_dir_upper,
+                    ),
                 }
             )
         return result

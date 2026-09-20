@@ -7,6 +7,7 @@ No business logic here.
 Endpoints:
     GET /market/symbols/{ticker}        — registry metadata only
     GET /market/quote/{ticker}          — live quote via QuoteService (VCI → VNDirect)
+    GET /market/context/{ticker}        — quote + MA/RSI/ATR/vol/52w + trend + source_quality
     GET /market/ohlcv/{ticker}          — OHLCV candle history (default: last 30 trading days)
     GET /market/breadth                 — advance/decline/unchanged breadth snapshot
 """
@@ -15,12 +16,24 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from src.api.deps import get_breadth_service, get_ohlcv_service, get_quote_service
-from src.api.dto.market import BreadthResponse, CandleResponse, QuoteResponse, SymbolInfoResponse
+from src.api.deps import (
+    get_breadth_service,
+    get_ohlcv_service,
+    get_quote_service,
+    get_ticker_context_service,
+)
+from src.api.dto.market import (
+    BreadthResponse,
+    CandleResponse,
+    QuoteResponse,
+    SymbolInfoResponse,
+    TickerContextResponse,
+)
 from src.market.breadth_service import BreadthService
 from src.market.ohlcv_service import OHLCVService, OHLCVServiceNotConfiguredError
 from src.market.quote_service import QuoteService, QuoteServiceNotConfiguredError
 from src.market.registry import Exchange, SymbolNotFoundError, registry
+from src.market.ticker_context import TickerContextService
 
 router = APIRouter(prefix="/market", tags=["market"])
 
@@ -87,6 +100,69 @@ async def get_quote(
         formatted_price=quote.format_price(),
         formatted_change=quote.format_change(),
         timestamp=quote.timestamp,
+    )
+
+
+@router.get("/context/{ticker}", response_model=TickerContextResponse)
+async def get_ticker_context(
+    ticker: str,
+    tcs: TickerContextService = Depends(get_ticker_context_service),
+) -> TickerContextResponse:
+    """Wave U2a: TickerContext cho FE — cùng nguồn AI review / stop-breach dùng.
+
+    Thin adapter: map dataclass → DTO, không tính toán lại chỉ báo.
+    """
+    ticker = ticker.upper()
+    try:
+        info = registry.resolve(ticker)
+    except SymbolNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Ticker '{ticker}' not found in registry.",
+        ) from exc
+
+    try:
+        ctx = await tcs.get(ticker)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Market context unavailable for '{ticker}': {exc}",
+        ) from exc
+
+    q = ctx.quote
+    return TickerContextResponse(
+        ticker=ctx.ticker,
+        name=info.name,
+        as_of=ctx.as_of,
+        price=q.price,
+        change=q.change,
+        change_pct=q.change_pct,
+        volume=q.volume,
+        open=q.open,
+        high=q.high,
+        low=q.low,
+        ref_price=q.ref_price,
+        ceiling=q.ceiling,
+        floor=q.floor,
+        is_ceiling=q.is_ceiling,
+        is_floor=q.is_floor,
+        formatted_price=q.format_price(),
+        ma20=ctx.ma20,
+        ma50=ctx.ma50,
+        rsi14=round(ctx.rsi14, 1) if ctx.rsi14 is not None else None,
+        atr14=ctx.atr14,
+        vol_ratio_20=round(ctx.vol_ratio_20, 2) if ctx.vol_ratio_20 is not None else None,
+        hi_52w=ctx.hi_52w,
+        lo_52w=ctx.lo_52w,
+        dist_to_ma20_pct=round(ctx.dist_to_ma20_pct, 2)
+        if ctx.dist_to_ma20_pct is not None
+        else None,
+        dist_to_hi_52w_pct=round(ctx.dist_to_hi_52w_pct, 2)
+        if ctx.dist_to_hi_52w_pct is not None
+        else None,
+        bars=ctx.bars,
+        trend_state=str(ctx.trend_state),
+        source_quality=str(ctx.source_quality),
     )
 
 
