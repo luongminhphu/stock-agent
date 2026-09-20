@@ -35,6 +35,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from src.market import indicators
 from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
@@ -61,61 +62,12 @@ class OHLCVBar:
 # ---------------------------------------------------------------------------
 # Pure indicator functions
 # ---------------------------------------------------------------------------
-
-
-def _ema(values: list[float], period: int) -> list[float]:
-    """Exponential Moving Average. Returns list same length as input."""
-    if not values:
-        return []
-    k = 2.0 / (period + 1)
-    result = [values[0]]
-    for v in values[1:]:
-        result.append(v * k + result[-1] * (1 - k))
-    return result
-
-
-def _rsi(closes: list[float], period: int = 14) -> float:
-    """RSI-14 using Wilder's Smoothed Moving Average (RMA).
-
-    Matches the standard used by TradingView, VCI, SSI and most charting
-    platforms. The previous implementation used a simple average (Cutler's
-    RSI) which diverges noticeably in mid-range values.
-
-    Requires period*2 + 1 bars minimum for a reliable seed.
-    Returns 50.0 (neutral) when insufficient data.
-    """
-    min_bars = period * 2 + 1
-    if len(closes) < min_bars:
-        return 50.0
-
-    deltas = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
-    gains = [max(d, 0.0) for d in deltas]
-    losses = [abs(min(d, 0.0)) for d in deltas]
-
-    # Seed: simple average of first `period` values
-    avg_gain = sum(gains[:period]) / period
-    avg_loss = sum(losses[:period]) / period
-
-    # Wilder RMA: smoothing factor = 1/period
-    for g, lo in zip(gains[period:], losses[period:], strict=False):
-        avg_gain = (avg_gain * (period - 1) + g) / period
-        avg_loss = (avg_loss * (period - 1) + lo) / period
-
-    if avg_loss == 0:
-        return 100.0
-    rs = avg_gain / avg_loss
-    return round(100.0 - (100.0 / (1 + rs)), 2)
-
-
-def _macd_histogram(closes: list[float]) -> float:
-    """MACD histogram = MACD line - signal line (12/26/9 EMA). Returns float."""
-    if len(closes) < 35:
-        return 0.0
-    ema12 = _ema(closes, 12)
-    ema26 = _ema(closes, 26)
-    macd_line = [e12 - e26 for e12, e26 in zip(ema12, ema26, strict=False)]
-    signal_line = _ema(macd_line, 9)
-    return macd_line[-1] - signal_line[-1]
+# Primitive indicators (EMA/RSI/MACD/ATR) sống ở src/market/indicators.py —
+# nguồn duy nhất cho mọi consumer. Alias giữ tên cũ để test/callers không đổi.
+_ema = indicators.ema
+_rsi = indicators.rsi
+_macd_histogram = indicators.macd_histogram
+_atr = indicators.atr
 
 
 def _ema_cross_signal(closes: list[float], fast: int = 20, slow: int = 50) -> float:
@@ -183,21 +135,6 @@ def _volume_surge_ratio(volumes: list[float], window: int = 5, baseline: int = 2
     baseline_avg = sum(volumes[-baseline:]) / baseline or 1.0
     ratio = recent_avg / baseline_avg
     return max(0.0, min(1.0, ratio / 3.0))
-
-
-def _atr(highs: list[float], lows: list[float], closes: list[float], period: int = 14) -> float:
-    """Average True Range over `period` bars."""
-    if len(closes) < period + 1:
-        return 0.0
-    trs = []
-    for i in range(1, len(closes)):
-        tr = max(
-            highs[i] - lows[i],
-            abs(highs[i] - closes[i - 1]),
-            abs(lows[i] - closes[i - 1]),
-        )
-        trs.append(tr)
-    return sum(trs[-period:]) / period
 
 
 def _atr_expansion_ratio(highs: list[float], lows: list[float], closes: list[float]) -> float:

@@ -34,6 +34,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
+from src.market import indicators
 from src.market.ohlcv_service import Interval, OHLCVService
 
 logger = logging.getLogger(__name__)
@@ -89,26 +90,13 @@ class RRGResponse:
 
 
 # ---------------------------------------------------------------------------
-# EMA helper
+# EMA helper — dùng primitive chung của segment market, seed="sma" giữ đúng
+# công thức cũ (pandas ewm(span, adjust=False) bootstrap) → số RRG không đổi.
 # ---------------------------------------------------------------------------
 
 
 def _ema(values: list[float], span: int) -> list[float]:
-    """Exponential Moving Average — same formula as pandas ewm(span, adjust=False).
-
-    Returns a list of the same length.  Values before index `span-1` are
-    bootstrapped with a simple mean of the first `span` elements.
-    """
-    if not values:
-        return []
-    k = 2.0 / (span + 1)
-    out = [0.0] * len(values)
-    # Seed: plain mean of first `min(span, len)` elements
-    seed_n = min(span, len(values))
-    out[0] = sum(values[:seed_n]) / seed_n
-    for i in range(1, len(values)):
-        out[i] = values[i] * k + out[i - 1] * (1 - k)
-    return out
+    return indicators.ema(values, span, seed="sma")
 
 
 # ---------------------------------------------------------------------------
