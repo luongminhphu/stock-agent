@@ -51,9 +51,8 @@ jobs:
     name: Segment boundaries (import-linter)
     runs-on: ubuntu-latest
     needs: lint
-    # TODO(wave E2/F): baseline 18 vi phạm trực tiếp (xem .importlinter). Báo cáo nhưng
-    # không chặn CI 1 wave; xoá continue-on-error khi 4 contract đều KEPT.
-    continue-on-error: true
+    # Blocking từ boundary fix B1–B6: 4 contract trong .importlinter đều KEPT.
+    # Vi phạm mới → CI đỏ; sửa bằng repo helper / provider inject, không thêm ignore.
     steps:
       - uses: actions/checkout@v4
         with:
