@@ -31,9 +31,7 @@ def make_thesis(**kwargs) -> Thesis:
         updated_at=datetime(2025, 6, 1, tzinfo=UTC),
     )
     defaults.update(kwargs)
-    t = Thesis.__new__(Thesis)
-    for k, v in defaults.items():
-        object.__setattr__(t, k, v)
+    t = Thesis(**defaults)
     t.assumptions = []
     t.catalysts = []
     t.reviews = []
@@ -102,12 +100,9 @@ def test_risk_reward_none_when_stop_above_entry():
 
 def test_invalid_assumption_count():
     t = make_thesis()
-    a1 = Assumption.__new__(Assumption)
-    a1.status = AssumptionStatus.INVALID
-    a2 = Assumption.__new__(Assumption)
-    a2.status = AssumptionStatus.VALID
-    a3 = Assumption.__new__(Assumption)
-    a3.status = AssumptionStatus.INVALID
+    a1 = Assumption(status=AssumptionStatus.INVALID, description='x')
+    a2 = Assumption(status=AssumptionStatus.VALID, description='x')
+    a3 = Assumption(status=AssumptionStatus.INVALID, description='x')
     t.assumptions = [a1, a2, a3]
     assert t.invalid_assumption_count == 2
 
@@ -119,9 +114,7 @@ def test_invalid_assumption_count():
 
 def test_triggered_catalyst_count():
     t = make_thesis()
-    c1 = Catalyst.__new__(Catalyst)
-    c1.status = CatalystStatus.TRIGGERED
-    c2 = Catalyst.__new__(Catalyst)
-    c2.status = CatalystStatus.PENDING
+    c1 = Catalyst(status=CatalystStatus.TRIGGERED, description='x')
+    c2 = Catalyst(status=CatalystStatus.PENDING, description='x')
     t.catalysts = [c1, c2]
     assert t.triggered_catalyst_count == 1

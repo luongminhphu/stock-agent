@@ -24,7 +24,7 @@ def svc() -> ScoringService:
 
 
 def test_score_empty_thesis_is_neutral(svc):
-    """Thesis with no data should score near the neutral midpoint."""
+    """Thesis with no data: assumptions/catalysts score 0, rr/review fall back to neutral."""
     thesis = make_thesis(
         entry_price=None,
         target_price=None,
@@ -32,7 +32,9 @@ def test_score_empty_thesis_is_neutral(svc):
     )
     score = svc.compute(thesis)
     # All 4 components contribute 50% of their weight → 50.0
-    assert score == pytest.approx(50.0, abs=0.01)
+    # Policy (Issue C): no assumptions/catalysts -> 0 (unconfirmed != neutral);
+    # rr/review fallback neutral 50% -> 10 + 5
+    assert score == pytest.approx(0.0 + 0.0 + 10.0 + 5.0, abs=0.01)
 
 
 # ---------------------------------------------------------------------------
@@ -50,7 +52,8 @@ def test_score_all_valid_assumptions(svc):
     )
     score = svc.compute(thesis)
     # assumption component = (3-0)/3 = 1.0 → 40pts; rest neutral 50% → 30pts
-    assert score == pytest.approx(40.0 + 15.0 + 10.0 + 5.0, abs=0.1)
+    # assumption = 3/3 -> 40; no catalysts -> 0; rr/review neutral -> 10 + 5
+    assert score == pytest.approx(40.0 + 0.0 + 10.0 + 5.0, abs=0.1)
 
 
 def test_score_all_invalid_assumptions_clamped(svc):
@@ -102,7 +105,7 @@ def test_score_all_triggered_catalysts(svc):
     )
     score = svc.compute(thesis)
     # catalyst component = 2/2 = 1.0 → 30pts; rest neutral
-    assert score == pytest.approx(20.0 + 30.0 + 10.0 + 5.0, abs=0.1)
+    assert score == pytest.approx(0.0 + 30.0 + 10.0 + 5.0, abs=0.1)
 
 
 def test_score_no_triggered_catalysts(svc):
@@ -115,7 +118,7 @@ def test_score_no_triggered_catalysts(svc):
     )
     score = svc.compute(thesis)
     # catalyst = 0pts; rest neutral
-    assert score == pytest.approx(20.0 + 0.0 + 10.0 + 5.0, abs=0.1)
+    assert score == pytest.approx(0.0 + 15.0 + 10.0 + 5.0, abs=0.1)
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +141,7 @@ def test_score_rr_1_to_1(svc):
     thesis = make_thesis(entry_price=25000.0, target_price=30000.0, stop_loss=20000.0)
     score = svc.compute(thesis)
     rr_contribution = (1.0 / 3.0) * 20.0
-    assert score == pytest.approx(20.0 + 15.0 + rr_contribution + 5.0, abs=0.5)
+    assert score == pytest.approx(0.0 + 0.0 + rr_contribution + 5.0, abs=0.5)
 
 
 def test_score_rr_above_3_capped(svc):
@@ -168,7 +171,7 @@ def test_score_review_confidence_high(svc):
     )
     score = svc.compute(thesis)
     # review component = 1.0 * 10 = 10pts; rest neutral
-    assert score == pytest.approx(20.0 + 15.0 + 10.0 + 10.0, abs=0.1)
+    assert score == pytest.approx(0.0 + 0.0 + 10.0 + 10.0, abs=0.1)
 
 
 def test_score_uses_latest_review(svc):
@@ -189,7 +192,7 @@ def test_score_uses_latest_review(svc):
     score = svc.compute(thesis)
     # Latest review (r2, confidence=0.9) should dominate
     expected_review_pts = 0.9 * 10.0
-    assert score == pytest.approx(20.0 + 15.0 + 10.0 + expected_review_pts, abs=0.1)
+    assert score == pytest.approx(0.0 + 0.0 + 10.0 + expected_review_pts, abs=0.1)
 
 
 # ---------------------------------------------------------------------------

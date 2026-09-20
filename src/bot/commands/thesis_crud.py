@@ -28,18 +28,6 @@ from src.thesis.service import CreateThesisInput, ThesisNotFoundError, ThesisSer
 logger = get_logger(__name__)
 
 
-def _upside_pct(thesis) -> float | None:
-    """Compute upside % from ORM Thesis fields.
-
-    Thesis ORM has no upside_pct attribute — that field lives in
-    ThesisSummaryRow (readmodel DTO). This helper reproduces the same
-    formula so bot commands don't depend on the readmodel.
-    """
-    if thesis.target_price is not None and thesis.entry_price and thesis.entry_price > 0:
-        return (thesis.target_price - thesis.entry_price) / thesis.entry_price * 100
-    return None
-
-
 class ThesisCrudCog(BaseCog):
     """Slash commands: /thesis add, /thesis list, /thesis close, /thesis aggregate."""
 
@@ -97,7 +85,7 @@ class ThesisCrudCog(BaseCog):
             )
             return
 
-        upside = _upside_pct(thesis)
+        upside = thesis.upside_pct
         rr = thesis.risk_reward
         upside_str = f"+{upside:.1f}%" if upside is not None else "N/A"
         rr_str = f"{rr:.2f}x" if rr is not None else "N/A"
@@ -164,7 +152,7 @@ class ThesisCrudCog(BaseCog):
         lines = []
         for t in theses[:20]:
             icon = STATUS_ICON.get(t.status, "⚪")
-            upside = _upside_pct(t)
+            upside = t.upside_pct
             upside_str = f" · +{upside:.0f}%" if upside is not None else ""
             score = f" · Score {t.score:.0f}" if t.score is not None else ""
             lines.append(f"{icon} **#{t.id} {t.ticker}** — {t.title[:40]}{upside_str}{score}")

@@ -219,14 +219,9 @@ class ThesisQueryService:
                         risk_reward = round(upside / downside, 2)
 
             # --- invalid assumption + triggered catalyst counts (from eager-loaded) ---
-            assumptions = t.assumptions or []
-            catalysts = t.catalysts or []
-            invalid_assumption_count = sum(
-                1 for a in assumptions if str(a.status.value) == "invalid"
-            )
-            triggered_catalyst_count = sum(
-                1 for c in catalysts if str(c.status.value) == "triggered"
-            )
+            # Domain properties on Thesis (src/thesis/models.py) — single source of truth.
+            invalid_assumption_count = t.invalid_assumption_count
+            triggered_catalyst_count = t.triggered_catalyst_count
 
             # --- score breakdown (4-dimension) — safe: relationships now eager-loaded ---
             try:

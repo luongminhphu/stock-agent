@@ -172,6 +172,31 @@ class Thesis(Base):
     )
 
     @property
+    def is_active(self) -> bool:
+        return self.status == ThesisStatus.ACTIVE
+
+    @property
+    def upside_pct(self) -> float | None:
+        """Upside % tinh tu entry_price (gia tham chieu cua thesis) toi target_price.
+
+        Readmodel dung ``effective_entry`` (actual_entry_price neu co) nen tu tinh rieng;
+        day la cong thuc thuan tuy cho domain/bot.
+        """
+        if self.target_price is not None and self.entry_price and self.entry_price > 0:
+            return (self.target_price - self.entry_price) / self.entry_price * 100
+        return None
+
+    @property
+    def invalid_assumption_count(self) -> int:
+        """So assumption INVALID (yeu cau relationship da load)."""
+        return sum(1 for a in (self.assumptions or []) if a.status == AssumptionStatus.INVALID)
+
+    @property
+    def triggered_catalyst_count(self) -> int:
+        """So catalyst TRIGGERED (yeu cau relationship da load)."""
+        return sum(1 for c in (self.catalysts or []) if c.status == CatalystStatus.TRIGGERED)
+
+    @property
     def risk_reward(self) -> float | None:
         """Computed risk/reward ratio: upside / downside.
 

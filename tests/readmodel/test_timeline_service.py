@@ -24,7 +24,7 @@ async def test_timeline_not_found_returns_none(session):
 async def test_timeline_created_event_present(session):
     thesis_svc = ThesisService(session)
     thesis = await thesis_svc.create(
-        USER, CreateThesisInput(ticker="VCB", title="Bank thesis")
+        CreateThesisInput(user_id=USER, ticker="VCB", title="Bank thesis")
     )
     await session.flush()
 
@@ -38,7 +38,7 @@ async def test_timeline_created_event_present(session):
 async def test_timeline_ordered_oldest_first(session):
     thesis_svc = ThesisService(session)
     thesis = await thesis_svc.create(
-        USER, CreateThesisInput(ticker="MSN", title="Consumer")
+        CreateThesisInput(user_id=USER, ticker="MSN", title="Consumer")
     )
     await session.flush()
 
@@ -52,7 +52,7 @@ async def test_timeline_ordered_oldest_first(session):
 async def test_timeline_ticker_returned(session):
     thesis_svc = ThesisService(session)
     thesis = await thesis_svc.create(
-        USER, CreateThesisInput(ticker="TCB", title="Bank short")
+        CreateThesisInput(user_id=USER, ticker="TCB", title="Bank short")
     )
     await session.flush()
 

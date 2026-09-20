@@ -41,10 +41,12 @@ def _make_service(
     mock_agent: AsyncMock,
     quote_service: object | None = None,
 ) -> ReviewService:
-    svc = ReviewService.__new__(ReviewService)
+    svc = ReviewService(
+        session=MagicMock(),
+        agent=mock_agent,
+        quote_service=quote_service,
+    )
     svc._repo = mock_repo
-    svc._agent = mock_agent
-    svc._quote_service = quote_service
     return svc
 
 
@@ -89,13 +91,16 @@ async def test_review_thesis_with_assumptions_and_catalysts(mock_repo, mock_agen
     await svc.review_thesis(thesis_id=1, user_id="user-test-001")
 
     call_kwargs = mock_agent.review.call_args.kwargs
+    assumptions = [a["description"] for a in call_kwargs["assumptions_with_ids"]]
+    pending = [c["description"] for c in call_kwargs["catalysts_with_ids"]]
+    triggered = [c["description"] for c in call_kwargs["triggered_catalysts_with_ids"]]
     # INVALID assumption excluded
-    assert "Steel demand grows" in call_kwargs["assumptions"]
-    assert "Export quota stays" not in call_kwargs["assumptions"]
-    # Only TRIGGERED + PENDING catalysts included; EXPIRED excluded
-    assert "Q2 earnings" in call_kwargs["catalysts"]
-    assert "Credit expansion" in call_kwargs["catalysts"]
-    assert "Old catalyst" not in call_kwargs["catalysts"]
+    assert "Steel demand grows" in assumptions
+    assert "Export quota stays" not in assumptions
+    # PENDING -> catalysts_with_ids, TRIGGERED -> triggered_catalysts_with_ids; EXPIRED excluded
+    assert "Q2 earnings" in triggered
+    assert "Credit expansion" in pending
+    assert "Old catalyst" not in pending + triggered
 
 
 @pytest.mark.asyncio

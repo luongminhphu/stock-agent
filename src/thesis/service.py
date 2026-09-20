@@ -105,9 +105,16 @@ class ThesisService:
     # ------------------------------------------------------------------
 
     async def create(
-        self, user_id: str, inp: CreateThesisInput
+        self,
+        inp: CreateThesisInput,
+        user_id: str | None = None,
     ) -> Thesis:
-        resolved = _resolve_user_id(user_id)
+        """Tao thesis moi (kem assumptions/catalysts neu co trong ``inp``).
+
+        ``user_id`` uu tien tham so truyen vao, sau do ``inp.user_id``.
+        Bot va API deu goi qua day; adapter khong tu persist component.
+        """
+        resolved = _resolve_user_id(user_id or inp.user_id)
         target_date = None
         if inp.time_horizon:
             target_date = parse_timeline_to_date(inp.time_horizon)
@@ -128,6 +135,17 @@ class ThesisService:
 
         await self._repo.save(thesis)
         logger.info("thesis.created", thesis_id=thesis.id, ticker=thesis.ticker)
+
+        for desc in inp.assumptions or []:
+            await self._components.add_assumption(
+                thesis.id, AddAssumptionInput(description=desc)
+            )
+        for cat in inp.catalysts or []:
+            cat_inp = cat if isinstance(cat, AddCatalystInput) else AddCatalystInput(description=str(cat))
+            await self._components.add_catalyst(thesis.id, cat_inp)
+
+        if inp.assumptions or inp.catalysts:
+            thesis = await self._get_owned(thesis.id, resolved)  # reload voi components
         return thesis
 
     async def update(

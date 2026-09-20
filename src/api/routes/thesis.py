@@ -38,6 +38,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.ai.agents.suggest_agent import ThesisSuggestAgent
 from src.ai.agents.thesis_debate import ThesisDebateAgent
@@ -54,7 +55,6 @@ from src.api.deps import (
     get_thesis_suggest_agent,
     get_timeline_service,
 )
-from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def _bust_thesis_cache(thesis_id: int, user_id: str, session: AsyncSession) -> None:
@@ -63,8 +63,8 @@ def _bust_thesis_cache(thesis_id: int, user_id: str, session: AsyncSession) -> N
 
 
 from src.api.dto.thesis import (
-    ApplyRecommendationRequest,
     ApplyAiReviewRequest,
+    ApplyRecommendationRequest,
     AssumptionCreateRequest,
     AssumptionListResponse,
     AssumptionResponse,
@@ -201,7 +201,6 @@ async def create_thesis(
     ]
 
     thesis = await svc.create(
-        user_id,
         CreateThesisInput(
             user_id=user_id,
             ticker=body.ticker,
@@ -212,18 +211,10 @@ async def create_thesis(
             target_price=body.target_price,
             stop_loss=body.stop_loss,
             time_horizon=body.time_horizon,
+            assumptions=list(body.assumptions or []),
+            catalysts=catalyst_inputs,
         ),
     )
-
-    # Save assumptions (list[str] → AddAssumptionInput)
-    for desc in (body.assumptions or []):
-        await svc.add_assumption(
-            thesis.id, user_id, AddAssumptionInput(description=desc)
-        )
-
-    # Save catalysts (already mapped to AddCatalystInput above)
-    for cat in catalyst_inputs:
-        await svc.add_catalyst(thesis.id, user_id, cat)
 
     return ThesisResponse.model_validate(thesis)
 

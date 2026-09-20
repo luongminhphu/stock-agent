@@ -1,45 +1,56 @@
-"""Unit + integration tests for readmodel.DashboardService.
+"""Integration tests for readmodel.DashboardService thesis read path.
 
 Uses in-memory SQLite via session fixture (tests/conftest.py).
-No HTTP calls, no AI calls.
-Verifies read queries against real ORM models.
+No HTTP calls, no AI calls (review agent is mocked).
+
+Chỉ test các query chạy được trên SQLite: ``get_theses_list`` /
+``get_thesis_detail``. ``get_stats`` dùng ``func.timezone`` (Postgres-only)
+nên không test ở đây.
 """
 
 from __future__ import annotations
 
 import pytest
 
+from src.readmodel.cache import DashboardTTLCache
 from src.readmodel.dashboard_service import DashboardService
 from src.thesis.service import CreateThesisInput, ThesisService
-from src.watchlist.service import AddToWatchlistInput, WatchlistService
 
 USER = "dash_user"
 
 
-async def test_dashboard_empty_user(session):
+@pytest.fixture(autouse=True)
+def _clear_readmodel_cache():
+    # DashboardService giữ TTL cache module-level → xoá giữa các test.
+    from src.readmodel import dashboard_service as _mod
+
+    cache: DashboardTTLCache = _mod._cache
+    cache.invalidate_all()
+    yield
+    cache.invalidate_all()
+
+
+async def test_theses_list_empty_user(session):
     svc = DashboardService(session)
-    resp = await svc.get_dashboard(user_id=USER)
-    assert resp.user_id == USER
-    assert resp.total_theses == 0
-    assert resp.active_count == 0
-    assert resp.theses == []
-    assert resp.avg_score is None
+    rows = await svc.get_theses_list(user_id=USER, status="all")
+    assert rows == []
 
 
-async def test_dashboard_counts_one_active(session):
+async def test_theses_list_one_active(session):
     thesis_svc = ThesisService(session)
     await thesis_svc.create(CreateThesisInput(user_id=USER, ticker="HPG", title="Steel play"))
     await session.flush()
 
     svc = DashboardService(session)
-    resp = await svc.get_dashboard(user_id=USER)
-    assert resp.total_theses == 1
-    assert resp.active_count == 1
-    assert resp.invalidated_count == 0
-    assert resp.closed_count == 0
+    rows = await svc.get_theses_list(user_id=USER, status="active")
+    assert len(rows) == 1
+    assert rows[0]["ticker"] == "HPG"
+    assert rows[0]["status"] == "active"
+    assert rows[0]["n_assumptions"] == 0
+    assert rows[0]["invalid_assumption_count"] == 0
 
 
-async def test_dashboard_counts_mixed_statuses(session):
+async def test_theses_list_status_filter(session):
     thesis_svc = ThesisService(session)
     await thesis_svc.create(CreateThesisInput(user_id=USER, ticker="VCB", title="Bank"))
     t2 = await thesis_svc.create(CreateThesisInput(user_id=USER, ticker="FPT", title="Tech"))
@@ -50,14 +61,16 @@ async def test_dashboard_counts_mixed_statuses(session):
     await session.flush()
 
     svc = DashboardService(session)
-    resp = await svc.get_dashboard(user_id=USER)
-    assert resp.total_theses == 3
-    assert resp.active_count == 1
-    assert resp.closed_count == 1
-    assert resp.invalidated_count == 1
+    all_rows = await svc.get_theses_list(user_id=USER, status="all")
+    assert len(all_rows) == 3
+    by_status = {r["status"] for r in all_rows}
+    assert by_status == {"active", "closed", "invalidated"}
+
+    active = await svc.get_theses_list(user_id=USER, status="active")
+    assert [r["ticker"] for r in active] == ["VCB"]
 
 
-async def test_dashboard_upside_and_rr_computed(session):
+async def test_theses_list_upside_and_rr_computed(session):
     thesis_svc = ThesisService(session)
     await thesis_svc.create(
         CreateThesisInput(
@@ -72,24 +85,22 @@ async def test_dashboard_upside_and_rr_computed(session):
     await session.flush()
 
     svc = DashboardService(session)
-    resp = await svc.get_dashboard(user_id=USER)
-    row = resp.theses[0]
-    assert row.upside_pct == pytest.approx(50.0)
+    row = (await svc.get_theses_list(user_id=USER))[0]
+    assert row["upside_pct"] == pytest.approx(50.0)
     # R/R = (30k-20k) / (20k-16k) = 10k/4k = 2.5
-    assert row.risk_reward == pytest.approx(2.5)
+    assert row["risk_reward"] == pytest.approx(2.5)
 
 
-async def test_dashboard_no_cross_user_leak(session):
+async def test_theses_list_no_cross_user_leak(session):
     thesis_svc = ThesisService(session)
     await thesis_svc.create(CreateThesisInput(user_id="other_user", ticker="TCB", title="Other"))
     await session.flush()
 
     svc = DashboardService(session)
-    resp = await svc.get_dashboard(user_id=USER)
-    assert resp.total_theses == 0
+    assert await svc.get_theses_list(user_id=USER, status="all") == []
 
 
-async def test_dashboard_last_verdict_populated(session):
+async def test_theses_list_last_verdict_populated(session):
     from src.ai.agents.thesis_review import ThesisReviewAgent
     from src.thesis.review_service import ReviewService
     from tests.ai.conftest import MockPerplexityClient
@@ -114,54 +125,29 @@ async def test_dashboard_last_verdict_populated(session):
     await session.flush()
 
     svc = DashboardService(session)
-    resp = await svc.get_dashboard(user_id=USER)
-    row = resp.theses[0]
-    assert row.last_verdict is not None
-    assert "BULLISH" in row.last_verdict
+    row = (await svc.get_theses_list(user_id=USER))[0]
+    assert row["last_verdict"] is not None
+    assert "bullish" in row["last_verdict"].lower()
+    assert row["last_confidence"] == pytest.approx(0.9)
 
 
-async def test_watchlist_snapshot_empty(session):
-    svc = DashboardService(session)
-    rows = await svc.get_watchlist_snapshot(user_id=USER)
-    assert rows == []
-
-
-async def test_watchlist_snapshot_returns_items(session):
-    wl_svc = WatchlistService(session)
-    await wl_svc.add(AddToWatchlistInput(user_id=USER, ticker="HPG"))
-    await wl_svc.add(AddToWatchlistInput(user_id=USER, ticker="VCB"))
-    await session.flush()
-
-    svc = DashboardService(session)
-    rows = await svc.get_watchlist_snapshot(user_id=USER)
-    tickers = [r.ticker for r in rows]
-    assert "HPG" in tickers
-    assert "VCB" in tickers
-
-
-async def test_watchlist_snapshot_joins_thesis(session):
+async def test_thesis_detail_includes_components(session):
     thesis_svc = ThesisService(session)
     thesis = await thesis_svc.create(
-        CreateThesisInput(user_id=USER, ticker="FPT", title="Tech long")
+        CreateThesisInput(
+            user_id=USER,
+            ticker="SSI",
+            title="Broker",
+            assumptions=["Thanh khoản tăng"],
+            catalysts=["KRX go-live"],
+        )
     )
     await session.flush()
 
-    wl_svc = WatchlistService(session)
-    await wl_svc.add(AddToWatchlistInput(user_id=USER, ticker="FPT", thesis_id=thesis.id))
-    await session.flush()
-
     svc = DashboardService(session)
-    rows = await svc.get_watchlist_snapshot(user_id=USER)
-    fpt = next(r for r in rows if r.ticker == "FPT")
-    assert fpt.thesis_title == "Tech long"
-    assert fpt.thesis_status == "active"
-
-
-async def test_watchlist_snapshot_no_cross_user_leak(session):
-    wl_svc = WatchlistService(session)
-    await wl_svc.add(AddToWatchlistInput(user_id="other", ticker="NVL"))
-    await session.flush()
-
-    svc = DashboardService(session)
-    rows = await svc.get_watchlist_snapshot(user_id=USER)
-    assert all(r.ticker != "NVL" for r in rows)
+    detail = await svc.get_thesis_detail(user_id=USER, thesis_id=thesis.id)
+    assert detail is not None
+    assert [a["description"] for a in detail["assumptions"]] == ["Thanh khoản tăng"]
+    assert [c["description"] for c in detail["catalysts"]] == ["KRX go-live"]
+    # Ownership guard
+    assert await svc.get_thesis_detail(user_id="other_user", thesis_id=thesis.id) is None
