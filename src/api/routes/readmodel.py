@@ -110,6 +110,19 @@ async def get_stats(user_id: UserId, session: DbSession) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# 1b. Accuracy — AI nói gì / tôi làm gì / kết quả (Wave E3c, feedback ledger)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/dashboard/accuracy")
+@router.get("/dashboard/{user_id}/accuracy")
+async def get_accuracy(user_id: UserId, session: DbSession, days: int = 30) -> dict[str, Any]:
+    from src.readmodel.accuracy_projection import AccuracyProjection
+
+    return await AccuracyProjection(session).get(user_id, days=days)
+
+
+# ---------------------------------------------------------------------------
 # 2. Theses list — enriched with live price + avg_cost from positions
 # ---------------------------------------------------------------------------
 

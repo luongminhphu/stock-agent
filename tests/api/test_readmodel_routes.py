@@ -136,3 +136,13 @@ async def test_timeline_returns_created_event(bootstrapped_client, session):
 async def test_timeline_not_found_404(bootstrapped_client):
     r = await bootstrapped_client.get("/api/v1/readmodel/thesis/999/timeline")
     assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_accuracy_route_returns_projection(bootstrapped_client):
+    """Wave E3c — GET /readmodel/dashboard/{user}/accuracy."""
+    r = await bootstrapped_client.get(f"/api/v1/readmodel/dashboard/{USER}/accuracy?days=14")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["days"] == 14
+    assert set(body["by_source"]) == {"core", "briefing", "pretrade"}
