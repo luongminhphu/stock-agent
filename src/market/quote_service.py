@@ -273,65 +273,43 @@ class _QuoteCache:
 
 
 async def _persist_quotes_to_db(session_factory: Any, quotes: list["Quote"]) -> None:
-    """Upsert a batch of quotes into market_quote_cache. Fire-and-forget — never raises."""
-    if session_factory is None or not quotes:
+    """Upsert a batch of quotes into market_quote_cache qua platform.db.upsert_rows.
+
+    Fire-and-forget — never raises. upsert_rows sort theo ticker để mọi writer đồng
+    thời (api, bot) lock row cùng thứ tự → tránh deadlock PostgreSQL.
+    """
+    if not quotes:
         return
-    try:
-        from sqlalchemy.dialects.postgresql import insert as pg_insert
+    from src.market.models import MarketQuoteCache
+    from src.platform.db import upsert_rows
 
-        from src.readmodel.models import MarketQuoteCache
-
-        now = datetime.now(UTC)
-        rows = [
-            {
-                "ticker": q.ticker.upper(),
-                "price": q.price,
-                "change": q.change,
-                "change_pct": q.change_pct,
-                "volume": q.volume,
-                "value": q.value,
-                "open": q.open,
-                "high": q.high,
-                "low": q.low,
-                "ref_price": q.ref_price,
-                "ceiling": q.ceiling,
-                "floor": q.floor,
-                "quote_ts": q.timestamp,
-                "saved_at": now,
-            }
-            for q in quotes
-        ]
-        # Deadlock guard: sort theo ticker để mọi concurrent writer (api, bot)
-        # lock các row theo CÙNG thứ tự. Không sort → 2 batch upsert chéo
-        # thứ tự → PostgreSQL deadlock (ShareLock) → rollback cả batch.
-        rows.sort(key=lambda r: r["ticker"])
-        async with session_factory() as session:
-            stmt = (
-                pg_insert(MarketQuoteCache)
-                .values(rows)
-                .on_conflict_do_update(
-                    index_elements=["ticker"],
-                    set_={
-                        "price": pg_insert(MarketQuoteCache).excluded.price,
-                        "change": pg_insert(MarketQuoteCache).excluded.change,
-                        "change_pct": pg_insert(MarketQuoteCache).excluded.change_pct,
-                        "volume": pg_insert(MarketQuoteCache).excluded.volume,
-                        "value": pg_insert(MarketQuoteCache).excluded.value,
-                        "open": pg_insert(MarketQuoteCache).excluded.open,
-                        "high": pg_insert(MarketQuoteCache).excluded.high,
-                        "low": pg_insert(MarketQuoteCache).excluded.low,
-                        "ref_price": pg_insert(MarketQuoteCache).excluded.ref_price,
-                        "ceiling": pg_insert(MarketQuoteCache).excluded.ceiling,
-                        "floor": pg_insert(MarketQuoteCache).excluded.floor,
-                        "quote_ts": pg_insert(MarketQuoteCache).excluded.quote_ts,
-                        "saved_at": pg_insert(MarketQuoteCache).excluded.saved_at,
-                    },
-                )
-            )
-            await session.execute(stmt)
-            await session.commit()
-    except Exception as exc:
-        _log.warning("quote_service.persist_cache_failed", error=str(exc))
+    now = datetime.now(UTC)
+    rows = [
+        {
+            "ticker": q.ticker.upper(),
+            "price": q.price,
+            "change": q.change,
+            "change_pct": q.change_pct,
+            "volume": q.volume,
+            "value": q.value,
+            "open": q.open,
+            "high": q.high,
+            "low": q.low,
+            "ref_price": q.ref_price,
+            "ceiling": q.ceiling,
+            "floor": q.floor,
+            "quote_ts": q.timestamp,
+            "saved_at": now,
+        }
+        for q in quotes
+    ]
+    await upsert_rows(
+        session_factory,
+        MarketQuoteCache,
+        rows,
+        conflict_columns=["ticker"],
+        log_event="quote_service.persist_cache_failed",
+    )
 
 
 async def _load_quotes_from_db(session_factory: Any) -> list["Quote"]:
@@ -344,7 +322,7 @@ async def _load_quotes_from_db(session_factory: Any) -> list["Quote"]:
     try:
         from sqlalchemy import select
 
-        from src.readmodel.models import MarketQuoteCache
+        from src.market.models import MarketQuoteCache
 
         async with session_factory() as session:
             rows = (await session.execute(select(MarketQuoteCache))).scalars().all()

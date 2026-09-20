@@ -3,11 +3,12 @@
 Owner: readmodel segment.
 
 Tables:
-    trend_snapshots         — TrendSnapshotStore (market/readmodel)
-    trend_predictions       — readmodel.TrendPredictionStore
     intelligence_snapshots  — IntelligenceSnapshotStore
     global_risk_snapshots   — GlobalRiskStore
     daily_agendas           — AgendaCache (briefing)
+
+Wave E1a: ``market_quote_cache``, ``trend_snapshots``, ``trend_predictions`` chuyển
+sang ``src/market/models.py`` (owner market). Re-export bên dưới giữ tương thích 1 wave.
 
 Tất cả các bảng đều dùng upsert pattern (ON CONFLICT DO UPDATE)
 để keep it simple — mỗi symbol/user chỉ có 1 row hiện tại.
@@ -18,10 +19,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from sqlalchemy import (
-    BigInteger,
     Date,
     DateTime,
-    Float,
     String,
     Text,
     UniqueConstraint,
@@ -29,65 +28,6 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.platform.db import Base
-
-
-class TrendSnapshot(Base):
-    """Persisted TechnicalSignalBundle per symbol — TrendSnapshotStore Wave 2.
-
-    Survives bot restarts so TrendShiftDetector always has a baseline to compare
-    against instead of treating every post-restart cycle as cold start.
-
-    PK: symbol (one row per symbol, upserted on every save()).
-    """
-
-    __tablename__ = "trend_snapshots"
-
-    symbol: Mapped[str] = mapped_column(String(20), primary_key=True)
-    bundle_json: Mapped[str] = mapped_column(
-        Text,
-        nullable=False,
-        comment="JSON: TechnicalSignalBundle.model_dump()",
-    )
-    saved_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(UTC),
-    )
-
-
-class TrendPrediction(Base):
-    """Persisted TrendPrediction per symbol — readmodel.TrendPredictionStore Wave 2.
-
-    Allows briefing, bot /trend, and API /trend to serve the last known
-    prediction after a restart without re-running the AI engine.
-
-    expires_at: prediction is treated as absent after this timestamp (4h TTL).
-    """
-
-    __tablename__ = "trend_predictions"
-
-    symbol: Mapped[str] = mapped_column(String(20), primary_key=True)
-    verdict: Mapped[str] = mapped_column(
-        String(32),
-        nullable=False,
-        comment="STRONG_BUY | BUY | WATCH | HOLD | REDUCE | STRONG_SELL",
-    )
-    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    reasoning_json: Mapped[str | None] = mapped_column(
-        Text,
-        nullable=True,
-        comment="JSON: full TrendPrediction.model_dump() for warm restore",
-    )
-    predicted_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(UTC),
-    )
-    expires_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        comment="predicted_at + 4h — filter on load to skip stale predictions",
-    )
 
 
 class IntelligenceSnapshot(Base):
@@ -188,43 +128,18 @@ class DailyAgenda(Base):
     )
 
 
-class MarketQuoteCache(Base):
-    """Persisted last-known quote per ticker — QuoteService warm-load on restart.
+# ── Wave E1a compat re-export (xoá ở wave sau) ───────────────────────────────
+from src.market.models import (  # noqa: E402
+    MarketQuoteCache,
+    TrendPrediction,
+    TrendSnapshot,
+)
 
-    Owner: readmodel segment (market segment writes via QuoteService).
-    Strategy: upsert — 1 row per ticker, always the most recent successful fetch.
-
-    Used by QuoteService to warm _last_known from DB on startup so the dashboard
-    does not show N/A after a process restart outside trading hours.
-    """
-
-    __tablename__ = "market_quote_cache"
-
-    ticker: Mapped[str] = mapped_column(String(20), primary_key=True)
-    price: Mapped[float] = mapped_column(Float, nullable=False)
-    change: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    change_pct: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    volume: Mapped[int] = mapped_column(
-        # BigInt để tránh overflow với CP ngàn tỷ
-        BigInteger,
-        nullable=False,
-        default=0,
-    )
-    value: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    open: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    high: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    low: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    ref_price: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    ceiling: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    floor: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    quote_ts: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        comment="Timestamp of the original quote from adapter",
-    )
-    saved_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(UTC),
-        comment="Last time this row was upserted",
-    )
+__all__ = [
+    "DailyAgenda",
+    "GlobalRiskSnapshot",
+    "IntelligenceSnapshot",
+    "MarketQuoteCache",
+    "TrendPrediction",
+    "TrendSnapshot",
+]

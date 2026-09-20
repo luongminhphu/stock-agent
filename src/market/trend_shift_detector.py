@@ -16,7 +16,7 @@ Boundary (hard rules):
   - NEVER imports portfolio.repository directly — receives symbols as a
     plain list[str] from the caller (bot scheduler via portfolio service).
   - Publishes TrendShiftEvent to EventBus; never calls Discord directly.
-  - Reads/writes TrendSnapshotStore (readmodel public API) — not raw DB.
+  - Reads/writes TrendSnapshotStore (market.trend_snapshot_store) — not raw DB.
 
 Shift classification:
   MAJOR:  regime changed AND composite crossed the 0.4/0.6 threshold boundary
@@ -46,7 +46,7 @@ from src.platform.logging import get_logger
 
 if TYPE_CHECKING:
     from src.market.trend_engine import TechnicalSignalBundle, TrendEngine
-    from src.readmodel.trend_snapshot_store import TrendSnapshotStore
+    from src.market.trend_snapshot_store import TrendSnapshotStore
 
 logger = get_logger(__name__)
 
