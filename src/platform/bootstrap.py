@@ -179,8 +179,8 @@ async def bootstrap() -> None:
         logger.info("platform.bootstrap.pnl_service_ready")
 
     if container.investor_profile_service is None:
+        from src.ai.memory.investor_profile import InvestorProfileService
         from src.platform.config import settings
-        from src.platform.investor_profile import InvestorProfileService
 
         user_id = getattr(settings, "scheduler_user_id", None)
         if user_id:

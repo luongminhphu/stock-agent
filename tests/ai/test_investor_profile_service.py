@@ -22,7 +22,7 @@ import datetime
 
 import pytest
 
-from src.platform.investor_profile import (
+from src.ai.memory.investor_profile import (
     InvestorContext,
     InvestorProfileService,
     StaticProfile,

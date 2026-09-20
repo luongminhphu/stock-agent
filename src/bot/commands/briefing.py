@@ -131,7 +131,7 @@ class BriefingCog(BaseCog):
         try:
             async with self.db_session() as session:
                 # Lazy imports — session-scoped services, not singletons
-                from src.platform.investor_profile import InvestorProfileService
+                from src.ai.memory.investor_profile import InvestorProfileService
                 from src.readmodel.dashboard_service import DashboardService
                 from src.thesis.service import ThesisService
 

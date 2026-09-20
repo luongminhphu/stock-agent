@@ -4,7 +4,7 @@ Owner: ai segment.
 Callers: ai/agents/*.py only.
 
 Builds an InvestorContext from:
-  - platform.investor_profile (static profile + risk settings)
+  - ai.memory.investor_profile (static profile + risk settings)
   - thesis segment (ThesisHealthSnapshot — typed, urgency-aware)  ← V3 upgrade
   - thesis.lesson_service (recent decision lessons)
   - portfolio segment (portfolio bias — sector exposure, P&L tilt)
@@ -91,7 +91,7 @@ _SYNTHESIS_COOLDOWN_MINUTES = 60  # kept as named constant for clarity
 class InvestorContext:
     """Assembled investor context — passed to render_for_agent()."""
 
-    # From platform.investor_profile
+    # From ai.memory.investor_profile
     risk_appetite: str = ""
     avoid_list: list[str] = field(default_factory=list)
     preferred_sectors: list[str] = field(default_factory=list)
@@ -197,7 +197,7 @@ class ContextBuilder:
         public method that returns a ContextBuilder-compatible dict.
         """
         try:
-            from src.platform.investor_profile import InvestorProfileService
+            from src.ai.memory.investor_profile import InvestorProfileService
 
             svc = InvestorProfileService(self._session)
             profile = await svc.get_profile(user_id=user_id)

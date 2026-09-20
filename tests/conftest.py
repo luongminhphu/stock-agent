@@ -28,13 +28,14 @@ os.environ.setdefault("OWNER_USER_ID", "user-test-001")
 import pytest  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker  # noqa: E402
 
+import src.ai.memory.investor_profile  # noqa: E402,F401
+
 # Import every ORM model module so Base.metadata knows all tables.
 import src.ai.memory.models  # noqa: E402,F401
 import src.ai.memory.user_behavior_log  # noqa: E402,F401
 import src.briefing.models  # noqa: E402,F401
 import src.core.evolution  # noqa: E402,F401
 import src.core.models  # noqa: E402,F401
-import src.platform.investor_profile  # noqa: E402,F401
 import src.portfolio.models  # noqa: E402,F401
 import src.readmodel.models  # noqa: E402,F401
 import src.thesis.models  # noqa: E402,F401
