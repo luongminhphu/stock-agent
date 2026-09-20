@@ -8,8 +8,9 @@ from datetime import UTC, date, datetime
 import pytest
 from sqlalchemy import select
 
+from src.briefing.models import DailyAgenda
+from src.market.models import MarketQuoteCache, TrendSnapshot
 from src.platform.db import AsyncSessionLocal, upsert_rows
-from src.readmodel.models import DailyAgenda, MarketQuoteCache, TrendSnapshot
 
 
 @pytest.mark.anyio

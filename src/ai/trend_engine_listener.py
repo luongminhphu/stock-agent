@@ -40,7 +40,7 @@ from src.platform.logging import get_logger
 if TYPE_CHECKING:
     from src.ai.agents.trend_reasoning import TrendReasoningAgent
     from src.market.trend_engine import TrendEngine
-    from src.readmodel.trend_prediction_store import TrendPredictionStore
+    from src.market.trend_prediction_store import TrendPredictionStore
 
 logger = get_logger(__name__)
 

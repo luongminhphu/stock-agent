@@ -34,16 +34,16 @@ async def test_trend_prediction_persist_and_warm_load() -> None:
     assert store.get_confidence("VNM") == pytest.approx(0.8)
 
 
-def test_readmodel_shims_reexport_market_classes() -> None:
-    from src.market import models as mm
-    from src.readmodel import trend_prediction_store as rp
-    from src.readmodel import trend_snapshot_store as rs
-    from src.readmodel.models import MarketQuoteCache, TrendPrediction, TrendSnapshot
+def test_readmodel_shims_removed() -> None:
+    """Wave F2: readmodel không còn re-export ORM/store của market."""
+    import importlib
 
-    assert rs.TrendSnapshotStore is TrendSnapshotStore
-    assert rp.TrendPredictionStore is TrendPredictionStore
-    assert (TrendSnapshot, TrendPrediction, MarketQuoteCache) == (
-        mm.TrendSnapshot,
-        mm.TrendPrediction,
-        mm.MarketQuoteCache,
-    )
+    for mod in (
+        "src.readmodel.models",
+        "src.readmodel.trend_prediction_store",
+        "src.readmodel.trend_snapshot_store",
+    ):
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module(mod)
+    assert TrendSnapshotStore.__module__ == "src.market.trend_snapshot_store"
+    assert TrendPredictionStore.__module__ == "src.market.trend_prediction_store"

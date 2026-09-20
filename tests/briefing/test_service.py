@@ -258,9 +258,8 @@ async def test_persist_agenda_roundtrip_via_briefing_model() -> None:
     from src.briefing.agenda_cache import load_today_agendas_from_db, persist_agenda
     from src.briefing.models import DailyAgenda
     from src.platform.db import AsyncSessionLocal
-    from src.readmodel import models as rm
 
-    assert rm.DailyAgenda is DailyAgenda and DailyAgenda.__module__ == "src.briefing.models"
+    assert DailyAgenda.__module__ == "src.briefing.models"
 
     buckets = AgendaBuckets(decide=["HPG"], watch=["VNM"], defer=[])
     await persist_agenda(AsyncSessionLocal, "u1", "agenda v1", buckets)

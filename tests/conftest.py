@@ -36,8 +36,8 @@ import src.ai.memory.user_behavior_log  # noqa: E402,F401
 import src.briefing.models  # noqa: E402,F401
 import src.core.evolution  # noqa: E402,F401
 import src.core.models  # noqa: E402,F401
+import src.market.models  # noqa: E402,F401
 import src.portfolio.models  # noqa: E402,F401
-import src.readmodel.models  # noqa: E402,F401
 import src.thesis.models  # noqa: E402,F401
 import src.watchlist.models  # noqa: E402,F401
 from src.platform.db import Base  # noqa: E402

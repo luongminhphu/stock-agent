@@ -26,6 +26,7 @@ def test_getters_delegate_to_container(monkeypatch: pytest.MonkeyPatch) -> None:
     sentinel = object()
     monkeypatch.setattr(_bs.container, "ticker_context_service", sentinel)
     assert _bs.get_ticker_context_service() is sentinel
-    assert _bs._ticker_context_service is sentinel  # compat đọc qua module __getattr__
+    assert _bs.container.ticker_context_service is sentinel
+    assert not hasattr(_bs, "_ticker_context_service")  # F2: compat __getattr__ đã gỡ
     with pytest.raises(AttributeError):
         _ = _bs._khong_ton_tai

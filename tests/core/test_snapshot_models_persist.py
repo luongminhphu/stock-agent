@@ -36,9 +36,6 @@ async def test_intelligence_snapshot_persist_and_load() -> None:
     assert list(rows) == ["u1"] and rows["u1"]["trigger_source"] == "manual"
 
 
-def test_readmodel_reexports_core_models() -> None:
-    from src.readmodel import models as rm
-
-    assert rm.GlobalRiskSnapshot is GlobalRiskSnapshot
-    assert rm.IntelligenceSnapshot is IntelligenceSnapshot
+def test_core_owns_snapshot_models() -> None:
+    assert GlobalRiskSnapshot.__module__ == "src.core.models"
     assert IntelligenceSnapshot.__module__ == "src.core.models"

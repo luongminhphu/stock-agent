@@ -269,16 +269,16 @@ async def bootstrap() -> None:
 
     # ── Wave D.1: TrendSnapshotStore (readmodel) — persisted baseline ──────────
     if container.trend_snapshot_store is None:
+        from src.market.trend_snapshot_store import TrendSnapshotStore
         from src.platform.db import AsyncSessionLocal
-        from src.readmodel.trend_snapshot_store import TrendSnapshotStore
 
         container.trend_snapshot_store = TrendSnapshotStore(session_factory=AsyncSessionLocal)
         logger.info("platform.bootstrap.trend_snapshot_store_ready")
 
     # ── Trend Prediction: TrendPredictionStore (readmodel) ──────────────────
     if container.trend_prediction_store is None:
+        from src.market.trend_prediction_store import TrendPredictionStore
         from src.platform.db import AsyncSessionLocal
-        from src.readmodel.trend_prediction_store import TrendPredictionStore
 
         container.trend_prediction_store = TrendPredictionStore(
             session_factory=AsyncSessionLocal,
@@ -890,10 +890,3 @@ def reset_singletons() -> None:
     from src.platform.event_bus import reset_event_bus
 
     reset_event_bus()
-
-
-def __getattr__(name: str) -> object:
-    """Compat 1 wave: ``bootstrap._quote_service`` → ``container.quote_service`` (chỉ đọc)."""
-    if name.startswith("_") and name[1:] in container.field_names:
-        return getattr(container, name[1:])
-    raise AttributeError(name)

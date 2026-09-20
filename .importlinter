@@ -49,7 +49,6 @@ forbidden_modules =
     src.thesis.models
     src.watchlist.models
     src.briefing.models
-    src.readmodel.models
     src.portfolio.models
     src.core.models
 

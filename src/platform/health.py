@@ -51,18 +51,13 @@ async def check_readiness() -> HealthReport:
 
     # 2. Bootstrap singletons initialised?
     try:
-        import src.platform.bootstrap as _bs
+        from src.platform.bootstrap import container
 
-        checks["quote_service"] = (
-            HealthStatus.OK if _bs._quote_service is not None else HealthStatus.DOWN
-        )
-        checks["ai_client"] = HealthStatus.OK if _bs._ai_client is not None else HealthStatus.DOWN
-        checks["thesis_review_agent"] = (
-            HealthStatus.OK if _bs._thesis_review_agent is not None else HealthStatus.DOWN
-        )
-        checks["briefing_agent"] = (
-            HealthStatus.OK if _bs._briefing_agent is not None else HealthStatus.DOWN
-        )
+        # F2: đọc trực tiếp AppContainer thay vì bootstrap._x (compat __getattr__ đã gỡ).
+        for name in ("quote_service", "ai_client", "thesis_review_agent", "briefing_agent"):
+            checks[name] = (
+                HealthStatus.OK if getattr(container, name) is not None else HealthStatus.DOWN
+            )
     except Exception as exc:
         logger.error("health.bootstrap_check_failed", error=str(exc))
         checks["bootstrap"] = HealthStatus.DOWN
