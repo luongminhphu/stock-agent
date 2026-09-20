@@ -8,7 +8,8 @@ Public API:
     get_db_session()      — async generator for FastAPI DI / context managers
     configure_logging()   — call once at startup
     get_logger()          — get a named structlog logger
-    bootstrap()           — async startup routine (logging + future: migrations)
+    bootstrap             — submodule: `from src.platform.bootstrap import bootstrap`
+                            (khong re-export function de tranh shadow submodule)
     check_health()        — async health probe
 
     --- Event Bus ---
@@ -19,7 +20,6 @@ Public API:
     All typed events from src.platform.events (30 event classes)
 """
 
-from src.platform.bootstrap import bootstrap
 from src.platform.config import get_settings, settings
 from src.platform.db import AsyncSessionLocal, Base, get_db_session
 from src.platform.event_bus import EventBus, get_event_bus, reset_event_bus
@@ -61,7 +61,6 @@ from src.platform.logging import configure_logging, get_logger
 
 __all__ = [
     # infra
-    "bootstrap",
     "get_settings",
     "settings",
     "AsyncSessionLocal",

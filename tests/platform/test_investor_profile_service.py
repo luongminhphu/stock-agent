@@ -91,14 +91,13 @@ async def _make_position(session, sector: str, market_value: float):
     """Insert an open Position row."""
     from src.portfolio.models import Position
 
+    # Position không có market_value/is_open làm cột — exposure = qty * avg_cost.
     p = Position(
         user_id=USER_ID,
         ticker="VCB",
         sector=sector,
-        quantity=100,
+        qty=100,
         avg_cost=market_value / 100,
-        market_value=market_value,
-        is_open=True,
     )
     session.add(p)
     await session.flush()
@@ -143,9 +142,9 @@ class TestBuildSnapshotTheses:
 
 class TestBuildSnapshotDecisions:
     async def test_win_rate_all_correct(self, session):
-        await _make_decision(session, "correct", days_ago=2)
-        await _make_decision(session, "correct", days_ago=5)
-        await _make_decision(session, "correct", days_ago=10)
+        await _make_decision(session, "CORRECT", days_ago=2)
+        await _make_decision(session, "CORRECT", days_ago=5)
+        await _make_decision(session, "CORRECT", days_ago=10)
 
         svc = InvestorProfileService(session)
         snapshot = await svc.build_snapshot(user_id=USER_ID)
@@ -153,10 +152,10 @@ class TestBuildSnapshotDecisions:
         assert snapshot.win_rate_30d == pytest.approx(100.0)
 
     async def test_win_rate_mixed(self, session):
-        await _make_decision(session, "correct", days_ago=3)
-        await _make_decision(session, "incorrect", days_ago=6)
-        await _make_decision(session, "incorrect", days_ago=10)
-        await _make_decision(session, "correct", days_ago=15)
+        await _make_decision(session, "CORRECT", days_ago=3)
+        await _make_decision(session, "INCORRECT", days_ago=6)
+        await _make_decision(session, "INCORRECT", days_ago=10)
+        await _make_decision(session, "CORRECT", days_ago=15)
 
         svc = InvestorProfileService(session)
         snapshot = await svc.build_snapshot(user_id=USER_ID)
@@ -165,8 +164,8 @@ class TestBuildSnapshotDecisions:
 
     async def test_old_decisions_excluded_from_win_rate(self, session):
         # > 30 days old — should NOT count toward win rate
-        await _make_decision(session, "correct", days_ago=35)
-        await _make_decision(session, "correct", days_ago=40)
+        await _make_decision(session, "CORRECT", days_ago=35)
+        await _make_decision(session, "CORRECT", days_ago=40)
 
         svc = InvestorProfileService(session)
         snapshot = await svc.build_snapshot(user_id=USER_ID)
@@ -174,9 +173,9 @@ class TestBuildSnapshotDecisions:
         assert snapshot.win_rate_30d == 0.0  # nothing in last 30d
 
     async def test_top_lessons_populated(self, session):
-        await _make_decision(session, "correct", key_lesson="Lesson A", days_ago=1)
-        await _make_decision(session, "incorrect", key_lesson="Lesson B", days_ago=2)
-        await _make_decision(session, "correct", key_lesson="", days_ago=3)  # no lesson
+        await _make_decision(session, "CORRECT", key_lesson="Lesson A", days_ago=1)
+        await _make_decision(session, "INCORRECT", key_lesson="Lesson B", days_ago=2)
+        await _make_decision(session, "CORRECT", key_lesson="", days_ago=3)  # no lesson
 
         svc = InvestorProfileService(session)
         snapshot = await svc.build_snapshot(user_id=USER_ID)
@@ -187,8 +186,8 @@ class TestBuildSnapshotDecisions:
         assert len(lessons) == 2
 
     async def test_behavioral_patterns_populated(self, session):
-        await _make_decision(session, "incorrect", pattern="FOMO buy at resistance", days_ago=3)
-        await _make_decision(session, "incorrect", pattern="Sell too early", days_ago=5)
+        await _make_decision(session, "INCORRECT", pattern="FOMO buy at resistance", days_ago=3)
+        await _make_decision(session, "INCORRECT", pattern="Sell too early", days_ago=5)
 
         svc = InvestorProfileService(session)
         snapshot = await svc.build_snapshot(user_id=USER_ID)
@@ -274,7 +273,7 @@ class TestToPromptBlock:
 
     async def test_prompt_block_includes_snapshot_metrics(self, session):
         """When snapshot exists, metrics appear in to_prompt_block()."""
-        await _make_decision(session, "correct", key_lesson="Không FOMO", days_ago=3)
+        await _make_decision(session, "CORRECT", key_lesson="Không FOMO", days_ago=3)
         await _make_thesis(session, "VCB", "active")
 
         svc = InvestorProfileService(session)

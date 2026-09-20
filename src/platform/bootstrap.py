@@ -130,12 +130,25 @@ async def bootstrap() -> None:
     # Always runs on first bootstrap — idempotent within TTL window.
     # Runs after quote_service so session_factory is safely importable.
     from src.market.registry import registry as _symbol_registry
+    from src.platform.config import get_settings as _get_settings
     from src.platform.db import AsyncSessionLocal as _AsyncSessionLocal
-    await _symbol_registry.initialize(session_factory=_AsyncSessionLocal)
-    logger.info(
-        "platform.bootstrap.symbol_registry_ready",
-        size=_symbol_registry.size(),
-    )
+
+    _reg_settings = _get_settings()
+    if _reg_settings.is_test or _reg_settings.mock_market:
+        # Test / mock mode: khong goi vnstock (HTTP ~30s khi khong co mang);
+        # registry chay tren _STATIC_SEED — du cho HPG/VCB/VNM/... trong tests.
+        logger.info(
+            "platform.bootstrap.symbol_registry_static_only",
+            size=_symbol_registry.size(),
+            environment=_reg_settings.environment,
+            mock_market=_reg_settings.mock_market,
+        )
+    else:
+        await _symbol_registry.initialize(session_factory=_AsyncSessionLocal)
+        logger.info(
+            "platform.bootstrap.symbol_registry_ready",
+            size=_symbol_registry.size(),
+        )
 
     if _ohlcv_service is None:
         from src.market.adapters.vci_ohlcv import VCIOHLCVAdapter
@@ -920,3 +933,72 @@ def get_trend_snapshot_store():
     if _trend_snapshot_store is None:
         raise RuntimeError("bootstrap() has not been called")
     return _trend_snapshot_store
+
+
+# ---------------------------------------------------------------------------
+# Test hook — reset toan bo singleton ve None (chi dung trong tests)
+# ---------------------------------------------------------------------------
+
+_SINGLETON_NAMES: tuple[str, ...] = (
+    "_quote_service",
+    "_ohlcv_service",
+    "_market_regime_service",
+    "_ai_client",
+    "_thesis_review_agent",
+    "_thesis_debate_agent",
+    "_thesis_suggest_agent",
+    "_briefing_agent",
+    "_why_agent",
+    "_pretrade_agent",
+    "_stress_test_agent",
+    "_replay_agent",
+    "_snapshot_scheduler",
+    "_sector_rotation_agent",
+    "_investor_profile_service",
+    "_memory_consolidator",
+    "_proactive_alert_agent",
+    "_thesis_review_listener",
+    "_signal_review_trigger_listener",
+    "_briefing_listener",
+    "_stress_test_subscriber",
+    "_opportunity_screen_scheduler",
+    "_opportunity_screen_subscriber",
+    "_opportunity_analysis_handler",
+    "_proactive_discovery_service",
+    "_signal_engine_agent",
+    "_signal_engine_listener",
+    "_agenda_builder_agent",
+    "_agenda_service_factory",
+    "_trend_reasoning_agent",
+    "_trend_prediction_store",
+    "_trend_engine_listener",
+    "_post_mortem_service",
+    "_memory_injection_listener",
+    "_intelligence_engine_listener",
+    "_intelligence_engine_subscriber",
+    "_engine_feedback_listener",
+    "_user_action_listener",
+    "_recent_reviews_store",
+    "_portfolio_query_adapter",
+    "_global_risk_subscriber",
+    "_intelligence_snapshot_subscriber",
+    "_portfolio_snapshot_listener",
+    "_trend_snapshot_store",
+    "_proactive_watch_listener",
+    "_pnl_service_class",
+    "_session_factory",
+)
+
+
+def reset_singletons() -> None:
+    """Reset all bootstrap singletons to ``None`` so ``bootstrap()`` re-wires from scratch.
+
+    Tests only. Also resets the global EventBus so listeners registered by a
+    previous ``bootstrap()`` do not leak across tests.
+    """
+    g = globals()
+    for name in _SINGLETON_NAMES:
+        g[name] = None
+    from src.platform.event_bus import reset_event_bus
+
+    reset_event_bus()

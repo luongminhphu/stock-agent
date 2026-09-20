@@ -40,7 +40,7 @@ async def test_readiness_db_ok_before_bootstrap():
     assert report.checks["database"] == HealthStatus.OK
     # Singletons not yet initialised
     assert report.checks["quote_service"] == HealthStatus.DOWN
-    assert report.checks["perplexity_client"] == HealthStatus.DOWN
+    assert report.checks["ai_client"] == HealthStatus.DOWN
     assert report.checks["thesis_review_agent"] == HealthStatus.DOWN
     assert report.checks["briefing_agent"] == HealthStatus.DOWN
     assert report.status == HealthStatus.DEGRADED
@@ -54,7 +54,7 @@ async def test_readiness_all_ok_after_bootstrap():
 
     assert report.checks["database"] == HealthStatus.OK
     assert report.checks["quote_service"] == HealthStatus.OK
-    assert report.checks["perplexity_client"] == HealthStatus.OK
+    assert report.checks["ai_client"] == HealthStatus.OK
     assert report.checks["thesis_review_agent"] == HealthStatus.OK
     assert report.checks["briefing_agent"] == HealthStatus.OK
     assert report.status == HealthStatus.OK

@@ -373,7 +373,7 @@ class InvestorProfileService:
             # Win rate (last 30 days, evaluated decisions only)
             recent_evaluated = [
                 d for d in decisions
-                if d.decision_at and d.decision_at >= cutoff_30d
+                if d.decision_at and _as_utc(d.decision_at) >= cutoff_30d
                 and d.outcome_verdict is not None
             ]
             if recent_evaluated:
@@ -392,9 +392,9 @@ class InvestorProfileService:
             ][:10]
             if closed:
                 holds = [
-                    (d.outcome_evaluated_at - d.decision_at).days
+                    (_as_utc(d.outcome_evaluated_at) - _as_utc(d.decision_at)).days
                     for d in closed
-                    if (d.outcome_evaluated_at - d.decision_at).days >= 0
+                    if (_as_utc(d.outcome_evaluated_at) - _as_utc(d.decision_at)).days >= 0
                 ]
                 avg_hold = sum(holds) / len(holds) if holds else 0.0
             else:
@@ -435,7 +435,9 @@ class InvestorProfileService:
             total_value = 0.0
             for pos in positions:
                 sector = getattr(pos, "sector", None) or "Unknown"
-                value = float(getattr(pos, "market_value", 0) or 0)
+                # Position khong co market_value (gia live thuoc market segment);
+                # dung cost basis qty*avg_cost lam trong so sector exposure.
+                value = float(pos.qty or 0) * float(pos.avg_cost or 0)
                 sector_totals[sector] = sector_totals.get(sector, 0.0) + value
                 total_value += value
 
@@ -487,6 +489,20 @@ class InvestorProfileService:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _as_utc(dt: datetime.datetime | None) -> datetime.datetime | None:
+    """Chuẩn hoá datetime về aware-UTC.
+
+    Cột DateTime(timezone=True) trả aware trên Postgres nhưng NAIVE trên SQLite
+    (dev.db / tests) → so sánh với now(UTC) sẽ TypeError và toàn bộ decision
+    insights bị nuốt lỗi. Naive được coi là UTC.
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=datetime.UTC)
+    return dt
 
 
 def _parse_json_list(value: str) -> list[str]:

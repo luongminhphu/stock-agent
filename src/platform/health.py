@@ -51,7 +51,7 @@ async def check_readiness() -> HealthReport:
 
     # 2. Bootstrap singletons initialised?
     try:
-        from src.platform import bootstrap as _bs
+        import src.platform.bootstrap as _bs
 
         checks["quote_service"] = (
             HealthStatus.OK if _bs._quote_service is not None else HealthStatus.DOWN

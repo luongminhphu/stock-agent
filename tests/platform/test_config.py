@@ -1,9 +1,6 @@
 import os
 from unittest.mock import patch
 
-import pytest
-from pydantic import ValidationError
-
 from src.platform.config import Settings
 
 MINIMAL_ENV = {
@@ -35,6 +32,14 @@ def test_is_development_flag() -> None:
         assert s.is_production is False
 
 
-def test_missing_required_fields_raises() -> None:
-    with patch.dict(os.environ, {}, clear=True), pytest.raises(ValidationError):
-        Settings()
+def test_empty_env_falls_back_to_defaults() -> None:
+    """Không còn field bắt buộc: thiếu env → default rỗng/SQLite, không raise.
+
+    Guard runtime cho token/API key nằm ở bootstrap / bot startup, không ở Settings.
+    """
+    with patch.dict(os.environ, {}, clear=True):
+        s = Settings(_env_file=None)
+        assert s.discord_token == ""
+        assert s.perplexity_api_key == ""
+        assert s.database_url.startswith("sqlite+aiosqlite")
+        assert s.is_development is True

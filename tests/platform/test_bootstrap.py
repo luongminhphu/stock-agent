@@ -30,7 +30,7 @@ async def test_bootstrap_sets_all_singletons():
     await _bs.bootstrap()
 
     assert _bs._quote_service is not None
-    assert _bs._perplexity_client is not None
+    assert _bs._ai_client is not None
     assert _bs._thesis_review_agent is not None
     assert _bs._briefing_agent is not None
 
@@ -40,12 +40,12 @@ async def test_bootstrap_is_idempotent():
     """Calling bootstrap() twice must not create new instances."""
     await _bs.bootstrap()
     qs_first = _bs._quote_service
-    pc_first = _bs._perplexity_client
+    pc_first = _bs._ai_client
 
     await _bs.bootstrap()  # second call
 
     assert _bs._quote_service is qs_first
-    assert _bs._perplexity_client is pc_first
+    assert _bs._ai_client is pc_first
 
 
 # ---------------------------------------------------------------------------
@@ -58,9 +58,9 @@ def test_get_quote_service_raises_before_bootstrap():
         _bs.get_quote_service()
 
 
-def test_get_perplexity_client_raises_before_bootstrap():
+def test_get_ai_client_raises_before_bootstrap():
     with pytest.raises(RuntimeError, match="bootstrap"):
-        _bs.get_perplexity_client()
+        _bs.get_ai_client()
 
 
 def test_get_thesis_review_agent_raises_before_bootstrap():
@@ -87,11 +87,11 @@ async def test_get_quote_service_returns_quote_service():
 
 
 @pytest.mark.asyncio
-async def test_get_perplexity_client_returns_client():
+async def test_get_ai_client_returns_client():
     await _bs.bootstrap()
-    from src.ai.client import PerplexityClient
+    from src.ai.client import AIClient
 
-    assert isinstance(_bs.get_perplexity_client(), PerplexityClient)
+    assert isinstance(_bs.get_ai_client(), AIClient)
 
 
 @pytest.mark.asyncio
@@ -121,6 +121,6 @@ async def test_reset_clears_all_singletons():
     _bs.reset_singletons()
 
     assert _bs._quote_service is None
-    assert _bs._perplexity_client is None
+    assert _bs._ai_client is None
     assert _bs._thesis_review_agent is None
     assert _bs._briefing_agent is None
