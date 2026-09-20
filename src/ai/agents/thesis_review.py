@@ -129,6 +129,7 @@ class ThesisReviewAgent:
         current_price: float | None = None,
         entry_price: float | None = None,
         target_price: float | None = None,
+        ticker_context: str = "",
         # Memory wiring params (optional, backward-compat)
         session: AsyncSession | None = None,
         user_id: str | None = None,
@@ -141,6 +142,8 @@ class ThesisReviewAgent:
             assumptions_with_ids:         Active assumptions — list[{"id": int, "description": str}].
             catalysts_with_ids:           PENDING catalysts — list[{"id": int, "description": str}].
             triggered_catalysts_with_ids: TRIGGERED catalysts — context only.
+            ticker_context:               Optional TickerContext.format_for_prompt() line
+                                          (Wave C1). Empty → section omitted.
             session:                      Optional AsyncSession for memory logging.
             user_id:                      Optional user_id for episodic log.
             thesis_id:                    Optional thesis FK for traceability.
@@ -182,6 +185,7 @@ class ThesisReviewAgent:
                     target_price=target_price,
                     memory_context=memory_block,
                     previous_review=previous_review,
+                    ticker_context=ticker_context,
                 ),
             },
         ]
@@ -190,6 +194,7 @@ class ThesisReviewAgent:
             "thesis_review_agent.start",
             ticker=ticker,
             has_memory=bool(memory_block),
+            has_ticker_context=bool(ticker_context),
             has_previous_review=previous_review is not None,
             previous_verdict=previous_review.get("verdict") if previous_review else None,
         )

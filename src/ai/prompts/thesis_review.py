@@ -135,6 +135,7 @@ def build_user_prompt(
     current_price: float | None = None,
     entry_price: float | None = None,
     target_price: float | None = None,
+    ticker_context: str = "",
 ) -> str:
     """
     Build the core thesis block (no memory, no previous_review, no output schema).
@@ -155,6 +156,9 @@ def build_user_prompt(
         current_price:                Giá hiện tại (VNĐ). None nếu không có.
         entry_price:                  Giá vào lệnh (VNĐ). None nếu chưa có.
         target_price:                 Giá mục tiêu (VNĐ). None nếu chưa set.
+        ticker_context:               Dòng market.TickerContext.format_for_prompt()
+                                      (MA20/50, RSI14, ATR14, Vol/TB20, 52w, trend,
+                                      chất lượng dữ liệu). Rỗng → bỏ section (Wave C1).
 
     Returns:
         Formatted core thesis block string (without memory or previous_review blocks).
@@ -189,6 +193,15 @@ def build_user_prompt(
 
     if price_parts:
         lines += ["### Thông tin giá", *price_parts, ""]
+
+    # Technical context (Wave C1) — số thật từ market.TickerContext, không suy diễn.
+    if ticker_context:
+        lines += [
+            "### Bối cảnh kỹ thuật",
+            ticker_context,
+            "(Nếu data = stale/fallback: chỉ báo có thể thiếu hoặc cũ — không suy diễn thêm.)",
+            "",
+        ]
 
     # Assumptions
     if assumptions_with_ids:
@@ -228,6 +241,7 @@ def build_review_prompt(  # noqa: PLR0913
     target_price: float | None = None,
     memory_context: str = "",
     previous_review: dict | None = None,
+    ticker_context: str = "",
 ) -> str:
     """Build the full agent-facing prompt with memory and previous verdict context.
 
@@ -262,6 +276,7 @@ def build_review_prompt(  # noqa: PLR0913
         current_price=current_price,
         entry_price=entry_price,
         target_price=target_price,
+        ticker_context=ticker_context,
     )
     sections: list[str] = [core]
 

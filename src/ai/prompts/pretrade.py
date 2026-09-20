@@ -70,6 +70,7 @@ def build_pretrade_prompt(
     past_lessons: str = "",
     investor_profile: str = "",
     market_context: str = "",
+    ticker_context: str = "",
 ) -> str:
     """Build pre-trade check prompt.
 
@@ -88,6 +89,9 @@ def build_pretrade_prompt(
             (VN-Index/VN30 state). When provided, AI raises the evidence bar
             for BUY when market state is RISK_OFF/VOLATILE (Wave 8.1 —
             never fight the general market).
+        ticker_context: Optional market.TickerContext.format_for_prompt() line
+            (MA20/50, RSI14, ATR14, Vol/TB20, 52w, trend, data quality) — Wave C1.
+            Empty string skips the section.
     """
     prompt = f"""\
 Kiểm tra trước lệnh: **{ticker}**
@@ -101,6 +105,13 @@ Giá hiện tại: {price:,.0f} ({change_pct:+.2f}%)
 
 === BRIEF HÔM NAY ===
 {brief_context or "Brief hôm nay không đề cập mã này."}
+"""
+
+    if ticker_context:
+        prompt += f"""
+=== BỐI CẢNH KỸ THUẬT ===
+{ticker_context}
+(Nếu data = stale/fallback: chỉ báo có thể thiếu hoặc cũ — không suy diễn thêm.)
 """
 
     if market_context:
