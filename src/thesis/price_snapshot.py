@@ -29,6 +29,9 @@ class PriceSnapshot:
     atr14: float | None = None
     # "live" | "stale" | "fallback" (từ TickerContext) hoặc "quote" (đường get_quote cũ)
     source_quality: str = "quote"
+    # Wave D2: dòng TickerContext.format_for_prompt() để scanner nhét vào prompt AI
+    # mà không phải gọi context service lần hai. Rỗng khi đi đường get_quote.
+    prompt_context: str = ""
 
     def stop_distance_atr(self, stop_loss: float | None) -> float | None:
         """(price - stop_loss) / ATR14 — dương = còn cách stop, âm = đã xuyên.
@@ -57,10 +60,12 @@ async def load_price_snapshots(
         try:
             ctx_map = await ticker_context_service.get_many(syms)
             for sym, ctx in ctx_map.items():
+                fmt = getattr(ctx, "format_for_prompt", None)
                 out[sym] = PriceSnapshot(
                     price=ctx.price,
                     atr14=ctx.atr14,
                     source_quality=str(ctx.source_quality),
+                    prompt_context=fmt() if callable(fmt) else "",
                 )
         except Exception as exc:
             logger.warning(f"{log_event}.ticker_context_failed", count=len(syms), error=str(exc))
