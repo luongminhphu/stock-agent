@@ -16,7 +16,6 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.ai.agents.rrg_chart_summary import RRGChartSummaryAgent
@@ -32,12 +31,12 @@ from src.api.deps import (
 from src.market.ohlcv_service import OHLCVService
 from src.market.rrg_service import RRGService
 from src.readmodel.cache import DashboardTTLCache
-from src.thesis.models import Thesis, ThesisStatus
+from src.thesis import ThesisRepository, ThesisStatus
 
 router = APIRouter(prefix="/rrg", tags=["rrg"])
 
 # Scope: ACTIVE + WEAKENING (thesis is still in play)
-_ACTIVE_STATUSES = {ThesisStatus.ACTIVE, ThesisStatus.WEAKENING}
+_ACTIVE_STATUSES = (ThesisStatus.ACTIVE, ThesisStatus.WEAKENING)
 
 # Module-level cache shared across requests (same process).
 # TTL = 10 min: RRG uses weekly OHLCV — intraday re-fetches are wasteful.
@@ -86,16 +85,9 @@ async def get_rrg_thesis(
         return cached
 
     # 1. Fetch active thesis tickers from DB
-    stmt = (
-        select(Thesis.ticker)
-        .where(
-            Thesis.user_id == user_id,
-            Thesis.status.in_([s.value for s in _ACTIVE_STATUSES]),
-        )
-        .distinct()
+    thesis_tickers = await ThesisRepository(session).list_active_tickers(
+        user_id, statuses=_ACTIVE_STATUSES
     )
-    rows = (await session.execute(stmt)).all()
-    thesis_tickers = [row[0] for row in rows]
 
     # Merge extra tickers — deduplicate, preserve thesis order first
     seen = set(thesis_tickers)
@@ -256,12 +248,9 @@ async def get_rrg_chart_summary(
 
     # 1. Load active thesis tickers
     async with session as s:
-        rows = await s.execute(
-            select(Thesis.ticker).where(
-                Thesis.user_id == user_id, Thesis.status.in_(_ACTIVE_STATUSES)
-            )
+        ticker_list = await ThesisRepository(s).list_active_tickers(
+            user_id, statuses=_ACTIVE_STATUSES
         )
-        ticker_list = [r[0] for r in rows.all()]
 
     if not ticker_list:
         return {

@@ -12,7 +12,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from src.thesis.models import AssumptionStatus, CatalystStatus, ThesisDirection
+from src.thesis import AssumptionStatus, CatalystStatus, ThesisDirection
 
 # ---------------------------------------------------------------------------
 # Direction alias normalizer

@@ -21,6 +21,7 @@ from src.thesis.models import (
     CatalystStatus,
     ReviewVerdict,
     Thesis,
+    ThesisDirection,
     ThesisReview,
     ThesisSnapshot,
     ThesisStatus,
@@ -47,6 +48,7 @@ __all__ = [
     "ThesisSnapshot",
     # Enums
     "ThesisStatus",
+    "ThesisDirection",
     "AssumptionStatus",
     "CatalystStatus",
     "ReviewVerdict",

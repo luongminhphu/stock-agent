@@ -82,7 +82,7 @@ from src.market.registry import SymbolNotFoundError, SymbolRegistry
 from src.readmodel.dashboard_service import DashboardService
 from src.readmodel.schemas import ConvictionTimelineResponse
 from src.readmodel.timeline_service import ThesisTimelineService
-from src.thesis.models import ThesisStatus
+from src.thesis import ThesisStatus
 from src.thesis.review_service import ReviewNotAllowedError, ReviewService
 from src.thesis.scoring_service import ScoringService, score_tier
 from src.thesis.service import (

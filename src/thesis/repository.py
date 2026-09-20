@@ -104,6 +104,39 @@ class ThesisRepository:
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
+    async def list_active_tickers(
+        self,
+        user_id: str,
+        statuses: tuple[ThesisStatus, ...] = (ThesisStatus.ACTIVE,),
+    ) -> list[str]:
+        """Distinct ticker của các thesis theo status (mặc định ACTIVE), theo thứ tự tạo mới nhất.
+
+        Dùng cho adapter (api/rrg, bot/thesis_crud) — thay truy vấn ORM trực tiếp ngoài segment.
+        """
+        stmt = (
+            select(Thesis.ticker, Thesis.created_at)
+            .where(Thesis.user_id == user_id)
+            .where(Thesis.status.in_(statuses))
+            .order_by(Thesis.created_at.desc())
+        )
+        rows = (await self._session.execute(stmt)).all()
+        seen: dict[str, None] = {}
+        for ticker, _ in rows:
+            if ticker:
+                seen.setdefault(ticker, None)
+        return list(seen)
+
+    async def latest_active_by_ticker(self, ticker: str) -> Thesis | None:
+        """Thesis ACTIVE mới nhất của ticker (không eager-load quan hệ)."""
+        stmt = (
+            select(Thesis)
+            .where(Thesis.ticker == ticker.upper())
+            .where(Thesis.status == ThesisStatus.ACTIVE)
+            .order_by(Thesis.created_at.desc(), Thesis.id.desc())
+            .limit(1)
+        )
+        return (await self._session.execute(stmt)).scalar_one_or_none()
+
     async def list_active_by_ticker(self, ticker: str) -> list[Thesis]:
         stmt = (
             select(Thesis)
