@@ -20,7 +20,7 @@ import { renderThesisDetailHTML, emptyDetailHTML, wireTabNav } from './render-th
 import { loadTrendPanel } from './trend-panel.js?v=1';
 import { wireDetailActions } from './thesis-form.js?v=1';
 import { renderReviewRecommendResult, wireReviewQuickTrade } from './render-ai-review.js?v=1';
-import { fetchQuote, renderQuoteStrip } from './market-quote.js?v=1';
+import { fetchContext, renderQuoteStrip } from './market-quote.js?v=1';
 import { loadConvictionTimeline } from './conviction-timeline/index.js?v=1';
 import { loadReviewTimeline } from './review-timeline.js?v=1';
 import { loadPriceMiniChart, destroyPriceChart } from './render-price-chart.js?v=1';
@@ -262,7 +262,8 @@ export async function loadThesisDetail(thesisId) {
     scheduleIdle(async () => {
       const slot = wrap.querySelector('#quoteStripSlot');
       if (!slot) return;
-      const quote = await fetchQuote(thesis.ticker);
+      // Wave U2b: TickerContext (giá + chỉ báo + chất lượng dữ liệu), fallback quote.
+      const quote = await fetchContext(thesis.ticker);
       if (slot.dataset.ticker !== thesis.ticker) return;
       slot.innerHTML = renderQuoteStrip(quote, thesis);
     });

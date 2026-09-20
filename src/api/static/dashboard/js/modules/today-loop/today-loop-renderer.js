@@ -13,6 +13,7 @@
 // ---------------------------------------------------------------------------
 
 import { icon as ic } from '../../utils/icons.js?v=1';
+import { esc } from '../../utils/format.js?v=1';
 
 const FLAG_META = {
   low_conviction: { icon: ic('trending-down'), label: 'Conviction thấp', cls: 'tds-flag--conviction' },
@@ -130,6 +131,56 @@ export function renderThesisDigest(items, { generatedAt } = {}) {
 // ---------------------------------------------------------------------------
 // 2. Market Mood KPI
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Wave U2b — JobStatusList: trạng thái tác vụ nền từ /dashboard/today-loop.engine_status
+// ---------------------------------------------------------------------------
+
+const ENGINE_LABEL = {
+  briefing_morning: 'Bản tin sáng',
+  intelligence_engine_morning: 'Intelligence',
+  proactive_watch_morning: 'Proactive watch',
+  reminder_daily: 'Nhắc việc',
+};
+
+function _fmtRun(iso) {
+  if (!iso) return 'chưa chạy';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return 'chưa chạy';
+  const sameDay = d.toDateString() === new Date().toDateString();
+  return sameDay
+    ? d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+}
+
+/**
+ * @param {Record<string,{last_run:string|null, ok:boolean, consecutive_failures:number}>} status
+ */
+export function renderEngineStatus(status) {
+  const el = document.getElementById('engineStatusStrip');
+  if (!el) return;
+  const entries = Object.entries(status ?? {});
+  if (!entries.length) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+  const items = entries.map(([key, s]) => {
+    const label = ENGINE_LABEL[key] ?? key.replace(/_/g, ' ');
+    const fails = Number(s?.consecutive_failures ?? 0);
+    // Chưa từng chạy (last_run null, 0 lỗi) → idle, không phải fail.
+    const idle = !s?.last_run && fails === 0;
+    const ok = idle || s?.ok !== false;
+    const cls = idle ? 'engine-status-item--idle' : ok ? 'engine-status-item--ok' : 'engine-status-item--fail';
+    const title = idle
+      ? `${label}: chưa chạy trong phiên này`
+      : ok
+        ? `${label}: lần chạy gần nhất ${_fmtRun(s?.last_run)}`
+        : `${label}: lỗi ${fails} lần liên tiếp — kiểm tra log scheduler`;
+    return `<span class="engine-status-item ${cls}" title="${esc(title)}">
+      <span class="engine-status-dot" aria-hidden="true"></span>${esc(label)}
+      <span class="engine-status-time">${esc(_fmtRun(s?.last_run))}${!ok && fails ? ` \u00b7 ${fails} lỗi` : ''}</span>
+    </span>`;
+  }).join('');
+  el.innerHTML = `<span class="engine-status-label">Tác vụ nền</span>${items}`;
+  el.classList.remove('hidden');
+}
 
 export function updateMarketMoodKpi(mood, { stale = false } = {}) {
   if (!mood || !mood.bias) return;

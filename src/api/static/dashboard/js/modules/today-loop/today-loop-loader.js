@@ -18,6 +18,7 @@
  */
 
 import {
+  renderEngineStatus,
   renderThesisDigest,
   updateMarketMoodKpi,
   updateSignalsBadge,
@@ -25,6 +26,8 @@ import {
 import { RefreshScheduler } from '../../utils/refresh-scheduler.js?v=1';
 
 const TODAY_LOOP_URL = '/api/v1/today-loop';
+// Wave U2b: readmodel today-loop (signals + engine_status từ SchedulerMonitor)
+const ENGINE_STATUS_URL = '/api/v1/readmodel/dashboard/today-loop';
 const REFRESH_INTERVAL_MS = 10 * 60 * 1000;
 let _refreshTimer = null;
 
@@ -73,6 +76,19 @@ export async function loadTodayLoop({ silent = false } = {}) {
     distributeToUI(data);
   } catch (err) {
     if (!silent) console.warn('[today-loop] fetch failed:', err.message);
+  }
+  await loadEngineStatus({ silent });
+}
+
+/** Wave U2b: JobStatusList — chỉ đọc engine_status; lỗi thì giữ strip ẩn. */
+async function loadEngineStatus({ silent = false } = {}) {
+  try {
+    const res = await fetch(ENGINE_STATUS_URL, { headers: { 'Content-Type': 'application/json' } });
+    if (!res.ok) throw new Error(`engine-status ${res.status}`);
+    const data = await res.json();
+    renderEngineStatus(data?.engine_status ?? {});
+  } catch (err) {
+    if (!silent) console.warn('[today-loop] engine status failed:', err.message);
   }
 }
 

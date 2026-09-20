@@ -24,7 +24,7 @@
          Đổi IBM Plex Mono (có Vietnamese, tabular nums). -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Display:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" />
     <!-- CSS bundle: link thẳng bundle (1 request, bỏ @import hop) — Wave 5d -->
-    <link rel="stylesheet" href="/static/dashboard/dashboard.bundle.css?v=47" />
+    <link rel="stylesheet" href="/static/dashboard/dashboard.bundle.css?v=48" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">Bỏ qua điều hướng</a>
@@ -300,6 +300,9 @@
             </article>
 
           </section>
+
+          <!-- ── 3a. ENGINE STATUS (Wave U2b) — tác vụ nền: bản tin / intelligence / proactive watch / nhắc việc -->
+          <div id="engineStatusStrip" class="engine-status hidden" aria-live="polite" aria-label="Trạng thái tác vụ nền"></div>
 
           <!-- ── 3b. TIER BREAKDOWN ────────────────────────────────────────────── -->
           <div
@@ -1135,7 +1138,7 @@
 
     <!-- quick-trade.js đã được chuyển thành ES module tại modules/portfolio/quick-trade.js -->
     <!-- và được import trực tiếp bởi portfolio-loader.js + portfolio-renderer.js          -->
-    <script type="module" src="/static/dashboard/js/app.js?v=33" data-cfasync="false"></script>
+    <script type="module" src="/static/dashboard/js/app.js?v=34" data-cfasync="false"></script>
     <script>
       /* ── Sidebar toggle (mobile) ─────────────────────────────────────── */
       (function () {

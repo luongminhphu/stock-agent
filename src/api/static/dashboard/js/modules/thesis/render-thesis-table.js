@@ -7,13 +7,14 @@ import { quoteStripSkeletonHTML } from './market-quote.js?v=1';
 import { priceMiniChartSlotHTML } from './render-price-chart.js?v=1';
 import { state } from '../../state/dashboard-state.js?v=1';
 import { icon as ic } from '../../utils/icons.js?v=1';
+import { priceCellHTML, nearStopTagHTML } from '../../utils/market-badges.js?v=1';
 
 export function emptyDetailHTML() {
   return `<div class="empty-detail"><div class="empty-detail-copy"><h3>Chọn một thesis</h3><p>Xem giả định, catalyst và lịch sử review.</p></div></div>`;
 }
 
 export function thesisTableSkeletonHTML(rows = 5) {
-  const cols = 8;
+  const cols = 9;
   const headerCells = Array.from({ length: cols }, () =>
     `<th><div class="skel skel-text" style="width:${30 + Math.random() * 40 | 0}%;"></div></th>`
   ).join('');
@@ -21,8 +22,9 @@ export function thesisTableSkeletonHTML(rows = 5) {
     const cells = Array.from({ length: cols }, (_, i) => {
       if (i === cols - 1) return `<td><div class="skel skel-badge" style="width:64px;"></div></td>`;
       if (i === 1) return `<td><div class="skel skel-badge" style="width:56px;"></div></td>`;
-      if (i === 4) return `<td><div class="skel" style="width:80px;height:36px;border-radius:4px;"></div></td>`;
-      const w = [48, 40, 72, 36, 52, 60, 40][i] ?? 50;
+      if (i === 3) return `<td><div class="skel skel-text" style="width:72px;margin-left:auto;"></div></td>`;
+      if (i === 5) return `<td><div class="skel" style="width:80px;height:36px;border-radius:4px;"></div></td>`;
+      const w = [48, 40, 72, 60, 36, 52, 60, 40][i] ?? 50;
       return `<td><div class="skel skel-text" style="width:${w}%;"></div></td>`;
     }).join('');
     return `<tr style="pointer-events:none;">${cells}</tr>`;
@@ -292,9 +294,10 @@ export function renderThesesTable(list, callbacks = {}) {
           <th>Mã</th>
           <th>Hướng</th>
           <th>Tiêu đề</th>
-          <th style="min-width:110px;white-space:nowrap;">Score</th>
-          <th>Trend</th>
-          <th>Status</th>
+          <th class="col-price">Giá</th>
+          <th style="min-width:110px;white-space:nowrap;">Điểm</th>
+          <th>Conviction</th>
+          <th>Trạng thái</th>
           <th>Cập nhật</th>
           <th></th>
         </tr>
@@ -303,9 +306,11 @@ export function renderThesesTable(list, callbacks = {}) {
         ${list.map(t => {
           const tier = t.score_tier ?? '';
           const breached = t.stop_breached === true;
+          const nearStop = !breached && t.near_stop === true;
           const rowClass = [
             t.id === state.selectedThesisId ? 'is-selected' : '',
             breached          ? 'row--stop-breach' : '',
+            nearStop          ? 'row--near-stop' : '',
             tier === 'AT_RISK'  ? 'row--at-risk'  : '',
             tier === 'CRITICAL' ? 'row--critical' : '',
           ].filter(Boolean).join(' ');
@@ -322,6 +327,8 @@ export function renderThesesTable(list, callbacks = {}) {
           } else if (tier || t.score_tier_icon) {
             tierBadge = `<span style="font-size:.78rem;color:var(--muted);">${esc(t.score_tier_icon ?? '')} ${esc(tier)}</span>`;
           }
+          // Wave U2b: gần stop (thesis rule, 0 < dist < 1 ATR14) — cảnh báo sớm, chưa xuyên.
+          const nearStopTag = nearStopTagHTML(t);
 
           return `
           <tr data-id="${t.id}" data-ticker="${esc(t.ticker)}" data-thesis-id="${t.id}" class="${rowClass}">
@@ -330,10 +337,12 @@ export function renderThesesTable(list, callbacks = {}) {
               ${t.direction ? badge(t.direction) : '<span style="color:var(--muted);">—</span>'}
             </td>
             <td>${esc(t.title ?? '—')}</td>
+            <td class="col-price">${priceCellHTML(t)}</td>
             <td class="col-score ${scoreClass(t.score)}">
               <div class="score-cell">
                 <strong>${fmtScore(t.score)}</strong>
                 ${tierBadge}
+                ${nearStopTag}
               </div>
             </td>
             <td style="padding:4px 8px;">

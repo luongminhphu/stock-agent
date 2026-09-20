@@ -1,0 +1,205 @@
+/* ─── Market context (Wave U2b) ──────────────────────────────────────────────
+   Owner: modules/market-context
+   Quy tắc màu biến động HSC (.mv-*), ô giá trong bảng, tag chất lượng dữ liệu /
+   xu hướng / gần stop, chip chỉ báo trong quote strip, danh sách tác vụ nền.
+   Màu bão hòa chỉ dành cho giá và CTA chính — tag còn lại trung tính.
+──────────────────────────────────────────────────────────────────────────── */
+
+/* Movement — nguồn màu duy nhất cho mọi con số theo biến động */
+.mv-up    { color: var(--hsc-price-increase); }
+.mv-down  { color: var(--hsc-price-reduced); }
+.mv-ref   { color: var(--hsc-price-reference); }
+.mv-ceil  { color: var(--hsc-price-ceil); }
+.mv-floor { color: var(--hsc-price-floor); }
+.mv-none  { color: var(--muted); }
+
+/* Ô giá trong bảng (thesis / watchlist) */
+.price-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-end;
+  min-width: 96px;
+  font-variant-numeric: var(--hsc-numeric);
+  white-space: nowrap;
+}
+.price-cell--empty { color: var(--muted); align-items: flex-end; }
+.price-cell-value {
+  font-size: var(--text-base);
+  font-weight: 700;
+  line-height: 1.2;
+}
+.price-cell-sub {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+  line-height: 16px;
+}
+.price-cell-change { font-weight: 600; }
+.data-table th.col-price,
+.data-table td.col-price { text-align: right; }
+
+/* Tag chất lượng dữ liệu — trung tính; chấm tròn 6px báo trạng thái */
+.dq-tag::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.55;
+  flex-shrink: 0;
+}
+.dq-tag--live::before { background: var(--hsc-price-increase); opacity: 0.9; }
+.dq-tag--stale { border-style: dashed; }
+.dq-tag--fallback,
+.dq-tag--quote { opacity: 0.85; }
+
+/* Tag xu hướng — chữ trung tính, không tô màu (xu hướng không phải giá) */
+.trend-tag { letter-spacing: 0.01em; }
+
+/* Tag trần/sàn và gần stop — tinted alpha + hairline, radius 2px (Tag, không Badge) */
+.hsc-tag-ceil {
+  background: rgba(var(--ceil-rgb), 0.12);
+  color: var(--chip-ceil-text, var(--hsc-price-ceil));
+  border: var(--hsc-hairline) rgba(var(--ceil-rgb), 0.28);
+}
+.hsc-tag-floor {
+  background: rgba(var(--floor-rgb), 0.12);
+  color: var(--hsc-price-floor);
+  border: var(--hsc-hairline) rgba(var(--floor-rgb), 0.28);
+}
+.hsc-tag-warning {
+  background: rgba(var(--ref-rgb), 0.12);
+  color: var(--chip-ref-text, var(--hsc-price-reference));
+  border: var(--hsc-hairline) rgba(var(--ref-rgb), 0.30);
+}
+.near-stop-tag { font-size: 0.72rem; }
+tr.row--near-stop td:first-child { box-shadow: inset 3px 0 0 rgba(var(--ref-rgb), 0.85); }
+
+/* Quote strip — hàng chỉ báo (MA20 / MA50 / RSI14 / ATR14 / Vol) */
+.quote-strip-indicators {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  width: 100%;
+  padding-top: 8px;
+  margin-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.quote-strip-indicators .quote-chip { min-width: 64px; }
+.quote-strip-tags {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  margin-left: auto;
+}
+.qc-val.mv-up, .qc-val.mv-down, .qc-val.mv-ref { font-weight: 600; }
+.quote-price--ceiling { color: var(--hsc-price-ceil); text-shadow: none; }
+.quote-price--floor   { color: var(--hsc-price-floor); text-shadow: none; }
+.quote-price--ref     { color: var(--hsc-price-reference); }
+.quote-change--flat   { color: var(--hsc-price-reference); }
+
+/* Danh sách tác vụ nền (JobStatusList) — 1 dòng, hairline, tabular */
+.engine-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 6px 0 2px;
+  font-size: var(--text-sm);
+  color: var(--muted);
+  font-variant-numeric: var(--hsc-numeric);
+}
+.engine-status-label {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+.engine-status-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.engine-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(var(--ink-rgb), 0.35);
+  flex-shrink: 0;
+}
+.engine-status-item--ok .engine-status-dot   { background: var(--hsc-price-increase); }
+.engine-status-item--fail .engine-status-dot { background: var(--hsc-price-reduced); }
+.engine-status-item--fail { color: var(--text); }
+.engine-status-time { color: var(--muted); }
+
+/* ─── AiVerdictCard (Wave U2b) — verdict → rủi ro → theo dõi → tin cậy → action → lý do */
+.ai-verdict-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card, 8px);
+  background: var(--bg-2);
+}
+.avc-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* Host container: bỏ giới hạn chiều cao/pre-wrap của .suggest-result khi chứa card */
+.suggest-result.suggest-result--card {
+  max-height: none;
+  overflow: visible;
+  white-space: normal;
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+.avc-verdict {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: var(--hsc-radius-tag, 2px);
+  font-size: var(--text-base);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border: 1px solid transparent;
+}
+.avc-verdict--buy     { background: rgba(var(--up-rgb), 0.14);   color: var(--chip-up-text);   border-color: rgba(var(--up-rgb), 0.35); }
+.avc-verdict--sell    { background: rgba(var(--down-rgb), 0.14); color: var(--chip-down-text); border-color: rgba(var(--down-rgb), 0.35); }
+.avc-verdict--hold    { background: rgba(38, 129, 255, 0.10);    color: var(--brand);          border-color: rgba(38, 129, 255, 0.35); }
+.avc-verdict--watch   { background: rgba(var(--ref-rgb), 0.14);  color: var(--chip-ref-text);  border-color: rgba(var(--ref-rgb), 0.35); }
+.avc-verdict--neutral { background: rgba(var(--ink-rgb), 0.08);  color: var(--text);           border-color: rgba(var(--ink-rgb), 0.2); }
+.avc-meta { color: var(--muted); font-size: var(--text-sm); font-variant-numeric: var(--hsc-numeric); }
+.avc-section .suggest-section-title { margin-bottom: 4px; }
+.avc-list { margin: 0; padding-left: 1.1em; font-size: var(--text-base); line-height: 1.55; }
+.avc-list li + li { margin-top: 2px; }
+.avc-empty { margin: 0; color: var(--muted); font-size: var(--text-sm); }
+.avc-confidence-row { display: flex; align-items: center; gap: 10px; }
+.avc-confidence-value { font-variant-numeric: var(--hsc-numeric); font-weight: 600; font-size: var(--text-sm); min-width: 36px; text-align: right; }
+.avc-fill--high { background: var(--hsc-price-increase); }
+.avc-fill--mid  { background: var(--hsc-price-reference); }
+.avc-fill--low  { background: var(--hsc-price-reduced); }
+.avc-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 4px; border-top: 1px solid var(--line); }
+.avc-cta {
+  min-height: 30px;
+  padding: 0 14px;
+  border-radius: var(--radius-btn, 4px);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: transparent;
+  border: 1px solid rgba(var(--ink-rgb), 0.24);
+  color: var(--text);
+  cursor: pointer;
+}
+.avc-cta--buy.is-suggested  { color: var(--hsc-price-increase); border-color: rgba(var(--up-rgb), 0.55);   background: rgba(var(--up-rgb), 0.10); }
+.avc-cta--sell.is-suggested { color: var(--hsc-price-reduced);  border-color: rgba(var(--down-rgb), 0.55); background: rgba(var(--down-rgb), 0.10); }
+.avc-cta:hover { background: rgba(var(--ink-rgb), 0.08); }
+.avc-cta:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.avc-actions-note { color: var(--muted); font-size: var(--text-sm); }
+.avc-dismiss { margin-left: auto; min-height: 30px; padding: 0 10px; font-size: var(--text-sm); }
+.avc-reasoning summary { cursor: pointer; color: var(--muted); font-size: var(--text-sm); font-weight: 600; }
+.avc-reasoning p { margin: 6px 0 0; line-height: 1.6; font-size: var(--text-base); }

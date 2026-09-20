@@ -11,21 +11,21 @@ export function renderReviewRecommendSection(thesisId) {
     <div class="detail-section" id="reviewRecommendSection-${thesisId}">
       <div class="detail-section-header" style="align-items:flex-end; gap:12px;">
         <div style="max-width: 65%;">
-          <h3>Agent Suggestion</h3>
+          <h3>Phản biện AI</h3>
         </div>
         <button
           class="suggest-btn"
           id="aiReviewBtn-${thesisId}"
           style="min-height:30px;padding:0 14px;font-size:.8rem;margin-left:auto;"
         >
-          Verify
+          Kiểm chứng thesis
         </button>
       </div>
       <div id="aiReviewLoading-${thesisId}" class="suggest-loading hidden">
         <div class="spinner"></div>
-        AI đang phân tích thesis...
+        AI đang phân tích thesis…
       </div>
-      <div id="aiReviewResult-${thesisId}" class="suggest-result hidden"></div>
+      <div id="aiReviewResult-${thesisId}" class="suggest-result suggest-result--card hidden"></div>
     </div>
   `;
 }
@@ -39,109 +39,97 @@ export function renderReviewRecommendSection(thesisId) {
  *
  * FIX: guard d null/undefined — tránh '(destructured parameter) is undefined' từ V8
  */
+const VERDICT_VN = {
+  BUY: 'Mua', SELL: 'Bán', HOLD: 'Giữ', WATCH: 'Theo dõi',
+  REDUCE: 'Giảm', ADD: 'Gia tăng', NEUTRAL: 'Trung lập', INVALIDATE: 'Vô hiệu',
+};
+
+/**
+ * AiVerdictCard (Wave U2b) — hierarchy cố định cho mọi AI output:
+ *   verdict → risk signals → next watch items → confidence → action → reasoning.
+ * Payload: ThesisReviewResponse {verdict, confidence, reasoning, risk_signals,
+ * next_watch_items, reviewed_at, reviewed_price}. Side-effect: cache vào state.
+ * @param {string|number} thesisId
+ * @param {object} d
+ * @returns {string} HTML
+ */
 export function renderReviewRecommendResult(thesisId, d) {
-  // Guard: nếu response rỗng, trả về error state thay vì crash
   if (!d || typeof d !== 'object') {
     return `<div class="error-banner" style="margin:0;">AI review không trả về kết quả hợp lệ.</div>`;
   }
-
-  console.log('[AI Review raw response]', JSON.stringify(d));
   state.latestAiReviews[thesisId] = d;
 
-  const confPct      = Math.round((d.confidence ?? 0) * 100);
-  const verdictCls   = (String(d.verdict ?? '').toLowerCase() || 'neutral') || 'neutral';
-  const risks        = d.risk_signals ?? d.risks ?? [];
-  const watches      = d.next_watch_items ?? d.nextwatchitems ?? [];
-  const riskItems    = risks.map(r => `<li>${esc(r)}</li>`).join('');
-  const watchItems   = watches.map(w => `<li>${esc(w)}</li>`).join('');
-
-  // Gợi ý action type dựa trên verdict — dùng để pre-fill nút B/S
   const verdictUpper = String(d.verdict ?? '').toUpperCase();
-  const suggestedType = verdictUpper === 'BUY' ? 'BUY'
-    : verdictUpper === 'SELL' ? 'SELL'
+  const verdictCls   = ['BUY','ADD'].includes(verdictUpper) ? 'buy'
+    : ['SELL','REDUCE','INVALIDATE'].includes(verdictUpper) ? 'sell'
+    : verdictUpper === 'HOLD' ? 'hold'
+    : verdictUpper === 'WATCH' ? 'watch' : 'neutral';
+  const verdictLabel = VERDICT_VN[verdictUpper] ?? verdictUpper ?? '—';
+  const confPct      = Math.round((d.confidence ?? 0) * 100);
+  const confTone     = confPct >= 70 ? 'high' : confPct >= 45 ? 'mid' : 'low';
+  const risks        = Array.isArray(d.risk_signals) ? d.risk_signals : (d.risks ?? []);
+  const watches      = Array.isArray(d.next_watch_items) ? d.next_watch_items : [];
+  const reviewedAt   = d.reviewed_at ? new Date(d.reviewed_at) : null;
+  const reviewedStr  = reviewedAt && !Number.isNaN(reviewedAt.getTime())
+    ? reviewedAt.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+    : '';
+
+  const thesis = state.theses?.find(t => String(t.id) === String(thesisId));
+  const ticker = thesis?.ticker ?? '';
+  const suggested = verdictUpper === 'BUY' || verdictUpper === 'ADD' ? 'BUY'
+    : verdictUpper === 'SELL' || verdictUpper === 'REDUCE' ? 'SELL'
     : null;
 
-  // Lấy ticker từ thesis đang mở (state.theses đã load)
-  const thesis  = state.theses?.find(t => String(t.id) === String(thesisId));
-  const ticker  = thesis?.ticker ?? '';
+  const list = (items, emptyText) => items.length
+    ? `<ul class="avc-list">${items.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`
+    : `<p class="avc-empty">${emptyText}</p>`;
 
-  // Quick-trade buttons — chỉ hiện nếu verdict là BUY hoặc SELL
-  const quickTradeHTML = ticker ? `
-    <div class="review-quick-trade" style="display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap;">
-      <span style="font-size:.8rem;color:var(--muted);">Ghi nhanh lệnh cho <strong>${esc(ticker)}</strong>:</span>
-      <button
-        class="review-trade-btn review-trade-btn--buy ghost-btn"
-        data-trade-ticker="${esc(ticker)}"
-        data-trade-thesis-id="${thesisId}"
-        data-trade-type="BUY"
-        style="min-height:28px;padding:0 14px;font-size:.8rem;font-weight:600;
-               color:#6daa45;border-color:rgba(109,170,69,.4);
-               ${suggestedType === 'BUY' ? 'background:rgba(109,170,69,.1);' : ''}"
-        title="Log lệnh MUA ${esc(ticker)}"
-      >B</button>
-      <button
-        class="review-trade-btn review-trade-btn--sell ghost-btn"
-        data-trade-ticker="${esc(ticker)}"
-        data-trade-thesis-id="${thesisId}"
-        data-trade-type="SELL"
-        style="min-height:28px;padding:0 14px;font-size:.8rem;font-weight:600;
-               color:#dd6974;border-color:rgba(221,105,116,.4);
-               ${suggestedType === 'SELL' ? 'background:rgba(221,105,116,.1);' : ''}"
-        title="Log lệnh BÁN ${esc(ticker)}"
-      >S</button>
-    </div>` : '';
+  // Action — CTA giao dịch là nút duy nhất được viết HOA (quy tắc HSC).
+  const actionHTML = ticker ? `
+      <div class="avc-actions">
+        <button class="review-trade-btn avc-cta avc-cta--buy ${suggested === 'BUY' ? 'is-suggested' : ''}"
+          data-trade-ticker="${esc(ticker)}" data-trade-thesis-id="${thesisId}" data-trade-type="BUY"
+          title="Ghi lệnh mua ${esc(ticker)}">MUA</button>
+        <button class="review-trade-btn avc-cta avc-cta--sell ${suggested === 'SELL' ? 'is-suggested' : ''}"
+          data-trade-ticker="${esc(ticker)}" data-trade-thesis-id="${thesisId}" data-trade-type="SELL"
+          title="Ghi lệnh bán ${esc(ticker)}">BÁN</button>
+        <span class="avc-actions-note">Ghi nhận quyết định cho ${esc(ticker)} vào nhật ký</span>
+        <button class="ghost-btn dismiss-ai-review-btn avc-dismiss" data-thesis-id="${thesisId}">Đóng</button>
+      </div>` : '';
 
   return `
-    <div class="suggest-body">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-        <span class="badge ${verdictCls}" style="font-size:.95rem;padding:6px 14px;">
-          ${esc(String(d.verdict ?? '').toUpperCase())}
-        </span>
-        <span style="color:var(--muted);font-size:.85rem;">Confidence ${confPct}%</span>
-      </div>
+    <article class="ai-verdict-card" data-thesis-id="${thesisId}" aria-label="Kết luận AI review">
+      <header class="avc-head">
+        <span class="avc-verdict avc-verdict--${verdictCls}">${esc(verdictLabel)}</span>
+        <span class="avc-meta">${reviewedStr ? `Review lúc ${esc(reviewedStr)}` : 'Review vừa xong'}${d.reviewed_price ? ` \u00b7 giá ${Number(d.reviewed_price).toLocaleString('vi-VN')}` : ''}</span>
+      </header>
 
-      <div class="confidence-bar" style="margin-bottom:12px;">
-        <div class="confidence-fill" style="width:${confPct}%;"></div>
-      </div>
+      <section class="avc-section">
+        <p class="suggest-section-title">Tín hiệu rủi ro</p>
+        ${list(risks, 'Chưa có rủi ro nổi bật được nêu rõ.')}
+      </section>
 
-      ${d.reasoning ? `<p style="line-height:1.65;margin-bottom:10px;">${esc(d.reasoning)}</p>` : ''}
+      <section class="avc-section">
+        <p class="suggest-section-title">Theo dõi tiếp</p>
+        ${list(watches, 'Không có mục cần theo dõi thêm.')}
+      </section>
 
-      ${riskItems ? `
-        <div>
-          <p class="suggest-section-title">Risk signals</p>
-          <ul style="padding-left:1.2em;color:var(--muted);font-size:.88rem;">${riskItems}</ul>
-        </div>` : ''}
-
-      ${watchItems ? `
-        <div style="margin-top:10px;">
-          <p class="suggest-section-title">Next watch items</p>
-          <ul style="padding-left:1.2em;color:var(--muted);font-size:.88rem;">${watchItems}</ul>
-        </div>` : ''}
-
-      <div style="display:flex;flex-direction:column;gap:6px;margin-top:14px;">
-        <div style="font-size:0.8rem;color:var(--muted);">
-          <strong>AI check xong — gợi ý của AI:</strong><br/>
-          • Verdict: ${esc(String(d.verdict ?? '').toUpperCase()) || 'N/A'}, confidence ${confPct}%<br/>
-          ${risks[0] ? `• Rủi ro chính: ${esc(risks[0])}` : '• Rủi ro chính: Chưa có rủi ro nổi bật được nêu rõ.'}
+      <section class="avc-section avc-confidence" aria-label="Độ tin cậy ${confPct}%">
+        <p class="suggest-section-title">Độ tin cậy</p>
+        <div class="avc-confidence-row">
+          <div class="confidence-bar"><div class="confidence-fill avc-fill--${confTone}" style="width:${confPct}%;"></div></div>
+          <span class="avc-confidence-value">${confPct}%</span>
         </div>
+      </section>
 
-        ${quickTradeHTML}
+      ${actionHTML}
 
-        <div style="display:flex;gap:10px;margin-top:10px;align-items:center;flex-wrap:wrap;">
-          <span style="
-            display:inline-flex;align-items:center;gap:6px;
-            background:rgba(109,170,69,.15);color:#6daa45;
-            border:1px solid rgba(109,170,69,.3);
-            border-radius:999px;padding:4px 12px;font-size:.82rem;font-weight:600;
-          ">✓ Đã áp dụng tự động</span>
-          <button
-            class="ghost-btn dismiss-ai-review-btn"
-            data-thesis-id="${thesisId}"
-            style="min-height:30px;padding:0 10px;font-size:.8rem;"
-          >Đóng</button>
-        </div>
-      </div>
-    </div>
+      ${d.reasoning ? `
+      <details class="avc-reasoning">
+        <summary>Lý do tóm tắt</summary>
+        <p>${esc(d.reasoning)}</p>
+      </details>` : ''}
+    </article>
   `;
 }
 
