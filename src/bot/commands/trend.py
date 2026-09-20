@@ -19,13 +19,10 @@ from src.ai.agents.trend_reasoning import TrendReasoningAgent
 from src.ai.client import AIError
 from src.ai.schemas.trend_prediction import (
     TechnicalSignalBundle,
-    TrendDirection,
-    TrendHorizon,
     TrendPrediction,
-    TrendVerdict,
 )
 from src.bot.commands.base import BaseCog
-from src.market.trend_engine import TrendEngine
+from src.market.trend_engine import TrendEngine, rule_based_prediction
 from src.platform.bootstrap import get_ohlcv_service, get_trend_reasoning_agent
 from src.platform.logging import get_logger
 
@@ -87,72 +84,13 @@ class TrendCog(BaseCog):
                     symbol=symbol,
                     error=str(exc),
                 )
-                prediction = _rule_based_prediction(bundle)
-                prediction = prediction.model_copy(
-                    update={"reasoning": f"[Fallback rule-based] {prediction.reasoning}"}
-                )
+                prediction = rule_based_prediction(bundle)
         else:
             logger.warning("trend.no_agent", symbol=symbol)
-            prediction = _rule_based_prediction(bundle)
+            prediction = rule_based_prediction(bundle)
 
         embed = _build_trend_embed(bundle, prediction)
         await interaction.followup.send(embed=embed)
-
-
-# ---------------------------------------------------------------------------
-# Rule-based fallback
-# ---------------------------------------------------------------------------
-
-
-def _rule_based_prediction(bundle: TechnicalSignalBundle) -> TrendPrediction:
-    c = bundle.composite
-    verdict: TrendVerdict
-    direction: TrendDirection
-    if c >= 0.72:
-        verdict, direction = TrendVerdict.STRONG_BUY, TrendDirection.UP
-    elif c >= 0.58:
-        verdict, direction = TrendVerdict.BUY, TrendDirection.UP
-    elif c >= 0.45:
-        verdict, direction = TrendVerdict.HOLD, TrendDirection.SIDEWAYS
-    elif c >= 0.32:
-        verdict, direction = TrendVerdict.WATCH, TrendDirection.SIDEWAYS
-    elif c >= 0.20:
-        verdict, direction = TrendVerdict.REDUCE, TrendDirection.DOWN
-    else:
-        verdict, direction = TrendVerdict.STRONG_SELL, TrendDirection.DOWN
-
-    risks: list[str] = []
-    if bundle.momentum.label == "BEARISH":
-        risks.append("RSI/MACD momentum yếu")
-    if bundle.volume.label == "BEARISH":
-        risks.append("Volume sụt giảm")
-    if bundle.structure.label == "BEARISH":
-        risks.append("EMA20 dưới EMA50")
-    if bundle.volatility.label == "BULLISH" and verdict in (
-        TrendVerdict.REDUCE,
-        TrendVerdict.STRONG_SELL,
-    ):
-        risks.append("ATR mở rộng — rủi ro biến động cao")
-
-    next_watch: list[str] = []
-    if bundle.regime == "RANGING":
-        next_watch.append("Chờ breakout khỏi vùng tích lũy")
-    if bundle.momentum.label == "NEUTRAL":
-        next_watch.append("Theo dõi MACD cross confirm")
-    if bundle.structure.label == "NEUTRAL":
-        next_watch.append("Theo dõi EMA20/50 cross")
-
-    confidence = min(0.85, abs(c - 0.5) * 2 * 0.85)
-    return TrendPrediction(
-        symbol=bundle.symbol,
-        verdict=verdict,
-        direction=direction,
-        confidence=round(confidence, 2),
-        horizon=TrendHorizon.SHORT_TERM,
-        risk_signals=risks[:5],
-        next_watch=next_watch[:3],
-        reasoning=f"Composite {c:.2f} · Regime {bundle.regime} · Rule-based fallback",
-    )
 
 
 # ---------------------------------------------------------------------------

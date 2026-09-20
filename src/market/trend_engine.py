@@ -6,12 +6,14 @@ Responsibility:
   - TrendEngine: orchestrate per-symbol signal computation.
 
 Boundary:
-  - NEVER imports from ai, briefing, thesis, bot, or readmodel segments.
-  - Output (TechnicalSignalBundle) is defined in ai.schemas.trend_prediction
-    and also mirrored here as a local dataclass (OHLCVBar, SignalComposite)
-    to keep computation self-contained.
-  - The ai-facing TechnicalSignalBundle is imported only for return type
-    annotation — all computation uses local primitives.
+  - NEVER imports from briefing, thesis, bot, or readmodel segments.
+  - Output (TechnicalSignalBundle / TrendPrediction) is defined in
+    ai.schemas.trend_prediction; imported lazily inside functions so the
+    module import graph stays market → (schemas only).
+  - rule_based_prediction(): deterministic technical → verdict mapping.
+    Single source of truth for the non-AI fallback used by bot /trend,
+    TrendReasoningAgent and briefing trend batch (Wave F8). A technical
+    rule is market's concern — it must not diverge per surface.
 
 Indicators (pure functions, no state):
   Momentum:  RSI-14, MACD histogram (12/26/9 EMA)
@@ -425,6 +427,104 @@ def _candles_to_bars(candles: list[Any], symbol: str) -> list[OHLCVBar]:
 # ---------------------------------------------------------------------------
 # TrendEngine
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Rule-based verdict (non-AI fallback) — single source of truth
+# ---------------------------------------------------------------------------
+
+# Composite thresholds (0–1) → verdict. Ordered high → low.
+_VERDICT_BANDS: tuple[tuple[float, str, str], ...] = (
+    (0.72, "STRONG_BUY", "UP"),
+    (0.58, "BUY", "UP"),
+    (0.45, "HOLD", "SIDEWAYS"),
+    (0.32, "WATCH", "SIDEWAYS"),
+    (0.20, "REDUCE", "DOWN"),
+    (-1.0, "STRONG_SELL", "DOWN"),
+)
+
+# Guardrail: rule-based output never reaches the STRONG-alert confidence gate
+# (briefing.trend_batch_scheduler._MIN_ALERT_CONFIDENCE = 0.68), so a fallback
+# can never push a Discord STRONG_BUY / STRONG_SELL alert on its own.
+RULE_FALLBACK_MAX_CONFIDENCE = 0.5
+RULE_FALLBACK_TAG = "Rule-based fallback"
+
+
+def rule_based_prediction(bundle: Any) -> Any:
+    """Derive a TrendPrediction from a TechnicalSignalBundle without AI.
+
+    Deterministic: same bundle → same verdict on every surface (bot /trend,
+    API, briefing batch, agent fallback). Replaces two divergent copies that
+    previously lived in bot.commands.trend and ai.agents.trend_reasoning.
+
+    Rules:
+      - verdict/direction from composite bands (_VERDICT_BANDS).
+      - horizon SHORT_TERM when regime VOLATILE, else MID_TERM.
+      - confidence = |composite − 0.5| × 2 × 0.85, capped at
+        RULE_FALLBACK_MAX_CONFIDENCE (0.5) — signals "no AI reasoning".
+      - risk_signals / next_watch derived from dimension labels (max 4 / 3).
+    """
+    from src.ai.schemas.trend_prediction import (  # noqa: PLC0415
+        TrendDirection,
+        TrendHorizon,
+        TrendPrediction,
+        TrendRegime,
+        TrendVerdict,
+    )
+
+    c = float(bundle.composite)
+    verdict_s, direction_s = _VERDICT_BANDS[-1][1], _VERDICT_BANDS[-1][2]
+    for threshold, v, d in _VERDICT_BANDS:
+        if c >= threshold:
+            verdict_s, direction_s = v, d
+            break
+    verdict = TrendVerdict(verdict_s)
+    direction = TrendDirection(direction_s)
+
+    regime = str(getattr(bundle.regime, "value", bundle.regime))
+    horizon = TrendHorizon.SHORT_TERM if regime == TrendRegime.VOLATILE else TrendHorizon.MID_TERM
+
+    def _label(dim: Any) -> str:
+        return str(getattr(dim.label, "value", dim.label))
+
+    risks: list[str] = []
+    if _label(bundle.momentum) == "BEARISH":
+        risks.append("RSI/MACD momentum yếu")
+    if _label(bundle.volume) == "BEARISH":
+        risks.append("Volume sụt giảm")
+    if _label(bundle.structure) == "BEARISH":
+        risks.append("EMA20 dưới EMA50")
+    if _label(bundle.volatility) == "BULLISH" and verdict in (
+        TrendVerdict.REDUCE,
+        TrendVerdict.STRONG_SELL,
+    ):
+        risks.append("ATR mở rộng — rủi ro biến động cao")
+
+    next_watch: list[str] = []
+    if regime == TrendRegime.RANGING:
+        next_watch.append("Chờ breakout khỏi vùng tích lũy")
+    if _label(bundle.momentum) == "NEUTRAL":
+        next_watch.append("Theo dõi MACD cross confirm")
+    if _label(bundle.structure) == "NEUTRAL":
+        next_watch.append("Theo dõi EMA20/50 cross")
+
+    confidence = min(RULE_FALLBACK_MAX_CONFIDENCE, abs(c - 0.5) * 2 * 0.85)
+    logger.info(
+        "trend_engine.rule_based_prediction",
+        symbol=bundle.symbol,
+        composite=round(c, 3),
+        verdict=verdict.value,
+    )
+    return TrendPrediction(
+        symbol=bundle.symbol,
+        verdict=verdict,
+        direction=direction,
+        confidence=round(confidence, 2),
+        horizon=horizon,
+        risk_signals=risks[:4],
+        next_watch=next_watch[:3],
+        reasoning=f"{RULE_FALLBACK_TAG} · Composite {c:.2f} · Regime {regime}",
+    )
 
 
 class TrendEngine:
