@@ -124,8 +124,12 @@ class TradeUseCase:
         sector: str | None = None,
         note: str | None = None,
         source: str = "dashboard",
+        advice_id: int | None = None,
     ) -> TradeResult:
         """Execute a BUY trade and optionally log a decision.
+
+        advice_id (P2b): PRETRADE_ADVICE đã xem trước lệnh — chuyển nguyên cho
+        thesis.DecisionService để adherence trỏ đúng lời khuyên.
 
         If thesis_id is not provided by the caller, automatically looks up
         the most recent active thesis for (user_id, ticker) and wires it in.
@@ -186,6 +190,7 @@ class TradeUseCase:
             rationale=rationale,
             execution_price=price,
             source=source,
+            advice_id=advice_id,
         )
 
         # Emit feedback event — closes the investor OS loop (fire-and-forget).
@@ -222,6 +227,7 @@ class TradeUseCase:
         rationale: str | None = None,
         note: str | None = None,
         source: str = "dashboard",
+        advice_id: int | None = None,
     ) -> TradeResult:
         """Execute a SELL trade, log a decision, and fire ReplayAgent review.
 
@@ -262,6 +268,7 @@ class TradeUseCase:
             rationale=rationale,
             execution_price=price,
             source=source,
+            advice_id=advice_id,
         )
 
         # Fire-and-forget ReplayAgent review — never blocks SELL response.
@@ -496,6 +503,7 @@ class TradeUseCase:
         rationale: str | None,
         execution_price: float | None,
         source: str,
+        advice_id: int | None = None,
     ) -> bool:
         """Fire-and-forget decision log after a trade is persisted.
 
@@ -503,14 +511,15 @@ class TradeUseCase:
         Failure is always soft — logged as WARNING, never re-raised.
 
         Contract:
-          - Only logs when thesis_id is provided.
+          - Logs when thesis_id is provided, hoặc khi có advice_id (P2b: lệnh trả lời
+            một lời khuyên AI luôn đáng ghi, kể cả mã chưa có thesis).
           - User-supplied rationale is used as-is.
           - If rationale is missing, auto-fills using _AUTO_RATIONALE_TEMPLATE
             so every thesis-linked trade always generates a DecisionLog.
           - execution_price is forwarded so price_at_decision reflects the
             real fill price, not a live quote.
         """
-        if not thesis_id:
+        if not thesis_id and not advice_id:
             return False
 
         effective_rationale = rationale or _AUTO_RATIONALE_TEMPLATE.format(
@@ -539,9 +548,11 @@ class TradeUseCase:
             await svc.log_decision(
                 user_id=user_id,
                 thesis_id=thesis_id,
+                ticker=ticker,
                 decision_type=decision_type,
                 rationale=effective_rationale,
                 execution_price=execution_price,
+                advice_id=advice_id,
             )
             return True
         except Exception as exc:  # noqa: BLE001

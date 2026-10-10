@@ -62,6 +62,7 @@ class BuyRequest(BaseModel):
     thesis_id: int | None = Field(None, description="ID thesis liên kết (tuỳ chọn)")
     sector: str | None = Field(None, max_length=64, description="Ngành (tuỳ chọn)")
     note: str | None = Field(None, max_length=500)
+    advice_id: int | None = Field(None, description="P2b: id lời khuyên pretrade đã xem trước lệnh")
     rationale: str | None = Field(
         None,
         max_length=500,
@@ -77,6 +78,7 @@ class SellRequest(BaseModel):
     qty: float = Field(..., gt=0, description="Số lượng bán (cp)")
     price: float = Field(..., gt=0, description="Giá bán (VND/cp)")
     note: str | None = Field(None, max_length=500)
+    advice_id: int | None = Field(None, description="P2b: id lời khuyên pretrade đã xem trước lệnh")
     thesis_id: int | None = Field(
         None,
         description="ID thesis liên kết — cần thiết để tạo DecisionLog khi bán",
@@ -270,6 +272,7 @@ async def buy_stock(
             rationale=body.rationale,
             sector=body.sector,
             note=body.note,
+            advice_id=body.advice_id,
             source="dashboard",
         )
         # Commit trade TRƯỚC — trades/positions là source of truth.
@@ -334,6 +337,7 @@ async def sell_stock(
             thesis_id=body.thesis_id,
             rationale=body.rationale,
             note=body.note,
+            advice_id=body.advice_id,
             source="dashboard",
         )
         # Commit trade TRƯỚC — snapshot refresh chạy sau trên session riêng.
