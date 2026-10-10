@@ -9,7 +9,7 @@ import asyncio
 import contextlib
 import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -42,6 +42,14 @@ class Quote:
     ceiling: float
     floor: float
     timestamp: datetime
+    # Wave C1 — giá đóng cửa chính thức của phiên (giá khớp ATC). None trong phiên
+    # hoặc khi chưa chụp EOD; ngoài giờ caller ưu tiên close rồi mới tới price.
+    close: float | None = None
+
+    @property
+    def settled_price(self) -> float:
+        """Giá dùng cho P&L/outcome: close nếu đã chốt phiên, ngược lại price."""
+        return self.close if self.close is not None else self.price
 
     @property
     def is_ceiling(self) -> bool:
@@ -208,8 +216,24 @@ class _QuoteCache:
         self._single[ticker] = (quote, time.monotonic() + _QUOTE_TTL)
 
     def set_single_ttl(self, ticker: str, quote: Quote, ttl: float) -> None:
+        quote = self._carry_close(quote)
         self._single[ticker] = (quote, time.monotonic() + ttl)
         self._last_known[ticker] = quote  # persist bên ngoài TTL
+
+    def _carry_close(self, quote: Quote) -> Quote:
+        """Wave C1: fetch live sau khi đã chụp EOD cùng ngày không được xoá close.
+
+        VCI matchPrice sau ATC không đổi, nhưng Quote mới từ adapter có close=None;
+        nếu last_known cùng ngày đã có close thì giữ lại.
+        """
+        if quote.close is not None:
+            return quote
+        prev = self._last_known.get(quote.ticker)
+        if prev is None or prev.close is None:
+            return quote
+        if prev.timestamp.date() != quote.timestamp.date():
+            return quote
+        return replace(quote, close=prev.close)
 
     def get_bulk(self, tickers: list[str]) -> list[Quote] | None:
         key = self._bulk_key(tickers)
@@ -227,6 +251,7 @@ class _QuoteCache:
         self._bulk[key] = (quotes, time.monotonic() + ttl)
         # Also populate single cache from bulk result
         for q in quotes:
+            q = self._carry_close(q)
             self._single[q.ticker] = (q, time.monotonic() + ttl)
             self._last_known[q.ticker] = q  # persist bên ngoài TTL
 
@@ -298,6 +323,7 @@ async def _persist_quotes_to_db(session_factory: Any, quotes: list["Quote"]) -> 
             "ref_price": q.ref_price,
             "ceiling": q.ceiling,
             "floor": q.floor,
+            "close": q.close,
             "quote_ts": q.timestamp,
             "saved_at": now,
         }
@@ -343,6 +369,7 @@ async def _load_quotes_from_db(session_factory: Any) -> list["Quote"]:
                             ref_price=row.ref_price,
                             ceiling=row.ceiling,
                             floor=row.floor,
+                            close=getattr(row, "close", None),
                             timestamp=row.quote_ts,
                         )
                     )
@@ -355,6 +382,17 @@ async def _load_quotes_from_db(session_factory: Any) -> list["Quote"]:
 
 class QuoteServiceNotConfiguredError(Exception):
     """Raised when QuoteService is called without an adapter (Wave 1 stub)."""
+
+
+@dataclass(frozen=True)
+class EodCloseResult:
+    """Kết quả một lần chụp giá đóng cửa (Wave C1)."""
+
+    session_date: str
+    requested: int
+    captured: int
+    no_match: list[str]  # mã không có khớp trong phiên → giữ close cũ / không ghi
+    error: str | None = None
 
 
 class MarketClosedError(Exception):
@@ -456,6 +494,7 @@ class QuoteService:
             ttl = self._ttl_for_now()
             quote = await self._fetch_quote_retrying(sym)
             self._cache.set_single_ttl(sym, quote, ttl)
+            quote = self._cache.get_last_known(sym) or quote  # Wave C1: giữ close cùng ngày
             # Persist last-known to DB — fire-and-forget, never blocks caller
             asyncio.create_task(
                 _persist_quotes_to_db(self._session_factory, [quote]),
@@ -469,6 +508,50 @@ class QuoteService:
             raise
         finally:
             self._cache.clear_inflight_single(sym)
+
+    async def capture_eod_close(self, tickers: list[str]) -> EodCloseResult:
+        """Chụp giá đóng cửa chính thức sau ATC cho một tập mã (Wave C1).
+
+        Gọi bởi bot.EodCloseCaptureScheduler ~14:50 ICT. Khác get_bulk_quotes:
+        - KHÔNG qua guard giờ giao dịch (14:50–15:15 vẫn trong guard, nhưng
+          catch-up sau 15:15 phải fetch được).
+        - Quote trả về được gắn close=price, ghi đè last_known và persist DB,
+          để mọi consumer ngoài giờ (EOD snapshot 15:20, outcome filler, dashboard)
+          đọc đúng giá ATC thay vì giá khớp lần fetch cuối trong phiên.
+        - Mã volume == 0 (không khớp cả phiên) → không gắn close, giữ last_known.
+        Không raise; lỗi adapter trả về trong EodCloseResult.error.
+        """
+        syms = sorted({t.upper().strip() for t in tickers if t and t.strip()})
+        today = datetime.now(_ICT).date().isoformat()
+        if not syms:
+            return EodCloseResult(session_date=today, requested=0, captured=0, no_match=[])
+        try:
+            fetched = await self._fetch_bulk_retrying(syms)
+        except Exception as exc:
+            _log.warning("quote_service.eod_close.fetch_failed", count=len(syms), error=str(exc))
+            return EodCloseResult(
+                session_date=today, requested=len(syms), captured=0, no_match=[], error=str(exc)
+            )
+        closed: list[Quote] = []
+        no_match: list[str] = []
+        for q in fetched:
+            if q.volume <= 0:
+                no_match.append(q.ticker)
+                continue
+            closed.append(replace(q, close=q.price))
+        if closed:
+            self._cache.set_bulk_ttl([q.ticker for q in closed], closed, _OFF_HOURS_TTL)
+            await _persist_quotes_to_db(self._session_factory, closed)
+        _log.info(
+            "quote_service.eod_close.captured",
+            session_date=today,
+            requested=len(syms),
+            captured=len(closed),
+            no_match=len(no_match),
+        )
+        return EodCloseResult(
+            session_date=today, requested=len(syms), captured=len(closed), no_match=no_match
+        )
 
     async def get_bulk_quotes(self, tickers: list[str]) -> list[Quote]:
         syms = [t.upper() for t in tickers]
@@ -505,6 +588,7 @@ class QuoteService:
             ttl = self._ttl_for_now()
             quotes = await self._fetch_bulk_retrying(syms)
             self._cache.set_bulk_ttl(syms, quotes, ttl)
+            quotes = [self._cache.get_last_known(q.ticker) or q for q in quotes]  # Wave C1
             # Persist last-known to DB — fire-and-forget, never blocks caller
             asyncio.create_task(
                 _persist_quotes_to_db(self._session_factory, quotes),

@@ -301,7 +301,10 @@ class EodSnapshotService:
             self._quote_service.get_quote(position.ticker),
             timeout=_QUOTE_TIMEOUT_SECS,
         )
-        return float(quote.price)
+        # Wave C1: close = giá ATC do capture_eod_close ghi; price chỉ là fallback
+        # (chưa chụp EOD / mã không khớp). Tránh ghi giá khớp 14:15 làm giá đóng cửa.
+        close = getattr(quote, "close", None)
+        return float(close if close is not None else quote.price)
 
     async def _upsert_snapshot(
         self,

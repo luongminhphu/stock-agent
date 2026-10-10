@@ -82,6 +82,7 @@ def create_bot() -> commands.Bot:
             _start_agenda_builder_scheduler(bot)  # build daily agenda 07:30 ICT
             _start_portfolio_snapshot_scheduler(bot)  # portfolio snapshot 08:15 ICT
             _start_investor_profile_scheduler(bot)  # investor profile snapshot 08:20 ICT
+            _start_eod_close_capture_scheduler(bot)  # giá đóng cửa ATC 14:50 ICT (Wave C1)
             _start_eod_portfolio_snapshot_scheduler(bot)  # EOD P&L snapshot 15:20 ICT
             _start_signal_engine_scheduler(bot)  # signal engine 08:40 + 15:10 ICT
             _wire_feedback_loop_monitor(
@@ -681,6 +682,19 @@ def _wire_feedback_loop_monitor(bot: commands.Bot) -> None:
 
     get_feedback_monitor().set_alert_channel(channel)
     logger.info("bot.feedback_loop_monitor.wired", channel_id=channel_id)
+
+
+def _start_eod_close_capture_scheduler(bot: commands.Bot) -> None:
+    """Start EodCloseCaptureScheduler — 14:50 ICT ngày giao dịch (Wave C1).
+
+    Chụp giá khớp ATC cho vị thế + watchlist + thesis active, gắn Quote.close và
+    persist market_quote_cache để EOD snapshot / outcome filler / dashboard dùng
+    đúng giá đóng cửa thay vì giá fetch cuối trong phiên.
+    """
+    from src.bot.scheduler import EodCloseCaptureScheduler
+
+    EodCloseCaptureScheduler(bot).start()
+    logger.info("bot.eod_close_capture_scheduler.started")
 
 
 def _start_eod_portfolio_snapshot_scheduler(bot: commands.Bot) -> None:

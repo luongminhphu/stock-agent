@@ -83,6 +83,7 @@ Wave E (Thesis Score Sensitivity):
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 from typing import Any
 
@@ -2215,3 +2216,122 @@ class EodPortfolioSnapshotScheduler:
                 error=str(exc),
             )
             await self._monitor.record_failure(task_name, exc)
+
+
+# ---------------------------------------------------------------------------
+# EodCloseCaptureScheduler — Wave C1
+# ---------------------------------------------------------------------------
+_EOD_CLOSE_CAPTURE_TIME = datetime.time(hour=7, minute=50, tzinfo=datetime.UTC)  # 14:50 ICT
+_EOD_CLOSE_RETRY_SECS = 15 * 60  # thử lại 1 lần lúc ~15:05 ICT nếu adapter lỗi
+
+
+class EodCloseCaptureScheduler:
+    """Chụp giá đóng cửa chính thức (sau ATC) cho toàn bộ mã đang theo dõi — 14:50 ICT.
+
+    Owner: bot segment — thin timing adapter only.
+    Logic giá nằm ở market.QuoteService.capture_eod_close; scheduler chỉ gom
+    universe (vị thế mở + watchlist + thesis active) và gọi một lần.
+
+    Lý do tồn tại:
+        Ngoài giờ QuoteService trả last_known = lần fetch cuối trong phiên. Không
+        có job nào fetch trong cửa sổ 14:45–15:15 nên EOD snapshot (15:20), outcome
+        filler (15:05) và dashboard dùng giá khớp 14:15–14:30 làm "giá đóng cửa".
+        Job này chạy sau ATC, gắn Quote.close và persist để mọi consumer đọc chung.
+
+    Thứ tự trong ngày:
+        14:50 capture close → 15:00 EOD brief → 15:05 outcome filler → 15:20 EOD snapshot
+    Catch-up on start: ngày giao dịch, sau 14:50 ICT, chưa chụp hôm nay → chạy ngay.
+    """
+
+    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
+        self._client = client
+        self._monitor = monitor or get_monitor()
+        self._captured_date: datetime.date | None = None
+
+    def start(self) -> None:
+        self._monitor.register_task("market.eod_close_capture")
+        self._task.start()
+        logger.info("scheduler.eod_close_capture.started", time_ict="14:50")
+
+    def stop(self) -> None:
+        self._task.cancel()
+        logger.info("scheduler.eod_close_capture.stopped")
+
+    @tasks.loop(time=_EOD_CLOSE_CAPTURE_TIME)
+    async def _task(self) -> None:
+        await self._run("market.eod_close_capture")
+
+    @_task.before_loop
+    async def _before(self) -> None:
+        await self._client.wait_until_ready()
+        await self._maybe_catchup()
+
+    async def _maybe_catchup(self) -> None:
+        import datetime as dt
+
+        now_ict = dt.datetime.now(tz=dt.timezone(dt.timedelta(hours=7)))
+        cutoff = now_ict.replace(hour=14, minute=50, second=0, microsecond=0)
+        if now_ict < cutoff:
+            return
+        await self._run("market.eod_close_capture.catchup")
+
+    async def _run(self, task_name: str) -> None:
+        import datetime as dt
+
+        from src.market.trading_calendar import VNTradingCalendar
+
+        today_ict = dt.datetime.now(tz=dt.timezone(dt.timedelta(hours=7))).date()
+        if not VNTradingCalendar.is_trading_day(today_ict):
+            return
+        if self._captured_date == today_ict:
+            return
+        try:
+            tickers = await self._collect_universe()
+            if not tickers:
+                logger.info("scheduler.eod_close_capture.empty_universe")
+                await self._monitor.record_success(task_name)
+                return
+            result = await self._capture(tickers)
+            if result.error is not None:
+                logger.warning(
+                    "scheduler.eod_close_capture.retrying",
+                    error=result.error,
+                    retry_in_secs=_EOD_CLOSE_RETRY_SECS,
+                )
+                await asyncio.sleep(_EOD_CLOSE_RETRY_SECS)
+                result = await self._capture(tickers)
+            if result.error is not None:
+                raise RuntimeError(result.error)
+            self._captured_date = today_ict
+            logger.info(
+                "scheduler.eod_close_capture.done",
+                session_date=result.session_date,
+                requested=result.requested,
+                captured=result.captured,
+                no_match=result.no_match,
+            )
+            await self._monitor.record_success(task_name)
+        except Exception as exc:
+            logger.error("scheduler.eod_close_capture.error", error=str(exc))
+            await self._monitor.record_failure(task_name, exc)
+
+    async def _capture(self, tickers: list[str]) -> Any:
+        from src.platform.bootstrap import get_quote_service
+
+        return await get_quote_service().capture_eod_close(tickers)
+
+    async def _collect_universe(self) -> list[str]:
+        """Vị thế mở + watchlist (mọi user) + thesis active của scheduler_user_id."""
+        from src.portfolio.repository import PortfolioRepository
+        from src.thesis.repository import ThesisRepository
+        from src.watchlist.repository import WatchlistRepository
+
+        user_id = getattr(settings, "scheduler_user_id", None)
+        tickers: set[str] = set()
+        async with AsyncSessionLocal() as session:
+            tickers.update(await WatchlistRepository(session).list_all_tickers())
+            if user_id:
+                positions = await PortfolioRepository(session).list_open_positions(str(user_id))
+                tickers.update(p.ticker for p in positions)
+                tickers.update(await ThesisRepository(session).list_active_tickers(str(user_id)))
+        return sorted(t.upper() for t in tickers if t)

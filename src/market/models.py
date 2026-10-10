@@ -107,6 +107,11 @@ class MarketQuoteCache(Base):
     ref_price: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     ceiling: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     floor: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    close: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        comment="Wave C1: giá đóng cửa chính thức (ATC) do capture_eod_close ghi; NULL trong phiên",
+    )
     quote_ts: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

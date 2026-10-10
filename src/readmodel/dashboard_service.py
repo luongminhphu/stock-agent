@@ -95,7 +95,9 @@ except ImportError:  # pragma: no cover
 class QuoteBatchReader(Protocol):
     """Minimal batch-quote interface required by DashboardService."""
 
-    async def get_quotes(self, tickers: list[str]) -> Any: ...  # noqa: D102
+    # Wave C1: khớp đúng tên method của market.QuoteService (bản cũ khai báo
+    # get_quotes — không tồn tại → price_map luôn rỗng, rơi về snapshot cũ).
+    async def get_bulk_quotes(self, tickers: list[str]) -> Any: ...  # noqa: D102
 
 
 # ---------------------------------------------------------------------------
@@ -774,8 +776,12 @@ class DashboardService:
             tickers = list({t["ticker"] for t in theses if t.get("ticker")})
             if tickers:
                 try:
-                    quotes = await quote_service.get_quotes(tickers)
-                    price_map = {q.ticker: q.close for q in quotes if q.close is not None}
+                    quotes = await quote_service.get_bulk_quotes(tickers)
+                    # Ngoài giờ ưu tiên giá đóng cửa chính thức; trong phiên dùng giá khớp.
+                    price_map = {
+                        q.ticker: (q.close if getattr(q, "close", None) is not None else q.price)
+                        for q in quotes
+                    }
                 except Exception as exc:
                     logger.warning(
                         "dashboard_service.get_portfolio.price_fetch_failed",
