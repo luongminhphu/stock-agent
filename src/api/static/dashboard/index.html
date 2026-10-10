@@ -1091,10 +1091,11 @@
             <div class="form-field">
               <label for="decActionField">Hành động *</label>
               <select id="decActionField" name="decision_type">
-                <option value="BUY">MUA</option>
-                <option value="SELL">BÁN</option>
-                <option value="HOLD">GIỮ</option>
-                <option value="SKIP">BỎ QUA</option>
+                <option value="BUY">Mua</option>
+                <option value="ADD">Mua thêm</option>
+                <option value="SELL">Bán</option>
+                <option value="REDUCE">Giảm tỷ trọng</option>
+                <option value="HOLD">Giữ</option>
               </select>
             </div>
           </div>
@@ -1118,21 +1119,9 @@
             <label for="decReasonField">Lý do quyết định *</label>
             <textarea id="decReasonField" name="reasoning" placeholder="Tại sao quyết định này? Thesis nào dẫn đến hành động này?" rows="3"></textarea>
           </div>
-          <div class="form-field">
-            <label for="decEmotionField">Cảm xúc lúc ra quyết định</label>
-            <select id="decEmotionField" name="emotion_tag">
-              <option value="">— chọn —</option>
-              <option value="confident">Tự tin</option>
-              <option value="uncertain">Không chắc</option>
-              <option value="fearful">Lo sợ</option>
-              <option value="greedy">Tham lam</option>
-              <option value="fomo">FOMO</option>
-              <option value="disciplined">Kỷ luật</option>
-            </select>
-          </div>
           <div class="modal-footer">
             <button type="button" class="ghost-btn" data-close="decisionModal">Hủy</button>
-            <button type="submit" class="primary-btn">Lưu Decision</button>
+            <button type="submit" class="primary-btn">Lưu quyết định</button>
           </div>
         </form>
       </div>

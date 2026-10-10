@@ -268,10 +268,11 @@ class DecisionService:
     async def log_decision(
         self,
         *,
-        thesis_id: int,
+        thesis_id: int | None,
         user_id: str,
         decision_type: str,
         rationale: str,
+        ticker: str | None = None,
         execution_price: float | None = None,
         quantity: int | None = None,
         brief_summary: str | None = None,
@@ -284,6 +285,9 @@ class DecisionService:
             If provided, stored as price_at_decision directly.
             If omitted, live quote from quote_service is used as fallback.
         quantity: number of shares traded — stored as context, not used in PnL calc.
+        thesis_id: optional từ P2a — quyết định không gắn thesis (mã chưa có thesis,
+            giao dịch ngoài kế hoạch) vẫn phải ghi được để Replay/AccuracyProjection
+            nhìn thấy. Khi None bắt buộc có ticker; score/health để None.
         """
         decision_type = decision_type.upper().strip()
         if decision_type not in _VALID_DECISION_TYPES:
@@ -294,26 +298,33 @@ class DecisionService:
                 "(thesis may not exist yet at pre-trade time)"
             )
 
-        thesis = await self._repo.get_by_id(thesis_id)
-        if thesis is None:
-            raise ValueError(f"Thesis #{thesis_id} not found")
-        if str(thesis.user_id) != str(user_id):
-            raise PermissionError(f"Thesis #{thesis_id} does not belong to this user")
+        thesis: Thesis | None = None
+        if thesis_id is not None:
+            thesis = await self._repo.get_by_id(thesis_id)
+            if thesis is None:
+                raise ValueError(f"Thesis #{thesis_id} not found")
+            if str(thesis.user_id) != str(user_id):
+                raise PermissionError(f"Thesis #{thesis_id} does not belong to this user")
+            resolved_ticker = thesis.ticker
+        else:
+            resolved_ticker = (ticker or "").upper().strip()
+            if not resolved_ticker:
+                raise ValueError("ticker is required when thesis_id is not provided")
 
         # execution_price takes priority; fall back to live quote
         current_price: float | None
         if execution_price is not None:
             current_price = float(execution_price)
         else:
-            current_price = await self._safe_get_current_price(thesis.ticker)
+            current_price = await self._safe_get_current_price(resolved_ticker)
 
-        thesis_score = self._infer_current_thesis_score(thesis)
-        thesis_health_score = self._infer_current_health_score(thesis)
+        thesis_score = self._infer_current_thesis_score(thesis) if thesis else None
+        thesis_health_score = self._infer_current_health_score(thesis) if thesis else None
 
         row = DecisionLog(
-            thesis_id=thesis.id,
+            thesis_id=thesis.id if thesis else None,
             user_id=user_id,
-            ticker=thesis.ticker,
+            ticker=resolved_ticker,
             decision_type=decision_type,
             decision_at=datetime.now(UTC),
             price_at_decision=current_price,
@@ -331,8 +342,8 @@ class DecisionService:
         logger.info(
             "decision.logged",
             decision_id=row.id,
-            thesis_id=thesis.id,
-            ticker=thesis.ticker,
+            thesis_id=row.thesis_id,
+            ticker=resolved_ticker,
             decision_type=decision_type,
             price_at_decision=current_price,
             quantity=quantity,

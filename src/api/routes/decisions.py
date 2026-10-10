@@ -42,12 +42,15 @@ router = APIRouter(tags=["decisions"])
 class LogDecisionRequest(BaseModel):
     """Request body for POST /decisions.
 
-    thesis_id is required — DecisionService derives ticker automatically.
+    thesis_id optional (P2a): khi có, ticker lấy từ thesis; khi không, phải gửi ticker.
     execution_price: actual fill price ("Giá thực hiện"); if omitted, live quote is used.
     quantity: number of shares traded ("Khối lượng"); optional, stored for context.
     """
 
-    thesis_id: int = Field(..., description="ID of the linked Thesis (required — NOT NULL FK)")
+    thesis_id: int | None = Field(None, description="ID of the linked Thesis (optional)")
+    ticker: str | None = Field(
+        None, min_length=2, max_length=20, description="Bắt buộc khi không có thesis_id"
+    )
     decision_type: str = Field(..., description="BUY | SELL | HOLD | ADD | REDUCE")
     rationale: str = Field(..., min_length=1, max_length=2000)
     execution_price: float | None = Field(
@@ -68,7 +71,7 @@ class LogDecisionRequest(BaseModel):
 class DecisionResponse(BaseModel):
     id: int
     user_id: str
-    thesis_id: int
+    thesis_id: int | None
     ticker: str
     decision_type: str
     price_at_decision: float | None
@@ -156,6 +159,7 @@ async def log_decision(
         decision = await svc.log_decision(
             user_id=user_id,
             thesis_id=body.thesis_id,
+            ticker=body.ticker,
             decision_type=body.decision_type.upper().strip(),
             rationale=body.rationale,
             execution_price=body.execution_price,

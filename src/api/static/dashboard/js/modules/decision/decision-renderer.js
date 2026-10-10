@@ -9,11 +9,14 @@
 import { esc, fmt, fmtDate, badge } from '../../utils/format.js?v=1';
 
 // ── Decision type display map ─────────────────────────────────────────────────
+// Khớp thesis.DecisionType (BUY/SELL/HOLD/ADD/REDUCE/PRETRADE_ADVICE).
 const TYPE_LABEL = {
-  BUY:  { label: 'MUA',  cls: 'dec-type-buy'  },
-  SELL: { label: 'BÁN',  cls: 'dec-type-sell' },
-  HOLD: { label: 'GIỮ',  cls: 'dec-type-hold' },
-  SKIP: { label: 'BỎ',   cls: 'dec-type-skip' },
+  BUY:             { label: 'MUA',       cls: 'dec-type-buy'  },
+  ADD:             { label: 'MUA THÊM',  cls: 'dec-type-buy'  },
+  SELL:            { label: 'BÁN',       cls: 'dec-type-sell' },
+  REDUCE:          { label: 'GIẢM',      cls: 'dec-type-sell' },
+  HOLD:            { label: 'GIỮ',       cls: 'dec-type-hold' },
+  PRETRADE_ADVICE: { label: 'AI tư vấn', cls: 'dec-type-skip' },
 };
 
 const VERDICT_CLS = {
@@ -51,6 +54,7 @@ export function renderDecisionsTable(container, decisions, { onEvaluate, onRepla
         <th>Loại</th>
         <th>Ngày</th>
         <th>Giá</th>
+        <th>KL</th>
         <th>PnL</th>
         <th>Verdict</th>
         <th>Thesis</th>
@@ -80,7 +84,8 @@ export function renderDecisionsTable(container, decisions, { onEvaluate, onRepla
       <td class="dec-ticker">${esc(d.ticker)}</td>
       <td><span class="dec-type ${typeInfo.cls}">${typeInfo.label}</span></td>
       <td class="dec-date">${fmtDate(d.decision_at)}</td>
-      <td class="dec-price">${d.entry_price != null ? fmt(d.entry_price, { decimals: 1 }) : '—'}</td>
+      <td class="dec-price">${d.price_at_decision != null ? fmt(d.price_at_decision, 0) : '—'}</td>
+      <td class="dec-price">${d.quantity != null ? fmt(d.quantity, 0) : '—'}</td>
       <td>${pnl}</td>
       <td>${d.outcome_verdict ? `<span class="dec-verdict ${verdictCls}">${esc(d.outcome_verdict)}</span>` : '<span class="muted">chưa</span>'}</td>
       <td class="dec-thesis-col">${d.thesis_title ? `<span class="dec-thesis-link" title="${esc(d.thesis_title)}">${esc(d.thesis_title.slice(0, 24))}${d.thesis_title.length > 24 ? '…' : ''}</span>` : '<span class="muted">—</span>'}</td>
@@ -94,7 +99,7 @@ export function renderDecisionsTable(container, decisions, { onEvaluate, onRepla
     const replayRow = document.createElement('tr');
     replayRow.className = 'dec-replay-row hidden';
     replayRow.dataset.replayFor = d.id;
-    replayRow.innerHTML = `<td colspan="8"><div class="dec-replay-wrap"></div></td>`;
+    replayRow.innerHTML = `<td colspan="9"><div class="dec-replay-wrap"></div></td>`;
 
     tbody.appendChild(row);
     tbody.appendChild(replayRow);

@@ -342,6 +342,9 @@ class DecisionLog(Base):
         DateTime(timezone=True), server_default=func.now(), index=True
     )
     price_at_decision: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Khối lượng (số CP) — ngữ cảnh, không dùng tính P&L. Cột đã có từ migration
+    # 20260529_0035 nhưng ORM thiếu khai báo → DecisionLog(quantity=...) TypeError (P2a).
+    quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
     thesis_score_at_decision: Mapped[float | None] = mapped_column(Float, nullable=True)
     thesis_health_score_at_decision: Mapped[int | None] = mapped_column(Integer, nullable=True)
     active_signal: Mapped[str | None] = mapped_column(String(100), nullable=True)

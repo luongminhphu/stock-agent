@@ -62,7 +62,7 @@ let _lazyTodayLoop       = null;
 // _lazyRecommendations removed — recommendations panel consolidated into #intelligencePanel
 
 async function _getDecisionLoader() {
-  if (!_lazyDecisionLoader) _lazyDecisionLoader = import('./modules/decision/decision-loader.js?v=1');
+  if (!_lazyDecisionLoader) _lazyDecisionLoader = import('./modules/decision/decision-loader.js?v=2');
   return _lazyDecisionLoader;
 }
 async function _getLeaderboard() {

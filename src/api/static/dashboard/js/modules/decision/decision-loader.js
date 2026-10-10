@@ -32,7 +32,7 @@ import {
   renderDecisionsTable,
   renderLessonsCards,
   renderReplayPanel,
-} from './decision-renderer.js?v=1';
+} from './decision-renderer.js?v=2';
 
 let lessonsLoaded = false;
 
@@ -225,11 +225,13 @@ export function bindLogDecisionModal() {
 
     const thesisRaw = document.getElementById('decisionThesisSelect')?.value;
     const thesisId  = thesisRaw ? parseInt(thesisRaw, 10) : null;
+    const ticker    = (form.decTickerField?.value || '').trim().toUpperCase();
 
-    // Validate: thesis_id là bắt buộc (API contract: int NOT NULL)
-    if (!thesisId) {
-      showThesisError('Vui lòng chọn thesis liên quan.');
-      document.getElementById('decisionThesisSelect')?.focus();
+    // P2a: thesis không bắt buộc (DecisionLog.thesis_id nullable từ Wave 1);
+    // khi không chọn thesis thì mã CK là bắt buộc để ghi đúng ticker.
+    if (!thesisId && !ticker) {
+      showThesisError('Nhập mã CK hoặc chọn thesis liên quan.');
+      document.getElementById('decTickerField')?.focus();
       return;
     }
 
@@ -242,17 +244,17 @@ export function bindLogDecisionModal() {
     try {
       const payload = {
         thesis_id:           thesisId,
+        ticker:              ticker || null,
         decision_type:       form.decActionField.value,
         rationale:           form.decReasonField.value.trim(),
         review_horizon_days: 30,
       };
 
-      const price   = parseFloat(form.decPriceField?.value);
-      const qty     = parseInt(form.decQtyField?.value, 10);
-      const emotion = form.decEmotionField?.value;
-      if (!isNaN(price) && price > 0)   payload.price       = price;
-      if (!isNaN(qty)   && qty   > 0)   payload.quantity    = qty;
-      if (emotion)                       payload.emotion_tag = emotion;
+      const price = parseFloat(form.decPriceField?.value);
+      const qty   = parseInt(form.decQtyField?.value, 10);
+      // API contract: execution_price (bản cũ gửi `price` → bị bỏ qua, giá thực hiện không lưu)
+      if (!isNaN(price) && price > 0) payload.execution_price = price;
+      if (!isNaN(qty)   && qty   > 0) payload.quantity        = qty;
 
       if (!payload.decision_type || !payload.rationale) {
         alert('Vui lòng điền đầy đủ Hành động và Lý do quyết định.');
@@ -269,7 +271,7 @@ export function bindLogDecisionModal() {
       alert(`Lỗi lưu decision: ${err.message}`);
     } finally {
       submitBtn.disabled = false;
-      submitBtn.textContent = 'Lưu Decision';
+      submitBtn.textContent = 'Lưu quyết định';
     }
   });
 }
@@ -346,7 +348,7 @@ async function populateThesisSelect() {
       sel.innerHTML = '<option value="">Không có thesis active</option>';
       return [];
     }
-    sel.innerHTML = '<option value="">— Chọn thesis *</option>' +
+    sel.innerHTML = '<option value="">— Không gắn thesis —</option>' +
       list.map(t =>
         `<option value="${t.id}">[${t.ticker}] ${t.title ?? t.ticker}</option>`
       ).join('');
