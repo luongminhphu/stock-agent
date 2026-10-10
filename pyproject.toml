@@ -21,10 +21,16 @@ dependencies = [
     "structlog>=24.2.0",
     "discord.py>=2.4.0",
     "python-dotenv>=1.0.0",
-    "vnstock>=4.0.6",
 ]
 
 [project.optional-dependencies]
+# vnstock (và dependency vnai) đã bị gỡ khỏi PyPI (10/2026) → không còn là dependency
+# bắt buộc. Chỉ dùng cho Layer 2 của market/registry_loader (listing + ngành), đã có
+# fallback: thiếu package → registry tĩnh. Cài tay khi cần: pip install -e ".[vnstock]"
+# (từ GitHub, cần vnai tự cài được).
+vnstock = [
+    "vnstock @ git+https://github.com/thinh-vu/vnstock@v4.0.9",
+]
 dev = [
     "pytest>=8.2.0",
     "pytest-asyncio>=0.23.0",
@@ -34,6 +40,10 @@ dev = [
     "import-linter>=2.0",
     "httpx>=0.27.0",
 ]
+
+# Cho phép extra `vnstock` trỏ thẳng GitHub (PEP 508 direct reference)
+[tool.hatch.metadata]
+allow-direct-references = true
 
 # Tell hatchling where the packages live (src layout)
 [tool.hatch.build.targets.wheel]
