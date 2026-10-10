@@ -78,9 +78,14 @@ function _ensureModal() {
           <div class="qt-error" id="qt-error" hidden></div>
           <!-- Wave 9.3: cảnh báo SELL vượt phần khả dụng (soft — không chặn) -->
           <div class="qt-lock-warn" id="qt-lock-warn" hidden></div>
+          <!-- P1b: kết quả kiểm tra AI trước lệnh — POST /pretrade/check -->
+          <div id="qt-pretrade" class="qt-pretrade" hidden aria-live="polite"></div>
         </div>
         <div class="qt-modal-footer">
           <button class="qt-btn qt-btn-secondary" id="qt-cancel-btn">Huỷ</button>
+          <button class="qt-btn qt-btn-secondary qt-btn-ai" id="qt-pretrade-btn"
+            title="AI đối chiếu thesis, tín hiệu, brief, thị trường chung và vị thế hiện tại cho đúng lệnh này">
+            Kiểm tra AI</button>
           <button class="qt-btn qt-btn-primary" id="qt-confirm-btn">Xác nhận</button>
         </div>
       </div>
@@ -186,6 +191,7 @@ export function openModal(ticker, type, thesisId, opts) {
   document.getElementById('qt-summary').textContent = '';
   _hideError();
   _resetSizing();
+  _resetPretrade();
   _loadSizing();
 
   const dropdownWrap = document.getElementById('qt-thesis-dropdown-wrap');
@@ -269,6 +275,104 @@ function _bindModalEvents() {
     _updateRationaleHint(!!this.value);
   });
   document.getElementById('qt-confirm-btn').addEventListener('click', _handleConfirm);
+  document.getElementById('qt-pretrade-btn').addEventListener('click', _handlePretrade);
+}
+
+// ---------------------------------------------------------------------------
+// P1b — Kiểm tra AI trước lệnh (POST /api/v1/pretrade/check)
+// Lệnh dự kiến lấy từ chính form: MUA → BUY; BÁN → REDUCE nếu KL < phần khả dụng,
+// ngược lại SELL. Kết quả là lời khuyên (được lưu PRETRADE_ADVICE) — không chặn Xác nhận.
+// ---------------------------------------------------------------------------
+function _resetPretrade() {
+  const el = document.getElementById('qt-pretrade');
+  if (el) { el.setAttribute('hidden', ''); el.innerHTML = ''; }
+  const btn = document.getElementById('qt-pretrade-btn');
+  if (btn) { btn.disabled = false; btn.textContent = 'Kiểm tra AI'; }
+}
+
+function _intendedAction(qty) {
+  if (_currentType === 'buy') return 'BUY';
+  const sellable = _lockCtx.sellableQty;
+  if (qty > 0 && sellable != null && sellable > 0 && qty < sellable) return 'REDUCE';
+  return 'SELL';
+}
+
+async function _handlePretrade() {
+  const el  = document.getElementById('qt-pretrade');
+  const btn = document.getElementById('qt-pretrade-btn');
+  if (!el || !btn || !_currentTicker) return;
+  const qty    = parseInt(document.getElementById('qt-qty').value, 10);
+  const action = _intendedAction(qty);
+
+  btn.disabled = true;
+  btn.textContent = 'Đang kiểm tra…';
+  el.innerHTML = '<div class="qt-pretrade-loading">AI đang đối chiếu thesis · tín hiệu · brief · thị trường · vị thế…</div>';
+  el.removeAttribute('hidden');
+
+  try {
+    const body = { ticker: _currentTicker, intended_action: action };
+    if (qty > 0) body.quantity = qty;
+    const res = await fetch('/api/v1/pretrade/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.detail ?? `Lỗi ${res.status}`);
+    el.innerHTML = _pretradeHTML(data);
+    // Lời khuyên đã được lưu vào Nhật ký quyết định (PRETRADE_ADVICE)
+    document.dispatchEvent(new CustomEvent('decision:changed', { detail: { thesisId: null } }));
+  } catch (err) {
+    el.innerHTML = `<div class="qt-pretrade-error">Không kiểm tra được: ${_escQt(err.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Kiểm tra lại';
+  }
+}
+
+const _PT_ACTION = { BUY: 'MUA', SELL: 'BÁN', REDUCE: 'GIẢM', HOLD: 'GIỮ' };
+const _PT_VERDICT = {
+  BULLISH: { label: 'Tích cực', cls: 'qt-pt-tag--up' },
+  BEARISH: { label: 'Tiêu cực', cls: 'qt-pt-tag--down' },
+  NEUTRAL: { label: 'Trung lập', cls: 'qt-pt-tag--ref' },
+};
+const _PT_PRIORITY = { BLOCKING: 'Chặn', HIGH: 'Cao', MEDIUM: 'Vừa', LOW: 'Thấp' };
+const _PT_CATEGORY = {
+  THESIS_CONFLICT: 'Luận điểm', RISK_LIMIT: 'Giới hạn rủi ro', TIMING: 'Thời điểm',
+  MARKET_CONDITION: 'Thị trường', PORTFOLIO_BALANCE: 'Cân bằng danh mục',
+};
+
+function _pretradeHTML(d) {
+  const go       = !!d.proceed_recommendation;
+  const action   = _PT_ACTION[d.intended_action] ?? d.intended_action ?? '';
+  const verdict  = _PT_VERDICT[d.verdict] ?? { label: d.verdict ?? '—', cls: 'qt-pt-tag--ref' };
+  const conf     = Math.round((Number(d.confidence) || 0) * 100);
+  const issues   = (d.blocking_issues ?? []).map(b => `<li>${_escQt(b)}</li>`).join('');
+  const order    = ['BLOCKING', 'HIGH', 'MEDIUM', 'LOW'];
+  const steps    = (d.resolution_steps ?? [])
+    .slice()
+    .sort((a, b) => order.indexOf(a.priority) - order.indexOf(b.priority))
+    .map(s => `
+      <li>
+        <span class="qt-pt-prio qt-pt-prio--${_escQt((s.priority || 'MEDIUM').toLowerCase())}">${_escQt(_PT_PRIORITY[s.priority] ?? s.priority)}</span>
+        <span class="qt-pt-cat">${_escQt(_PT_CATEGORY[s.category] ?? s.category)}</span>
+        <div class="qt-pt-issue">${_escQt(s.issue)}</div>
+        <div class="qt-pt-res">→ ${_escQt(s.resolution)}</div>
+      </li>`).join('');
+
+  return `
+    <div class="qt-pt-head">
+      <span class="qt-pt-verdict ${go ? 'qt-pt-verdict--go' : 'qt-pt-verdict--no'}">${go ? 'GO' : 'KHÔNG NÊN'}</span>
+      <span class="qt-pt-action">${_escQt(action)} ${_escQt(d.ticker ?? _currentTicker)}</span>
+      <span class="qt-pt-tag ${verdict.cls}">Cổ phiếu: ${_escQt(verdict.label)}</span>
+      <span class="qt-pt-conf">Tin cậy ${conf}%</span>
+    </div>
+    <div class="qt-pt-summary">${_escQt(d.summary ?? '')}</div>
+    ${d.risk_summary ? `<div class="qt-pt-risk"><span class="qt-pt-label">Rủi ro lệnh này</span>${_escQt(d.risk_summary)}</div>` : ''}
+    ${issues ? `<div class="qt-pt-block"><span class="qt-pt-label">Vấn đề cần xử lý</span><ul class="qt-pt-issues">${issues}</ul></div>` : ''}
+    ${steps ? `<div class="qt-pt-block"><span class="qt-pt-label">Điều kiện để chuyển sang GO</span><ul class="qt-pt-steps">${steps}</ul></div>` : ''}
+    ${d.thesis_alignment_note ? `<div class="qt-pt-note">${_escQt(d.thesis_alignment_note)}</div>` : ''}
+  `;
 }
 
 function _updateSummary() {

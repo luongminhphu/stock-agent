@@ -19,7 +19,13 @@ from src.platform.bootstrap import (
     get_briefing_agent as _get_briefing_agent,
 )
 from src.platform.bootstrap import (
+    get_market_regime_service as _get_market_regime_svc,
+)
+from src.platform.bootstrap import (
     get_ohlcv_service as _get_ohlcv_svc,
+)
+from src.platform.bootstrap import (
+    get_pretrade_agent as _get_pretrade_agent,
 )
 from src.platform.bootstrap import (
     get_quote_service as _get_qs,
@@ -115,6 +121,16 @@ def get_ticker_context_service() -> object:
     Owner: market segment. Used by GET /market/context/{ticker}.
     """
     return _get_tcs()
+
+
+def get_pretrade_agent() -> object:
+    """Return the PreTradeAgent singleton (owner: ai). Used by POST /pretrade/check (P1b)."""
+    return _get_pretrade_agent()
+
+
+def get_market_regime_service() -> object:
+    """Return MarketRegimeService singleton (owner: market). None-safe for PreTradeService."""
+    return _get_market_regime_svc()
 
 
 def get_ohlcv_service() -> object:

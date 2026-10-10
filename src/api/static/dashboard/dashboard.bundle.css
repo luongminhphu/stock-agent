@@ -9040,6 +9040,78 @@ details.backtesting-panel > summary.panel-header {
   font-weight: var(--hsc-fw-semibold);
 }
 
+.qt-btn-ai { margin-right: auto; }
+.qt-pretrade {
+  margin: var(--space-2, 8px) 0 var(--space-3, 12px);
+  padding: var(--space-3, 12px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 14px);
+  background: var(--surface-2);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+.qt-pretrade-loading,
+.qt-pretrade-error { color: var(--muted); }
+.qt-pretrade-error { color: var(--danger); }
+.qt-pt-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.qt-pt-verdict {
+  font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 4px;
+  color: var(--bg);
+}
+.qt-pt-verdict--go { background: var(--success); }
+.qt-pt-verdict--no { background: var(--danger); }
+.qt-pt-action { font-weight: 600; color: var(--text); }
+.qt-pt-tag {
+  font-size: 0.72rem;
+  padding: 1px 6px;
+  border-radius: 2px;
+  border: 1px solid currentColor;
+}
+.qt-pt-tag--up   { color: var(--success); }
+.qt-pt-tag--down { color: var(--danger); }
+.qt-pt-tag--ref  { color: var(--warning); }
+.qt-pt-conf { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+.qt-pt-summary { color: var(--text); }
+.qt-pt-label {
+  display: block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 8px 0 2px;
+}
+.qt-pt-risk, .qt-pt-note { color: var(--muted); }
+.qt-pt-issues, .qt-pt-steps { margin: 0; padding-left: 0; list-style: none; }
+.qt-pt-issues li { color: var(--danger); padding-left: 12px; position: relative; }
+.qt-pt-issues li::before { content: '•'; position: absolute; left: 0; }
+.qt-pt-steps li { padding: 6px 0; border-top: 1px solid var(--line); }
+.qt-pt-steps li:first-child { border-top: none; }
+.qt-pt-prio {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0 6px;
+  border-radius: 2px;
+  margin-right: 6px;
+  color: var(--bg);
+  background: var(--muted);
+}
+.qt-pt-prio--blocking { background: var(--danger); }
+.qt-pt-prio--high     { background: var(--warning); }
+.qt-pt-cat { font-size: 0.72rem; color: var(--muted); }
+.qt-pt-issue { color: var(--text); font-weight: 600; margin-top: 2px; }
+.qt-pt-res { color: var(--muted); }
+
 /* ── heatmap.css ───────────────────────────────────────── */
 .health-heatmap {
   display: inline-flex;

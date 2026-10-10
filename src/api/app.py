@@ -42,6 +42,7 @@ from src.api.routes.health import router as health_router
 from src.api.routes.market import router as market_router
 from src.api.routes.memory import router as memory_router
 from src.api.routes.portfolio import router as portfolio_router
+from src.api.routes.pretrade import router as pretrade_router
 from src.api.routes.readmodel import router as readmodel_router
 from src.api.routes.rrg import router as rrg_router
 from src.api.routes.thesis import router as thesis_router
@@ -199,6 +200,7 @@ def create_app() -> FastAPI:
     app.include_router(today_loop_router, prefix="/api/v1")  # Daily investor loop
     app.include_router(rrg_router, prefix="/api/v1")  # RRG chart
     app.include_router(trend_router, prefix="/api/v1")  # Trend Analysis panel
+    app.include_router(pretrade_router, prefix="/api/v1")  # P1b — kiểm tra AI trước lệnh
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Any, exc: Exception) -> JSONResponse:
