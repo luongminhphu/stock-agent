@@ -1,5 +1,8 @@
-"""Pretrade command — /pretrade <ticker>
+"""Pretrade command — /pretrade <ticker> [action] [quantity]
 Owner: bot segment. Adapter only — no domain logic.
+
+P1: nhà đầu tư khai báo lệnh sắp làm (Mua / Bán / Giảm / Giữ); nhãn GO / KHÔNG
+lấy từ proceed_recommendation của AI, không suy từ intended_action nữa.
 """
 
 from __future__ import annotations
@@ -21,28 +24,24 @@ from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
 
-_DECISION_META: dict[TradeDecision, dict[str, Any]] = {
-    TradeDecision.BUY: {
-        "emoji": "\u2705",
-        "label": "GO",
-        "color": discord.Color.green(),
-    },
-    TradeDecision.HOLD: {
-        "emoji": "\u23f3",
-        "label": "WAIT",
-        "color": discord.Color.yellow(),
-    },
-    TradeDecision.SELL: {
-        "emoji": "\u274c",
-        "label": "AVOID",
-        "color": discord.Color.red(),
-    },
-    TradeDecision.REDUCE: {
-        "emoji": "\u26a0\ufe0f",
-        "label": "REDUCE",
-        "color": discord.Color.orange(),
-    },
+_ACTION_LABEL: dict[TradeDecision, str] = {
+    TradeDecision.BUY: "MUA",
+    TradeDecision.SELL: "B\u00c1N",
+    TradeDecision.REDUCE: "GI\u1ea2M",
+    TradeDecision.HOLD: "GI\u1eee",
 }
+
+_PROCEED_META: dict[bool, dict[str, Any]] = {
+    True: {"emoji": "\u2705", "label": "GO", "color": discord.Color.green()},
+    False: {"emoji": "\u274c", "label": "KH\u00d4NG N\u00caN", "color": discord.Color.red()},
+}
+
+_ACTION_CHOICES = [
+    app_commands.Choice(name="Mua (m\u1edf / mua th\u00eam)", value="BUY"),
+    app_commands.Choice(name="B\u00e1n to\u00e0n b\u1ed9", value="SELL"),
+    app_commands.Choice(name="Gi\u1ea3m t\u1ef7 tr\u1ecdng", value="REDUCE"),
+    app_commands.Choice(name="Gi\u1eef (x\u00e1c nh\u1eadn n\u1eafm gi\u1eef)", value="HOLD"),
+]
 
 _ALIGNMENT_ICON: dict[AlignmentStatus, str] = {
     AlignmentStatus.ALIGNED: "\u2705",
@@ -71,9 +70,21 @@ class PretradeCog(BaseCog):
         name="pretrade",
         description="Cross-check thesis, signal, brief tr\u01b0\u1edbc khi v\u00e0o l\u1ec7nh",
     )
-    @app_commands.describe(ticker="M\u00e3 c\u1ed5 phi\u1ebfu, VD: VCB")
-    async def pretrade(self, interaction: discord.Interaction, ticker: str) -> None:
+    @app_commands.describe(
+        ticker="M\u00e3 c\u1ed5 phi\u1ebfu, VD: VCB",
+        action="L\u1ec7nh s\u1eafp \u0111\u1eb7t (m\u1eb7c \u0111\u1ecbnh: Mua)",
+        quantity="Kh\u1ed1i l\u01b0\u1ee3ng d\u1ef1 ki\u1ebfn (c\u1ed5 phi\u1ebfu), tu\u1ef3 ch\u1ecdn",
+    )
+    @app_commands.choices(action=_ACTION_CHOICES)
+    async def pretrade(
+        self,
+        interaction: discord.Interaction,
+        ticker: str,
+        action: app_commands.Choice[str] | None = None,
+        quantity: app_commands.Range[int, 1, 10_000_000] | None = None,
+    ) -> None:
         await interaction.response.defer(ephemeral=False)
+        intended_action = action.value if action is not None else "BUY"
 
         user_id = str(interaction.user.id)
         try:
@@ -88,7 +99,12 @@ class PretradeCog(BaseCog):
                     market_regime_service=get_market_regime_service(),
                     ticker_context_service=get_ticker_context_service(),
                 )
-                result = await svc.check(ticker=ticker, user_id=user_id)
+                result = await svc.check(
+                    ticker=ticker,
+                    user_id=user_id,
+                    intended_action=intended_action,
+                    quantity=quantity,
+                )
         except Exception as exc:
             logger.error("pretrade.command.error", ticker=ticker, error=str(exc))
             await self.send_error(
@@ -115,8 +131,9 @@ def _clamp(text: str, limit: int = 1000) -> str:
 
 def _build_pretrade_embed(result: Any) -> discord.Embed:
     """Build Discord embed from PreTradeCheckOutput (current schema)."""
-    # intended_action: TradeDecision (BUY/SELL/REDUCE/HOLD)
-    meta = _DECISION_META.get(result.intended_action, _DECISION_META[TradeDecision.HOLD])
+    # P1: nhãn theo proceed_recommendation; intended_action chỉ để hiển thị lệnh.
+    meta = _PROCEED_META[bool(result.proceed_recommendation)]
+    action_label = _ACTION_LABEL.get(result.intended_action, str(result.intended_action))
     conf_bar = "\u2588" * round(result.confidence * 10) + "\u2591" * (
         10 - round(result.confidence * 10)
     )
@@ -125,7 +142,10 @@ def _build_pretrade_embed(result: Any) -> discord.Embed:
     verdict_str = result.verdict.value if hasattr(result.verdict, "value") else str(result.verdict)
 
     embed = discord.Embed(
-        title=f"{meta['emoji']} Pre-trade {result.ticker}: {meta['label']} ({verdict_str})",
+        title=(
+            f"{meta['emoji']} {action_label} {result.ticker}: {meta['label']}"
+            f" \u00b7 c\u1ed5 phi\u1ebfu {verdict_str}"
+        ),
         description=_clamp(result.risk_summary, 4000),
         color=meta["color"],
     )
@@ -146,9 +166,9 @@ def _build_pretrade_embed(result: Any) -> discord.Embed:
             inline=False,
         )
 
-    # Resolution steps — only when not BUY and steps exist
+    # Resolution steps — khi AI không khuyến nghị thực hiện lệnh
     resolution_steps = result.resolution_steps or []
-    if resolution_steps and result.intended_action != TradeDecision.BUY:
+    if resolution_steps and not result.proceed_recommendation:
         steps = sorted(
             resolution_steps,
             key=lambda s: (

@@ -49,6 +49,9 @@ class PreTradeAgent:
         session: AsyncSession | None = None,
         user_id: str | None = None,
         trigger: str = "pretrade_check",
+        intended_action: str = "BUY",
+        quantity: int | None = None,
+        portfolio_context: str = "",
     ) -> PreTradeCheckOutput:
         """Run pre-trade check for a single ticker.
 
@@ -83,6 +86,9 @@ class PreTradeAgent:
             investor_profile=investor_profile,
             market_context=market_context,
             ticker_context=ticker_context,
+            intended_action=intended_action,
+            quantity=quantity,
+            portfolio_context=portfolio_context,
         )
         logger.debug(
             "pretrade_agent.check.calling_ai",
@@ -95,6 +101,8 @@ class PreTradeAgent:
             has_investor_profile=bool(investor_profile),
             has_market_context=bool(market_context),
             has_ticker_context=bool(ticker_context),
+            intended_action=intended_action,
+            has_portfolio_context=bool(portfolio_context),
         )
         # PreTradeCheckOutput has many long-form fields; use COMPLEX_MAX_TOKENS
         # (8192) to avoid mid-JSON truncation on verbose tickers.
@@ -107,7 +115,8 @@ class PreTradeAgent:
         logger.info(
             "pretrade_agent.check.done",
             ticker=ticker,
-            decision=getattr(result, "decision", None),
+            intended_action=getattr(result, "intended_action", None),
+            proceed=getattr(result, "proceed_recommendation", None),
             confidence=getattr(result, "confidence", None),
         )
 

@@ -8,6 +8,9 @@ Responsibilities:
 - Fetch past evaluated decisions for user (thesis segment via LessonService).
 - Fetch general market regime (market segment, read-only via injected
   MarketRegimeService — Wave 8.1: never fight the general market).
+- P1: nhận intended_action (BUY/SELL/REDUCE/HOLD) + quantity từ adapter; dựng
+  PortfolioContext (vị thế hiện tại) từ portfolio segment; áp hard gate theo lệnh
+  (SELL/REDUCE không có vị thế → không proceed). AI không được đổi intended_action.
 - Deterministically override the AI verdict when position sizing detects an
   averaging-down entry (portfolio segment, Wave 8.2 — Livermore: don't
   rescue a losing position by buying more of it). This is enforced in code,
@@ -66,9 +69,28 @@ class PreTradeService:
         self._watchlist_repo = WatchlistRepository(session)
         self._lesson_service = LessonService(session)
 
-    async def check(self, ticker: str, user_id: str) -> PreTradeCheckOutput:
+    async def check(
+        self,
+        ticker: str,
+        user_id: str,
+        intended_action: str | TradeDecision = TradeDecision.BUY,
+        quantity: int | None = None,
+    ) -> PreTradeCheckOutput:
+        """Kiểm tra trước lệnh cho đúng hành động nhà đầu tư sắp làm (P1).
+
+        intended_action: BUY (mở/mua thêm), SELL (đóng), REDUCE (bán một phần),
+            HOLD (xác nhận tiếp tục giữ). Mặc định BUY để tương thích caller cũ.
+        quantity: khối lượng dự kiến — chỉ là ngữ cảnh cho AI, không dùng tính toán.
+        """
         ticker = ticker.upper().strip()
-        logger.info("pretrade_service.start", ticker=ticker, user_id=user_id)
+        action = self._normalize_action(intended_action)
+        logger.info(
+            "pretrade_service.start",
+            ticker=ticker,
+            user_id=user_id,
+            intended_action=action,
+            quantity=quantity,
+        )
 
         # 1. Quote (+ bối cảnh kỹ thuật nếu TickerContextService được wire — Wave C2)
         ticker_context = ""
@@ -96,6 +118,10 @@ class PreTradeService:
         # 5b. Market regime — general market gate (Wave 8.1), best-effort, never blocks
         market_context = await self._build_market_context()
 
+        # 5c. Vị thế hiện tại (P1) — portfolio segment, read-only, best-effort
+        position = await self._fetch_open_position(ticker, user_id)
+        portfolio_context = self._format_portfolio_context(position, price)
+
         # 6. AI check — session forwarded so ContextBuilder can inject investor profile
         result = await self._agent.check(
             ticker=ticker,
@@ -108,11 +134,48 @@ class PreTradeService:
             market_context=market_context,
             ticker_context=ticker_context,
             session=self._session,
+            intended_action=action,
+            quantity=quantity,
+            portfolio_context=portfolio_context,
         )
+        # 6a. Lệnh dự kiến là của nhà đầu tư — AI không được đổi (P1).
+        if str(getattr(result, "intended_action", "")) != action:
+            logger.info(
+                "pretrade_service.intended_action_restored",
+                ticker=ticker,
+                ai_value=str(getattr(result, "intended_action", None)),
+                intended_action=action,
+            )
+            result.intended_action = TradeDecision(action)
+
+        # 6a'. Hard gate theo lệnh: bán/giảm mà không có vị thế thì không có gì để bán.
+        if action in (TradeDecision.SELL, TradeDecision.REDUCE) and position is None:
+            self._block(
+                result,
+                f"Không có vị thế {ticker} đang mở trong danh mục — không có gì để "
+                f"{'bán' if action == TradeDecision.SELL else 'giảm'}. "
+                "Nếu đã giao dịch ngoài hệ thống, ghi lệnh mua trước.",
+            )
+        if (
+            action == TradeDecision.REDUCE
+            and position is not None
+            and quantity
+            and quantity >= position.qty
+        ):
+            self._block(
+                result,
+                f"Khối lượng giảm {quantity:,} ≥ vị thế {position.qty:,.0f} cp — "
+                "đây là BÁN toàn bộ, không phải giảm tỷ trọng.",
+            )
+
         # 6b. Quantitative sizing gate (Wave 2) — portfolio segment owns the
         # math; thesis segment attaches the result to the advisory output.
-        # Best-effort: sizing failure never blocks the pre-trade answer.
-        sizing_result = await self._compute_sizing(ticker=ticker, user_id=user_id, price=price)
+        # Chỉ áp cho lệnh mua; bán/giảm/giữ không cần cỡ vị thế mới.
+        sizing_result = (
+            await self._compute_sizing(ticker=ticker, user_id=user_id, price=price)
+            if action == TradeDecision.BUY
+            else None
+        )
         if sizing_result is not None:
             result.sizing_note = sizing_result.to_note()
 
@@ -121,19 +184,15 @@ class PreTradeService:
             # AI verdict above, so the AI never sees this signal beforehand.
             # A hard risk invariant like "don't rescue a loser" must not
             # depend on the LLM noticing it after the fact — thesis segment
-            # enforces it directly. intended_action=SELL is this codebase's
-            # existing convention for the "AVOID" verdict on a prospective
-            # entry (see bot/commands/pretrade.py _DECISION_META).
-            if (
-                sizing_result.cap_reason == "averaging_down_blocked"
-                and result.intended_action == TradeDecision.BUY
-            ):
-                result.intended_action = TradeDecision.SELL
-                result.proceed_recommendation = False
-                result.blocking_issues.append(
+            # enforces it directly. P1: giữ nguyên intended_action=BUY (lệnh của
+            # nhà đầu tư), chỉ hạ proceed=false — bản cũ đổi sang SELL làm
+            # adapter hiển thị "AVOID" và adherence hiểu sai là lời khuyên bán.
+            if sizing_result.cap_reason == "averaging_down_blocked":
+                self._block(
+                    result,
                     "Bình quân giá xuống bị chặn: giá hiện tại thấp hơn giá vốn "
                     "trung bình của vị thế đang mở (Livermore: không mua thêm để "
-                    "cứu một vị thế đang thua)."
+                    "cứu một vị thế đang thua).",
                 )
                 logger.info(
                     "pretrade_service.averaging_down_override",
@@ -150,12 +209,77 @@ class PreTradeService:
         logger.info(
             "pretrade_service.done",
             ticker=ticker,
-            decision=result.intended_action,
+            intended_action=action,
+            proceed=result.proceed_recommendation,
             confidence=result.confidence,
             has_lessons=bool(past_lessons),
             has_market_context=bool(market_context),
         )
         return result
+
+    # ------------------------------------------------------------------
+    # P1 helpers — intended action + portfolio context + hard gates
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _normalize_action(value: str | TradeDecision) -> TradeDecision:
+        raw = str(getattr(value, "value", value)).upper().strip()
+        aliases = {
+            "MUA": "BUY",
+            "BAN": "SELL",
+            "BÁN": "SELL",
+            "GIAM": "REDUCE",
+            "GIẢM": "REDUCE",
+            "GIU": "HOLD",
+            "GIỮ": "HOLD",
+            "ADD": "BUY",
+        }
+        raw = aliases.get(raw, raw)
+        try:
+            return TradeDecision(raw)
+        except ValueError as exc:
+            raise ValueError(
+                f"intended_action không hợp lệ: {value!r} (BUY | SELL | REDUCE | HOLD)"
+            ) from exc
+
+    @staticmethod
+    def _block(result: PreTradeCheckOutput, issue: str) -> None:
+        """Hạ proceed=false và thêm blocking issue (không trùng)."""
+        result.proceed_recommendation = False
+        if issue not in result.blocking_issues:
+            result.blocking_issues.append(issue)
+
+    async def _fetch_open_position(self, ticker: str, user_id: str) -> Any | None:
+        """Vị thế đang mở từ portfolio segment. Best-effort, None khi lỗi/không có."""
+        try:
+            from src.portfolio.repository import PortfolioRepository
+
+            return await PortfolioRepository(self._session).get_open_position(user_id, ticker)
+        except Exception as exc:
+            logger.warning("pretrade_service.position_lookup_failed", ticker=ticker, error=str(exc))
+            return None
+
+    @staticmethod
+    def _format_portfolio_context(position: Any | None, price: float) -> str:
+        """Một khối ngắn cho prompt: KL, giá vốn, lãi/lỗ theo giá hiện tại, thesis gắn."""
+        if position is None:
+            return ""
+        try:
+            qty = float(position.qty)
+            avg = float(position.avg_cost)
+            pnl_pct = (price / avg - 1.0) * 100.0 if avg > 0 else 0.0
+            lines = [
+                f"Vị thế đang mở: {qty:,.0f} cp @ giá vốn {avg:,.0f} "
+                f"| giá hiện tại {price:,.0f} → {'lãi' if pnl_pct >= 0 else 'lỗ'} {pnl_pct:+.1f}% "
+                f"| giá trị ≈ {qty * price:,.0f} VND",
+            ]
+            if getattr(position, "thesis_id", None):
+                lines.append(f"Gắn thesis #{position.thesis_id}")
+            if getattr(position, "sector", None):
+                lines.append(f"Ngành: {position.sector}")
+            return "\n".join(lines)
+        except Exception:  # noqa: BLE001 — chỉ là ngữ cảnh, không được chặn pretrade
+            return ""
 
     # ------------------------------------------------------------------
     # Context builders — each is best-effort, returns empty string on miss

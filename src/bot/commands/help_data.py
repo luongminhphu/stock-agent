@@ -275,13 +275,14 @@ HELP_DATA: dict[str, GroupEntry] = {
                 "example": "/watchlist alert HPG price_above 55000",
             },
             {
-                "usage": "/pretrade <ticker>",
+                "usage": "/pretrade <ticker> [action] [quantity]",
                 "description": (
-                    "Kiểm tra toàn diện trước khi đặt lệnh: alignment với thesis đang active, "
-                    "tín hiệu scan watchlist, đề cập trong brief gần nhất. "
-                    "Output: verdict (BUY / HOLD / AVOID / REVIEW) + risk flags + confidence."
+                    "Kiểm tra trước lệnh sắp đặt (Mua / Bán / Giảm / Giữ): đối chiếu thesis "
+                    "đang active, tín hiệu scan, brief gần nhất, thị trường chung và vị thế "
+                    "hiện tại. Output: GO / KHÔNG NÊN cho đúng lệnh đó + vấn đề cần xử lý "
+                    "+ lộ trình điều kiện + cỡ vị thế (khi mua)."
                 ),
-                "example": "/pretrade VCB",
+                "example": "/pretrade HPG action:Bán toàn bộ quantity:1000",
             },
         ],
     },
