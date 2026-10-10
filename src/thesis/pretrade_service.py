@@ -68,6 +68,9 @@ class PreTradeService:
         self._thesis_repo = ThesisRepository(session)
         self._watchlist_repo = WatchlistRepository(session)
         self._lesson_service = LessonService(session)
+        # P2b: id của PRETRADE_ADVICE vừa lưu trong lần check() gần nhất — adapter
+        # (api/bot) trả về cho UI để lệnh/quyết định sau đó trỏ đúng lời khuyên.
+        self.last_advice_id: int | None = None
 
     async def check(
         self,
@@ -204,7 +207,9 @@ class PreTradeService:
         # Best-effort: persistence failure must never block the user-facing
         # answer. Uses flush (not commit) so the caller's transaction boundary
         # is preserved.
-        await self._persist_advice(ticker=ticker, user_id=user_id, price=price, result=result)
+        self.last_advice_id = await self._persist_advice(
+            ticker=ticker, user_id=user_id, price=price, result=result
+        )
 
         logger.info(
             "pretrade_service.done",
@@ -409,8 +414,11 @@ class PreTradeService:
         user_id: str,
         price: float,
         result: PreTradeCheckOutput,
-    ) -> None:
-        """Write the AI verdict to DecisionLog (PRETRADE_ADVICE). Never raises."""
+    ) -> int | None:
+        """Write the AI verdict to DecisionLog (PRETRADE_ADVICE). Never raises.
+
+        Returns the new row id (None on failure) so callers can hand it to the UI.
+        """
         try:
             from src.thesis.decision_service import DecisionService
 
@@ -423,14 +431,19 @@ class PreTradeService:
                 rationale_parts.append("blocking: " + "; ".join(result.blocking_issues[:3]))
 
             svc = DecisionService(self._session, quote_service=self._quote_service)
-            await svc.log_pretrade_advice(
+            row = await svc.log_pretrade_advice(
                 user_id=user_id,
                 ticker=ticker,
                 verdict=str(result.verdict),
                 confidence=result.confidence,
                 rationale="\n".join(p for p in rationale_parts if p),
                 price_at_decision=price,
+                intended_action=str(
+                    getattr(result.intended_action, "value", result.intended_action)
+                ),
+                proceed=bool(result.proceed_recommendation),
             )
+            return int(row.id) if row is not None and getattr(row, "id", None) else None
         except Exception as exc:
             logger.warning(
                 "pretrade_service.persist_advice_failed",
@@ -438,6 +451,7 @@ class PreTradeService:
                 user_id=user_id,
                 error=str(exc),
             )
+            return None
 
     async def _build_lesson_context(self, ticker: str, user_id: str) -> str:
         """Fetch ticker-specific past decision lessons for AI personalisation.

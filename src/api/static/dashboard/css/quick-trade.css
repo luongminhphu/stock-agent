@@ -680,3 +680,25 @@ details.backtesting-panel > summary.panel-header {
 .qt-pt-cat { font-size: 0.72rem; color: var(--muted); }
 .qt-pt-issue { color: var(--text); font-weight: 600; margin-top: 2px; }
 .qt-pt-res { color: var(--muted); }
+.qt-pt-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+.qt-pt-link {
+  background: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 0.74rem;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.qt-pt-link:hover { border-color: var(--brand); color: var(--brand); }

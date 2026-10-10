@@ -24,7 +24,7 @@
          Đổi IBM Plex Mono (có Vietnamese, tabular nums). -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Display:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" />
     <!-- CSS bundle: link thẳng bundle (1 request, bỏ @import hop) — Wave 5d -->
-    <link rel="stylesheet" href="/static/dashboard/dashboard.bundle.css?v=49" />
+    <link rel="stylesheet" href="/static/dashboard/dashboard.bundle.css?v=50" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">Bỏ qua điều hướng</a>
@@ -1083,6 +1083,8 @@
           <button class="modal-close" data-close="decisionModal" aria-label="Đóng">&#x2715;</button>
         </div>
         <form id="decisionForm" class="form-grid" novalidate>
+          <input type="hidden" id="decAdviceIdField" name="advice_id" value="" />
+          <p id="decAdviceHint" class="form-hint" hidden></p>
           <div class="form-row">
             <div class="form-field">
               <label for="decTickerField">Mã CK *</label>

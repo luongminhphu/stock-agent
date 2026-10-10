@@ -62,7 +62,7 @@ let _lazyTodayLoop       = null;
 // _lazyRecommendations removed — recommendations panel consolidated into #intelligencePanel
 
 async function _getDecisionLoader() {
-  if (!_lazyDecisionLoader) _lazyDecisionLoader = import('./modules/decision/decision-loader.js?v=2');
+  if (!_lazyDecisionLoader) _lazyDecisionLoader = import('./modules/decision/decision-loader.js?v=3');
   return _lazyDecisionLoader;
 }
 async function _getLeaderboard() {
@@ -136,6 +136,11 @@ function bindDecisionChangedEvent() {
 }
 
 function bindDecisionQuickTradeEvent() {
+  // P2b: quick-trade → "Không giao dịch — ghi quyết định GIỮ" trỏ đúng lời khuyên AI
+  document.addEventListener('decision:open', (e) => {
+    openDecisionModal(e.detail ?? {});
+  });
+
   document.addEventListener('decision:quick-trade', async (e) => {
     const { thesisId, ticker, action, price } = e.detail ?? {};
     if (!thesisId || !ticker) return;

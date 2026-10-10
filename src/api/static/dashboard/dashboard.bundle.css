@@ -4360,6 +4360,30 @@ tr.row--stop-breach:hover { background: rgba(var(--down-rgb), 0.14); }
   color: var(--brand);
 }
 
+.dec-adh {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 2px;
+  border: 1px solid var(--line-strong);
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--muted);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.dec-adh--ok { color: var(--success); border-color: color-mix(in srgb, var(--success) 50%, transparent); }
+.dec-adh--no { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 50%, transparent); }
+#decAdviceHint.form-hint {
+  grid-column: 1 / -1;
+  margin: 0 0 4px;
+  padding: 6px 10px;
+  border-left: 3px solid var(--brand);
+  background: var(--brand-bg);
+  color: var(--text);
+  font-size: 0.8rem;
+}
+
 /* ── leaderboard.css ───────────────────────────────────── */
 .lb-strip {
   display: flex;
@@ -9111,6 +9135,28 @@ details.backtesting-panel > summary.panel-header {
 .qt-pt-cat { font-size: 0.72rem; color: var(--muted); }
 .qt-pt-issue { color: var(--text); font-weight: 600; margin-top: 2px; }
 .qt-pt-res { color: var(--muted); }
+.qt-pt-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+.qt-pt-link {
+  background: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 0.74rem;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.qt-pt-link:hover { border-color: var(--brand); color: var(--brand); }
 
 /* ── heatmap.css ───────────────────────────────────────── */
 .health-heatmap {

@@ -105,6 +105,8 @@ let _fromThesisTab   = false;
 
 // Wave 9.3: lock context của ticker đang mở modal (từ data-attrs row)
 let _lockCtx = { sellableQty: null, lockedQty: 0, lockedReason: '', lockedUntil: '' };
+// P2b: lời khuyên AI vừa nhận trong modal này — gửi kèm lệnh để adherence trỏ đúng
+let _lastAdvice = null; // { id, action, proceed, summary }
 
 // ---------------------------------------------------------------------------
 // Rationale hint
@@ -284,6 +286,7 @@ function _bindModalEvents() {
 // ngược lại SELL. Kết quả là lời khuyên (được lưu PRETRADE_ADVICE) — không chặn Xác nhận.
 // ---------------------------------------------------------------------------
 function _resetPretrade() {
+  _lastAdvice = null;
   const el = document.getElementById('qt-pretrade');
   if (el) { el.setAttribute('hidden', ''); el.innerHTML = ''; }
   const btn = document.getElementById('qt-pretrade-btn');
@@ -319,7 +322,11 @@ async function _handlePretrade() {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data?.detail ?? `Lỗi ${res.status}`);
+    _lastAdvice = data.advice_id
+      ? { id: data.advice_id, action: data.intended_action, proceed: !!data.proceed_recommendation, summary: data.summary ?? '' }
+      : null;
     el.innerHTML = _pretradeHTML(data);
+    el.querySelector('#qt-pt-log-hold')?.addEventListener('click', _logHoldDecision);
     // Lời khuyên đã được lưu vào Nhật ký quyết định (PRETRADE_ADVICE)
     document.dispatchEvent(new CustomEvent('decision:changed', { detail: { thesisId: null } }));
   } catch (err) {
@@ -372,7 +379,30 @@ function _pretradeHTML(d) {
     ${issues ? `<div class="qt-pt-block"><span class="qt-pt-label">Vấn đề cần xử lý</span><ul class="qt-pt-issues">${issues}</ul></div>` : ''}
     ${steps ? `<div class="qt-pt-block"><span class="qt-pt-label">Điều kiện để chuyển sang GO</span><ul class="qt-pt-steps">${steps}</ul></div>` : ''}
     ${d.thesis_alignment_note ? `<div class="qt-pt-note">${_escQt(d.thesis_alignment_note)}</div>` : ''}
+    ${d.advice_id ? `
+    <div class="qt-pt-foot">
+      <span class="qt-pt-advice-id">Lời khuyên #${_escQt(String(d.advice_id))} — lệnh Xác nhận sẽ được đối chiếu với lời khuyên này</span>
+      ${!go ? `<button type="button" class="qt-pt-link" id="qt-pt-log-hold">Không giao dịch — ghi quyết định GIỮ</button>` : ''}
+    </div>` : ''}
   `;
+}
+
+// P2b: nhà đầu tư nghe AI và không giao dịch → vẫn ghi một quyết định HOLD trỏ đúng
+// lời khuyên, để adherence = followed và Replay có dữ liệu "đã không làm".
+function _logHoldDecision() {
+  if (!_lastAdvice) return;
+  const qty = parseInt(document.getElementById('qt-qty').value, 10) || null;
+  document.dispatchEvent(new CustomEvent('decision:open', {
+    detail: {
+      ticker: _currentTicker,
+      action: 'HOLD',
+      adviceId: _lastAdvice.id,
+      adviceSummary: _lastAdvice.summary,
+      thesisId: _resolveThesisId() || null,
+      quantity: qty,
+    },
+  }));
+  _closeModal();
 }
 
 function _updateSummary() {
@@ -505,6 +535,7 @@ async function _handleConfirm() {
   if (note)             body.note      = note;
   if (rationale)        body.rationale = rationale;
   if (resolvedThesisId) body.thesis_id = resolvedThesisId;
+  if (_lastAdvice?.id)  body.advice_id = _lastAdvice.id;  // P2b
 
   try {
     const res = await fetch(`/api/v1/portfolio/${_currentType}`, {

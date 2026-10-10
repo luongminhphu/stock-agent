@@ -56,3 +56,14 @@ async def test_pretrade_check_service_error_is_503(bootstrapped_client):
     ):
         r = await bootstrapped_client.post("/api/v1/pretrade/check", json={"ticker": "HPG"})
         assert r.status_code == 503 and "HPG" in r.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_pretrade_check_returns_advice_id(bootstrapped_client):
+    async def _fake_check(self, **kwargs):  # noqa: ANN001, ANN003
+        self.last_advice_id = 123
+        return _output()
+
+    with patch("src.thesis.pretrade_service.PreTradeService.check", new=_fake_check):
+        r = await bootstrapped_client.post("/api/v1/pretrade/check", json={"ticker": "HPG"})
+        assert r.status_code == 200 and r.json()["advice_id"] == 123

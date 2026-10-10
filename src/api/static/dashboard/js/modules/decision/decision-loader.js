@@ -32,7 +32,7 @@ import {
   renderDecisionsTable,
   renderLessonsCards,
   renderReplayPanel,
-} from './decision-renderer.js?v=2';
+} from './decision-renderer.js?v=3';
 
 let lessonsLoaded = false;
 
@@ -212,6 +212,10 @@ export function bindLogDecisionModal() {
   const resetAndClose = () => {
     clearThesisError();
     form.reset();
+    const adviceField = document.getElementById('decAdviceIdField');
+    if (adviceField) adviceField.value = '';
+    const adviceHint = document.getElementById('decAdviceHint');
+    if (adviceHint) { adviceHint.hidden = true; adviceHint.textContent = ''; }
     const sel = document.getElementById('decisionThesisSelect');
     if (sel) sel.value = '';
     modal.close();
@@ -250,11 +254,13 @@ export function bindLogDecisionModal() {
         review_horizon_days: 30,
       };
 
-      const price = parseFloat(form.decPriceField?.value);
-      const qty   = parseInt(form.decQtyField?.value, 10);
+      const price    = parseFloat(form.decPriceField?.value);
+      const qty      = parseInt(form.decQtyField?.value, 10);
+      const adviceId = parseInt(form.decAdviceIdField?.value, 10);
       // API contract: execution_price (bản cũ gửi `price` → bị bỏ qua, giá thực hiện không lưu)
       if (!isNaN(price) && price > 0) payload.execution_price = price;
       if (!isNaN(qty)   && qty   > 0) payload.quantity        = qty;
+      if (!isNaN(adviceId) && adviceId > 0) payload.advice_id = adviceId;  // P2b
 
       if (!payload.decision_type || !payload.rationale) {
         alert('Vui lòng điền đầy đủ Hành động và Lý do quyết định.');
@@ -370,10 +376,26 @@ async function populateThesisSelect() {
 // ---------------------------------------------------------------------------
 
 export async function openDecisionModal(opts = {}) {
-  const { thesisId, ticker, action, price } = opts ?? {};
+  const { thesisId, ticker, action, price, adviceId, adviceSummary, quantity } = opts ?? {};
 
   // Clear error state từ lần mở trước
   clearThesisError();
+
+  // P2b: quyết định này trả lời cho lời khuyên pretrade nào (adherence chính xác)
+  const adviceField = document.getElementById('decAdviceIdField');
+  const adviceHint  = document.getElementById('decAdviceHint');
+  if (adviceField) adviceField.value = adviceId ? String(adviceId) : '';
+  if (adviceHint) {
+    if (adviceId) {
+      adviceHint.textContent = `Trả lời lời khuyên AI #${adviceId}${adviceSummary ? ` — ${adviceSummary}` : ''}`;
+      adviceHint.hidden = false;
+    } else {
+      adviceHint.textContent = '';
+      adviceHint.hidden = true;
+    }
+  }
+  const qtyField = document.getElementById('decQtyField');
+  if (qtyField) qtyField.value = quantity ? String(quantity) : '';
 
   // Populate thesis dropdown trước, nhận lại list để có thể pre-select
   await populateThesisSelect();

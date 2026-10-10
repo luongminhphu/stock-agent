@@ -19,6 +19,16 @@ const TYPE_LABEL = {
   PRETRADE_ADVICE: { label: 'AI tư vấn', cls: 'dec-type-skip' },
 };
 
+// P2b — dấu nối quyết định ↔ lời khuyên AI
+function _adviceMark(d) {
+  if (d.decision_type === 'PRETRADE_ADVICE') {
+    if (d.adherence === 'followed_advice') return ' <span class="dec-adh dec-adh--ok" title="Nhà đầu tư đã làm theo">đã nghe</span>';
+    if (d.adherence === 'ignored_advice')  return ' <span class="dec-adh dec-adh--no" title="Nhà đầu tư làm khác">bỏ qua</span>';
+    return '';
+  }
+  return d.advice_id ? ` <span class="dec-adh" title="Quyết định trả lời lời khuyên AI #${d.advice_id}">AI #${d.advice_id}</span>` : '';
+}
+
 const VERDICT_CLS = {
   CORRECT:   'dec-verdict-correct',
   INCORRECT: 'dec-verdict-incorrect',
@@ -82,7 +92,7 @@ export function renderDecisionsTable(container, decisions, { onEvaluate, onRepla
 
     row.innerHTML = `
       <td class="dec-ticker">${esc(d.ticker)}</td>
-      <td><span class="dec-type ${typeInfo.cls}">${typeInfo.label}</span></td>
+      <td><span class="dec-type ${typeInfo.cls}">${typeInfo.label}</span>${_adviceMark(d)}</td>
       <td class="dec-date">${fmtDate(d.decision_at)}</td>
       <td class="dec-price">${d.price_at_decision != null ? fmt(d.price_at_decision, 0) : '—'}</td>
       <td class="dec-price">${d.quantity != null ? fmt(d.quantity, 0) : '—'}</td>

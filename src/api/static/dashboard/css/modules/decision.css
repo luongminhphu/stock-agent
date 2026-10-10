@@ -348,3 +348,28 @@
 .lesson-adjust strong {
   color: var(--brand);
 }
+
+/* P2b — dấu nối quyết định ↔ lời khuyên AI trong bảng Nhật ký */
+.dec-adh {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 2px;
+  border: 1px solid var(--line-strong);
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--muted);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.dec-adh--ok { color: var(--success); border-color: color-mix(in srgb, var(--success) 50%, transparent); }
+.dec-adh--no { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 50%, transparent); }
+#decAdviceHint.form-hint {
+  grid-column: 1 / -1;
+  margin: 0 0 4px;
+  padding: 6px 10px;
+  border-left: 3px solid var(--brand);
+  background: var(--brand-bg);
+  color: var(--text);
+  font-size: 0.8rem;
+}

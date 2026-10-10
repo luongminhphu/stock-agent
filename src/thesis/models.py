@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     Float,
     ForeignKey,
@@ -361,6 +362,14 @@ class DecisionLog(Base):
     )
     key_lesson: Mapped[str | None] = mapped_column(Text, nullable=True)
     pattern_detected: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # P2b — nối quyết định/lệnh thật với đúng lời khuyên pretrade (thay vì cửa sổ 3 ngày).
+    # Trên row thực thi (BUY/SELL/…): advice_id → PRETRADE_ADVICE đã xem trước khi làm.
+    # Trên row PRETRADE_ADVICE: lệnh dự kiến + AI có khuyến nghị thực hiện không.
+    advice_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("decision_logs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    advice_action: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    advice_proceed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     # Wave E3b — chỉ cho PRETRADE_ADVICE: user có làm theo lời khuyên không.
     adherence: Mapped[str | None] = mapped_column(
         String(16), nullable=True

@@ -43,6 +43,34 @@ _PRETRADE_ADHERENCE_WINDOW_DAYS = 7
 ADHERENCE_FOLLOWED = "followed_advice"
 ADHERENCE_IGNORED = "ignored_advice"
 
+
+def _normalize_user_action(action_type: str) -> str | None:
+    """BUY/ADD → BUY · SELL/REDUCE → SELL · HOLD → HOLD · khác → None."""
+    a = (action_type or "").upper().strip()
+    if a in ("BUY", "ADD"):
+        return "BUY"
+    if a in ("SELL", "REDUCE"):
+        return "SELL"
+    if a == "HOLD":
+        return "HOLD"
+    return None
+
+
+def _adherence_followed(
+    *,
+    action: str,
+    advice_action: str | None,
+    advice_proceed: bool | None,
+    verdict: str,
+) -> bool:
+    """Rule 'có nghe AI không' — thuần hàm để test được từng nhánh."""
+    if advice_proceed is not None and advice_action is not None:
+        did_the_asked_action = action == advice_action
+        return did_the_asked_action if advice_proceed else not did_the_asked_action
+    # Fallback advice cũ: theo verdict cổ phiếu
+    return (action == "BUY" and verdict == "BULLISH") or (action == "SELL" and verdict == "BEARISH")
+
+
 # Threshold for verdict classification (percentage points).
 # price movement >= +_VERDICT_THRESHOLD_PCT → CORRECT for bullish decisions.
 # price movement <= -_VERDICT_THRESHOLD_PCT → INCORRECT for bullish decisions.
@@ -155,8 +183,13 @@ class DecisionService:
         rationale: str,
         price_at_decision: float | None = None,
         review_horizon_days: int = _DEFAULT_REVIEW_HORIZON_DAYS,
+        intended_action: str | None = None,
+        proceed: bool | None = None,
     ) -> DecisionLog:
         """Persist an AI pre-trade advisory verdict as an auditable DecisionLog.
+
+        intended_action / proceed (P2b): lệnh nhà đầu tư hỏi và AI có khuyến nghị
+        thực hiện không — nền cho rule adherence theo từng lệnh (thay verdict).
 
         Owner: thesis segment (same aggregate as execution decisions).
 
@@ -186,6 +219,8 @@ class DecisionService:
             active_signal=verdict,
             rationale=rationale,
             review_horizon_days=review_horizon_days,
+            advice_action=(intended_action or "").upper().strip() or None,
+            advice_proceed=proceed,
         )
         self._session.add(row)
         await self._session.flush()
@@ -209,47 +244,77 @@ class DecisionService:
         action_type: str,
         action_at: datetime | None = None,
         window_days: int = _PRETRADE_ADHERENCE_WINDOW_DAYS,
+        advice_id: int | None = None,
     ) -> DecisionLog | None:
-        """Nối hành động thật (BUY/SELL) với PRETRADE_ADVICE gần nhất còn chưa reconcile.
+        """Nối hành động thật với PRETRADE_ADVICE: đúng advice_id (P2b) hoặc gần nhất
+        trong cửa sổ (fallback cho /buy /sell Discord không biết advice).
 
         Owner: thesis (rule "user có nghe AI không" là thesis scoring concern).
 
-        Rule adherence (advice.active_signal là Verdict BULLISH/BEARISH/NEUTRAL):
-            BUY  + BULLISH → followed   BUY  + BEARISH → ignored
-            SELL + BEARISH → followed   SELL + BULLISH → ignored
-            NEUTRAL / không rõ → ignored (AI không khuyên hành động mà user vẫn làm)
+        Rule adherence:
+          - Advice có advice_action + advice_proceed (từ P1/P2b):
+              proceed = true  → followed khi user làm đúng lệnh đã hỏi, ignored nếu khác
+              proceed = false → followed khi user KHÔNG làm lệnh đó (kể cả HOLD), ignored nếu vẫn làm
+            BUY/ADD gộp thành BUY, SELL/REDUCE gộp thành SELL.
+          - Advice cũ (không có advice_proceed) — rule verdict:
+              BUY + BULLISH → followed   BUY + BEARISH → ignored
+              SELL + BEARISH → followed  SELL + BULLISH → ignored
+              NEUTRAL / không rõ → ignored
 
-        Trả về row advice đã cập nhật, hoặc None nếu không có advice trong cửa sổ.
+        Trả về row advice đã cập nhật, hoặc None nếu không có advice.
         Caller (core.UserActionFeedbackListener) publish PretradeAdviceReconciledEvent
         → ai.memory ledger. Không raise ra ngoài cho lỗi dữ liệu; caller quản lý commit.
         """
-        action = action_type.upper()
-        if action not in ("BUY", "SELL"):
+        action = _normalize_user_action(action_type)
+        if action is None:
             return None
         ticker = ticker.upper().strip()
         action_at = action_at or datetime.now(UTC)
-        since = action_at - timedelta(days=window_days)
 
-        stmt = (
-            select(DecisionLog)
-            .where(
-                DecisionLog.user_id == str(user_id),
-                DecisionLog.ticker == ticker,
-                DecisionLog.decision_type == "PRETRADE_ADVICE",
-                DecisionLog.adherence.is_(None),
-                DecisionLog.decision_at >= since,
-                DecisionLog.decision_at <= action_at,
+        advice: DecisionLog | None
+        if advice_id is not None:
+            advice = await self._session.get(DecisionLog, int(advice_id))
+            if (
+                advice is None
+                or str(advice.user_id) != str(user_id)
+                or str(advice.decision_type)
+                not in ("PRETRADE_ADVICE", "DecisionType.PRETRADE_ADVICE")
+            ):
+                logger.warning(
+                    "decision.pretrade_adherence_bad_advice_id",
+                    advice_id=advice_id,
+                    user_id=user_id,
+                )
+                return None
+            if advice.adherence is not None:
+                return advice  # đã reconcile — idempotent
+        else:
+            if action == "HOLD":
+                return None  # HOLD chỉ có nghĩa khi nhà đầu tư trỏ đúng lời khuyên
+            since = action_at - timedelta(days=window_days)
+            stmt = (
+                select(DecisionLog)
+                .where(
+                    DecisionLog.user_id == str(user_id),
+                    DecisionLog.ticker == ticker,
+                    DecisionLog.decision_type == "PRETRADE_ADVICE",
+                    DecisionLog.adherence.is_(None),
+                    DecisionLog.decision_at >= since,
+                    DecisionLog.decision_at <= action_at,
+                )
+                .order_by(DecisionLog.decision_at.desc(), DecisionLog.id.desc())
+                .limit(1)
             )
-            .order_by(DecisionLog.decision_at.desc(), DecisionLog.id.desc())
-            .limit(1)
-        )
-        advice = (await self._session.execute(stmt)).scalar_one_or_none()
-        if advice is None:
-            return None
+            advice = (await self._session.execute(stmt)).scalar_one_or_none()
+            if advice is None:
+                return None
 
         signal = (advice.active_signal or "").upper()
-        followed = (action == "BUY" and signal == "BULLISH") or (
-            action == "SELL" and signal == "BEARISH"
+        followed = _adherence_followed(
+            action=action,
+            advice_action=_normalize_user_action(advice.advice_action or ""),
+            advice_proceed=advice.advice_proceed,
+            verdict=signal,
         )
         advice.adherence = ADHERENCE_FOLLOWED if followed else ADHERENCE_IGNORED
         advice.adherence_action_at = action_at
@@ -278,8 +343,13 @@ class DecisionService:
         brief_summary: str | None = None,
         active_signal: str | None = None,
         review_horizon_days: int = _DEFAULT_REVIEW_HORIZON_DAYS,
+        advice_id: int | None = None,
     ) -> DecisionLog:
         """Persist one immutable decision with frozen context at decision time.
+
+        advice_id (P2b): PRETRADE_ADVICE nhà đầu tư đã xem trước khi quyết định —
+            lưu vào row và reconcile adherence cho đúng lời khuyên đó (followed/ignored).
+            advice không thuộc user / không phải PRETRADE_ADVICE → ValueError.
 
         execution_price: actual fill price supplied by the user ("Giá thực hiện").
             If provided, stored as price_at_decision directly.
@@ -321,6 +391,20 @@ class DecisionService:
         thesis_score = self._infer_current_thesis_score(thesis) if thesis else None
         thesis_health_score = self._infer_current_health_score(thesis) if thesis else None
 
+        advice: DecisionLog | None = None
+        if advice_id is not None:
+            advice = await self._session.get(DecisionLog, int(advice_id))
+            if (
+                advice is None
+                or str(advice.user_id) != str(user_id)
+                or str(advice.decision_type) != "PRETRADE_ADVICE"
+            ):
+                raise ValueError(f"advice_id={advice_id} không phải lời khuyên pretrade của bạn")
+            if advice.ticker != resolved_ticker:
+                raise ValueError(
+                    f"advice_id={advice_id} là của mã {advice.ticker}, không phải {resolved_ticker}"
+                )
+
         row = DecisionLog(
             thesis_id=thesis.id if thesis else None,
             user_id=user_id,
@@ -335,8 +419,18 @@ class DecisionService:
             brief_summary=brief_summary,
             rationale=rationale,
             review_horizon_days=review_horizon_days,
+            advice_id=advice.id if advice else None,
         )
         self._session.add(row)
+        await self._session.flush()
+        if advice is not None:
+            await self.reconcile_pretrade_with_action(
+                user_id=user_id,
+                ticker=resolved_ticker,
+                action_type=decision_type,
+                action_at=row.decision_at,
+                advice_id=advice.id,
+            )
         await self._session.commit()
         await self._session.refresh(row)
         logger.info(

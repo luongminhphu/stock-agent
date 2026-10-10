@@ -52,6 +52,10 @@ class LogDecisionRequest(BaseModel):
         None, min_length=2, max_length=20, description="Bắt buộc khi không có thesis_id"
     )
     decision_type: str = Field(..., description="BUY | SELL | HOLD | ADD | REDUCE")
+    advice_id: int | None = Field(
+        None,
+        description="P2b: id lời khuyên pretrade (PRETRADE_ADVICE) đã xem trước khi quyết định",
+    )
     rationale: str = Field(..., min_length=1, max_length=2000)
     execution_price: float | None = Field(
         None,
@@ -76,6 +80,8 @@ class DecisionResponse(BaseModel):
     decision_type: str
     price_at_decision: float | None
     quantity: int | None
+    advice_id: int | None = None
+    adherence: str | None = None
     thesis_score_at_decision: float | None
     rationale: str
     review_horizon_days: int
@@ -96,6 +102,8 @@ class DecisionResponse(BaseModel):
             decision_type=str(d.decision_type),  # type: ignore[attr-defined]
             price_at_decision=d.price_at_decision,  # type: ignore[attr-defined]
             quantity=getattr(d, "quantity", None),
+            advice_id=getattr(d, "advice_id", None),
+            adherence=getattr(d, "adherence", None),
             thesis_score_at_decision=d.thesis_score_at_decision,  # type: ignore[attr-defined]
             rationale=d.rationale,  # type: ignore[attr-defined]
             review_horizon_days=d.review_horizon_days,  # type: ignore[attr-defined]
@@ -160,6 +168,7 @@ async def log_decision(
             user_id=user_id,
             thesis_id=body.thesis_id,
             ticker=body.ticker,
+            advice_id=body.advice_id,
             decision_type=body.decision_type.upper().strip(),
             rationale=body.rationale,
             execution_price=body.execution_price,

@@ -28,6 +28,12 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/pretrade", tags=["pretrade"])
 
 
+class PreTradeCheckResponse(PreTradeCheckOutput):
+    """PreTradeCheckOutput + advice_id (P2b) để lệnh/quyết định sau đó trỏ đúng lời khuyên."""
+
+    advice_id: int | None = None
+
+
 class PreTradeCheckRequest(BaseModel):
     """Lệnh nhà đầu tư sắp đặt — AI đánh giá có nên thực hiện đúng lệnh này không."""
 
@@ -40,7 +46,7 @@ class PreTradeCheckRequest(BaseModel):
 
 @router.post(
     "/check",
-    response_model=PreTradeCheckOutput,
+    response_model=PreTradeCheckResponse,
     summary="Kiểm tra AI trước lệnh (Mua / Bán / Giảm / Giữ)",
 )
 async def pretrade_check(
@@ -51,7 +57,7 @@ async def pretrade_check(
     agent: Annotated[Any, Depends(get_pretrade_agent)],
     regime_svc: Annotated[Any, Depends(get_market_regime_service)],
     tcs: Annotated[Any, Depends(get_ticker_context_service)],
-) -> PreTradeCheckOutput:
+) -> PreTradeCheckResponse:
     """Cùng luồng với Discord /pretrade; lời khuyên được lưu DecisionLog PRETRADE_ADVICE
     để đối chiếu adherence khi lệnh thật được ghi."""
     from src.thesis.pretrade_service import PreTradeService
@@ -78,4 +84,4 @@ async def pretrade_check(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Không kiểm tra được {body.ticker.upper()}: {exc}",
         ) from exc
-    return result
+    return PreTradeCheckResponse(**result.model_dump(), advice_id=svc.last_advice_id)
