@@ -64,6 +64,13 @@ async def create_tables(engine):
     yield
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
+    # StaticPool giữ đúng 1 aiosqlite connection cho cả suite, nhưng mỗi test chạy
+    # trên event loop riêng. asyncio.Lock (_execute_mutex) của connection bind vào
+    # loop ở lần tranh chấp đầu tiên → test sau tranh chấp lại sẽ gặp
+    # "Lock is bound to a different event loop" (thấy trên Python 3.12, CI).
+    # Dispose để test kế tiếp nhận connection mới trên loop của chính nó;
+    # DB in-memory mất là chấp nhận được vì create_all chạy lại mỗi test.
+    await engine.dispose()
 
 
 @pytest.fixture(autouse=True)
