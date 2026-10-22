@@ -6,7 +6,7 @@
  * helper này để đồng nhất stroke 2px, 24px frame, kế thừa currentColor.
  *
  * Usage:
- *   import { icon } from '../../utils/icons.js?v=1';
+ *   import { icon } from '../../utils/icons.js?v=2';
  *   `<span class="attn-item__icon">${icon('bell')}</span>`
  *   icon('check', { size: 14, cls: 'ic--ok' })
  *
@@ -26,6 +26,7 @@ const PATHS = {
   'circle':         '<circle cx="12" cy="12" r="10"/>',
   'circle-dot':     '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="1"/>',
   'ban':            '<circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/>',
+  'rotate-ccw':     '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
   'pause':          '<rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/>',
   'flame':          '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>',
   // hành động / đối tượng

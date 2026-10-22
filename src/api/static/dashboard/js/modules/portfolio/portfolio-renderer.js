@@ -28,7 +28,7 @@
 // ---------------------------------------------------------------------------
 // Format helpers (inline để tránh import)
 // ---------------------------------------------------------------------------
-import { icon as ic } from '../../utils/icons.js?v=1';
+import { icon as ic } from '../../utils/icons.js?v=2';
 
 const _fmtNum = n => (n == null ? '—' : Number(n).toLocaleString('vi-VN'));
 const _fmtPct = p => (p == null ? '—' : (p >= 0 ? '+' : '') + p.toFixed(1) + '%');

@@ -10,7 +10,7 @@
 import { el, showToast } from '../../utils/dom.js?v=1';
 import { esc, fmt } from '../../utils/format.js?v=1';
 import { thesisApiBase, sendJson } from '../../api/client.js?v=1';
-import { makeAssumptionRow, makeCatalystRow, clearFormRows, seedBlankFormRows } from './thesis-form.js?v=1';
+import { makeAssumptionRow, makeCatalystRow, clearFormRows, seedBlankFormRows } from './thesis-form.js?v=2';
 
 // ---------------------------------------------------------------------------
 // Render helpers

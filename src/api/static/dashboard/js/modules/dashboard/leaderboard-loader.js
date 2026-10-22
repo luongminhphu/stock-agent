@@ -9,7 +9,7 @@
 
 import { getJson } from '../../api/client.js?v=1';
 import { esc } from '../../utils/format.js?v=1';
-import { icon as ic } from '../../utils/icons.js?v=1';
+import { icon as ic } from '../../utils/icons.js?v=2';
 
 const SCORE_CLS = score =>
   score >= 75 ? 'lb-score-high'

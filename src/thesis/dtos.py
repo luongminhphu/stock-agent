@@ -85,7 +85,22 @@ class ThesisNotFoundError(Exception):
 
 
 class ThesisAlreadyClosedError(Exception):
-    """Raised when an operation is attempted on a closed/invalidated thesis."""
+    """Raised when an operation is attempted on a closed/invalidated/paused thesis.
+
+    Message là tiếng Việt đọc được — api trả thẳng làm `detail` (trước đây chỉ là id).
+    """
+
+    def __init__(self, thesis_id: int, status: str | None = None) -> None:
+        self.thesis_id = thesis_id
+        self.status = status
+        state = f"trạng thái '{status}'" if status else "trạng thái đã đóng"
+        super().__init__(
+            f"Thesis #{thesis_id} đang ở {state} — mở lại thesis trước khi sửa hoặc đổi trạng thái"
+        )
+
+
+class ThesisConflictError(Exception):
+    """Raised when a lifecycle change would violate an invariant (vd: 2 thesis active cùng mã)."""
 
 
 class AssumptionNotFoundError(Exception):

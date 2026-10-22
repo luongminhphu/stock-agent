@@ -24,7 +24,7 @@
          Đổi IBM Plex Mono (có Vietnamese, tabular nums). -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Display:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" />
     <!-- CSS bundle: link thẳng bundle (1 request, bỏ @import hop) — Wave 5d -->
-    <link rel="stylesheet" href="/static/dashboard/dashboard.bundle.css?v=50" />
+    <link rel="stylesheet" href="/static/dashboard/dashboard.bundle.css?v=51" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">Bỏ qua điều hướng</a>
@@ -884,13 +884,10 @@
               <input id="thesisConvictionField" name="conviction_score" type="number" min="0" max="100" placeholder="70" />
             </div>
             <div class="form-field">
-              <label for="thesisStatusField">Status</label>
-              <select id="thesisStatusField" name="status">
-                <option value="active">active</option>
-                <option value="paused">paused</option>
-                <option value="invalidated">invalidated</option>
-                <option value="closed">closed</option>
-              </select>
+              <label for="thesisStatusField">Trạng thái</label>
+              <input id="thesisStatusField" name="status" value="active" readonly aria-readonly="true"
+                     title="Trạng thái đổi qua các nút Đóng thesis / Invalidate / Mở lại trong chi tiết thesis" />
+              <p class="form-hint form-hint--muted">Đổi trạng thái bằng nút Đóng thesis / Invalidate / Mở lại ở màn chi tiết.</p>
             </div>
           </div>
 

@@ -16,15 +16,15 @@ import { el, showToast, openModal, closeModal } from '../../utils/dom.js?v=1';
 import { esc, fmtDate } from '../../utils/format.js?v=1';
 import { thesisApiBase, getJson, sendJson } from '../../api/client.js?v=1';
 import { state } from '../../state/dashboard-state.js?v=1';
-import { renderThesisDetailHTML, emptyDetailHTML, wireTabNav } from './render-thesis-table.js?v=1';
+import { renderThesisDetailHTML, emptyDetailHTML, wireTabNav } from './render-thesis-table.js?v=2';
 import { loadTrendPanel } from './trend-panel.js?v=1';
-import { wireDetailActions } from './thesis-form.js?v=1';
+import { wireDetailActions } from './thesis-form.js?v=2';
 import { renderReviewRecommendResult, wireReviewQuickTrade } from './render-ai-review.js?v=1';
 import { fetchContext, renderQuoteStrip } from './market-quote.js?v=1';
 import { loadConvictionTimeline } from './conviction-timeline/index.js?v=1';
 import { loadReviewTimeline } from './review-timeline.js?v=1';
 import { loadPriceMiniChart, destroyPriceChart } from './render-price-chart.js?v=1';
-import { icon as ic } from '../../utils/icons.js?v=1';
+import { icon as ic } from '../../utils/icons.js?v=2';
 
 // ---------------------------------------------------------------------------
 // Skeleton HTML

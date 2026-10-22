@@ -12,7 +12,7 @@
 import { el, showToast } from '../../utils/dom.js?v=1';
 import { esc }           from '../../utils/format.js?v=1';
 import { getJson, sendJson, coreApiBase } from '../../api/client.js?v=1';
-import { icon as ic } from '../../utils/icons.js?v=1';
+import { icon as ic } from '../../utils/icons.js?v=2';
 
 const PANEL_ID = 'intelligencePanel';
 

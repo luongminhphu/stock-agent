@@ -6,9 +6,9 @@
 import { el }               from '../../utils/dom.js?v=1';
 import { apiBase, briefingApiBase, getJson } from '../../api/client.js?v=1';
 import { state }            from '../../state/dashboard-state.js?v=1';
-import { renderThesesTable, thesisTableSkeletonHTML, emptyDetailHTML } from '../thesis/render-thesis-table.js?v=1';
+import { renderThesesTable, thesisTableSkeletonHTML, emptyDetailHTML } from '../thesis/render-thesis-table.js?v=2';
 import { loadThesisDetail }    from '../thesis/thesis-service.js?v=1';
-import { openEditThesisModal } from '../thesis/thesis-form.js?v=1';
+import { openEditThesisModal } from '../thesis/thesis-form.js?v=2';
 import {
   renderVerdicts,
   renderAccuracy,
@@ -22,7 +22,7 @@ import { loadIntelligencePanel } from '../intelligence/intelligence-panel.js?v=1
 import { loadLeaderboard } from '../leaderboard/leaderboard-service.js?v=1';
 import { renderHealthHeatmap, refreshHeatmapCell } from './render-heatmap.js?v=1';
 import { countUp, flashValue } from '../../utils/animate.js?v=1';
-import { icon as ic } from '../../utils/icons.js?v=1';
+import { icon as ic } from '../../utils/icons.js?v=2';
 
 function wireDeleteThesis(id) {
   const msg = el('deleteModalMsg');

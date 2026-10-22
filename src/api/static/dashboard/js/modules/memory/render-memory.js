@@ -5,7 +5,7 @@
 
 import { fetchMemorySnapshot } from './memory-api.js?v=1';
 import { bindRefreshButton } from './memory-api.js?v=1';
-import { icon as ic } from '../../utils/icons.js?v=1';
+import { icon as ic } from '../../utils/icons.js?v=2';
 
 const PANEL_ID = 'memory-panel';
 

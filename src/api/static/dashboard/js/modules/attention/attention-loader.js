@@ -10,7 +10,7 @@
 
 import { apiBase } from '../../api/client.js?v=1';
 import { RefreshScheduler } from '../../utils/refresh-scheduler.js?v=1';
-import { icon as ic } from '../../utils/icons.js?v=1';
+import { icon as ic } from '../../utils/icons.js?v=2';
 
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000; // 5 phút
 let _refreshTimer = null;

@@ -11,7 +11,7 @@
 
 import { esc, fmtDate } from '../../utils/format.js?v=1';
 import { readmodelApiBase, getJson } from '../../api/client.js?v=1';
-import { icon as ic } from '../../utils/icons.js?v=1';
+import { icon as ic } from '../../utils/icons.js?v=2';
 
 // ---------------------------------------------------------------------------
 // Verdict helpers

@@ -50,6 +50,30 @@ class ThesisRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_open_by_user_and_ticker(
+        self,
+        user_id: str,
+        ticker: str,
+        *,
+        exclude_id: int | None = None,
+    ) -> Thesis | None:
+        """Thesis còn mở (ACTIVE hoặc WEAKENING) của (user, ticker), trừ exclude_id.
+
+        Dùng cho guard lifecycle (T1 reactivate): không cho 2 thesis mở cùng mã.
+        """
+        stmt = (
+            select(Thesis)
+            .where(Thesis.user_id == user_id)
+            .where(Thesis.ticker == ticker.upper().strip())
+            .where(Thesis.status.in_([ThesisStatus.ACTIVE, ThesisStatus.WEAKENING]))
+            .order_by(Thesis.created_at.desc())
+            .limit(1)
+        )
+        if exclude_id is not None:
+            stmt = stmt.where(Thesis.id != exclude_id)
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def get_active_by_user_and_ticker(
         self,
         user_id: str,

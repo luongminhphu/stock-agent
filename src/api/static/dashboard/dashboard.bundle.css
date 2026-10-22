@@ -2889,6 +2889,30 @@ tr.row--stop-breach:hover { background: rgba(var(--down-rgb), 0.14); }
 .trend-adx--up   { color: var(--success); }
 .trend-adx--down { color: var(--danger); }
 
+.ghost-btn--primary {
+  border-color: var(--brand, #2681ff);
+  color: var(--brand, #2681ff);
+}
+.ghost-btn--primary:hover {
+  background: rgba(38, 129, 255, 0.12);
+  border-color: var(--brand, #2681ff);
+  color: var(--brand, #2681ff);
+}
+.ghost-btn[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+#thesisStatusField[readonly] {
+  color: var(--muted);
+  background: var(--panel, transparent);
+  text-transform: capitalize;
+}
+.form-hint--muted {
+  margin: 4px 0 0;
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
 /* ── quote-strip.css ───────────────────────────────────── */
 .quote-strip {
   display: flex;

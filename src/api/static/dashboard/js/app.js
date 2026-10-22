@@ -25,7 +25,7 @@ import { bindLessonPersistedEvent }       from './modules/thesis/thesis-service.
 import {
   openNewThesisModal,
   bindThesisFormEvents,
-} from './modules/thesis/thesis-form.js?v=1';
+} from './modules/thesis/thesis-form.js?v=2';
 import { bindSuggestEvents }             from './modules/thesis/thesis-suggest.js?v=1';
 import { loadPortfolio, startPortfolioAutoRefresh } from './modules/portfolio/portfolio-loader.js?v=5';
 import { loadWatchlist, handleAddTicker } from './modules/watchlist/watchlist-loader.js?v=1';
@@ -310,12 +310,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── Form row add buttons ─────────────────────────────────────────────────────
   el('addFormAssumptionBtn')?.addEventListener('click', () => {
-    import('./modules/thesis/thesis-form.js?v=1').then(({ makeAssumptionRow }) => {
+    import('./modules/thesis/thesis-form.js?v=2').then(({ makeAssumptionRow }) => {
       el('thesisFormAssumptionRows')?.appendChild(makeAssumptionRow());
     });
   });
   el('addFormCatalystBtn')?.addEventListener('click', () => {
-    import('./modules/thesis/thesis-form.js?v=1').then(({ makeCatalystRow }) => {
+    import('./modules/thesis/thesis-form.js?v=2').then(({ makeCatalystRow }) => {
       el('thesisFormCatalystRows')?.appendChild(makeCatalystRow());
     });
   });

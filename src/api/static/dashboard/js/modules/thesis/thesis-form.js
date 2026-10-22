@@ -16,7 +16,7 @@ import { el, showToast, openModal, closeModal } from '../../utils/dom.js?v=1';
 import { esc } from '../../utils/format.js?v=1';
 import { thesisApiBase, getJson, sendJson } from '../../api/client.js?v=1';
 import { state } from '../../state/dashboard-state.js?v=1';
-import { icon as ic } from '../../utils/icons.js?v=1';
+import { icon as ic } from '../../utils/icons.js?v=2';
 import {
   confirmDeleteThesis,
   confirmDeleteAssumption,
@@ -242,6 +242,7 @@ export function wireDetailActions(thesisId, wrap) {
   wrap.querySelector('#detailDeleteBtn')?.addEventListener('click', () => confirmDeleteThesis(thesisId));
   wrap.querySelector('#detailCloseBtn')?.addEventListener('click', () => _confirmLifecycle(thesisId, 'close'));
   wrap.querySelector('#detailInvalidateBtn')?.addEventListener('click', () => _confirmLifecycle(thesisId, 'invalidate'));
+  wrap.querySelector('#detailReactivateBtn')?.addEventListener('click', () => _confirmLifecycle(thesisId, 'reactivate'));
   wrap.querySelector('#detailDebateBtn')?.addEventListener('click', () => openDebateModal(thesisId));
   wrap.querySelector('#addAssumBtn')?.addEventListener('click', () => openAssumptionModal(thesisId, null));
   wrap.querySelectorAll('.edit-assum-btn').forEach(btn =>
@@ -275,23 +276,43 @@ export function wireDetailActions(thesisId, wrap) {
 // ---------------------------------------------------------------------------
 
 /**
- * _confirmLifecycle — hiện confirm dialog trước khi POST /close hoặc /invalidate.
+ * _confirmLifecycle — hiện confirm dialog trước khi POST /close, /invalidate hoặc /reactivate (T1).
  * @param {number} thesisId
- * @param {'close'|'invalidate'} action
+ * @param {'close'|'invalidate'|'reactivate'} action
  */
+const _LIFECYCLE = {
+  close:      { label: 'đóng',       done: 'đóng',       icon: 'check-circle',   title: 'Xác nhận đóng thesis',   btn: 'Đóng thesis', danger: true,  extra: '' },
+  invalidate: { label: 'invalidate', done: 'invalidate', icon: 'alert-triangle', title: 'Xác nhận invalidate',    btn: 'Invalidate',  danger: true,  extra: '' },
+  reactivate: { label: 'mở lại',     done: 'mở lại',     icon: 'rotate-ccw',     title: 'Xác nhận mở lại thesis', btn: 'Mở lại',      danger: false,
+                extra: ' Thesis sẽ quay lại ACTIVE, giữ nguyên lịch sử review và quyết định; watchdog và review AI tiếp tục theo dõi.' },
+};
 async function _confirmLifecycle(thesisId, action) {
-  const label    = action === 'close' ? 'đóng' : 'invalidate';
-  const icon     = action === 'close' ? ic('check-circle') : ic('alert-triangle');
+  const meta     = _LIFECYCLE[action] ?? _LIFECYCLE.close;
+  const label    = meta.label;
+  const idNum    = Number(thesisId);
   const msgEl    = el('deleteModalMsg');
-  const t        = state.theses?.find(x => x.id === thesisId);
+  // state.theses chỉ chứa thesis đang active (bảng dashboard) — thesis đã đóng/paused
+  // lấy mã từ thanh detail đang mở.
+  const t        = state.theses?.find(x => Number(x.id) === idNum);
+  const ticker   = t?.ticker ?? el('thesisDetail')?.querySelector('.dsb-ticker')?.textContent?.trim() ?? '';
+  const name     = t?.title ? `"${esc(t.title)}"` : `#${esc(String(thesisId))}`;
   if (msgEl) {
-    msgEl.textContent = `${icon} Bạn chắc chắn muốn ${label} thesis "${t?.title ?? thesisId}" (${t?.ticker ?? ''})?`;
+    // innerHTML: icon là SVG nội bộ; dữ liệu thesis đi qua esc()
+    msgEl.innerHTML = `${ic(meta.icon)} Bạn chắc chắn muốn ${label} thesis ${name}${ticker ? ` (${esc(ticker)})` : ''}?${meta.extra}`;
   }
+  // Modal dùng chung với Xóa — đặt tiêu đề / nút theo hành động, trả về mặc định khi đóng
+  const dlg = el('deleteModal'), titleEl = el('deleteModalTitle'), btnEl = el('deleteConfirmBtn');
+  if (titleEl) titleEl.textContent = meta.title;
+  if (btnEl) { btnEl.textContent = meta.btn; btnEl.className = meta.danger ? 'danger-btn' : 'primary-btn'; }
+  dlg?.addEventListener('close', () => {
+    if (titleEl) titleEl.textContent = 'Xác nhận xóa';
+    if (btnEl) { btnEl.textContent = 'Xóa'; btnEl.className = 'danger-btn'; }
+  }, { once: true });
   state.deleteCallback = async () => {
     try {
       await sendJson(`${thesisApiBase()}/${thesisId}/${action}`, 'POST', null);
       closeModal('deleteModal');
-      showToast(`${icon} Thesis đã được ${label}`);
+      showToast(`Thesis đã được ${meta.done}`);
       // Reload detail to reflect new status + refresh thesis list
       await loadThesisDetail(thesisId);
       document.dispatchEvent(new CustomEvent('thesis:lifecycle-changed', { detail: { thesisId, action } }));
@@ -451,7 +472,6 @@ export function bindThesisFormEvents({ onThesisSaved } = {}) {
       entry_price:  el('thesisEntryField').value  ? Number(el('thesisEntryField').value)  : null,
       target_price: el('thesisTargetField').value ? Number(el('thesisTargetField').value) : null,
       stop_loss:    el('thesisStopField').value   ? Number(el('thesisStopField').value)   : null,
-      status:       el('thesisStatusField').value,
       direction:    el('thesisDirectionField').value || null,
     };
     const assumptions = collectFormAssumptions();

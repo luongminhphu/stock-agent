@@ -12,8 +12,10 @@ from src.thesis.models import ThesisStatus
 from src.thesis.service import (
     CreateThesisInput,
     ThesisAlreadyClosedError,
+    ThesisConflictError,
     ThesisNotFoundError,
     ThesisService,
+    UpdateThesisInput,
 )
 
 USER_A = "investor_alice"
@@ -157,3 +159,80 @@ async def test_create_with_assumptions_and_catalysts(session):
     assert len(thesis.assumptions) == 2
     assert len(thesis.catalysts) == 1
     assert thesis.assumptions[0].description == "Inflation subsides"
+
+
+# ---------------------------------------------------------------------------
+# T1 — reactivate (mở lại thesis)
+# ---------------------------------------------------------------------------
+
+
+async def test_reactivate_closed_thesis_returns_to_active(session):
+    svc = ThesisService(session)
+    thesis = await svc.create(_inp())
+    await session.flush()
+    await svc.close(thesis_id=thesis.id, user_id=USER_A)
+
+    reopened = await svc.reactivate(thesis_id=thesis.id, user_id=USER_A)
+    assert reopened.status == ThesisStatus.ACTIVE
+    assert reopened.closed_at is None
+    # Sửa lại được sau khi mở lại
+    updated = await svc.update(thesis.id, USER_A, UpdateThesisInput(title="Reopened"))
+    assert updated.title == "Reopened"
+
+
+async def test_reactivate_invalidated_and_paused(session):
+    svc = ThesisService(session)
+    a = await svc.create(_inp(ticker="VNM"))
+    b = await svc.create(_inp(ticker="FPT"))
+    await session.flush()
+    await svc.invalidate(thesis_id=a.id, user_id=USER_A)
+    b.status = ThesisStatus.PAUSED
+    await session.flush()
+
+    assert (await svc.reactivate(a.id, USER_A)).status == ThesisStatus.ACTIVE
+    assert (await svc.reactivate(b.id, USER_A)).status == ThesisStatus.ACTIVE
+
+
+async def test_reactivate_active_is_idempotent(session):
+    svc = ThesisService(session)
+    thesis = await svc.create(_inp())
+    await session.flush()
+    same = await svc.reactivate(thesis.id, USER_A)
+    assert same.id == thesis.id and same.status == ThesisStatus.ACTIVE
+
+
+async def test_reactivate_blocked_when_other_open_thesis_same_ticker(session):
+    svc = ThesisService(session)
+    old = await svc.create(_inp(title="Old"))
+    await session.flush()
+    await svc.close(thesis_id=old.id, user_id=USER_A)
+    new = await svc.create(_inp(title="New"))
+    await session.flush()
+
+    with pytest.raises(ThesisConflictError, match=f"#{new.id}"):
+        await svc.reactivate(old.id, USER_A)
+    # WEAKENING cũng tính là đang mở
+    new.status = ThesisStatus.WEAKENING
+    await session.flush()
+    with pytest.raises(ThesisConflictError):
+        await svc.reactivate(old.id, USER_A)
+
+
+async def test_reactivate_wrong_user_raises_not_found(session):
+    svc = ThesisService(session)
+    thesis = await svc.create(_inp())
+    await session.flush()
+    await svc.close(thesis_id=thesis.id, user_id=USER_A)
+    with pytest.raises(ThesisNotFoundError):
+        await svc.reactivate(thesis.id, USER_B)
+
+
+async def test_update_closed_thesis_error_message_is_readable(session):
+    svc = ThesisService(session)
+    thesis = await svc.create(_inp())
+    await session.flush()
+    await svc.close(thesis_id=thesis.id, user_id=USER_A)
+    with pytest.raises(ThesisAlreadyClosedError) as ei:
+        await svc.update(thesis.id, USER_A, UpdateThesisInput(title="x"))
+    msg = str(ei.value)
+    assert f"#{thesis.id}" in msg and "closed" in msg and "mở lại" in msg

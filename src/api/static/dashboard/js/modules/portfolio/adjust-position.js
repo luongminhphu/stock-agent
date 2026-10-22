@@ -21,7 +21,7 @@
  *   'trade:confirmed' — để app.js refresh holdings + attention (cùng hook với quick-trade)
  */
 
-import { icon as ic } from '../../utils/icons.js?v=1';
+import { icon as ic } from '../../utils/icons.js?v=2';
 
 const MODAL_ID = 'adj-modal';
 

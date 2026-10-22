@@ -16,7 +16,7 @@ import {
   TIER, TREND_META, BD_META, VERDICT_CLS, EVENT_KIND_ICON, tierColor,
 } from './constants.js?v=1';
 import { ensureChartJs, destroyCharts, buildDualChart, hexToRgba } from './chart-utils.js?v=1';
-import { icon as ic } from '../../../utils/icons.js?v=1';
+import { icon as ic } from '../../../utils/icons.js?v=2';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Data parser

@@ -15,7 +15,7 @@
 
 import { el } from '../../utils/dom.js?v=1';
 import { esc } from '../../utils/format.js?v=1';
-import { icon as ic } from '../../utils/icons.js?v=1';
+import { icon as ic } from '../../utils/icons.js?v=2';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 

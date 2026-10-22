@@ -92,6 +92,7 @@ from src.thesis.service import (
     CatalystNotFoundError,
     CreateThesisInput,
     ThesisAlreadyClosedError,
+    ThesisConflictError,
     ThesisNotFoundError,
     ThesisService,
     UpdateAssumptionInput,
@@ -328,6 +329,24 @@ async def close_thesis(
     except ThesisNotFoundError as exc:
         raise _not_found(exc) from exc
     except ThesisAlreadyClosedError as exc:
+        raise _conflict(exc) from exc
+    _bust_thesis_cache(thesis_id, user_id, session)
+    return ThesisResponse.model_validate(thesis)
+
+
+@router.post("/{thesis_id}/reactivate", response_model=ThesisResponse)
+async def reactivate_thesis(
+    thesis_id: int,
+    user_id: str = Depends(get_current_user_id),
+    svc: ThesisService = Depends(get_thesis_service),
+    session: AsyncSession = Depends(get_db),
+) -> ThesisResponse:
+    """Mở lại thesis đã đóng / vô hiệu / tạm dừng (T1). 409 nếu mã đã có thesis active khác."""
+    try:
+        thesis = await svc.reactivate(thesis_id, user_id)
+    except ThesisNotFoundError as exc:
+        raise _not_found(exc) from exc
+    except ThesisConflictError as exc:
         raise _conflict(exc) from exc
     _bust_thesis_cache(thesis_id, user_id, session)
     return ThesisResponse.model_validate(thesis)

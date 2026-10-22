@@ -6,7 +6,7 @@ import { reviewTimelineSlotHTML } from './review-timeline.js?v=1';
 import { quoteStripSkeletonHTML } from './market-quote.js?v=1';
 import { priceMiniChartSlotHTML } from './render-price-chart.js?v=1';
 import { state } from '../../state/dashboard-state.js?v=1';
-import { icon as ic } from '../../utils/icons.js?v=1';
+import { icon as ic } from '../../utils/icons.js?v=2';
 import { priceCellHTML, nearStopTagHTML } from '../../utils/market-badges.js?v=1';
 
 export function emptyDetailHTML() {
@@ -135,7 +135,10 @@ export function renderThesisDetailHTML(t, assumptions, catalysts, reviews) {
       <button class="dtab"        role="tab" aria-selected="false" data-tab="trend"        aria-controls="dtab-trend">Xu hướng</button>
       <button class="dtab"        role="tab" aria-selected="false" data-tab="history"      aria-controls="dtab-history">Lịch sử</button>
       <div class="dtab-nav-actions" role="none">
-        <button class="ghost-btn ghost-btn--sm" id="detailEditBtn" type="button">Sửa</button>
+        ${['active', 'weakening'].includes(t.status)
+          ? `<button class="ghost-btn ghost-btn--sm" id="detailEditBtn" type="button">Sửa</button>`
+          : `<button class="ghost-btn ghost-btn--sm" id="detailEditBtn" type="button" disabled title="Thesis đang ${esc(t.status ?? '')} — mở lại trước khi sửa">Sửa</button>
+        <button class="ghost-btn ghost-btn--sm ghost-btn--primary" id="detailReactivateBtn" type="button" title="Mở lại thesis — quay về ACTIVE, giữ nguyên lịch sử">Mở lại</button>`}
         ${t.status === 'active' ? `
         <button class="ghost-btn ghost-btn--sm ghost-btn--debate" id="detailDebateBtn" type="button" title="AI phản biện thesis này (devil's advocate)">Phản biện</button>
         <button class="ghost-btn ghost-btn--sm ghost-btn--warn" id="detailCloseBtn" type="button" title="Đóng thesis — đã hoàn thành">Đóng thesis</button>

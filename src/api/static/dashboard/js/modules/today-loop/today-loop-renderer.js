@@ -12,7 +12,7 @@
 // 1. Thesis Digest Strip
 // ---------------------------------------------------------------------------
 
-import { icon as ic } from '../../utils/icons.js?v=1';
+import { icon as ic } from '../../utils/icons.js?v=2';
 import { esc } from '../../utils/format.js?v=1';
 
 const FLAG_META = {

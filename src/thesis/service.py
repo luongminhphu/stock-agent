@@ -28,6 +28,7 @@ from src.thesis.dtos import (
     CatalystNotFoundError,
     CreateThesisInput,
     ThesisAlreadyClosedError,
+    ThesisConflictError,
     ThesisNotFoundError,
     UpdateAssumptionInput,
     UpdateCatalystInput,
@@ -55,6 +56,7 @@ __all__ = [
     "UpdateCatalystInput",
     "ThesisNotFoundError",
     "ThesisAlreadyClosedError",
+    "ThesisConflictError",
     "AssumptionNotFoundError",
     "CatalystNotFoundError",
 ]
@@ -193,6 +195,34 @@ class ThesisService:
         await self._repo.save(thesis)
         logger.info("thesis.invalidated", thesis_id=thesis_id)
         await _emit_thesis_closed(thesis, close_reason="invalidated")
+        return thesis
+
+    async def reactivate(self, thesis_id: int, user_id: str) -> Thesis:
+        """Mở lại thesis đã closed / invalidated / paused → ACTIVE (T1).
+
+        Rule (owner: thesis):
+          - ACTIVE / WEAKENING → idempotent, trả về nguyên trạng.
+          - Không cho 2 thesis active cùng (user, ticker): get_active_by_user_and_ticker
+            được pretrade/decision/quick-trade dùng để resolve thesis_id, phải đơn trị.
+          - Giữ nguyên review, lesson, decision log cũ (lịch sử); chỉ đổi status + xoá closed_at.
+          - Không phát lại ThesisClosedEvent; event mở lại là wave T2.
+        """
+        thesis = await self._get_owned(thesis_id, user_id)
+        if thesis.status in (ThesisStatus.ACTIVE, ThesisStatus.WEAKENING):
+            return thesis
+        other = await self._repo.get_open_by_user_and_ticker(
+            user_id=thesis.user_id, ticker=thesis.ticker, exclude_id=thesis.id
+        )
+        if other is not None:
+            raise ThesisConflictError(
+                f"{thesis.ticker} đã có thesis #{other.id} đang active ('{other.title}') — "
+                f"đóng thesis đó trước khi mở lại #{thesis.id}"
+            )
+        from_status = str(thesis.status)
+        thesis.status = ThesisStatus.ACTIVE
+        thesis.closed_at = None
+        await self._repo.save(thesis)
+        logger.info("thesis.reactivated", thesis_id=thesis_id, from_status=from_status)
         return thesis
 
     async def delete(self, thesis_id: int, user_id: str) -> None:
@@ -488,4 +518,4 @@ class ThesisService:
         # UNDER_REVIEW was removed from ThesisStatus — mutable states are ACTIVE and WEAKENING.
         # PAUSED is intentionally excluded: paused thesis should not be modified until resumed.
         if thesis.status not in (ThesisStatus.ACTIVE, ThesisStatus.WEAKENING):
-            raise ThesisAlreadyClosedError(thesis.id)
+            raise ThesisAlreadyClosedError(thesis.id, str(thesis.status))

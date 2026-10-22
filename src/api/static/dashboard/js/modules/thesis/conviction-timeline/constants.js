@@ -4,7 +4,7 @@
  * Responsibility: Static config — tier zones, verdict/event/trend metadata.
  */
 
-import { icon as ic } from '../../../utils/icons.js?v=1';
+import { icon as ic } from '../../../utils/icons.js?v=2';
 
 export const TIER = [
   { min: 0,  max: 30,  label: 'Critical', color: '#d163a7' },

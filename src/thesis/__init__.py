@@ -31,6 +31,7 @@ from src.thesis.scoring_service import ScoringService
 from src.thesis.service import (
     CreateThesisInput,
     ThesisAlreadyClosedError,
+    ThesisConflictError,
     ThesisNotFoundError,
     ThesisService,
     UpdateThesisInput,
@@ -67,6 +68,7 @@ __all__ = [
     # Errors
     "ThesisNotFoundError",
     "ThesisAlreadyClosedError",
+    "ThesisConflictError",
     # Results
     "InvalidationCheckResult",
     # Queries
