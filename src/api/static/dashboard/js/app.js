@@ -34,7 +34,6 @@ import { bindGenerateBriefButtons }      from './modules/briefing/brief-generate
 import { bindBriefTabs, initBriefAutoOpen } from './modules/briefing/brief-tabs.js?v=1';
 import { bindBriefTickerClick }          from './modules/briefing/brief-ticker.js?v=1';
 import { loadAttentionPanel, startAttentionAutoRefresh } from './modules/attention/attention-loader.js?v=2';
-import { loadMarketBreadth }             from './modules/market/breadth.js?v=1';
 import { debounce }                      from './utils/debounce.js?v=1';
 import { initMobileNav }                 from './modules/mobile-nav.js?v=1';
 import { state }                         from './state/dashboard-state.js?v=1';
@@ -296,7 +295,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       loadPortfolio(),
       loadWatchlist(),
       loadDecisions(),
-      loadMarketBreadth(),
     ]);
     loadLeaderboard();
     loadAttentionPanel();
@@ -385,7 +383,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   //   loadDashboard() — thesis table, stats, KPIs, scan, brief snapshots
   //   loadPortfolio() — holdings & P&L (has its own skeleton)
   //   loadWatchlist() — attention panel data source
-  //   loadMarketBreadth() — market context strip
   //
   // Tier B — DEFERRED: useful but not critical. Delay 100ms so browser can
   //   paint Tier A content before starting these fetches.
@@ -405,7 +402,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadDashboard().then(_stampKpiUpdatedAt),
     loadPortfolio(),
     loadWatchlist(),
-    loadMarketBreadth(),
   ]);
 
   // Wave 6: portfolio auto-refresh (60s giờ giao dịch / 10 phút ngoài giờ)

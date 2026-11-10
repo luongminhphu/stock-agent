@@ -44,7 +44,7 @@ source_modules =
     src.bot
     src.api
 forbidden_modules =
-    src.ai.models
+    src.ai.memory.models
     src.market.models
     src.thesis.models
     src.watchlist.models

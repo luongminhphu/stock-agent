@@ -172,7 +172,7 @@
   --btn-h:    36px;
   --btn-h-sm: 28px;
   /* ── Legacy & semantic aliases ──────────────────────────────────────────────
-     Aliases for vars used in heatmap.css, breadth.css, conviction-timeline.css
+     Aliases for vars used in heatmap.css, conviction-timeline.css
      and other modules that pre-date the current token system.
      All resolve to canonical tokens above — do not use these in new code.
   ── */
