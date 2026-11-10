@@ -685,7 +685,7 @@ def _wire_feedback_loop_monitor(bot: commands.Bot) -> None:
 
 
 def _start_eod_close_capture_scheduler(bot: commands.Bot) -> None:
-    """Start EodCloseCaptureScheduler — 14:50 ICT ngày giao dịch (Wave C1).
+    """Start EodCloseCaptureScheduler — 14:50 + 15:05 ICT ngày giao dịch (Wave C1).
 
     Chụp giá khớp ATC cho vị thế + watchlist + thesis active, gắn Quote.close và
     persist market_quote_cache để EOD snapshot / outcome filler / dashboard dùng

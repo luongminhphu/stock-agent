@@ -4,7 +4,7 @@ Owner: market segment.
 
 Rules:
     - environment=test or mock_market=True  → MockAdapter
-    - otherwise                             → ChainedAdapter(VCI → VNDirect)
+    - otherwise                             → ChainedAdapter(VCI → KBS → VNDirect)
 
 This is the ONLY place where adapter selection logic lives.
 All other code calls build_adapter() and works against MarketDataAdapter.
@@ -34,13 +34,24 @@ def build_adapter() -> MarketDataAdapter:
         return MockAdapter()
 
     from src.market.adapters.chained import ChainedAdapter
+    from src.market.adapters.kbs import KBSAdapter
     from src.market.adapters.vci import VCIAdapter
     from src.market.adapters.vndirect import VNDirectAdapter
 
-    primary = VCIAdapter()
-    secondary = VNDirectAdapter()
-    logger.info("market.adapter", extra={"provider": "chained(vci->vndirect)"})
-    return ChainedAdapter(primary=primary, secondary=secondary)
+    logger.info("market.adapter", extra={"provider": "chained(vci->kbs->vndirect)"})
+    return ChainedAdapter(VCIAdapter(), KBSAdapter(), VNDirectAdapter())
+
+
+def build_reference_adapter() -> MarketDataAdapter | None:
+    """Nguồn đối chứng độc lập với nguồn chính — dùng khi chốt giá đóng cửa.
+
+    Trả None trong test/mock (không có gì để đối chứng).
+    """
+    if settings.environment == "test" or getattr(settings, "mock_market", False):
+        return None
+    from src.market.adapters.kbs import KBSAdapter
+
+    return KBSAdapter()
 
 
 def create_trend_context_fetcher(quote_service: QuoteService) -> TrendContextFetcher:

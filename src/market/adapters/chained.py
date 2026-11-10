@@ -1,16 +1,18 @@
-"""ChainedAdapter — try primary, fall back to secondary on any exception.
+"""ChainedAdapter — thử lần lượt các nguồn, nguồn sau chỉ dùng khi nguồn trước lỗi/thiếu.
 
 Owner: market segment.
 
 Design:
-- On fetch_quote: try primary first. If it raises ANY exception, log a warning
-  and retry with secondary. If secondary also fails, re-raise the last error.
-- On fetch_bulk_quotes: same strategy. Secondary is called for the entire
-  batch if primary fails — no per-symbol granularity to keep it simple.
-- Callers receive a Quote regardless of which adapter succeeded.
-- Metrics: tracks source ('primary'/'secondary'/'failed') per call via logger.
-- On close(): forwards to both primary and secondary so httpx clients are
-  released on app shutdown regardless of which adapter was active.
+- fetch_quote: thử từng adapter theo thứ tự; adapter nào trả được thì dùng.
+  Tất cả đều lỗi → raise lỗi cuối cùng.
+- fetch_bulk_quotes: lấy trọn lô từ nguồn đầu tiên trả được; các mã nguồn đó
+  KHÔNG trả về (mã mới, lỗi parse từng dòng...) được lấp bằng nguồn kế tiếp,
+  thay vì âm thầm rơi khỏi kết quả như trước.
+- Mỗi mã trong kết quả đến từ đúng một nguồn — không trộn trường giữa các nguồn,
+  để open/close/high/low của một mã luôn nhất quán với nhau.
+- close(): đóng mọi adapter; lỗi được log và nuốt.
+
+Thứ tự mặc định (factory): VCI (Vietcap) → KBS (KB Securities) → VNDirect (EOD).
 """
 
 from __future__ import annotations
@@ -22,76 +24,82 @@ logger = get_logger(__name__)
 
 
 class ChainedAdapter(MarketDataAdapter):
-    """Adapter that chains a primary and a secondary provider.
+    """Adapter nối chuỗi nhiều nhà cung cấp dữ liệu.
 
     Args:
-        primary:   First adapter to try (VCIAdapter).
-        secondary: Fallback adapter (VNDirectAdapter).
+        primary:   nguồn ưu tiên (VCIAdapter).
+        secondary: nguồn dự phòng thứ nhất.
+        *fallbacks: các nguồn dự phòng tiếp theo (tuỳ chọn).
     """
 
     def __init__(
         self,
         primary: MarketDataAdapter,
         secondary: MarketDataAdapter,
+        *fallbacks: MarketDataAdapter,
     ) -> None:
-        self._primary = primary
-        self._secondary = secondary
+        self._adapters: list[MarketDataAdapter] = [primary, secondary, *fallbacks]
+
+    @property
+    def _primary(self) -> MarketDataAdapter:
+        return self._adapters[0]
+
+    @property
+    def _secondary(self) -> MarketDataAdapter:
+        return self._adapters[1]
 
     async def fetch_quote(self, ticker: str) -> Quote:
-        try:
-            quote = await self._primary.fetch_quote(ticker)
-            logger.debug("chained.quote.primary_ok", ticker=ticker)
-            return quote
-        except Exception as primary_exc:  # noqa: BLE001
-            logger.warning(
-                "chained.quote.primary_failed",
-                ticker=ticker,
-                error=str(primary_exc),
-                fallback="secondary",
-            )
+        last_exc: Exception | None = None
+        for idx, adapter in enumerate(self._adapters):
             try:
-                quote = await self._secondary.fetch_quote(ticker)
-                logger.debug("chained.quote.secondary_ok", ticker=ticker)
+                quote = await adapter.fetch_quote(ticker)
+                if idx:
+                    logger.info("chained.quote.fallback_ok", ticker=ticker, source_index=idx)
                 return quote
-            except Exception as secondary_exc:  # noqa: BLE001
-                logger.error(
-                    "chained.quote.both_failed",
-                    ticker=ticker,
-                    primary_error=str(primary_exc),
-                    secondary_error=str(secondary_exc),
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                logger.warning(
+                    "chained.quote.source_failed", ticker=ticker, source_index=idx, error=str(exc)
                 )
-                raise secondary_exc
+        logger.error("chained.quote.all_failed", ticker=ticker)
+        assert last_exc is not None
+        raise last_exc
 
     async def fetch_bulk_quotes(self, tickers: list[str]) -> list[Quote]:
-        try:
-            quotes = await self._primary.fetch_bulk_quotes(tickers)
-            logger.debug("chained.bulk.primary_ok", count=len(quotes))
-            return quotes
-        except Exception as primary_exc:  # noqa: BLE001
-            logger.warning(
-                "chained.bulk.primary_failed",
-                tickers=tickers,
-                error=str(primary_exc),
-                fallback="secondary",
-            )
+        wanted = [t.upper() for t in tickers]
+        found: dict[str, Quote] = {}
+        last_exc: Exception | None = None
+        any_ok = False
+        for idx, adapter in enumerate(self._adapters):
+            missing = [t for t in wanted if t not in found]
+            if not missing:
+                break
             try:
-                quotes = await self._secondary.fetch_bulk_quotes(tickers)
-                logger.debug("chained.bulk.secondary_ok", count=len(quotes))
-                return quotes
-            except Exception as secondary_exc:  # noqa: BLE001
-                logger.error(
-                    "chained.bulk.both_failed",
-                    tickers=tickers,
-                    primary_error=str(primary_exc),
-                    secondary_error=str(secondary_exc),
+                quotes = await adapter.fetch_bulk_quotes(missing)
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                logger.warning(
+                    "chained.bulk.source_failed",
+                    source_index=idx,
+                    count=len(missing),
+                    error=str(exc),
                 )
-                raise secondary_exc
+                continue
+            any_ok = True
+            for q in quotes:
+                found.setdefault(q.ticker.upper(), q)
+            if idx:
+                logger.info("chained.bulk.fallback_used", source_index=idx, filled=len(quotes))
+        if not any_ok:
+            logger.error("chained.bulk.all_failed", count=len(wanted))
+            assert last_exc is not None
+            raise last_exc
+        return [found[t] for t in wanted if t in found]
 
     async def close(self) -> None:
-        """Close both primary and secondary adapters. Errors are logged and swallowed."""
-        for name, adapter in (("primary", self._primary), ("secondary", self._secondary)):
+        """Close mọi adapter. Errors are logged and swallowed."""
+        for idx, adapter in enumerate(self._adapters):
             try:
                 await adapter.close()
-                logger.debug("chained.close", adapter=name)
             except Exception as exc:  # noqa: BLE001
-                logger.warning("chained.close_failed", adapter=name, error=str(exc))
+                logger.warning("chained.close_failed", source_index=idx, error=str(exc))

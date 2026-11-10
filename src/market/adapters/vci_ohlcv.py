@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -21,6 +22,8 @@ from src.market.ohlcv_service import Candle, Interval, OHLCVAdapter
 from src.platform.logging import get_logger
 
 logger = get_logger(__name__)
+
+_ICT = ZoneInfo("Asia/Ho_Chi_Minh")
 
 _BASE_URL = "https://trading.vietcap.com.vn/api/"
 _OHLCV_PATH = "chart/OHLCChart/gap-chart"
@@ -54,7 +57,9 @@ def _parse_ts(ts: Any) -> tuple[float, date]:
             epoch = float(ts_str)
         except ValueError:
             epoch = datetime.fromisoformat(ts_str.replace("Z", "+00:00")).timestamp()
-    return epoch, datetime.fromtimestamp(epoch, tz=UTC).date()
+    # Ngày phiên phải tính theo giờ VN: VCI đánh dấu nến D1 tại 00:00 ICT
+    # (= 17:00 UTC hôm trước) → đổi sang ngày UTC sẽ lùi 1 ngày so với CTCK.
+    return epoch, datetime.fromtimestamp(epoch, tz=_ICT).date()
 
 
 class VCIOHLCVAdapter(OHLCVAdapter):
@@ -78,9 +83,6 @@ class VCIOHLCVAdapter(OHLCVAdapter):
         delta_days = (to_date - from_date).days
         count_back = max(delta_days + 5, 10)
         to_ts = int(datetime.combine(to_date, datetime.max.time()).replace(tzinfo=UTC).timestamp())
-        from_epoch = (
-            datetime.combine(from_date, datetime.min.time()).replace(tzinfo=UTC).timestamp()
-        )
 
         payload: dict[str, Any] = {
             "timeFrame": time_frame,
@@ -114,8 +116,8 @@ class VCIOHLCVAdapter(OHLCVAdapter):
         candles: list[Candle] = []
         for i, raw_ts in enumerate(timestamps):
             try:
-                epoch, candle_date = _parse_ts(raw_ts)
-                if epoch < from_epoch:
+                _epoch, candle_date = _parse_ts(raw_ts)
+                if candle_date < from_date or candle_date > to_date:
                     continue
                 candles.append(
                     Candle(
