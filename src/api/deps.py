@@ -181,20 +181,6 @@ def get_symbol_registry() -> SymbolRegistry:  # type: ignore[name-defined]  # no
     return registry
 
 
-def get_breadth_service(
-    quote_svc: object = Depends(get_quote_service),
-) -> BreadthService:  # type: ignore[name-defined]  # noqa: F821
-    """DI factory for BreadthService.
-
-    Owner: market segment.
-    Used by GET /market/breadth.
-    Stateless per-request — no session needed.
-    """
-    from src.market.breadth_service import BreadthService
-
-    return BreadthService(quote_svc=quote_svc)  # type: ignore[arg-type]
-
-
 async def get_thesis_service(
     session: AsyncSession = Depends(get_db),
 ) -> ThesisService:  # type: ignore[name-defined]  # noqa: F821
