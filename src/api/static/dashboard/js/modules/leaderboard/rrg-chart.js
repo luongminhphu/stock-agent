@@ -83,6 +83,9 @@ let _animFrame     = null;          // C4: rAF handle
 let _prevImageData = null;          // C4: snapshot for fade
 let _activeDetail  = null;          // C6: ticker currently shown in detail panel
 let _fetchSerial   = 0;             // in-flight guard: discard stale responses
+let _viewMode      = _loadViewMode(); // 'fit' (co theo dữ liệu) | 'center' (đối xứng quanh 100)
+let _viewport      = null;          // null = tự động; {rMin,rMax,mMin,mMax} sau khi người dùng zoom
+let _lastView      = null;          // khung đang vẽ — dùng để quy đổi toạ độ chuột khi zoom
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Persistence helpers
@@ -115,6 +118,89 @@ function _loadExtra() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Public entry point
 // ─────────────────────────────────────────────────────────────────────────────
+
+const VIEW_KEY = 'rrg_view_mode';
+
+function _loadViewMode() {
+  try { return localStorage.getItem(VIEW_KEY) === 'center' ? 'center' : 'fit'; }
+  catch (_) { return 'fit'; }
+}
+
+function _saveViewMode() {
+  try { localStorage.setItem(VIEW_KEY, _viewMode); } catch (_) { /* private mode */ }
+}
+
+/** Bước lưới "đẹp" (0.25/0.5/1/2/5/10…) cho khoảng `span` với ~`target` vạch. */
+function _niceStep(span, target = 6) {
+  const raw  = span / target;
+  const pow  = Math.pow(10, Math.floor(Math.log10(raw)));
+  const unit = raw / pow;
+  const nice = unit <= 1 ? 1 : unit <= 2 ? 2 : unit <= 2.5 ? 2.5 : unit <= 5 ? 5 : 10;
+  return nice * pow;
+}
+
+function _fmtTick(v, step) {
+  const dec = step >= 1 ? 0 : step >= 0.5 ? 1 : 2;
+  return v.toFixed(dec);
+}
+
+/**
+ * Khung trục tự động.
+ * - fit:    bao trọn trail của các mã ĐANG HIỂN THỊ (+ điểm 100,100 để luôn thấy tâm
+ *           4 góc phần tư), đệm 12%. Mã ẩn hay điểm ngoại lai cũ không còn kéo giãn trục.
+ * - center: đối xứng quanh 100 như RRG kinh điển.
+ * Cả hai giữ tỉ lệ 1:1 giữa 2 trục (1 đơn vị RS-Ratio = 1 đơn vị RS-Momentum trên màn
+ * hình) để góc/hướng xoay của trail không bị méo.
+ */
+function _autoView(tickers, plotW, plotH) {
+  const pts = tickers.flatMap(t => t.trail || []);
+  const rs  = pts.map(p => p.rs_ratio).filter(Number.isFinite);
+  const ms  = pts.map(p => p.rs_momentum).filter(Number.isFinite);
+  const MIN_SPAN = 2;   // không phóng quá 2 điểm RS trên mỗi trục
+  const PAD_FRAC = 0.12;
+
+  let rMin, rMax, mMin, mMax;
+  if (_viewMode === 'center' || !rs.length) {
+    const half = Math.max(MIN_SPAN / 2, ...rs.map(v => Math.abs(v - 100)), ...ms.map(v => Math.abs(v - 100)));
+    rMin = mMin = 100 - half;
+    rMax = mMax = 100 + half;
+  } else {
+    rMin = Math.min(100, ...rs); rMax = Math.max(100, ...rs);
+    mMin = Math.min(100, ...ms); mMax = Math.max(100, ...ms);
+  }
+  const grow = (lo, hi) => {
+    const span = Math.max(hi - lo, MIN_SPAN);
+    const mid  = (lo + hi) / 2;
+    const half = span * (0.5 + PAD_FRAC);
+    return [mid - half, mid + half];
+  };
+  [rMin, rMax] = grow(rMin, rMax);
+  [mMin, mMax] = grow(mMin, mMax);
+  return _equalAspect({ rMin, rMax, mMin, mMax }, plotW, plotH);
+}
+
+/** Nới trục "hẹp" hơn để 1 đơn vị có cùng số pixel trên cả 2 trục. */
+function _equalAspect(v, plotW, plotH) {
+  const upp = Math.max((v.rMax - v.rMin) / plotW, (v.mMax - v.mMin) / plotH);
+  const rMid = (v.rMin + v.rMax) / 2, mMid = (v.mMin + v.mMax) / 2;
+  return {
+    rMin: rMid - (upp * plotW) / 2, rMax: rMid + (upp * plotW) / 2,
+    mMin: mMid - (upp * plotH) / 2, mMax: mMid + (upp * plotH) / 2,
+  };
+}
+
+/** Zoom quanh điểm dữ liệu (r, m); factor < 1 = phóng to. */
+function _zoomAt(r, m, factor) {
+  const v = _lastView;
+  if (!v) return;
+  const span = v.rMax - v.rMin;
+  if (factor < 1 && span * factor < 0.5) return;   // giới hạn phóng to
+  if (factor > 1 && span * factor > 120) return;   // giới hạn thu nhỏ
+  _viewport = {
+    rMin: r - (r - v.rMin) * factor, rMax: r + (v.rMax - r) * factor,
+    mMin: m - (m - v.mMin) * factor, mMax: m + (v.mMax - m) * factor,
+  };
+}
 
 export async function loadRRG() {
   const wrap = document.getElementById(WRAP_ID);
@@ -210,6 +296,7 @@ function _snapshotCanvas() {
 
 function _redrawAnimated(wrap) {
   if (_animFrame) { cancelAnimationFrame(_animFrame); _animFrame = null; }
+  _viewport = null; // dữ liệu mới → về khung tự động
 
   const visible = _allTickers.filter(t => !_hidden.has(t.ticker));
 
@@ -334,6 +421,11 @@ function _renderFilterBar(wrap) {
     <div class="rrg-filter-controls">
       <button class="rrg-bulk-btn" data-rrg-bulk="all"  type="button">Tất cả</button>
       <button class="rrg-bulk-btn" data-rrg-bulk="none" type="button">Bỏ hết</button>
+      <span class="rrg-view-sep" aria-hidden="true"></span>
+      <button class="rrg-bulk-btn${_viewMode === 'fit' ? ' rrg-bulk-btn--active' : ''}" data-rrg-view="fit" type="button"
+        title="Co trục theo các mã đang hiển thị">Vừa dữ liệu</button>
+      <button class="rrg-bulk-btn${_viewMode === 'center' ? ' rrg-bulk-btn--active' : ''}" data-rrg-view="center" type="button"
+        title="Trục đối xứng quanh 100 (RRG kinh điển)">Tâm 100</button>
     </div>
     <div class="rrg-chip-scroll" role="group" aria-label="Bộ lọc ticker RRG">
       ${_allTickers.map((t, idx) => {
@@ -374,6 +466,18 @@ function _renderFilterBar(wrap) {
 
   // ── Click: bulk / chip-remove / chip-toggle ───────────────────
   bar.addEventListener('click', e => {
+    // 0. Chế độ khung trục
+    const viewBtn = e.target.closest('[data-rrg-view]');
+    if (viewBtn) {
+      _viewMode = viewBtn.dataset.rrgView === 'center' ? 'center' : 'fit';
+      _viewport = null;
+      _saveViewMode();
+      bar.querySelectorAll('[data-rrg-view]').forEach(b =>
+        b.classList.toggle('rrg-bulk-btn--active', b.dataset.rrgView === _viewMode));
+      _redraw(document.getElementById(WRAP_ID));
+      return;
+    }
+
     // 1. Bulk select / deselect
     const bulk = e.target.closest('[data-rrg-bulk]');
     if (bulk) {
@@ -759,6 +863,28 @@ function _wireWrapEvents(wrap) {
 
   wrap.addEventListener('mouseleave', () => _hideTooltip(wrap));
 
+  // ── Wheel: zoom quanh con trỏ · Double-click: về khung tự động ───────────
+  wrap.addEventListener('wheel', e => {
+    const cv = document.getElementById(CANVAS_ID);
+    if (!cv || !e.target.closest(`#${CANVAS_ID}`) || !_lastView) return;
+    e.preventDefault();
+    const rect = cv.getBoundingClientRect();
+    const v = _lastView;
+    const px = Math.min(Math.max(e.clientX - rect.left - v.L, 0), v.plotW);
+    const py = Math.min(Math.max(e.clientY - rect.top - v.T, 0), v.plotH);
+    const r  = v.rMin + (px / v.plotW) * (v.rMax - v.rMin);
+    const m  = v.mMax - (py / v.plotH) * (v.mMax - v.mMin);
+    _zoomAt(r, m, e.deltaY < 0 ? 0.8 : 1.25);
+    _hideTooltip(wrap);
+    _redraw(wrap);
+  }, { passive: false });
+
+  wrap.addEventListener('dblclick', e => {
+    if (!e.target.closest(`#${CANVAS_ID}`) || !_viewport) return;
+    _viewport = null;
+    _redraw(wrap);
+  });
+
   // ── Keydown: ←→ on focused canvas ────────────────────────────────────────
   wrap.addEventListener('keydown', e => {
     if (!e.target.matches(`#${CANVAS_ID}`)) return;
@@ -816,125 +942,152 @@ function _drawCanvas(wrap, tickers, focusedTicker = null) {
     else wrap.appendChild(cv);
   }
 
-  const dpr  = window.devicePixelRatio || 1;
-  const size = wrap.clientWidth || 320;
-  cv.width        = size * dpr;
-  cv.height       = size * dpr;
-  cv.style.width  = size + 'px';
-  cv.style.height = size + 'px';
+  const dpr = window.devicePixelRatio || 1;
+  const W   = wrap.clientWidth || 320;
+  // Khung ngang thay vì vuông: wrap rộng không còn sinh ra canvas cao >1000px.
+  const H   = Math.round(Math.min(Math.max(W * 0.68, 300), 620));
+  cv.width        = W * dpr;
+  cv.height       = H * dpr;
+  cv.style.width  = W + 'px';
+  cv.style.height = H + 'px';
 
   const ctx = cv.getContext('2d');
   ctx.scale(dpr, dpr);
 
-  const W   = size;
-  const H   = size;
-  const PAD = 38;
-  const plotW = W - PAD * 2;
-  const plotH = H - PAD * 2;
+  const PAD_L = 40, PAD_R = 14, PAD_T = 14, PAD_B = 30;
+  const plotW = W - PAD_L - PAD_R;
+  const plotH = H - PAD_T - PAD_B;
+  const L = PAD_L, R = W - PAD_R, T = PAD_T, B = H - PAD_B;
 
-  // Axis range centred at 100 — use ALL tickers (not just visible) to keep scale stable
-  const allR = _allTickers.flatMap(t => t.trail.map(p => p.rs_ratio));
-  const allM = _allTickers.flatMap(t => t.trail.map(p => p.rs_momentum));
-  const MIN_HALF = 3.5;
-  const MARGIN   = 1.8;
-  const rHalf  = Math.max(MIN_HALF, ...allR.map(v => Math.abs(v - 100))) + MARGIN;
-  const mHalf  = Math.max(MIN_HALF, ...allM.map(v => Math.abs(v - 100))) + MARGIN;
-  const halfSpan = Math.max(rHalf, mHalf);
-  const rMin = 100 - halfSpan, rMax = 100 + halfSpan;
-  const mMin = 100 - halfSpan, mMax = 100 + halfSpan;
+  const view = _viewport ? _equalAspect(_viewport, plotW, plotH) : _autoView(tickers, plotW, plotH);
+  const { rMin, rMax, mMin, mMax } = view;
+  _lastView = { ...view, L, T, plotW, plotH };
 
-  const toX = r => PAD + ((r - rMin) / (rMax - rMin)) * plotW;
-  const toY = m => PAD + ((mMax - m) / (mMax - mMin)) * plotH;
-  const cx  = toX(100);
-  const cy  = toY(100);
+  const toX = r => L + ((r - rMin) / (rMax - rMin)) * plotW;
+  const toY = m => T + ((mMax - m) / (mMax - mMin)) * plotH;
+  const clampX = x => Math.min(R, Math.max(L, x));
+  const clampY = y => Math.min(B, Math.max(T, y));
+  const cx  = clampX(toX(100));
+  const cy  = clampY(toY(100));
 
   ctx.clearRect(0, 0, W, H);
 
-  // Quadrant backgrounds
+  // Quadrant backgrounds — tâm (100,100) có thể lệch khỏi giữa khung
   const quads = [
-    { key: 'leading',   x: cx,  y: PAD, w: W - cx - PAD, h: cy - PAD     },
-    { key: 'weakening', x: cx,  y: cy,  w: W - cx - PAD, h: H - cy - PAD },
-    { key: 'lagging',   x: PAD, y: cy,  w: cx - PAD,     h: H - cy - PAD },
-    { key: 'improving', x: PAD, y: PAD, w: cx - PAD,     h: cy - PAD     },
+    { key: 'leading',   x: cx, y: T,  w: R - cx, h: cy - T },
+    { key: 'weakening', x: cx, y: cy, w: R - cx, h: B - cy },
+    { key: 'lagging',   x: L,  y: cy, w: cx - L, h: B - cy },
+    { key: 'improving', x: L,  y: T,  w: cx - L, h: cy - T },
   ];
   quads.forEach(q => {
+    if (q.w <= 0 || q.h <= 0) return;
     ctx.fillStyle = Q_COLORS[q.key].bg;
     ctx.fillRect(q.x, q.y, q.w, q.h);
   });
 
-  // Minor grid
-  ctx.strokeStyle = 'rgba(148,163,184,0.12)';
-  ctx.lineWidth   = 0.5;
+  // Grid + tick values — bước lưới tự chọn theo khoảng đang xem
+  const step = _niceStep(Math.min(rMax - rMin, mMax - mMin));
+  ctx.lineWidth = 0.5;
   ctx.setLineDash([2, 4]);
-  const gridStep = halfSpan > 8 ? 5 : 2;
-  for (let v = Math.ceil((100 - halfSpan) / gridStep) * gridStep; v <= 100 + halfSpan; v += gridStep) {
-    if (v === 100) continue;
-    const gx = toX(v); const gy = toY(v);
-    ctx.beginPath(); ctx.moveTo(gx, PAD); ctx.lineTo(gx, H - PAD); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(PAD, gy); ctx.lineTo(W - PAD, gy); ctx.stroke();
+  ctx.strokeStyle = 'rgba(148,163,184,0.14)';
+  ctx.font = '10px system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(148,163,184,0.7)';
+  ctx.textAlign = 'center';
+  for (let v = Math.ceil(rMin / step) * step; v <= rMax + 1e-9; v += step) {
+    const gx = toX(v);
+    if (Math.abs(v - 100) > step / 100) {
+      ctx.beginPath(); ctx.moveTo(gx, T); ctx.lineTo(gx, B); ctx.stroke();
+    }
+    ctx.fillText(_fmtTick(v, step), gx, B + 12);
+  }
+  ctx.textAlign = 'right';
+  for (let v = Math.ceil(mMin / step) * step; v <= mMax + 1e-9; v += step) {
+    const gy = toY(v);
+    if (Math.abs(v - 100) > step / 100) {
+      ctx.beginPath(); ctx.moveTo(L, gy); ctx.lineTo(R, gy); ctx.stroke();
+    }
+    ctx.fillText(_fmtTick(v, step), L - 5, gy + 3);
   }
   ctx.setLineDash([]);
 
-  // Centre axes
-  ctx.strokeStyle = 'rgba(148,163,184,0.35)';
+  // Trục 100 — chỉ vẽ khi nằm trong khung
+  ctx.strokeStyle = 'rgba(148,163,184,0.45)';
   ctx.lineWidth   = 1;
-  ctx.beginPath(); ctx.moveTo(cx, PAD);     ctx.lineTo(cx, H - PAD); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(PAD, cy);     ctx.lineTo(W - PAD, cy); ctx.stroke();
+  const x100 = toX(100), y100 = toY(100);
+  if (x100 >= L && x100 <= R) { ctx.beginPath(); ctx.moveTo(x100, T); ctx.lineTo(x100, B); ctx.stroke(); }
+  if (y100 >= T && y100 <= B) { ctx.beginPath(); ctx.moveTo(L, y100); ctx.lineTo(R, y100); ctx.stroke(); }
+  ctx.strokeStyle = 'rgba(148,163,184,0.25)';
+  ctx.strokeRect(L + 0.5, T + 0.5, plotW - 1, plotH - 1);
 
-  // Quadrant labels
-  ctx.font = '600 9px system-ui, sans-serif';
-  ctx.textAlign = 'center';
+  // Quadrant labels ở góc ngoài — không đè lên cụm dữ liệu gần tâm
+  ctx.font = '700 10px system-ui, sans-serif';
   const QLABEL = { leading:'Leading', weakening:'Weakening', lagging:'Lagging', improving:'Improving' };
   quads.forEach(q => {
+    if (q.w < 70 || q.h < 22) return;
+    const right = q.key === 'leading' || q.key === 'weakening';
+    const top   = q.key === 'leading' || q.key === 'improving';
     ctx.fillStyle = Q_COLORS[q.key].label;
-    ctx.fillText(QLABEL[q.key], q.x + q.w / 2, q.y + q.h / 2 + 3);
+    ctx.textAlign = right ? 'right' : 'left';
+    ctx.fillText(QLABEL[q.key], right ? q.x + q.w - 8 : q.x + 8, top ? q.y + 16 : q.y + q.h - 8);
   });
 
-  // Axis tick values
-  ctx.fillStyle = 'rgba(148,163,184,0.45)';
-  ctx.font      = '8px system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  for (let v = Math.ceil((100 - halfSpan) / gridStep) * gridStep; v <= 100 + halfSpan; v += gridStep * 2) {
-    if (Math.abs(v - 100) < 0.5) continue;
-    ctx.fillText(v, toX(v), H - PAD + 12);
-  }
-  ctx.textAlign = 'right';
-  for (let v = Math.ceil((100 - halfSpan) / gridStep) * gridStep; v <= 100 + halfSpan; v += gridStep * 2) {
-    if (Math.abs(v - 100) < 0.5) continue;
-    ctx.fillText(v, PAD - 4, toY(v) + 3);
-  }
-
   // Axis labels
-  ctx.fillStyle = 'rgba(148,163,184,0.55)';
-  ctx.font      = '8px system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(148,163,184,0.6)';
+  ctx.font      = '9px system-ui, sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('RS-Ratio →', W / 2, H - 6);
+  ctx.fillText('RS-Ratio →', L + plotW / 2, H - 4);
   ctx.save();
-  ctx.translate(10, H / 2);
+  ctx.translate(10, T + plotH / 2);
   ctx.rotate(-Math.PI / 2);
   ctx.fillText('RS-Momentum ↑', 0, 0);
   ctx.restore();
+
+  // Mọi trail/forecast chỉ vẽ trong vùng plot (khi zoom, phần ngoài khung bị cắt)
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(L, T, plotW, plotH);
+  ctx.clip();
 
   // Trails — unfocused first (dimmed), focused on top
   const hasFocus = Boolean(focusedTicker);
   tickers.forEach(t => { if (hasFocus && t.ticker !== focusedTicker) _drawTicker(ctx, t, toX, toY, 0.22); });
   tickers.forEach(t => { if (!hasFocus || t.ticker === focusedTicker) _drawTicker(ctx, t, toX, toY, 1.0); });
+  ctx.restore(); // bỏ clip
 
-  // Head positions for hit-test
+  // Head positions for hit-test; mã có điểm hiện tại nằm ngoài khung → mũi tên ở mép
   _headPositions = new Map();
   tickers.forEach(t => {
     const trail = t.trail;
     if (!trail.length) return;
     const head = trail[trail.length - 1];
-    _headPositions.set(t.ticker, { x: toX(head.rs_ratio), y: toY(head.rs_momentum) });
+    const hx = toX(head.rs_ratio), hy = toY(head.rs_momentum);
+    if (hx >= L && hx <= R && hy >= T && hy <= B) {
+      _headPositions.set(t.ticker, { x: hx, y: hy });
+      return;
+    }
+    const ex = clampX(hx), ey = clampY(hy);
+    const idx   = _allTickers.findIndex(a => a.ticker === t.ticker);
+    const color = TRAIL_PALETTE[idx % TRAIL_PALETTE.length];
+    const ang   = Math.atan2(hy - ey, hx - ex);
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(ex + 7 * Math.cos(ang), ey + 7 * Math.sin(ang));
+    ctx.lineTo(ex + 7 * Math.cos(ang + 2.4), ey + 7 * Math.sin(ang + 2.4));
+    ctx.lineTo(ex + 7 * Math.cos(ang - 2.4), ey + 7 * Math.sin(ang - 2.4));
+    ctx.closePath();
+    ctx.fill();
+    ctx.font = 'bold 9px system-ui, sans-serif';
+    ctx.textAlign = ex >= R - 1 ? 'right' : 'left';
+    ctx.fillText(t.ticker, ex + (ex >= R - 1 ? -10 : 10), ey + (ey <= T + 1 ? 12 : ey >= B - 1 ? -6 : 3));
+    _headPositions.set(t.ticker, { x: ex, y: ey });
   });
 
   // Date stamp
   if (_asOf) {
-    ctx.font      = '8px system-ui, sans-serif';
-    ctx.fillStyle = 'rgba(97,113,143,0.65)';
+    ctx.font      = '9px system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(97,113,143,0.75)';
     ctx.textAlign = 'right';
-    ctx.fillText(`as of ${_asOf}`, W - PAD, H - 6);
+    ctx.fillText(`as of ${_asOf}`, R, H - 4);
   }
 }
 
