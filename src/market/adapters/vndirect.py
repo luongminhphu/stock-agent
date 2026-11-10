@@ -1,27 +1,24 @@
-"""VNDirect market data adapter — SECONDARY.
+"""VNDirect market data adapter — TERTIARY (giá EOD chính thức).
 
-Endpoint: https://finfo-api.vndirect.com.vn/v4/
-Auth: none required for public quote data.
+Endpoint: GET https://finfo-api.vndirect.com.vn/v4/stock_prices
+Auth: none.
 
-GET /stocks?q=code:{TICKER}&fields=...
-Response shape:
-    {
-      "data": [{
-        "code": "HPG",
-        "close": 33100,
-        "priceChange": 700,
-        "pctPriceChange": 2.16,
-        "nmVolume": 12000000,
-        "nmValue": ...,
-        "open": 32600,
-        "high": 33200,
-        "low": 32400,
-        "refPrice": 32400,
-        "ceiling": 34500,
-        "floor": 30300,
-        "date": "2025-04-18"
-      }]
-    }
+Lưu ý quan trọng (sửa lỗi cũ):
+    - Endpoint cũ `/v4/stocks` là danh mục niêm yết, KHÔNG có giá → adapter cũ
+      luôn parse ra rỗng / sai.
+    - `/v4/stock_prices` trả giá theo đơn vị NGHÌN ĐỒNG (27.35 = 27.350đ) →
+      nhân 1.000 để cùng đơn vị VND với VCI/KBS.
+    - Trường `floor` ở endpoint này là TÊN SÀN ("HOSE"), giá sàn là `floorPrice`.
+    - Dữ liệu là bản ghi theo ngày (cập nhật trong/ sau phiên), phù hợp làm nguồn
+      cuối của chuỗi fallback và đối soát giá đóng cửa.
+
+Query: q=code:HPG · sort=date · size=1 → bản ghi mới nhất của 1 mã.
+Response:
+    {"data": [{"code": "HPG", "date": "2025-04-18", "time": "15:04:01",
+               "basicPrice": 32.4, "ceilingPrice": 34.65, "floorPrice": 30.15,
+               "open": 32.6, "high": 33.2, "low": 32.4, "close": 33.1,
+               "change": 0.7, "pctChange": 2.16, "nmVolume": 12000000,
+               "nmValue": 3.9e11}]}
 """
 
 from __future__ import annotations
@@ -38,15 +35,18 @@ from src.platform.logging import get_logger
 logger = get_logger(__name__)
 
 _BASE_URL = "https://finfo-api.vndirect.com.vn/v4/"
-_STOCKS_PATH = "stocks"
-_FIELDS = "code,close,priceChange,pctPriceChange,nmVolume,nmValue,open,high,low,refPrice,ceiling,floor,date"
+_PRICES_PATH = "stock_prices"
+_FIELDS = (
+    "code,date,time,basicPrice,ceilingPrice,floorPrice,open,high,low,close,"
+    "change,pctChange,nmVolume,nmValue"
+)
+_PRICE_UNIT = 1000.0  # API trả nghìn đồng
 _HEADERS = {
     "Accept": "application/json",
     "Origin": "https://www.vndirect.com.vn",
     "Referer": "https://www.vndirect.com.vn/",
 }
 _TIMEOUT = 10.0
-_BULK_CHUNK_SIZE = 20  # VNDirect query string limit
 _MAX_CONCURRENT_CHUNKS = 5  # giới hạn concurrent — tránh VNDirect reject
 
 
@@ -78,44 +78,38 @@ class VNDirectAdapter(MarketDataAdapter):
         return results[0]
 
     async def fetch_bulk_quotes(self, tickers: list[str]) -> list[Quote]:
-        """Fetch quotes — chunks song song nhưng giới hạn _MAX_CONCURRENT_CHUNKS
-        để tránh VNDirect reject. Chỉ gọi khi VCI fail (secondary)."""
-        chunks = [
-            tickers[i : i + _BULK_CHUNK_SIZE] for i in range(0, len(tickers), _BULK_CHUNK_SIZE)
-        ]
+        """Mỗi mã một request (size=1, bản ghi mới nhất) — giới hạn đồng thời."""
 
-        async def _fetch_with_sem(chunk: list[str]) -> list[dict[str, Any]]:
+        async def _one(ticker: str) -> list[dict[str, Any]]:
             async with self._sem:
-                return await self._fetch_stocks(chunk)
+                return await self._fetch_latest(ticker)
 
-        raw_lists = await asyncio.gather(*[_fetch_with_sem(c) for c in chunks])
+        raw_lists = await asyncio.gather(*[_one(t) for t in tickers])
         results: list[Quote] = []
         for raw in raw_lists:
             results.extend(_parse_stocks(raw))
         return results
 
-    async def _fetch_stocks(self, tickers: list[str]) -> list[dict[str, Any]]:
-        query = ",".join(f"code:{t}" for t in tickers)
+    async def _fetch_latest(self, ticker: str) -> list[dict[str, Any]]:
         try:
             response = await self._client.get(
-                _STOCKS_PATH,
+                _PRICES_PATH,
                 params={
-                    "q": query,
+                    "q": f"code:{ticker.upper()}",
+                    "sort": "date",
+                    "size": 1,
+                    "page": 1,
                     "fields": _FIELDS,
-                    "size": len(tickers),
                 },
             )
             response.raise_for_status()
-            return response.json().get("data", [])
+            data: list[dict[str, Any]] = response.json().get("data", [])
+            return data[:1]
         except httpx.HTTPStatusError as exc:
-            logger.error(
-                "vndirect.http_error",
-                status=exc.response.status_code,
-                tickers=tickers,
-            )
+            logger.error("vndirect.http_error", status=exc.response.status_code, ticker=ticker)
             raise
         except httpx.TimeoutException:
-            logger.error("vndirect.timeout", tickers=tickers)
+            logger.error("vndirect.timeout", ticker=ticker)
             raise
 
     async def close(self) -> None:
@@ -138,28 +132,32 @@ def _parse_stocks(data: list[dict[str, Any]]) -> list[Quote]:
     return quotes
 
 
-def _parse_item(item: dict[str, Any]) -> Quote:
-    ticker = item["code"]
-    ref_price = _safe_float(item.get("refPrice"))
-    price = _safe_float(item.get("close"), fallback=ref_price)
-
-    change = _safe_float(item.get("priceChange"), fallback=price - ref_price)
-    change_pct = _safe_float(
-        item.get("pctPriceChange"),
-        fallback=(change / ref_price * 100) if ref_price else 0.0,
-    )
-
-    volume = int(_safe_float(item.get("nmVolume")))
-    value = _safe_float(item.get("nmValue"))
-    open_ = _safe_float(item.get("open"), fallback=price)
-    high = _safe_float(item.get("high"), fallback=price)
-    low = _safe_float(item.get("low"), fallback=price)
-    ceiling = _safe_float(item.get("ceiling"), fallback=price * 1.07)
-    floor_ = _safe_float(item.get("floor"), fallback=price * 0.93)
-
-    raw_date = item.get("date")
+def _px(item: dict[str, Any], key: str) -> float | None:
+    val = item.get(key)
+    if val is None or val == "":
+        return None
     try:
-        timestamp = datetime.fromisoformat(raw_date) if raw_date else datetime.utcnow()
+        return float(val) * _PRICE_UNIT
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_item(item: dict[str, Any]) -> Quote:
+    ticker = str(item["code"]).upper()
+    ref_price = _px(item, "basicPrice")
+    if not ref_price:
+        raise ValueError(f"VNDirect: thiếu basicPrice cho {ticker}")
+    price = _px(item, "close") or ref_price
+    change = _px(item, "change")
+    if change is None:
+        change = price - ref_price
+    change_pct = _safe_float(item.get("pctChange"), fallback=change / ref_price * 100)
+    volume = int(_safe_float(item.get("nmVolume")))
+    open_ = _px(item, "open") or (price if volume > 0 else ref_price)
+
+    raw = f"{item.get('date', '')} {item.get('time', '')}".strip()
+    try:
+        timestamp = datetime.fromisoformat(raw) if raw else datetime.utcnow()
     except ValueError:
         timestamp = datetime.utcnow()
 
@@ -169,12 +167,12 @@ def _parse_item(item: dict[str, Any]) -> Quote:
         change=change,
         change_pct=change_pct,
         volume=volume,
-        value=value,
+        value=_safe_float(item.get("nmValue")),
         open=open_,
-        high=high,
-        low=low,
+        high=_px(item, "high") or price,
+        low=_px(item, "low") or price,
         ref_price=ref_price,
-        ceiling=ceiling,
-        floor=floor_,
+        ceiling=_px(item, "ceilingPrice") or round(ref_price * 1.07, -1),
+        floor=_px(item, "floorPrice") or round(ref_price * 0.93, -1),
         timestamp=timestamp,
     )

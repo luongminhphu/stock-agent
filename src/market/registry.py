@@ -674,19 +674,6 @@ class SymbolRegistry:
             return ""
         return f"Sector: {info.sector.value} — metrics cần theo dõi: {info.key_metrics}."
 
-    # ------------------------------------------------------------------
-    # Backward-compat shim — breadth_service used registry._REGISTRY
-    # ------------------------------------------------------------------
-
-    @property
-    def _REGISTRY(self) -> dict[str, SymbolInfo]:  # noqa: N802
-        """Deprecated direct dict access — use list_by_exchange() instead.
-
-        Kept for backward compatibility with breadth_service.py.
-        Will be removed after breadth_service is updated.
-        """
-        return self._cache
-
 
 # ---------------------------------------------------------------------------
 # Module-level singleton

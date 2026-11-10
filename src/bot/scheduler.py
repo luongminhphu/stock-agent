@@ -2221,12 +2221,17 @@ class EodPortfolioSnapshotScheduler:
 # ---------------------------------------------------------------------------
 # EodCloseCaptureScheduler — Wave C1
 # ---------------------------------------------------------------------------
-_EOD_CLOSE_CAPTURE_TIME = datetime.time(hour=7, minute=50, tzinfo=datetime.UTC)  # 14:50 ICT
-_EOD_CLOSE_RETRY_SECS = 15 * 60  # thử lại 1 lần lúc ~15:05 ICT nếu adapter lỗi
+# 14:50 ICT: HOSE/HNX đã xong ATC (14:45) → chốt. 15:05 ICT: UPCoM (khớp tới 15:00)
+# + mọi mã còn pending/lỗi ở lượt đầu.
+_EOD_CLOSE_CAPTURE_TIMES = [
+    datetime.time(hour=7, minute=50, tzinfo=datetime.UTC),  # 14:50 ICT
+    datetime.time(hour=8, minute=5, tzinfo=datetime.UTC),  # 15:05 ICT
+]
+_EOD_CLOSE_RETRY_SECS = 5 * 60  # thử lại 1 lần nếu adapter lỗi
 
 
 class EodCloseCaptureScheduler:
-    """Chụp giá đóng cửa chính thức (sau ATC) cho toàn bộ mã đang theo dõi — 14:50 ICT.
+    """Chụp giá đóng cửa chính thức cho toàn bộ mã đang theo dõi — 14:50 + 15:05 ICT.
 
     Owner: bot segment — thin timing adapter only.
     Logic giá nằm ở market.QuoteService.capture_eod_close; scheduler chỉ gom
@@ -2238,8 +2243,14 @@ class EodCloseCaptureScheduler:
         filler (15:05) và dashboard dùng giá khớp 14:15–14:30 làm "giá đóng cửa".
         Job này chạy sau ATC, gắn Quote.close và persist để mọi consumer đọc chung.
 
+    Đồng nhất với CTCK (market.price_reconciliation):
+        - Mỗi mã chỉ chốt khi sàn của nó đã đóng giá (UPCoM không có ATC, khớp tới 15:00).
+        - Open/close lấy theo nến ngày chính thức, đối chứng bảng giá KBS, làm tròn
+          theo bước giá — bất thường được log `price_reconcile.flagged`.
+
     Thứ tự trong ngày:
-        14:50 capture close → 15:00 EOD brief → 15:05 outcome filler → 15:20 EOD snapshot
+        14:50 chốt HOSE/HNX → 15:00 EOD brief → 15:05 chốt UPCoM + outcome filler
+        → 15:20 EOD snapshot
     Catch-up on start: ngày giao dịch, sau 14:50 ICT, chưa chụp hôm nay → chạy ngay.
     """
 
@@ -2251,13 +2262,13 @@ class EodCloseCaptureScheduler:
     def start(self) -> None:
         self._monitor.register_task("market.eod_close_capture")
         self._task.start()
-        logger.info("scheduler.eod_close_capture.started", time_ict="14:50")
+        logger.info("scheduler.eod_close_capture.started", time_ict="14:50,15:05")
 
     def stop(self) -> None:
         self._task.cancel()
         logger.info("scheduler.eod_close_capture.stopped")
 
-    @tasks.loop(time=_EOD_CLOSE_CAPTURE_TIME)
+    @tasks.loop(time=_EOD_CLOSE_CAPTURE_TIMES)
     async def _task(self) -> None:
         await self._run("market.eod_close_capture")
 
@@ -2302,13 +2313,17 @@ class EodCloseCaptureScheduler:
                 result = await self._capture(tickers)
             if result.error is not None:
                 raise RuntimeError(result.error)
-            self._captured_date = today_ict
+            if not result.pending:
+                self._captured_date = today_ict
             logger.info(
                 "scheduler.eod_close_capture.done",
                 session_date=result.session_date,
                 requested=result.requested,
                 captured=result.captured,
                 no_match=result.no_match,
+                pending=result.pending,
+                from_candle=result.from_candle,
+                flagged=result.flagged,
             )
             await self._monitor.record_success(task_name)
         except Exception as exc:
@@ -2316,9 +2331,25 @@ class EodCloseCaptureScheduler:
             await self._monitor.record_failure(task_name, exc)
 
     async def _capture(self, tickers: list[str]) -> Any:
-        from src.platform.bootstrap import get_quote_service
+        import datetime as dt
 
-        return await get_quote_service().capture_eod_close(tickers)
+        from src.market.adapters.factory import build_reference_adapter
+        from src.market.price_reconciliation import SessionPriceReconciler
+        from src.platform.bootstrap import get_ohlcv_service, get_quote_service
+
+        reference = build_reference_adapter()
+        reconciler = SessionPriceReconciler(
+            ohlcv_service=get_ohlcv_service(), reference_adapter=reference
+        )
+        try:
+            return await get_quote_service().capture_eod_close(
+                tickers,
+                now=dt.datetime.now(tz=dt.timezone(dt.timedelta(hours=7))),
+                reconciler=reconciler,
+            )
+        finally:
+            if reference is not None:
+                await reference.close()
 
     async def _collect_universe(self) -> list[str]:
         """Vị thế mở + watchlist (mọi user) + thesis active của scheduler_user_id."""

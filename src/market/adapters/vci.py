@@ -195,7 +195,10 @@ def _parse_item(item: dict[str, Any]) -> Quote:
     # matchVolume từ VCI là đơn vị lô → nhân _LOT_SIZE để ra số CP thực tế
     volume = int(_safe_float(match.get("matchVolume"), fallback=0.0)) * _LOT_SIZE
     value = _safe_float(match.get("matchValue"))
-    open_ = _safe_float(match.get("open") or listing.get("refPrice"), fallback=price)
+    # Giá mở cửa = giá khớp ATO do sở công bố. VCI trả ở `openPrice` (bảng giá mới)
+    # hoặc `open` (bản cũ). Chưa khớp lệnh nào → dùng tham chiếu như bảng giá CTCK.
+    raw_open = _safe_float(match.get("openPrice") or match.get("open"))
+    open_ = raw_open if raw_open > 0 else (price if volume > 0 else ref_price)
     high = _safe_float(match.get("highest"), fallback=price)
     low = _safe_float(match.get("lowest"), fallback=price)
     ceiling = float(listing["ceiling"])

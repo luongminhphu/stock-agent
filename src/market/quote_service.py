@@ -9,7 +9,7 @@ import asyncio
 import contextlib
 import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -393,6 +393,13 @@ class EodCloseResult:
     captured: int
     no_match: list[str]  # mã không có khớp trong phiên → giữ close cũ / không ghi
     error: str | None = None
+    # Mã thuộc sàn chưa chốt giá đóng cửa tại thời điểm chạy (VD UPCoM trước 15:00)
+    # → caller chạy lại sau. Chỉ có giá trị khi gọi với `now`.
+    pending: list[str] = field(default_factory=list)
+    # Mã có bất thường khi đối soát (lệch nến chính thức / nguồn đối chứng / bước giá)
+    flagged: dict[str, list[str]] = field(default_factory=dict)
+    # Mã được chốt theo nến ngày chính thức (thay vì bảng giá nguồn chính)
+    from_candle: int = 0
 
 
 class MarketClosedError(Exception):
@@ -509,7 +516,14 @@ class QuoteService:
         finally:
             self._cache.clear_inflight_single(sym)
 
-    async def capture_eod_close(self, tickers: list[str]) -> EodCloseResult:
+    async def capture_eod_close(
+        self,
+        tickers: list[str],
+        *,
+        now: datetime | None = None,
+        reconciler: Any = None,
+        exchange_of: Any = None,
+    ) -> EodCloseResult:
         """Chụp giá đóng cửa chính thức sau ATC cho một tập mã (Wave C1).
 
         Gọi bởi bot.EodCloseCaptureScheduler ~14:50 ICT. Khác get_bulk_quotes:
@@ -520,25 +534,67 @@ class QuoteService:
           đọc đúng giá ATC thay vì giá khớp lần fetch cuối trong phiên.
         - Mã volume == 0 (không khớp cả phiên) → không gắn close, giữ last_known.
         Không raise; lỗi adapter trả về trong EodCloseResult.error.
+
+        Đồng nhất với CTCK:
+        - `now`: chỉ chốt mã thuộc sàn đã đóng giá tại thời điểm này (HOSE/HNX sau
+          14:45, UPCoM sau 15:00 — xem price_rules); mã còn lại vào `pending`.
+          None → caller khẳng định mọi sàn đã đóng (không lọc).
+        - `reconciler`: SessionPriceReconciler — chốt open/close theo nến ngày chính
+          thức, đối chứng nguồn thứ hai, chuẩn hoá bước giá. None → close = giá khớp.
         """
         syms = sorted({t.upper().strip() for t in tickers if t and t.strip()})
-        today = datetime.now(_ICT).date().isoformat()
+        session_day = (now or datetime.now(_ICT)).astimezone(_ICT).date()
+        today = session_day.isoformat()
         if not syms:
             return EodCloseResult(session_date=today, requested=0, captured=0, no_match=[])
+        pending: list[str] = []
+        if now is not None:
+            from src.market.price_reconciliation import exchange_for  # noqa: PLC0415
+            from src.market.price_rules import is_session_closed  # noqa: PLC0415
+
+            lookup = exchange_of or exchange_for
+            ready = [s for s in syms if is_session_closed(lookup(s), now)]
+            pending = [s for s in syms if s not in ready]
+            if not ready:
+                return EodCloseResult(
+                    session_date=today,
+                    requested=len(syms),
+                    captured=0,
+                    no_match=[],
+                    pending=pending,
+                )
+            syms = ready
         try:
             fetched = await self._fetch_bulk_retrying(syms)
         except Exception as exc:
             _log.warning("quote_service.eod_close.fetch_failed", count=len(syms), error=str(exc))
             return EodCloseResult(
-                session_date=today, requested=len(syms), captured=0, no_match=[], error=str(exc)
+                session_date=today,
+                requested=len(syms) + len(pending),
+                captured=0,
+                no_match=[],
+                error=str(exc),
+                pending=pending,
             )
-        closed: list[Quote] = []
+        traded: list[Quote] = []
         no_match: list[str] = []
         for q in fetched:
             if q.volume <= 0:
                 no_match.append(q.ticker)
                 continue
-            closed.append(replace(q, close=q.price))
+            traded.append(q)
+        flagged: dict[str, list[str]] = {}
+        from_candle = 0
+        if reconciler is not None and traded:
+            try:
+                closed, checks = await reconciler.reconcile(traded, session_day)
+                flagged = {c.ticker: list(c.flags) for c in checks if c.flags}
+                from_candle = sum(1 for c in checks if c.source == "candle")
+            except Exception as exc:  # noqa: BLE001 — đối soát lỗi không được chặn chốt giá
+                _log.warning("quote_service.eod_close.reconcile_failed", error=str(exc))
+                closed = [replace(q, close=q.price) for q in traded]
+        else:
+            closed = [replace(q, close=q.price) for q in traded]
         if closed:
             self._cache.set_bulk_ttl([q.ticker for q in closed], closed, _OFF_HOURS_TTL)
             await _persist_quotes_to_db(self._session_factory, closed)
@@ -548,9 +604,18 @@ class QuoteService:
             requested=len(syms),
             captured=len(closed),
             no_match=len(no_match),
+            pending=len(pending),
+            flagged=len(flagged),
+            from_candle=from_candle,
         )
         return EodCloseResult(
-            session_date=today, requested=len(syms), captured=len(closed), no_match=no_match
+            session_date=today,
+            requested=len(syms) + len(pending),
+            captured=len(closed),
+            no_match=no_match,
+            pending=pending,
+            flagged=flagged,
+            from_candle=from_candle,
         )
 
     async def get_bulk_quotes(self, tickers: list[str]) -> list[Quote]:
