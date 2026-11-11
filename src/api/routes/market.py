@@ -9,6 +9,7 @@ Endpoints:
     GET /market/quote/{ticker}          — live quote via QuoteService (VCI → VNDirect)
     GET /market/context/{ticker}        — quote + MA/RSI/ATR/vol/52w + trend + source_quality
     GET /market/ohlcv/{ticker}          — OHLCV candle history (default: last 30 trading days)
+    GET /market/baserate/{ticker}       — tiền lệ của chính mã ở trạng thái hiện tại (3–6 tháng)
 """
 
 from __future__ import annotations
@@ -16,16 +17,21 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from src.api.deps import (
+    get_baserate_service,
     get_ohlcv_service,
     get_quote_service,
     get_ticker_context_service,
 )
 from src.api.dto.market import (
+    BaseRateAnalogResponse,
+    BaseRateOutcomeResponse,
+    BaseRateResponse,
     CandleResponse,
     QuoteResponse,
     SymbolInfoResponse,
     TickerContextResponse,
 )
+from src.market.baserate import FEATURE_LABELS, BaseRateService
 from src.market.ohlcv_service import OHLCVService, OHLCVServiceNotConfiguredError
 from src.market.quote_service import QuoteService
 from src.market.registry import SymbolNotFoundError, registry
@@ -208,3 +214,51 @@ async def get_ohlcv(
         )
         for c in candles
     ]
+
+
+@router.get("/baserate/{ticker}", response_model=BaseRateResponse)
+async def get_base_rate(
+    ticker: str,
+    svc: BaseRateService = Depends(get_baserate_service),
+) -> BaseRateResponse:
+    """Thống kê tiền lệ: các lần TRƯỚC ĐÂY mã ở cùng trạng thái, 60/120 phiên sau ra sao.
+
+    Không dự báo. Xác suất đã co về mức nền của chính mã; luôn kèm số đợt độc lập.
+    """
+    ticker = ticker.upper()
+    try:
+        registry.resolve(ticker)
+    except SymbolNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Ticker '{ticker}' not found in registry.",
+        ) from exc
+
+    try:
+        rep = await svc.analyze(ticker)
+    except OHLCVServiceNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="OHLCV service not configured.",
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Base-rate data unavailable for '{ticker}': {exc}",
+        ) from exc
+
+    return BaseRateResponse(
+        ticker=rep.ticker,
+        as_of=rep.as_of,
+        state=rep.state,
+        state_labels={k: FEATURE_LABELS.get(k, {}).get(v, v) for k, v in rep.state.items()},
+        matched_on=list(rep.matched_on),
+        dropped=list(rep.dropped),
+        matching_days=rep.matching_days,
+        suggestion=rep.suggestion,
+        confidence=rep.confidence,
+        outcomes=[BaseRateOutcomeResponse(**vars(o)) for o in rep.outcomes.values()],
+        analogs=[BaseRateAnalogResponse(**vars(a)) for a in rep.analogs],
+        history_from=rep.history_from,
+        notes=rep.notes,
+    )

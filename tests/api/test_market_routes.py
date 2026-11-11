@@ -86,3 +86,40 @@ async def test_get_quote_different_tickers_different_prices(bootstrapped_client)
     r_hpg = await bootstrapped_client.get("/api/v1/market/quote/HPG")
     r_vcb = await bootstrapped_client.get("/api/v1/market/quote/VCB")
     assert r_hpg.json()["price"] != r_vcb.json()["price"]
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/market/baserate/{ticker}
+# ---------------------------------------------------------------------------
+
+
+class _FakeOHLCV:
+    async def get_candles(self, ticker, from_date, to_date):  # type: ignore[no-untyped-def]
+        from tests.market.test_baserate import _series
+
+        return _series(260 * 10 + 196)
+
+
+@pytest.mark.asyncio
+async def test_get_baserate_returns_outcomes(app, client):
+    from src.api.deps import get_baserate_service
+    from src.market.baserate import BaseRateService
+
+    app.dependency_overrides[get_baserate_service] = lambda: BaseRateService(_FakeOHLCV())
+    try:
+        r = await client.get("/api/v1/market/baserate/hpg")
+    finally:
+        app.dependency_overrides.pop(get_baserate_service, None)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ticker"] == "HPG"
+    assert body["suggestion"] == "NGHIENG_MUA"
+    assert [o["horizon"] for o in body["outcomes"]] == [60, 120]
+    assert body["state_labels"]["trend"] == "Giá dưới MA50 và MA200"
+    assert body["analogs"] and "120" in body["analogs"][0]["returns"]
+
+
+@pytest.mark.asyncio
+async def test_get_baserate_unknown_ticker_404(bootstrapped_client):
+    r = await bootstrapped_client.get("/api/v1/market/baserate/UNKNOWN")
+    assert r.status_code == 404
