@@ -64,8 +64,6 @@ def create_bot() -> commands.Bot:
             _start_post_mortem_subscriber(bot)
             _start_signal_reaction_listener(bot)
             _start_agenda_subscriber(bot)
-            _start_evolution_scheduler(bot)
-            _start_evolution_subscriber(bot)
             _start_invalidation_subscriber(bot)
             _start_position_risk_subscriber(bot)  # portfolio loss threshold → Discord
             _start_agenda_builder_scheduler(bot)  # build daily agenda 07:30 ICT
@@ -336,31 +334,6 @@ def _start_agenda_subscriber(bot: commands.Bot) -> None:
     subscriber.set_client(bot)
     subscriber.register()
     logger.info("bot.agenda_subscriber.registered", channel_id=channel_id)
-
-
-def _start_evolution_scheduler(bot: commands.Bot) -> None:
-    from src.bot.scheduled.evolution_job import EvolutionScheduler
-
-    scheduler = EvolutionScheduler(bot)
-    scheduler.start()
-    logger.info("bot.evolution_scheduler.started")
-
-
-def _start_evolution_subscriber(bot: commands.Bot) -> None:
-    from src.bot.evolution_subscriber import EvolutionSubscriber
-
-    channel_id = getattr(settings, "alert_channel_id", None)
-    if not channel_id:
-        logger.warning(
-            "bot.evolution_subscriber.not_available",
-            reason="alert_channel_id not configured — evolution embeds disabled",
-        )
-        return
-
-    subscriber = EvolutionSubscriber(channel_id=int(channel_id))
-    subscriber.set_client(bot)
-    subscriber.register()
-    logger.info("bot.evolution_subscriber.registered", channel_id=channel_id)
 
 
 def _start_invalidation_subscriber(bot: commands.Bot) -> None:
