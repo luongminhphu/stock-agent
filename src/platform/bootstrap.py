@@ -206,37 +206,6 @@ async def bootstrap() -> None:
                 reason="scheduler_user_id not configured",
             )
 
-    if container.agenda_builder_agent is None:
-        from src.ai.agents.agenda_builder import AgendaBuilderAgent
-
-        container.agenda_builder_agent = AgendaBuilderAgent(ai_client=container.ai_client)  # type: ignore[arg-type]
-        logger.info("platform.bootstrap.agenda_builder_agent_ready")
-
-    if container.agenda_service_factory is None:
-        from src.platform.config import settings
-
-        user_id = getattr(settings, "scheduler_user_id", None)
-        if user_id:
-            from src.ai.agents.agenda_builder import AgendaBuilderAgent as _AgendaAgent
-            from src.ai.memory.memory_service import MemoryService
-            from src.briefing.agenda_service import AgendaService
-
-            _agent_ref = cast(_AgendaAgent, container.agenda_builder_agent)
-            container.agenda_service_factory = lambda session: AgendaService(  # noqa: E731
-                session=session,
-                agenda_agent=_agent_ref,
-                memory_service=MemoryService,
-            )
-            logger.info(
-                "platform.bootstrap.agenda_service_factory_ready",
-                user_id=str(user_id),
-            )
-        else:
-            logger.warning(
-                "platform.bootstrap.agenda_service_factory_skipped",
-                reason="scheduler_user_id not configured",
-            )
-
     # ── W1: RecentReviewsStore (readmodel) ──────────────────────────────────
     if container.recent_reviews_store is None:
         from src.platform.db import AsyncSessionLocal
@@ -304,13 +273,11 @@ async def bootstrap() -> None:
                     morning_channel_id=int(morning_id) if morning_id else None,
                     eod_channel_id=int(eod_id) if eod_id else None,
                 ),
-                agenda_service_factory=container.agenda_service_factory,
             )
             container.briefing_listener.register()
             logger.info(
                 "platform.bootstrap.briefing_listener_ready",
                 user_id=str(user_id),
-                agenda_service_wired=container.agenda_service_factory is not None,
             )
         else:
             logger.warning(
@@ -391,9 +358,7 @@ async def _warm_up_persisted_stores(session_factory: Any) -> None:
     Failures are logged and swallowed — warm-up is best-effort; stores fall
     back gracefully to cold-start behaviour if DB is unavailable at boot.
     """
-    from src.platform.db import AsyncSessionLocal
-
-    sf = session_factory or AsyncSessionLocal
+    del session_factory  # giữ chữ ký; các store còn lại tự lấy session
 
     # QuoteService — warm _last_known from DB (chống N/A sau restart)
     try:
@@ -403,15 +368,6 @@ async def _warm_up_persisted_stores(session_factory: Any) -> None:
             logger.info("bootstrap.warm_up.quote_cache", loaded=n)
     except Exception as exc:
         logger.warning("bootstrap.warm_up.quote_cache_failed", error=str(exc))
-
-    # AgendaCache (today only)
-    try:
-        from src.briefing.agenda_cache import warm_load_agendas
-
-        n = await warm_load_agendas(sf)
-        logger.info("bootstrap.warm_up.daily_agendas", loaded=n)
-    except Exception as exc:
-        logger.warning("bootstrap.warm_up.daily_agendas_failed", error=str(exc))
 
     logger.info("bootstrap.warm_up.complete")
 
@@ -501,12 +457,6 @@ def get_portfolio_query_adapter() -> Any:
     if container.portfolio_query_adapter is None:
         raise RuntimeError("bootstrap() has not been called")
     return container.portfolio_query_adapter
-
-
-def get_agenda_service_factory() -> Any:
-    if container.agenda_service_factory is None:
-        raise RuntimeError("bootstrap() has not been called")
-    return container.agenda_service_factory
 
 
 def get_investor_profile_service() -> tuple[Any, ...] | None:

@@ -38,7 +38,6 @@ class AppContainer:
     pretrade_agent: object | None = None
     replay_agent: object | None = None
     memory_consolidator: object | None = None
-    agenda_builder_agent: object | None = None  # AgendaBuilderAgent singleton
     memory_injection_listener: object | None = None  # Wave E: MemoryInjectionListener singleton
     # ── core ──
     user_action_listener: object | None = None  # core: UserActionFeedbackListener (feedback loop)
@@ -51,7 +50,6 @@ class AppContainer:
     proactive_watch_listener: object | None = None  # watchlist: ProactiveWatchListener singleton
     # ── briefing ──
     briefing_listener: object | None = None
-    agenda_service_factory: object | None = None  # callable(session) -> AgendaService | None
     # ── portfolio ──
     portfolio_snapshot_listener: object | None = None  # PortfolioSnapshotListener singleton
     pnl_service_class: type | None = None  # PnlService class (portfolio)

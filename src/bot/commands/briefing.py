@@ -16,11 +16,9 @@ from discord import app_commands
 
 from src.ai.schemas import BriefOutput, MarketSentiment
 from src.bot.commands.base import BaseCog
-from src.briefing.agenda_cache import get_agenda
 from src.briefing.formatter import build_brief_pages
 from src.briefing.service import BriefingService
 from src.platform.bootstrap import (
-    get_agenda_service_factory,
     get_briefing_agent,
     get_pnl_service_class,
     get_quote_service,
@@ -135,16 +133,6 @@ class BriefingCog(BaseCog):
             async with self.db_session() as session:
                 # Lazy imports — session-scoped services, not singletons
                 from src.ai.memory.investor_profile import InvestorProfileService
-                from src.thesis.service import ThesisService
-
-                # agenda_service: init via factory, fail-safe
-                agenda_service = None
-                agenda_factory = get_agenda_service_factory()
-                if agenda_factory is not None:
-                    try:
-                        agenda_service = agenda_factory(session)
-                    except Exception as _e:
-                        logger.warning("briefing.command.agenda_service_init_failed", error=str(_e))
 
                 # lesson_service: LessonService is stateless (all methods static);
                 # BriefingService._build_lessons_context guards on truthy check,
@@ -152,6 +140,7 @@ class BriefingCog(BaseCog):
                 # We pass the actual LessonService class so the guard is truthy
                 # and the static call inside _build_lessons_context resolves correctly.
                 from src.ai.memory.lesson_service import LessonService
+                from src.thesis.service import ThesisService
 
                 svc = BriefingService(
                     watchlist_service=WatchlistService(session=session),
@@ -162,7 +151,6 @@ class BriefingCog(BaseCog):
                         quote_service=get_quote_service(),
                     ),
                     thesis_service=ThesisService(session=session),
-                    agenda_service=agenda_service,
                     lesson_service=LessonService,  # stateless — class reference is sentinel
                     investor_profile_service=InvestorProfileService(session=session),
                     session=session,
@@ -188,21 +176,6 @@ class BriefingCog(BaseCog):
             return
 
         embeds = build_brief_embeds(brief_result.output, phase=phase)
-
-        # P1.5: prepend cached Daily Agenda block to first embed when available
-        # so manual /morning_brief and scheduler-based Morning Brief share
-        # the same visual anchor around DECIDE/WATCH/DEFER.
-        # get_agenda trả CachedAgenda (summary + buckets), không phải str — bản cũ nhét
-        # object vào f-string → embed hiện repr dataclass thay vì agenda (mypy M2)
-        cached_agenda = get_agenda(user_id)
-        agenda_block = cached_agenda.summary if cached_agenda else None
-        if agenda_block and embeds:
-            first = embeds[0]
-            original_desc = first.description or ""
-            if original_desc:
-                first.description = f"{agenda_block}\n\n{original_desc}"
-            else:
-                first.description = agenda_block
 
         # Discord enforces a 6000-char *total* limit per message across all embeds.
         # Send each embed as its own message to avoid the limit entirely.

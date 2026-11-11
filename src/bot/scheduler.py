@@ -15,7 +15,6 @@ Registered tasks:
     OutcomeFillerScheduler.fill_task           — weekdays 15:05 ICT (fill decision outcomes before replay)
     DecisionReplayScheduler.replay_task        — weekdays 15:15 ICT (after market close)
     MemoryConsolidatorScheduler.consolidate    — Sundays 09:00 ICT (weekly memory distill)
-    AgendaBuilderScheduler.agenda_task         — weekdays 07:30 ICT (before all morning tasks)
     ProactiveWatchScheduler.morning_task       — weekdays 09:15 ICT (after market open)
     ProactiveWatchScheduler.midday_task        — weekdays 11:15 ICT (mid-session)
     ProactiveWatchScheduler.pre_atc_task       — weekdays 14:15 ICT (before ATC)
@@ -31,7 +30,6 @@ Channel routing:
     Proactive alerts (WatchlistScan, ThesisDrift, Reminder, ProactiveWatch)
                                                                  → alert_channel_id
         alert_channel_id = DISCORD_ALERT_CHANNEL_ID if set, else morning_channel_id
-    AgendaBuilderScheduler persists only — no Discord message.
     OutcomeFillerScheduler persists only — no Discord message (silent data enrichment job).
     ProactiveWatchScheduler emits events only — Discord delivery via ProactiveWatchSubscriber.
     PortfolioSnapshotScheduler emits events only — no channel routing, no Discord message.
@@ -972,95 +970,6 @@ class MemoryConsolidatorScheduler:
 
     @_consolidate_task.before_loop
     async def _before_consolidate(self) -> None:
-        await self._client.wait_until_ready()
-
-
-# ---------------------------------------------------------------------------
-# AgendaBuilderScheduler
-# ---------------------------------------------------------------------------
-
-_AGENDA_TIME = datetime.time(hour=0, minute=30, tzinfo=datetime.UTC)  # 07:30 ICT
-
-
-class AgendaBuilderScheduler:
-    """Build daily investor agenda at 07:30 ICT (weekdays).
-
-    Runs before InvestorProfileScheduler (08:20) and BriefingScheduler (08:30)
-    so the agenda result is persisted before the morning brief fires.
-
-    Flow:
-        1. get_agenda_service_factory() — returns callable(session) -> AgendaService,
-           or None if scheduler_user_id is not configured → graceful skip.
-        2. factory(session) — instantiate AgendaService with agent + MemoryService.
-        3. svc.build_agenda(user_id) — load context, call AgendaBuilderAgent, persist result.
-        4. session.commit() — persist DailyAgendaResult.
-        5. Log decide/watch/defer counts; record success/failure in SchedulerMonitor.
-
-    Graceful skip:
-        - If get_agenda_service_factory() returns None (scheduler_user_id not set).
-        - If build_agenda() returns None (AI error or no data) — non-fatal.
-        - All exceptions are caught and recorded; never blocks downstream schedulers.
-    """
-
-    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
-        self._client = client
-        self._monitor = monitor or get_monitor()
-
-    def start(self) -> None:
-        self._monitor.register_task("agenda.build")
-        self._agenda_task.start()
-        logger.info("scheduler.agenda.started", time_ict="07:30")
-
-    def stop(self) -> None:
-        self._agenda_task.cancel()
-        logger.info("scheduler.agenda.stopped")
-
-    @tasks.loop(time=_AGENDA_TIME)
-    async def _agenda_task(self) -> None:
-        now_utc = datetime.datetime.now(tz=datetime.UTC)
-        if now_utc.weekday() >= 5:
-            return
-
-        task_name = "agenda.build"
-        user_id = getattr(settings, "scheduler_user_id", None)
-
-        from src.platform.bootstrap import get_agenda_service_factory
-
-        factory = get_agenda_service_factory()
-
-        if not user_id or factory is None:
-            logger.warning(
-                "scheduler.agenda.skipped",
-                reason="agenda_service_factory not initialised — scheduler_user_id not set",
-            )
-            return
-
-        try:
-            async with AsyncSessionLocal() as session:
-                svc = factory(session)
-                result = await svc.build_agenda(str(user_id))
-                await session.commit()
-
-            if result is None:
-                logger.info("scheduler.agenda.no_result", user_id=user_id)
-                await self._monitor.record_success(task_name)
-                return
-
-            logger.info(
-                "scheduler.agenda.done",
-                user_id=user_id,
-                decide=len(result.decide),
-                watch=len(result.watch),
-                defer=len(result.defer),
-            )
-            await self._monitor.record_success(task_name)
-
-        except Exception as exc:
-            logger.error("scheduler.agenda.error", error=str(exc))
-            await self._monitor.record_failure(task_name, exc)
-
-    @_agenda_task.before_loop
-    async def _before_agenda(self) -> None:
         await self._client.wait_until_ready()
 
 
