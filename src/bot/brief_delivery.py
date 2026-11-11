@@ -46,7 +46,7 @@ class DiscordBriefDelivery:
             return False
         return True
 
-    async def deliver(self, brief: Any, *, phase: str, agenda_summary: str | None = None) -> None:
+    async def deliver(self, brief: Any, *, phase: str) -> None:
         from src.bot.commands.briefing import build_brief_embed
 
         channel_id = self._channels.get(phase)
@@ -56,10 +56,5 @@ class DiscordBriefDelivery:
             return
 
         embed = build_brief_embed(brief, phase=phase)
-        # P1/P1.5: prepend agenda summary (DECIDE/WATCH/DEFER) lên đầu description.
-        if agenda_summary:
-            original = embed.description or ""
-            embed.description = f"{agenda_summary}\n\n{original}" if original else agenda_summary
-
         await channel.send(embed=embed)  # type: ignore[union-attr]
         logger.info("brief_delivery.sent", phase=phase, channel_id=channel_id)

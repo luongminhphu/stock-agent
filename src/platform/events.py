@@ -207,32 +207,6 @@ class PretradeAdviceReconciledEvent(DomainEvent):
     adherence: str = ""  # followed_advice | ignored_advice
 
 
-# ─── daily agenda ────────────────────────────────────────────────────────────
-
-
-@dataclass(frozen=True)
-class DailyAgendaCompletedEvent(DomainEvent):
-    """Emitted by AgendaScheduler after DailyAgendaResult is built and persisted.
-
-    Produced by: briefing.AgendaScheduler.run_for_user() (07:30 ICT)
-    Consumed by:
-      - bot.AgendaNotifier (optional) → Discord embed "Today: 2 decide / 3 watch"
-      - briefing.BriefingService._build_agenda_context() → inject into morning brief
-
-    decide_tickers / watch_tickers: top-level ticker lists (max 10 each) for
-    quick fanout without loading full DailyAgendaResult from DB.
-    opening_line: AI-generated 1-sentence summary for Discord preview.
-    """
-
-    user_id: str = ""
-    decide_count: int = 0
-    watch_count: int = 0
-    defer_count: int = 0
-    decide_tickers: tuple[str, ...] = field(default_factory=tuple)
-    watch_tickers: tuple[str, ...] = field(default_factory=tuple)
-    opening_line: str = ""
-
-
 # ─── user action feedback loop (Wave E) ──────────────────────────────────────
 
 ActionType = Literal["SELL", "BUY", "IGNORE_ALERT", "MARK_REVIEWED", "DEFER"]
