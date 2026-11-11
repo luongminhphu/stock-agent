@@ -2,17 +2,15 @@
 
 Owner: ai.memory (Wave E3a — S6 feedback ledger hợp nhất).
 
-Trước E3a có 3 stream không giao nhau:
-  core_feedback      ← EngineFeedbackSubmittedEvent (verdict core)   → chỉ core.evolution đọc
+Trước E3a có các stream không giao nhau:
   brief_feedback     ← BriefingService.record_feedback              → readmodel/dashboard đọc
   user_behavior_logs ← UserActionEvent (bought/sold/ignored...)      → ai.memory.lesson đọc
 
-Subscriber này dual-write thêm 1 row ledger cho mỗi feedback core/brief/pretrade, với
+Subscriber này dual-write thêm 1 row ledger cho mỗi feedback brief/pretrade, với
 ``ref_type``/``ref_id`` trỏ về đối tượng gốc. readmodel.AccuracyProjection (E3c) và
 briefing calibration (F5) đọc ledger qua ``FeedbackLedgerReader``.
 
 Reader cũ còn giữ có chủ đích:
-  - core_feedback  → core.evolution cần verdict/actual/reasoning (ledger chỉ có signal+note).
   - brief_feedback → readmodel.get_brief_feedback_summary (KPI UI, có lịch sử trước E3a).
 
 Ledger là best-effort: lỗi ghi chỉ log, không raise (event gốc đã được xử lý).
@@ -30,7 +28,6 @@ from src.platform.db import get_session
 from src.platform.event_bus import EventBus, get_event_bus
 from src.platform.events import (
     BriefFeedbackRecordedEvent,
-    EngineFeedbackSubmittedEvent,
     PretradeAdviceReconciledEvent,
 )
 from src.platform.logging import get_logger
@@ -53,23 +50,11 @@ class FeedbackLedgerSubscriber:
         self._bus = bus or get_event_bus()
 
     def register(self) -> None:
-        self._bus.subscribe_handler(EngineFeedbackSubmittedEvent, self._on_engine_feedback)
         self._bus.subscribe_handler(BriefFeedbackRecordedEvent, self._on_brief_feedback)
         self._bus.subscribe_handler(PretradeAdviceReconciledEvent, self._on_pretrade_reconciled)
         logger.info("feedback_ledger.registered")
 
     # ── handlers ────────────────────────────────────────────────────────────
-
-    async def _on_engine_feedback(self, event: EngineFeedbackSubmittedEvent) -> None:
-        await self._write(
-            user_id=event.user_id,
-            signal=f"engine:{event.outcome}",
-            source=SOURCE_CORE,
-            ref_type=REF_VERDICT,
-            ref_id=event.verdict_event_id,
-            agent_type="intelligence_engine",
-            note=(event.user_note or None),
-        )
 
     async def _on_brief_feedback(self, event: BriefFeedbackRecordedEvent) -> None:
         await self._write(
