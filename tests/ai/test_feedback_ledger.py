@@ -11,7 +11,6 @@ from src.platform.db import AsyncSessionLocal
 from src.platform.event_bus import EventBus
 from src.platform.events import (
     BriefFeedbackRecordedEvent,
-    EngineFeedbackSubmittedEvent,
     PretradeAdviceReconciledEvent,
 )
 
@@ -26,11 +25,10 @@ async def _rows(user_id: str) -> list[UserBehaviorLog]:
         return list(res.scalars().all())
 
 
-def test_register_subscribes_three_events() -> None:
+def test_register_subscribes_brief_and_pretrade() -> None:
     bus = EventBus()
     FeedbackLedgerSubscriber(bus).register()
     for ev in (
-        EngineFeedbackSubmittedEvent,
         BriefFeedbackRecordedEvent,
         PretradeAdviceReconciledEvent,
     ):
@@ -38,13 +36,8 @@ def test_register_subscribes_three_events() -> None:
 
 
 @pytest.mark.anyio
-async def test_engine_brief_pretrade_land_in_ledger() -> None:
+async def test_brief_pretrade_land_in_ledger() -> None:
     sub = FeedbackLedgerSubscriber(EventBus())
-    await sub._on_engine_feedback(
-        EngineFeedbackSubmittedEvent(
-            verdict_event_id="v-1", user_id="u-ledger", verdict="BUY_SIGNAL", outcome="acted"
-        )
-    )
     await sub._on_brief_feedback(
         BriefFeedbackRecordedEvent(
             brief_snapshot_id=7, user_id="u-ledger", outcome="skipped", brief_type="morning"
@@ -62,17 +55,18 @@ async def test_engine_brief_pretrade_land_in_ledger() -> None:
     )
     rows = await _rows("u-ledger")
     assert [(r.source, r.signal, r.ref_type, r.ref_id) for r in rows] == [
-        ("core", "engine:acted", "verdict", "v-1"),
         ("briefing", "brief:skipped", "brief", "7"),
         ("thesis", "ignored_advice", "pretrade", "42"),
     ]
-    assert rows[2].ticker == "HPG" and rows[1].agent_type == "briefing:morning"
+    assert rows[1].ticker == "HPG" and rows[0].agent_type == "briefing:morning"
 
 
 @pytest.mark.anyio
 async def test_missing_user_is_skipped() -> None:
     sub = FeedbackLedgerSubscriber(EventBus())
-    await sub._on_engine_feedback(EngineFeedbackSubmittedEvent(verdict_event_id="v-2", user_id=""))
+    await sub._on_brief_feedback(
+        BriefFeedbackRecordedEvent(brief_snapshot_id=1, user_id="", outcome="acted")
+    )
     assert await _rows("") == []
 
 
@@ -90,12 +84,6 @@ async def test_brief_calibration_reads_ledger_only_brief_rows() -> None:
                 brief_snapshot_id=100 + i, user_id="u-cal", outcome=outcome, brief_type="morning"
             )
         )
-    # row core không được tính vào calibration brief
-    await sub._on_engine_feedback(
-        EngineFeedbackSubmittedEvent(
-            verdict_event_id="v-9", user_id="u-cal", verdict="BUY_SIGNAL", outcome="acted"
-        )
-    )
 
     async with AsyncSessionLocal() as s:
         cal = await FeedbackLedgerReader(s).brief_calibration("u-cal", days=30)

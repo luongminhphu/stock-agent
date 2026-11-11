@@ -50,7 +50,6 @@ forbidden_modules =
     src.watchlist.models
     src.briefing.models
     src.portfolio.models
-    src.core.models
 
 [importlinter:contract:domain-no-adapters]
 name = domain segment không import bot/api
