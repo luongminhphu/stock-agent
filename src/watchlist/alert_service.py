@@ -4,7 +4,6 @@ Owner: watchlist segment.
 
 Responsibilities:
   - Create alerts attached to watchlist items
-  - Create thesis-trigger alert rules (from StressTestSubscriber)
   - List alerts for a user (all or active-only)
   - Process a batch of triggered alerts (called by ScanService)
   - Dismiss an alert by ID
@@ -88,7 +87,6 @@ class AlertService:
 
     Owner: watchlist segment.
     Caller: ScanService (process_triggered), WatchlistService (create/dismiss),
-            StressTestSubscriber (create_thesis_trigger_rule),
             bot/api adapters (list, reactivate, reactivate_cooled_down),
             SignalReactionListener (record_reaction — Wave D).
     """
@@ -127,67 +125,6 @@ class AlertService:
             ticker=ticker,
             condition=condition_type,
             threshold=threshold,
-        )
-        return alert
-
-    # ------------------------------------------------------------------
-    # Create — thesis trigger rules (Wave 2, from StressTestSubscriber)
-    # ------------------------------------------------------------------
-
-    async def rule_exists_by_dedup_key(
-        self,
-        user_id: str,
-        dedup_key: str,
-    ) -> bool:
-        """Check if an alert rule with this dedup_key already exists for user."""
-        result = await self._session.execute(
-            select(Alert).where(
-                Alert.user_id == user_id,
-                Alert.dedup_key == dedup_key,
-            )
-        )
-        return result.scalar_one_or_none() is not None
-
-    async def create_thesis_trigger_rule(
-        self,
-        user_id: str,
-        symbol: str,
-        label: str,
-        trigger_description: str,
-        thesis_id: str,
-        dedup_key: str,
-        source_event_id: str,
-        invalidation_probability: float,
-    ) -> Alert:
-        """Create a watch alert rule from a thesis stress-test trigger."""
-        priority = (
-            "HIGH"
-            if invalidation_probability >= 0.7
-            else "MEDIUM"
-            if invalidation_probability >= 0.4
-            else "LOW"
-        )
-        alert = Alert(
-            user_id=user_id,
-            ticker=symbol.upper(),
-            condition_type=AlertConditionType.THESIS_TRIGGER,
-            threshold=0.0,
-            status=AlertStatus.ACTIVE,
-            note=trigger_description,
-            label=label,
-            thesis_id=thesis_id,
-            dedup_key=dedup_key,
-            source_event_id=source_event_id,
-            priority=priority,
-        )
-        self._session.add(alert)
-        logger.info(
-            "alert_service.thesis_trigger_rule_created",
-            user_id=user_id,
-            symbol=symbol,
-            thesis_id=thesis_id,
-            priority=priority,
-            dedup_key=dedup_key,
         )
         return alert
 
