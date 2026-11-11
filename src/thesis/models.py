@@ -8,11 +8,12 @@ they access thesis data through ThesisService or read via readmodel.
 from __future__ import annotations
 
 import enum
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -154,6 +155,14 @@ class Thesis(Base):
     # Maintained by: ai._log_thesis_judge_interaction().
     # Used by: Wave 4 dedup guard in ThesisJudgeAgent.run_batch().
     last_judged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # ── Kế hoạch nắm giữ (thesis.plan) ─────────────────────────────────────
+    # review_by: hạn xem lại kế hoạch (mặc định 6 tháng sau khi tạo).
+    # plan_*: kết quả lần kiểm tra kế hoạch gần nhất (PlanCheckService, sau đóng cửa).
+    review_by: Mapped[date | None] = mapped_column(Date, nullable=True)
+    plan_light: Mapped[str | None] = mapped_column(String(8), nullable=True, index=True)
+    plan_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    plan_reasons: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON list[str]
+    plan_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     assumptions: Mapped[list[Assumption]] = relationship(
         back_populates="thesis", cascade="all, delete-orphan"
@@ -228,6 +237,9 @@ class Assumption(Base):
         index=True,
     )
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # check_key: mẫu "điều tôi tin" kiểm được bằng số liệu (thesis.plan.BELIEF_TEMPLATES);
+    # NULL = điều tự ghi, người dùng tự kiểm.
+    check_key: Mapped[str | None] = mapped_column(String(32), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
