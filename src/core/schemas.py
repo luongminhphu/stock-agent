@@ -1,4 +1,6 @@
-"""Core Intelligence Engine — Pydantic contracts.
+"""Core — Pydantic contracts (phản hồi người dùng + contract cũ của Intelligence Engine).
+
+Các contract engine còn giữ tạm cho tới khi module ai tương ứng được xoá.
 
 Owner: core segment.
 All downstream consumers (api, bot, briefing) import from here.
@@ -10,8 +12,6 @@ from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
-
-from src.ai.schemas import IntelligenceReport
 
 
 class WatchlistContext(BaseModel):
@@ -124,16 +124,6 @@ class EngineVerdict(BaseModel):
     reasoning_summary: str
     sources: list[str] = Field(default_factory=list)
     generated_at: datetime
-
-
-class EngineOutput(BaseModel):
-    snapshot: SystemSnapshot
-    verdict: EngineVerdict
-    dispatched_to: list[str] = Field(default_factory=list)
-    intelligence_report: IntelligenceReport | None = None
-    # Optional richer AI verdict — set by _EngineRunner when verdict_agent
-    # succeeds. Listener should prefer this over .verdict when present.
-    ai_verdict: Any | None = Field(default=None, exclude=True)
 
 
 # ---------------------------------------------------------------------------
