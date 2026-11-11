@@ -1,9 +1,6 @@
-"""Core Intelligence Engine — bounded context.
+"""core — khép vòng phản hồi hành động của nhà đầu tư (UserActionFeedbackListener).
 
 Owner: core segment.
-Responsible for: cross-segment snapshot, signal synthesis, verdict dispatch,
-feedback recording, self-improvement suggestions, and closing the feedback
-loop via UserActionFeedbackListener (Wave E).
 
 This segment is a consumer of all other segments.
 It must never be imported by other segments (dependency goes one way only).
