@@ -92,3 +92,46 @@ class CandleResponse(BaseModel):
     low: float
     close: float
     volume: int
+
+
+class BaseRateOutcomeResponse(BaseModel):
+    """Kết quả lịch sử sau `horizon` phiên của các lần mã ở cùng trạng thái."""
+
+    horizon: int
+    episodes: int  # số đợt độc lập (không chồng cửa sổ)
+    win_prob: float  # xác suất lãi vượt chi phí, đã co về mức nền của mã
+    prob_low: float  # khoảng ~80%
+    prob_high: float
+    raw_win_rate: float | None
+    base_win_rate: float  # mức nền: mọi ngày trong lịch sử mã
+    edge: float  # win_prob - base_win_rate
+    median_return: float | None
+    p10_return: float | None
+    p90_return: float | None
+    base_median_return: float | None
+    avg_max_drawdown: float | None
+
+
+class BaseRateAnalogResponse(BaseModel):
+    entry_date: date
+    entry_close: float
+    returns: dict[int, float]
+    max_drawdown: dict[int, float]
+
+
+class BaseRateResponse(BaseModel):
+    """GET /market/baserate/{ticker} — tiền lệ trong lịch sử chính mã, không dự báo."""
+
+    ticker: str
+    as_of: date
+    state: dict[str, str]
+    state_labels: dict[str, str]  # mô tả tiếng Việt của từng đặc trưng
+    matched_on: list[str]
+    dropped: list[str]
+    matching_days: int
+    suggestion: str  # NGHIENG_MUA | NGHIENG_TRANH | TRUNG_TINH | KHONG_DU_TIEN_LE
+    confidence: str  # khong_du | thap | trung_binh | cao
+    outcomes: list[BaseRateOutcomeResponse]
+    analogs: list[BaseRateAnalogResponse]
+    history_from: date | None
+    notes: list[str]

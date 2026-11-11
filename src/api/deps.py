@@ -142,6 +142,18 @@ def get_ohlcv_service() -> object:
     return _get_ohlcv_svc()
 
 
+def get_baserate_service(
+    ohlcv_svc: object = Depends(get_ohlcv_service),
+) -> object:
+    """BaseRateService — thống kê tiền lệ của chính mã (owner: market).
+
+    Used by GET /market/baserate/{ticker}. Stateless per-request.
+    """
+    from src.market.baserate import BaseRateService
+
+    return BaseRateService(ohlcv_service=ohlcv_svc)
+
+
 def get_thesis_review_agent() -> object:
     return _get_agent()
 
