@@ -117,12 +117,6 @@ async def bootstrap() -> None:
         container.thesis_review_agent = ThesisReviewAgent(client=container.ai_client)  # type: ignore[arg-type]
         logger.info("platform.bootstrap.thesis_review_agent_ready")
 
-    if container.thesis_debate_agent is None:
-        from src.ai.agents.thesis_debate import ThesisDebateAgent
-
-        container.thesis_debate_agent = ThesisDebateAgent(ai_client=container.ai_client)  # type: ignore[arg-type]
-        logger.info("platform.bootstrap.thesis_debate_agent_ready")
-
     if container.thesis_suggest_agent is None:
         from src.ai.agents.suggest_agent import ThesisSuggestAgent
 
@@ -146,12 +140,6 @@ async def bootstrap() -> None:
 
         container.replay_agent = ReplayAgent(ai_client=container.ai_client)  # type: ignore[arg-type]
         logger.info("platform.bootstrap.replay_agent_ready")
-
-    if container.sector_rotation_agent is None:
-        from src.ai.agents.sector_rotation import SectorRotationAgent
-
-        container.sector_rotation_agent = SectorRotationAgent(ai_client=container.ai_client)  # type: ignore[arg-type]
-        logger.info("platform.bootstrap.sector_rotation_agent_ready")
 
     if container.snapshot_scheduler is None:
         from src.market.snapshot_scheduler import SnapshotScheduler
@@ -475,10 +463,6 @@ def get_thesis_review_agent() -> Any:
     return container.require("thesis_review_agent")
 
 
-def get_thesis_debate_agent() -> Any:
-    return container.require("thesis_debate_agent")
-
-
 def get_thesis_suggest_agent() -> Any:
     return container.require("thesis_suggest_agent")
 
@@ -493,10 +477,6 @@ def get_pretrade_agent() -> Any:
 
 def get_replay_agent() -> Any:
     return container.require("replay_agent")
-
-
-def get_sector_rotation_agent() -> Any:
-    return container.require("sector_rotation_agent")
 
 
 def get_snapshot_scheduler() -> Any:

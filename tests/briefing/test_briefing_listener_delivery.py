@@ -79,7 +79,6 @@ async def test_handle_generates_then_delivers_with_agenda(monkeypatch) -> None:
     monkeypatch.setattr(boot.container, "quote_service", object())
     monkeypatch.setattr(boot.container, "pnl_service_class", lambda **kw: object())
     monkeypatch.setattr(boot.container, "briefing_agent", object())
-    monkeypatch.setattr(boot.container, "sector_rotation_agent", object())
     set_agenda("u1", "DECIDE: HPG", AgendaBuckets(decide=["HPG"], watch=[], defer=[]))
 
     await listener._handle(_event("morning"))
