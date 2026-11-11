@@ -15,16 +15,11 @@ Registered tasks:
     OutcomeFillerScheduler.fill_task           — weekdays 15:05 ICT (fill decision outcomes before replay)
     DecisionReplayScheduler.replay_task        — weekdays 15:15 ICT (after market close)
     MemoryConsolidatorScheduler.consolidate    — Sundays 09:00 ICT (weekly memory distill)
-    SignalEngineScheduler.morning_task         — weekdays 08:40 ICT (after IntelligenceEngine 08:35)
-    SignalEngineScheduler.eod_task             — weekdays 15:10 ICT (after market close, before IE.eod 15:12)
     AgendaBuilderScheduler.agenda_task         — weekdays 07:30 ICT (before all morning tasks)
     ProactiveWatchScheduler.morning_task       — weekdays 09:15 ICT (after market open)
     ProactiveWatchScheduler.midday_task        — weekdays 11:15 ICT (mid-session)
     ProactiveWatchScheduler.pre_atc_task       — weekdays 14:15 ICT (before ATC)
     PortfolioSnapshotScheduler.morning_task    — weekdays 08:15 ICT (before IntelligenceEngine 08:35)
-    IntelligenceEngineScheduler.morning_task   — weekdays 08:35 ICT (after ThesisMaintenance, before SignalEngine)
-    IntelligenceEngineScheduler.eod_task       — weekdays 15:12 ICT (after SignalEngine.eod, before DecisionReplay)
-    TrendBatchPrecomputeScheduler.trend_batch  — weekdays 06:45 ICT (45 min before morning brief)
     EodPortfolioSnapshotScheduler.eod_task     — weekdays 15:20 ICT (5 min after market close)
 
 Note:
@@ -36,12 +31,9 @@ Channel routing:
     Proactive alerts (WatchlistScan, ThesisDrift, Reminder, ProactiveWatch)
                                                                  → alert_channel_id
         alert_channel_id = DISCORD_ALERT_CHANNEL_ID if set, else morning_channel_id
-    SignalEngineScheduler emits events only — no channel routing, no Discord message.
     AgendaBuilderScheduler persists only — no Discord message.
     OutcomeFillerScheduler persists only — no Discord message (silent data enrichment job).
     ProactiveWatchScheduler emits events only — Discord delivery via ProactiveWatchSubscriber.
-    IntelligenceEngineScheduler emits events only — no channel routing, no Discord message.
-        Wave 2: IntelligenceEngineListener (core segment) handles run_cycle + verdict + delivery.
     PortfolioSnapshotScheduler emits events only — no channel routing, no Discord message.
         portfolio.PortfolioSnapshotListener handles P&L build + PortfolioSnapshotReadyEvent.
 
@@ -50,30 +42,16 @@ Wave 8:
     It emits BriefingRequestedEvent → BriefingListener (briefing segment)
     handles delivery. Bot is a thin timing adapter only.
 
-Wave 2 (Signal Engine):
-    SignalEngineScheduler emits SignalEngineRequestedEvent → ai.SignalEngineListener
-    runs watchlist × thesis × portfolio cross-check → emits SignalEngineCompletedEvent
-    → briefing.BriefingListener injects summary into brief context.
-
 Wave D (ProactiveWatch):
     ProactiveWatchScheduler emits ProactiveWatchRequestedEvent (3×/day)
     → watchlist.ProactiveWatchListener runs ScanService + AlertService
     → ProactiveWatchAlertFiredEvent × N
     → bot.ProactiveWatchSubscriber batches and sends Discord embed.
 
-Core Engine (Wave 1):
-    IntelligenceEngineScheduler emits IntelligenceEngineRequestedEvent (2×/day)
-    → core.IntelligenceEngineListener.run_cycle() builds SystemSnapshot
-    → publishes IntelligenceEngineCompletedEvent
-    → bot subscriber → Discord.
-
 Portfolio Snapshot loop:
     PortfolioSnapshotScheduler emits PortfolioSnapshotRequestedEvent (08:15 ICT)
     → portfolio.PortfolioSnapshotListener calls PnlService.get_portfolio_pnl()
     → publishes PortfolioSnapshotReadyEvent (enriched: unrealized_pnl_pct, top_exposed_tickers)
-    → core.IntelligenceEngineListener caches snapshot per user_id
-    → IntelligenceEngineScheduler fires 08:35 ICT (20-min window)
-    → portfolio context injected into engine.run_cycle() via context_hint.
 
 Wave E (Thesis Score Sensitivity):
     WatchlistScanScheduler injects ThesisScoreQuery(session) into ScanService.
@@ -107,7 +85,7 @@ from src.platform.scheduler_monitor import SchedulerMonitor, get_monitor
 
 # NOTE: src.platform.bootstrap imports are intentionally lazy (inline inside each
 # method that uses them) to break the circular import:
-#   bootstrap → src.bot.intelligence_engine_subscriber
+#   bootstrap → src.bot.<subscriber>
 #   → bot/__init__.py → scheduler.py (module-level)
 #   → bootstrap (mid-load) → ImportError
 # All other domain-service imports in this file follow the same lazy pattern.
@@ -1587,7 +1565,7 @@ class PortfolioSnapshotScheduler:
     All P&L logic lives in portfolio.PortfolioSnapshotListener.
 
     Timing:
-        08:15 ICT — 20 min before IntelligenceEngineScheduler (08:35)
+        08:15 ICT
         This window allows PortfolioSnapshotListener to build the P&L snapshot
         and cache it in IntelligenceEngineListener before the engine cycle fires.
 
@@ -1673,413 +1651,11 @@ class PortfolioSnapshotScheduler:
 
 
 # ---------------------------------------------------------------------------
-# IntelligenceEngineScheduler
-# ---------------------------------------------------------------------------
-
-# ICT = UTC+7  →  subtract 7h for UTC
-_IE_MORNING_TIME = datetime.time(hour=1, minute=35, tzinfo=datetime.UTC)  # 08:35 ICT
-_IE_EOD_TIME = datetime.time(hour=8, minute=12, tzinfo=datetime.UTC)  # 15:12 ICT
-
-
-class IntelligenceEngineScheduler:
-    """Emit IntelligenceEngineRequestedEvent twice per trading day.
-
-    Owner: bot segment — thin timing adapter only.
-    All engine logic lives in src/core/intelligence_listener.py → src/core/engine.py.
-
-    Timing:
-        morning — 08:35 ICT  after ThesisMaintenance (08:30), before SignalEngine (08:40)
-        eod     — 15:12 ICT  after SignalEngine.eod (15:10), before DecisionReplay (15:15)
-
-    Flow:
-        1. bus.publish(IntelligenceEngineRequestedEvent(user_id, phase, triggered_by))
-        2. IntelligenceEngineListener (subscribed at bootstrap) calls engine.run_cycle()
-           — builds SystemSnapshot → heuristic verdict → publishes IntelligenceEngineCompletedEvent
-        3. bot subscriber handles Discord delivery.
-        4. Record success/failure in SchedulerMonitor.
-
-    No Discord output from this scheduler — delivery via IntelligenceEngineListener.
-
-    Graceful skip:
-        - Weekends (weekday >= 5).
-        - scheduler_user_id not configured → warning log, no event emitted.
-        - All exceptions caught and recorded; never blocks other schedulers.
-    """
-
-    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
-        self._client = client
-        self._monitor = monitor or get_monitor()
-
-    def start(self) -> None:
-        self._monitor.register_task("intelligence_engine.morning")
-        self._monitor.register_task("intelligence_engine.eod")
-        self._morning_task.start()
-        self._eod_task.start()
-        logger.info(
-            "scheduler.intelligence_engine.started",
-            phases=["08:35", "15:12"],
-        )
-
-    def stop(self) -> None:
-        self._morning_task.cancel()
-        self._eod_task.cancel()
-        logger.info("scheduler.intelligence_engine.stopped")
-
-    # ── morning: 08:35 ICT ──────────────────────────────────────────────────────────────────────────────────
-
-    @tasks.loop(time=_IE_MORNING_TIME)
-    async def _morning_task(self) -> None:
-        if datetime.datetime.now(tz=datetime.UTC).weekday() >= 5:
-            return
-        await self._run_cycle(phase="morning", task_name="intelligence_engine.morning")
-
-    @_morning_task.before_loop
-    async def _before_morning(self) -> None:
-        await self._client.wait_until_ready()
-
-    # ── eod: 15:12 ICT ───────────────────────────────────────────────────────────────────────────────────
-
-    @tasks.loop(time=_IE_EOD_TIME)
-    async def _eod_task(self) -> None:
-        if datetime.datetime.now(tz=datetime.UTC).weekday() >= 5:
-            return
-        await self._run_cycle(phase="eod", task_name="intelligence_engine.eod")
-
-    @_eod_task.before_loop
-    async def _before_eod(self) -> None:
-        await self._client.wait_until_ready()
-
-    # ── shared emit ─────────────────────────────────────────────────────────────────────────────────────
-
-    async def _run_cycle(self, phase: str, task_name: str) -> None:
-        """Emit IntelligenceEngineRequestedEvent — bot's only responsibility here.
-
-        IntelligenceEngineListener (subscribed at bootstrap) handles the rest:
-        engine.run_cycle() → SystemSnapshot → verdict → IntelligenceEngineCompletedEvent → Discord.
-        """
-        from src.platform.event_bus import get_event_bus
-        from src.platform.events import IntelligenceEngineRequestedEvent
-
-        user_id = getattr(settings, "scheduler_user_id", None)
-        if not user_id:
-            logger.warning(
-                "scheduler.intelligence_engine.skipped",
-                phase=phase,
-                reason="scheduler_user_id not configured",
-            )
-            return
-
-        try:
-            bus = get_event_bus()
-            await bus.publish(
-                IntelligenceEngineRequestedEvent(
-                    user_id=str(user_id),
-                    trigger_type="scheduled",
-                    trigger_source=f"scheduler.{phase}",
-                )
-            )
-            logger.info("scheduler.intelligence_engine.event_emitted", phase=phase)
-            await self._monitor.record_success(task_name)
-
-        except Exception as exc:
-            logger.error(
-                "scheduler.intelligence_engine.emit_error",
-                phase=phase,
-                error=str(exc),
-            )
-            await self._monitor.record_failure(task_name, exc)
-
-
-# ─── ProactiveDiscoveryScheduler ─────────────────────────────────────────────
-
-_DISCOVERY_TIME = datetime.time(hour=2, minute=30, tzinfo=datetime.UTC)  # 09:30 ICT
-
-
-class ProactiveDiscoveryScheduler:
-    """Trigger ProactiveDiscoveryService at 09:30 ICT on weekdays.
-
-    Fires 30 minutes after market open — enough time for morning price action
-    to materialise before AI synthesis runs.
-
-    Flow:
-        09:30 ICT → _run() → ProactiveDiscoveryService.run(user_id)
-                           → AI synthesis → ProactiveDiscoveryReadyEvent
-                           → ProactiveDiscoverySubscriber → Discord embed
-
-    No EventBus intermediary needed — service owns the full pipeline and
-    emits the event internally. Scheduler is a pure timing adapter.
-
-    Graceful skip:
-        - Weekends.
-        - scheduler_user_id not configured → warning, no-op.
-        - quote_service not ready → warning, no-op.
-        - All exceptions caught; never blocks other schedulers.
-    """
-
-    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
-        self._client = client
-        self._monitor = monitor or get_monitor()
-
-    def start(self) -> None:
-        self._monitor.register_task("proactive_discovery.morning")
-        self._task.start()
-        logger.info("scheduler.proactive_discovery.started", time_ict="09:30")
-
-    def stop(self) -> None:
-        self._task.cancel()
-        logger.info("scheduler.proactive_discovery.stopped")
-
-    @tasks.loop(time=_DISCOVERY_TIME)
-    async def _task(self) -> None:
-        if datetime.datetime.now(tz=datetime.UTC).weekday() >= 5:
-            return
-        await self._run(task_name="proactive_discovery.morning")
-
-    @_task.before_loop
-    async def _before_task(self) -> None:
-        await self._client.wait_until_ready()
-
-    async def _run(self, task_name: str) -> None:
-        """Call ProactiveDiscoveryService — thin timing adapter only."""
-        from src.platform.bootstrap import get_proactive_discovery_service
-        from src.platform.config import settings
-
-        user_id = getattr(settings, "scheduler_user_id", None)
-        if not user_id:
-            logger.warning(
-                "scheduler.proactive_discovery.skipped",
-                reason="scheduler_user_id not configured",
-            )
-            return
-
-        svc = get_proactive_discovery_service()
-        if svc is None:
-            logger.warning(
-                "scheduler.proactive_discovery.skipped",
-                reason="ProactiveDiscoveryService not initialised at bootstrap",
-            )
-            return
-
-        try:
-            ok = await svc.run(user_id=str(user_id))
-            if ok:
-                await self._monitor.record_success(task_name)
-                logger.info("scheduler.proactive_discovery.done", user_id=str(user_id))
-            else:
-                logger.warning("scheduler.proactive_discovery.no_output", user_id=str(user_id))
-        except Exception as exc:
-            logger.error("scheduler.proactive_discovery.error", error=str(exc))
-            await self._monitor.record_failure(task_name, exc)
-
-
-# ---------------------------------------------------------------------------
-# SignalEngineScheduler — emit SignalEngineRequestedEvent (08:40 + 15:10 ICT)
-# ---------------------------------------------------------------------------
-
-_SE_MORNING_TIME = datetime.time(hour=1, minute=40, tzinfo=datetime.UTC)  # 08:40 ICT
-_SE_EOD_TIME = datetime.time(hour=8, minute=10, tzinfo=datetime.UTC)  # 15:10 ICT
-
-
-class SignalEngineScheduler:
-    """Emit SignalEngineRequestedEvent twice per trading day.
-
-    Owner: bot segment — thin timing adapter only.
-    All signal logic lives in src/ai/signal_engine_listener.py → SignalEngineAgent.
-    TrendEngineListener co-subscribes the same event → trend prediction pipeline.
-
-    Timing:
-        morning — 08:40 ICT  after IntelligenceEngine (08:35 ICT)
-        eod     — 15:10 ICT  after market close, before IntelligenceEngine.eod (15:12 ICT)
-
-    Graceful skip:
-        - Weekends (weekday >= 5).
-        - scheduler_user_id not configured → warning log, no event emitted.
-        - All exceptions caught; never blocks other schedulers.
-    """
-
-    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
-        self._client = client
-        self._monitor = monitor or get_monitor()
-
-    def start(self) -> None:
-        self._monitor.register_task("signal_engine.morning")
-        self._monitor.register_task("signal_engine.eod")
-        self._morning_task.start()
-        self._eod_task.start()
-        logger.info("scheduler.signal_engine.started", phases=["08:40", "15:10"])
-
-    def stop(self) -> None:
-        self._morning_task.cancel()
-        self._eod_task.cancel()
-        logger.info("scheduler.signal_engine.stopped")
-
-    @tasks.loop(time=_SE_MORNING_TIME)
-    async def _morning_task(self) -> None:
-        if datetime.datetime.now(tz=datetime.UTC).weekday() >= 5:
-            return
-        await self._run_cycle(phase="morning", task_name="signal_engine.morning")
-
-    @_morning_task.before_loop
-    async def _before_morning(self) -> None:
-        await self._client.wait_until_ready()
-
-    @tasks.loop(time=_SE_EOD_TIME)
-    async def _eod_task(self) -> None:
-        if datetime.datetime.now(tz=datetime.UTC).weekday() >= 5:
-            return
-        await self._run_cycle(phase="eod", task_name="signal_engine.eod")
-
-    @_eod_task.before_loop
-    async def _before_eod(self) -> None:
-        await self._client.wait_until_ready()
-
-    async def _run_cycle(self, phase: str, task_name: str) -> None:
-        from src.platform.event_bus import get_event_bus
-        from src.platform.events import SignalEngineRequestedEvent
-
-        user_id = getattr(settings, "scheduler_user_id", None)
-        if not user_id:
-            logger.warning(
-                "scheduler.signal_engine.skipped",
-                phase=phase,
-                reason="scheduler_user_id not configured",
-            )
-            return
-
-        try:
-            bus = get_event_bus()
-            await bus.publish(
-                SignalEngineRequestedEvent(
-                    user_id=str(user_id),
-                    phase=phase,
-                    triggered_by="scheduler",
-                )
-            )
-            logger.info("scheduler.signal_engine.event_emitted", phase=phase)
-            await self._monitor.record_success(task_name)
-        except Exception as exc:
-            logger.error("scheduler.signal_engine.emit_error", phase=phase, error=str(exc))
-            await self._monitor.record_failure(task_name, exc)
-
-
-# ---------------------------------------------------------------------------
 # TrendBatchScheduler — pre-compute trend predictions before morning brief
 # ---------------------------------------------------------------------------
 
-_TREND_BATCH_TIME = datetime.time(hour=23, minute=45, tzinfo=datetime.UTC)  # 06:45 ICT next day
 # Note: 06:45 ICT = 23:45 UTC (previous calendar day in UTC terms).
 # discord.ext.tasks resolves times correctly across midnight UTC boundaries.
-
-
-class TrendBatchPrecomputeScheduler:
-    """Run TrendBatchScheduler once daily at 06:45 ICT (Mon–Fri).
-
-    Fires 45 min before BriefingScheduler (08:30 ICT) so morning brief
-    always has fresh AI trend verdicts ready in TrendPredictionStore.
-
-    Flow:
-        TrendBatchScheduler.run_for_user(user_id)
-            → WatchlistService.get_watchlist()
-            → TrendEngine.run_for_symbols()
-            → TrendReasoningAgent.analyze() × N
-            → readmodel.TrendPredictionStore.store(predictions)
-
-    Graceful skip:
-        - scheduler_user_id not configured → skip silently.
-        - Any dependency not initialised → skip with warning.
-        - Per-symbol failures are isolated inside TrendBatchScheduler.
-    """
-
-    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
-        self._client = client
-        self._monitor = monitor or get_monitor()
-
-    def start(self) -> None:
-        self._monitor.register_task("trend_batch.precompute")
-        self._trend_batch_task.start()
-        logger.info("scheduler.trend_batch.started", time_ict="06:45")
-
-    def stop(self) -> None:
-        self._trend_batch_task.cancel()
-        logger.info("scheduler.trend_batch.stopped")
-
-    @tasks.loop(time=_TREND_BATCH_TIME)
-    async def _trend_batch_task(self) -> None:
-        now_utc = datetime.datetime.now(tz=datetime.UTC)
-        if now_utc.weekday() >= 5:  # skip weekends
-            return
-
-        task_name = "trend_batch.precompute"
-
-        from src.platform.bootstrap import (
-            get_ohlcv_service,
-            get_trend_prediction_store,
-            get_trend_reasoning_agent,
-        )
-        from src.platform.config import settings
-
-        user_id = getattr(settings, "scheduler_user_id", None)
-        if not user_id:
-            logger.warning(
-                "scheduler.trend_batch.skipped",
-                reason="scheduler_user_id not configured",
-            )
-            return
-
-        reasoning_agent = get_trend_reasoning_agent()
-        prediction_store = get_trend_prediction_store()
-        ohlcv_svc = get_ohlcv_service()
-
-        if reasoning_agent is None or prediction_store is None or ohlcv_svc is None:
-            logger.warning(
-                "scheduler.trend_batch.skipped",
-                reason="dependency not initialised",
-                agent_ok=reasoning_agent is not None,
-                store_ok=prediction_store is not None,
-                ohlcv_ok=ohlcv_svc is not None,
-            )
-            return
-
-        try:
-            from src.briefing.trend_batch_scheduler import TrendBatchScheduler
-            from src.market.trend_engine import TrendEngine
-            from src.platform.db import AsyncSessionLocal
-            from src.thesis.thesis_query_service import ThesisActiveContextQuery
-            from src.watchlist.service import WatchlistService
-
-            trend_engine = TrendEngine(ohlcv_service=ohlcv_svc)
-
-            async with AsyncSessionLocal() as session:
-                watchlist_svc = WatchlistService(session=session)
-                thesis_query = ThesisActiveContextQuery(session_factory=AsyncSessionLocal)
-
-                scheduler = TrendBatchScheduler(
-                    trend_engine=trend_engine,
-                    reasoning_agent=reasoning_agent,
-                    prediction_store=prediction_store,
-                    watchlist_service=watchlist_svc,
-                    thesis_query=thesis_query,
-                )
-                predictions = await scheduler.run_for_user(
-                    user_id=str(user_id),
-                    session=session,
-                )
-
-            logger.info(
-                "scheduler.trend_batch.done",
-                user_id=str(user_id),
-                count=len(predictions),
-                actionable=sum(1 for p in predictions if getattr(p, "is_actionable", False)),
-            )
-            await self._monitor.record_success(task_name)
-
-        except Exception as exc:
-            logger.error("scheduler.trend_batch.error", error=str(exc), exc_info=True)
-            await self._monitor.record_failure(task_name, exc)
-
-    @_trend_batch_task.before_loop
-    async def _before_trend_batch(self) -> None:
-        await self._client.wait_until_ready()
 
 
 # ---------------------------------------------------------------------------

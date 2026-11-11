@@ -43,13 +43,13 @@ class GroupEntry(TypedDict):
 HELP_DATA: dict[str, GroupEntry] = {
     # -----------------------------------------------------------------------
     # 📈 Market & Analysis
-    # /quote, /quote_bulk, /morning_brief, /eod_brief, /why, /sector
+    # /quote, /quote_bulk, /morning_brief, /eod_brief
     # -----------------------------------------------------------------------
     "market": {
         "label": "Market & Analysis",
         "emoji": "📈",
         "colour": 0x0078D7,
-        "intro": "Tra giá realtime, bản tin thị trường, phân tích biến động và dòng tiền sector.",
+        "intro": "Tra giá realtime và bản tin thị trường.",
         "commands": [
             {
                 "usage": "/quote <ticker>",
@@ -71,39 +71,11 @@ HELP_DATA: dict[str, GroupEntry] = {
                 "description": "Bản tin cuối phiên: diễn biến ngày, phân tích watchlist, điểm cần theo dõi ngày mai.",
                 "example": None,
             },
-            {
-                "usage": "/why <ticker>",
-                "description": (
-                    "Giải thích nguyên nhân tăng/giảm đột biến: "
-                    "nguyên nhân kỹ thuật, cơ bản, macro context, risk flags và độ tin cậy phân tích."
-                ),
-                "example": "/why HPG",
-            },
-            {
-                "usage": "/sector",
-                "description": (
-                    "Phân tích dòng tiền toàn thị trường theo sector. "
-                    "Output: risk regime (RISK_ON 🟢 / RISK_OFF 🔴 / MIXED 🟡), "
-                    "3 sector dẫn dắt + 3 sector yếu nhất, rotation narrative AI, "
-                    "và actionable insight cho phiên tiếp theo."
-                ),
-                "example": None,
-            },
-            {
-                "usage": "/sector [tickers]",
-                "description": (
-                    "Scope theo watchlist tuỳ chọn: thêm danh sách mã cách nhau dấu cách. "
-                    "AI crosscheck từng mã với sector đang dẫn/yếu — "
-                    "gắn cờ 🚩 contrarian nếu mã đang đi ngược dòng tiền sector của nó, "
-                    "hoặc ✅ aligned nếu đang đi cùng hướng."
-                ),
-                "example": "/sector VCB VNM BID",
-            },
         ],
     },
     # -----------------------------------------------------------------------
     # 📋 Thesis & Research
-    # /thesis add/list/close, /review_thesis, /conviction, /stress_test
+    # /thesis add/list/close, /review_thesis, /conviction
     # -----------------------------------------------------------------------
     "thesis": {
         "label": "Thesis & Research",
@@ -141,16 +113,6 @@ HELP_DATA: dict[str, GroupEntry] = {
                     "`limit` = số snapshot tối đa (5–50, mặc định 20)."
                 ),
                 "example": "/conviction VCB",
-            },
-            {
-                "usage": "/stress_test <ticker>",
-                "description": (
-                    "Stress-test thesis đang active của mã: tạo kịch bản bất lợi, "
-                    "đánh giá từng assumption (🟢 INTACT / 🟡 WEAKENED / 🔴 BROKEN), "
-                    "xác suất invalidation, triggers cần theo dõi, và rủi ro vĩ mô. "
-                    "Output: verdict + confidence. Không thay đổi trạng thái thesis."
-                ),
-                "example": "/stress_test VCB",
             },
         ],
     },

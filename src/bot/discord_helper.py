@@ -163,11 +163,6 @@ STATUS_COLORS: dict[str, int] = {
     "CLOSED": COLORS.TEAL,
 }
 
-_AGENT_STATUS_ICONS: dict[str, str] = {
-    "ran": "✅",
-    "failed": "❌",
-    "skipped": "⏭️",
-}
 
 _URGENCY_PREFIX: dict[str, str] = {
     "CRITICAL": "🚨",
@@ -842,103 +837,9 @@ class EmbedBuilder:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _render_priority_actions(actions: tuple[dict[str, Any], ...] | list[dict[str, Any]]) -> str:
-    """Render priority_actions list into a compact Discord field value.
-
-    Shows at most 3 items. Handles missing keys gracefully.
-    Each action dict should have: action, ticker, urgency, reasoning.
-    """
-    lines: list[str] = []
-    for item in list(actions)[:3]:
-        if not isinstance(item, dict):
-            continue
-        urgency = str(item.get("urgency", "NORMAL")).upper()
-        ticker = str(item.get("ticker", "")).upper()
-        action_txt = str(item.get("action", item.get("reasoning", "")))
-        prefix = _URGENCY_PREFIX.get(urgency, "🟡")
-        ticker_lbl = f" **{ticker}**" if ticker else ""
-        lines.append(f"{prefix}{ticker_lbl} — {truncate(action_txt, 120)}")
-    return "\n".join(lines) if lines else "_Không có action cụ thể._"
-
-
-def _render_agent_slots(slots: tuple[dict[str, Any], ...] | list[dict[str, Any]]) -> str:
-    """Render agent_slots into a compact status string.
-
-    Skips heuristic_engine slot (internal). Shows agent short-name + status icon.
-    """
-    _SHORT: dict[str, str] = {
-        "thesis_judge": "thesis",
-        "invalidation_detector": "invalidation",
-        "next_action_suggester": "next_action",
-        "portfolio_risk_narrator": "portfolio_risk",
-    }
-    parts: list[str] = []
-    for slot in slots:
-        if not isinstance(slot, dict):
-            continue
-        name = str(slot.get("agent_name", ""))
-        if name == "heuristic_engine":
-            continue
-        status = str(slot.get("status", "skipped")).lower()
-        icon = _AGENT_STATUS_ICONS.get(status, "❓")
-        short = _SHORT.get(name, name)
-        parts.append(f"{short} {icon}")
-    return "  ".join(parts) if parts else "_heuristic only_"
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Ready-made embed builders
 # ─────────────────────────────────────────────────────────────────────────────
-
-
-def build_engine_verdict_embed(verdict: Any) -> discord.Embed:
-    """Build a rich embed from an EngineVerdict / IntelligenceEngineCompletedEvent.
-
-    Reads Wave C fields (agent_slots, priority_actions) when available.
-    Falls back to legacy ``action`` string on heuristic path.
-    Compatible with both ORM objects and Pydantic models via getattr.
-    """
-    verdict_type = str(getattr(verdict, "verdict", "NO_ACTION")).upper()
-    confidence = float(getattr(verdict, "confidence", 0.0))
-    risk_signals = list(getattr(verdict, "risk_signals", []) or [])
-    next_watch = list(getattr(verdict, "next_watch_items", []) or [])
-    action = getattr(verdict, "action", "") or getattr(verdict, "summary", "") or ""
-    reasoning = getattr(verdict, "reasoning_summary", "") or ""
-    sources = list(getattr(verdict, "sources", []) or [])
-    agent_slots = getattr(verdict, "agent_slots", ()) or ()
-    priority_actions = getattr(verdict, "priority_actions", ()) or ()
-
-    icon = ENGINE_VERDICT_ICONS.get(verdict_type, "🧠")
-    color = ENGINE_VERDICT_COLORS.get(verdict_type, COLORS.PURPLE)
-
-    builder = EmbedBuilder(
-        title=f"{icon} Intelligence Engine — {verdict_type.replace('_', ' ')}",
-        color=color,
-    ).description(reasoning or "_Không có reasoning summary._")
-
-    builder.field("Confidence", f"{confidence_bar(confidence)} `{confidence:.0%}`", inline=True)
-
-    if agent_slots:
-        builder.field("🤖 Agents", _render_agent_slots(agent_slots), inline=True)
-
-    if priority_actions:
-        builder.field(
-            "🎯 Priority Actions", _render_priority_actions(priority_actions), inline=False
-        )
-    elif action:
-        builder.field("🎯 Action", action, inline=False)
-
-    if risk_signals:
-        builder.field("⚠️ Risk Signals", "\n".join(f"• {r}" for r in risk_signals[:5]), inline=False)
-
-    if next_watch:
-        builder.field("👁️ Watch Next", "\n".join(f"• {w}" for w in next_watch[:5]), inline=False)
-
-    if sources:
-        builder.field("📡 Sources", ", ".join(sources[:8]), inline=True)
-
-    builder.footer("Engine verdict", brand=True, timestamp=True)
-    return builder.build()
 
 
 def build_thesis_review_embed(review: Any, *, ticker: str = "") -> discord.Embed:
@@ -1008,52 +909,6 @@ def build_thesis_review_embed(review: Any, *, ticker: str = "") -> discord.Embed
             builder.field("📌 Assumptions", "\n".join(lines), inline=False)
 
     footer_text = fmt_ict(created_at, fmt="%H:%M ICT %d/%m/%Y") if created_at else ""
-    builder.footer(footer_text, brand=True, timestamp=not bool(created_at))
-    return builder.build()
-
-
-def build_proactive_alert_embed(alert: Any, *, ticker: str = "") -> discord.Embed:
-    """Build a standardized embed for a proactive watchlist/thesis alert.
-
-    Compatible with ProactiveAlert, WatchlistTrigger, or any dict-like
-    object with alert_type, message, ticker, urgency, reasons fields.
-    """
-
-    def _get(key: str, default: Any = "") -> Any:
-        if isinstance(alert, dict):
-            return alert.get(key, default)
-        return getattr(alert, key, default) or default
-
-    alert_type = str(_get("alert_type", "WATCH")).upper()
-    message = str(_get("message", _get("summary", "")))
-    ticker_val = str(_get("ticker", ticker)).upper()
-    urgency = str(_get("urgency", "NORMAL")).upper()
-    reasons = _get("reasons", []) or []
-    created_at = _get("created_at", None)
-
-    urgency_map: dict[str, tuple[int, str]] = {
-        "HIGH": (COLORS.RED, "🚨"),
-        "MEDIUM": (COLORS.ORANGE, "⚠️"),
-        "NORMAL": (COLORS.TEAL, "📡"),
-        "LOW": (COLORS.GREY, "🔔"),
-    }
-    color, icon = urgency_map.get(urgency, (COLORS.TEAL, "📡"))
-
-    ticker_label = f" {ticker_val}" if ticker_val else ""
-    title = f"{icon} Proactive Alert{ticker_label}"
-    if alert_type and alert_type != "WATCH":
-        title += f" — {alert_type.replace('_', ' ')}"
-
-    builder = EmbedBuilder(title=title, color=color).description(
-        message or "_Không có nội dung cảnh báo._"
-    )
-    builder.field("Urgency", urgency, inline=True)
-    if ticker_val:
-        builder.field("Ticker", ticker_val, inline=True)
-    if reasons:
-        builder.field("📋 Reasons", "\n".join(f"• {r}" for r in reasons[:5]), inline=False)
-
-    footer_text = fmt_ict(created_at) if created_at else ""
     builder.footer(footer_text, brand=True, timestamp=not bool(created_at))
     return builder.build()
 
