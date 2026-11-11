@@ -238,11 +238,6 @@ def build_maintenance_embed(
     return embed
 
 
-# ---------------------------------------------------------------------------
-# Wave D3: Watchdog embeds — render WatchdogRunResult (thesis.watchdog_service)
-# ---------------------------------------------------------------------------
-
-
 # ── Kế hoạch nắm giữ — bản tổng hợp sau đóng cửa ────────────────────────────
 
 _PLAN_LIGHT_ICON = {"do": "🔴", "vang": "🟡", "xanh": "🟢", "xam": "⚪"}

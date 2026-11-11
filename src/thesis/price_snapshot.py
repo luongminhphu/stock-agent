@@ -22,7 +22,7 @@ logger = get_logger(__name__)
 
 # ── Ngưỡng khoảng cách stop — một nơi duy nhất cho toàn thesis segment ────────
 # Cảnh báo sớm khi giá còn cách stop dưới 1 ATR14 — chỉ quan sát, không invalidate.
-# Dùng bởi StopBreachService (near_stop), WatchdogService, health_snapshot, readmodel.
+# Dùng bởi health_snapshot, readmodel.
 NEAR_STOP_ATR = 1.0
 # Fallback theo % khi không có OHLCV/ATR14 (đường get_quote cũ).
 NEAR_STOP_PCT_FALLBACK = 5.0
