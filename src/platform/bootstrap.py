@@ -86,9 +86,13 @@ async def bootstrap() -> None:
 
     if container.ohlcv_service is None:
         from src.market.adapters.vci_ohlcv import VCIOHLCVAdapter
+        from src.market.candle_store import PersistentOHLCVAdapter
         from src.market.ohlcv_service import OHLCVService
 
-        container.ohlcv_service = OHLCVService(adapter=VCIOHLCVAdapter())
+        # Lịch sử nến lưu DB — mỗi ngày chỉ tải phần còn thiếu từ API của CTCK
+        container.ohlcv_service = OHLCVService(
+            adapter=PersistentOHLCVAdapter(VCIOHLCVAdapter(), _AsyncSessionLocal)
+        )
         logger.info("platform.bootstrap.ohlcv_service_ready")
 
     if container.ticker_context_service is None:

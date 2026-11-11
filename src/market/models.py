@@ -2,6 +2,8 @@
 
 Tables:
     market_quote_cache  — QuoteService warm-load (writer: market.quote_service)
+    market_daily_candles — lịch sử nến ngày (writer: market.candle_store)
+    market_candle_coverage — khoảng ngày đã lưu đủ cho từng mã (writer: market.candle_store)
     trend_snapshots     — TrendSnapshotStore (writer: market.trend_shift_detector)
     trend_predictions   — TrendPredictionStore (writer: ai.trend_engine_listener)
 
@@ -11,9 +13,9 @@ Upsert qua ``platform.db.upsert_rows``.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
-from sqlalchemy import BigInteger, DateTime, Float, String, Text
+from sqlalchemy import BigInteger, Date, DateTime, Float, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.platform.db import Base
@@ -122,4 +124,37 @@ class MarketQuoteCache(Base):
         nullable=False,
         default=lambda: datetime.now(UTC),
         comment="Last time this row was upserted",
+    )
+
+
+class DailyCandle(Base):
+    """Nến ngày đã chốt phiên — nguồn lịch sử cho base-rate/RRG/ticker context.
+
+    Lưu để mỗi ngày chỉ tải phần còn thiếu thay vì tải lại 10 năm mỗi lần phân tích
+    (giảm mạnh số request tới API của CTCK). Giá là giá điều chỉnh theo nguồn.
+    """
+
+    __tablename__ = "market_daily_candles"
+
+    ticker: Mapped[str] = mapped_column(String(20), primary_key=True)
+    date: Mapped[date] = mapped_column(Date, primary_key=True)
+    open: Mapped[float] = mapped_column(Float, nullable=False)
+    high: Mapped[float] = mapped_column(Float, nullable=False)
+    low: Mapped[float] = mapped_column(Float, nullable=False)
+    close: Mapped[float] = mapped_column(Float, nullable=False)
+    volume: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+
+
+class CandleCoverage(Base):
+    """Khoảng ngày [first_date, last_date] đã tải đủ cho một mã."""
+
+    __tablename__ = "market_candle_coverage"
+
+    ticker: Mapped[str] = mapped_column(String(20), primary_key=True)
+    first_date: Mapped[date] = mapped_column(Date, nullable=False)
+    last_date: Mapped[date] = mapped_column(Date, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
     )
