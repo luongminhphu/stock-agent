@@ -63,20 +63,6 @@ TARGET_ICON: dict[str, str] = {
     "catalyst": "\u26a1",  # ⚡
 }
 
-# Drift verdict → icon (string keys from AI output)
-_DRIFT_VERDICT_ICON: dict[str, str] = {
-    "bullish": VERDICT_ICONS["BULLISH"],
-    "bearish": VERDICT_ICONS["BEARISH"],
-    "neutral": VERDICT_ICONS["NEUTRAL"],
-}
-
-# Conviction drift severity → icon
-_CONVICTION_SEVERITY_ICON: dict[str, str] = {
-    "CRITICAL": "\U0001f53b",  # 🔻
-    "HIGH": "\u2b07\ufe0f",  # ⬇️
-    "MEDIUM": "\U0001f4c9",  # 📉
-}
-
 
 def _parse_json_list(raw: str | list[Any] | None) -> list[Any]:
     """Safely parse a JSON-encoded list or return the value if already a list.
@@ -105,17 +91,6 @@ def _dominant_verdict_color(reviews: list[Any]) -> int:
     if bearish > bullish:
         return COLORS.RED
     return COLORS.TEAL  # neutral/mixed → default info color
-
-
-def _dominant_drift_color(reviewed_signals: list[tuple[Any, ...]]) -> int:
-    """Derive sidebar color from dominant drift verdict in (DriftSignal, ThesisReview) tuples."""
-    bullish = sum(1 for _, r in reviewed_signals if r and str(r.verdict).upper() == "BULLISH")
-    bearish = sum(1 for _, r in reviewed_signals if r and str(r.verdict).upper() == "BEARISH")
-    if bullish > bearish:
-        return COLORS.GREEN
-    if bearish > bullish:
-        return COLORS.RED
-    return COLORS.ORANGE  # drift alert with no clear direction → orange
 
 
 # ---------------------------------------------------------------------------
@@ -263,240 +238,44 @@ def build_maintenance_embed(
     return embed
 
 
-def build_drift_embed(
-    reviewed_signals: list[tuple[Any, ...]],
-    now_utc: datetime.datetime,
-    conviction_signals: list[Any] | None = None,
-    drift_threshold_pct: float | None = None,
-) -> discord.Embed:
-    """Build embed for ThesisDriftScheduler drift alert notification.
-
-    Args:
-        reviewed_signals:    List of (DriftSignal, ThesisReview | None) tuples.
-        now_utc:             UTC datetime of the scan.
-        conviction_signals:  Optional list of ConvictionDriftSignal objects.
-        drift_threshold_pct: Threshold shown in footer. If None, loads from
-                             settings as fallback (prefer injecting explicitly
-                             to avoid hidden import cost in hot paths).
-    """
-    lines: list[str] = []
-
-    for signal, review in reviewed_signals:
-        if review is None:
-            lines.append(
-                f"\u26aa **{signal.ticker}** {signal.direction}"
-                f"{abs(signal.drift_pct):.1f}% drift \u2192 review unavailable"
-            )
-            continue
-        icon = _DRIFT_VERDICT_ICON.get(str(review.verdict).lower(), "\u26aa")
-        lines.append(
-            f"{icon} **{signal.ticker}** {signal.direction}{abs(signal.drift_pct):.1f}% "
-            f"drift \u2192 AI verdict: **{review.verdict}** "
-            f"(confidence {review.confidence:.0%})"
-        )
-
-    if conviction_signals:
-        if lines:
-            lines.append("")
-        lines.append("**\U0001f4ca Conviction Drift**")
-        for sig in conviction_signals:
-            sev_icon = _CONVICTION_SEVERITY_ICON.get(sig.severity, "\U0001f4c9")
-            lines.append(
-                f"{sev_icon} **{sig.ticker}** `{sig.pattern.value}` "
-                f"{sig.reference_score:.2f}\u2192{sig.current_score:.2f} "
-                f"(-{sig.drop_pct:.1f}%) [{sig.severity}]"
-            )
-
-    # Resolve threshold for footer — inject > settings fallback
-    threshold_pct = drift_threshold_pct
-    if threshold_pct is None:
-        try:
-            from src.platform.config import settings  # noqa: PLC0415
-
-            threshold_pct = settings.thesis_drift_threshold_pct
-        except Exception:  # noqa: BLE001
-            threshold_pct = 0.0
-
-    embed = discord.Embed(
-        title="\u26a1 Thesis Drift Alert",
-        description="\n".join(lines) if lines else "Không có tín hiệu.",
-        color=_dominant_drift_color(reviewed_signals) if reviewed_signals else COLORS.ORANGE,
-    )
-    embed.set_footer(
-        text=(
-            f"Drift \u2265{threshold_pct:.0f}% detected lúc "
-            f"{fmt_ict(now_utc, fmt='%H:%M ICT')} \u00b7 stock-agent"
-        )
-    )
-    return embed
-
-
-def build_stop_breach_embed(outcomes: list[Any], now_utc: datetime.datetime) -> discord.Embed:
-    """Wave 6c: embed cho stop-breach auto-invalidation outcomes.
-
-    Mỗi outcome là StopBreachOutcome từ thesis.stop_breach_service.
-    Nhóm: invalidated (đã xử lý) trước, observed/ai_not_confirmed/ai_failed sau.
-    """
-    invalidated = [o for o in outcomes if o.action == "invalidated"]
-    near_stop = [o for o in outcomes if o.action == "near_stop"]
-    others = [o for o in outcomes if o.action not in ("invalidated", "near_stop")]
-
-    if invalidated:
-        color, title = discord.Color.red(), "🛑 Stop-breach auto-invalidation"
-    elif others:
-        color, title = discord.Color.orange(), "🛑 Stop-breach detected"
-    else:
-        color, title = discord.Color.gold(), "⚠️ Giá tiến gần stop-loss"
-    embed = discord.Embed(title=title, color=color, timestamp=now_utc)
-
-    if invalidated:
-        lines = []
-        for o in invalidated:
-            conf = f"{o.ai_confidence:.0%}" if o.ai_confidence is not None else "—"
-            head = (
-                f"**{o.ticker}** — giá {o.current_price:,.0f} xuyên stop {o.stop_loss:,.0f} "
-                f"({o.overshoot_pct:.1f}%)"
-            )
-            # Wave 9.4: vị thế khóa hoàn toàn (sellable == 0) → exit_signal
-            # vô nghĩa; đổi messaging thành "theo dõi mở khóa" thay vì
-            # khuyến nghị thoát lặp lại mỗi ngày.
-            locked_qty = getattr(o, "locked_qty", 0.0) or 0.0
-            sellable = getattr(o, "sellable_qty", None)
-            if locked_qty > 0 and sellable is not None and sellable <= 0:
-                reason = getattr(o, "locked_reason", None) or "khóa bán"
-                until = getattr(o, "locked_until", None)
-                if isinstance(until, datetime.datetime):
-                    until = until.date()
-                until_txt = f", mở khóa dự kiến {until:%d/%m/%Y}" if until else ""
-                lines.append(
-                    f"{head}\n"
-                    f"→ Thesis #{o.thesis_id} vô hiệu, nhưng vị thế bị khóa "
-                    f"({locked_qty:,.0f} cp — {reason}{until_txt}). Không thể bán — "
-                    f"đặt nhắc xem lại khi mở khóa."
-                )
-            else:
-                lines.append(
-                    f"{head}\n"
-                    f"→ Thesis #{o.thesis_id} đã INVALIDATE (AI: {o.ai_verdict} {conf}, "
-                    f"action: {o.ai_action or '—'})"
-                )
-        embed.add_field(name="Đã invalidate", value="\n\n".join(lines)[:1024], inline=False)
-
-    if others:
-        lines = []
-        label = {
-            "observed": "quan sát (auto-invalidate tắt)",
-            "ai_not_confirmed": "AI chưa xác nhận",
-            "ai_failed": "AI confirm thất bại — cần xem tay",
-        }
-        for o in others:
-            extra = ""
-            if o.action == "ai_not_confirmed" and o.ai_verdict:
-                conf = f"{o.ai_confidence:.0%}" if o.ai_confidence is not None else "—"
-                extra = f" (AI: {o.ai_verdict} {conf})"
-            lines.append(
-                f"**{o.ticker}** — giá {o.current_price:,.0f} xuyên stop {o.stop_loss:,.0f} "
-                f"({o.overshoot_pct:.1f}%) → {label.get(o.action, o.action)}{extra} — "
-                f"thesis #{o.thesis_id} cần xem xét"
-            )
-        embed.add_field(name="Cần xem xét thủ công", value="\n".join(lines)[:1024], inline=False)
-
-    if near_stop:
-        # Wave C3: cảnh báo sớm theo ATR — thesis chưa xuyên stop, không AI, không mutate.
-        lines = []
-        for o in near_stop:
-            atr_txt = f"{o.stop_distance_atr:.2f} ATR" if o.stop_distance_atr is not None else "—"
-            quality = getattr(o, "source_quality", "quote")
-            stale = " · data cũ" if quality in ("stale", "fallback") else ""
-            lines.append(
-                f"**{o.ticker}** — giá {o.current_price:,.0f} còn cách stop {o.stop_loss:,.0f} "
-                f"{atr_txt} ({abs(o.overshoot_pct):.1f}%){stale} → thesis #{o.thesis_id}: "
-                f"kiểm tra lại giả định / cân nhắc giảm vị thế trước khi xuyên stop"
-            )
-        embed.add_field(
-            name="Sắp chạm stop (< 1 ATR14)", value="\n".join(lines)[:1024], inline=False
-        )
-
-    embed.set_footer(text="StopBreachService · rule + AI confirmation · 15-min drift tick")
-    return embed
-
-
 # ---------------------------------------------------------------------------
 # Wave D3: Watchdog embeds — render WatchdogRunResult (thesis.watchdog_service)
 # ---------------------------------------------------------------------------
 
-_WATCHDOG_ACTION_VN: dict[str, str] = {
-    "HOLD": "Giữ",
-    "REVIEW_SOON": "Xem lại sớm",
-    "REVIEW_URGENT": "Xem lại ngay",
-    "CONSIDER_EXIT": "Cân nhắc thoát",
+
+# ── Kế hoạch nắm giữ — bản tổng hợp sau đóng cửa ────────────────────────────
+
+_PLAN_LIGHT_ICON = {"do": "🔴", "vang": "🟡", "xanh": "🟢", "xam": "⚪"}
+_PLAN_LIGHT_NAME = {
+    "do": "Kế hoạch đã sai",
+    "vang": "Cần xem lại",
+    "xanh": "Đúng kế hoạch",
+    "xam": "Đã đóng",
 }
+_PLAN_COLOUR = {"do": 0xDC2626, "vang": 0xD97706, "xanh": 0x16A34A}
 
 
-def _watchdog_line(r: Any) -> str:  # noqa: ANN001 — WatchdogTickerResult (duck-typed)
-    """Một dòng cho một thesis: health → hành động → stop/dữ liệu → auto-invalidate."""
-    if r.health_score is not None:
-        head = f"**{r.ticker}** — {r.overall_health} ({r.health_score}/100)"
-    else:
-        head = f"**{r.ticker}** — rule-based" + (" (AI lỗi)" if r.agent_failed else "")
-    parts = [head]
-    if r.recommended_action:
-        parts.append(_WATCHDOG_ACTION_VN.get(r.recommended_action, r.recommended_action))
-    # near_stop là rule của thesis (NEAR_STOP_ATR) — bot chỉ đọc property.
-    if getattr(r, "near_stop", False):
-        parts.append(f"cách stop {r.stop_distance_atr:.1f} ATR")
-    elif (
-        r.stop_distance_atr is None
-        and r.stop_loss_distance_pct is not None
-        and r.stop_loss_distance_pct < 5.0
-    ):
-        parts.append(f"cách stop {r.stop_loss_distance_pct:.1f}%")
-    if r.source_quality in ("stale", "fallback"):
-        parts.append("dữ liệu cũ")
-    line = " · ".join(parts)
-    if r.auto_invalidated:
-        line += f"\n→ Thesis #{r.thesis_id} đã tự vô hiệu (AI xác nhận)."
-    return line
-
-
-def build_watchdog_urgent_embed(run_result: Any, now_utc: datetime.datetime) -> discord.Embed:  # noqa: ANN001
-    """Embed cảnh báo khẩn — chỉ URGENT_ALERT, đẩy vào alert channel ngay khi có."""
-    urgent = run_result.urgent_alerts
+def build_plan_digest_embed(changes: list[Any], now_utc: datetime.datetime) -> discord.Embed:
+    """Một embed cho mọi kế hoạch đổi đèn hôm nay — đỏ trước, rồi vàng, rồi xanh."""
+    order = {"do": 0, "vang": 1, "xanh": 2, "xam": 3}
+    changes = sorted(changes, key=lambda c: (order.get(c.new_light, 9), c.ticker))
+    worst = changes[0].new_light if changes else "xanh"
     embed = discord.Embed(
-        title=f"🔴 Watchdog: {len(urgent)} thesis cần xem lại ngay",
-        color=discord.Color.red(),
+        title="📋 Kiểm tra kế hoạch nắm giữ",
+        description="Các kế hoạch vừa đổi trạng thái sau phiên hôm nay.",
+        colour=_PLAN_COLOUR.get(worst, 0x64748B),
         timestamp=now_utc,
     )
-    embed.description = truncate("\n\n".join(_watchdog_line(r) for r in urgent), 4096)
-    embed.set_footer(text="WatchdogService · assumption health + TickerContext · 08:20 ICT")
-    return embed
-
-
-def build_watchdog_digest_embed(run_result: Any, now_utc: datetime.datetime) -> discord.Embed:  # noqa: ANN001
-    """Embed tổng hợp buổi sáng — SILENT_WARNING + đếm OK/lỗi. Không lặp lại URGENT."""
-    warnings = run_result.silent_warnings
-    healthy = run_result.healthy
-    urgent = run_result.urgent_alerts
-    embed = discord.Embed(
-        title="🟡 Watchdog sáng — sức khỏe thesis",
-        color=discord.Color.gold() if warnings else discord.Color.dark_grey(),
-        timestamp=now_utc,
-    )
-    summary = f"{len(healthy)} ổn · {len(warnings)} cần chú ý · {len(urgent)} khẩn"
-    if run_result.errors:
-        summary += f" · {len(run_result.errors)} lỗi ({', '.join(sorted(run_result.errors))})"
-    embed.description = summary
-    if warnings:
+    for c in changes[:20]:
+        icon = _PLAN_LIGHT_ICON.get(c.new_light, "⚪")
+        before = _PLAN_LIGHT_NAME.get(c.old_light or "", "mới")
+        reasons = "\n".join(f"• {r}" for r in c.reasons[:3])
         embed.add_field(
-            name="Cần chú ý",
-            value=truncate("\n".join(_watchdog_line(r) for r in warnings), 1024),
+            name=f"{icon} {c.ticker} — {_PLAN_LIGHT_NAME.get(c.new_light, c.new_light)}"
+            f" (trước: {before})",
+            value=(f"{c.summary}\n{reasons}" if c.summary else reasons)[:1024] or "—",
             inline=False,
         )
-    if urgent:
-        embed.add_field(
-            name="Khẩn (đã gửi alert riêng)",
-            value=truncate(", ".join(r.ticker for r in urgent), 1024),
-            inline=False,
-        )
-    embed.set_footer(text="WatchdogService · assumption health + TickerContext · 08:20 ICT")
+    if len(changes) > 20:
+        embed.set_footer(text=f"… và {len(changes) - 20} kế hoạch khác — xem dashboard.")
     return embed
