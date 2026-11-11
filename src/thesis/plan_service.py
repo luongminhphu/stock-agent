@@ -20,7 +20,7 @@ import asyncio
 import json
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -106,7 +106,7 @@ class PlanCheckService:
         stmt = (
             select(Thesis)
             .where(Thesis.status.in_(OPEN_STATUSES))
-            .options(selectinload(Thesis.assumptions))
+            .options(selectinload(Thesis.assumptions), selectinload(Thesis.catalysts))
             .order_by(Thesis.id)
         )
         if user_id is not None:
@@ -139,15 +139,26 @@ class PlanCheckService:
         await asyncio.gather(*(one(t) for t in tickers))
         return out
 
-    async def run(self, today: date, user_id: str | None = None) -> list[PlanChange]:
+    async def evaluate_open(
+        self, today: date, user_id: str | None = None
+    ) -> list[tuple[Thesis, PlanEvaluation, float | None]]:
+        """Đánh giá mọi kế hoạch đang mở (không ghi DB) — dùng cho API xem trực tiếp."""
         plans = await self._open_plans(user_id)
         tickers = sorted({p.ticker.upper() for p in plans})
         prices, states = await asyncio.gather(self._prices(tickers), self._states(tickers))
-        changes: list[PlanChange] = []
-        now = datetime.now(UTC)
+        out = []
         for p in plans:
             t = p.ticker.upper()
-            ev = evaluate_thesis(p, prices.get(t), today, states.get(t))
+            out.append((p, evaluate_thesis(p, prices.get(t), today, states.get(t)), prices.get(t)))
+        return out
+
+    async def run(self, today: date, user_id: str | None = None) -> list[PlanChange]:
+        evaluated = await self.evaluate_open(today, user_id)
+        plans = [p for p, _, _ in evaluated]
+        changes: list[PlanChange] = []
+        now = datetime.now(UTC)
+        for p, ev, _ in evaluated:
+            t = p.ticker.upper()
             for a, res in zip(p.assumptions, ev.beliefs, strict=True):
                 if getattr(a, "check_key", None) and res.result in _STATUS_FROM_RESULT:
                     a.status = _STATUS_FROM_RESULT[res.result]
@@ -168,3 +179,75 @@ class PlanCheckService:
             red=sum(1 for p in plans if p.plan_light == "do"),
         )
         return changes
+
+
+# ── Tạo kế hoạch ─────────────────────────────────────────────────────────────
+
+
+@dataclass
+class NewBelief:
+    text: str
+    check_key: str | None = None
+
+
+@dataclass
+class NewEvent:
+    text: str
+    expected_date: date | None = None
+
+
+async def create_plan(
+    session: Any,
+    *,
+    user_id: str,
+    ticker: str,
+    title: str,
+    entry_price: float | None,
+    stop_price: float | None,
+    target_price: float | None,
+    review_by: date | None,
+    beliefs: list[NewBelief],
+    events: list[NewEvent],
+    note: str | None = None,
+    today: date | None = None,
+) -> Thesis:
+    """Tạo kế hoạch (thesis) kèm điều tôi tin (assumption) và sự kiện tôi chờ (catalyst).
+
+    check_key không hợp lệ bị bỏ (điều đó thành "tự kiểm"); hạn xem lại mặc định 6 tháng.
+    """
+    from src.thesis.models import Assumption, Catalyst  # noqa: PLC0415
+    from src.thesis.plan import BELIEF_TEMPLATES, DEFAULT_REVIEW_DAYS  # noqa: PLC0415
+
+    today = today or datetime.now(UTC).date()
+    thesis = Thesis(
+        user_id=user_id,
+        ticker=ticker.upper().strip(),
+        title=title.strip(),
+        summary=note,
+        entry_price=entry_price,
+        stop_loss=stop_price,
+        target_price=target_price,
+        status=ThesisStatus.ACTIVE,
+        review_by=review_by or (today + timedelta(days=DEFAULT_REVIEW_DAYS)),
+    )
+    assumptions = []
+    for b in beliefs:
+        key = b.check_key if b.check_key in BELIEF_TEMPLATES else None
+        text = b.text.strip() or (BELIEF_TEMPLATES[key].label if key else "")
+        if text:
+            assumptions.append(Assumption(description=text, check_key=key))
+    thesis.assumptions = assumptions
+    thesis.catalysts = [
+        Catalyst(
+            description=e.text.strip(),
+            expected_date=datetime.combine(e.expected_date, datetime.min.time(), tzinfo=UTC)
+            if e.expected_date
+            else None,
+        )
+        for e in events
+        if e.text.strip()
+    ]
+    session.add(thesis)
+    await session.flush()
+    logger.info("plan.created", thesis_id=thesis.id, ticker=thesis.ticker)
+    return thesis
