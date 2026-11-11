@@ -5,7 +5,6 @@ Owner: bot segment. Adapter only.
 Commands:
   /run_replay_scheduler  — trigger DecisionReplayScheduler thủ công.
   /run_snapshot          — trigger SnapshotScheduler thủ công (seed backtesting data).
-  /run_intelligence      — trigger Intelligence Engine thủ công (phân tích + khuyến nghị).
 
 Tất cả đều gated: chỉ bot owner được dùng.
 
@@ -159,70 +158,6 @@ class SchedulerTriggerCog(BaseCog):
     # ------------------------------------------------------------------
     # /run_intelligence
     # ------------------------------------------------------------------
-
-    @app_commands.command(
-        name="run_intelligence",
-        description="[Owner] Chạy Intelligence Engine thủ công — cập nhật phân tích + khuyến nghị",
-    )
-    async def run_intelligence(
-        self,
-        interaction: discord.Interaction,
-    ) -> None:
-        await interaction.response.defer(ephemeral=True)
-        if not await _check_owner(self, interaction):
-            return
-
-        try:
-            from src.platform.config import settings
-            from src.platform.event_bus import get_event_bus
-            from src.platform.events import IntelligenceEngineRequestedEvent
-
-            user_id = getattr(settings, "scheduler_user_id", None)
-            if not user_id:
-                await self.send_error(
-                    interaction,
-                    title="Thiếu cấu hình",
-                    description="`scheduler_user_id` chưa được cấu hình trong settings.",
-                )
-                return
-
-            bus = get_event_bus()
-            await bus.publish(
-                IntelligenceEngineRequestedEvent(
-                    user_id=str(user_id),
-                    trigger_type="manual",
-                    trigger_source="manual",
-                )
-            )
-            logger.info(
-                "command.run_intelligence.event_emitted",
-                user_id=str(user_id),
-                triggered_by=interaction.user.id,
-            )
-
-        except Exception as exc:
-            logger.error("command.run_intelligence.error", error=str(exc), exc_info=True)
-            await self.send_error(
-                interaction,
-                title="Thất bại",
-                description=f"`{exc}`",
-            )
-            return
-
-        embed = (
-            EmbedBuilder(
-                title="🧠 Intelligence Engine — Đã kích hoạt",
-                color=COLORS.AI,
-            )
-            .description(
-                "Engine đang chạy trong nền.\n\n"
-                "• Kết quả sẽ xuất hiện trên dashboard sau vài giây.\n"
-                "• Discord embed sẽ gửi vào channel sau khi hoàn thành."
-            )
-            .footer(brand=True, timestamp=True)
-            .build()
-        )
-        await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 async def setup(bot: commands.Bot) -> None:

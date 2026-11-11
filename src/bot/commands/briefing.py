@@ -24,7 +24,6 @@ from src.platform.bootstrap import (
     get_briefing_agent,
     get_pnl_service_class,
     get_quote_service,
-    get_sector_rotation_agent,
 )
 from src.platform.db import get_session
 from src.platform.logging import get_logger
@@ -164,7 +163,6 @@ class BriefingCog(BaseCog):
                     ),
                     thesis_service=ThesisService(session=session),
                     agenda_service=agenda_service,
-                    sector_agent=get_sector_rotation_agent(),
                     lesson_service=LessonService,  # stateless — class reference is sentinel
                     investor_profile_service=InvestorProfileService(session=session),
                     session=session,

@@ -46,7 +46,6 @@ def create_bot() -> commands.Bot:
         try:
             await bootstrap()
             _inject_briefing_listener(bot)
-            _inject_intelligence_engine_subscriber(bot)
             await _register_cogs(bot)
             await _sync_tree(bot)
 
@@ -60,31 +59,20 @@ def create_bot() -> commands.Bot:
             _start_outcome_filler_scheduler(bot)
             _start_decision_replay_scheduler(bot)
             _start_memory_consolidator_scheduler(bot)
-            _start_recommendation_listener(bot)
-            _start_opportunity_screen_scheduler(bot)
-            _start_opportunity_analysis_subscriber(bot)
             _start_proactive_watch_scheduler(bot)
             _start_proactive_watch_subscriber(bot)
             _start_post_mortem_subscriber(bot)
-            _start_intelligence_engine_scheduler(bot)
             _start_signal_reaction_listener(bot)
             _start_agenda_subscriber(bot)
-            _start_trend_prediction_subscriber(bot)
             _start_evolution_scheduler(bot)
             _start_evolution_subscriber(bot)
             _start_invalidation_subscriber(bot)
-            _start_trend_shift_subscriber(bot)
-            _start_stress_test_subscriber(bot)
             _start_position_risk_subscriber(bot)  # portfolio loss threshold → Discord
-            _start_proactive_discovery_subscriber(bot)  # AI market scan → ranked picks → Discord
-            _start_proactive_discovery_scheduler(bot)  # triggers 09:30 ICT weekdays
-            _start_trend_batch_scheduler(bot)  # pre-compute trend verdicts 06:45 ICT
             _start_agenda_builder_scheduler(bot)  # build daily agenda 07:30 ICT
             _start_portfolio_snapshot_scheduler(bot)  # portfolio snapshot 08:15 ICT
             _start_investor_profile_scheduler(bot)  # investor profile snapshot 08:20 ICT
             _start_eod_close_capture_scheduler(bot)  # giá đóng cửa ATC 14:50 ICT (Wave C1)
             _start_eod_portfolio_snapshot_scheduler(bot)  # EOD P&L snapshot 15:20 ICT
-            _start_signal_engine_scheduler(bot)  # signal engine 08:40 + 15:10 ICT
             _wire_feedback_loop_monitor(
                 bot
             )  # FeedbackLoopMonitor — sliding-window error rate alert
@@ -137,68 +125,50 @@ async def _register_cogs(bot: commands.Bot) -> None:
     """Load all command cogs. Add new cogs here only — no logic."""
     from src.bot.commands.briefing import BriefingCog
     from src.bot.commands.conviction_timeline import ConvictionTimelineCog
-    from src.bot.commands.debate import DebateCog
     from src.bot.commands.decision import DecisionCog
     from src.bot.commands.health import HealthCog
     from src.bot.commands.help import HelpCog
-    from src.bot.commands.intel import IntelCog
     from src.bot.commands.market import MarketCog
     from src.bot.commands.memory import MemoryCog
     from src.bot.commands.portfolio import PortfolioCog
     from src.bot.commands.pretrade import PretradeCog
     from src.bot.commands.reviews import ReviewsCog
     from src.bot.commands.scheduler_trigger import SchedulerTriggerCog
-    from src.bot.commands.sector_rotation import SectorRotationCog
-    from src.bot.commands.stress_test import StressTestCog
     from src.bot.commands.thesis_crud import ThesisCrudCog
     from src.bot.commands.thesis_review import ThesisReviewCog
-    from src.bot.commands.trend import TrendCog
     from src.bot.commands.watchlist import WatchlistCog
-    from src.bot.commands.why import WhyCog
 
     await bot.add_cog(WatchlistCog(bot))
     await bot.add_cog(ThesisCrudCog(bot))
     await bot.add_cog(ThesisReviewCog(bot))
-    await bot.add_cog(DebateCog(bot))
     await bot.add_cog(MarketCog(bot))
     await bot.add_cog(BriefingCog(bot))
     await bot.add_cog(HelpCog(bot))
-    await bot.add_cog(WhyCog(bot))
     await bot.add_cog(PretradeCog(bot))
     await bot.add_cog(ConvictionTimelineCog(bot))
     await bot.add_cog(PortfolioCog(bot))
-    await bot.add_cog(StressTestCog(bot))
     await bot.add_cog(DecisionCog(bot))
     await bot.add_cog(SchedulerTriggerCog(bot))
     await bot.add_cog(HealthCog(bot))
-    await bot.add_cog(SectorRotationCog(bot))
     await bot.add_cog(MemoryCog(bot))
-    await bot.add_cog(TrendCog(bot))
     await bot.add_cog(ReviewsCog(bot))
-    await bot.add_cog(IntelCog(bot))
     logger.info(
         "bot.cogs_loaded",
         cogs=[
             "WatchlistCog",
             "ThesisCrudCog",
             "ThesisReviewCog",
-            "DebateCog",
             "MarketCog",
             "BriefingCog",
             "HelpCog",
-            "WhyCog",
             "PretradeCog",
             "ConvictionTimelineCog",
             "PortfolioCog",
-            "StressTestCog",
             "DecisionCog",
             "SchedulerTriggerCog",
             "HealthCog",
-            "SectorRotationCog",
             "MemoryCog",
-            "TrendCog",
             "ReviewsCog",
-            "IntelCog",
         ],
     )
 
@@ -214,20 +184,6 @@ def _inject_briefing_listener(bot: commands.Bot) -> None:
         logger.error(
             "bot.briefing_listener.not_available",
             reason="scheduler_user_id not configured — BriefingListener skipped at bootstrap.",
-        )
-
-
-def _inject_intelligence_engine_subscriber(bot: commands.Bot) -> None:
-    from src.platform.bootstrap import get_intelligence_engine_subscriber
-
-    subscriber = get_intelligence_engine_subscriber()
-    if subscriber is not None:
-        subscriber.set_client(bot)
-        logger.info("bot.intelligence_engine_subscriber.client_injected")
-    else:
-        logger.warning(
-            "bot.intelligence_engine_subscriber.not_available",
-            reason="IntelligenceEngineSubscriber not initialised at bootstrap — verdict Discord push disabled.",
         )
 
 
@@ -315,43 +271,6 @@ def _start_memory_consolidator_scheduler(bot: commands.Bot) -> None:
     scheduler.start()
 
 
-def _start_recommendation_listener(bot: commands.Bot) -> None:
-    from src.bot.recommendation_listener import RecommendationListener
-
-    listener = RecommendationListener(bot)
-    listener.register()
-
-
-def _start_opportunity_analysis_subscriber(bot: commands.Bot) -> None:
-    from src.bot.opportunity_analysis_subscriber import OpportunityAnalysisSubscriber
-
-    subscriber = OpportunityAnalysisSubscriber(bot)
-    subscriber.register()
-
-
-def _start_opportunity_screen_scheduler(bot: commands.Bot) -> None:
-    from src.platform.bootstrap import (
-        get_opportunity_screen_scheduler,
-        get_opportunity_screen_subscriber,
-    )
-
-    scheduler = get_opportunity_screen_scheduler()
-    if scheduler is None:
-        logger.warning(
-            "bot.opportunity_screen_scheduler.not_available",
-            reason="bootstrap did not initialise OpportunityScreenScheduler",
-        )
-        return
-
-    scheduler.start()
-    logger.info("bot.opportunity_screen_scheduler.started")
-
-    subscriber = get_opportunity_screen_subscriber()
-    if subscriber is not None and hasattr(subscriber, "set_client"):
-        subscriber.set_client(bot)
-        logger.info("bot.opportunity_screen_subscriber.client_injected")
-
-
 def _start_proactive_watch_scheduler(bot: commands.Bot) -> None:
     from src.bot.scheduler import ProactiveWatchScheduler
 
@@ -395,14 +314,6 @@ def _start_post_mortem_subscriber(bot: commands.Bot) -> None:
     logger.info("bot.post_mortem_subscriber.registered", channel_id=channel_id)
 
 
-def _start_intelligence_engine_scheduler(bot: commands.Bot) -> None:
-    from src.bot.scheduler import IntelligenceEngineScheduler
-
-    scheduler = IntelligenceEngineScheduler(bot)
-    scheduler.start()
-    logger.info("bot.intelligence_engine_scheduler.started")
-
-
 def _start_signal_reaction_listener(bot: commands.Bot) -> None:
     from src.bot.signal_reaction_listener import SignalReactionListener
 
@@ -425,23 +336,6 @@ def _start_agenda_subscriber(bot: commands.Bot) -> None:
     subscriber.set_client(bot)
     subscriber.register()
     logger.info("bot.agenda_subscriber.registered", channel_id=channel_id)
-
-
-def _start_trend_prediction_subscriber(bot: commands.Bot) -> None:
-    from src.bot.trend_prediction_subscriber import TrendPredictionSubscriber
-
-    channel_id = getattr(settings, "alert_channel_id", None)
-    if not channel_id:
-        logger.warning(
-            "bot.trend_prediction_subscriber.not_available",
-            reason="alert_channel_id not configured — trend prediction embeds disabled",
-        )
-        return
-
-    subscriber = TrendPredictionSubscriber(channel_id=int(channel_id))
-    subscriber.set_client(bot)
-    subscriber.register()
-    logger.info("bot.trend_prediction_subscriber.registered", channel_id=channel_id)
 
 
 def _start_evolution_scheduler(bot: commands.Bot) -> None:
@@ -484,75 +378,6 @@ def _start_invalidation_subscriber(bot: commands.Bot) -> None:
     subscriber.set_client(bot)
     subscriber.register()
     logger.info("bot.invalidation_subscriber.registered", channel_id=channel_id)
-
-
-def _start_trend_shift_subscriber(bot: commands.Bot) -> None:
-    from src.bot.trend_shift_subscriber import TrendShiftSubscriber
-
-    channel_id = getattr(settings, "alert_channel_id", None)
-    if not channel_id:
-        logger.warning(
-            "bot.trend_shift_subscriber.not_available",
-            reason="alert_channel_id not configured — regime shift alerts disabled",
-        )
-        return
-
-    subscriber = TrendShiftSubscriber(channel_id=int(channel_id))
-    subscriber.set_client(bot)
-    subscriber.register()
-    logger.info("bot.trend_shift_subscriber.registered", channel_id=channel_id)
-
-
-def _start_stress_test_subscriber(bot: commands.Bot) -> None:
-    from src.bot.stress_test_subscriber import StressTestSubscriber
-
-    channel_id = getattr(settings, "alert_channel_id", None)
-    if not channel_id:
-        logger.warning(
-            "bot.stress_test_subscriber.not_available",
-            reason="alert_channel_id not configured — stress test alerts disabled",
-        )
-        return
-
-    subscriber = StressTestSubscriber(channel_id=int(channel_id))
-    subscriber.set_client(bot)
-    subscriber.register()
-    logger.info("bot.stress_test_subscriber.registered", channel_id=channel_id)
-
-
-def _start_proactive_discovery_subscriber(bot: commands.Bot) -> None:
-    """Wire ProactiveDiscoveryReadyEvent → Discord embed.
-
-    Delivery chain:
-        ProactiveDiscoveryService.run()          [market segment]
-          → ProactiveDiscoveryAgent.analyze()    [ai segment]
-            → ProactiveDiscoveryReadyEvent        [platform/event_bus]
-              → ProactiveDiscoverySubscriber      [bot — Discord embed]
-                → embed: ranked picks (max 5) with verdict, entry logic
-                → channel.send(embed)             [alert_channel]
-    """
-    from src.bot.proactive_discovery_subscriber import ProactiveDiscoverySubscriber
-
-    channel_id = getattr(settings, "alert_channel_id", None)
-    if not channel_id:
-        logger.warning(
-            "bot.proactive_discovery_subscriber.not_available",
-            reason="alert_channel_id not configured — proactive discovery embeds disabled",
-        )
-        return
-
-    subscriber = ProactiveDiscoverySubscriber(bot)
-    subscriber.register()
-    logger.info("bot.proactive_discovery_subscriber.registered", channel_id=channel_id)
-
-
-def _start_proactive_discovery_scheduler(bot: commands.Bot) -> None:
-    """Start ProactiveDiscoveryScheduler — fires 09:30 ICT (02:30 UTC) on weekdays."""
-    from src.bot.scheduler import ProactiveDiscoveryScheduler
-
-    scheduler = ProactiveDiscoveryScheduler(bot)
-    scheduler.start()
-    logger.info("bot.proactive_discovery_scheduler.started")
 
 
 def _start_position_risk_subscriber(bot: commands.Bot) -> None:
@@ -626,32 +451,6 @@ def _start_investor_profile_scheduler(bot: commands.Bot) -> None:
     scheduler = InvestorProfileScheduler(bot)
     scheduler.start()
     logger.info("bot.investor_profile_scheduler.started")
-
-
-def _start_signal_engine_scheduler(bot: commands.Bot) -> None:
-    """Start SignalEngineScheduler — 08:40 ICT + 15:10 ICT weekdays.
-
-    Emits SignalEngineRequestedEvent → SignalEngineListener (SignalEngineAgent)
-    and TrendEngineListener (trend prediction pipeline).
-    """
-    from src.bot.scheduler import SignalEngineScheduler
-
-    scheduler = SignalEngineScheduler(bot)
-    scheduler.start()
-    logger.info("bot.signal_engine_scheduler.started")
-
-
-def _start_trend_batch_scheduler(bot: commands.Bot) -> None:
-    """Start TrendBatchPrecomputeScheduler — 06:45 ICT weekdays.
-
-    Pre-computes AI trend verdicts for the user's watchlist so morning
-    brief at 08:30 ICT always has fresh TrendPrediction data ready.
-    """
-    from src.bot.scheduler import TrendBatchPrecomputeScheduler
-
-    scheduler = TrendBatchPrecomputeScheduler(bot)
-    scheduler.start()
-    logger.info("bot.trend_batch_scheduler.started")
 
 
 def _wire_feedback_loop_monitor(bot: commands.Bot) -> None:

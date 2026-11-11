@@ -131,23 +131,11 @@ async def bootstrap() -> None:
         container.briefing_agent = BriefingAgent(client=container.ai_client)  # type: ignore[arg-type]
         logger.info("platform.bootstrap.briefing_agent_ready")
 
-    if container.why_agent is None:
-        from src.ai.agents.why import WhyAgent
-
-        container.why_agent = WhyAgent(client=container.ai_client)  # type: ignore[arg-type]
-        logger.info("platform.bootstrap.why_agent_ready")
-
     if container.pretrade_agent is None:
         from src.ai.agents.pretrade import PreTradeAgent
 
         container.pretrade_agent = PreTradeAgent(client=container.ai_client)  # type: ignore[arg-type]
         logger.info("platform.bootstrap.pretrade_agent_ready")
-
-    if container.stress_test_agent is None:
-        from src.ai.agents.stress_test import StressTestAgent
-
-        container.stress_test_agent = StressTestAgent(client=container.ai_client)  # type: ignore[arg-type]
-        logger.info("platform.bootstrap.stress_test_agent_ready")
 
     if container.replay_agent is None:
         from src.ai.agents.replay import ReplayAgent
@@ -257,38 +245,6 @@ async def bootstrap() -> None:
                 reason="scheduler_user_id not configured",
             )
 
-    # ── Wave 2 (market): TrendReasoningAgent ─────────────────────────────────
-    if container.trend_reasoning_agent is None:
-        from src.ai.agents.trend_reasoning import TrendReasoningAgent
-
-        container.trend_reasoning_agent = TrendReasoningAgent(client=container.ai_client)
-        logger.info("platform.bootstrap.trend_reasoning_agent_ready")
-
-    # ── Wave 2b: SignalEngineAgent ───────────────────────────────────────────
-    if container.signal_engine_agent is None:
-        from src.ai.agents.signal_engine import SignalEngineAgent
-
-        container.signal_engine_agent = SignalEngineAgent(ai_client=container.ai_client)  # type: ignore[arg-type]
-        logger.info("platform.bootstrap.signal_engine_agent_ready")
-
-    # ── Wave D.1: TrendSnapshotStore (readmodel) — persisted baseline ──────────
-    if container.trend_snapshot_store is None:
-        from src.market.trend_snapshot_store import TrendSnapshotStore
-        from src.platform.db import AsyncSessionLocal
-
-        container.trend_snapshot_store = TrendSnapshotStore(session_factory=AsyncSessionLocal)
-        logger.info("platform.bootstrap.trend_snapshot_store_ready")
-
-    # ── Trend Prediction: TrendPredictionStore (readmodel) ──────────────────
-    if container.trend_prediction_store is None:
-        from src.market.trend_prediction_store import TrendPredictionStore
-        from src.platform.db import AsyncSessionLocal
-
-        container.trend_prediction_store = TrendPredictionStore(
-            session_factory=AsyncSessionLocal,
-        )
-        logger.info("platform.bootstrap.trend_prediction_store_ready")
-
     # ── W1: RecentReviewsStore (readmodel) ──────────────────────────────────
     if container.recent_reviews_store is None:
         from src.platform.db import AsyncSessionLocal
@@ -322,42 +278,11 @@ async def bootstrap() -> None:
     CacheSubscriber.register()
     logger.info("platform.bootstrap.cache_subscriber_ready")
 
-    # ── Gap 2 (readmodel): IntelligenceSnapshotSubscriber ───────────────────
-    if container.intelligence_snapshot_subscriber is None:
-        from src.readmodel import IntelligenceSnapshotSubscriber
-
-        IntelligenceSnapshotSubscriber.register()
-        container.intelligence_snapshot_subscriber = IntelligenceSnapshotSubscriber
-        logger.info("platform.bootstrap.intelligence_snapshot_subscriber_ready")
-
-    # ── readmodel: GlobalRiskSubscriber — project IE verdict into memory store
-    if container.global_risk_subscriber is None:
-        from src.readmodel.global_risk_subscriber import GlobalRiskSubscriber
-
-        GlobalRiskSubscriber.register()
-        container.global_risk_subscriber = GlobalRiskSubscriber
-        logger.info("platform.bootstrap.global_risk_subscriber_ready")
-
     # ── Wave D.1: Warm-up all persisted in-memory stores from DB ─────────────
     # Run after all stores are initialised and before any scheduler fires.
     # Gives agents & briefing context from the last cycle without waiting for
     # the first scheduler run post-restart.
-    await _warm_up_persisted_stores(
-        trend_snapshot_store=container.trend_snapshot_store,
-        trend_prediction_store=container.trend_prediction_store,
-        session_factory=container.session_factory,
-    )
-
-    if container.proactive_alert_agent is None:
-        from src.ai.agents.proactive_alert_agent import get_proactive_alert_agent
-        from src.platform.db import AsyncSessionLocal
-
-        container.proactive_alert_agent = get_proactive_alert_agent(
-            ai_client=container.ai_client,  # type: ignore[arg-type]
-            session_factory=AsyncSessionLocal,
-        )
-        container.proactive_alert_agent.register()
-        logger.info("platform.bootstrap.proactive_alert_agent_ready")
+    await _warm_up_persisted_stores(session_factory=container.session_factory)
 
     if container.thesis_review_listener is None:
         from src.platform.db import AsyncSessionLocal
@@ -371,20 +296,6 @@ async def bootstrap() -> None:
         )
         container.thesis_review_listener.register()
         logger.info("platform.bootstrap.thesis_review_listener_ready")
-
-    # ── Wave C: SignalEngine → ThesisReview bridge ──────────────────────────
-    if container.signal_review_trigger_listener is None:
-        from src.platform.db import AsyncSessionLocal
-        from src.thesis.signal_review_trigger_listener import SignalReviewTriggerListener
-
-        container.signal_review_trigger_listener = SignalReviewTriggerListener(
-            session_factory=AsyncSessionLocal,
-            review_agent=container.thesis_review_agent,
-            quote_service=container.quote_service,
-            ticker_context_service=container.ticker_context_service,
-        )
-        container.signal_review_trigger_listener.register()
-        logger.info("platform.bootstrap.signal_review_trigger_listener_ready")
 
     if container.briefing_listener is None:
         from src.bot.brief_delivery import DiscordBriefDelivery
@@ -415,104 +326,6 @@ async def bootstrap() -> None:
                 reason="scheduler_user_id not configured",
             )
 
-    # ── G4: StressTest → Watchlist trigger bridge ───────────────────────────
-    if container.stress_test_subscriber is None:
-        from src.platform.db import AsyncSessionLocal
-        from src.watchlist.stress_test_subscriber import StressTestSubscriber
-
-        container.stress_test_subscriber = StressTestSubscriber(session_factory=AsyncSessionLocal)
-        container.stress_test_subscriber.register()
-        logger.info("platform.bootstrap.stress_test_subscriber_ready")
-
-    # ── Wave 3: OpportunityScreenScheduler + subscriber ─────────────────────
-    if container.opportunity_screen_scheduler is None:
-        from src.market.opportunity_screen_scheduler import OpportunityScreenScheduler
-
-        container.opportunity_screen_scheduler = OpportunityScreenScheduler(
-            quote_service=container.quote_service,
-        )
-        logger.info("platform.bootstrap.opportunity_screen_scheduler_ready")
-
-    if container.opportunity_screen_subscriber is None:
-        from src.market.opportunity_screen_subscriber import OpportunityScreenSubscriber
-
-        container.opportunity_screen_subscriber = OpportunityScreenSubscriber()
-        container.opportunity_screen_subscriber.register()
-        logger.info("platform.bootstrap.opportunity_screen_subscriber_ready")
-
-    # ── Wave 3: OpportunityAnalysisHandler (ai segment) ───────────────────────────
-    if container.opportunity_analysis_handler is None:
-        from src.ai.opportunity_analysis_handler import get_opportunity_analysis_handler
-        from src.platform.db import AsyncSessionLocal
-
-        container.opportunity_analysis_handler = get_opportunity_analysis_handler(
-            ai_client=container.ai_client,  # type: ignore[arg-type]
-            session_factory=AsyncSessionLocal,
-        )
-        container.opportunity_analysis_handler.register()
-        logger.info("platform.bootstrap.opportunity_analysis_handler_ready")
-
-    # ── Proactive Discovery: portfolio-aware market scan + AI synthesis ────────
-    if container.proactive_discovery_service is None:
-        from src.ai.agents.proactive_discovery import ProactiveDiscoveryAgent
-        from src.market.proactive_discovery_service import ProactiveDiscoveryService
-        from src.market.registry import registry as _reg
-        from src.platform.db import AsyncSessionLocal
-        from src.readmodel.portfolio_query_service import PortfolioQueryService
-
-        async def _portfolio_provider(user_id: str) -> dict[str, Any]:
-            async with AsyncSessionLocal() as session:
-                return await PortfolioQueryService(session).get_portfolio(user_id=user_id)
-
-        _discovery_agent = ProactiveDiscoveryAgent(ai_client=container.ai_client)
-        container.proactive_discovery_service = ProactiveDiscoveryService(
-            ai_agent=_discovery_agent,
-            quote_service=container.quote_service,
-            registry=_reg,  # dynamic singleton
-            portfolio_provider=_portfolio_provider,
-        )
-        logger.info("platform.bootstrap.proactive_discovery_service_ready")
-
-    # ── Wave B2: SignalEngineListener — fully wired with portfolio context ────
-    if container.signal_engine_listener is None:
-        from src.ai.signal_engine_listener import SignalEngineListener
-        from src.platform.db import AsyncSessionLocal
-        from src.thesis.stress_test_query_service import ThesisRiskSignalQuery
-        from src.thesis.thesis_query_service import ThesisActiveContextQuery
-        from src.watchlist.watchlist_query_service import WatchlistQueryService
-
-        container.signal_engine_listener = SignalEngineListener(
-            ai_client=container.ai_client,  # type: ignore[arg-type]
-            watchdog_service=WatchlistQueryService(session_factory=AsyncSessionLocal),
-            stress_test_service=ThesisRiskSignalQuery(session_factory=AsyncSessionLocal),
-            thesis_query=ThesisActiveContextQuery(session_factory=AsyncSessionLocal),
-            portfolio_query=container.portfolio_query_adapter,
-            feedback_service=None,
-        )
-        container.signal_engine_listener.register()
-        logger.info("platform.bootstrap.signal_engine_listener_ready")
-
-    # ── Trend Prediction: TrendEngineListener ───────────────────────────────
-    if container.trend_engine_listener is None:
-        from src.ai.trend_engine_listener import TrendEngineListener
-        from src.market.trend_engine import TrendEngine
-        from src.platform.db import AsyncSessionLocal
-        from src.thesis.thesis_query_service import ThesisActiveContextQuery
-        from src.watchlist.watchlist_query_service import WatchlistQueryService
-
-        _trend_engine = TrendEngine(
-            ohlcv_service=container.ohlcv_service,
-        )
-        container.trend_engine_listener = TrendEngineListener(
-            trend_reasoning_agent=container.trend_reasoning_agent,  # type: ignore[arg-type]
-            trend_engine=_trend_engine,
-            prediction_store=container.trend_prediction_store,  # type: ignore[arg-type]
-            watchlist_query=WatchlistQueryService(session_factory=AsyncSessionLocal),
-            thesis_query=ThesisActiveContextQuery(session_factory=AsyncSessionLocal),
-        )
-        container.trend_engine_listener.register()
-        logger.info("platform.bootstrap.trend_engine_listener_ready")
-
     # ── Wave E: PostMortemService + MemoryInjectionListener ─────────────────
     if container.post_mortem_service is None:
         from src.platform.db import AsyncSessionLocal
@@ -534,36 +347,6 @@ async def bootstrap() -> None:
         )
         container.memory_injection_listener.register()
         logger.info("platform.bootstrap.memory_injection_listener_ready")
-
-    # ── core: IntelligenceEngineListener (Wave 2 AI active) ─────────────────
-    if container.intelligence_engine_listener is None:
-        from src.ai.agents.intelligence_verdict import IntelligenceVerdictAgent
-        from src.core.intelligence_listener import IntelligenceEngineListener
-
-        _intelligence_verdict_agent = IntelligenceVerdictAgent(
-            ai_client=container.ai_client  # type: ignore[arg-type]
-        )
-        container.intelligence_engine_listener = IntelligenceEngineListener(
-            verdict_agent=_intelligence_verdict_agent,
-        )
-        container.intelligence_engine_listener.register()
-        logger.info("platform.bootstrap.intelligence_engine_listener_ready")
-
-    # ── bot: IntelligenceEngineSubscriber (Discord delivery) ────────────────
-    if container.intelligence_engine_subscriber is None:
-        from src.bot.intelligence_engine_subscriber import IntelligenceEngineSubscriber
-        from src.platform.config import settings
-
-        raw_channel = settings.alert_channel_id
-        channel_id = int(raw_channel) if raw_channel else None
-        container.intelligence_engine_subscriber = IntelligenceEngineSubscriber(
-            channel_id=channel_id
-        )
-        container.intelligence_engine_subscriber.register()
-        logger.info(
-            "platform.bootstrap.intelligence_engine_subscriber_ready",
-            discord_channel_id=channel_id,
-        )
 
     # ── core: EngineFeedbackListener ────────────────────────────────────────
     if container.engine_feedback_listener is None:
@@ -616,11 +399,7 @@ async def bootstrap() -> None:
     logger.info("platform.bootstrap.complete")
 
 
-async def _warm_up_persisted_stores(
-    trend_snapshot_store: Any,
-    trend_prediction_store: Any,
-    session_factory: Any,
-) -> None:
+async def _warm_up_persisted_stores(session_factory: Any) -> None:
     """Load all persisted in-memory stores from DB on startup.
 
     Called once after all singletons are ready and before any scheduler fires.
@@ -639,48 +418,6 @@ async def _warm_up_persisted_stores(
             logger.info("bootstrap.warm_up.quote_cache", loaded=n)
     except Exception as exc:
         logger.warning("bootstrap.warm_up.quote_cache_failed", error=str(exc))
-
-    # TrendSnapshotStore
-    try:
-        if hasattr(trend_snapshot_store, "warm_load"):
-            n = await trend_snapshot_store.warm_load()
-            logger.info("bootstrap.warm_up.trend_snapshots", loaded=n)
-    except Exception as exc:
-        logger.warning("bootstrap.warm_up.trend_snapshots_failed", error=str(exc))
-
-    # TrendPredictionStore (readmodel)
-    try:
-        if hasattr(trend_prediction_store, "warm_load"):
-            n = await trend_prediction_store.warm_load()
-            logger.info("bootstrap.warm_up.trend_predictions", loaded=n)
-    except Exception as exc:
-        logger.warning("bootstrap.warm_up.trend_predictions_failed", error=str(exc))
-
-    # IntelligenceSnapshotStore
-    try:
-        from src.readmodel.intelligence_snapshot import get_intelligence_snapshot
-
-        snap_store = get_intelligence_snapshot()
-        if hasattr(snap_store, "container.session_factory") and snap_store._session_factory is None:
-            snap_store._session_factory = sf
-        if hasattr(snap_store, "warm_load"):
-            n = await snap_store.warm_load()
-            logger.info("bootstrap.warm_up.intelligence_snapshots", loaded=n)
-    except Exception as exc:
-        logger.warning("bootstrap.warm_up.intelligence_snapshots_failed", error=str(exc))
-
-    # GlobalRiskStore
-    try:
-        from src.readmodel.global_risk_store import get_global_risk_store
-
-        risk_store = get_global_risk_store()
-        if hasattr(risk_store, "container.session_factory") and risk_store._session_factory is None:
-            risk_store._session_factory = sf
-        if hasattr(risk_store, "warm_load"):
-            n = await risk_store.warm_load()
-            logger.info("bootstrap.warm_up.global_risk_snapshots", loaded=n)
-    except Exception as exc:
-        logger.warning("bootstrap.warm_up.global_risk_snapshots_failed", error=str(exc))
 
     # AgendaCache (today only)
     try:
@@ -703,13 +440,6 @@ async def shutdown() -> None:
             logger.info("platform.shutdown.snapshot_scheduler_stopped")
         except Exception as exc:
             logger.warning("platform.shutdown.snapshot_scheduler_failed", error=str(exc))
-
-    if container.opportunity_screen_scheduler is not None:
-        try:
-            await container.opportunity_screen_scheduler.stop()  # type: ignore[attr-defined]
-            logger.info("platform.shutdown.opportunity_screen_scheduler_stopped")
-        except Exception as exc:
-            logger.warning("platform.shutdown.opportunity_screen_scheduler_failed", error=str(exc))
 
 
 # ---------------------------------------------------------------------------
@@ -753,16 +483,8 @@ def get_briefing_agent() -> Any:
     return container.require("briefing_agent")
 
 
-def get_why_agent() -> Any:
-    return container.require("why_agent")
-
-
 def get_pretrade_agent() -> Any:
     return container.require("pretrade_agent")
-
-
-def get_stress_test_agent() -> Any:
-    return container.require("stress_test_agent")
 
 
 def get_replay_agent() -> Any:
@@ -790,30 +512,6 @@ def get_session_factory() -> Any:
     if container.session_factory is None:
         raise RuntimeError("bootstrap() has not been called")
     return container.session_factory
-
-
-def get_trend_prediction_store() -> Any:
-    if container.trend_prediction_store is None:
-        raise RuntimeError("bootstrap() has not been called")
-    return container.trend_prediction_store
-
-
-def get_trend_reasoning_agent() -> Any:
-    if container.trend_reasoning_agent is None:
-        raise RuntimeError("bootstrap() has not been called")
-    return container.trend_reasoning_agent
-
-
-def get_opportunity_screen_scheduler() -> Any:
-    if container.opportunity_screen_scheduler is None:
-        raise RuntimeError("bootstrap() has not been called")
-    return container.opportunity_screen_scheduler
-
-
-def get_opportunity_screen_subscriber() -> Any:
-    if container.opportunity_screen_subscriber is None:
-        raise RuntimeError("bootstrap() has not been called")
-    return container.opportunity_screen_subscriber
 
 
 def get_recent_reviews_store() -> Any:
@@ -859,24 +557,6 @@ def get_briefing_listener() -> Any:
     callers must handle the None case gracefully.
     """
     return container.briefing_listener
-
-
-def get_intelligence_engine_subscriber() -> Any:
-    """Return the IntelligenceEngineSubscriber singleton or None if not initialised.
-
-    Returns None (not raises) — bot caller checks for None before calling set_client().
-    """
-    return container.intelligence_engine_subscriber
-
-
-def get_proactive_discovery_service() -> Any:
-    """Return ProactiveDiscoveryService singleton or None if not initialised."""
-    return container.proactive_discovery_service
-
-
-def get_trend_snapshot_store() -> Any:
-    """Return TrendSnapshotStore singleton (Wave D.1 — DB-backed)."""
-    return container.require("trend_snapshot_store")
 
 
 # ---------------------------------------------------------------------------
