@@ -170,7 +170,7 @@ class TodayLoopQueryService:
                     continue
                 alert_type_raw = str(getattr(row.condition_type, "value", row.condition_type) or "")
                 alert_type = alert_type_raw.lower()
-                severity = (
+                severity: SignalSeverity = (
                     "HIGH"
                     if any(k in alert_type for k in ("breach", "stop", "critical"))
                     else "MEDIUM"
