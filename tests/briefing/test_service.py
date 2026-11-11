@@ -7,11 +7,7 @@ Architecture today:
 - DECIDE → ACT_TODAY enforcement migrated from service code into the AI
   prompt pack (`src/ai/prompts/brief.py`). Service no longer mutates
   prioritized_actions; that guarantee is now contract-enforced via schema
-  validators + prompt instructions. Therefore the legacy
-  `test_enforce_agenda_mapping_*` tests asserting post-brief Python
-  mutation have been dropped here; the remaining PromptEnforcementTest
-  shape is that the service forwards cached agenda into the AI prompt via
-  the `agenda_context` kwarg — covered by the agenda-context tests below.
+  validators + prompt instructions.
 """
 
 from __future__ import annotations
@@ -22,15 +18,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from src.ai.schemas import BriefOutput, MarketSentiment
-from src.briefing.agenda_cache import AgendaBuckets, _AgendaCache, set_agenda
 from src.briefing.service import BriefingService, BriefResult
-
-
-@pytest.fixture(autouse=True)
-def clear_agenda_cache() -> None:
-    # In-memory cache is process-global; reset per test to avoid leaking
-    # DECIDE buckets across cases within the same pytest worker.
-    _AgendaCache.clear()
 
 
 @pytest.fixture
@@ -135,46 +123,6 @@ async def test_generate_brief_quote_failure_falls_back(sample_brief: BriefOutput
     assert "Giá hiện tại" not in market_context
 
 
-async def test_agenda_decide_bucket_forwarded_to_agent(sample_brief: BriefOutput, session) -> None:
-    """DECIDE tickers cached earlier in the day must reach the AI prompt
-    via the `agenda_context` kwarg so the prompt pack can enforce the
-    'every DECIDE gets one ACT_TODAY' contract at LLM level."""
-    set_agenda(
-        "u1",
-        summary="Daily Agenda:\nDECIDE (1): HPG",
-        buckets=AgendaBuckets(decide=["HPG"], watch=[], defer=[]),
-    )
-    svc, agent, _ = _make_svc(
-        session=session,
-        watchlist_items=[SimpleNamespace(ticker="HPG")],
-        quotes=[],
-        sample_brief=sample_brief,
-    )
-
-    await svc.generate_morning_brief(user_id="u1")
-
-    agenda_context = agent.morning_brief.call_args.kwargs.get("agenda_context", "")
-    assert "DECIDE" in agenda_context
-    assert "HPG" in agenda_context
-
-
-async def test_agenda_empty_or_missing_sends_no_decide(sample_brief: BriefOutput, session) -> None:
-    """When no agenda was cached today, agenda_context is empty string —
-    the prompt receives no DECIDE instructions (assistant should then
-    fall back to plain watchlist-driven analysis)."""
-    svc, agent, _ = _make_svc(
-        session=session,
-        watchlist_items=[SimpleNamespace(ticker="HPG")],
-        quotes=[],
-        sample_brief=sample_brief,
-    )
-
-    await svc.generate_morning_brief(user_id="u1")
-
-    agenda_context = agent.morning_brief.call_args.kwargs.get("agenda_context", "")
-    assert "DECIDE" not in agenda_context
-
-
 # ── Wave D4b: thesis context đọc health thật từ thesis.health_snapshot ─────────
 
 
@@ -248,28 +196,6 @@ async def test_build_thesis_context_swallows_errors() -> None:
         get_thesis_health=AsyncMock(side_effect=RuntimeError("x"))
     )
     assert await svc._build_thesis_context("u1") == ""
-
-
-# ── Wave E1c: daily_agendas thuộc briefing, persist qua upsert_rows ───────────
-
-
-@pytest.mark.anyio
-async def test_persist_agenda_roundtrip_via_briefing_model() -> None:
-    from src.briefing.agenda_cache import load_today_agendas_from_db, persist_agenda
-    from src.briefing.models import DailyAgenda
-    from src.platform.db import AsyncSessionLocal
-
-    assert DailyAgenda.__module__ == "src.briefing.models"
-
-    buckets = AgendaBuckets(decide=["HPG"], watch=["VNM"], defer=[])
-    await persist_agenda(AsyncSessionLocal, "u1", "agenda v1", buckets)
-    await persist_agenda(AsyncSessionLocal, "u1", "agenda v2", buckets)  # upsert (user, date)
-    await persist_agenda(AsyncSessionLocal, "u1", "", buckets)  # summary rỗng → bỏ qua
-
-    loaded = await load_today_agendas_from_db(AsyncSessionLocal)
-    assert list(loaded) == ["u1"]
-    assert loaded["u1"].summary == "agenda v2"
-    assert loaded["u1"].buckets.decide == ["HPG"]
 
 
 # ── Wave F5: calibration đọc feedback ledger, không qua DashboardService ──────

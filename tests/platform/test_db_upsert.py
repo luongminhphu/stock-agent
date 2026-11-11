@@ -7,9 +7,9 @@ from datetime import UTC, date, datetime
 import pytest
 from sqlalchemy import select
 
-from src.briefing.models import DailyAgenda
 from src.market.models import CandleCoverage, MarketQuoteCache
 from src.platform.db import AsyncSessionLocal, upsert_rows
+from src.watchlist.models import WatchlistItem
 
 
 @pytest.mark.anyio
@@ -74,26 +74,27 @@ async def test_upsert_batch_sorted_and_partial_update_columns() -> None:
 
 @pytest.mark.anyio
 async def test_upsert_by_named_constraint_works_on_sqlite() -> None:
-    today = date.today()
+    now = datetime.now(UTC)
     row = {
         "user_id": "u1",
-        "agenda_date": today,
-        "summary": "a",
-        "buckets_json": None,
-        "created_at": datetime.now(UTC),
+        "ticker": "HPG",
+        "note": "a",
+        "priority": 100,
+        "added_at": now,
+        "updated_at": now,
     }
     assert await upsert_rows(
-        AsyncSessionLocal, DailyAgenda, row, constraint="uq_daily_agendas_user_date"
+        AsyncSessionLocal, WatchlistItem, row, constraint="uq_watchlist_user_ticker"
     )
     assert await upsert_rows(
         AsyncSessionLocal,
-        DailyAgenda,
-        {**row, "summary": "b"},
-        constraint="uq_daily_agendas_user_date",
+        WatchlistItem,
+        {**row, "note": "b"},
+        constraint="uq_watchlist_user_ticker",
     )
     async with AsyncSessionLocal() as s:
-        rows = (await s.execute(select(DailyAgenda))).scalars().all()
-    assert len(rows) == 1 and rows[0].summary == "b"
+        rows = (await s.execute(select(WatchlistItem))).scalars().all()
+    assert len(rows) == 1 and rows[0].note == "b"
 
 
 @pytest.mark.anyio
