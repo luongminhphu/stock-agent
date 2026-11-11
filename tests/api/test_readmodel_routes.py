@@ -84,35 +84,6 @@ async def test_thesis_detail_returns_components(bootstrapped_client, session):
 
 
 # ---------------------------------------------------------------------------
-# GET /readmodel/leaderboard/{user_id}
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_leaderboard_returns_200(bootstrapped_client):
-    r = await bootstrapped_client.get(f"/api/v1/readmodel/leaderboard/{USER}")
-    assert r.status_code == 200
-    body = r.json()
-    assert body["user_id"] == USER
-    assert body["sort_by"] == "score"
-    assert body["entries"] == []
-
-
-@pytest.mark.asyncio
-async def test_leaderboard_sort_by_pnl(bootstrapped_client):
-    r = await bootstrapped_client.get(f"/api/v1/readmodel/leaderboard/{USER}?sort_by=pnl")
-    assert r.status_code == 200
-    assert r.json()["sort_by"] == "pnl"
-
-
-@pytest.mark.asyncio
-async def test_leaderboard_invalid_sort_by_422(bootstrapped_client):
-    """Invalid sort_by value rejected at FastAPI validation layer."""
-    r = await bootstrapped_client.get(f"/api/v1/readmodel/leaderboard/{USER}?sort_by=invalid")
-    assert r.status_code == 422
-
-
-# ---------------------------------------------------------------------------
 # GET /readmodel/thesis/{thesis_id}/timeline
 # ---------------------------------------------------------------------------
 

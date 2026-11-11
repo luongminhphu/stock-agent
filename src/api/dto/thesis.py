@@ -331,24 +331,3 @@ class ApplyAiReviewRequest(BaseModel):
         le=1.0,
         description="Mức tin cậy của AI cho verdict (0.0-1.0)",
     )
-
-
-# ---------------------------------------------------------------------------
-# Debate (Wave C.2)
-# ---------------------------------------------------------------------------
-
-
-class DebateRequest(BaseModel):
-    """Body for POST /thesis/{thesis_id}/debate.
-
-    debate_focus narrows the adversarial analysis:
-      - "entry"  → challenge entry timing, valuation at entry
-      - "exit"   → challenge exit/target price assumptions
-      - "sizing" → challenge position size relative to conviction and risk
-      - None     → full debate across all dimensions
-    """
-
-    debate_focus: Literal["entry", "exit", "sizing"] | None = Field(
-        default=None,
-        description="Góc phân tích cụ thể: 'entry' | 'exit' | 'sizing' | null (toàn diện)",
-    )
