@@ -11,7 +11,8 @@ __all__ entry here.
 """
 
 # --- Base ---
-from src.ai.schemas._base import RiskLevel, Verdict, _coerce_confidence
+# --- Ranked signals / risk alerts (input tuỳ chọn của narrator/briefing) ---
+from src.ai.schemas._base import PortfolioRiskNote, RiskLevel, Verdict, _coerce_confidence
 
 # --- Briefing ---
 from src.ai.schemas.briefing import (
@@ -23,18 +24,6 @@ from src.ai.schemas.briefing import (
     PrioritizedAction,
     WatchlistTickerSummary,
 )
-
-# --- Intelligence Report (Investor OS central contract) ---
-from src.ai.schemas.intelligence_report import (
-    TRIGGER_SOURCES,
-    AgentSlot,
-    IntelligenceReport,
-    PriorityAction,
-    RiskFlag,
-)
-
-# --- Intelligence Verdict ---
-from src.ai.schemas.intelligence_verdict import VerdictOutput
 
 # --- Thesis Invalidation ---
 from src.ai.schemas.invalidation import (
@@ -56,6 +45,7 @@ from src.ai.schemas.portfolio_risk import (
     RiskChapter,
     RiskTheme,
 )
+from src.ai.schemas.portfolio_signals import RankedSignal, RiskAlert, Signal, SignalUrgency
 
 # --- Post Mortem ---
 from src.ai.schemas.post_mortem import PostMortemOutput, PostMortemVerdict
@@ -69,63 +59,11 @@ from src.ai.schemas.pretrade import (
     TradeDecision,
 )
 
-# --- Proactive Alert ---
-from src.ai.schemas.proactive_alert import ProactiveAlertOutput, RiskSignal
-
 # --- Replay ---
 from src.ai.schemas.replay import OutcomeVerdict, ReplayOutput
 
-# --- Sector Rotation ---
-from src.ai.schemas.sector_rotation import (
-    FlowDirection,
-    RiskRegime,
-    SectorFlow,
-    SectorRotationOutput,
-    WatchlistCrosscheck,
-)
-
-# --- Signal Credibility ---
-from src.ai.schemas.signal_credibility import (
-    SignalCredibilityOutput,
-    SignalVerdict,
-)
-
-# --- Signal Engine ---
-from src.ai.schemas.signal_engine import (
-    OpportunityHint,
-    PortfolioRiskNote,
-    RankedSignal,
-    RiskAlert,
-    Signal,
-    SignalEngineOutput,
-    SignalUrgency,
-)
-
 # --- Stock Analysis ---
 from src.ai.schemas.stock_analysis import StockAnalysisOutput
-
-# --- Stress Test ---
-from src.ai.schemas.stress_test import (
-    StressTestOutput,
-    ThreatenedAssumption,
-    ThreatLevel,
-)
-
-# --- Thesis Debate ---
-from src.ai.schemas.thesis_debate import (
-    ChallengeStrength,
-    DebateChallenge,
-    DebateOutput,
-    OverallStance,
-)
-
-# --- Thesis Judge ---
-from src.ai.schemas.thesis_judge import (
-    ChallengedAssumption,
-    ThesisConvictionDelta,
-    ThesisJudgeOutput,
-    ThesisJudgeVerdict,
-)
 
 # --- Thesis Review ---
 from src.ai.schemas.thesis_review import (
@@ -150,19 +88,13 @@ from src.ai.schemas.watchdog import (
     WatchdogThreatLevel,
 )
 
-# --- Why ---
-from src.ai.schemas.why import MovementDirection, WhyOutput
-
 __all__ = [
-    # Base
     "Verdict",
     "RiskLevel",
     "_coerce_confidence",
-    # Thesis Review
     "AssumptionRecommendation",
     "CatalystRecommendation",
     "ThesisReviewOutput",
-    # Briefing
     "MarketSentiment",
     "ActionPriority",
     "PrioritizedAction",
@@ -170,85 +102,36 @@ __all__ = [
     "WatchlistTickerSummary",
     "PortfolioPositionBrief",
     "BriefOutput",
-    # Stock Analysis
     "StockAnalysisOutput",
-    # Proactive Alert
-    "RiskSignal",
-    "ProactiveAlertOutput",
-    # Thesis Suggestion
     "SuggestedAssumption",
     "SuggestedCatalyst",
     "ThesisSuggestionResult",
-    # Why
-    "MovementDirection",
-    "WhyOutput",
-    # Pre-Trade
     "TradeDecision",
     "AlignmentStatus",
     "ResolutionCategory",
     "ResolutionStep",
     "PreTradeCheckOutput",
-    # Stress Test
-    "ThreatLevel",
-    "ThreatenedAssumption",
-    "StressTestOutput",
-    # Sector Rotation
-    "FlowDirection",
-    "RiskRegime",
-    "SectorFlow",
-    "WatchlistCrosscheck",
-    "SectorRotationOutput",
-    # Watchdog
     "OverallHealth",
     "WatchdogThreatLevel",
     "WatchdogRecommendedAction",
     "ThreatenedAssumptionWatchdog",
     "WatchdogOutput",
-    # Replay
     "OutcomeVerdict",
     "ReplayOutput",
-    # Signal Credibility
-    "SignalVerdict",
-    "SignalCredibilityOutput",
-    # Signal Engine
     "SignalUrgency",
     "Signal",
     "RankedSignal",
     "PortfolioRiskNote",
     "RiskAlert",
-    "OpportunityHint",
-    "SignalEngineOutput",
-    # Thesis Judge
-    "ThesisConvictionDelta",
-    "ThesisJudgeVerdict",
-    "ChallengedAssumption",
-    "ThesisJudgeOutput",
-    # Portfolio Risk Narrator
     "RiskTheme",
     "RiskChapter",
     "PortfolioRiskNarrativeOutput",
-    # Thesis Invalidation
     "BreachType",
     "InvalidationVerdict",
     "InvalidationSignal",
-    # Next Action
     "ActionScope",
     "SuggestedAction",
     "NextActionPlan",
-    # Post Mortem
     "PostMortemVerdict",
     "PostMortemOutput",
-    # Thesis Debate
-    "OverallStance",
-    "ChallengeStrength",
-    "DebateChallenge",
-    "DebateOutput",
-    # Intelligence Verdict
-    "VerdictOutput",
-    # Intelligence Report
-    "TRIGGER_SOURCES",
-    "AgentSlot",
-    "IntelligenceReport",
-    "PriorityAction",
-    "RiskFlag",
 ]
