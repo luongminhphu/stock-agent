@@ -24,13 +24,6 @@ Design notes
   call agent → persist snapshot → return BriefResult.
 - The _collect_contexts() helper is shared between morning and eod flows.
   All context-builders run in parallel via asyncio.gather.
-- _build_agenda_context() reads from agenda_cache (populated by
-  DailyAgendaCompletedEvent at 07:30) — no DB access, no session conflict.
-  AgendaService.build_agenda() was the previous approach but caused
-  greenlet_spawn errors because it runs DB queries + asyncio.gather on
-  the same AsyncSession that BriefingService already holds. The cache
-  approach is faster and architecturally correct: the agenda is computed
-  once before the brief, not re-computed during it.
 - Context-builders are fail-safe: each catches its own errors and returns
   a degraded value (empty string / empty list) rather than aborting the
   brief.
@@ -57,8 +50,6 @@ Context sources injected into BriefingAgent
   thesis            — ThesisService.get_thesis_health(user_id) → thesis status
   risk              — PortfolioRiskNarrator.narrate(user_id) → rendered into market_context
   feedback          — ai.memory.FeedbackLedgerReader.brief_calibration() → calibration (F5)
-  agenda            — agenda_cache.get_agenda(user_id) → cached CachedAgenda (no DB call)
-                       populated by BriefingListener._handle_agenda via DailyAgendaCompletedEvent
   lessons           — LessonService.get_pattern_summary(session, user_id) → patterns
   investor_profile  — InvestorProfileService.get_investor_context() → profile block
 """
@@ -67,12 +58,10 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.briefing.agenda_cache import get_agenda
 from src.briefing.repository import BriefSnapshotRepository
 from src.platform.logging import get_logger
 
@@ -136,8 +125,6 @@ class BriefingService:
     quote_service                — Any object with get_bulk_quotes(tickers) → list[Quote]. Optional.
     risk_narrator                — PortfolioRiskNarrator. Optional.
     dashboard_service            — DashboardService (feedback calibration). Optional.
-    agenda_service               — Kept for backward compat. Ignored — agenda context
-                                   is now read from agenda_cache (no DB call needed).
     lesson_service               — LessonService (behavioral pattern summary). Optional.
     investor_profile_service     — InvestorProfileService (risk appetite + profile). Optional.
     """
@@ -152,7 +139,6 @@ class BriefingService:
         quote_service: Any = None,
         risk_narrator: Any = None,
         dashboard_service: Any = None,  # F5: deprecated, không dùng — giữ để không TypeError
-        agenda_service: Any = None,  # kept for backward compat, not used
         lesson_service: Any = None,
         investor_profile_service: Any = None,
         # Nhận kwargs cũ (sector_agent, thesis_judge_agent, trend_store…) đã bị gỡ
@@ -166,7 +152,6 @@ class BriefingService:
         self._thesis_service = thesis_service
         self._quote_service = quote_service
         self._risk_narrator = risk_narrator
-        # agenda_service intentionally not stored — we read from cache instead
         self._lesson_service = lesson_service
         self._investor_profile_service = investor_profile_service
         self._repo = BriefSnapshotRepository(session)
@@ -191,7 +176,6 @@ class BriefingService:
             past_lessons=contexts.get("lessons_context", ""),
             investor_profile=contexts.get("investor_profile_context", ""),
             feedback_summary=contexts.get("feedback_summary", ""),
-            agenda_context=contexts.get("agenda_context", ""),
             portfolio_note=contexts.get("portfolio_note"),
             session=self._session,
             user_id=user_id,
@@ -214,19 +198,6 @@ class BriefingService:
             quotes=contexts.get("quotes", []),
             risk_context=contexts.get("risk_context", ""),
         )
-        # Wave 3: agenda reconciliation — compare morning DECIDE vs actual actions.
-        # Runs here (not in _collect_contexts gather) because it queries Trade +
-        # DecisionLog on the same AsyncSession; the gather uses parallel coroutines
-        # which are unsafe against the shared session for this read pattern.
-        agenda_reconciliation = await self._build_agenda_reconciliation_context(user_id)
-        eod_agenda_context = contexts.get("agenda_context", "")
-        if agenda_reconciliation:
-            eod_agenda_context = (
-                (eod_agenda_context + "\n\n" + agenda_reconciliation)
-                if eod_agenda_context
-                else agenda_reconciliation
-            )
-
         output = await self._agent.eod_brief(
             market_context=market_context,
             watchlist_tickers=tickers,
@@ -235,7 +206,6 @@ class BriefingService:
             past_lessons=contexts.get("lessons_context", ""),
             investor_profile=contexts.get("investor_profile_context", ""),
             feedback_summary=contexts.get("feedback_summary", ""),
-            agenda_context=eod_agenda_context,
             portfolio_note=contexts.get("portfolio_note"),
             session=self._session,
             user_id=user_id,
@@ -332,11 +302,7 @@ class BriefingService:
         user_id: str,
         tickers: list[str],
     ) -> dict[str, Any]:
-        """Collect all context blocks. All builders run in parallel via asyncio.gather.
-
-        _build_agenda_context reads from in-memory cache — no DB access —
-        so it is safe to include in the gather without greenlet_spawn risk.
-        """
+        """Collect all context blocks. All builders run in parallel via asyncio.gather."""
         # Phase 1: build investor context first.
         # ContextBuilder.build() is DB-bound and must not share a session
         # with the gather below — it creates its own SAVEPOINT chain.
@@ -351,7 +317,6 @@ class BriefingService:
             feedback_summary,
             lessons_context,
             portfolio_note,
-            agenda_context,
         ) = await asyncio.gather(
             self._build_pnl_context(user_id),
             self._build_thesis_context(user_id),
@@ -360,7 +325,6 @@ class BriefingService:
             self._build_feedback_summary(user_id),
             self._build_lessons_context(user_id),
             self._build_portfolio_note(user_id),
-            self._build_agenda_context(user_id),
         )
 
         debug_flags = {
@@ -371,7 +335,6 @@ class BriefingService:
             "has_lessons": bool(lessons_context),
             "has_investor_profile": bool(investor_profile_context),
             "has_feedback_summary": bool(feedback_summary),
-            "has_agenda_context": bool(agenda_context),
             "has_portfolio_note": bool(portfolio_note),
             "has_risk_context": bool(risk_context),
         }
@@ -386,7 +349,6 @@ class BriefingService:
             "lessons_context": lessons_context,
             "investor_profile_context": investor_profile_context,
             "portfolio_note": portfolio_note,
-            "agenda_context": agenda_context,
         }
 
     # ------------------------------------------------------------------
@@ -599,115 +561,6 @@ class BriefingService:
             return cal.to_prompt_text()
         except Exception as exc:
             logger.warning("briefing.feedback_summary.failed", error=str(exc))
-            return ""
-
-    async def _build_agenda_context(self, user_id: str) -> str:
-        """Read agenda context from in-memory cache — zero DB access.
-
-        The agenda is populated by BriefingListener._handle_agenda() when
-        DailyAgendaCompletedEvent fires at 07:30 ICT (AgendaBuilderScheduler).
-
-        Why cache instead of AgendaService.build_agenda():
-          - AgendaService queries the DB and calls asyncio.gather internally
-            on the same AsyncSession that BriefingService holds, causing
-            greenlet_spawn / await_only errors at runtime.
-          - The agenda is already computed before morning brief runs — reading
-            it from cache is both faster and architecturally correct.
-          - If the cache is cold (no agenda built yet today), returns "" silently
-            and the brief runs without agenda context.
-        """
-        try:
-            cached = get_agenda(user_id)
-            if cached is None:
-                return ""
-            # Use structured buckets when available for richer context
-            buckets = getattr(cached, "buckets", None)
-            if buckets is not None:
-                parts = []
-                if cached.summary:
-                    parts.append(cached.summary)
-                for ticker in buckets.decide or []:
-                    parts.append(f"DECIDE {ticker}")
-                for ticker in buckets.watch or []:
-                    parts.append(f"WATCH {ticker}")
-                for ticker in buckets.defer or []:
-                    parts.append(f"DEFER {ticker}")
-                return "\n".join(parts) if parts else ""
-            # Fallback: plain summary string
-            return cached.summary or ""
-        except Exception as exc:
-            logger.warning("briefing.agenda_context.failed", error=str(exc))
-            return ""
-
-    async def _build_agenda_reconciliation_context(self, user_id: str) -> str:
-        """Wave 3: compare this morning's DECIDE bucket vs actual user actions today.
-
-        Reads the cached agenda (in-memory, zero DB) and queries today's
-        Trade + DecisionLog rows to determine follow-through. Renders a
-        compact block for the EOD brief so the AI can call out missed or
-        completed agenda items.
-
-        Returns "" when no agenda was cached today (scheduler path) or when
-        the DECIDE bucket is empty — the EOD brief then runs without the
-        reconciliation block.
-        """
-        try:
-            from src.briefing.agenda_cache import get_agenda  # noqa: PLC0415
-
-            cached = get_agenda(user_id)
-            if cached is None or cached.buckets is None or not cached.buckets.decide:
-                return ""
-
-            decide_tickers = [t.upper() for t in cached.buckets.decide]
-
-            # Actual actions today: trades executed + non-PRETRADE decisions logged
-            from sqlalchemy import select  # noqa: PLC0415
-
-            from src.portfolio.models import Trade  # noqa: PLC0415
-            from src.thesis.models import DecisionLog  # noqa: PLC0415
-
-            today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
-
-            trade_rows = (
-                await self._session.execute(
-                    select(Trade.ticker, Trade.trade_type).where(
-                        Trade.user_id == user_id, Trade.traded_at >= today_start
-                    )
-                )
-            ).all()
-            decision_rows = (
-                await self._session.execute(
-                    select(DecisionLog.ticker, DecisionLog.decision_type).where(
-                        DecisionLog.user_id == user_id,
-                        DecisionLog.decision_at >= today_start,
-                        DecisionLog.decision_type != "PRETRADE_ADVICE",
-                    )
-                )
-            ).all()
-
-            acted: dict[str, list[str]] = {}
-            for ticker, ttype in trade_rows:
-                acted.setdefault(ticker.upper(), []).append(
-                    ttype.value if hasattr(ttype, "value") else str(ttype)
-                )
-            for ticker, dtype in decision_rows:
-                acted.setdefault(ticker.upper(), []).append(str(dtype))
-
-            done = [t for t in decide_tickers if t in acted]
-            missed = [t for t in decide_tickers if t not in acted]
-
-            if not done and not missed:
-                return ""
-
-            lines = ["Agenda sáng nay → thực tế:"]
-            for t in done:
-                actions = ", ".join(acted[t])
-                lines.append(f"  {t}: ĐÃ HÀNH ĐỘNG ({actions})")
-            for t in missed:
-                lines.append(f"  {t}: CHƯA HÀNH ĐỘNG — cần giải thích hoặc defer có chủ đích")
-            return "\n".join(lines)
-        except Exception as exc:
-            logger.warning("briefing.agenda_reconciliation.failed", error=str(exc))
             return ""
 
     async def _build_lessons_context(self, user_id: str) -> str:

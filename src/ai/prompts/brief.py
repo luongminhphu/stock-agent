@@ -116,7 +116,6 @@ def build_morning_prompt(
     past_lessons: str = "",
     investor_profile: str = "",
     feedback_summary: str = "",
-    agenda_context: str = "",
 ) -> str:
     """Build morning brief prompt.
 
@@ -134,9 +133,6 @@ def build_morning_prompt(
         feedback_summary:  Optional feedback calibration string from
             BriefingService._build_feedback_context(). When provided, AI
             adjusts action count and specificity based on acted_rate.
-        agenda_context:    Optional pre-built daily agenda string from
-            AgendaBuilderScheduler (decide/watch/defer buckets). When
-            provided, AI uses agenda priority to order prioritized_actions.
     """
     ticker_str = ", ".join(watchlist_tickers) if watchlist_tickers else "(không có watchlist)"
     prompt = f"""[MORNING BRIEF — Phiên hôm nay]
@@ -146,9 +142,6 @@ Dữ liệu thị trường:
 
 Watchlist cần theo dõi: {ticker_str}
 """
-    if agenda_context:
-        prompt += f"\nDaily Agenda (AI đã phân loại trước):\n{agenda_context}\n"
-
     if investor_profile:
         prompt += f"\n{investor_profile}\n"
 
@@ -173,14 +166,6 @@ Watchlist cần theo dõi: {ticker_str}
         " Với mỗi ticker, dùng dữ liệu giá từ phần 'Dữ liệu thị trường' ở trên."
         " Nếu không có giá, đặt price=0, change_pct=0 và ghi rõ trong one_line là thiếu dữ liệu."
     )
-    if agenda_context:
-        prompt += (
-            " Ưu tiên thứ tự prioritized_actions theo Daily Agenda:"
-            " ticker trong bucket 'decide' → ưu tiên ACT_TODAY và bắt buộc có ít nhất 1 prioritized_actions entry riêng cho MỖI ticker trong bucket này;"
-            " ticker trong 'watch' → WATCH_MORE trừ khi có dấu hiệu đảo chiều mạnh;"
-            " ticker trong 'defer' → SKIP_TODAY trừ khi có thông tin mới cực kỳ quan trọng."
-            " Câu đầu tiên của summary phải tóm tắt trọng tâm xoay quanh các ticker trong bucket 'decide'."
-        )
     if investor_profile:
         prompt += (
             " Dùng INVESTOR PROFILE để lọc và cá nhân hóa prioritized_actions:"
@@ -235,7 +220,6 @@ def build_eod_prompt(
     past_lessons: str = "",
     investor_profile: str = "",
     feedback_summary: str = "",
-    agenda_context: str = "",
 ) -> str:
     """Build EOD brief prompt.
 
@@ -252,10 +236,6 @@ def build_eod_prompt(
         investor_profile:  Optional pre-rendered investor profile block.
         feedback_summary:  Optional feedback calibration string. Same semantics
                            as morning prompt — adjusts action specificity only.
-        agenda_context:    Optional pre-built daily agenda string from
-                           AgendaBuilderScheduler (decide/watch/defer buckets).
-                           When provided, AI uses agenda outcome to review
-                           what was planned vs what happened in the session.
     """
     ticker_str = ", ".join(watchlist_tickers) if watchlist_tickers else "(không có watchlist)"
     prompt = f"""[EOD BRIEF — Tổng kết phiên]
@@ -265,9 +245,6 @@ Diễn biến phiên hôm nay:
 
 Watchlist cần review: {ticker_str}
 """
-    if agenda_context:
-        prompt += f"\nDaily Agenda sáng nay (so sánh kế hoạch vs thực tế):\n{agenda_context}\n"
-
     if investor_profile:
         prompt += f"\n{investor_profile}\n"
 
@@ -292,14 +269,6 @@ Watchlist cần review: {ticker_str}
         " Tổng kết hiệu suất từng mã trong phiên: giá đóng cửa, % thay đổi, tín hiệu kỹ thuật."
         " watch_reason là điểm cần chú ý cho phiên TIẾP THEO."
     )
-    if agenda_context:
-        prompt += (
-            " So sánh kết quả phiên với Daily Agenda sáng nay:"
-            " ticker trong bucket 'decide' — quyết định đã được thực hiện chưa, kết quả thế nào;"
-            " ticker trong 'watch' — tín hiệu đã xuất hiện chưa;"
-            " ticker trong 'defer' — có gì thay đổi không. Dùng để cá nhân hóa watch_reason."
-            " Nếu bất kỳ ticker trong bucket 'decide' nào chưa được hành động, nêu rõ trong summary và đề xuất hành động cụ thể cho phiên tới."
-        )
     if investor_profile:
         prompt += (
             " Dùng INVESTOR PROFILE để lọc và cá nhân hóa prioritized_actions:"
