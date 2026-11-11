@@ -14,6 +14,8 @@ Endpoints:
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from src.api.deps import (
@@ -247,18 +249,24 @@ async def get_base_rate(
             detail=f"Base-rate data unavailable for '{ticker}': {exc}",
         ) from exc
 
+    return baserate_response(rep)
+
+
+def baserate_response(rep: object) -> BaseRateResponse:
+    """BaseRateReport (market.baserate) → DTO. Dùng chung cho cổ phiếu và VN30."""
+    r: Any = rep
     return BaseRateResponse(
-        ticker=rep.ticker,
-        as_of=rep.as_of,
-        state=rep.state,
-        state_labels={k: FEATURE_LABELS.get(k, {}).get(v, v) for k, v in rep.state.items()},
-        matched_on=list(rep.matched_on),
-        dropped=list(rep.dropped),
-        matching_days=rep.matching_days,
-        suggestion=rep.suggestion,
-        confidence=rep.confidence,
-        outcomes=[BaseRateOutcomeResponse(**vars(o)) for o in rep.outcomes.values()],
-        analogs=[BaseRateAnalogResponse(**vars(a)) for a in rep.analogs],
-        history_from=rep.history_from,
-        notes=rep.notes,
+        ticker=r.ticker,
+        as_of=r.as_of,
+        state=r.state,
+        state_labels={k: FEATURE_LABELS.get(k, {}).get(v, v) for k, v in r.state.items()},
+        matched_on=list(r.matched_on),
+        dropped=list(r.dropped),
+        matching_days=r.matching_days,
+        suggestion=r.suggestion,
+        confidence=r.confidence,
+        outcomes=[BaseRateOutcomeResponse(**vars(o)) for o in r.outcomes.values()],
+        analogs=[BaseRateAnalogResponse(**vars(a)) for a in r.analogs],
+        history_from=r.history_from,
+        notes=r.notes,
     )

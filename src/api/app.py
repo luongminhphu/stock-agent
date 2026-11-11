@@ -38,6 +38,7 @@ from fastapi.staticfiles import StaticFiles
 from src.api.routes.briefing import router as briefing_router
 from src.api.routes.core_engine import router as core_engine_router
 from src.api.routes.decisions import router as decisions_router
+from src.api.routes.derivatives import router as derivatives_router
 from src.api.routes.health import router as health_router
 from src.api.routes.market import router as market_router
 from src.api.routes.memory import router as memory_router
@@ -201,6 +202,7 @@ def create_app() -> FastAPI:
     app.include_router(rrg_router, prefix="/api/v1")  # RRG chart
     app.include_router(trend_router, prefix="/api/v1")  # Trend Analysis panel
     app.include_router(pretrade_router, prefix="/api/v1")  # P1b — kiểm tra AI trước lệnh
+    app.include_router(derivatives_router, prefix="/api/v1")  # HĐTL VN30
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Any, exc: Exception) -> JSONResponse:
