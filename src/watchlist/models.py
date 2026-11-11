@@ -42,7 +42,7 @@ class AlertConditionType(enum.StrEnum):
     CHANGE_PCT_UP = "change_pct_up"
     CHANGE_PCT_DOWN = "change_pct_down"
     VOLUME_SPIKE = "volume_spike"
-    THESIS_TRIGGER = "thesis_trigger"  # narrative watch rule from StressTestSubscriber
+    THESIS_TRIGGER = "thesis_trigger"  # narrative watch rule từ review_outcome_reactor
 
 
 class AlertStatus(enum.StrEnum):
