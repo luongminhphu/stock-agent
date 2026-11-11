@@ -34,8 +34,8 @@ Design notes
 - Context-builders are fail-safe: each catches its own errors and returns
   a degraded value (empty string / empty list) rather than aborting the
   brief.
-- _build_market_context() renders quotes + sector/risk/judge/next_action/
-  trend_pred into a single market_context string that BriefingAgent expects.
+- _build_market_context() renders quotes + risk/next_action
+  into a single market_context string that BriefingAgent expects.
   BriefingAgent only accepts pre-rendered strings — never raw lists or
   unknown kwargs.
 - _persist_snapshot() stores output.model_dump_json() as BriefSnapshot.content
@@ -55,11 +55,8 @@ Context sources injected into BriefingAgent
   quotes            — QuoteService.get_bulk_quotes(tickers) → rendered into market_context
   pnl               — PnLService.get_portfolio_pnl(user_id) → unrealised P&L
   thesis            — ThesisService.get_thesis_health(user_id) → thesis status
-  sector            — SectorRotationAgent.analyze(sector_performance) → compact regime string
-  judge             — ThesisJudgeAgent.judge(theses) → rendered into market_context
   risk              — PortfolioRiskNarrator.narrate(user_id) → rendered into market_context
   next_action       — NextActionSuggester.suggest(user_id) → rendered into market_context
-  trend_pred        — TrendPredictionStore.get_recent(user_id) → rendered into market_context
   feedback          — ai.memory.FeedbackLedgerReader.brief_calibration() → calibration (F5)
   agenda            — agenda_cache.get_agenda(user_id) → cached CachedAgenda (no DB call)
                        populated by BriefingListener._handle_agenda via DailyAgendaCompletedEvent
@@ -138,13 +135,8 @@ class BriefingService:
     pnl_service                  — PnLService (unrealised P&L context). Optional.
     thesis_service               — ThesisService (thesis health context). Optional.
     quote_service                — Any object with get_bulk_quotes(tickers) → list[Quote]. Optional.
-    thesis_judge_agent           — ThesisJudgeAgent. Optional.
-    sector_agent                 — SectorRotationAgent. Optional.
-                                   Uses SectorRotationService.get_sector_flows() →
-                                   SectorRotationAgent.analyze() → compact regime string.
     risk_narrator                — PortfolioRiskNarrator. Optional.
     next_action_agent            — NextActionSuggester. Optional.
-    trend_store                  — TrendPredictionStore. Optional.
     dashboard_service            — DashboardService (feedback calibration). Optional.
     agenda_service               — Kept for backward compat. Ignored — agenda context
                                    is now read from agenda_cache (no DB call needed).
@@ -160,17 +152,14 @@ class BriefingService:
         pnl_service: Any = None,
         thesis_service: Any = None,
         quote_service: Any = None,
-        thesis_judge_agent: Any = None,
-        sector_agent: Any = None,
         risk_narrator: Any = None,
         next_action_agent: Any = None,
-        trend_store: Any = None,
         dashboard_service: Any = None,  # F5: deprecated, không dùng — giữ để không TypeError
         agenda_service: Any = None,  # kept for backward compat, not used
         lesson_service: Any = None,
         investor_profile_service: Any = None,
-        # Accept any extra kwargs from callers that pass unknown params
-        # (e.g. sector_rotation_agent) without raising TypeError.
+        # Nhận kwargs cũ (sector_agent, thesis_judge_agent, trend_store…) đã bị gỡ
+        # mà caller cũ có thể còn truyền — bỏ qua thay vì TypeError.
         **_extra: Any,
     ) -> None:
         self._session = session
@@ -179,11 +168,8 @@ class BriefingService:
         self._pnl_service = pnl_service
         self._thesis_service = thesis_service
         self._quote_service = quote_service
-        self._thesis_judge_agent = thesis_judge_agent
-        self._sector_agent = sector_agent
         self._risk_narrator = risk_narrator
         self._next_action_agent = next_action_agent
-        self._trend_store = trend_store
         # agenda_service intentionally not stored — we read from cache instead
         self._lesson_service = lesson_service
         self._investor_profile_service = investor_profile_service
@@ -199,11 +185,8 @@ class BriefingService:
         contexts = await self._collect_contexts(user_id, tickers)
         market_context = self._build_market_context(
             quotes=contexts.get("quotes", []),
-            sector_context=contexts.get("sector_context", ""),
-            judge_context=contexts.get("judge_context", ""),
             risk_context=contexts.get("risk_context", ""),
             next_action_context=contexts.get("next_action_context", ""),
-            trend_pred_context=contexts.get("trend_pred_context", ""),
         )
         output = await self._agent.morning_brief(
             market_context=market_context,
@@ -234,11 +217,8 @@ class BriefingService:
         contexts = await self._collect_contexts(user_id, tickers)
         market_context = self._build_market_context(
             quotes=contexts.get("quotes", []),
-            sector_context=contexts.get("sector_context", ""),
-            judge_context=contexts.get("judge_context", ""),
             risk_context=contexts.get("risk_context", ""),
             next_action_context=contexts.get("next_action_context", ""),
-            trend_pred_context=contexts.get("trend_pred_context", ""),
         )
         # Wave 3: agenda reconciliation — compare morning DECIDE vs actual actions.
         # Runs here (not in _collect_contexts gather) because it queries Trade +
@@ -321,11 +301,8 @@ class BriefingService:
     def _build_market_context(
         self,
         quotes: list[Any],
-        sector_context: str = "",
-        judge_context: str = "",
         risk_context: str = "",
         next_action_context: str = "",
-        trend_pred_context: str = "",
     ) -> str:
         """Render quotes + enrichment blocks into a single market_context string."""
         parts: list[str] = []
@@ -341,20 +318,11 @@ class BriefingService:
                 lines.append(f"{ticker}: {price:,.0f} ({change_pct:+.2f}%){vol_str}")
             parts.append("Giá hiện tại:\n" + "\n".join(lines))
 
-        if judge_context:
-            parts.append(f"Thesis scores:\n{judge_context}")
-
         if risk_context:
             parts.append(f"Risk summary:\n{risk_context}")
 
         if next_action_context:
             parts.append(f"Next actions:\n{next_action_context}")
-
-        if trend_pred_context:
-            parts.append(f"Trend predictions:\n{trend_pred_context}")
-
-        if sector_context:
-            parts.append(f"Sector:\n{sector_context}")
 
         return "\n\n".join(parts) if parts else ""
 
@@ -379,23 +347,18 @@ class BriefingService:
         _build_agenda_context reads from in-memory cache — no DB access —
         so it is safe to include in the gather without greenlet_spawn risk.
         """
-        # Phase 1: build investor context first so judge can use it.
+        # Phase 1: build investor context first.
         # ContextBuilder.build() is DB-bound and must not share a session
         # with the gather below — it creates its own SAVEPOINT chain.
         investor_profile_context = await self._build_investor_profile_context(user_id)
 
         # Phase 2: all remaining context builders in parallel.
-        # _build_judge_context_with_investor receives the already-built
-        # investor_context so ThesisJudgeAgent can apply bias-awareness.
         (
             pnl_context,
             thesis_context,
             quotes,
-            sector_context,
-            judge_context,
             risk_context,
             next_action_context,
-            trend_pred_context,
             feedback_summary,
             lessons_context,
             portfolio_note,
@@ -404,11 +367,8 @@ class BriefingService:
             self._build_pnl_context(user_id),
             self._build_thesis_context(user_id),
             self._build_quote_context(tickers),
-            self._build_sector_context(user_id),
-            self._build_judge_context(user_id, investor_context=investor_profile_context),
             self._build_risk_context(user_id),
             self._build_next_action_context(user_id),
-            self._build_trend_pred_context(user_id),
             self._build_feedback_summary(user_id),
             self._build_lessons_context(user_id),
             self._build_portfolio_note(user_id),
@@ -426,7 +386,6 @@ class BriefingService:
             "has_agenda_context": bool(agenda_context),
             "has_portfolio_note": bool(portfolio_note),
             "has_risk_context": bool(risk_context),
-            "has_judge_context": bool(judge_context),
             "has_next_action_context": bool(next_action_context),
         }
         logger.debug("briefing_service.collect_contexts.done", **debug_flags)
@@ -435,11 +394,8 @@ class BriefingService:
             "pnl_context": pnl_context,
             "thesis_context": thesis_context,
             "quotes": quotes,
-            "sector_context": sector_context,
-            "judge_context": judge_context,
             "risk_context": risk_context,
             "next_action_context": next_action_context,
-            "trend_pred_context": trend_pred_context,
             "feedback_summary": feedback_summary,
             "lessons_context": lessons_context,
             "investor_profile_context": investor_profile_context,
@@ -633,105 +589,6 @@ class BriefingService:
             logger.warning("briefing.quote_context.failed", error=str(exc))
             return []
 
-    async def _build_sector_context(self, user_id: str) -> str:  # noqa: ARG002
-        """Fetch sector performance via SectorRotationService, run AI analysis.
-
-        Uses the same pipeline as bot.commands.sector_rotation:/sector command:
-          SectorRotationService.get_sector_flows() → sector_performance list
-          → SectorRotationAgent.analyze() → formatted context string.
-
-        Soft-fail contract:
-          - Returns "" when sector_agent or quote_service is not injected.
-          - Returns "" on any error (quota, network, parse) — brief is never blocked.
-        """
-        if not self._sector_agent or not self._quote_service:
-            return ""
-        try:
-            from src.market.registry import registry as _registry
-            from src.market.sector_rotation_service import SectorRotationService
-
-            svc = SectorRotationService(
-                quote_service=self._quote_service,
-                registry=_registry,
-            )
-            flows = await svc.get_sector_flows()
-            if not flows:
-                logger.debug("briefing.sector_context.no_flows")
-                return ""
-
-            snapshot_date = await svc.get_snapshot_date()
-
-            # Build sector_performance list in the same format as /sector command
-            sector_performance = [
-                {
-                    "sector": f.sector,
-                    "avg_change_pct_1d": f.avg_change_pct_1d,
-                    "flow_direction": f.flow_direction,
-                    "top_movers": f.top_movers,
-                    "ticker_count": f.ticker_count,
-                }
-                for f in flows
-            ]
-
-            inflow = [f.sector for f in flows if f.avg_change_pct_1d > 0]
-            outflow = [f.sector for f in flows if f.avg_change_pct_1d < 0]
-            macro_context = (
-                f"Ngày {snapshot_date}. "
-                f"Sectors tăng: {', '.join(inflow) or 'không có'}. "
-                f"Sectors giảm: {', '.join(outflow) or 'không có'}."
-            )
-
-            result = await self._sector_agent.analyze(
-                sector_performance=sector_performance,
-                macro_context=macro_context,
-                foreign_flow="",
-            )
-
-            # Format compact string for briefing injection
-            lines = [
-                f"Regime: {result.market_regime} (confidence: {result.confidence})",
-                f"Rotate In: {', '.join(result.top_rotate_in) or '—'}",
-                f"Rotate Out: {', '.join(result.top_rotate_out) or '—'}",
-            ]
-            if result.macro_summary:
-                lines.append(f"Macro: {result.macro_summary[:200]}")
-            if result.key_risk:
-                lines.append(f"Key Risk: {result.key_risk[:150]}")
-
-            context = "\n".join(lines)
-            logger.info(
-                "briefing.sector_context.built",
-                regime=result.market_regime,
-                top_in=result.top_rotate_in,
-                sector_count=len(flows),
-            )
-            return context
-        except Exception as exc:
-            logger.warning("briefing.sector_context.failed", error=str(exc))
-            return ""
-
-    async def _build_judge_context(self, user_id: str, investor_context: str = "") -> str:
-        """Run ThesisJudge for all active theses.
-
-        investor_context: pre-rendered ContextBuilder block; passed into
-        ThesisJudgeAgent so each verdict is aware of investor bias patterns
-        and prior memory (e.g. 'you tend to exit VHM too early').
-        """
-        if not self._thesis_judge_agent or not self._thesis_service:
-            return ""
-        try:
-            theses = await self._thesis_service.list_active(user_id)
-            if not theses:
-                return ""
-            # judge() convenience wrapper — pass investor_context through
-            return (
-                await self._thesis_judge_agent.judge(theses, investor_context=investor_context)
-                or ""
-            )
-        except Exception as exc:
-            logger.warning("briefing.judge_context.failed", error=str(exc))
-            return ""
-
     async def _build_risk_context(self, user_id: str) -> str:
         if not self._risk_narrator:
             return ""
@@ -748,26 +605,6 @@ class BriefingService:
             return await self._next_action_agent.suggest(user_id) or ""
         except Exception as exc:
             logger.warning("briefing.next_action_context.failed", error=str(exc))
-            return ""
-
-    async def _build_trend_pred_context(self, user_id: str) -> str:
-        if not self._trend_store:
-            return ""
-        try:
-            # readmodel.TrendPredictionStore exposes get_top_by_confidence (sync)
-            # Falls back gracefully if store has no predictions yet.
-            preds = self._trend_store.get_top_by_confidence(n=10)
-            if not preds:
-                return ""
-            lines = [
-                f"{getattr(p, 'symbol', getattr(p, 'ticker', '?'))}: "
-                f"{getattr(p, 'verdict', getattr(p, 'direction', '?'))} "
-                f"({getattr(p, 'confidence', 0.0):.0%})"
-                for p in preds
-            ]
-            return "\n".join(lines)
-        except Exception as exc:
-            logger.warning("briefing.trend_pred_context.failed", error=str(exc))
             return ""
 
     async def _build_feedback_summary(self, user_id: str) -> str:

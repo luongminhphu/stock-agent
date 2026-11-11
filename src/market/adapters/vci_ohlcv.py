@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
+from src.market.adapters.http_guard import guarded_request
 from src.market.ohlcv_service import Candle, Interval, OHLCVAdapter
 from src.platform.logging import get_logger
 
@@ -92,7 +93,7 @@ class VCIOHLCVAdapter(OHLCVAdapter):
         }
 
         try:
-            response = await self._client.post(_OHLCV_PATH, json=payload)
+            response = await guarded_request(self._client, "POST", _OHLCV_PATH, json=payload)
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             logger.error("vci_ohlcv.http_error", ticker=ticker, status=exc.response.status_code)
