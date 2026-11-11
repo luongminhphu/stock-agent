@@ -52,34 +52,13 @@ class Settings(BaseSettings):
     eod_channel_id: str = ""
     scheduler_user_id: str = ""
 
-    # Alert channel — cảnh báo quan trọng: InvalidationSubscriber, PositionRiskSubscriber,
-    # TrendShiftSubscriber, StressTestSubscriber, ProactiveWatchSubscriber,
-    # ProactiveDiscoverySubscriber, TrendPredictionSubscriber, EvolutionSubscriber,
-    # IntelligenceEngineSubscriber.
+    # Alert channel — cảnh báo quan trọng (vd ProactiveWatchSubscriber, đèn kế hoạch đổi màu).
     # Bỏ trống = alert subscribers bị disable (không fallback sang morning_channel).
     discord_alert_channel_id: str = ""
 
     # Decision review channel — PostMortemSubscriber (post-mortem / decision replay).
     # Bỏ trống = fallback sang morning_channel_id.
     discord_decision_channel_id: str = ""
-
-    # Thesis Drift Detector
-    thesis_drift_threshold_pct: float = 5.0  # Trigger review khi |drift| >= threshold
-    thesis_drift_cooldown_hours: float = 4.0  # Không re-trigger trong N giờ sau lần review gần nhất
-
-    # Auto-invalidation on stop-loss breach (Wave 6c)
-    # Chạy trong drift scheduler tick (15 phút, giờ giao dịch): rule check
-    # (InvalidationService.check_with_price) → AI confirm (ThesisInvalidationDetector)
-    # → invalidate khi CONFIRMED với confidence đủ cao. Cứu HPG-style case:
-    # giá xuyên stop nhưng score vẫn Strong vì không luồng nào check breach.
-    auto_invalidate_enabled: bool = True  # False = chỉ log, không invalidate
-    auto_invalidate_min_confidence: float = 0.7  # CONFIRMED + confidence >= ngưỡng mới invalidate
-    auto_invalidate_cooldown_hours: float = 24.0  # 1 lần scan breach/thesis/ngày
-
-    # Thesis watchdog (Wave D) — kill-switch (Wave F4)
-    # False = không đăng ký loop 08:25 ICT và run_once() bỏ qua ngay (chỉ log).
-    # Dùng khi AI quota/độ ổn định có vấn đề mà không cần redeploy code.
-    thesis_watchdog_enabled: bool = True
 
     # Alert auto-reactivation cooldown
     # Alerts with auto_reactivate=True will be reset to ACTIVE after this many hours
@@ -172,9 +151,7 @@ class Settings(BaseSettings):
     @property
     def alert_channel_id(self) -> str:
         """Alert channel cho cảnh báo quan trọng (InvalidationSubscriber,
-        PositionRiskSubscriber, TrendShiftSubscriber, StressTestSubscriber,
-        ProactiveWatchSubscriber, ProactiveDiscoverySubscriber,
-        TrendPredictionSubscriber, EvolutionSubscriber, IntelligenceEngineSubscriber).
+        PositionRiskSubscriber, ProactiveWatchSubscriber, scan watchlist, đèn kế hoạch).
 
         KHÔNG fallback sang morning_channel_id — nếu DISCORD_ALERT_CHANNEL_ID chưa set,
         các subscriber này sẽ bị disable để tránh trộn alert vào briefing channel.
