@@ -16,8 +16,6 @@ import src.ai.memory.investor_profile  # noqa: F401
 import src.ai.memory.models  # noqa: F401
 import src.ai.memory.user_behavior_log  # noqa: F401
 import src.briefing.models  # noqa: F401
-import src.core.evolution  # noqa: F401
-import src.core.models  # noqa: F401
 import src.market.models  # noqa: F401 — Wave F2: trend snapshot/prediction tables (từ readmodel)
 import src.portfolio.models  # noqa: F401
 import src.thesis.models  # noqa: F401
