@@ -100,3 +100,27 @@ async def test_suggest_create_list_check(overrides, bootstrapped_client) -> None
 
     r = await c.post("/api/v1/plans/check")
     assert r.status_code == 200 and r.json()["changed"][0]["to"] == "do"
+
+
+@pytest.mark.asyncio
+async def test_explain_passes_computed_numbers_only(app, overrides, bootstrapped_client) -> None:  # type: ignore[no-untyped-def]
+    from src.ai.agents.plan_explainer import PlanExplanation
+    from src.api.deps import get_ai_client
+
+    seen: dict = {}
+
+    class _AI:
+        async def chat(self, system_prompt, user_prompt, response_schema, **kw):  # type: ignore[no-untyped-def]
+            seen["prompt"] = user_prompt
+            return PlanExplanation(tom_tat="Kế hoạch đã sai vì giá chạm mức cắt lỗ.")
+
+    app.dependency_overrides[get_ai_client] = lambda: _AI()
+    c = bootstrapped_client
+    r = await c.post(
+        "/api/v1/plans", json={"ticker": "VNM", "entry_price": 30000, "stop_price": 27000}
+    )
+    pid = r.json()["id"]
+    r = await c.post(f"/api/v1/plans/{pid}/explain")
+    assert r.status_code == 200 and r.json()["tom_tat"].startswith("Kế hoạch đã sai")
+    assert '"light": "do"' in seen["prompt"] and "xac_suat_lai" in seen["prompt"]
+    assert (await c.post("/api/v1/plans/999999/explain")).status_code == 404

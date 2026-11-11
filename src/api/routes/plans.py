@@ -8,6 +8,7 @@ Endpoints:
     GET  /plans            — kế hoạch đang mở: đèn, lý do, tóm tắt, điều tôi tin, sự kiện
     POST /plans            — tạo kế hoạch (4 câu hỏi)
     POST /plans/check      — kiểm tra ngay (ghi kết quả; bình thường chạy tự động sau đóng cửa)
+    POST /plans/{id}/explain — AI giải thích bằng lời các số liệu đã tính (chỉ khi người dùng bấm)
 """
 
 from __future__ import annotations
@@ -19,7 +20,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.deps import get_baserate_service, get_current_user_id, get_db, get_quote_service
+from src.api.deps import (
+    get_ai_client,
+    get_baserate_service,
+    get_current_user_id,
+    get_db,
+    get_quote_service,
+)
 from src.market.baserate import FEATURE_LABELS
 from src.market.ohlcv_service import _today_ict
 from src.market.price_rules import snap_to_tick
@@ -219,3 +226,52 @@ async def check_now(
             for c in changes
         ]
     }
+
+
+@router.post("/{plan_id}/explain")
+async def explain(
+    plan_id: int,
+    user_id: Annotated[str, Depends(get_current_user_id)],
+    session: AsyncSession = Depends(get_db),
+    quote_svc: Any = Depends(get_quote_service),
+    baserate_svc: Any = Depends(get_baserate_service),
+    ai_client: Any = Depends(get_ai_client),
+) -> dict[str, Any]:
+    """Diễn giải kế hoạch bằng lời. AI chỉ nhận số liệu đã tính — không tự chấm, không đổi gì."""
+    from src.ai.agents.plan_explainer import PlanExplainer  # noqa: PLC0415
+
+    svc = PlanCheckService(session, quote_svc, _state_provider(baserate_svc))
+    evaluated = await svc.evaluate_open(_today_ict(), user_id)
+    found = next(((p, ev, px) for p, ev, px in evaluated if p.id == plan_id), None)
+    if found is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy kế hoạch."
+        )
+    plan = _serialize(*found)
+    baserate: dict[str, Any] | None = None
+    try:
+        rep = await baserate_svc.analyze(plan["ticker"])
+        baserate = {
+            "trang_thai": {k: FEATURE_LABELS.get(k, {}).get(v, v) for k, v in rep.state.items()},
+            "do_tin_cay": rep.confidence,
+            "goi_y_thong_ke": rep.suggestion,
+            "ket_qua": {
+                f"{h}_phien": {
+                    "xac_suat_lai": o.win_prob,
+                    "muc_nen_cua_ma": o.base_win_rate,
+                    "trung_vi_loi_nhuan": o.median_return,
+                    "muc_sut_trung_binh": o.avg_max_drawdown,
+                    "so_dot": o.episodes,
+                }
+                for h, o in rep.outcomes.items()
+            },
+        }
+    except Exception:  # noqa: BLE001 — thiếu tiền lệ vẫn giải thích được phần kế hoạch
+        baserate = None
+    try:
+        out = await PlanExplainer(ai_client).explain(plan, baserate)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail=f"AI chưa giải thích được: {exc}"
+        ) from exc
+    return out.model_dump()
