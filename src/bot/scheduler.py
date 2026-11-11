@@ -71,11 +71,7 @@ from discord.ext import tasks
 from src.bot.commands.decision_embeds import build_replay_embed
 from src.bot.commands.reminder_embeds import build_reminder_embed
 from src.bot.commands.thesis_embeds import (
-    build_drift_embed,
     build_maintenance_embed,
-    build_stop_breach_embed,
-    build_watchdog_digest_embed,
-    build_watchdog_urgent_embed,
 )
 from src.bot.commands.watchlist_embeds import build_scan_embed
 from src.platform.config import settings
@@ -434,8 +430,7 @@ class ThesisMaintenanceScheduler:
         1b. get_upcoming_catalysts()         — lấy catalyst sắp đến trong 30 ngày.
                                                Isolated session, non-blocking.
                                                Chạy độc lập với Step 1 — Step 1 fail không ngăn Step 1b.
-        2.  review_stale_theses()            — AI review, chỉ khi thesis stale > 3 ngày.
-        3.  Discord notify nếu có thay đổi hoặc có upcoming catalysts chưa notified hôm nay.
+        2.  Discord notify nếu có thay đổi hoặc có upcoming catalysts chưa notified hôm nay.
 
     Tất cả các bước dùng session riêng biệt — expire, upcoming query và review độc lập nhau.
     Bước nào fail chỉ ảnh hưởng đến output của chính nó, không rollback bước khác.
@@ -543,36 +538,6 @@ class ThesisMaintenanceScheduler:
             )
             upcoming_catalysts = []
 
-        # -- Step 2: AI review for stale theses --
-        try:
-            from src.platform.bootstrap import (
-                get_quote_service,
-                get_thesis_review_agent,
-                get_ticker_context_service,
-            )
-            from src.thesis.review_service import ReviewService
-
-            async with AsyncSessionLocal() as session:
-                review_svc = ReviewService(
-                    session=session,
-                    agent=get_thesis_review_agent(),
-                    quote_service=get_quote_service(),
-                    ticker_context_service=get_ticker_context_service(),
-                )
-                reviews = await review_svc.review_stale_theses(
-                    user_id=str(user_id),
-                    stale_days=_MAINTENANCE_STALE_DAYS,
-                )
-                await session.commit()
-            logger.info(
-                "scheduler.thesis_maintenance.review_done",
-                reviewed_count=len(reviews),
-            )
-        except Exception as exc:
-            logger.error("scheduler.thesis_maintenance.review_error", error=str(exc))
-            await self._monitor.record_failure(task_name, exc)
-            return
-
         await self._monitor.record_success(task_name)
 
         has_content = expired_count > 0 or reviews or upcoming_catalysts
@@ -626,334 +591,10 @@ class ThesisMaintenanceScheduler:
 # ThesisDriftScheduler
 # ---------------------------------------------------------------------------
 
-# 60 phút: drift thesis là tín hiệu chậm (nhiều ngày), không cần quét 15 phút/lần
-_DRIFT_INTERVAL_MINUTES = 60
-
-
-class ThesisDriftScheduler:
-    """Detect thesis price drift + conviction drift every 60 min during market hours.
-
-    Flow (per tick):
-        1a. DriftService.detect()              — price drift, pure detection, no AI.
-        1b. ConvictionDriftDetector.detect_all() — conviction decay, pure detection, no AI.
-        2.  For each price DriftSignal: ReviewService.review_thesis() — AI review.
-            Conviction-only signals: notify without AI review (wave 1 scope).
-        3.  Discord notify with combined price + conviction drift embed.
-
-    Cooldown is enforced inside DriftService and ConvictionDriftDetector (default 4h).
-
-    Channel: settings.alert_channel_id (DISCORD_ALERT_CHANNEL_ID → morning_channel_id).
-    """
-
-    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
-        self._client = client
-        self._monitor = monitor or get_monitor()
-
-    def start(self) -> None:
-        self._monitor.register_task("thesis.drift")
-        self._drift_task.start()
-        logger.info(
-            "scheduler.drift.started",
-            interval_minutes=_DRIFT_INTERVAL_MINUTES,
-            threshold_pct=settings.thesis_drift_threshold_pct,
-            cooldown_hours=settings.thesis_drift_cooldown_hours,
-        )
-
-    def stop(self) -> None:
-        self._drift_task.cancel()
-        logger.info("scheduler.drift.stopped")
-
-    @tasks.loop(minutes=_DRIFT_INTERVAL_MINUTES)
-    async def _drift_task(self) -> None:
-        now_utc = datetime.datetime.now(tz=datetime.UTC)
-        if not _in_market_hours(now_utc):
-            return
-
-        task_name = "thesis.drift"
-        user_id = getattr(settings, "scheduler_user_id", None)
-        channel_id = settings.alert_channel_id or None
-        if not user_id or not channel_id:
-            logger.warning(
-                "scheduler.drift.skipped",
-                reason="scheduler_user_id or alert_channel_id not configured",
-            )
-            return
-
-        try:
-            from src.platform.bootstrap import (
-                get_ai_client,
-                get_quote_service,
-                get_thesis_review_agent,
-                get_ticker_context_service,
-            )
-            from src.thesis.conviction_drift_detector import ConvictionDriftDetector
-            from src.thesis.drift_service import DriftService
-            from src.thesis.review_service import ReviewService
-
-            async with AsyncSessionLocal() as session:
-                drift_svc = DriftService(
-                    session=session,
-                    quote_service=get_quote_service(),
-                    threshold_pct=settings.thesis_drift_threshold_pct,
-                    cooldown_hours=settings.thesis_drift_cooldown_hours,
-                    ticker_context_service=get_ticker_context_service(),
-                )
-                signals = await drift_svc.detect(str(user_id))
-
-            conviction_signals = []
-            try:
-                async with AsyncSessionLocal() as session:
-                    conviction_detector = ConvictionDriftDetector(
-                        session=session,
-                        cooldown_hours=settings.thesis_drift_cooldown_hours,
-                    )
-                    conviction_signals = await conviction_detector.detect_all(str(user_id))
-
-                if conviction_signals:
-                    logger.info(
-                        "scheduler.drift.conviction_signals_found",
-                        count=len(conviction_signals),
-                        tickers=[s.ticker for s in conviction_signals],
-                    )
-            except Exception as exc:
-                logger.warning("scheduler.drift.conviction_detect_failed", error=str(exc))
-
-            # Wave 6c: stop-breach auto-invalidation scan — cùng tick 15 phút.
-            # Rule trong thesis.StopBreachService; scheduler chỉ wire + notify.
-            breach_outcomes = []
-            try:
-                from src.ai.agents.invalidation_detector import ThesisInvalidationDetector
-                from src.thesis.stop_breach_service import StopBreachService
-
-                async with AsyncSessionLocal() as session:
-                    breach_svc = StopBreachService(
-                        session=session,
-                        quote_service=get_quote_service(),
-                        detector=ThesisInvalidationDetector(get_ai_client()),
-                        cooldown_hours=settings.auto_invalidate_cooldown_hours,
-                        min_confidence=settings.auto_invalidate_min_confidence,
-                        enabled=settings.auto_invalidate_enabled,
-                        ticker_context_service=get_ticker_context_service(),
-                    )
-                    breach_result = await breach_svc.scan(str(user_id))
-                    await session.commit()
-                    breach_outcomes = breach_result.outcomes
-                    if breach_result.invalidated:
-                        logger.info(
-                            "scheduler.drift.stop_breach_auto_invalidated",
-                            count=len(breach_result.invalidated),
-                            tickers=[o.ticker for o in breach_result.invalidated],
-                        )
-                    if breach_result.near_stop:
-                        logger.info(
-                            "scheduler.drift.near_stop",
-                            count=len(breach_result.near_stop),
-                            tickers=[o.ticker for o in breach_result.near_stop],
-                        )
-            except Exception as exc:
-                logger.warning("scheduler.drift.stop_breach_failed", error=str(exc))
-
-            if not signals and not conviction_signals and not breach_outcomes:
-                await self._monitor.record_success(task_name)
-                return
-
-            reviewed_signals: list[tuple[Any, Any]] = []
-            for signal in signals:
-                try:
-                    async with AsyncSessionLocal() as session:
-                        review_svc = ReviewService(
-                            session=session,
-                            agent=get_thesis_review_agent(),
-                            quote_service=get_quote_service(),
-                            ticker_context_service=get_ticker_context_service(),
-                        )
-                        review = await review_svc.review_thesis(
-                            user_id=str(user_id),
-                            thesis_id=signal.thesis_id,
-                        )
-                        await session.commit()
-                    reviewed_signals.append((signal, review))
-                except Exception as exc:
-                    logger.warning(
-                        "scheduler.drift.review_failed",
-                        thesis_id=signal.thesis_id,
-                        error=str(exc),
-                    )
-                    reviewed_signals.append((signal, None))
-
-            channel = self._client.get_channel(int(channel_id))
-            if channel is None:
-                logger.warning("scheduler.drift.channel_not_found", channel_id=channel_id)
-                await self._monitor.record_failure(
-                    task_name, RuntimeError(f"channel {channel_id} not found")
-                )
-                return
-
-            embed = build_drift_embed(
-                reviewed_signals=reviewed_signals,
-                conviction_signals=conviction_signals,
-                now_utc=now_utc,
-            )
-            await channel.send(embed=embed)  # type: ignore[union-attr]
-
-            # Wave 6c: notify riêng cho stop-breach outcomes — đây là tín hiệu
-            # hành động (invalidate xảy ra hoặc cần xử lý), không gộp drift embed.
-            if breach_outcomes:
-                await channel.send(embed=build_stop_breach_embed(breach_outcomes, now_utc))  # type: ignore[union-attr]
-            logger.info(
-                "scheduler.drift.notified",
-                price_signals=len(reviewed_signals),
-                conviction_signals=len(conviction_signals),
-            )
-            await self._monitor.record_success(task_name)
-
-        except Exception as exc:
-            logger.error("scheduler.drift.error", error=str(exc))
-            await self._monitor.record_failure(task_name, exc)
-
-    @_drift_task.before_loop
-    async def _before_drift(self) -> None:
-        await self._client.wait_until_ready()
-
 
 # ---------------------------------------------------------------------------
 # ThesisWatchdogScheduler (Wave D3)
 # ---------------------------------------------------------------------------
-
-# 08:25 ICT: sau InvestorProfileScheduler (08:20, profile tươi cho prompt)
-# và trước BriefingScheduler morning (08:30) để brief có thể tham chiếu.
-_WATCHDOG_TIME = datetime.time(hour=1, minute=25, tzinfo=datetime.UTC)  # 08:25 ICT
-
-
-class ThesisWatchdogScheduler:
-    """Daily assumption-health watchdog cho toàn bộ thesis ACTIVE — 08:25 ICT ngày làm việc.
-
-    Thin adapter: mọi rule (stop theo ATR, assumption ratio, stale, escalation
-    AI ↔ rule, auto-invalidate) nằm trong thesis.WatchdogService. Scheduler chỉ
-    wire dependency từ bootstrap, gọi run_for_user, commit và route embed:
-
-        URGENT_ALERT   → alert_channel_id (nếu chưa set → morning_channel_id)
-        SILENT_WARNING → morning_channel_id (digest, không lặp lại URGENT)
-        chỉ OK         → không gửi, record_success
-
-    Khác ThesisDriftScheduler (15 phút, price-triggered): watchdog là vòng
-    kiểm tra định kỳ theo assumption, không phụ thuộc drift.
-    """
-
-    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
-        self._client = client
-        self._monitor = monitor or get_monitor()
-
-    def start(self) -> None:
-        if not getattr(settings, "thesis_watchdog_enabled", True):
-            logger.info(
-                "scheduler.thesis_watchdog.disabled", reason="thesis_watchdog_enabled=False"
-            )
-            return
-        self._monitor.register_task("thesis.watchdog")
-        self._watchdog_task.start()
-        logger.info("scheduler.thesis_watchdog.started")
-
-    def stop(self) -> None:
-        if self._watchdog_task.is_running():
-            self._watchdog_task.cancel()
-        logger.info("scheduler.thesis_watchdog.stopped")
-
-    @tasks.loop(time=_WATCHDOG_TIME)
-    async def _watchdog_task(self) -> None:
-        now_utc = datetime.datetime.now(tz=datetime.UTC)
-        if now_utc.weekday() >= 5:
-            return
-        await self.run_once(now_utc)
-
-    async def run_once(self, now_utc: datetime.datetime) -> None:
-        """Một lượt chạy — tách khỏi tasks.loop để test được không cần Discord."""
-        task_name = "thesis.watchdog"
-        if not getattr(settings, "thesis_watchdog_enabled", True):
-            logger.info("scheduler.thesis_watchdog.skipped", reason="thesis_watchdog_enabled=False")
-            return
-        user_id = getattr(settings, "scheduler_user_id", None)
-        if not user_id:
-            logger.warning(
-                "scheduler.thesis_watchdog.skipped",
-                reason="scheduler_user_id not configured",
-            )
-            return
-
-        try:
-            from src.ai.agents.invalidation_detector import ThesisInvalidationDetector
-            from src.ai.agents.watchdog import WatchdogAgent
-            from src.platform.bootstrap import (
-                get_ai_client,
-                get_quote_service,
-                get_ticker_context_service,
-            )
-            from src.thesis.invalidation_service import InvalidationService
-            from src.thesis.watchdog_service import WatchdogService
-
-            ai_client = get_ai_client()
-            invalidation_svc = (
-                InvalidationService(detector=ThesisInvalidationDetector(ai_client))
-                if settings.auto_invalidate_enabled
-                else None
-            )
-            async with AsyncSessionLocal() as session:
-                svc = WatchdogService(
-                    session=session,
-                    watchdog_agent=WatchdogAgent(ai_client),
-                    quote_service=get_quote_service(),
-                    invalidation_svc=invalidation_svc,
-                    ticker_context_service=get_ticker_context_service(),
-                    min_confidence=settings.auto_invalidate_min_confidence,
-                )
-                run_result = await svc.run_for_user(str(user_id))
-                await session.commit()
-
-            logger.info(
-                "scheduler.thesis_watchdog.done",
-                total=len(run_result.results),
-                urgent=len(run_result.urgent_alerts),
-                warnings=len(run_result.silent_warnings),
-                errors=len(run_result.errors),
-            )
-
-            if not run_result.has_notable():
-                await self._monitor.record_success(task_name)
-                return
-
-            morning_id = getattr(settings, "morning_channel_id", None)
-            alert_id = getattr(settings, "alert_channel_id", None) or morning_id
-
-            if run_result.has_urgent():
-                await self._send(
-                    alert_id, build_watchdog_urgent_embed(run_result, now_utc), "urgent"
-                )
-            if run_result.silent_warnings:
-                await self._send(
-                    morning_id, build_watchdog_digest_embed(run_result, now_utc), "digest"
-                )
-            await self._monitor.record_success(task_name)
-
-        except Exception as exc:
-            logger.error("scheduler.thesis_watchdog.error", error=str(exc))
-            await self._monitor.record_failure(task_name, exc)
-
-    async def _send(self, channel_id: str | None, embed: discord.Embed, kind: str) -> None:
-        if not channel_id:
-            logger.warning("scheduler.thesis_watchdog.channel_not_configured", kind=kind)
-            return
-        channel = self._client.get_channel(int(channel_id))
-        if channel is None:
-            logger.warning(
-                "scheduler.thesis_watchdog.channel_not_found", kind=kind, channel_id=channel_id
-            )
-            return
-        await channel.send(embed=embed)  # type: ignore[union-attr]
-        logger.info("scheduler.thesis_watchdog.notified", kind=kind)
-
-    @_watchdog_task.before_loop
-    async def _before_watchdog(self) -> None:
-        await self._client.wait_until_ready()
 
 
 # ---------------------------------------------------------------------------
@@ -1944,3 +1585,98 @@ class EodCloseCaptureScheduler:
                 tickers.update(p.ticker for p in positions)
                 tickers.update(await ThesisRepository(session).list_active_tickers(str(user_id)))
         return sorted(t.upper() for t in tickers if t)
+
+
+# ---------------------------------------------------------------------------
+# PlanCheckScheduler — kiểm tra "Kế hoạch nắm giữ" sau đóng cửa
+# ---------------------------------------------------------------------------
+_PLAN_CHECK_TIME = datetime.time(hour=8, minute=30, tzinfo=datetime.UTC)  # 15:30 ICT
+
+
+class PlanCheckScheduler:
+    """Một lượt kiểm tra mọi kế hoạch đang mở lúc 15:30 ICT ngày giao dịch.
+
+    Thay cho drift giá (mỗi giờ), drift niềm tin, watchdog AI và kiểm tra thủng stop:
+    dùng giá đóng cửa đã đối soát (chụp 14:50/15:05), không gọi AI, chỉ gửi MỘT embed
+    cho các kế hoạch đổi đèn. Logic nằm ở thesis.plan_service; scheduler chỉ wire.
+    Catch-up khi khởi động sau 15:30 mà hôm nay chưa chạy.
+    """
+
+    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
+        self._client = client
+        self._monitor = monitor or get_monitor()
+        self._ran_date: datetime.date | None = None
+
+    def start(self) -> None:
+        self._monitor.register_task("plan.check")
+        self._task.start()
+        logger.info("scheduler.plan_check.started", time_ict="15:30")
+
+    def stop(self) -> None:
+        self._task.cancel()
+
+    @tasks.loop(time=_PLAN_CHECK_TIME)
+    async def _task(self) -> None:
+        await self._run("plan.check")
+
+    @_task.before_loop
+    async def _before(self) -> None:
+        await self._client.wait_until_ready()
+        now_ict = datetime.datetime.now(tz=datetime.timezone(datetime.timedelta(hours=7)))
+        if now_ict.time() >= datetime.time(15, 30):
+            await self._run("plan.check.catchup")
+
+    async def _run(self, task_name: str) -> None:
+        from src.market.trading_calendar import VNTradingCalendar
+
+        today_ict = datetime.datetime.now(tz=datetime.timezone(datetime.timedelta(hours=7))).date()
+        if not VNTradingCalendar.is_trading_day(today_ict) or self._ran_date == today_ict:
+            return
+        user_id = getattr(settings, "scheduler_user_id", None)
+        if not user_id:
+            logger.warning("scheduler.plan_check.skipped", reason="scheduler_user_id not set")
+            return
+        try:
+            changes = await self._check(str(user_id), today_ict)
+            self._ran_date = today_ict
+            await self._monitor.record_success(task_name)
+        except Exception as exc:
+            logger.error("scheduler.plan_check.error", error=str(exc))
+            await self._monitor.record_failure(task_name, exc)
+            return
+        if changes:
+            await self._notify(changes)
+
+    async def _check(self, user_id: str, today: datetime.date) -> list[Any]:
+        from src.market.baserate import BaseRateService
+        from src.platform.bootstrap import get_ohlcv_service, get_quote_service
+        from src.thesis.plan_service import PlanCheckService
+
+        baserate = BaseRateService(get_ohlcv_service())
+
+        async def state(ticker: str) -> dict[str, str] | None:
+            rep = await baserate.analyze(ticker)
+            return dict(rep.state) or None
+
+        async with AsyncSessionLocal() as session:
+            changes = await PlanCheckService(session, get_quote_service(), state).run(
+                today, user_id
+            )
+            await session.commit()
+        logger.info("scheduler.plan_check.done", changed=len(changes))
+        return changes
+
+    async def _notify(self, changes: list[Any]) -> None:
+        from src.bot.commands.thesis_embeds import build_plan_digest_embed
+
+        red = any(c.new_light == "do" for c in changes)
+        channel_id = (getattr(settings, "alert_channel_id", None) if red else None) or getattr(
+            settings, "morning_channel_id", None
+        )
+        if not channel_id:
+            return
+        channel = self._client.get_channel(int(channel_id))
+        if channel is None:
+            return
+        now_utc = datetime.datetime.now(datetime.UTC)
+        await channel.send(embed=build_plan_digest_embed(changes, now_utc))  # type: ignore[union-attr]

@@ -2,37 +2,37 @@
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, date, datetime
 
 import pytest
 from sqlalchemy import select
 
 from src.briefing.models import DailyAgenda
-from src.market.models import MarketQuoteCache, TrendSnapshot
+from src.market.models import CandleCoverage, MarketQuoteCache
 from src.platform.db import AsyncSessionLocal, upsert_rows
 
 
 @pytest.mark.anyio
 async def test_upsert_single_row_insert_then_update() -> None:
     now = datetime.now(UTC)
+    row = {"ticker": "HPG", "first_date": date(2020, 1, 1), "updated_at": now}
     ok = await upsert_rows(
         AsyncSessionLocal,
-        TrendSnapshot,
-        {"symbol": "HPG", "bundle_json": json.dumps({"v": 1}), "saved_at": now},
-        conflict_columns=["symbol"],
+        CandleCoverage,
+        {**row, "last_date": date(2026, 1, 1)},
+        conflict_columns=["ticker"],
     )
     assert ok is True
     ok = await upsert_rows(
         AsyncSessionLocal,
-        TrendSnapshot,
-        {"symbol": "HPG", "bundle_json": json.dumps({"v": 2}), "saved_at": now},
-        conflict_columns=["symbol"],
+        CandleCoverage,
+        {**row, "last_date": date(2026, 2, 1)},
+        conflict_columns=["ticker"],
     )
     assert ok is True
     async with AsyncSessionLocal() as s:
-        rows = (await s.execute(select(TrendSnapshot))).scalars().all()
-    assert len(rows) == 1 and json.loads(rows[0].bundle_json) == {"v": 2}
+        rows = (await s.execute(select(CandleCoverage))).scalars().all()
+    assert len(rows) == 1 and rows[0].last_date == date(2026, 2, 1)
 
 
 @pytest.mark.anyio
@@ -99,22 +99,22 @@ async def test_upsert_by_named_constraint_works_on_sqlite() -> None:
 @pytest.mark.anyio
 async def test_upsert_never_raises_and_skips_empty() -> None:
     assert (
-        await upsert_rows(None, TrendSnapshot, {"symbol": "X"}, conflict_columns=["symbol"])
+        await upsert_rows(None, CandleCoverage, {"ticker": "X"}, conflict_columns=["ticker"])
         is False
     )
     assert (
-        await upsert_rows(AsyncSessionLocal, TrendSnapshot, [], conflict_columns=["symbol"])
+        await upsert_rows(AsyncSessionLocal, CandleCoverage, [], conflict_columns=["ticker"])
         is False
     )
     # cột không tồn tại → lỗi DB → nuốt, trả False
     assert (
         await upsert_rows(
             AsyncSessionLocal,
-            TrendSnapshot,
-            {"symbol": "X", "nope": 1},
-            conflict_columns=["symbol"],
+            CandleCoverage,
+            {"ticker": "X", "nope": 1},
+            conflict_columns=["ticker"],
         )
         is False
     )
     with pytest.raises(ValueError):
-        await upsert_rows(AsyncSessionLocal, TrendSnapshot, {"symbol": "X"})
+        await upsert_rows(AsyncSessionLocal, CandleCoverage, {"ticker": "X"})

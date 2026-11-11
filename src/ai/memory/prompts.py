@@ -31,19 +31,14 @@ from src.ai.memory.models import AIInteractionLog
 
 _AGENT_GLOSSARY = """\
 ## Agent type glossary (for interpretation)
-agent=thesis_judge         → AI đánh giá luận điểm đầu tư: STRENGTHENING/WEAKENING/INVALIDATED/STABLE
-agent=invalidation_detector → Xác nhận vi phạm stop-loss hoặc assumption breach; trigger=breach:<type>
-agent=proactive_alert       → Cảnh báo chủ động nối nhiều tín hiệu; verdict=ALERT/NO_ALERT/NOISE
-agent=briefing_agent        → Tổng hợp briefing sáng/cuối ngày; verdict=briefing_sent
-agent=next_action_suggester → Kế hoạch hành động xếp hạng; trigger=next_action_plan
-agent=sector_rotation       → Tín hiệu quay vòng ngành; trigger=sector_rotation:<regime>
-                              regime: RISK_ON | RISK_OFF | TRANSITIONING | UNCLEAR
-
-breach trigger types:
-  breach:STOP_LOSS          → giá chạm stop-loss — pattern: kỷ luật giá
-  breach:ASSUMPTION_RATIO   → > 50% giả định bị vô hiệu — pattern: chất lượng thesis
-  breach:COMPOSITE          → rủi ro kép: giá + giả định — pattern: quản lý rủi ro tổng thể
-  breach:WATCHDOG_CRITICAL  → tín hiệu kỹ thuật xấu — pattern: nhạy cảm tín hiệu thị trường
+agent=briefing               → Tổng hợp briefing sáng/cuối ngày
+agent=pretrade               → Kiểm tra trước khi đặt lệnh
+agent=replay                 → Nhìn lại một quyết định đã đóng
+agent=thesis_review          → AI review một thesis
+agent=suggest                → Gợi ý dựng thesis
+agent=feedback_loop          → Phản hồi của nhà đầu tư về output AI
+agent=assumption_invalidated / catalyst_cancelled / verdict_flip
+                             → Sự kiện thay đổi trạng thái thesis (ghi để học)
 """
 
 # ---------------------------------------------------------------------------

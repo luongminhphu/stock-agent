@@ -20,7 +20,6 @@ Endpoints served (via src/api/routes/readmodel.py):
     get_price_snapshots()               — delegates to BacktestingService
     get_portfolio()                     — delegates to PortfolioQueryService
     get_attention_needed()              — aggregated attention panel (Wave B)
-    get_intelligence()                  — intelligence snapshot (Gap 4)
 
 Design rules:
 - This class is a thin facade — no query logic lives here.
@@ -81,15 +80,6 @@ try:
 except ImportError:  # pragma: no cover
     _THESIS_MODELS_AVAILABLE = False
     Catalyst = CatalystStatus = Thesis = ThesisReview = ThesisStatus = None  # type: ignore[assignment,misc]
-
-# Gap 4: IntelligenceSnapshotStore — in-process read, no DB, no AI call.
-# Guarded: store is only available after bootstrap() has been called.
-try:
-    from src.readmodel.intelligence_snapshot import get_intelligence_snapshot
-
-    _INTELLIGENCE_SNAPSHOT_AVAILABLE = get_intelligence_snapshot is not None
-except ImportError:  # pragma: no cover
-    _INTELLIGENCE_SNAPSHOT_AVAILABLE = False
 
 
 class QuoteBatchReader(Protocol):
@@ -812,13 +802,3 @@ class DashboardService:
             price_map=price_map,
             limit=limit,
         )
-
-    # ------------------------------------------------------------------
-    # 16. Intelligence snapshot — delegates to IntelligenceReadService
-    # ------------------------------------------------------------------
-
-    async def get_intelligence(self, user_id: str) -> dict[str, Any] | None:
-        """Delegate to IntelligenceReadService.get_intelligence()."""
-        from src.readmodel.intelligence_read_service import IntelligenceReadService
-
-        return await IntelligenceReadService().get_intelligence(user_id=user_id)

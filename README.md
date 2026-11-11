@@ -1,52 +1,40 @@
 # stock-agent
 
-**Investor operating system cho thị trường chứng khoán Việt Nam (HOSE · HNX · UPCoM).**
+**Công cụ ra quyết định cho danh mục và watchlist cổ phiếu Việt Nam, dựa trên thống kê.**
 
-Không phải dashboard gắn AI. stock-agent là một hệ thống AI-native — AI là lõi orchestration, mọi capability đều nằm trong một vòng tuần hoàn liên tục: theo dõi watchlist → phân tích thị trường → review thesis → briefing → hành động → feedback → cập nhật watchlist.
-
----
-
-## Tổng quan hệ thống
-
-```
-watchlist ──► market context ──► AI analysis ──► thesis review
-    ▲                                                     │
-    └──────── feedback ◄── user action ◄── briefing ◄────┘
-```
-
-Người dùng không cần mở dashboard để biết điều gì đang xảy ra. Bot Discord chủ động gửi briefing buổi sáng, cảnh báo tín hiệu watchlist, nhắc review thesis sắp hết hạn — và luôn gợi ý hành động tiếp theo rõ ràng.
+Không dự báo. Hệ thống quan sát trạng thái hiện tại của từng mã, đối chiếu với các lần
+**chính mã đó** từng ở trạng thái tương tự, rồi cho biết sau 60/120 phiên kết quả ra sao:
+xác suất lãi, lãi/lỗ trung vị, mức sụt thường gặp, số đợt làm bằng chứng. AI chỉ làm
+người diễn giải các con số đã tính — không tự chấm điểm, không đoán giá.
 
 ---
 
 ## Tính năng chính
 
-### Watchlist & Scan
-- Theo dõi danh sách cổ phiếu với alerts theo ngưỡng giá, volume, %thay đổi
-- Scan tự động mỗi phiên — tổng hợp tín hiệu thành snapshot có thể đọc ngay
-- Sector rotation screening lúc 09:10 ICT mỗi ngày
+### Bảng Danh mục & Watchlist
+- Mỗi mã: giá, lãi/lỗ, tỉ trọng; trạng thái hiện tại (định giá, xu hướng, độ nóng,
+  dòng tiền, tăng trưởng lợi nhuận); xác suất lãi sau 60/120 phiên so với mức nền của mã;
+  độ tin cậy theo số đợt độc lập; gợi ý *nghiêng mua / nghiêng tránh / trung tính*.
+- Cảnh báo khi mức lỗ hiện tại sâu hơn mức sụt thường gặp của các tiền lệ.
 
-### Thesis
-- Tạo / cập nhật / review investment thesis cho từng cổ phiếu
-- AI phản biện thesis: phát hiện assumption chưa kiểm chứng, catalyst yếu, điều kiện invalidate
-- Drift detection: cảnh báo khi thesis không còn phù hợp với diễn biến thị trường
-- Conviction timeline: lịch sử niềm tin và lý do thay đổi
+### Kế hoạch nắm giữ
+- 4 câu hỏi: vì sao mua (chọn các "điều tôi tin" hệ thống tự kiểm được bằng số liệu),
+  sai ở đâu thì bán, mục tiêu, khi nào xem lại — có gợi ý mức từ tiền lệ của mã.
+- Đèn xanh / vàng / đỏ tự kiểm sau mỗi phiên (15:30 ICT) kèm lý do bằng lời thường;
+  nút "Giải thích" để AI diễn giải khi cần.
 
-### Briefing
-- **Morning Brief** (08:45 ICT): tổng hợp watchlist + thesis + context thị trường trước phiên
-- **EOD Brief** (15:05 ICT): đánh giá kết quả phiên, cập nhật thesis nếu cần
-- Narrative AI-generated — không phải bảng số, mà là phân tích có cấu trúc
+### Phái sinh VN30F
+- Sổ vị thế Long/Short: lãi/lỗ, ký quỹ, ngày đáo hạn, nhắc roll.
+- Phòng hộ danh mục theo beta, basis & thống kê basis, tiền lệ của VN30.
 
-### Pre-trade Analysis
-- `/pretrade <ticker>` — phân tích trước khi mua/bán: verdict, risk signals, confidence, next watch items
-- Structured output chuẩn: `verdict · risk_signals · confidence · action · reasoning`
+### Briefing & nhật ký quyết định
+- Morning brief / EOD brief trên Discord.
+- `/pretrade`, nhật ký quyết định và replay để học từ quyết định cũ.
 
-### Portfolio
-- Theo dõi holdings và exposure
-- Stress test: mô phỏng kịch bản rủi ro với portfolio hiện tại
-
-### Decision Log
-- Ghi lại mọi quyết định mua/bán kèm lý do
-- Replay: nhìn lại quyết định cũ để học từ đó
+### Dữ liệu thị trường
+- Nến ngày lưu DB (chỉ tải phần thiếu), giá đóng cửa đối soát theo giờ chốt của từng sàn.
+- Mỗi nguồn API của CTCK đi qua giới hạn tốc độ + tạm nghỉ khi bị 429/403; chỉ gọi cho
+  các mã trong danh mục ∪ watchlist.
 
 ---
 
@@ -63,7 +51,7 @@ src/
 ├── market/      # Quotes, OHLCV, technical context, market adapters
 ├── platform/    # Config, DB, logging, bootstrap, event bus
 ├── portfolio/   # Holdings, exposure, performance context
-├── readmodel/   # Dashboard projections, ranking, optimised UI queries
+├── readmodel/   # Dashboard projections, bảng danh mục & watchlist
 ├── thesis/      # Thesis lifecycle, assumptions, catalysts, review, scoring
 └── watchlist/   # Watchlist service, scans, alerts, reminders
 ```
@@ -85,8 +73,7 @@ src/
 | AI | Perplexity API (OpenAI-compatible) |
 | DB | SQLAlchemy async · Alembic migrations |
 | Runtime | Python 3.12 · Docker Compose · uvloop |
-| DB (dev) | SQLite (`aiosqlite`) |
-| DB (prod) | PostgreSQL (`asyncpg`) |
+| DB | PostgreSQL (`asyncpg`); test dùng SQLite in-memory |
 
 ---
 
@@ -149,7 +136,7 @@ Tất cả biến môi trường được khai báo trong `.env.example`. Các b
 | `DISCORD_TOKEN` | ✅ | Bot token từ Discord Developer Portal |
 | `PERPLEXITY_API_KEY` | ✅ | API key cho AI analysis |
 | `OWNER_USER_ID` | ✅ | Discord User ID của owner (single-user mode) |
-| `DATABASE_URL` | ✅ | SQLite (dev) hoặc PostgreSQL (prod) |
+| `DATABASE_URL` | ✅ | PostgreSQL, vd `postgresql+asyncpg://user:pass@host/db` |
 | `MORNING_CHANNEL_ID` | — | Channel nhận Morning Brief lúc 08:45 ICT |
 | `EOD_CHANNEL_ID` | — | Channel nhận EOD Brief lúc 15:05 ICT |
 | `DISCORD_ALERT_CHANNEL_ID` | — | Channel nhận watchlist alerts |
@@ -163,18 +150,15 @@ Tất cả biến môi trường được khai báo trong `.env.example`. Các b
 
 | Command | Mô tả |
 |---------|------|
-| `/watchlist` | Xem và quản lý danh sách theo dõi |
-| `/thesis` | Tạo, cập nhật, review investment thesis |
-| `/pretrade <ticker>` | Phân tích pre-trade với AI verdict |
-| `/why <ticker>` | Giải thích tín hiệu / diễn biến giá |
-| `/morning_brief` | Trigger morning brief thủ công |
-| `/market` | Xem thông tin thị trường |
-| `/portfolio` | Xem holdings và exposure |
-| `/stress_test` | Chạy stress test portfolio |
-| `/decision` | Ghi / xem lịch sử quyết định |
-| `/conviction_timeline` | Lịch sử niềm tin theo thesis |
-| `/sector_rotation` | Screening sector rotation |
-| `/health` | Kiểm tra trạng thái hệ thống |
+| `/watchlist add·remove·list·scan` | Quản lý danh sách theo dõi |
+| `/thesis add·list·close`, `/review_thesis` | Kế hoạch nắm giữ / thesis |
+| `/pretrade <ticker>` | Phân tích trước khi mua/bán |
+| `/buy`, `/sell`, `/correct_trade`, `/dividend` | Ghi giao dịch |
+| `/portfolio`, `/history` | Danh mục, lịch sử giao dịch |
+| `/quote`, `/quote_bulk` | Giá |
+| `/morning_brief`, `/eod_brief` | Gọi brief thủ công |
+| `/log_decision`, `/replay`, `/lessons` | Nhật ký quyết định |
+| `/health`, `/help` | Trạng thái hệ thống, trợ giúp |
 
 ---
 
@@ -212,6 +196,11 @@ alembic upgrade head
 # Rollback 1 bước
 alembic downgrade -1
 ```
+
+Lịch sử migration đã được gộp thành một baseline duy nhất `0001_baseline` (sinh từ model hiện tại).
+DB tạo trước khi gộp không nâng cấp tại chỗ được — chạy `scripts/reset_db.sh` (xoá schema `public`,
+dựng lại từ baseline; chặn khi `ENVIRONMENT=production`). CI kiểm tra `alembic check` để model và
+migration không lệch nhau.
 
 ---
 

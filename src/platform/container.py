@@ -33,17 +33,14 @@ class AppContainer:
     # ── ai ──
     ai_client: object | None = None
     thesis_review_agent: object | None = None
-    thesis_debate_agent: object | None = None
     thesis_suggest_agent: object | None = None
     briefing_agent: object | None = None
     pretrade_agent: object | None = None
     replay_agent: object | None = None
-    sector_rotation_agent: object | None = None
     memory_consolidator: object | None = None
     agenda_builder_agent: object | None = None  # AgendaBuilderAgent singleton
     memory_injection_listener: object | None = None  # Wave E: MemoryInjectionListener singleton
     # ── core ──
-    engine_feedback_listener: object | None = None  # core: FeedbackStore bridge
     user_action_listener: object | None = None  # core: UserActionFeedbackListener (feedback loop)
     feedback_ledger_subscriber: object | None = None  # ai.memory: FeedbackLedgerSubscriber (E3a)
     # ── thesis ──

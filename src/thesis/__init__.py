@@ -6,7 +6,6 @@ Public API:
     Repository:   ThesisRepository
     Services:     ThesisService, ScoringService, InvalidationService
     Listeners:    ThesisReviewListener  (Wave 6 — event-driven review loop)
-                  SignalReviewTriggerListener  (Wave C — SignalEngine → ThesisReview bridge)
     DTOs:         CreateThesisInput, UpdateThesisInput
     Errors:       ThesisNotFoundError, ThesisAlreadyClosedError
     Results:      InvalidationCheckResult
@@ -36,7 +35,6 @@ from src.thesis.service import (
     ThesisService,
     UpdateThesisInput,
 )
-from src.thesis.signal_review_trigger_listener import SignalReviewTriggerListener
 from src.thesis.thesis_review_listener import ThesisReviewListener
 from src.thesis.ticker_direction_query import TickerDirectionQuery
 
@@ -61,7 +59,6 @@ __all__ = [
     "InvalidationService",
     # Listeners
     "ThesisReviewListener",
-    "SignalReviewTriggerListener",
     # DTOs
     "CreateThesisInput",
     "UpdateThesisInput",

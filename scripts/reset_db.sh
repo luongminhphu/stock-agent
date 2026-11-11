@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# DEV ONLY — drop and recreate database, then run migrations
+# DEV ONLY — xoá sạch schema rồi dựng lại từ migration (0001_baseline → head)
 # Never run this in production.
 
 set -euo pipefail
@@ -16,15 +16,30 @@ if [ -f .env ]; then
     set -a && source .env && set +a
 fi
 
-echo "WARNING: This will DROP all tables and re-run migrations."
+echo "WARNING: Thao tác này XOÁ TOÀN BỘ dữ liệu (DROP SCHEMA public) rồi tạo lại từ baseline."
 read -r -p "Type 'yes' to continue: " CONFIRM
 if [ "$CONFIRM" != "yes" ]; then
     echo "Aborted."
     exit 0
 fi
 
-echo "Dropping all tables via downgrade base..."
-alembic downgrade base
+# Không dùng `alembic downgrade base`: DB cũ có thể đang ở revision của chuỗi migration
+# đã gộp vào 0001_baseline (alembic không còn biết revision đó) → xoá schema trực tiếp.
+echo "Dropping schema public..."
+python - <<'PY'
+import asyncio, os
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
+
+async def main() -> None:
+    engine = create_async_engine(os.environ["DATABASE_URL"])
+    async with engine.begin() as conn:
+        await conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
+        await conn.execute(text("CREATE SCHEMA public"))
+    await engine.dispose()
+
+asyncio.run(main())
+PY
 
 echo "Re-applying all migrations..."
 alembic upgrade head

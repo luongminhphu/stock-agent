@@ -52,8 +52,6 @@ def create_bot() -> commands.Bot:
             _start_briefing_scheduler(bot)
             _start_scan_scheduler(bot)
             _start_thesis_maintenance_scheduler(bot)
-            _start_drift_scheduler(bot)
-            _start_thesis_watchdog_scheduler(bot)
             _start_snapshot_scheduler()
             _start_reminder_scheduler(bot)
             _start_outcome_filler_scheduler(bot)
@@ -64,14 +62,13 @@ def create_bot() -> commands.Bot:
             _start_post_mortem_subscriber(bot)
             _start_signal_reaction_listener(bot)
             _start_agenda_subscriber(bot)
-            _start_evolution_scheduler(bot)
-            _start_evolution_subscriber(bot)
             _start_invalidation_subscriber(bot)
             _start_position_risk_subscriber(bot)  # portfolio loss threshold → Discord
             _start_agenda_builder_scheduler(bot)  # build daily agenda 07:30 ICT
             _start_portfolio_snapshot_scheduler(bot)  # portfolio snapshot 08:15 ICT
             _start_investor_profile_scheduler(bot)  # investor profile snapshot 08:20 ICT
-            _start_eod_close_capture_scheduler(bot)  # giá đóng cửa ATC 14:50 ICT (Wave C1)
+            _start_eod_close_capture_scheduler(bot)  # giá đóng cửa 14:50 + 15:05 ICT
+            _start_plan_check_scheduler(bot)  # kế hoạch nắm giữ 15:30 ICT
             _start_eod_portfolio_snapshot_scheduler(bot)  # EOD P&L snapshot 15:20 ICT
             _wire_feedback_loop_monitor(
                 bot
@@ -208,20 +205,6 @@ def _start_thesis_maintenance_scheduler(bot: commands.Bot) -> None:
     scheduler.start()
 
 
-def _start_drift_scheduler(bot: commands.Bot) -> None:
-    from src.bot.scheduler import ThesisDriftScheduler
-
-    scheduler = ThesisDriftScheduler(bot)
-    scheduler.start()
-
-
-def _start_thesis_watchdog_scheduler(bot: commands.Bot) -> None:
-    from src.bot.scheduler import ThesisWatchdogScheduler
-
-    scheduler = ThesisWatchdogScheduler(bot)
-    scheduler.start()
-
-
 def _start_snapshot_scheduler() -> None:
     from src.platform.bootstrap import get_snapshot_scheduler
 
@@ -336,31 +319,6 @@ def _start_agenda_subscriber(bot: commands.Bot) -> None:
     subscriber.set_client(bot)
     subscriber.register()
     logger.info("bot.agenda_subscriber.registered", channel_id=channel_id)
-
-
-def _start_evolution_scheduler(bot: commands.Bot) -> None:
-    from src.bot.scheduled.evolution_job import EvolutionScheduler
-
-    scheduler = EvolutionScheduler(bot)
-    scheduler.start()
-    logger.info("bot.evolution_scheduler.started")
-
-
-def _start_evolution_subscriber(bot: commands.Bot) -> None:
-    from src.bot.evolution_subscriber import EvolutionSubscriber
-
-    channel_id = getattr(settings, "alert_channel_id", None)
-    if not channel_id:
-        logger.warning(
-            "bot.evolution_subscriber.not_available",
-            reason="alert_channel_id not configured — evolution embeds disabled",
-        )
-        return
-
-    subscriber = EvolutionSubscriber(channel_id=int(channel_id))
-    subscriber.set_client(bot)
-    subscriber.register()
-    logger.info("bot.evolution_subscriber.registered", channel_id=channel_id)
 
 
 def _start_invalidation_subscriber(bot: commands.Bot) -> None:
@@ -508,3 +466,11 @@ def _start_eod_portfolio_snapshot_scheduler(bot: commands.Bot) -> None:
     scheduler = EodPortfolioSnapshotScheduler(bot)
     scheduler.start()
     logger.info("bot.eod_portfolio_snapshot_scheduler.started")
+
+
+def _start_plan_check_scheduler(bot: commands.Bot) -> None:
+    """Start PlanCheckScheduler — kiểm tra kế hoạch nắm giữ 15:30 ICT ngày giao dịch."""
+    from src.bot.scheduler import PlanCheckScheduler
+
+    PlanCheckScheduler(bot).start()
+    logger.info("bot.plan_check_scheduler.started")

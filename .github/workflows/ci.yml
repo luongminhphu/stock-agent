@@ -207,12 +207,9 @@ jobs:
           alembic downgrade -1
           alembic upgrade head
 
-      # Drift ORM ↔ migration. Hiện còn 18 diff kế thừa (index khai báo lệch,
-      # theses/decision_logs.quantity, bảng engine_feedback mồ côi) → report-only.
-      # Wave G2 reconcile xong thì bỏ continue-on-error để blocking.
-      - name: Schema drift ORM vs migrations (report-only tới Wave G2)
+      # Model ORM phải khớp migration (baseline 0001 sinh từ chính model → 0 diff).
+      - name: Schema drift ORM vs migrations
         run: alembic check
-        continue-on-error: true
 
   # -----------------------------------------------------------------------
   # Job 4: Security — detect committed .env files and real secrets

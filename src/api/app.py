@@ -41,6 +41,7 @@ from src.api.routes.derivatives import router as derivatives_router
 from src.api.routes.health import router as health_router
 from src.api.routes.market import router as market_router
 from src.api.routes.memory import router as memory_router
+from src.api.routes.plans import router as plans_router
 from src.api.routes.portfolio import router as portfolio_router
 from src.api.routes.pretrade import router as pretrade_router
 from src.api.routes.readmodel import router as readmodel_router
@@ -189,6 +190,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(market_router, prefix="/api/v1")
     app.include_router(board_router, prefix="/api/v1")  # Danh mục & Watchlist + tiền lệ
+    app.include_router(plans_router, prefix="/api/v1")  # Kế hoạch nắm giữ
     app.include_router(thesis_router, prefix="/api/v1")
     app.include_router(watchlist_router, prefix="/api/v1")
     app.include_router(briefing_router, prefix="/api/v1")
