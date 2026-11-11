@@ -35,6 +35,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+from src.api.routes.board import router as board_router
 from src.api.routes.briefing import router as briefing_router
 from src.api.routes.core_engine import router as core_engine_router
 from src.api.routes.decisions import router as decisions_router
@@ -190,6 +191,7 @@ def create_app() -> FastAPI:
     # Register API routers — order matters for OpenAPI grouping
     app.include_router(health_router)
     app.include_router(market_router, prefix="/api/v1")
+    app.include_router(board_router, prefix="/api/v1")  # Danh mục & Watchlist + tiền lệ
     app.include_router(thesis_router, prefix="/api/v1")
     app.include_router(watchlist_router, prefix="/api/v1")
     app.include_router(briefing_router, prefix="/api/v1")
