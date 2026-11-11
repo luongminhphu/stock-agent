@@ -16,7 +16,7 @@ import src.ai.memory.investor_profile  # noqa: F401
 import src.ai.memory.models  # noqa: F401
 import src.ai.memory.user_behavior_log  # noqa: F401
 import src.briefing.models  # noqa: F401
-import src.market.models  # noqa: F401 — Wave F2: trend snapshot/prediction tables (từ readmodel)
+import src.market.models  # noqa: F401
 import src.portfolio.models  # noqa: F401
 import src.thesis.models  # noqa: F401
 import src.watchlist.models  # noqa: F401
@@ -79,7 +79,10 @@ def _strip_comment_only_ops(context_, revision, directives) -> None:
     script = directives[0]
     for group in (*script.upgrade_ops_list, *script.downgrade_ops_list):
         _prune(group)
-    if script.upgrade_ops.is_empty():
+    # `alembic revision` không tạo file rỗng; `alembic check` cần giữ directive để báo "no changes".
+    cmd = getattr(getattr(context.config, "cmd_opts", None), "cmd", None)
+    is_check = bool(cmd) and getattr(cmd[0], "__name__", "") == "check"
+    if script.upgrade_ops.is_empty() and not is_check:
         directives[:] = []
 
 

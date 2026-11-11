@@ -213,6 +213,11 @@ alembic upgrade head
 alembic downgrade -1
 ```
 
+Lịch sử migration đã được gộp thành một baseline duy nhất `0001_baseline` (sinh từ model hiện tại).
+DB tạo trước khi gộp không nâng cấp tại chỗ được — chạy `scripts/reset_db.sh` (xoá schema `public`,
+dựng lại từ baseline; chặn khi `ENVIRONMENT=production`). CI kiểm tra `alembic check` để model và
+migration không lệch nhau.
+
 ---
 
 ## Triển khai production
