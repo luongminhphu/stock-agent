@@ -34,7 +34,7 @@ Design notes
 - Context-builders are fail-safe: each catches its own errors and returns
   a degraded value (empty string / empty list) rather than aborting the
   brief.
-- _build_market_context() renders quotes + risk/next_action
+- _build_market_context() renders quotes + risk
   into a single market_context string that BriefingAgent expects.
   BriefingAgent only accepts pre-rendered strings — never raw lists or
   unknown kwargs.
@@ -56,7 +56,6 @@ Context sources injected into BriefingAgent
   pnl               — PnLService.get_portfolio_pnl(user_id) → unrealised P&L
   thesis            — ThesisService.get_thesis_health(user_id) → thesis status
   risk              — PortfolioRiskNarrator.narrate(user_id) → rendered into market_context
-  next_action       — NextActionSuggester.suggest(user_id) → rendered into market_context
   feedback          — ai.memory.FeedbackLedgerReader.brief_calibration() → calibration (F5)
   agenda            — agenda_cache.get_agenda(user_id) → cached CachedAgenda (no DB call)
                        populated by BriefingListener._handle_agenda via DailyAgendaCompletedEvent
@@ -136,7 +135,6 @@ class BriefingService:
     thesis_service               — ThesisService (thesis health context). Optional.
     quote_service                — Any object with get_bulk_quotes(tickers) → list[Quote]. Optional.
     risk_narrator                — PortfolioRiskNarrator. Optional.
-    next_action_agent            — NextActionSuggester. Optional.
     dashboard_service            — DashboardService (feedback calibration). Optional.
     agenda_service               — Kept for backward compat. Ignored — agenda context
                                    is now read from agenda_cache (no DB call needed).
@@ -153,7 +151,6 @@ class BriefingService:
         thesis_service: Any = None,
         quote_service: Any = None,
         risk_narrator: Any = None,
-        next_action_agent: Any = None,
         dashboard_service: Any = None,  # F5: deprecated, không dùng — giữ để không TypeError
         agenda_service: Any = None,  # kept for backward compat, not used
         lesson_service: Any = None,
@@ -169,7 +166,6 @@ class BriefingService:
         self._thesis_service = thesis_service
         self._quote_service = quote_service
         self._risk_narrator = risk_narrator
-        self._next_action_agent = next_action_agent
         # agenda_service intentionally not stored — we read from cache instead
         self._lesson_service = lesson_service
         self._investor_profile_service = investor_profile_service
@@ -186,7 +182,6 @@ class BriefingService:
         market_context = self._build_market_context(
             quotes=contexts.get("quotes", []),
             risk_context=contexts.get("risk_context", ""),
-            next_action_context=contexts.get("next_action_context", ""),
         )
         output = await self._agent.morning_brief(
             market_context=market_context,
@@ -218,7 +213,6 @@ class BriefingService:
         market_context = self._build_market_context(
             quotes=contexts.get("quotes", []),
             risk_context=contexts.get("risk_context", ""),
-            next_action_context=contexts.get("next_action_context", ""),
         )
         # Wave 3: agenda reconciliation — compare morning DECIDE vs actual actions.
         # Runs here (not in _collect_contexts gather) because it queries Trade +
@@ -302,7 +296,6 @@ class BriefingService:
         self,
         quotes: list[Any],
         risk_context: str = "",
-        next_action_context: str = "",
     ) -> str:
         """Render quotes + enrichment blocks into a single market_context string."""
         parts: list[str] = []
@@ -320,9 +313,6 @@ class BriefingService:
 
         if risk_context:
             parts.append(f"Risk summary:\n{risk_context}")
-
-        if next_action_context:
-            parts.append(f"Next actions:\n{next_action_context}")
 
         return "\n\n".join(parts) if parts else ""
 
@@ -358,7 +348,6 @@ class BriefingService:
             thesis_context,
             quotes,
             risk_context,
-            next_action_context,
             feedback_summary,
             lessons_context,
             portfolio_note,
@@ -368,7 +357,6 @@ class BriefingService:
             self._build_thesis_context(user_id),
             self._build_quote_context(tickers),
             self._build_risk_context(user_id),
-            self._build_next_action_context(user_id),
             self._build_feedback_summary(user_id),
             self._build_lessons_context(user_id),
             self._build_portfolio_note(user_id),
@@ -386,7 +374,6 @@ class BriefingService:
             "has_agenda_context": bool(agenda_context),
             "has_portfolio_note": bool(portfolio_note),
             "has_risk_context": bool(risk_context),
-            "has_next_action_context": bool(next_action_context),
         }
         logger.debug("briefing_service.collect_contexts.done", **debug_flags)
 
@@ -395,7 +382,6 @@ class BriefingService:
             "thesis_context": thesis_context,
             "quotes": quotes,
             "risk_context": risk_context,
-            "next_action_context": next_action_context,
             "feedback_summary": feedback_summary,
             "lessons_context": lessons_context,
             "investor_profile_context": investor_profile_context,
@@ -596,15 +582,6 @@ class BriefingService:
             return await self._risk_narrator.narrate(user_id) or ""
         except Exception as exc:
             logger.warning("briefing.risk_context.failed", error=str(exc))
-            return ""
-
-    async def _build_next_action_context(self, user_id: str) -> str:
-        if not self._next_action_agent:
-            return ""
-        try:
-            return await self._next_action_agent.suggest(user_id) or ""
-        except Exception as exc:
-            logger.warning("briefing.next_action_context.failed", error=str(exc))
             return ""
 
     async def _build_feedback_summary(self, user_id: str) -> str:
