@@ -32,10 +32,11 @@ import { loadWatchlist, handleAddTicker } from './modules/watchlist/watchlist-lo
 import { bindFeedbackEvents }            from './modules/briefing/brief-feedback.js?v=1';
 import { bindGenerateBriefButtons }      from './modules/briefing/brief-generate.js?v=1';
 import { bindBriefTabs, initBriefAutoOpen } from './modules/briefing/brief-tabs.js?v=1';
-import { bindBriefTickerClick }          from './modules/briefing/brief-ticker.js?v=1';
+import { bindBriefTickerClick }          from './modules/briefing/brief-ticker.js?v=2';
 import { loadAttentionPanel, startAttentionAutoRefresh } from './modules/attention/attention-loader.js?v=2';
 import { debounce }                      from './utils/debounce.js?v=1';
-import { initMobileNav }                 from './modules/mobile-nav.js?v=1';
+import { initAppTabs }                  from './modules/app-tabs.js?v=1';
+import { loadBoard }                    from './modules/board/board.js?v=1';
 import { state }                         from './state/dashboard-state.js?v=1';
 import {
   bindWatchlistThesisNavigate,
@@ -54,6 +55,7 @@ let _lazyDecisionLoader  = null;
 let _lazyDecisionTabs    = null;
 let _lazyMemory          = null;
 let _lazyTodayLoop       = null;
+let _lazyDerivatives     = null;
 
 async function _getDecisionLoader() {
   if (!_lazyDecisionLoader) _lazyDecisionLoader = import('./modules/decision/decision-loader.js?v=3');
@@ -66,6 +68,14 @@ async function _getDecisionTabs() {
 async function _getMemory() {
   if (!_lazyMemory) _lazyMemory = import('./modules/memory/memory-loader.js?v=1');
   return _lazyMemory;
+}
+async function _getDerivatives() {
+  if (!_lazyDerivatives) _lazyDerivatives = import('./modules/derivatives/derivatives.js?v=1');
+  return _lazyDerivatives;
+}
+async function loadDerivatives() {
+  const m = await _getDerivatives();
+  return m.loadDerivatives();
 }
 async function _getTodayLoop() {
   if (!_lazyTodayLoop) _lazyTodayLoop = import('./modules/today-loop/today-loop-loader.js?v=1');
@@ -132,7 +142,10 @@ function bindDecisionQuickTradeEvent() {
 // Event wires — watchlist / attention
 // ---------------------------------------------------------------------------
 function bindWatchlistChangedWire() {
-  document.addEventListener('watchlist:changed',      () => loadAttentionPanel());
+  document.addEventListener('watchlist:changed',      () => {
+    loadAttentionPanel();
+    loadBoard({ silent: true });
+  });
   document.addEventListener('watchlist:scan-complete', () => loadAttentionPanel());
 }
 
@@ -140,6 +153,7 @@ function bindTradeConfirmedWire() {
   document.addEventListener('trade:confirmed', () => {
     loadWatchlist();
     loadAttentionPanel();
+    loadBoard({ silent: true });
   });
 }
 
@@ -175,8 +189,14 @@ function _stampKpiUpdatedAt() {
 // Main bootstrap
 // ---------------------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', async () => {
-  // ── Mobile nav: bottom tab bar (no-op on desktop) ─────────────────────────
-  initMobileNav();
+  // ── Tabs: Danh mục & Watchlist · Phái sinh · Thesis & Quyết định · Bối cảnh ──
+  // Đăng ký trước mọi listener navigate:thesis để tab Thesis hiện trước khi cuộn.
+  // Tab nặng (Phái sinh) chỉ tải khi mở lần đầu.
+  initAppTabs({
+    onActivate: (tab, { first }) => {
+      if (tab === 'derivatives' && first) loadDerivatives().catch(() => null);
+    },
+  });
 
   // Wave 13.1: theme toggle phai bind TRUOC `await` Tier A o duoi.
   // Nut #themeToggle la markup tinh, khong phu thuoc du lieu — neu de sau
@@ -253,11 +273,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   el('reloadBtn')?.addEventListener('click', async () => {
     await Promise.allSettled([
+      loadBoard({ silent: true }),
       loadDashboard(),
       loadPortfolio(),
       loadWatchlist(),
       loadDecisions(),
     ]);
+    if (_lazyDerivatives) loadDerivatives().catch(() => null);
     loadAttentionPanel();
     // Wave 6: backtesting/memory chỉ reload nếu panel đang mở
     if (document.getElementById('backtestDetails')?.open) loadBacktesting().catch(() => null);
@@ -341,6 +363,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Wave 1: Initial data load — 3 tiers ─────────────────────────────────────
   //
   // Tier A — CRITICAL: blocks first meaningful paint. Run immediately.
+  //   loadBoard()     — Danh mục & Watchlist + tiền lệ (tab mặc định)
   //   loadDashboard() — thesis table, stats, KPIs, scan, brief snapshots
   //   loadPortfolio() — holdings & P&L (has its own skeleton)
   //   loadWatchlist() — attention panel data source
@@ -358,6 +381,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Tier A — critical, run now
   await Promise.allSettled([
+    loadBoard(),
     loadDashboard().then(_stampKpiUpdatedAt),
     loadPortfolio(),
     loadWatchlist(),

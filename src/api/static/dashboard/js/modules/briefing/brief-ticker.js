@@ -18,6 +18,8 @@ export function bindBriefTickerClick({ state, loadThesisDetail }) {
     if (!ticker) return;
     const thesis = state.theses.find(t => t.ticker?.toUpperCase() === ticker);
     if (!thesis) return;
+    // Thesis nằm ở tab "Thesis & Quyết định" — mở tab trước khi cuộn
+    document.dispatchEvent(new CustomEvent('tab:reveal', { detail: { tab: 'thesis' } }));
     loadThesisDetail(thesis.id);
     document.getElementById('thesesTableWrap')
       ?.scrollIntoView({ behavior: 'smooth', block: 'start' });

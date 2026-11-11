@@ -4318,7 +4318,7 @@ tr.row--stop-breach:hover { background: rgba(var(--down-rgb), 0.14); }
 .rrg-canvas {
   display: block;
   width: 100%;
-  /* chiều cao do JS đặt theo bề rộng (≈0.68×, 300–620px) */
+  
   cursor: crosshair;
   touch-action: pan-y;
   border-radius: var(--radius-xs);
