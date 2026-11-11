@@ -24,7 +24,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, HTTPException, Query, Response
+from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import DbSession, UserId
@@ -40,13 +40,10 @@ from src.readmodel.enrichment import (
     list_thesis_tickers,
     resolve_thesis_ticker,
 )
-from src.readmodel.intelligence_read_service import IntelligenceReadService
-from src.readmodel.leaderboard_service import LeaderboardService
 from src.readmodel.portfolio_query_service import build_trades_payload
 from src.readmodel.schemas import (
     AttentionPanelResponse,
     ConvictionTimelineResponse,
-    LeaderboardResponse,
     ReviewTimelineResponse,
     ThesisTimelineResponse,
 )
@@ -234,38 +231,6 @@ async def get_upcoming_catalysts(
 @router.get("/dashboard/{user_id}/scan/latest")
 async def get_scan_latest(user_id: UserId, session: DbSession) -> dict[str, Any] | None:
     return await _ensure_scan_snapshot(session, user_id)
-
-
-# ---------------------------------------------------------------------------
-# 7. Recommendations — Intelligence Engine primary actions
-# ---------------------------------------------------------------------------
-
-_EMPTY_RECOMMENDATIONS: dict[str, Any] = {
-    "is_fresh": False,
-    "overall_verdict": None,
-    "confidence": None,
-    "market_context": None,
-    "priority_actions": [],
-    "risk_flags": [],
-    "watch_list": [],
-    "generated_at": None,
-    "is_stale": True,
-}
-
-
-@router.get("/dashboard/recommendations")
-@router.get("/dashboard/{user_id}/recommendations")
-async def get_recommendations(user_id: UserId, session: DbSession) -> dict[str, Any]:
-    """Return latest Intelligence Engine verdict + priority actions for dashboard.
-
-    Data source: IntelligenceSnapshotStore (in-process) — no AI call.
-    Populated by IntelligenceSnapshotSubscriber after each engine cycle.
-    Returns empty shell when engine hasn't run yet (is_fresh=False).
-    """
-    data = await IntelligenceReadService(session).get_intelligence(user_id)
-    if data is None:
-        return dict(_EMPTY_RECOMMENDATIONS)
-    return {"is_fresh": True, **data}
 
 
 # ---------------------------------------------------------------------------
@@ -467,25 +432,6 @@ async def get_attention_needed(
 
 
 # ---------------------------------------------------------------------------
-# 15. Intelligence snapshot
-#   200 OK  + intelligence dict  — snapshot available
-#   204 No Content               — store not yet populated / engine hasn't run
-# ---------------------------------------------------------------------------
-
-
-@router.get("/dashboard/intelligence")
-@router.get("/dashboard/{user_id}/intelligence")
-async def get_intelligence(
-    user_id: UserId, session: DbSession, response: Response
-) -> dict[str, Any] | None:
-    result = await DashboardService(session).get_intelligence(user_id)
-    if result is None:
-        response.status_code = 204
-        return None
-    return result
-
-
-# ---------------------------------------------------------------------------
 # 16. Today Loop — aggregated actionable signals
 #
 # Sources aggregated by TodayLoopQueryService:
@@ -502,22 +448,6 @@ async def get_today_loop(user_id: UserId, session: DbSession) -> dict[str, Any]:
     """Today loop — aggregated signals + engine health."""
     result = await TodayLoopQueryService(session).get_today_loop(user_id)
     return asdict(result)
-
-
-# ---------------------------------------------------------------------------
-# Leaderboard
-# ---------------------------------------------------------------------------
-
-
-@router.get("/leaderboard", response_model=LeaderboardResponse)
-@router.get("/leaderboard/{user_id}", response_model=LeaderboardResponse)
-async def get_leaderboard(
-    user_id: UserId,
-    session: DbSession,
-    sort_by: Annotated[Literal["score", "pnl"], Query()] = "score",
-    limit: Annotated[int, Query(ge=1, le=100)] = 20,
-) -> LeaderboardResponse:
-    return await LeaderboardService(session).get_leaderboard(user_id, sort_by=sort_by, limit=limit)
 
 
 # ---------------------------------------------------------------------------

@@ -53,10 +53,6 @@
   /* ── Extended semantic colours ── */
   /* --orange: dùng cho wl-change.down, ceil-badge, bất kỳ trạng thái "caution/warm"  */
   --orange: rgb(var(--orange-rgb));
-  /* --rank-*: màu thứ hạng leaderboard — không dùng ngoài context ranking */
-  --rank-gold:   #f59e0b;
-  --rank-silver: #94a3b8;
-  --rank-bronze: #b45309;
 
   /* ── Semantic bg tints (alpha) ── */
   --warning-bg:  rgba(var(--ref-rgb), 0.08);

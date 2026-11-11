@@ -127,16 +127,9 @@
 
 .memory-grid {
   display: grid;
-  grid-template-columns: 1.6fr 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: var(--gap, 12px);
   align-items: stretch;
-}
-@media (max-width: 1024px) {
-  .memory-grid { grid-template-columns: 1fr 1fr; }
-  .memory-grid .mem-episodic { grid-column: 1 / -1; }
-}
-@media (max-width: 640px) {
-  .memory-grid { grid-template-columns: 1fr; }
 }
 
 .memory-kpi-strip {
@@ -236,94 +229,6 @@
 .mem-signal-chip.sold    { background: rgba(var(--down-rgb), .12); color: var(--hsc-price-reduced); }
 .mem-signal-chip.ignored { background: rgba(var(--ink-rgb), .10); color: var(--muted); }
 .mem-signal-chip.flagged { background: rgba(var(--ref-rgb), .12); color: var(--hsc-price-reference); }
-
-.mem-pattern-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 420px;
-  overflow-y: auto;
-}
-.mem-pattern-item {
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 10px 12px;
-}
-.mem-pattern-type {
-  font-size: .67rem;
-  font-weight: 700;
-  color: var(--brand);
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  margin-bottom: 4px;
-}
-.mem-pattern-desc {
-  font-size: .8rem;
-  color: var(--text);
-  line-height: 1.45;
-  margin-bottom: 6px;
-}
-.mem-pattern-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.mem-confidence-bar {
-  flex: 1;
-  height: 4px;
-  background: var(--surface-3, rgba(255,255,255,.06));
-  border-radius: 2px;
-  overflow: hidden;
-}
-.mem-confidence-fill {
-  height: 100%;
-  background: var(--brand);
-  border-radius: 2px;
-  transition: width .4s ease;
-}
-.mem-confidence-label {
-  font-size: .68rem;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.mem-pattern-episodes {
-  font-size: .67rem;
-  color: var(--faint);
-}
-
-.mem-bias-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 420px;
-  overflow-y: auto;
-}
-.mem-bias-item {
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--yellow, var(--hsc-price-reference));
-  border-radius: var(--radius-sm);
-  padding: 9px 12px;
-}
-.mem-bias-item.high {
-  border-left-color: var(--red, var(--hsc-price-reduced));
-}
-.mem-bias-item.low {
-  border-left-color: var(--muted);
-}
-.mem-bias-text {
-  font-size: .8rem;
-  color: var(--text);
-  line-height: 1.45;
-}
-.mem-bias-meta {
-  font-size: .68rem;
-  color: var(--muted);
-  margin-top: 4px;
-}
 
 .mem-refresh-btn {
   display: inline-flex;

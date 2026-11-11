@@ -275,9 +275,6 @@ export async function loadRRG() {
     // C4: draw + animate
     _redrawAnimated(wrap);
 
-    // W3: AI chart summary (non-blocking — renders async after canvas)
-    _loadChartSummary(wrap);
-
   } catch (err) {
     if (serial !== _fetchSerial) return; // stale error — ignore
     _setStatus(`Không tải được RRG: ${err.message}`);
@@ -686,21 +683,6 @@ function _showDetailLoading(ticker) {
       <div class="rrg-detail-coords">
         ${t ? `<span>RS-Ratio <b>${t.rs_ratio?.toFixed(2) ?? '—'}</b></span><span>RS-Mom <b>${t.rs_momentum?.toFixed(2) ?? '—'}</b></span>` : ''}
       </div>
-      ${t ? (() => {
-        const traj = _predictTrajectory(t);
-        if (!traj) return '';
-        const arrow = traj.stayStable ? '→' : `→ <b>${_esc(QUADRANT_LABELS[traj.nextQuadrant])}</b>`;
-        const weeks = traj.weeksEst ? `~${traj.weeksEst} tuần` : `>${12} tuần`;
-        return `
-        <div class="rrg-detail-trajectory">
-          <div class="rrg-traj-row">
-            <span class="rrg-traj-label">Tiếp theo</span>
-            <span class="rrg-traj-val">${arrow}</span>
-            <span class="rrg-traj-weeks">${weeks}</span>
-          </div>
-          <p class="rrg-traj-desc">${traj.description}</p>
-        </div>`;
-      })() : ''}
       <p class="rrg-detail-loading">
         <span class="rrg-detail-spinner"></span> Đang phân tích AI…
       </p>
@@ -762,21 +744,6 @@ function _renderDetailSignal(ticker, d) {
       </div>
       ${d.company_name ? `<p class="rrg-detail-company">${_esc(d.company_name)}</p>` : ''}
       ${d.sector       ? `<p class="rrg-detail-sector">${_esc(d.sector)}</p>`       : ''}
-      ${t ? (() => {
-        const traj = _predictTrajectory(t);
-        if (!traj) return '';
-        const arrow = traj.stayStable ? '→' : `→ <b>${_esc(QUADRANT_LABELS[traj.nextQuadrant])}</b>`;
-        const weeks = traj.weeksEst ? `~${traj.weeksEst} tuần` : `>${12} tuần`;
-        return `
-        <div class="rrg-detail-trajectory">
-          <div class="rrg-traj-row">
-            <span class="rrg-traj-label">Tiếp theo</span>
-            <span class="rrg-traj-val">${arrow}</span>
-            <span class="rrg-traj-weeks">${weeks}</span>
-          </div>
-          <p class="rrg-traj-desc">${traj.description}</p>
-        </div>`;
-      })() : ''}
       ${thesisLink}
     </div>
   `;
@@ -1042,7 +1009,7 @@ function _drawCanvas(wrap, tickers, focusedTicker = null) {
   ctx.fillText('RS-Momentum ↑', 0, 0);
   ctx.restore();
 
-  // Mọi trail/forecast chỉ vẽ trong vùng plot (khi zoom, phần ngoài khung bị cắt)
+  // Mọi trail chỉ vẽ trong vùng plot (khi zoom, phần ngoài khung bị cắt)
   ctx.save();
   ctx.beginPath();
   ctx.rect(L, T, plotW, plotH);
@@ -1233,268 +1200,6 @@ function _drawTicker(ctx, ticker, toX, toY, masterAlpha) {
   ctx.fillStyle = color;
   ctx.textAlign = 'left';
   ctx.fillText(ticker.ticker, lx, ly);
-
-  // Forecast trail — dashed extrapolation
-  _drawForecast(ctx, ticker, toX, toY, masterAlpha);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Trajectory Prediction — quadrant transition + weeks estimate
-// ─────────────────────────────────────────────────────────────────────────────
-
-const QUADRANT_LABELS = {
-  leading:   'Leading',
-  weakening: 'Weakening',
-  lagging:   'Lagging',
-  improving: 'Improving',
-};
-
-function _getQuadrant(r, m) {
-  if (r >= 100 && m >= 100) return 'leading';
-  if (r >= 100 && m <  100) return 'weakening';
-  if (r <  100 && m <  100) return 'lagging';
-  return 'improving';
-}
-
-/**
- * Predict next quadrant transition for a ticker using forecast trail.
- * Returns { nextQuadrant, weeksEst, stayProb, momentum_strength, description }
- */
-function _predictTrajectory(tickerObj) {
-  const trail = tickerObj.trail;
-  if (!trail || trail.length < 2) return null;
-
-  const N_AHEAD    = 12;  // look up to 12 weeks ahead
-  const forecast   = _forecastTrail(trail, N_AHEAD);
-  if (!forecast.length) return null;
-
-  const curQ       = tickerObj.quadrant;
-  const curR       = tickerObj.rs_ratio;
-  const curM       = tickerObj.rs_momentum;
-
-  // Find first forecast point that crosses into a different quadrant
-  let nextQ     = null;
-  let weeksEst  = null;
-  for (let i = 0; i < forecast.length; i++) {
-    const q = _getQuadrant(forecast[i].rs_ratio, forecast[i].rs_momentum);
-    if (q !== curQ) {
-      nextQ    = q;
-      weeksEst = i + 1;
-      break;
-    }
-  }
-
-  // If no crossing found in N_AHEAD weeks — ticker likely stays in current quadrant
-  if (!nextQ) {
-    nextQ    = curQ;
-    weeksEst = null;  // stable
-  }
-
-  // Momentum strength: magnitude of weighted velocity
-  const K = Math.min(trail.length, 5);
-  let wDr = 0, wDm = 0, wSum = 0;
-  const start = trail.length - K;
-  for (let i = start + 1; i < trail.length; i++) {
-    const w  = i - start;
-    wDr  += (trail[i].rs_ratio    - trail[i-1].rs_ratio)    * w;
-    wDm  += (trail[i].rs_momentum - trail[i-1].rs_momentum) * w;
-    wSum += w;
-  }
-  const vr  = wDr / wSum;
-  const vm  = wDm / wSum;
-  const mag = Math.hypot(vr, vm);
-  const momentum_strength = mag < 0.3 ? 'yếu' : mag < 0.8 ? 'trung bình' : 'mạnh';
-
-  // Distance to quadrant boundary (nearest axis from current pos)
-  const distR = Math.abs(curR - 100);
-  const distM = Math.abs(curM - 100);
-  const nearBoundary = distR < 1.5 || distM < 1.5;
-
-  // Human-readable description
-  let description = '';
-  if (nextQ === curQ && !weeksEst) {
-    const staying = QUADRANT_LABELS[curQ];
-    description = `Dự kiến giữ ${staying} trong ~${N_AHEAD} tuần tới, momentum ${momentum_strength}.`;
-  } else {
-    const fromL = QUADRANT_LABELS[curQ];
-    const toL   = QUADRANT_LABELS[nextQ];
-    description = `Dự kiến chuyển sang <b>${toL}</b> sau ~${weeksEst} tuần, momentum ${momentum_strength}.`;
-    if (nearBoundary) description += ' Đang gần biên — có thể dao động qua lại.';
-  }
-
-  return { nextQuadrant: nextQ, weeksEst, momentum_strength, description, stayStable: nextQ === curQ };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Forecast Trail — pure math extrapolation (no AI call)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Extrapolate N forecast points from a real trail using:
- *   1. Weighted velocity from last K points (recent heavier)
- *   2. Mean reversion toward 100 (natural RS behaviour)
- *   3. Damping factor per step (growing uncertainty)
- *
- * @param {Array<{rs_ratio:number, rs_momentum:number}>} trail  oldest→newest
- * @param {number} n  number of forecast points
- * @returns {Array<{rs_ratio:number, rs_momentum:number}>}  forecast points oldest→newest
- */
-function _forecastTrail(trail, n) {
-  if (!trail || trail.length < 2) return [];
-
-  const K       = Math.min(trail.length, 5); // use up to last 5 points for velocity
-  const DAMP    = 0.82;                       // velocity decay per step
-  const REVERT  = 0.06;                       // mean-reversion pull toward 100
-  const CENTER  = 100;
-
-  // Weighted velocity: pair (i-1 → i), weight = i / sum
-  let wDr = 0, wDm = 0, wSum = 0;
-  const start = trail.length - K;
-  for (let i = start + 1; i < trail.length; i++) {
-    const w   = i - start;                    // 1, 2, … K-1 (recent heavier)
-    const dr  = trail[i].rs_ratio    - trail[i - 1].rs_ratio;
-    const dm  = trail[i].rs_momentum - trail[i - 1].rs_momentum;
-    wDr  += dr * w;
-    wDm  += dm * w;
-    wSum += w;
-  }
-  let vr = wDr / wSum;
-  let vm = wDm / wSum;
-
-  const pts  = [];
-  let cur_r  = trail[trail.length - 1].rs_ratio;
-  let cur_m  = trail[trail.length - 1].rs_momentum;
-
-  for (let i = 0; i < n; i++) {
-    // Mean reversion nudge
-    const revR = (CENTER - cur_r) * REVERT;
-    const revM = (CENTER - cur_m) * REVERT;
-
-    cur_r += vr + revR;
-    cur_m += vm + revM;
-
-    pts.push({ rs_ratio: cur_r, rs_momentum: cur_m });
-
-    // Dampen velocity for next step
-    vr *= DAMP;
-    vm *= DAMP;
-  }
-  return pts;
-}
-
-/**
- * Draw the forecast trail as a dashed polyline.
- * Called at end of _drawTicker — shares same ctx state.
- */
-function _drawForecast(ctx, ticker, toX, toY, masterAlpha) {
-  const trail = ticker.trail;
-  if (!trail || trail.length < 2) return;
-
-  const N_FORECAST = 6;
-  const forecast   = _forecastTrail(trail, N_FORECAST);
-  if (!forecast.length) return;
-
-  const idx   = _allTickers.findIndex(t => t.ticker === ticker.ticker);
-  const color = TRAIL_PALETTE[idx % TRAIL_PALETTE.length];
-
-  // Prepend the actual head as starting point so the dashed line connects
-  const head   = trail[trail.length - 1];
-  const allPts = [head, ...forecast];
-
-  ctx.save();
-  ctx.setLineDash([3, 4]);
-  ctx.lineCap = 'round';
-
-  for (let i = 1; i < allPts.length; i++) {
-    const progress  = i / (allPts.length - 1);     // 0 → 1
-    const segAlpha  = (0.50 - progress * 0.45) * masterAlpha;  // 0.50 → 0.05
-    const segWidth  = Math.max(0.8, 1.6 - progress * 0.8);
-    const alphaHex  = Math.round(Math.max(0, segAlpha) * 255).toString(16).padStart(2, '0');
-
-    const x0 = toX(allPts[i - 1].rs_ratio);   const y0 = toY(allPts[i - 1].rs_momentum);
-    const x1 = toX(allPts[i].rs_ratio);         const y1 = toY(allPts[i].rs_momentum);
-
-    ctx.beginPath();
-    ctx.moveTo(x0, y0);
-    ctx.lineTo(x1, y1);
-    ctx.strokeStyle = color + alphaHex;
-    ctx.lineWidth   = segWidth;
-    ctx.stroke();
-  }
-
-  ctx.restore(); // clears setLineDash
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// W3: AI Chart Summary
-// ─────────────────────────────────────────────────────────────────────────────
-
-const SUMMARY_API      = '/api/v1/rrg/chart-summary';
-const SUMMARY_PANEL_ID = 'rrgChartSummary';
-const ACTION_ICONS     = { BUY: '▲', WATCH: '◎', HOLD: '─', REDUCE: '▽', AVOID: '✕' };
-const ACTION_CLASSES   = { BUY: 'success', WATCH: 'brand', HOLD: 'muted', REDUCE: 'warning', AVOID: 'danger' };
-
-async function _loadChartSummary(wrap) {
-  // Ensure panel exists (create once, position after canvas)
-  let panel = document.getElementById(SUMMARY_PANEL_ID);
-  if (!panel) {
-    panel = document.createElement('div');
-    panel.id        = SUMMARY_PANEL_ID;
-    panel.className = 'rrg-chart-summary';
-    const canvas    = wrap.querySelector(`#${CANVAS_ID}`);
-    if (canvas?.parentNode) canvas.parentNode.insertBefore(panel, canvas.nextSibling);
-    else wrap.appendChild(panel);
-  }
-
-  // Show skeleton while loading
-  panel.innerHTML = `
-    <div class="rrg-cs-header">
-      <span class="rrg-cs-title">AI đọc biểu đồ</span>
-      <span class="rrg-cs-loading">Đang phân tích…</span>
-    </div>`;
-  panel.classList.remove('rrg-chart-summary--hidden');
-
-  try {
-    const d = await getJson(`${SUMMARY_API}?lookback_weeks=${_lookbackWeeks}`);
-
-    const oppHTML = (d.opportunities ?? []).map(o => `
-      <div class="rrg-cs-item rrg-cs-item--opp">
-        <span class="rrg-cs-action rrg-cs-action--${ACTION_CLASSES[o.action] ?? 'muted'}">${ACTION_ICONS[o.action] ?? '●'}</span>
-        <span class="rrg-cs-ticker">${_esc(o.ticker)}</span>
-        <span class="rrg-cs-insight">${_esc(o.insight)}</span>
-      </div>`).join('');
-
-    const riskHTML = (d.risks ?? []).map(r => `
-      <div class="rrg-cs-item rrg-cs-item--risk">
-        <span class="rrg-cs-action rrg-cs-action--${ACTION_CLASSES[r.action] ?? 'muted'}">${ACTION_ICONS[r.action] ?? '●'}</span>
-        <span class="rrg-cs-ticker">${_esc(r.ticker)}</span>
-        <span class="rrg-cs-insight">${_esc(r.insight)}</span>
-      </div>`).join('');
-
-    const alertHTML = d.portfolio_alert
-      ? `<div class="rrg-cs-alert">${_esc(d.portfolio_alert)}</div>`
-      : '';
-
-    const rotateHTML = d.rotate_from
-      ? `<div class="rrg-cs-rotate">↻ Rotate: <b>${_esc(d.rotate_from)}</b> → <b>${_esc(d.rotate_to)}</b> — ${_esc(d.rotate_reason)}</div>`
-      : '';
-
-    panel.innerHTML = `
-      <div class="rrg-cs-header">
-        <span class="rrg-cs-title">AI đọc biểu đồ</span>
-        <span class="rrg-cs-market-read">${_esc(d.market_read ?? '')}</span>
-      </div>
-      ${alertHTML}
-      ${rotateHTML}
-      <div class="rrg-cs-rows">
-        ${oppHTML || riskHTML
-          ? `${oppHTML}${riskHTML}`
-          : '<span class="rrg-cs-empty">Không có tín hiệu nổi bật lúc này.</span>'}
-      </div>`;
-  } catch (_) {
-    panel.innerHTML = ''; // silent fail — do not disrupt main chart
-    panel.classList.add('rrg-chart-summary--hidden');
-  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

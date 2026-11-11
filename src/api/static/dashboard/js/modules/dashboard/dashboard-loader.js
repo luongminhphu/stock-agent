@@ -18,8 +18,6 @@ import {
 } from '../backtesting/render-backtesting.js?v=1';
 import { renderCatalystCalendar, renderSnapshots } from '../briefing/render-brief.js?v=1';
 import { renderCatalystUrgentStrip }              from '../market/catalyst-urgent.js?v=1';
-import { loadIntelligencePanel } from '../intelligence/intelligence-panel.js?v=1';
-import { loadLeaderboard } from '../leaderboard/leaderboard-service.js?v=1';
 import { renderHealthHeatmap, refreshHeatmapCell } from './render-heatmap.js?v=1';
 import { countUp, flashValue } from '../../utils/animate.js?v=1';
 import { icon as ic } from '../../utils/icons.js?v=2';
@@ -413,9 +411,7 @@ export async function loadDashboard() {
     renderVerdicts(accuracyRows);
     renderAccuracy(accuracyRows);
 
-    // Wave 6: leaderboard + RRG lazy (observer / on-open) — không eager fetch
-    // Intelligence snapshot: lazy — không block main render
-    loadIntelligencePanel().catch(() => null);
+    // Wave 6: RRG lazy (on-open) — không eager fetch
 
   } catch (err) {
     const banner = el('errorBanner');

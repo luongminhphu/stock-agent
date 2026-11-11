@@ -14,11 +14,10 @@ Route groups:
     /api/v1/thesis         — thesis CRUD + review
     /api/v1/watchlist      — watchlist management
     /api/v1/briefing       — on-demand brief generation
-    /api/v1/readmodel      — dashboard, leaderboard, thesis timeline (wave 3)
+    /api/v1/readmodel      — dashboard, thesis timeline (wave 3)
     /api/v1/decisions      — log, list, evaluate, replay trade decisions
     /api/v1/lessons        — list persisted AI lessons from Decision Replay loop
     /api/v1/memory         — investor memory snapshot + pattern refresh (wave 9b)
-    /api/v1/core           — Intelligence Engine: snapshot, verdict, feedback (wave 10)
     /api/v1/portfolio      — buy/sell quick-trade actions (wave 11)
     /api/v1/today-loop     — daily investor intelligence summary (single-call loop)
 """
@@ -36,7 +35,6 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from src.api.routes.briefing import router as briefing_router
-from src.api.routes.core_engine import router as core_engine_router
 from src.api.routes.decisions import router as decisions_router
 from src.api.routes.derivatives import router as derivatives_router
 from src.api.routes.health import router as health_router
@@ -48,7 +46,6 @@ from src.api.routes.readmodel import router as readmodel_router
 from src.api.routes.rrg import router as rrg_router
 from src.api.routes.thesis import router as thesis_router
 from src.api.routes.today_loop import router as today_loop_router
-from src.api.routes.trend import router as trend_router
 from src.api.routes.watchlist import router as watchlist_router
 from src.platform.bootstrap import bootstrap, shutdown
 from src.platform.config import settings
@@ -196,11 +193,9 @@ def create_app() -> FastAPI:
     app.include_router(readmodel_router, prefix="/api/v1")
     app.include_router(decisions_router, prefix="/api/v1")
     app.include_router(memory_router, prefix="/api/v1")  # Wave 9b
-    app.include_router(core_engine_router, prefix="/api/v1")  # Wave 10 — Intelligence Engine
     app.include_router(portfolio_router, prefix="/api/v1")  # Wave 11 — Quick Trade
     app.include_router(today_loop_router, prefix="/api/v1")  # Daily investor loop
     app.include_router(rrg_router, prefix="/api/v1")  # RRG chart
-    app.include_router(trend_router, prefix="/api/v1")  # Trend Analysis panel
     app.include_router(pretrade_router, prefix="/api/v1")  # P1b — kiểm tra AI trước lệnh
     app.include_router(derivatives_router, prefix="/api/v1")  # HĐTL VN30
 

@@ -34,9 +34,6 @@ from src.platform.bootstrap import (
     get_replay_agent as _get_replay_agent,
 )
 from src.platform.bootstrap import (
-    get_thesis_debate_agent as _get_debate_agent,
-)
-from src.platform.bootstrap import (
     get_thesis_review_agent as _get_agent,
 )
 from src.platform.bootstrap import (
@@ -180,11 +177,6 @@ def get_thesis_review_agent() -> object:
 def get_thesis_suggest_agent() -> object:
     """Return the ThesisSuggestAgent singleton (initialised at bootstrap)."""
     return _get_suggest_agent()
-
-
-def get_thesis_debate_agent() -> object:
-    """Return the ThesisDebateAgent singleton (initialised at bootstrap)."""
-    return _get_debate_agent()
 
 
 def get_briefing_agent() -> object:
