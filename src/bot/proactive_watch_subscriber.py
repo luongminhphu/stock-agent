@@ -88,9 +88,6 @@ class ProactiveWatchSubscriber:
     def set_client(self, client: discord.Client) -> None:
         self._client = client
 
-    def set_channel_id(self, channel_id: int) -> None:
-        self._channel_id = channel_id
-
     def register(self) -> None:
         bus = get_event_bus()
         bus.subscribe_handler(ProactiveWatchAlertFiredEvent, self._handle)
