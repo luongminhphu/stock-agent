@@ -62,27 +62,6 @@ class BriefSnapshotRepository:
         )
         return result.scalar_one_or_none()
 
-    async def list_recent(
-        self,
-        user_id: str,
-        phase: str | None = None,
-        limit: int = 10,
-    ) -> list[BriefSnapshot]:
-        """Return up to `limit` most recent snapshots for a user.
-
-        Optionally filter by phase ("morning" | "eod").
-        """
-        stmt = (
-            select(BriefSnapshot)
-            .where(BriefSnapshot.user_id == user_id)
-            .order_by(BriefSnapshot.created_at.desc())
-            .limit(min(limit, 100))
-        )
-        if phase is not None:
-            stmt = stmt.where(BriefSnapshot.phase == phase)
-        result = await self._session.execute(stmt)
-        return list(result.scalars().all())
-
     async def save_feedback(self, feedback: BriefFeedback) -> BriefFeedback:
         """Persist a BriefFeedback row. Caller manages session commit."""
         self._session.add(feedback)
