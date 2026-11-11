@@ -33,7 +33,7 @@ from dataclasses import dataclass, field
 from src.ai.client import AIClient
 from src.ai.schemas._base import PortfolioRiskNote
 from src.ai.schemas.portfolio_risk import PortfolioRiskNarrativeOutput
-from src.ai.schemas.signal_engine import RankedSignal, RiskAlert
+from src.ai.schemas.portfolio_signals import RankedSignal, RiskAlert
 from src.platform.logging import get_logger
 
 logger = get_logger(__name__)

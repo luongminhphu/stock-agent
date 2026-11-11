@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from src.market import indicators as ind
-from src.market import rrg_service, trend_engine
+from src.market import rrg_service
 
 _GOLDEN = json.loads(
     (Path(__file__).parent / "fixtures" / "indicators_golden.json").read_text(encoding="utf-8")
@@ -25,7 +25,6 @@ class TestGolden:
     def test_ema_seed_first_matches_trend_engine_legacy(self, case: str) -> None:
         c = _GOLDEN[case]
         assert ind.ema(c["closes"], 12) == c["ema_first_12"]
-        assert trend_engine._ema(c["closes"], 12) == c["ema_first_12"]
         if "ema_first_26" in c:
             assert ind.ema(c["closes"], 26) == c["ema_first_26"]
 
@@ -41,10 +40,6 @@ class TestGolden:
         assert ind.rsi(c["closes"], 14) == c["rsi_14"]
         assert ind.macd_histogram(c["closes"]) == c["macd_hist"]
         assert ind.atr(c["highs"], c["lows"], c["closes"], 14) == c["atr_14"]
-        # alias trong trend_engine trỏ đúng về primitive chung
-        assert trend_engine._rsi is ind.rsi
-        assert trend_engine._macd_histogram is ind.macd_histogram
-        assert trend_engine._atr is ind.atr
 
 
 class TestEdgeCases:

@@ -341,13 +341,6 @@ async def bootstrap() -> None:
         logger.info("platform.bootstrap.memory_injection_listener_ready")
 
     # ── core: EngineFeedbackListener ────────────────────────────────────────
-    if container.engine_feedback_listener is None:
-        from src.core.feedback_listener import EngineFeedbackListener
-
-        container.engine_feedback_listener = EngineFeedbackListener()
-        container.engine_feedback_listener.register()
-        logger.info("platform.bootstrap.engine_feedback_listener_ready")
-
     # ── core: UserActionFeedbackListener — closes the feedback loop ──────────
     if container.user_action_listener is None:
         from src.core.user_action_listener import UserActionFeedbackListener

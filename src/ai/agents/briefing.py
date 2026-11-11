@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from src.ai.agents.portfolio_risk_narrator import (
         PortfolioRiskNarratorAgent,
     )
-    from src.ai.schemas.signal_engine import RankedSignal, RiskAlert
+    from src.ai.schemas.portfolio_signals import RankedSignal, RiskAlert
 
 logger = get_logger(__name__)
 

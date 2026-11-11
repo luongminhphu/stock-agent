@@ -12,14 +12,9 @@ All other code calls build_adapter() and works against MarketDataAdapter.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-from src.market.quote_service import MarketDataAdapter, QuoteService
+from src.market.quote_service import MarketDataAdapter
 from src.platform.config import settings
 from src.platform.logging import get_logger
-
-if TYPE_CHECKING:
-    from src.market.trend_context_fetcher import TrendContextFetcher
 
 logger = get_logger(__name__)
 
@@ -52,22 +47,3 @@ def build_reference_adapter() -> MarketDataAdapter | None:
     from src.market.adapters.kbs import KBSAdapter
 
     return KBSAdapter()
-
-
-def create_trend_context_fetcher(quote_service: QuoteService) -> TrendContextFetcher:
-    """Wire TrendContextFetcher từ các adapter đã có.
-
-    Usage::
-
-        quote_svc = QuoteService(adapter=build_adapter())
-        fetcher = create_trend_context_fetcher(quote_svc)
-        trend_engine = TrendEngine(ohlcv_service, context_fetcher=fetcher, ...)
-    """
-    from src.market.market_regime import MarketRegimeService
-    from src.market.news_adapter import TCBSNewsAdapter
-    from src.market.trend_context_fetcher import TrendContextFetcher
-
-    return TrendContextFetcher(
-        news_adapter=TCBSNewsAdapter(),
-        regime_service=MarketRegimeService(quote_service),
-    )
