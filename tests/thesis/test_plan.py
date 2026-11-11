@@ -52,14 +52,14 @@ def test_green_with_summary() -> None:
     assert ev.light == LIGHT_GREEN
     assert (
         ev.summary
-        == "2/2 điều tôi tin còn đúng · lãi/lỗ +5.0% · cách mức chấp nhận sai 19.3% · còn 90 ngày tới hạn xem lại"
+        == "2/2 điều tôi tin còn đúng · P&L +5,0% · cách Stop-loss 19,3% · còn 90 ngày tới hạn xem lại"
     )
 
 
 def test_red_when_stop_hit_even_if_beliefs_hold() -> None:
     ev = _plan(price=87.0)
     assert ev.light == LIGHT_RED
-    assert "chạm mức chấp nhận sai" in ev.reasons[0]
+    assert "chạm Stop-loss" in ev.reasons[0]
 
 
 def test_yellow_one_belief_wrong_red_when_majority_wrong() -> None:
@@ -75,11 +75,11 @@ def test_manual_beliefs_use_user_status() -> None:
 
 
 def test_yellow_reasons_target_review_near_stop_missing_stop() -> None:
-    assert "chốt lời" in _plan(price=126.0).reasons[0]
+    assert "Target" in _plan(price=126.0).reasons[0]
     assert "hạn xem lại" in _plan(review_by=TODAY).reasons[0]
-    assert "cách mức chấp nhận sai" in _plan(price=89.0).reasons[0]
+    assert "cách Stop-loss" in _plan(price=89.0).reasons[0]
     ev = _plan(stop_price=None)
-    assert ev.light == LIGHT_YELLOW and "Chưa đặt mức chấp nhận sai" in ev.reasons[-1]
+    assert ev.light == LIGHT_YELLOW and "Chưa đặt Stop-loss" in ev.reasons[-1]
 
 
 def test_closed_is_grey() -> None:
@@ -147,7 +147,7 @@ async def test_plan_check_service_updates_lights_and_beliefs(session) -> None:  
     assert {c.ticker: c.new_light for c in changes} == {"HPG": "xanh", "VNM": "do"}
     assert t1.assumptions[0].status == AssumptionStatus.VALID
     assert t1.plan_summary.startswith("2/2 điều tôi tin còn đúng")
-    assert "chạm mức chấp nhận sai" in json.loads(t2.plan_reasons)[0]
+    assert "chạm Stop-loss" in json.loads(t2.plan_reasons)[0]
     assert t3.plan_light is None, "kế hoạch đã đóng không nằm trong lượt kiểm tra"
 
     again = await PlanCheckService(session, _Quotes(), state).run(TODAY, "u1")
