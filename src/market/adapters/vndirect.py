@@ -29,6 +29,7 @@ from typing import Any
 
 import httpx
 
+from src.market.adapters.http_guard import guarded_request
 from src.market.quote_service import MarketDataAdapter, Quote
 from src.platform.logging import get_logger
 
@@ -92,7 +93,9 @@ class VNDirectAdapter(MarketDataAdapter):
 
     async def _fetch_latest(self, ticker: str) -> list[dict[str, Any]]:
         try:
-            response = await self._client.get(
+            response = await guarded_request(
+                self._client,
+                "GET",
                 _PRICES_PATH,
                 params={
                     "q": f"code:{ticker.upper()}",
