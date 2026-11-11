@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -79,33 +79,6 @@ class DashboardResponse(BaseModel):
     closed_count: int
     avg_score: float | None
     theses: list[ThesisSummaryRow]
-
-
-# ---------------------------------------------------------------------------
-# Leaderboard
-# ---------------------------------------------------------------------------
-
-
-class LeaderboardEntry(BaseModel):
-    """One entry in the thesis leaderboard."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    rank: int
-    thesis_id: int
-    ticker: str
-    title: str
-    score: float | None
-    pnl_pct: float | None
-    last_verdict: str | None
-    status: str
-    created_at: datetime
-
-
-class LeaderboardResponse(BaseModel):
-    user_id: str
-    sort_by: Literal["score", "pnl"]
-    entries: list[LeaderboardEntry]
 
 
 # ---------------------------------------------------------------------------

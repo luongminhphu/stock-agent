@@ -8,8 +8,6 @@ Purpose:
       - thesis segment    (mark_closed)
       - watchlist segment (deprioritize, add, mute_alert, snooze)
       - memory / ai       (write UserBehaviorLog directly for pattern synthesis)
-      - readmodel         (invalidate IntelligenceSnapshotStore hot cache — graceful
-                           no-op until readmodel.intelligence_snapshot is implemented)
 
     core is the orchestrator. It DELEGATES to each segment — no domain
     logic lives here beyond routing.
@@ -43,7 +41,6 @@ from src.platform.event_bus import EventBus, get_event_bus
 from src.platform.events import UserActionEvent
 from src.platform.feedback_loop_monitor import (
     ADAPTER_MEMORY,
-    ADAPTER_SNAPSHOT,
     ADAPTER_THESIS,
     ADAPTER_WATCHLIST,
     get_feedback_monitor,
@@ -104,9 +101,6 @@ class UserActionFeedbackListener:
 
         # Always fan out to memory for pattern synthesis — regardless of action type
         await self._record_to_memory(event)
-
-        # Evict hot cache — graceful no-op if readmodel module not yet present
-        await self._invalidate_snapshot(event.user_id)
 
     # ------------------------------------------------------------------
     # Action handlers
@@ -529,27 +523,3 @@ class UserActionFeedbackListener:
                 error=str(exc),
             )
             await get_feedback_monitor().record_error(ADAPTER_MEMORY, str(exc))
-
-    async def _invalidate_snapshot(self, user_id: str) -> None:
-        """Evict hot cache so next query triggers a fresh engine cycle.
-
-        Calls IntelligenceSnapshotStore.invalidate(user_id) — removes the hot
-        TTL layer so the next read falls back to the warm layer (stale=True)
-        and triggers a background refresh in the API/bot layer.
-        """
-        try:
-            from src.readmodel.intelligence_snapshot import get_intelligence_snapshot
-
-            get_intelligence_snapshot().invalidate(user_id)
-            logger.info(
-                "user_action_listener.snapshot_invalidated",
-                user_id=user_id,
-            )
-            await get_feedback_monitor().record_ok(ADAPTER_SNAPSHOT)
-        except Exception as exc:
-            logger.error(
-                "user_action_listener.snapshot_invalidate_failed",
-                user_id=user_id,
-                error=str(exc),
-            )
-            await get_feedback_monitor().record_error(ADAPTER_SNAPSHOT, str(exc))

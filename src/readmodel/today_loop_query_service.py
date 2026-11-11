@@ -3,10 +3,8 @@
 Owner: readmodel segment.
 
 Sources (in priority order):
-    1. IntelligenceSnapshotStore  → priority_actions + risk_flags (in-process, no DB)
-    2. WatchlistAlert DB rows      → WATCHLIST_SCAN signals (already snooze-filtered
-       by snapshot._fetch_alerts, but we query directly here for freshness)
-    3. SchedulerMonitor            → engine health status map
+    1. WatchlistAlert DB rows      → WATCHLIST_SCAN signals (snooze-filtered)
+    2. SchedulerMonitor            → engine health status map
 
 No new AI calls. No cross-segment domain logic.
 All sources degrade gracefully — partial failure returns whatever was collected.
@@ -23,7 +21,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.platform.logging import get_logger
 from src.platform.scheduler_monitor import get_monitor
-from src.readmodel.intelligence_snapshot import get_intelligence_snapshot
 
 _logger = get_logger(__name__)
 
@@ -33,7 +30,6 @@ SignalSource = Literal[
     "WATCHLIST_SCAN",
     "PROACTIVE",
     "REMINDER",
-    "INTELLIGENCE",
     "BRIEF",
     "OTHER",
 ]
@@ -100,7 +96,6 @@ class TodayLoopQueryService:
 
     _SCHEDULER_TASKS = (
         "briefing.morning",
-        "intelligence_engine.morning",
         "proactive_watch.morning",
         "reminder.daily",
     )
@@ -108,13 +103,11 @@ class TodayLoopQueryService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
         self._monitor = get_monitor()
-        self._snapshot_store = get_intelligence_snapshot()
 
     async def get_today_loop(self, user_id: str) -> TodayLoopResult:
         """Return a fully-hydrated TodayLoopResult for the given user.
 
         Aggregates:
-        - Intelligence priority actions + risk flags from the snapshot store
         - Active watchlist alerts from DB (not snoozed, triggered today)
         - Scheduler health for all engine tasks
 
@@ -126,65 +119,7 @@ class TodayLoopQueryService:
         snapshot_generated_at: datetime | None = None
 
         # ————————————————————————————————————————————————————
-        # Source 1: IntelligenceSnapshotStore — priority_actions + risk_flags
-        # ————————————————————————————————————————————————————
-        try:
-            snap_result = await self._snapshot_store.get(user_id)
-            if snap_result is not None:
-                report, is_stale = snap_result
-                snapshot_is_stale = is_stale
-                snapshot_generated_at = self._snapshot_store.last_updated_at(user_id)
-
-                # priority_actions → INTELLIGENCE signals
-                for idx, action in enumerate(report.priority_actions or []):
-                    severity: SignalSeverity = _URGENCY_MAP.get(
-                        str(getattr(action, "urgency", "medium")).lower(), "MEDIUM"
-                    )
-                    ticker = getattr(action, "ticker", "") or ""
-                    signals.append(
-                        TodaySignal(
-                            id=f"intel_action_{idx}",
-                            ticker=ticker.upper(),
-                            source="INTELLIGENCE",
-                            severity=severity,
-                            created_at=snapshot_generated_at or now,
-                            headline=str(getattr(action, "action_text", "") or "")[:200],
-                            details=str(getattr(action, "reasoning", "") or "")[:400] or None,
-                            action_hint=str(getattr(action, "action_text", "") or "")[:120] or None,
-                            link_type="thesis" if ticker else None,
-                            link_target=ticker or None,
-                            tags=["intelligence", severity.lower()],
-                        )
-                    )
-
-                # risk_flags → INTELLIGENCE risk signals
-                for idx, flag in enumerate(report.risk_flags or []):
-                    flag_severity = _URGENCY_MAP.get(
-                        str(getattr(flag, "severity", "low")).lower(), "LOW"
-                    )
-                    signals.append(
-                        TodaySignal(
-                            id=f"intel_risk_{idx}",
-                            ticker="",
-                            source="INTELLIGENCE",
-                            severity=flag_severity,
-                            created_at=snapshot_generated_at or now,
-                            headline=str(getattr(flag, "description", "") or "")[:200],
-                            details=None,
-                            action_hint=None,
-                            tags=["risk", flag_severity.lower()],
-                        )
-                    )
-
-        except Exception as exc:
-            _logger.warning(
-                "today_loop.snapshot_source_failed",
-                user_id=user_id,
-                error=str(exc),
-            )
-
-        # ————————————————————————————————————————————————————
-        # Source 2: WatchlistAlert DB — triggered today, not dismissed
+        # Source 1: WatchlistAlert DB — triggered today, not dismissed
         # Snooze-filtered by snapshot._fetch_alerts already, but we query
         # directly here for freshness (snapshot may be up to 300s old).
         # ————————————————————————————————————————————————————
@@ -289,7 +224,7 @@ class TodayLoopQueryService:
         top_actions = [s for s in signals if s.severity == "HIGH"][:5]
 
         # ————————————————————————————————————————————————————
-        # Source 3: SchedulerMonitor — engine health
+        # Source 2: SchedulerMonitor — engine health
         # ————————————————————————————————————————————————————
         engine_status: dict[str, EngineStatus] = {}
         for task in self._SCHEDULER_TASKS:
