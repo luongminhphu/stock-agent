@@ -7,9 +7,9 @@ Registered tasks:
     InvestorProfileScheduler.snapshot_task     — weekdays 08:20 ICT (before maintenance + brief)
     BriefingScheduler.morning_brief_task       — weekdays 08:30 ICT
     BriefingScheduler.eod_brief_task           — weekdays 15:00 ICT
-    WatchlistScanScheduler.scan_task           — every 5 min, weekdays 09:00–15:00 ICT
+    WatchlistScanScheduler.scan_task           — every 15 min, weekdays 09:00–15:00 ICT
     ThesisMaintenanceScheduler.maintenance     — weekdays 08:30 ICT (before morning brief)
-    ThesisDriftScheduler.drift_task            — every 15 min, weekdays 09:00–15:00 ICT
+    ThesisDriftScheduler.drift_task            — every 60 min, weekdays 09:00–15:00 ICT
     ReminderScheduler.daily_task               — weekdays 08:00 ICT (DAILY reminders)
     ReminderScheduler.weekly_task              — Mondays 08:00 ICT (WEEKLY reminders)
     OutcomeFillerScheduler.fill_task           — weekdays 15:05 ICT (fill decision outcomes before replay)
@@ -107,7 +107,7 @@ def _in_market_hours(now_utc: datetime.datetime) -> bool:
 
     Wave 4: delegates to VNTradingCalendar so the scan/drift schedulers skip
     the 11:30–13:00 lunch break and public holidays — previously they polled
-    every 5/15 min into a closed session.
+    every 15/60 min into a closed session.
     """
     from src.market.trading_calendar import VNTradingCalendar  # noqa: PLC0415
 
@@ -292,11 +292,12 @@ class BriefingScheduler:
 # WatchlistScanScheduler
 # ---------------------------------------------------------------------------
 
-_SCAN_INTERVAL_MINUTES = 5
+# 15 phút: danh mục/watchlist nắm giữ trung hạn — quét dày hơn chỉ tăng tải API của CTCK
+_SCAN_INTERVAL_MINUTES = 15
 
 
 class WatchlistScanScheduler:
-    """Scan watchlist every 5 minutes during market hours and notify Discord.
+    """Scan watchlist every 15 minutes during market hours and notify Discord.
 
     - Runs weekdays 09:00–15:00 ICT only (silent outside market hours).
     - Step 0: reactivate_cooled_down() — re-arm auto_reactivate alerts past
@@ -625,11 +626,12 @@ class ThesisMaintenanceScheduler:
 # ThesisDriftScheduler
 # ---------------------------------------------------------------------------
 
-_DRIFT_INTERVAL_MINUTES = 15
+# 60 phút: drift thesis là tín hiệu chậm (nhiều ngày), không cần quét 15 phút/lần
+_DRIFT_INTERVAL_MINUTES = 60
 
 
 class ThesisDriftScheduler:
-    """Detect thesis price drift + conviction drift every 15 min during market hours.
+    """Detect thesis price drift + conviction drift every 60 min during market hours.
 
     Flow (per tick):
         1a. DriftService.detect()              — price drift, pure detection, no AI.

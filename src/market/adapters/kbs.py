@@ -24,6 +24,7 @@ from typing import Any
 
 import httpx
 
+from src.market.adapters.http_guard import guarded_request
 from src.market.quote_service import MarketDataAdapter, Quote
 from src.platform.logging import get_logger
 
@@ -144,8 +145,8 @@ class KBSAdapter(MarketDataAdapter):
 
     async def _fetch_board(self, symbols: list[str]) -> list[dict[str, Any]]:
         try:
-            response = await self._client.post(
-                _URL, json={"code": ",".join(s.upper() for s in symbols)}
+            response = await guarded_request(
+                self._client, "POST", _URL, json={"code": ",".join(s.upper() for s in symbols)}
             )
             response.raise_for_status()
             return _rows(response.json())
@@ -161,8 +162,11 @@ class KBSAdapter(MarketDataAdapter):
         if not codes:
             return []
         try:
-            response = await self._client.post(
-                _DERIVATIVE_URL, json={"code": ",".join(c.upper() for c in codes)}
+            response = await guarded_request(
+                self._client,
+                "POST",
+                _DERIVATIVE_URL,
+                json={"code": ",".join(c.upper() for c in codes)},
             )
             response.raise_for_status()
             rows = _rows(response.json())
