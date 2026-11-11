@@ -60,3 +60,45 @@ async def test_position_preview(client) -> None:  # type: ignore[no-untyped-def]
 async def test_hedge_without_positions_404(fake_svc, bootstrapped_client) -> None:  # type: ignore[no-untyped-def]
     r = await bootstrapped_client.get("/api/v1/derivatives/hedge")
     assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_position_book_open_list_close(fake_svc, bootstrapped_client) -> None:  # type: ignore[no-untyped-def]
+    from src.market.derivatives import active_contracts
+    from src.market.ohlcv_service import _today_ict
+
+    c = bootstrapped_client
+    code = active_contracts(_today_ict())[0].code
+    r = await c.post(
+        "/api/v1/derivatives/positions",
+        json={
+            "contract_code": code,
+            "side": "SHORT",
+            "qty": 2,
+            "entry_price": 1310,
+            "purpose": "hedge",
+        },
+    )
+    assert r.status_code == 201, r.text
+    pid = r.json()["id"]
+    bad = await c.post(
+        "/api/v1/derivatives/positions",
+        json={"contract_code": code, "side": "BUY", "qty": 1, "entry_price": 1},
+    )
+    assert bad.status_code == 422
+
+    r = await c.get("/api/v1/derivatives/positions")
+    body = r.json()
+    [p] = body["positions"]
+    # _FakeKBS trả giá 1305 cho F1M → Short 2 HĐ từ 1310 lãi 5 điểm × 100.000 × 2
+    assert p["mark_price"] == 1305.0 and p["unrealized_pnl"] == 1_000_000
+    assert body["open_margin"] > 0
+
+    r = await c.post(f"/api/v1/derivatives/positions/{pid}/close", json={"exit_price": 1300})
+    assert r.json()["realized_pnl"] == 2_000_000
+    again = await c.post(f"/api/v1/derivatives/positions/{pid}/close", json={"exit_price": 1300})
+    assert again.status_code == 422
+    r = await c.get("/api/v1/derivatives/positions", params={"include_closed": True})
+    assert (
+        r.json()["realized_pnl"] == 2_000_000 and r.json()["positions"][0]["unrealized_pnl"] is None
+    )

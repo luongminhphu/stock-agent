@@ -477,3 +477,28 @@ class PositionEdit(Base):
             f"<PositionEdit {self.ticker} qty {self.old_qty}->{self.new_qty} "
             f"avg {self.old_avg_cost}->{self.new_avg_cost}>"
         )
+
+
+class DerivativePosition(Base):
+    """Vị thế hợp đồng tương lai chỉ số VN30 (Long/Short).
+
+    Mỗi lệnh mở là một dòng; đóng toàn bộ bằng exit_price + closed_at. Lãi/lỗ tính theo
+    market.derivatives (hệ số 100.000 đ/điểm). contract_code giữ dạng VN30FYYMM hoặc mã KRX.
+    """
+
+    __tablename__ = "derivative_positions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    contract_code: Mapped[str] = mapped_column(String(16), nullable=False)
+    side: Mapped[str] = mapped_column(String(5), nullable=False)  # LONG | SHORT
+    qty: Mapped[int] = mapped_column(Integer, nullable=False)
+    entry_price: Mapped[float] = mapped_column(Float, nullable=False)  # điểm
+    opened_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+    exit_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    realized_pnl: Mapped[float | None] = mapped_column(Float, nullable=True)  # đồng
+    purpose: Mapped[str | None] = mapped_column(String(16), nullable=True)  # hedge | trade
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)

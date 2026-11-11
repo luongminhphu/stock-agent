@@ -8,6 +8,7 @@ Endpoints:
     GET /derivatives/vn30/baserate   — tiền lệ của VN30 ở trạng thái hiện tại (5/20/60 phiên)
     GET /derivatives/hedge           — số HĐ cần Short để phòng hộ danh mục cổ phiếu đang mở
     GET /derivatives/position-preview — lãi/lỗ, ký quỹ, cảnh báo đáo hạn cho 1 vị thế giả định
+    GET/POST /derivatives/positions, POST /derivatives/positions/{id}/close — sổ vị thế
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ from datetime import date
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_current_user_id, get_db, get_derivatives_service, get_quote_service
@@ -196,3 +197,107 @@ async def preview_position(
     """Lãi/lỗ theo hệ số 100.000đ/điểm, ký quỹ ban đầu, số ngày tới đáo hạn của một vị thế."""
     v = position_view(code, side, qty, entry, mark, _today_ict())
     return PositionPreviewResponse(**vars(v))
+
+
+# ── Sổ vị thế phái sinh ──────────────────────────────────────────────────────
+
+
+class OpenPositionRequest(BaseModel):
+    contract_code: str = Field(..., min_length=7, max_length=16)
+    side: str = Field(..., pattern="^(LONG|SHORT|long|short)$")
+    qty: int = Field(..., ge=1, le=10_000)
+    entry_price: float = Field(..., gt=0)
+    purpose: str | None = Field(default=None, pattern="^(hedge|trade)$")
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class ClosePositionRequest(BaseModel):
+    exit_price: float = Field(..., gt=0)
+
+
+async def _mark_prices(svc: Any) -> dict[str, float]:
+    try:
+        snap = await svc.contracts(_today_ict())
+    except Exception:  # noqa: BLE001 — không có giá thì vẫn trả vị thế
+        return {}
+    out: dict[str, float] = {}
+    for c in snap.get("contracts", []):
+        if c.get("price"):
+            out[c["code"]] = c["price"]
+            out[c["krx"]] = c["price"]
+    return out
+
+
+@router.get("/positions")
+async def list_positions(
+    user_id: Annotated[str, Depends(get_current_user_id)],
+    include_closed: bool = Query(default=False),
+    session: AsyncSession = Depends(get_db),
+    svc: Any = Depends(get_derivatives_service),
+) -> dict[str, Any]:
+    """Vị thế phái sinh + lãi/lỗ theo giá hợp đồng hiện tại; tổng lãi/lỗ và ký quỹ đang dùng."""
+    from src.portfolio.derivative_service import DerivativePositionService
+
+    dps = DerivativePositionService(session)
+    positions = await dps.list(user_id, include_closed=include_closed)
+    marks = await _mark_prices(svc) if any(p.closed_at is None for p in positions) else {}
+    today = _today_ict()
+    rows = [dps.view(p, marks.get(p.contract_code), today) for p in positions]
+    open_rows = [r for r in rows if r["closed_at"] is None]
+    return {
+        "positions": rows,
+        "open_unrealized_pnl": sum(r.get("unrealized_pnl") or 0 for r in open_rows),
+        "open_margin": sum(r.get("initial_margin") or 0 for r in open_rows),
+        "realized_pnl": sum(r.get("realized_pnl") or 0 for r in rows if r["closed_at"]),
+    }
+
+
+@router.post("/positions", status_code=status.HTTP_201_CREATED)
+async def open_position(
+    body: OpenPositionRequest,
+    user_id: Annotated[str, Depends(get_current_user_id)],
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    from src.portfolio.derivative_service import (
+        DerivativePositionError,
+        DerivativePositionService,
+    )
+
+    try:
+        pos = await DerivativePositionService(session).open(
+            user_id,
+            body.contract_code,
+            body.side,
+            body.qty,
+            body.entry_price,
+            body.purpose,
+            body.note,
+        )
+    except DerivativePositionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    await session.commit()
+    return {"id": pos.id}
+
+
+@router.post("/positions/{position_id}/close")
+async def close_position(
+    position_id: int,
+    body: ClosePositionRequest,
+    user_id: Annotated[str, Depends(get_current_user_id)],
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    from src.portfolio.derivative_service import (
+        DerivativePositionError,
+        DerivativePositionService,
+    )
+
+    try:
+        pos = await DerivativePositionService(session).close(user_id, position_id, body.exit_price)
+    except DerivativePositionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    await session.commit()
+    return {"id": pos.id, "realized_pnl": pos.realized_pnl}
