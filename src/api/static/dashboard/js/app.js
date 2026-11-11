@@ -36,7 +36,8 @@ import { bindBriefTickerClick }          from './modules/briefing/brief-ticker.j
 import { loadAttentionPanel, startAttentionAutoRefresh } from './modules/attention/attention-loader.js?v=2';
 import { debounce }                      from './utils/debounce.js?v=1';
 import { initAppTabs }                  from './modules/app-tabs.js?v=1';
-import { loadBoard }                    from './modules/board/board.js?v=1';
+import { loadBoard }                    from './modules/board/board.js?v=2';
+import { loadPlans }                    from './modules/plans/plans.js?v=1';
 import { state }                         from './state/dashboard-state.js?v=1';
 import {
   bindWatchlistThesisNavigate,
@@ -53,7 +54,6 @@ import { initTopbarSearch, reapplySearch } from './modules/search/topbar-search.
 
 let _lazyDecisionLoader  = null;
 let _lazyDecisionTabs    = null;
-let _lazyMemory          = null;
 let _lazyTodayLoop       = null;
 let _lazyDerivatives     = null;
 
@@ -65,12 +65,8 @@ async function _getDecisionTabs() {
   if (!_lazyDecisionTabs) _lazyDecisionTabs = import('./modules/decision/decision-tabs.js?v=1');
   return _lazyDecisionTabs;
 }
-async function _getMemory() {
-  if (!_lazyMemory) _lazyMemory = import('./modules/memory/memory-loader.js?v=1');
-  return _lazyMemory;
-}
 async function _getDerivatives() {
-  if (!_lazyDerivatives) _lazyDerivatives = import('./modules/derivatives/derivatives.js?v=1');
+  if (!_lazyDerivatives) _lazyDerivatives = import('./modules/derivatives/derivatives.js?v=2');
   return _lazyDerivatives;
 }
 async function loadDerivatives() {
@@ -94,10 +90,6 @@ async function loadLessons(...args) {
 async function openDecisionModal(...args) {
   const m = await _getDecisionLoader();
   return m.openDecisionModal(...args);
-}
-async function loadMemory() {
-  const m = await _getMemory();
-  return m.loadMemory();
 }
 async function loadTodayLoop(...args) {
   const m = await _getTodayLoop();
@@ -154,6 +146,7 @@ function bindTradeConfirmedWire() {
     loadWatchlist();
     loadAttentionPanel();
     loadBoard({ silent: true });
+    loadPlans({ silent: true });
   });
 }
 
@@ -274,6 +267,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   el('reloadBtn')?.addEventListener('click', async () => {
     await Promise.allSettled([
       loadBoard({ silent: true }),
+      loadPlans({ silent: true }),
       loadDashboard(),
       loadPortfolio(),
       loadWatchlist(),
@@ -283,7 +277,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadAttentionPanel();
     // Wave 6: backtesting/memory chỉ reload nếu panel đang mở
     if (document.getElementById('backtestDetails')?.open) loadBacktesting().catch(() => null);
-    if (document.getElementById('memoryDetails')?.open) loadMemory().catch(() => null);
   });
 
   el('addWatchlistBtn')?.addEventListener('click', () => openModal('watchlistAddModal'));
@@ -364,6 +357,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   //
   // Tier A — CRITICAL: blocks first meaningful paint. Run immediately.
   //   loadBoard()     — Danh mục & Watchlist + tiền lệ (tab mặc định)
+  //   loadPlans()     — Kế hoạch nắm giữ (đèn hiện cả trên bảng danh mục)
   //   loadDashboard() — thesis table, stats, KPIs, scan, brief snapshots
   //   loadPortfolio() — holdings & P&L (has its own skeleton)
   //   loadWatchlist() — attention panel data source
@@ -376,12 +370,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   //
   // Tier C — LAZY: heavy, below-fold. Load when section enters viewport
   //   (IntersectionObserver with 200px rootMargin).
-  //   loadMemory()           → #memoryKpiStrip
   //   loadTodayLoop()        → #todayDuoRow
 
   // Tier A — critical, run now
   await Promise.allSettled([
     loadBoard(),
+    loadPlans(),
     loadDashboard().then(_stampKpiUpdatedAt),
     loadPortfolio(),
     loadWatchlist(),
@@ -411,7 +405,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Nếu mặc định open (pref/localStorage sau này) thì load ngay
     if (det.open) { loaded = true; loader(); }
   };
-  _lazyOnOpen('memoryDetails',   () => loadMemory().catch(() => null));
   _observeLazy('#accuracyPanel', () =>
     import('./modules/accuracy/accuracy-loader.js?v=1').then(m => m.loadAccuracy()).catch(() => null));
   _lazyOnOpen('rrgPanel',        () => import('./modules/leaderboard/rrg-chart.js?v=1').then(m => m.loadRRG()).catch(() => null));

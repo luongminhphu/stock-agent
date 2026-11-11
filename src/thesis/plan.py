@@ -6,8 +6,8 @@ Một "kế hoạch" (bảng `theses`) trả lời 4 câu hỏi:
     1. Vì sao tôi mua?          → "điều tôi tin" (bảng `assumptions`). Mỗi điều có thể gắn
                                   một mẫu kiểm tra tự động (check_key) — hệ thống tự đối
                                   chiếu với số liệu hằng ngày; điều tự ghi thì người dùng tự kiểm.
-    2. Khi nào tôi sai?         → mức chấp nhận sai (`stop_loss`).
-    3. Mục tiêu?                → mức chốt lời (`target_price`).
+    2. Khi nào tôi sai?         → Stop-loss (`stop_loss`).
+    3. Chốt lời ở đâu?          → Target (`target_price`).
     4. Khi nào xem lại?         → hạn xem lại (`review_by`, mặc định 6 tháng).
 
 Thay cho điểm 0–100 là MỘT đèn trạng thái + một dòng tóm tắt:
@@ -141,6 +141,16 @@ class PlanEvaluation:
     summary: str = ""
 
 
+def _vnd(x: float) -> str:
+    """28400 → "28.400" (kiểu số Việt Nam)."""
+    return f"{x:,.0f}".replace(",", ".")
+
+
+def _pct(x: float, sign: bool = False) -> str:
+    """-14.26 → "-14,3" (dấu phẩy thập phân)."""
+    return (f"{x:+.1f}" if sign else f"{x:.1f}").replace(".", ",")
+
+
 _MANUAL_OK = {"valid"}
 _MANUAL_BAD = {"invalid"}
 
@@ -187,22 +197,22 @@ def evaluate_plan(
     red: list[str] = []
     yellow: list[str] = []
     if price and stop_price and price <= stop_price:
-        red.append(f"Giá {price:,.0f} đã chạm mức chấp nhận sai {stop_price:,.0f}.")
+        red.append(f"Giá {_vnd(price)} đã chạm Stop-loss {_vnd(stop_price)}.")
     elif ev.to_stop_pct is not None and ev.to_stop_pct < NEAR_STOP_PCT:
-        yellow.append(f"Giá chỉ còn cách mức chấp nhận sai {ev.to_stop_pct:.1f}%.")
+        yellow.append(f"Giá chỉ còn cách Stop-loss {_pct(ev.to_stop_pct)}%.")
     if decided and len(wrong) * 2 > len(decided):
         red.append(f"{len(wrong)}/{len(decided)} điều tôi tin đã không còn đúng.")
     elif wrong:
         yellow.append("Không còn đúng: " + "; ".join(w.text for w in wrong) + ".")
     if price and target_price and price >= target_price:
-        yellow.append(f"Giá đã tới mức chốt lời {target_price:,.0f} — chốt hay nâng mục tiêu?")
+        yellow.append(f"Giá đã tới Target {_vnd(target_price)} — chốt lời hay nâng Target?")
     if ev.days_left is not None:
         if ev.days_left <= 0:
             yellow.append("Đã tới hạn xem lại kế hoạch.")
         elif ev.days_left <= REVIEW_SOON_DAYS:
             yellow.append(f"Còn {ev.days_left} ngày tới hạn xem lại.")
     if stop_price is None:
-        yellow.append("Chưa đặt mức chấp nhận sai — nên đặt để biết khi nào mình sai.")
+        yellow.append("Chưa đặt Stop-loss — nên đặt để biết khi nào mình sai.")
 
     if red:
         ev.light, ev.reasons = LIGHT_RED, red + yellow
@@ -222,9 +232,9 @@ def _summary(ev: PlanEvaluation) -> str:
         else:
             parts.append(f"{len(ev.beliefs)} điều tôi tin chưa kiểm được")
     if ev.pnl_pct is not None:
-        parts.append(f"lãi/lỗ {ev.pnl_pct:+.1f}%")
+        parts.append(f"P&L {_pct(ev.pnl_pct, sign=True)}%")
     if ev.to_stop_pct is not None and ev.to_stop_pct > 0:
-        parts.append(f"cách mức chấp nhận sai {ev.to_stop_pct:.1f}%")
+        parts.append(f"cách Stop-loss {_pct(ev.to_stop_pct)}%")
     if ev.days_left is not None and ev.days_left > 0:
         parts.append(f"còn {ev.days_left} ngày tới hạn xem lại")
     return " · ".join(parts)
@@ -262,12 +272,12 @@ def suggest_levels(
         dd = typical_drawdown * 1.2
         stop = round_to(entry_price * (1 + dd))
         stop_note = (
-            f"Các lần trước mã thường sụt {abs(typical_drawdown) * 100:.0f}% trong lúc nắm giữ; "
+            f"Các lần trước mã có max drawdown trung bình {abs(typical_drawdown) * 100:.0f}% khi nắm giữ; "
             f"đặt sâu hơn một chút ({abs(dd) * 100:.0f}%) để không bị văng ra vì dao động bình thường."
         )
     else:
         stop = round_to(entry_price * 0.9)
-        stop_note = "Chưa đủ tiền lệ — tạm đặt thấp hơn giá mua 10%."
+        stop_note = "Chưa đủ base rate — tạm đặt Stop-loss thấp hơn Entry 10%."
     target: float | None = None
     if median_return is not None and median_return > 0:
         target = round_to(entry_price * (1 + median_return))
@@ -275,11 +285,11 @@ def suggest_levels(
     elif p90_return is not None and p90_return > 0:
         target = round_to(entry_price * (1 + p90_return))
         target_note = (
-            "Tiền lệ cho thấy đa số lần không lãi sau 6 tháng; mức này chỉ đạt ở 10% trường hợp "
+            "Base rate cho thấy đa số lần không lãi sau 6 tháng; Target này chỉ đạt ở 10% trường hợp "
             "tốt nhất — cân nhắc kỹ trước khi mua."
         )
     else:
-        target_note = "Chưa đủ tiền lệ để gợi ý mức chốt lời."
+        target_note = "Chưa đủ base rate để gợi ý Target."
     return LevelSuggestion(
         stop_price=stop,
         target_price=target,

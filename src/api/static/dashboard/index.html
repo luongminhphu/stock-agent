@@ -13,7 +13,7 @@
       })();
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>stock-agent — Danh mục &amp; tiền lệ</title>
+    <title>stock-agent — Portfolio &amp; base rate</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>%F0%9F%93%88</text></svg>" />
     <!-- Fonts: preconnect + <link> (tránh @import blocking trong CSS) — Wave 5d -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -24,7 +24,7 @@
          Đổi IBM Plex Mono (có Vietnamese, tabular nums). -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Display:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" />
     <!-- CSS bundle: link thẳng bundle (1 request, bỏ @import hop) — Wave 5d -->
-    <link rel="stylesheet" href="/static/dashboard/dashboard.bundle.css?v=53" />
+    <link rel="stylesheet" href="/static/dashboard/dashboard.bundle.css?v=56" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">Bỏ qua điều hướng</a>
@@ -75,15 +75,15 @@
         <div class="app-tabs-inner" id="appTabs" role="tablist" aria-label="Khu vực chính">
           <button type="button" class="app-tab active" role="tab" id="tabbtn-board" data-tab-target="board"
             aria-controls="tab-board" aria-selected="true" tabindex="0">
-            <span class="app-tab-long">Danh mục &amp; Watchlist</span><span class="app-tab-short">Danh mục</span>
+            <span class="app-tab-long">Portfolio &amp; Watchlist</span><span class="app-tab-short">Portfolio</span>
           </button>
           <button type="button" class="app-tab" role="tab" id="tabbtn-derivatives" data-tab-target="derivatives"
             aria-controls="tab-derivatives" aria-selected="false" tabindex="-1">
-            <span class="app-tab-long">Phái sinh</span><span class="app-tab-short">Phái sinh</span>
+            <span class="app-tab-long">Derivatives</span><span class="app-tab-short">Phái sinh</span>
           </button>
           <button type="button" class="app-tab" role="tab" id="tabbtn-thesis" data-tab-target="thesis"
             aria-controls="tab-thesis" aria-selected="false" tabindex="-1">
-            <span class="app-tab-long">Thesis &amp; Quyết định</span><span class="app-tab-short">Thesis</span>
+            <span class="app-tab-long">Kế hoạch &amp; Quyết định</span><span class="app-tab-short">Kế hoạch</span>
           </button>
           <button type="button" class="app-tab" role="tab" id="tabbtn-context" data-tab-target="context"
             aria-controls="tab-context" aria-selected="false" tabindex="-1">
@@ -117,11 +117,11 @@
             aria-label="Catalyst sắp đến"
           ></div>
 
-          <section class="panel bd-panel" aria-labelledby="boardTitle">
+          <section class="panel bd-board" aria-labelledby="boardTitle">
             <div class="panel-header split-header">
               <div>
-                <p class="eyebrow">Tiền lệ lịch sử của chính từng mã · 3–6 tháng</p>
-                <h2 id="boardTitle">Danh mục &amp; Watchlist</h2>
+                <p class="eyebrow">Base rate lịch sử của chính từng mã · 3–6 tháng</p>
+                <h2 id="boardTitle">Portfolio &amp; Watchlist</h2>
               </div>
               <button type="button" class="ghost-btn bd-add-btn" id="addWatchlistBtn">+ Thêm mã theo dõi</button>
             </div>
@@ -206,10 +206,32 @@
         </section><!-- /tab-derivatives -->
 
         <!-- ══════════════════════════════════════════════════════════════════
-             TAB 3 — Thesis & Quyết định
+             TAB 3 — Kế hoạch nắm giữ & Quyết định
         ══════════════════════════════════════════════════════════════════ -->
         <section class="app-tabpanel" id="tab-thesis" data-app-tab="thesis" role="tabpanel" aria-labelledby="tabbtn-thesis" tabindex="-1" hidden>
 
+          <!-- ── KẾ HOẠCH NẮM GIỮ (GET /api/v1/plans) ───────────────────────── -->
+          <section class="panel pl-panel" aria-labelledby="plansTitle">
+            <div class="panel-header split-header">
+              <div>
+                <p class="eyebrow">Vì sao mua · Stop-loss · Target · khi nào xem lại</p>
+                <h2 id="plansTitle">Kế hoạch nắm giữ</h2>
+              </div>
+              <div class="pl-actions">
+                <button type="button" class="ghost-btn" data-plan-check>Kiểm tra ngay</button>
+                <button type="button" class="primary-btn" data-plan-new>+ Kế hoạch mới</button>
+              </div>
+            </div>
+            <div class="panel-body" id="plansRoot" aria-live="polite">
+              <p class="pl-muted">Đang tải…</p>
+            </div>
+          </section>
+
+          <details class="pl-advanced" id="thesisAdvanced">
+            <summary class="pl-advanced-summary">
+              <span>Thesis chi tiết</span>
+              <span class="pl-advanced-hint">Giả định, catalyst, điểm số, AI review — cho người muốn đào sâu</span>
+            </summary>
           <div class="cluster" id="cluster-b">
           <div class="cluster-label">
             <div class="cluster-label-content">
@@ -329,6 +351,7 @@
           </details>
 
           </div><!-- /cluster-b -->
+          </details><!-- /thesisAdvanced -->
 
           <div class="cluster" id="cluster-c">
           <div class="cluster-label" id="clusterCLabel">
@@ -388,7 +411,7 @@
           <div class="cluster-label" id="clusterDLabel">
             <div class="cluster-label-content">
               <span class="cluster-label-title">AI nói gì · Tôi làm gì · Kết quả</span>
-              <span class="cluster-label-desc">Vòng phản hồi · Lịch sử hành động · Hồ sơ hành vi</span>
+              <span class="cluster-label-desc">Vòng phản hồi giữa gợi ý và hành động</span>
             </div>
           </div>
 
@@ -410,91 +433,6 @@
             </div>
           </section>
 
-          <details class="collapsible-panel cluster-collapse" id="memoryDetails">
-            <summary class="collapsible-summary collapsible-summary--cluster">
-              <span class="collapse-hint">Nhấn để xem: Lịch sử hành động · Hồ sơ hành vi</span>
-            </summary>
-          <div class="memory-kpi-strip" id="memoryKpiStrip" aria-label="Memory overview">
-            <article class="mem-kpi-card" id="memKpiEpisodes">
-              <span class="mem-kpi-label">Episodes ghi nhận</span>
-              <strong class="mem-kpi-value">
-                <div class="mem-skel" style="width:40px;height:1.2rem;"></div>
-              </strong>
-              <span class="mem-kpi-sub">hành động + outcome</span>
-            </article>
-            <article class="mem-kpi-card" id="memKpiConfidence">
-              <span class="mem-kpi-label">Avg confidence</span>
-              <strong class="mem-kpi-value">
-                <div class="mem-skel" style="width:52px;height:1.2rem;"></div>
-              </strong>
-              <span class="mem-kpi-sub">độ tin cậy trung bình</span>
-            </article>
-          </div>
-
-          <div class="memory-grid">
-
-            <section class="panel glass mem-episodic" aria-labelledby="memEpisodicTitle">
-              <div class="panel-header split-header">
-                <div>
-                  <p class="eyebrow">Lịch sử hành động</p>
-                  <h2 id="memEpisodicTitle">Lịch sử hành động &amp; kết quả</h2>
-                </div>
-                <button class="mem-refresh-btn" id="memRefreshBtn" type="button"
-                  aria-label="Làm mới memory">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                    stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
-                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-                  </svg>
-                  Refresh
-                </button>
-              </div>
-              <div class="panel-body">
-                <div id="episodicFeed" class="mem-episode-list" aria-live="polite">
-                  <div class="mem-episode-item" aria-hidden="true">
-                    <div class="mem-skel" style="width:20px;height:20px;border-radius:4px;"></div>
-                    <div>
-                      <div class="mem-skel" style="width:160px;height:.8rem;margin-bottom:5px;"></div>
-                      <div class="mem-skel" style="width:80px;height:.65rem;"></div>
-                    </div>
-                    <div class="mem-skel" style="width:44px;height:.8rem;"></div>
-                  </div>
-                  <div class="mem-episode-item" aria-hidden="true">
-                    <div class="mem-skel" style="width:20px;height:20px;border-radius:4px;"></div>
-                    <div>
-                      <div class="mem-skel" style="width:140px;height:.8rem;margin-bottom:5px;"></div>
-                      <div class="mem-skel" style="width:96px;height:.65rem;"></div>
-                    </div>
-                    <div class="mem-skel" style="width:44px;height:.8rem;"></div>
-                  </div>
-                  <div class="mem-episode-item" aria-hidden="true">
-                    <div class="mem-skel" style="width:20px;height:20px;border-radius:4px;"></div>
-                    <div>
-                      <div class="mem-skel" style="width:180px;height:.8rem;margin-bottom:5px;"></div>
-                      <div class="mem-skel" style="width:72px;height:.65rem;"></div>
-                    </div>
-                    <div class="mem-skel" style="width:44px;height:.8rem;"></div>
-                  </div>
-                </div>
-                <div id="episodicEmpty" class="mem-empty hidden">
-                  <div class="mem-empty-icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
-                  <div>Chưa có episode nào được ghi nhận.</div>
-                  <div class="mem-empty-hint">Hệ thống sẽ tự động ghi lại khi bạn react với briefing hoặc log decision đầu tiên.</div>
-                </div>
-              </div>
-            </section>
-
-          </div><!-- /memory-grid -->
-
-          <!-- Behavioral DNA panel -->
-          <section class="panel glass" id="behavioralDnaPanel" aria-labelledby="dnaTitle">
-            <!-- Skeleton shown until JS renders -->
-            <div class="dna-skel dna-skel--header"></div>
-            <div class="dna-skel dna-skel--kpis"></div>
-            <div class="dna-skel dna-skel--body"></div>
-          </section>
-
-          </details>
 
           </div><!-- /cluster-d -->
 
@@ -944,6 +882,6 @@
 
     <!-- quick-trade.js đã được chuyển thành ES module tại modules/portfolio/quick-trade.js -->
     <!-- và được import trực tiếp bởi portfolio-loader.js + portfolio-renderer.js          -->
-    <script type="module" src="/static/dashboard/js/app.js?v=36" data-cfasync="false"></script>
+    <script type="module" src="/static/dashboard/js/app.js?v=39" data-cfasync="false"></script>
   </body>
 </html>

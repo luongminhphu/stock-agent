@@ -4,7 +4,7 @@ Owner: api segment (adapter mỏng). Logic ở thesis.plan / thesis.plan_service
 
 Endpoints:
     GET  /plans/templates  — mẫu "điều tôi tin" hệ thống tự kiểm được bằng số liệu
-    GET  /plans/suggest    — gợi ý cho 1 mã: điều nào đang đúng, mức chấp nhận sai / chốt lời
+    GET  /plans/suggest    — gợi ý cho 1 mã: điều nào đang đúng, Stop-loss / Target
     GET  /plans            — kế hoạch đang mở: đèn, lý do, tóm tắt, điều tôi tin, sự kiện
     POST /plans            — tạo kế hoạch (4 câu hỏi)
     POST /plans/check      — kiểm tra ngay (ghi kết quả; bình thường chạy tự động sau đóng cửa)
@@ -190,7 +190,7 @@ async def create(
     if body.stop_price and body.entry_price and body.stop_price >= body.entry_price:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Mức chấp nhận sai phải thấp hơn giá mua.",
+            detail="Stop-loss phải thấp hơn Entry.",
         )
     plan = await create_plan(
         session,

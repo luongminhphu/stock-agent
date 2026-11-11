@@ -87,7 +87,7 @@ export const SUGGESTION = Object.freeze({
   NGHIENG_MUA:      { label: 'Nghiêng mua',      cls: 'sg-buy' },
   NGHIENG_TRANH:    { label: 'Nghiêng tránh',    cls: 'sg-avoid' },
   TRUNG_TINH:       { label: 'Trung tính',       cls: 'sg-neutral' },
-  KHONG_DU_TIEN_LE: { label: 'Không đủ tiền lệ', cls: 'sg-insufficient' },
+  KHONG_DU_TIEN_LE: { label: 'Không đủ base rate', cls: 'sg-insufficient' },
 });
 
 export const CONFIDENCE = Object.freeze({
@@ -138,7 +138,7 @@ function _featureName(key) {
  */
 export function renderBaserate(d, opts = {}) {
   if (!d || typeof d !== 'object') {
-    return '<p class="br-empty">Không có dữ liệu tiền lệ.</p>';
+    return '<p class="br-empty">Không có dữ liệu base rate.</p>';
   }
   const priceDecimals = opts.priceDecimals ?? 0;
   const compact = !!opts.compact;
@@ -159,11 +159,11 @@ export function renderBaserate(d, opts = {}) {
   const head = `
     <div class="br-head">
       ${suggestionBadge(d.suggestion)}
-      <span class="br-meta">Độ tin cậy: <strong>${confidenceLabel(d.confidence, true)}</strong></span>
+      <span class="br-meta">Confidence: <strong>${confidenceLabel(d.confidence, true)}</strong></span>
       ${_isNum(d.matching_days) ? `<span class="br-meta">${fmtNum(d.matching_days)} phiên cùng trạng thái</span>` : ''}
       ${d.history_from ? `<span class="br-meta">Lịch sử từ ${fmtDateVi(d.history_from)}</span>` : ''}
     </div>
-    <p class="br-explainer">Xác suất = tỉ lệ các lần trước đây mã ở cùng trạng thái có lãi vượt chi phí 0,4% sau ${esc(nList)} phiên, đã co về mức nền của chính mã. Không phải dự báo.</p>`;
+    <p class="br-explainer">Xác suất = tỉ lệ các lần trước đây mã ở cùng trạng thái có lãi vượt chi phí 0,4% sau ${esc(nList)} phiên, đã co về base rate của chính mã. Không phải dự báo.</p>`;
 
   const state = stateItems ? `
     <section class="br-section" aria-label="Trạng thái hiện tại">
@@ -179,15 +179,15 @@ export function renderBaserate(d, opts = {}) {
         <h4 class="br-outcome-title">Sau ${esc(o.horizon)} phiên${hint}</h4>
         <div class="br-prob">
           <span class="br-prob-val">${fmtProb(o.win_prob)}</span>
-          <span class="br-prob-sub">xác suất lãi · khoảng ${fmtProb(o.prob_low, 0)}–${fmtProb(o.prob_high, 0)}</span>
+          <span class="br-prob-sub">win rate · khoảng ${fmtProb(o.prob_low, 0)}–${fmtProb(o.prob_high, 0)}</span>
         </div>
         <dl class="br-dl">
-          <div><dt>Mức nền của mã</dt><dd>${fmtProb(o.base_win_rate)}</dd></div>
-          <div><dt>Lợi thế</dt><dd class="${signClass(o.edge)}">${fmtPp(o.edge)}</dd></div>
-          <div><dt>Lợi nhuận trung vị</dt><dd class="${signClass(o.median_return)}">${fmtSignedPct(o.median_return)}</dd></div>
+          <div><dt>Base rate của mã</dt><dd>${fmtProb(o.base_win_rate)}</dd></div>
+          <div><dt>Edge</dt><dd class="${signClass(o.edge)}">${fmtPp(o.edge)}</dd></div>
+          <div><dt>Median return</dt><dd class="${signClass(o.median_return)}">${fmtSignedPct(o.median_return)}</dd></div>
           <div><dt>Khoảng P10 – P90</dt><dd>${fmtSignedPct(o.p10_return)} … ${fmtSignedPct(o.p90_return)}</dd></div>
-          <div><dt>Sụt giảm TB trong kỳ</dt><dd>${fmtSignedPct(o.avg_max_drawdown)}</dd></div>
-          <div><dt>Số đợt độc lập</dt><dd>${fmtNum(o.episodes)}</dd></div>
+          <div><dt>Avg max drawdown</dt><dd>${fmtSignedPct(o.avg_max_drawdown)}</dd></div>
+          <div><dt>Episodes độc lập</dt><dd>${fmtNum(o.episodes)}</dd></div>
         </dl>
       </article>`;
   }).join('') : '<p class="br-empty">Chưa có kết quả theo kỳ nắm giữ.</p>';
@@ -208,9 +208,9 @@ export function renderBaserate(d, opts = {}) {
         <table class="br-table">
           <thead><tr>
             <th scope="col">Ngày vào</th>
-            <th scope="col" class="num">Giá vào</th>
+            <th scope="col" class="num">Entry</th>
             ${horizons.map(h => `<th scope="col" class="num">Sau ${esc(h)}p</th>`).join('')}
-            ${mainH != null ? `<th scope="col" class="num">Sụt tối đa (${esc(mainH)}p)</th>` : ''}
+            ${mainH != null ? `<th scope="col" class="num">Max drawdown (${esc(mainH)}p)</th>` : ''}
           </tr></thead>
           <tbody>
             ${analogs.slice(0, maxAnalogs).map(a => {
@@ -265,8 +265,8 @@ function _ensureDrawer() {
     <aside class="br-panel" role="dialog" aria-modal="true" aria-labelledby="brTitle" tabindex="-1">
       <header class="br-panel-head">
         <div>
-          <p class="br-eyebrow" id="brEyebrow">Tiền lệ lịch sử</p>
-          <h2 class="br-title" id="brTitle">Tiền lệ</h2>
+          <p class="br-eyebrow" id="brEyebrow">Base rate lịch sử</p>
+          <h2 class="br-title" id="brTitle">Base rate</h2>
         </div>
         <button type="button" class="br-close" data-br-close aria-label="Đóng">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -279,6 +279,7 @@ function _ensureDrawer() {
 
   root.addEventListener('click', (e) => {
     if (e.target.closest('[data-br-close]')) { closeBaserateDrawer(); return; }
+    if (e.target.closest('[data-plan-new]')) { closeBaserateDrawer({ restoreFocus: false }); return; }
     if (e.target.closest('[data-br-retry]')) { _load(); return; }
     const trade = e.target.closest('[data-br-trade]');
     if (trade) {
@@ -325,7 +326,7 @@ function _skeleton() {
         <span class="br-skel br-skel--card"></span>
         <span class="br-skel br-skel--card"></span>
       </div>
-      <span class="sr-only">Đang tải tiền lệ…</span>
+      <span class="sr-only">Đang tải base rate…</span>
     </div>`;
 }
 
@@ -345,7 +346,7 @@ async function _load() {
     const notFound = String(err?.message ?? '').startsWith('404');
     body.innerHTML = `
       <div class="br-error" role="alert">
-        <p>${notFound ? 'Không tìm thấy mã này trong dữ liệu thị trường.' : 'Không tải được tiền lệ.'}</p>
+        <p>${notFound ? 'Không tìm thấy mã này trong dữ liệu thị trường.' : 'Không tải được base rate.'}</p>
         <p class="br-error-detail">${esc(err?.message ?? '')}</p>
         ${notFound ? '' : '<button type="button" class="ghost-btn" data-br-retry>Thử lại</button>'}
       </div>`;
@@ -363,15 +364,15 @@ export function openBaserateDrawer(ticker, opts = {}) {
   _currentOpts = opts;
   _opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
-  root.querySelector('#brTitle').textContent = opts.title ?? `Tiền lệ của ${_currentTicker}`;
-  root.querySelector('#brEyebrow').textContent = opts.inPortfolio ? 'Đang nắm · tiền lệ lịch sử' : 'Tiền lệ lịch sử';
+  root.querySelector('#brTitle').textContent = opts.title ?? `Base rate của ${_currentTicker}`;
+  root.querySelector('#brEyebrow').textContent = opts.inPortfolio ? 'Đang nắm · base rate lịch sử' : 'Base rate lịch sử';
   const foot = root.querySelector('#brFoot');
   const tradable = opts.tradable !== false;
   foot.hidden = !tradable;
   foot.innerHTML = tradable ? `
     <button type="button" class="br-trade br-trade--buy" data-br-trade="buy">Mua ${esc(_currentTicker)}</button>
     ${opts.inPortfolio ? `<button type="button" class="br-trade br-trade--sell" data-br-trade="sell">Bán ${esc(_currentTicker)}</button>` : ''}
-    <span class="br-foot-hint">Mở form giao dịch nhanh</span>` : '';
+    <button type="button" class="br-trade br-trade--plan" data-plan-new="${esc(_currentTicker)}">Lập kế hoạch</button>` : '';
 
   root.hidden = false;
   document.body.classList.add('br-locked');
