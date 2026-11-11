@@ -89,7 +89,7 @@ async def test_suggest_create_list_check(overrides, bootstrapped_client) -> None
     assert r.status_code == 200
     [p] = r.json()
     assert p["ticker"] == "HPG" and p["title"] == "Kế hoạch nắm giữ HPG"
-    assert p["light"] == "do", "giá 26.000 đã chạm mức chấp nhận sai 26.400"
+    assert p["light"] == "do", "giá 26.000 đã chạm Stop-loss 26.400"
     assert p["beliefs"][0] == {
         "text": "Giá đang rẻ so với lịch sử của chính mã",
         "check_key": "gia_re",
