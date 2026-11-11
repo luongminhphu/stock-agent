@@ -61,10 +61,8 @@ def create_bot() -> commands.Bot:
             _start_proactive_watch_subscriber(bot)
             _start_post_mortem_subscriber(bot)
             _start_signal_reaction_listener(bot)
-            _start_agenda_subscriber(bot)
             _start_invalidation_subscriber(bot)
             _start_position_risk_subscriber(bot)  # portfolio loss threshold → Discord
-            _start_agenda_builder_scheduler(bot)  # build daily agenda 07:30 ICT
             _start_portfolio_snapshot_scheduler(bot)  # portfolio snapshot 08:15 ICT
             _start_investor_profile_scheduler(bot)  # investor profile snapshot 08:20 ICT
             _start_eod_close_capture_scheduler(bot)  # giá đóng cửa 14:50 + 15:05 ICT
@@ -304,23 +302,6 @@ def _start_signal_reaction_listener(bot: commands.Bot) -> None:
     listener.register()
 
 
-def _start_agenda_subscriber(bot: commands.Bot) -> None:
-    from src.bot.agenda_subscriber import AgendaSubscriber
-
-    channel_id = getattr(settings, "morning_channel_id", None)
-    if not channel_id:
-        logger.warning(
-            "bot.agenda_subscriber.not_available",
-            reason="morning_channel_id not configured — agenda embeds disabled",
-        )
-        return
-
-    subscriber = AgendaSubscriber(channel_id=int(channel_id))
-    subscriber.set_client(bot)
-    subscriber.register()
-    logger.info("bot.agenda_subscriber.registered", channel_id=channel_id)
-
-
 def _start_invalidation_subscriber(bot: commands.Bot) -> None:
     from src.bot.invalidation_subscriber import InvalidationSubscriber
 
@@ -369,20 +350,6 @@ def _start_position_risk_subscriber(bot: commands.Bot) -> None:
     subscriber.set_client(bot)
     subscriber.register()
     logger.info("bot.position_risk_subscriber.registered", channel_id=channel_id)
-
-
-def _start_agenda_builder_scheduler(bot: commands.Bot) -> None:
-    """Start AgendaBuilderScheduler — 07:30 ICT weekdays.
-
-    Builds daily investor agenda (decide/watch/defer buckets) before
-    InvestorProfileScheduler (08:20) and BriefingScheduler (08:30).
-    briefing/service.py reads DailyAgendaResult via AgendaService.get_latest_agenda().
-    """
-    from src.bot.scheduler import AgendaBuilderScheduler
-
-    scheduler = AgendaBuilderScheduler(bot)
-    scheduler.start()
-    logger.info("bot.agenda_builder_scheduler.started")
 
 
 def _start_portfolio_snapshot_scheduler(bot: commands.Bot) -> None:
