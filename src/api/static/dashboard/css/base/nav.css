@@ -146,13 +146,6 @@
   opacity: 1;
 }
 
-/* ── Engine heartbeat in sidebar ─────────────────────────────────────────── */
-.sidebar-heartbeat {
-  padding: var(--space-2) var(--space-4);
-  border-top: 1px solid var(--line);
-  flex-shrink: 0;
-}
-
 /* ── Quick actions section ───────────────────────────────────────────────── */
 .sidebar-quick-actions {
   padding: var(--space-3) var(--space-3) var(--space-2);

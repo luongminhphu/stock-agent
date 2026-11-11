@@ -138,7 +138,6 @@ export function renderThesisDigest(items, { generatedAt } = {}) {
 
 const ENGINE_LABEL = {
   briefing_morning: 'Bản tin sáng',
-  intelligence_engine_morning: 'Intelligence',
   proactive_watch_morning: 'Proactive watch',
   reminder_daily: 'Nhắc việc',
 };

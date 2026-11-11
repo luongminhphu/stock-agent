@@ -7,7 +7,7 @@
  *   Wave 1 — Load sequencing: critical → deferred 100ms → lazy IntersectionObserver
  *   Wave 2 — Lazy dynamic import() for 6 heavy modules (loaded on demand)
  *   Wave 3 — CSS consolidated into dashboard.css @import chain (index.html)
- *   Wave 4 — Skeleton screens in portfolio-loader & recommendations-panel
+ *   Wave 4 — Skeleton screens in portfolio-loader
  *
  * NOTE(brief-feedback-summary): loadBriefFeedbackSummary is implemented in
  * modules/briefing/brief-feedback.js but NOT wired here yet.
@@ -37,8 +37,6 @@ import { loadAttentionPanel, startAttentionAutoRefresh } from './modules/attenti
 import { debounce }                      from './utils/debounce.js?v=1';
 import { initMobileNav }                 from './modules/mobile-nav.js?v=1';
 import { state }                         from './state/dashboard-state.js?v=1';
-import { initEngineHeartbeat }           from './modules/engine/engine-heartbeat.js?v=1';
-import { initEngineControls }            from './modules/engine/engine-controls.js?v=1';
 import {
   bindWatchlistThesisNavigate,
   bindWatchlistAddModal,
@@ -53,24 +51,13 @@ import { initTopbarSearch, reapplySearch } from './modules/search/topbar-search.
 // ---------------------------------------------------------------------------
 
 let _lazyDecisionLoader  = null;
-let _lazyLeaderboard     = null;
-let _lazyLeaderboardSort = null;
 let _lazyDecisionTabs    = null;
 let _lazyMemory          = null;
 let _lazyTodayLoop       = null;
-// _lazyRecommendations removed — recommendations panel consolidated into #intelligencePanel
 
 async function _getDecisionLoader() {
   if (!_lazyDecisionLoader) _lazyDecisionLoader = import('./modules/decision/decision-loader.js?v=3');
   return _lazyDecisionLoader;
-}
-async function _getLeaderboard() {
-  if (!_lazyLeaderboard) _lazyLeaderboard = import('./modules/leaderboard/leaderboard-service.js?v=1');
-  return _lazyLeaderboard;
-}
-async function _getLeaderboardSort() {
-  if (!_lazyLeaderboardSort) _lazyLeaderboardSort = import('./modules/leaderboard/leaderboard-sort.js?v=1');
-  return _lazyLeaderboardSort;
 }
 async function _getDecisionTabs() {
   if (!_lazyDecisionTabs) _lazyDecisionTabs = import('./modules/decision/decision-tabs.js?v=1');
@@ -84,13 +71,8 @@ async function _getTodayLoop() {
   if (!_lazyTodayLoop) _lazyTodayLoop = import('./modules/today-loop/today-loop-loader.js?v=1');
   return _lazyTodayLoop;
 }
-// _getRecommendations() removed — use loadIntelligencePanel() instead
 
 // Public wrappers — called from event wires below
-async function loadLeaderboard(...args) {
-  const m = await _getLeaderboard();
-  return m.loadLeaderboard(...args);
-}
 async function loadDecisions(...args) {
   const m = await _getDecisionLoader();
   return m.loadDecisions(...args);
@@ -111,7 +93,6 @@ async function loadTodayLoop(...args) {
   const m = await _getTodayLoop();
   return m.loadTodayLoop(...args);
 }
-// loadRecommendations() removed — consolidated into loadIntelligencePanel()
 
 // ---------------------------------------------------------------------------
 // Event wires — decision loop
@@ -160,14 +141,6 @@ function bindTradeConfirmedWire() {
     loadWatchlist();
     loadAttentionPanel();
   });
-}
-
-// ---------------------------------------------------------------------------
-// Event wires — leaderboard
-// ---------------------------------------------------------------------------
-function bindDecisionLeaderboardWire() {
-  document.addEventListener('decision:changed',  () => loadLeaderboard());
-  document.addEventListener('lesson:persisted',  () => loadLeaderboard());
 }
 
 // ---------------------------------------------------------------------------
@@ -222,10 +195,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   _getDecisionTabs().then(m =>
     m.bindDecisionTabs({ el, loadLessons })
   );
-  // Wave 2: bind leaderboard sort after lazy load
-  _getLeaderboardSort().then(m =>
-    m.bindLeaderboardSort({ loadLeaderboard })
-  );
 
   // ── Event wires ────────────────────────────────────────────────────────────
   bindDecisionLoopWire();
@@ -234,7 +203,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   bindLessonPersistedEvent();
   bindWatchlistChangedWire();
   bindTradeConfirmedWire();
-  bindDecisionLeaderboardWire();
 
   // Thesis lifecycle (close / invalidate) — reload dashboard so status badges update
   document.addEventListener('thesis:lifecycle-changed', () => {
@@ -242,12 +210,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // ── Module init ─────────────────────────────────────────────────────────────
-  initEngineHeartbeat();
-  initEngineControls();
-  // Engine run-complete → reload dashboard + intelligence panel
-  document.addEventListener('engine:run-complete', () => {
-    loadDashboard().catch(() => null);
-  });
   bindFeedbackEvents();
   bindGenerateBriefButtons();
 
@@ -296,7 +258,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       loadWatchlist(),
       loadDecisions(),
     ]);
-    loadLeaderboard();
     loadAttentionPanel();
     // Wave 6: backtesting/memory chỉ reload nếu panel đang mở
     if (document.getElementById('backtestDetails')?.open) loadBacktesting().catch(() => null);
@@ -392,10 +353,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   //
   // Tier C — LAZY: heavy, below-fold. Load when section enters viewport
   //   (IntersectionObserver with 200px rootMargin).
-  //   loadLeaderboard()      → #leaderboardStrip
   //   loadMemory()           → #memoryKpiStrip
   //   loadTodayLoop()        → #todayDuoRow
-  //   (recommendations consolidated into #intelligencePanel)
 
   // Tier A — critical, run now
   await Promise.allSettled([
@@ -414,8 +373,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   }, 100);
 
   // Tier C — lazy IntersectionObserver (below-fold, heavy)
-  _observeLazy('#leaderboardStrip',       () => loadLeaderboard().catch(() => null));
-
   // Wave 6: memory + RRG collapsed mặc định — chỉ fetch khi user mở lần đầu
   const _lazyOnOpen = (detailsId, loader) => {
     const det = document.getElementById(detailsId);
@@ -440,7 +397,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // start auto-refresh after first load
     _getTodayLoop().then(m => m.startTodayLoopAutoRefresh()).catch(() => null);
   });
-  // #recommendationsSection removed — intelligence panel already loaded via dashboard-loader
 
   // ── Misc post-load init ──────────────────────────────────────────────────────
   initKpiClickable();
@@ -453,8 +409,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.addEventListener('watchlist:rendered',  reapplySearch);
 
   startAttentionAutoRefresh();
-  // Note: startTodayLoopAutoRefresh and startRecommendationsAutoRefresh
-  // are called inside _observeLazy handlers above (after first load completes)
+  // Note: startTodayLoopAutoRefresh is called inside the _observeLazy handler
+  // above (after first load completes)
 });
 
 // ── Theme toggle (Wave 11) ─────────────────────────────────────────────────

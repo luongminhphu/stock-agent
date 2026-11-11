@@ -11,7 +11,6 @@ Responsibility boundary:
   SignalEngine           → classify ScanSignal → SignalReport (typed taxonomy)
   AlertService           → mutate alert state (mark_triggered), persist fired alerts
   ReminderService        → owns cooldown logic for ON_SIGNAL reminders
-  SignalCredibilityAgent → score signal credibility (optional enrichment)
   TickerDirectionQuery   → read active thesis direction per ticker (optional enrichment)
   ThesisScoreQuery       → read thesis health score per ticker (optional enrichment)
   EventBus               → emit SignalDetectedEvent / WatchlistScanCompletedEvent
@@ -119,8 +118,6 @@ class ScanSignal:
     change_pct: float
     triggered_alerts: list[Alert] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
-    # Optional credibility enrichment — None if agent unavailable or evaluation failed
-    credibility: Any | None = field(default=None, repr=False)
     # Volume ratio vs average — set by _scan_ticker when available
     _volume_ratio: float = field(default=1.0, repr=False)
     # Typed signal reports from SignalEngine — populated by scan_user()
@@ -155,8 +152,6 @@ class ScanSignal:
             base = f"{len(self.triggered_alerts)} alert(s) triggered"
         else:
             base = f"Price move {self.change_pct:+.1f}%"
-        if self.credibility is not None:
-            base += f" | {self.credibility.short_summary()}"
         return base
 
 
@@ -266,7 +261,6 @@ class ScanService:
 
     Detects signals only — delegates alert state mutation to AlertService
     and reminder cooldown logic to ReminderService.
-    Optionally enriches signals with credibility scores via SignalCredibilityAgent.
     Optionally enriches signals with thesis direction via TickerDirectionQuery.
     Optionally enriches signals with thesis health scores via ThesisScoreQuery.
 
@@ -285,7 +279,6 @@ class ScanService:
         self,
         session: AsyncSession,
         quote_service: Any | None = None,
-        credibility_agent: Any | None = None,
         signal_engine: SignalEngine | None = None,
         ticker_direction_query: Any | None = None,
         thesis_score_query: Any | None = None,
@@ -297,7 +290,6 @@ class ScanService:
         self._alert_service = AlertService(session)
         self._reminder_service = ReminderService(session)
         self._quote_service = quote_service
-        self._credibility_agent = credibility_agent
         self._ticker_direction_query = ticker_direction_query
         self._thesis_score_query = thesis_score_query
         # Wave B3: market.TickerContextService — nguồn vol_ratio_20 thật cho
@@ -409,8 +401,6 @@ class ScanService:
                     else:
                         signal._legacy_signal_type = "watch"
 
-                    if self._credibility_agent is not None:
-                        signal = await self._enrich_credibility(signal)
                     # ── Wave 2: inject enrichment fields before engine eval ───────
                     signal.prior_risk_spike = prior_risk_map.get(ticker, False)
                     signal.thesis_direction = thesis_direction_map.get(ticker)
@@ -442,7 +432,6 @@ class ScanService:
             user_id=user_id,
             scanned=len(tickers),
             triggered=result.triggered_count,
-            credibility_enriched=sum(1 for s in result.signals if s.credibility is not None),
             thesis_enriched=sum(1 for s in result.signals if s.thesis_direction is not None),
             thesis_score_enriched=sum(1 for s in result.signals if s.thesis_score is not None),
             reversal_candidates=sum(1 for s in result.signals if s.prior_risk_spike),
@@ -530,44 +519,6 @@ class ScanService:
         ):
             logger.debug("scan.volume_ratio_unavailable", ticker=ticker)
 
-        return signal
-
-    async def _enrich_credibility(self, signal: ScanSignal) -> ScanSignal:
-        """Enrich a ScanSignal with credibility score. Failures are swallowed."""
-        try:
-            from src.ai.agents.signal_credibility import SignalCredibilityResult  # noqa: F401
-            from src.ai.prompts.signal_credibility import SignalCredibilityContext
-
-            ctx = SignalCredibilityContext(
-                ticker=signal.ticker,
-                signal_type=signal.signal_type,
-                current_price=signal.current_price,
-                change_pct=signal.change_pct,
-                volume_ratio=signal._volume_ratio,
-                price_5d_trend=0.0,
-                recent_news="N/A",
-                has_upcoming_earnings=False,
-                alert_note=(
-                    (signal.triggered_alerts[0].note or "")
-                    if signal.triggered_alerts and hasattr(signal.triggered_alerts[0], "note")
-                    else ""
-                ),
-            )
-            result = await self._credibility_agent.evaluate(ctx)  # type: ignore[union-attr]
-            signal.credibility = result
-            if result:
-                logger.debug(
-                    "scan.credibility_enriched",
-                    ticker=signal.ticker,
-                    verdict=result.verdict,
-                    score=result.score,
-                )
-        except Exception as exc:
-            logger.warning(
-                "scan.credibility_enrich_failed",
-                ticker=signal.ticker,
-                error=str(exc),
-            )
         return signal
 
     async def _emit_events(

@@ -40,8 +40,6 @@ export async function loadMemory() {
       _renderKpis(data);
       _renderContextSummary(data);
       _renderEpisodic(data);
-      _renderPatterns(data);
-      _renderBias(data);
     }
     _renderBehavioralDNA(dna);
   }
@@ -52,7 +50,7 @@ export async function loadMemory() {
 // ---------------------------------------------------------------------------
 
 function _clearSkeletons() {
-  ['memKpiEpisodes', 'memKpiPatterns', 'memKpiConfidence', 'memKpiBias']
+  ['memKpiEpisodes', 'memKpiConfidence']
     .forEach(id => {
       const val = document.getElementById(id)?.querySelector('.mem-kpi-value');
       if (val) val.innerHTML =
@@ -66,11 +64,9 @@ function _clearSkeletons() {
 
 function _renderKpis(data) {
   _setKpi('memKpiEpisodes',   '.mem-kpi-value', data.episode_count ?? '\u2014');
-  _setKpi('memKpiPatterns',   '.mem-kpi-value', (data.patterns ?? []).length || '\u2014');
   const confPct = data.confidence != null
     ? `${Math.round(data.confidence * 100)}%` : '\u2014';
   _setKpi('memKpiConfidence', '.mem-kpi-value', confPct);
-  _setKpi('memKpiBias',       '.mem-kpi-value', (data.bias_warnings ?? []).length || '0');
 }
 
 function _setKpi(cardId, selector, value) {
@@ -176,88 +172,16 @@ function _episodeCard(ep) {
 }
 
 // ---------------------------------------------------------------------------
-// Private: semantic patterns
-// ---------------------------------------------------------------------------
-
-function _renderPatterns(data) {
-  const list  = document.getElementById('patternsList');
-  const empty = document.getElementById('patternsEmpty');
-  if (!list) return;
-
-  const patterns = data.patterns ?? [];
-  if (!patterns.length) {
-    list.classList.add('hidden');
-    empty?.classList.remove('hidden');
-    return;
-  }
-
-  empty?.classList.add('hidden');
-  list.classList.remove('hidden');
-  list.innerHTML = patterns.map(p => {
-    const text = typeof p === 'string' ? p : (p.description ?? '');
-    const type = typeof p === 'object' ? (p.type ?? 'PATTERN') : 'PATTERN';
-    const conf = typeof p === 'object' && p.confidence != null
-      ? Math.round(p.confidence * 100) : null;
-    return `
-      <div class="mem-pattern-item">
-        <div class="mem-pattern-type">${esc(type)}</div>
-        <div class="mem-pattern-desc">${esc(text)}</div>
-        ${conf != null ? `
-        <div class="mem-pattern-footer">
-          <div class="mem-confidence-bar">
-            <div class="mem-confidence-fill" style="width:${conf}%"></div>
-          </div>
-          <span class="mem-confidence-label">${conf}%</span>
-        </div>` : ''}
-      </div>
-    `;
-  }).join('');
-}
-
-// ---------------------------------------------------------------------------
-// Private: bias warnings
-// ---------------------------------------------------------------------------
-
-function _renderBias(data) {
-  const list  = document.getElementById('biasList');
-  const empty = document.getElementById('biasEmpty');
-  if (!list) return;
-
-  const biases = data.bias_warnings ?? [];
-  if (!biases.length) {
-    list.classList.add('hidden');
-    empty?.classList.remove('hidden');
-    return;
-  }
-
-  empty?.classList.add('hidden');
-  list.classList.remove('hidden');
-  list.innerHTML = biases.map(b => {
-    const text     = typeof b === 'string' ? b : (b.description ?? b.warning ?? '');
-    const severity = typeof b === 'object' ? (b.severity ?? '') : '';
-    return `
-      <div class="mem-bias-item ${esc(severity)}">
-        <div class="mem-bias-text">${esc(text)}</div>
-        ${typeof b === 'object' && b.created_at
-          ? `<div class="mem-bias-meta">${esc(b.created_at)}</div>` : ''}
-      </div>
-    `;
-  }).join('');
-}
-
-// ---------------------------------------------------------------------------
 // Private: empty + error states
 // ---------------------------------------------------------------------------
 
 function _renderEmpty() {
-  ['episodicFeed', 'patternsList', 'biasList'].forEach(id =>
+  ['episodicFeed'].forEach(id =>
     document.getElementById(id)?.classList.add('hidden'));
-  ['episodicEmpty', 'patternsEmpty', 'biasEmpty'].forEach(id =>
+  ['episodicEmpty'].forEach(id =>
     document.getElementById(id)?.classList.remove('hidden'));
   _setKpi('memKpiEpisodes',   '.mem-kpi-value', '0');
-  _setKpi('memKpiPatterns',   '.mem-kpi-value', '0');
   _setKpi('memKpiConfidence', '.mem-kpi-value', '\u2014');
-  _setKpi('memKpiBias',       '.mem-kpi-value', '0');
   document.getElementById('memContextSummary')?.classList.add('hidden');
 }
 

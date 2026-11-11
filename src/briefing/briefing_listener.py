@@ -167,7 +167,6 @@ class BriefingListener:
             get_briefing_agent,
             get_pnl_service,
             get_quote_service,
-            get_sector_rotation_agent,
         )
         from src.platform.db import AsyncSessionLocal
         from src.watchlist.service import WatchlistService
@@ -197,7 +196,6 @@ class BriefingListener:
                     briefing_agent=get_briefing_agent(),
                     pnl_service=pnl_svc,
                     session=session,
-                    sector_agent=get_sector_rotation_agent(),
                     agenda_service=agenda_svc,  # Wave B: inject agenda context (fallback path)
                 )
                 if phase == "morning":

@@ -67,8 +67,7 @@ h3 {
 /* Numeric values: tabular figures for alignment */
 .tabnum,
 .signal-value,
-.dec-kpi-value,
-.lb-score {
+.dec-kpi-value {
   font-variant-numeric: tabular-nums;
   font-feature-settings: 'tnum';
 }
@@ -146,8 +145,7 @@ input:focus, select:focus, textarea:focus {
   .tab-btn,
   .brief-tab,
   .dec-tab,
-  .calls-tab,
-  .lb-sort-btn {
+  .calls-tab {
     min-height: 44px;
     padding-top: var(--space-2);
     padding-bottom: var(--space-2);
