@@ -154,6 +154,25 @@ def get_baserate_service(
     return BaseRateService(ohlcv_service=ohlcv_svc)
 
 
+_derivative_quote_source: object | None = None
+_derivative_quote_source_ready = False
+
+
+def get_derivatives_service(
+    ohlcv_svc: object = Depends(get_ohlcv_service),
+) -> object:
+    """DerivativesService (owner: market). Nguồn giá HĐ (KBS) tạo 1 lần, dùng chung."""
+    global _derivative_quote_source, _derivative_quote_source_ready
+    from src.market.derivatives import DerivativesService
+
+    if not _derivative_quote_source_ready:
+        from src.market.adapters.factory import build_reference_adapter
+
+        _derivative_quote_source = build_reference_adapter()
+        _derivative_quote_source_ready = True
+    return DerivativesService(ohlcv_service=ohlcv_svc, quote_source=_derivative_quote_source)
+
+
 def get_thesis_review_agent() -> object:
     return _get_agent()
 
