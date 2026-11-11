@@ -30,6 +30,7 @@ from src.platform.logging import get_logger
 logger = get_logger(__name__)
 
 _URL = "https://kbbuddywts.kbsec.com.vn/iis-server/investment/stock/iss"
+_DERIVATIVE_URL = "https://kbbuddywts.kbsec.com.vn/iis-server/investment/derivative/iss"
 _HEADERS = {
     "Content-Type": "application/json",
     "Accept": "application/json",
@@ -154,6 +155,27 @@ class KBSAdapter(MarketDataAdapter):
         except httpx.TimeoutException:
             logger.error("kbs.timeout", symbols=symbols)
             raise
+
+    async def fetch_derivative_quotes(self, codes: list[str]) -> list[Quote]:
+        """Bảng giá phái sinh (HĐTL VN30, mã KRX vd 41I1GB000). Giá theo ĐIỂM chỉ số."""
+        if not codes:
+            return []
+        try:
+            response = await self._client.post(
+                _DERIVATIVE_URL, json={"code": ",".join(c.upper() for c in codes)}
+            )
+            response.raise_for_status()
+            rows = _rows(response.json())
+        except httpx.HTTPError as exc:
+            logger.error("kbs.derivative_error", codes=codes, error=str(exc))
+            raise
+        quotes: list[Quote] = []
+        for item in rows:
+            try:
+                quotes.append(parse_kbs_item(item))
+            except (KeyError, TypeError, ValueError) as exc:
+                logger.warning("kbs.derivative_parse_error", symbol=item.get("SB"), error=str(exc))
+        return quotes
 
     async def close(self) -> None:
         await self._client.aclose()
