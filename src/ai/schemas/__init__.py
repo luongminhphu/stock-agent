@@ -25,20 +25,6 @@ from src.ai.schemas.briefing import (
     WatchlistTickerSummary,
 )
 
-# --- Thesis Invalidation ---
-from src.ai.schemas.invalidation import (
-    BreachType,
-    InvalidationSignal,
-    InvalidationVerdict,
-)
-
-# --- Next Action ---
-from src.ai.schemas.next_action import (
-    ActionScope,
-    NextActionPlan,
-    SuggestedAction,
-)
-
 # --- Portfolio Risk Narrator ---
 from src.ai.schemas.portfolio_risk import (
     PortfolioRiskNarrativeOutput,
@@ -79,15 +65,6 @@ from src.ai.schemas.thesis_suggestion import (
     ThesisSuggestionResult,
 )
 
-# --- Watchdog ---
-from src.ai.schemas.watchdog import (
-    OverallHealth,
-    ThreatenedAssumptionWatchdog,
-    WatchdogOutput,
-    WatchdogRecommendedAction,
-    WatchdogThreatLevel,
-)
-
 __all__ = [
     "Verdict",
     "RiskLevel",
@@ -111,11 +88,6 @@ __all__ = [
     "ResolutionCategory",
     "ResolutionStep",
     "PreTradeCheckOutput",
-    "OverallHealth",
-    "WatchdogThreatLevel",
-    "WatchdogRecommendedAction",
-    "ThreatenedAssumptionWatchdog",
-    "WatchdogOutput",
     "OutcomeVerdict",
     "ReplayOutput",
     "SignalUrgency",
@@ -126,12 +98,6 @@ __all__ = [
     "RiskTheme",
     "RiskChapter",
     "PortfolioRiskNarrativeOutput",
-    "BreachType",
-    "InvalidationVerdict",
-    "InvalidationSignal",
-    "ActionScope",
-    "SuggestedAction",
-    "NextActionPlan",
     "PostMortemVerdict",
     "PostMortemOutput",
 ]

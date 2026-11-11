@@ -25,7 +25,6 @@ class AIInteractionLog(Base):
     the structured verdict returned. Used by:
     - MemoryService.get_recent_episodes()   → feeds ContextBuilder
     - Consolidator.run()                    → distilled into MemorySnapshot
-    - EpisodicStore                         → records user_signal + fills outcome
     """
 
     __tablename__ = "ai_interaction_logs"

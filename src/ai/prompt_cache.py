@@ -3,9 +3,7 @@
 Owner: ai segment.
 
 Problem:
-    Several agents (IntelligenceVerdictAgent, WatchdogAgent,
-    SignalCredibilityAgent) are called on every engine cycle or every
-    scheduler tick. If the input prompt hasn't changed materially,
+    Some agents are called on every scheduler tick. If the input prompt hasn't changed materially,
     calling the AI again wastes tokens and adds latency.
 
 Solution:

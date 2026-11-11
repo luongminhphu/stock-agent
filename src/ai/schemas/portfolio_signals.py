@@ -68,7 +68,7 @@ class RankedSignal(Signal):
         default="",
         description=(
             "Non-empty when signal contradicts active thesis. "
-            "E.g. 'Watchdog=BEARISH but thesis still ACTIVE - review assumptions'."
+            "E.g. 'Plan light=do but thesis still ACTIVE - review assumptions'."
         ),
     )
     cross_signal_note: str = Field(
