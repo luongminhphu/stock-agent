@@ -91,8 +91,7 @@ async def upsert_rows(
 ) -> bool:
     """Upsert một hoặc nhiều row (INSERT ... ON CONFLICT DO UPDATE), fire-and-forget.
 
-    Wave E1: hợp nhất 7 hàm ``_persist_*`` (trend_snapshot, trend_prediction, global_risk,
-    intelligence_snapshot, daily_agenda, market_quote_cache) vốn copy cùng một khối
+    Hợp nhất các hàm ``_persist_*`` cũ vốn copy cùng một khối
     ``pg_insert(...).on_conflict_do_update(...)`` + ``try/except warning``.
 
     - Chọn dialect theo engine (PostgreSQL hoặc SQLite — cả hai hỗ trợ ON CONFLICT).
