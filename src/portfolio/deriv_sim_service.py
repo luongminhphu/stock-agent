@@ -81,6 +81,13 @@ class DerivSimService:
         self._session = session
         self._deriv = derivatives_service
 
+    async def active_user_ids(self) -> list[str]:
+        """Người dùng đang bật giả lập (bot quét cho từng người)."""
+        res = await self._session.execute(
+            select(DerivSimConfig.user_id).where(DerivSimConfig.active.is_(True))
+        )
+        return [str(u) for u in res.scalars().all()]
+
     # ── Cấu hình ────────────────────────────────────────────────────────────
     async def _config(self, user_id: str, create: bool = False) -> DerivSimConfig | None:
         cfg = await self._session.get(DerivSimConfig, user_id)
