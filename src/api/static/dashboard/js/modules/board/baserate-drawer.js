@@ -156,7 +156,23 @@ export function renderBaserate(d, opts = {}) {
     return `<li class="${relaxed ? 'is-relaxed' : ''}">${esc(v)}${relaxed ? ' <span class="br-tag-muted">(đã nới)</span>' : ''}</li>`;
   }).join('');
 
+  const co = d.company && typeof d.company === 'object' ? d.company : null;
+  const closeLine = _isNum(d.last_close)
+    ? `<span class="br-company-close">Đóng cửa ${d.as_of ? fmtDateVi(d.as_of) : 'gần nhất'}: <strong>${fmtNum(d.last_close, priceDecimals)}</strong></span>`
+    : '';
+  const company = co ? `
+    <section class="br-company" aria-label="Thông tin công ty">
+      <p class="br-company-name">${esc(co.name)}</p>
+      <p class="br-company-meta">
+        <span class="br-company-ticker">${esc(d.ticker)}</span>
+        <span>Sàn ${esc(co.exchange)}</span>
+        ${co.sector ? `<span>${esc(co.sector)}</span>` : ''}
+        ${closeLine}
+      </p>
+      ${co.name_verified ? '' : '<p class="br-company-warn">Chưa có tên công ty từ danh sách niêm yết — hãy đối chiếu mã và giá trên app công ty chứng khoán.</p>'}
+    </section>` : (closeLine ? `<p class="br-company-meta">${closeLine}</p>` : '');
   const head = `
+    ${company}
     <div class="br-head">
       ${suggestionBadge(d.suggestion)}
       <span class="br-meta">Confidence: <strong>${confidenceLabel(d.confidence, true)}</strong></span>

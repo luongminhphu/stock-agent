@@ -29,6 +29,7 @@ from src.api.dto.market import (
     BaseRateOutcomeResponse,
     BaseRateResponse,
     CandleResponse,
+    CompanyInfo,
     QuoteResponse,
     SymbolInfoResponse,
     TickerContextResponse,
@@ -229,7 +230,7 @@ async def get_base_rate(
     """
     ticker = ticker.upper()
     try:
-        registry.resolve(ticker)
+        info = registry.resolve(ticker)
     except SymbolNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -249,7 +250,9 @@ async def get_base_rate(
             detail=f"Base-rate data unavailable for '{ticker}': {exc}",
         ) from exc
 
-    return baserate_response(rep)
+    resp = baserate_response(rep)
+    resp.company = company_info(info)
+    return resp
 
 
 def baserate_response(rep: object) -> BaseRateResponse:
@@ -269,4 +272,33 @@ def baserate_response(rep: object) -> BaseRateResponse:
         analogs=[BaseRateAnalogResponse(**vars(a)) for a in r.analogs],
         history_from=r.history_from,
         notes=r.notes,
+        last_close=getattr(r, "last_close", None),
+    )
+
+
+_SECTOR_VI = {
+    "Banking": "Ngân hàng",
+    "Real Estate": "Bất động sản",
+    "Consumer Goods": "Hàng tiêu dùng",
+    "Industrials": "Công nghiệp",
+    "Technology": "Công nghệ",
+    "Energy": "Năng lượng",
+    "Materials": "Nguyên vật liệu",
+    "Healthcare": "Y tế",
+    "Utilities": "Tiện ích",
+    "Financials": "Dịch vụ tài chính",
+    "Telecoms": "Viễn thông",
+    "Other": "Khác",
+}
+
+
+def company_info(info: Any) -> CompanyInfo:
+    """SymbolInfo (registry) → thông tin nhận diện công ty cho UI."""
+    sector = str(getattr(info.sector, "value", info.sector))
+    name = str(info.name or "").strip()
+    return CompanyInfo(
+        name=name or info.ticker,
+        exchange=str(getattr(info.exchange, "value", info.exchange)),
+        sector=_SECTOR_VI.get(sector, sector),
+        name_verified=bool(name) and name.upper() != info.ticker.upper(),
     )

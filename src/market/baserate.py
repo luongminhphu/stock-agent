@@ -149,6 +149,7 @@ class BaseRateReport:
     confidence: str  # khong_du | thap | trung_binh | cao
     history_from: date | None
     notes: list[str] = field(default_factory=list)
+    last_close: float | None = None  # giá đóng cửa phiên as_of — để đối chiếu với bảng giá CTCK
 
 
 # ── Đặc trưng ───────────────────────────────────────────────────────────────
@@ -363,6 +364,7 @@ def analyze(
             confidence="khong_du",
             history_from=bars[0].date if bars else None,
             notes=[f"Cần ít nhất {WARMUP} phiên lịch sử để mô tả trạng thái."],
+            last_close=float(bars[-1].close) if bars else None,
         )
     if not fundamentals:
         notes.append("Chưa có dữ liệu cơ bản (P/E, EPS) — chỉ so khớp theo giá/khối lượng.")
@@ -420,6 +422,7 @@ def analyze(
         confidence=_confidence(main.episodes),
         history_from=bars[0].date,
         notes=notes,
+        last_close=float(bars[-1].close),
     )
 
 
