@@ -88,6 +88,7 @@ class HostGuard:
 # Hạn mức mặc định theo host (request/giây, burst)
 _LIMITS: dict[str, tuple[float, int]] = {
     "trading.vietcap.com.vn": (3.0, 5),
+    "iq.vietcap.com.vn": (1.0, 3),  # dữ liệu cơ bản — mỗi mã 1 lần / 12 giờ
     "kbbuddywts.kbsec.com.vn": (2.0, 4),
     "finfo-api.vndirect.com.vn": (1.0, 2),
 }
