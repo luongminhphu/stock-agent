@@ -252,7 +252,7 @@ export async function loadThesisDetail(thesisId) {
     // Wire tab switching — phải gọi SAU khi set innerHTML
     wireTabNav(wrap);
 
-    wireDetailActions(thesisId, wrap);
+    wireDetailActions(thesisId, wrap, thesis.ticker);
 
     const scheduleIdle = window.requestIdleCallback
       ? (fn) => requestIdleCallback(fn, { timeout: 3000 })
