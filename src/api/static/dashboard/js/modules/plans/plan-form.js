@@ -174,7 +174,10 @@ function _renderBeliefs(templates) {
 async function _loadSuggest() {
   const ticker = String(document.getElementById('pfTicker')?.value ?? '').trim().toUpperCase();
   const hint = document.getElementById('pfTickerHint');
-  if (!ticker) { hint.textContent = 'Nhập mã để xem gợi ý từ lịch sử của chính mã đó.'; return; }
+  if (ticker.length < 3) {
+    hint.textContent = 'Nhập mã (3 ký tự) để xem gợi ý từ base rate của chính mã đó.';
+    return;
+  }
   const seq = ++_suggestSeq;
   hint.textContent = `Đang xem lịch sử ${ticker}…`;
   const qs = new URLSearchParams({ ticker });

@@ -66,6 +66,27 @@ function buildRequestKey(url, options = {}) {
   return `${method}:${url}`;
 }
 
+/**
+ * Rút gọn thân lỗi thành một câu đọc được (giữ tiền tố mã HTTP ở caller).
+ * - JSON {"detail": "..."} của FastAPI → chuỗi detail
+ * - Trang HTML (Cloudflare / reverse proxy khi API khởi động lại, quá tải) → câu thông báo
+ */
+function _errorText(status, raw) {
+  const text = String(raw ?? '').trim();
+  if (text.startsWith('<') || /<html/i.test(text.slice(0, 200))) {
+    if (status === 502 || status === 503 || status === 504 || status === 520 || status === 522 || status === 524) {
+      return 'Máy chủ tạm thời không phản hồi (đang khởi động lại hoặc quá tải) — thử lại sau ít phút.';
+    }
+    return 'Máy chủ trả về lỗi không mong đợi.';
+  }
+  try {
+    const d = JSON.parse(text).detail;
+    if (typeof d === 'string') return d;
+    if (Array.isArray(d)) return d.map(x => x?.msg ?? String(x)).join('; ');
+  } catch { /* không phải JSON */ }
+  return text.length > 300 ? `${text.slice(0, 300)}…` : text;
+}
+
 async function fetchJson(url, options = {}) {
   const method = (options.method ?? 'GET').toUpperCase();
   const r = await fetch(url, {
@@ -77,8 +98,8 @@ async function fetchJson(url, options = {}) {
     headers: { ...authHeaders(), ...(options.headers ?? {}) },
   });
   if (!r.ok) {
-    const msg = await r.text().catch(() => r.statusText);
-    throw new Error(`${r.status} ${msg}`);
+    const raw = await r.text().catch(() => r.statusText);
+    throw new Error(`${r.status} ${_errorText(r.status, raw)}`);
   }
   if (r.status === 204 || r.headers.get('content-length') === '0') return null;
   return r.json();
