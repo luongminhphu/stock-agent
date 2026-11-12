@@ -8,7 +8,7 @@
  *   /hedge?ratio=&series= → kế hoạch Short HĐ theo beta (404 = chưa có vị thế mở)
  *   /vn30/baserate        → cùng shape với /market/baserate (kỳ 5/20/60 phiên)
  *   /basis?days=730       → thống kê basis lịch sử
- *   /position-preview     → lãi/lỗ, ký quỹ, cảnh báo đáo hạn
+ *   /sim                  → giả lập tự động (xem sim.js)
  *   /positions            → sổ vị thế (GET), mở (POST), đóng (POST /positions/{id}/close)
  *
  * Exports:
@@ -21,6 +21,7 @@ import { esc } from '../../utils/format.js?v=1';
 import {
   fmtNum, fmtVnd, fmtPct, signClass, fmtDateVi, renderBaserate,
 } from '../board/baserate-drawer.js?v=2';
+import { simShellHTML, loadSim } from './sim.js?v=1';
 
 const BASE = '/api/v1/derivatives';
 const SERIES = ['F1M', 'F2M', 'F1Q', 'F2Q'];
@@ -37,7 +38,6 @@ const _state = {
   ratio: 1.0,
   series: 'F1M',
   hedgeSeq: 0,
-  previewSeq: 0,
   bound: false,
 };
 
@@ -162,43 +162,7 @@ function _shellHTML() {
       </section>
     </div>
 
-    <section class="panel dv-panel" aria-labelledby="dvCalcTitle">
-      <div class="panel-header">
-        <p class="eyebrow">Máy tính</p>
-        <h2 id="dvCalcTitle">P&amp;L &amp; Margin một vị thế</h2>
-      </div>
-      <div class="panel-body">
-        <form class="dv-calc" id="dvCalcForm" novalidate>
-          <label class="dv-field">
-            <span class="dv-label">Mã HĐ</span>
-            <select id="dvCalcCode" name="code" required><option value="">Đang tải…</option></select>
-          </label>
-          <label class="dv-field">
-            <span class="dv-label">Side</span>
-            <select id="dvCalcSide" name="side">
-              <option value="LONG">Long (mua)</option>
-              <option value="SHORT">Short (bán)</option>
-            </select>
-          </label>
-          <label class="dv-field">
-            <span class="dv-label">Số HĐ</span>
-            <input id="dvCalcQty" name="qty" type="number" inputmode="numeric" min="1" max="10000" step="1" value="1" required />
-          </label>
-          <label class="dv-field">
-            <span class="dv-label">Entry (điểm)</span>
-            <input id="dvCalcEntry" name="entry" type="number" inputmode="decimal" min="0" step="0.1" required />
-          </label>
-          <label class="dv-field">
-            <span class="dv-label">Mark (điểm)</span>
-            <input id="dvCalcMark" name="mark" type="number" inputmode="decimal" min="0" step="0.1" required />
-          </label>
-          <div class="dv-field dv-field--submit">
-            <button type="submit" class="primary-btn">Tính</button>
-          </div>
-        </form>
-        <div id="dvCalcResult" aria-live="polite"></div>
-      </div>
-    </section>`;
+    ${simShellHTML()}`;
 }
 
 // ── Contracts ───────────────────────────────────────────────────────────────
@@ -247,28 +211,6 @@ function _renderContracts(d) {
     <p class="dv-note">1 điểm = 100.000 đ. Đáo hạn vào thứ Năm thứ ba của tháng.</p>`;
 }
 
-function _fillCalcDefaults(d) {
-  const sel = document.getElementById('dvCalcCode');
-  if (!sel) return;
-  const rows = Array.isArray(d?.contracts) ? d.contracts : [];
-  if (!rows.length) {
-    sel.innerHTML = '<option value="">Không có HĐ</option>';
-    return;
-  }
-  sel.innerHTML = rows.map(c =>
-    `<option value="${esc(c.code)}" data-price="${c.price ?? ''}">${esc(c.code)} · ${esc(c.series)}</option>`,
-  ).join('');
-  const f1 = rows.find(c => c.series === 'F1M') ?? rows[0];
-  sel.value = f1.code;
-  const px = f1.price ?? d.vn30;
-  const entry = document.getElementById('dvCalcEntry');
-  const mark = document.getElementById('dvCalcMark');
-  if (px != null) {
-    if (entry && !entry.value) entry.value = Number(px).toFixed(1);
-    if (mark && !mark.value) mark.value = Number(px).toFixed(1);
-  }
-}
-
 async function _loadContracts() {
   const wrap = document.getElementById('dvContracts');
   if (wrap) wrap.innerHTML = _loading();
@@ -276,12 +218,9 @@ async function _loadContracts() {
     const d = await getJson(`${BASE}/contracts`);
     _state.contracts = d;
     _renderContracts(d);
-    _fillCalcDefaults(d);
     _fillPosCodes(d);
   } catch (err) {
     if (wrap) wrap.innerHTML = _error(err?.message, 'contracts');
-    const sel = document.getElementById('dvCalcCode');
-    if (sel) sel.innerHTML = '<option value="">Không tải được HĐ</option>';
   }
 }
 
@@ -533,41 +472,6 @@ async function _loadBasis() {
   }
 }
 
-// ── Calculator ──────────────────────────────────────────────────────────────
-async function _submitCalc() {
-  const out = document.getElementById('dvCalcResult');
-  if (!out) return;
-  const code = document.getElementById('dvCalcCode')?.value ?? '';
-  const side = document.getElementById('dvCalcSide')?.value ?? 'LONG';
-  const qty = parseInt(document.getElementById('dvCalcQty')?.value ?? '', 10);
-  const entry = parseFloat(document.getElementById('dvCalcEntry')?.value ?? '');
-  const mark = parseFloat(document.getElementById('dvCalcMark')?.value ?? '');
-  if (!code || !(qty >= 1) || !(entry > 0) || !(mark > 0)) {
-    out.innerHTML = '<p class="dv-warn" role="alert">Nhập đủ mã HĐ, số HĐ (≥ 1), giá vào và giá hiện tại (> 0).</p>';
-    return;
-  }
-  const seq = ++_state.previewSeq;
-  out.innerHTML = _loading('Đang tính…');
-  try {
-    const qs = new URLSearchParams({ code, side, qty: String(qty), entry: String(entry), mark: String(mark) });
-    const p = await getJson(`${BASE}/position-preview?${qs}`);
-    if (seq !== _state.previewSeq) return;
-    out.innerHTML = `
-      ${p.roll_warning ? `<p class="dv-warn" role="note">HĐ còn ${fmtNum(p.days_to_expiry)} ngày tới đáo hạn — cân nhắc roll sang kỳ sau.</p>` : ''}
-      <dl class="dv-kpis">
-        <div><dt>P&amp;L</dt><dd class="${signClass(p.unrealized_pnl)}">${p.unrealized_pnl > 0 ? '+' : ''}${fmtVnd(p.unrealized_pnl)} đ</dd></div>
-        <div><dt>Điểm</dt><dd class="${signClass(p.pnl_points)}">${fmtSignedPts(p.pnl_points)}</dd></div>
-        <div><dt>P&amp;L trên Margin</dt><dd class="${signClass(p.pnl_on_margin_pct)}">${p.pnl_on_margin_pct > 0 ? '+' : ''}${fmtPct(p.pnl_on_margin_pct)}</dd></div>
-        <div><dt>Notional</dt><dd>${fmtVnd(p.notional)}</dd></div>
-        <div><dt>Initial margin</dt><dd>${fmtVnd(p.initial_margin)}</dd></div>
-        <div><dt>Expiry</dt><dd>${fmtDateVi(p.expiry)}${p.days_to_expiry != null ? `<span class="dv-sub">còn ${fmtNum(p.days_to_expiry)} ngày</span>` : ''}</dd></div>
-      </dl>`;
-  } catch (err) {
-    if (seq !== _state.previewSeq) return;
-    out.innerHTML = _error(err?.message, null);
-  }
-}
-
 // ── Events ──────────────────────────────────────────────────────────────────
 function _debounce(fn, ms) {
   let t = null;
@@ -592,11 +496,6 @@ function _bind(root) {
     if (e.target.id === 'dvSeries') {
       _state.series = SERIES.includes(e.target.value) ? e.target.value : 'F1M';
       _loadHedge();
-    } else if (e.target.id === 'dvCalcCode') {
-      const opt = e.target.selectedOptions?.[0];
-      const px = opt?.dataset.price;
-      const mark = document.getElementById('dvCalcMark');
-      if (px && mark) mark.value = Number(px).toFixed(1);
     } else if (e.target.id === 'dvPosCode') {
       const px = e.target.selectedOptions?.[0]?.dataset.price;
       const entry = document.getElementById('dvPosEntry');
@@ -604,9 +503,9 @@ function _bind(root) {
     }
   });
   root.addEventListener('submit', (e) => {
+    if (e.target.id !== 'dvPosForm') return;
     e.preventDefault();
-    if (e.target.id === 'dvCalcForm') _submitCalc();
-    else if (e.target.id === 'dvPosForm') _submitPosition();
+    _submitPosition();
   });
   root.addEventListener('click', (e) => {
     const nw = e.target.closest('[data-dv-pos-new]');
@@ -629,6 +528,7 @@ function _bind(root) {
     else if (key === 'vn30') _loadVn30();
     else if (key === 'basis') _loadBasis();
     else if (key === 'positions') _loadPositions();
+    else if (key === 'sim') loadSim();
   });
 }
 
@@ -640,5 +540,5 @@ export async function loadDerivatives() {
     root.dataset.ready = '1';
     _bind(root);
   }
-  await Promise.allSettled([_loadContracts(), _loadPositions(), _loadHedge(), _loadVn30(), _loadBasis()]);
+  await Promise.allSettled([_loadContracts(), _loadPositions(), _loadHedge(), _loadVn30(), _loadBasis(), loadSim()]);
 }

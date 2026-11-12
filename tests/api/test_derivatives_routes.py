@@ -102,3 +102,25 @@ async def test_position_book_open_list_close(fake_svc, bootstrapped_client) -> N
     assert (
         r.json()["realized_pnl"] == 2_000_000 and r.json()["positions"][0]["unrealized_pnl"] is None
     )
+
+
+@pytest.mark.asyncio
+async def test_sim_config_and_view(fake_svc, client) -> None:  # type: ignore[no-untyped-def]
+    r = await client.get("/api/v1/derivatives/sim")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["config"]["active"] is False and body["primary"] == "base"
+    assert set(body["books"]) == {"base", "fade"}
+
+    r = await client.put(
+        "/api/v1/derivatives/sim",
+        json={"series": "F2M", "qty": 3, "mode": "auto", "stop_atr": 0.6, "target_points": None},
+    )
+    assert r.status_code == 200
+    cfg = r.json()["config"]
+    assert (cfg["series"], cfg["qty"], cfg["mode"], cfg["stop_atr"]) == ("F2M", 3, "auto", 0.6)
+    assert cfg["target_points"] is None and cfg["stop_points"] == 15.0
+
+    assert (await client.put("/api/v1/derivatives/sim", json={"mode": "x"})).status_code == 422
+    r = await client.post("/api/v1/derivatives/sim/reset")
+    assert r.status_code == 200 and r.json()["trades"] == []

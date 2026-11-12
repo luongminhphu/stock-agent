@@ -301,3 +301,91 @@ async def close_position(
         ) from exc
     await session.commit()
     return {"id": pos.id, "realized_pnl": pos.realized_pnl}
+
+
+# ── Giả lập tự động (paper trading theo base rate) ──────────────────────────
+
+
+class SimConfigRequest(BaseModel):
+    """Chỉ trường được gửi mới thay đổi. Gửi null cho stop/target/alert/ATR/crowd để tắt."""
+
+    active: bool | None = None
+    series: str | None = Field(default=None, pattern="^(F1M|F2M|F1Q|F2Q)$")
+    qty: int | None = Field(default=None, ge=1, le=1000)
+    mode: str | None = Field(default=None, pattern="^(follow|fade|auto)$")
+    stop_points: float | None = Field(default=None, ge=0, le=500)
+    target_points: float | None = Field(default=None, ge=0, le=500)
+    alert_margin_pct: float | None = Field(default=None, ge=0, le=500)
+    stop_atr: float | None = Field(default=None, ge=0, le=10)
+    target_atr: float | None = Field(default=None, ge=0, le=10)
+    crowd_atr: float | None = Field(default=None, ge=0, le=10)
+    avoid_round: bool | None = None
+
+
+def _sim_service(session: AsyncSession, svc: Any) -> Any:
+    from src.portfolio.deriv_sim_service import DerivSimService
+
+    return DerivSimService(session, svc)
+
+
+@router.get("/sim")
+async def get_sim(
+    user_id: Annotated[str, Depends(get_current_user_id)],
+    session: AsyncSession = Depends(get_db),
+    svc: Any = Depends(get_derivatives_service),
+) -> dict[str, Any]:
+    """Trạng thái giả lập: cấu hình, vị thế đang mở, lệnh đã đóng, win rate, đường P&L — hai sổ."""
+    return await _sim_service(session, svc).view(user_id, _today_ict())
+
+
+@router.put("/sim")
+async def update_sim(
+    body: SimConfigRequest,
+    user_id: Annotated[str, Depends(get_current_user_id)],
+    session: AsyncSession = Depends(get_db),
+    svc: Any = Depends(get_derivatives_service),
+) -> dict[str, Any]:
+    from src.portfolio.deriv_sim_service import DerivSimError
+
+    sent = body.model_fields_set
+    kw: dict[str, Any] = {
+        k: getattr(body, k)
+        for k in ("active", "series", "qty", "mode", "avoid_round")
+        if k in sent and getattr(body, k) is not None
+    }
+    for k, clear in (
+        ("stop_points", "clear_stop"),
+        ("target_points", "clear_target"),
+        ("alert_margin_pct", "clear_alert"),
+        ("stop_atr", "clear_stop_atr"),
+        ("target_atr", "clear_target_atr"),
+        ("crowd_atr", "clear_crowd"),
+    ):
+        if k in sent:
+            v = getattr(body, k)
+            if v:
+                kw[k] = v
+            else:
+                kw[clear] = True
+    sim = _sim_service(session, svc)
+    try:
+        await sim.update_config(user_id, **kw)
+    except DerivSimError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    await session.commit()
+    return await sim.view(user_id, _today_ict())
+
+
+@router.post("/sim/reset")
+async def reset_sim(
+    user_id: Annotated[str, Depends(get_current_user_id)],
+    session: AsyncSession = Depends(get_db),
+    svc: Any = Depends(get_derivatives_service),
+) -> dict[str, Any]:
+    """Xoá toàn bộ lệnh + đường P&L giả lập và tắt giả lập (giữ cấu hình)."""
+    sim = _sim_service(session, svc)
+    await sim.reset(user_id)
+    await session.commit()
+    return await sim.view(user_id, _today_ict())
