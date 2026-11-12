@@ -1589,3 +1589,95 @@ class PlanCheckScheduler:
             return
         now_utc = datetime.datetime.now(datetime.UTC)
         await channel.send(embed=build_plan_digest_embed(changes, now_utc))  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# DerivSimScheduler — giả lập HĐTL VN30 theo base rate, quét 5 phút
+# ---------------------------------------------------------------------------
+_DERIV_SIM_INTERVAL_MINUTES = 5
+
+
+class DerivSimScheduler:
+    """Mỗi 5 phút trong giờ giao dịch phái sinh (08:45–11:30, 13:00–14:45 ICT, ngày giao dịch):
+    chạy một lần quét giả lập cho mọi người dùng đang bật, gửi MỘT embed / người khi sổ
+    chính có sự kiện (mở/đóng/roll/cảnh báo margin). Logic ở portfolio.deriv_sim_service.
+
+    Không gọi AI. Kênh: alert_channel_id (fallback morning_channel_id).
+    """
+
+    def __init__(self, client: discord.Client, monitor: SchedulerMonitor | None = None) -> None:
+        self._client = client
+        self._monitor = monitor or get_monitor()
+        self._deriv: Any = None
+
+    def start(self) -> None:
+        self._monitor.register_task("deriv.sim")
+        self._task.start()
+        logger.info("scheduler.deriv_sim.started", interval_minutes=_DERIV_SIM_INTERVAL_MINUTES)
+
+    def stop(self) -> None:
+        self._task.cancel()
+
+    @tasks.loop(minutes=_DERIV_SIM_INTERVAL_MINUTES)
+    async def _task(self) -> None:
+        await self.run_once(datetime.datetime.now(tz=datetime.UTC))
+
+    @_task.before_loop
+    async def _before(self) -> None:
+        await self._client.wait_until_ready()
+
+    def _derivatives(self) -> Any:
+        if self._deriv is None:
+            from src.market.adapters.factory import build_reference_adapter
+            from src.market.derivatives import DerivativesService
+            from src.platform.bootstrap import get_ohlcv_service
+
+            self._deriv = DerivativesService(get_ohlcv_service(), build_reference_adapter())
+        return self._deriv
+
+    async def run_once(self, now_utc: datetime.datetime) -> dict[str, list[Any]]:
+        """Một lượt quét; trả {user_id: sự kiện sổ chính} (để test)."""
+        from src.market.deriv_sim import is_trading_slot
+        from src.market.trading_calendar import VNTradingCalendar
+        from src.portfolio.deriv_sim_service import DerivSimService
+
+        now_ict = now_utc.astimezone(datetime.timezone(datetime.timedelta(hours=7)))
+        hhmm = now_ict.hour * 100 + now_ict.minute
+        if not is_trading_slot(now_ict.date(), hhmm, VNTradingCalendar.is_trading_day):
+            return {}
+        task_name = "deriv.sim"
+        out: dict[str, list[Any]] = {}
+        try:
+            async with AsyncSessionLocal() as session:
+                svc = DerivSimService(session, self._derivatives())
+                for uid in await svc.active_user_ids():
+                    events = await svc.run_tick(uid, now_utc, now_ict.date())
+                    out[uid] = [e for e in events if e.primary]
+                await session.commit()
+            await self._monitor.record_success(task_name)
+        except Exception as exc:
+            logger.error("scheduler.deriv_sim.error", error=str(exc))
+            await self._monitor.record_failure(task_name, exc)
+            return {}
+        for uid, events in out.items():
+            if events:
+                await self._notify(events, now_utc)
+                logger.info("scheduler.deriv_sim.notified", user_id=uid, events=len(events))
+        return out
+
+    async def _notify(self, events: list[Any], now_utc: datetime.datetime) -> None:
+        from src.bot.commands.deriv_sim_embeds import build_deriv_sim_embed
+
+        channel_id = getattr(settings, "alert_channel_id", None) or getattr(
+            settings, "morning_channel_id", None
+        )
+        if not channel_id:
+            return
+        channel = self._client.get_channel(int(channel_id))
+        if channel is None:
+            logger.warning("scheduler.deriv_sim.channel_not_found", channel_id=channel_id)
+            return
+        try:
+            await channel.send(embed=build_deriv_sim_embed(events, now_utc))  # type: ignore[union-attr]
+        except Exception as exc:  # noqa: BLE001 — lỗi Discord không làm hỏng lượt quét
+            logger.warning("scheduler.deriv_sim.send_failed", error=str(exc))

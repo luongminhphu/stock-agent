@@ -67,6 +67,7 @@ def create_bot() -> commands.Bot:
             _start_investor_profile_scheduler(bot)  # investor profile snapshot 08:20 ICT
             _start_eod_close_capture_scheduler(bot)  # giá đóng cửa 14:50 + 15:05 ICT
             _start_plan_check_scheduler(bot)  # kế hoạch nắm giữ 15:30 ICT
+            _start_deriv_sim_scheduler(bot)  # giả lập HĐTL VN30, 5 phút trong giờ GD
             _start_eod_portfolio_snapshot_scheduler(bot)  # EOD P&L snapshot 15:20 ICT
             _wire_feedback_loop_monitor(
                 bot
@@ -433,6 +434,14 @@ def _start_eod_portfolio_snapshot_scheduler(bot: commands.Bot) -> None:
     scheduler = EodPortfolioSnapshotScheduler(bot)
     scheduler.start()
     logger.info("bot.eod_portfolio_snapshot_scheduler.started")
+
+
+def _start_deriv_sim_scheduler(bot: commands.Bot) -> None:
+    """Start DerivSimScheduler — giả lập HĐTL VN30 theo base rate, quét 5 phút."""
+    from src.bot.scheduler import DerivSimScheduler
+
+    DerivSimScheduler(bot).start()
+    logger.info("bot.deriv_sim_scheduler.started")
 
 
 def _start_plan_check_scheduler(bot: commands.Bot) -> None:
