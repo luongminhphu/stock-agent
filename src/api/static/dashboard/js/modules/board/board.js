@@ -95,9 +95,9 @@ function _summaryHTML(summary, rows, asOf) {
   const s = summary ?? {};
   const u = _unrealized(rows);
   const groups = [
-    { key: 'lean_avoid_holdings', label: 'Đang nắm – nghiêng tránh', cls: 'bd-chip--avoid' },
+    { key: 'lean_avoid_holdings', label: 'Đang nắm – Bearish', cls: 'bd-chip--avoid' },
     { key: 'abnormal_drawdowns',  label: 'Drawdown sâu hơn base rate',      cls: 'bd-chip--warn' },
-    { key: 'lean_buy_watchlist',  label: 'Watchlist có edge',    cls: 'bd-chip--buy' },
+    { key: 'lean_buy_watchlist',  label: 'Watchlist – Bullish',    cls: 'bd-chip--buy' },
   ];
   const groupHTML = groups
     .filter(g => Array.isArray(s[g.key]) && s[g.key].length)
@@ -219,7 +219,7 @@ function _tableHTML(rows) {
             <th scope="col" class="num" title="Win rate sau 120 phiên, kèm base rate của mã">Win 6T</th>
             <th scope="col" class="num" title="Edge = Win 6T − base rate, tính bằng điểm phần trăm">Edge</th>
             <th scope="col" class="num" title="Confidence theo số episode độc lập">Confidence</th>
-            <th scope="col">Gợi ý</th>
+            <th scope="col" title="Bullish / Bearish / Neutral theo base rate của chính mã — không phải dự báo">Signal</th>
             <th scope="col" class="bd-col-plan" title="Đèn của kế hoạch nắm giữ — xem tab Kế hoạch">Plan</th>
           </tr>
         </thead>
