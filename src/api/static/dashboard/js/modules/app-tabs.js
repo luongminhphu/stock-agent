@@ -3,7 +3,8 @@
  * Owner: dashboard shell
  *
  * Tab: #board (mặc định) · #derivatives · #thesis · #context
- * - Nút tab: role="tab", aria-selected, roving tabindex, phím ←/→/Home/End.
+ * - Nút tab: role="tab", aria-selected, roving tabindex, phím ←/→/↑/↓/Home/End.
+ *   Desktop: menu dọc bên trái · mobile: thanh tab ngang (aria-orientation đồng bộ theo màn hình).
  * - Hash cũ (#cluster-a..e) và hash trỏ vào phần tử bên trong tab vẫn mở đúng tab.
  * - Phần tử ở tab ẩn được "reveal" trước khi cuộn: [data-scroll-to] (capture),
  *   sự kiện navigate:thesis, và CustomEvent('tab:reveal', { detail: { tab | id } }).
@@ -127,14 +128,20 @@ export function initAppTabs({ onActivate } = {}) {
     if (!b) return;
     const i = TABS.indexOf(b.dataset.tabTarget);
     let next = null;
-    if (e.key === 'ArrowRight') next = TABS[(i + 1) % TABS.length];
-    else if (e.key === 'ArrowLeft') next = TABS[(i - 1 + TABS.length) % TABS.length];
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = TABS[(i + 1) % TABS.length];
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = TABS[(i - 1 + TABS.length) % TABS.length];
     else if (e.key === 'Home') next = TABS[0];
     else if (e.key === 'End') next = TABS[TABS.length - 1];
     if (!next) return;
     e.preventDefault();
     activateTab(next, { focus: true, push: true });
   });
+
+  // Menu dọc (desktop) / thanh ngang (≤ 900px) — báo đúng hướng cho trình đọc màn hình.
+  const mq = window.matchMedia('(max-width: 900px)');
+  const syncOrientation = () => list.setAttribute('aria-orientation', mq.matches ? 'horizontal' : 'vertical');
+  syncOrientation();
+  mq.addEventListener?.('change', syncOrientation);
 
   window.addEventListener('popstate', _syncFromLocation);
   window.addEventListener('hashchange', _syncFromLocation);
