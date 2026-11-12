@@ -39,6 +39,7 @@ Backward compatibility:
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 
@@ -511,6 +512,12 @@ class SymbolNotFoundError(Exception):
     """Raised when a ticker is not found in the registry."""
 
 
+# Dưới ngưỡng này coi như chưa có danh sách niêm yết đầy đủ (chỉ seed + mã trong DB)
+# → mã đúng định dạng nhưng chưa biết được tạm nhận (sàn HOSE) thay vì báo không tồn tại.
+_FULL_LISTING_MIN = 500
+_TICKER_RE = re.compile(r"^[A-Z0-9]{3}$")
+
+
 class SymbolRegistry:
     """Dynamic symbol registry engine.
 
@@ -623,19 +630,30 @@ class SymbolRegistry:
     # Sync reads — O(1) after initialize()
     # ------------------------------------------------------------------
 
+    def _lookup(self, ticker: str) -> SymbolInfo | None:
+        t = ticker.upper().strip()
+        info = self._cache.get(t)
+        if info is None and len(self._cache) < _FULL_LISTING_MIN and _TICKER_RE.match(t):
+            # Không tải được danh sách niêm yết (mạng/nguồn lỗi) → đừng chặn mã mới niêm
+            # yết hoặc mã người dùng vừa thêm; dữ liệu giá sẽ xác nhận mã có thật hay không.
+            self.enrich(t)
+            info = self._cache.get(t)
+            logger.info("registry.provisional_ticker", ticker=t, size=len(self._cache))
+        return info
+
     def resolve(self, ticker: str) -> SymbolInfo:
         """Return SymbolInfo or raise SymbolNotFoundError."""
-        info = self._cache.get(ticker.upper())
+        info = self._lookup(ticker)
         if info is None:
             raise SymbolNotFoundError(f"Ticker '{ticker}' not found in registry")
         return info
 
     def get(self, ticker: str) -> SymbolInfo | None:
         """Return SymbolInfo or None — never raises."""
-        return self._cache.get(ticker.upper())
+        return self._lookup(ticker)
 
     def exists(self, ticker: str) -> bool:
-        return ticker.upper() in self._cache
+        return self._lookup(ticker) is not None
 
     def list_by_exchange(self, exchange: Exchange) -> list[SymbolInfo]:
         return [s for s in self._cache.values() if s.exchange == exchange]

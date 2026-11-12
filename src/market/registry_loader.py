@@ -90,6 +90,7 @@ _VNSTOCK_SECTOR_MAP: dict[str, Sector] = {
 # Exchange string from vnstock → Exchange enum
 _EXCHANGE_MAP: dict[str, Exchange] = {
     "hose": Exchange.HOSE,
+    "hsx": Exchange.HOSE,  # VCI getAll trả board="HSX"
     "hnx": Exchange.HNX,
     "upcom": Exchange.UPCOM,
     "xhnf": Exchange.HNX,  # HNX derivatives/futures board
@@ -115,6 +116,56 @@ def _parse_exchange(raw: str | None) -> Exchange:
     if not raw:
         return Exchange.HOSE
     return _EXCHANGE_MAP.get(raw.strip().lower(), Exchange.HOSE)
+
+
+# ---------------------------------------------------------------------------
+# VCI listing (HTTP trực tiếp — nguồn mà vnstock.Listing().symbols_by_exchange() dùng)
+# ---------------------------------------------------------------------------
+
+_VCI_LISTING_URL = "https://trading.vietcap.com.vn/api/price/symbols/getAll"
+_VCI_HEADERS = {
+    "Accept": "application/json",
+    "Origin": "https://trading.vietcap.com.vn",
+    "Referer": "https://trading.vietcap.com.vn/",
+}
+
+
+def parse_vci_listing(rows: object) -> dict[str, SymbolInfo]:
+    """Thuần: [{symbol, type, board, organName, ...}] → chỉ cổ phiếu (type=STOCK)."""
+    if not isinstance(rows, list):
+        return {}
+    out: dict[str, SymbolInfo] = {}
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        ticker = str(r.get("symbol") or "").strip().upper()
+        if not ticker or str(r.get("type") or "").strip().lower() != "stock":
+            continue
+        board = str(r.get("board") or "").strip()
+        out[ticker] = SymbolInfo(
+            ticker=ticker,
+            name=str(r.get("organName") or r.get("organ_name") or ticker).strip() or ticker,
+            exchange=_parse_exchange(board),
+            sector=Sector.OTHER,
+            key_metrics="",
+        )
+    return out
+
+
+async def _load_vci_listing() -> dict[str, SymbolInfo]:
+    """Toàn bộ mã cổ phiếu niêm yết (HOSE/HNX/UPCoM) từ VCI. Lỗi → {} (không raise)."""
+    import httpx  # noqa: PLC0415
+
+    from src.market.adapters.http_guard import guarded_request  # noqa: PLC0415
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0, headers=_VCI_HEADERS) as client:
+            resp = await guarded_request(client, "GET", _VCI_LISTING_URL)
+            resp.raise_for_status()
+            return parse_vci_listing(resp.json())
+    except Exception as exc:  # noqa: BLE001
+        logger.info("registry_loader.vci_listing_unavailable", error=str(exc)[:200])
+        return {}
 
 
 # ---------------------------------------------------------------------------
@@ -242,8 +293,10 @@ class RegistryLoader:
         """
         result: dict[str, SymbolInfo] = dict(static_seed)
 
-        # Layer 2: vnstock listing (async-safe via thread)
-        vnstock_entries = await asyncio.to_thread(_load_vnstock_sync)
+        # Layer 2: danh sách niêm yết — VCI trực tiếp; vnstock (nếu cài) làm dự phòng
+        vnstock_entries = await _load_vci_listing()
+        if not vnstock_entries:
+            vnstock_entries = await asyncio.to_thread(_load_vnstock_sync)
         if vnstock_entries:
             # Merge: preserve key_metrics from static seed — only override
             # name/exchange/sector for tickers that had no sector info yet.
