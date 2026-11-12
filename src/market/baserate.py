@@ -453,18 +453,63 @@ class BaseRateService:
         self._history_days = history_days
 
     async def analyze(self, ticker: str, as_of: date | None = None) -> BaseRateReport:
+        """Tiền lệ cho trạng thái của PHIÊN ĐÃ ĐÓNG CỬA gần nhất.
+
+        Trong giờ giao dịch, nến hôm nay còn chạy theo giá → trạng thái (MA, RSI, khối
+        lượng) và gợi ý sẽ đổi liên tục trong phiên; với kỳ nắm giữ 3–6 tháng điều đó
+        chỉ là nhiễu và làm bảng Danh mục lệch với drawer chi tiết. Nên bỏ nến của
+        phiên chưa chốt giá (theo giờ đóng cửa từng sàn).
+
+        Kết quả cache theo (mã, ngày + giá của nến cuối, số nến) — mọi nơi (bảng, drawer,
+        kế hoạch) gọi trong cùng tiến trình nhận đúng một báo cáo.
+        """
         from datetime import timedelta  # noqa: PLC0415
 
         from src.market.ohlcv_service import _today_ict  # noqa: PLC0415
 
-        end = as_of or _today_ict()
+        t = ticker.upper()
+        today = _today_ict()
+        end = as_of or today
         bars = await self._ohlcv.get_candles(  # type: ignore[attr-defined]
-            ticker.upper(), end - timedelta(days=self._history_days), end
+            t, end - timedelta(days=self._history_days), end
         )
+        bars = list(bars or [])
+        if as_of is None and bars and bars[-1].date >= today and not _session_closed(t):
+            bars = bars[:-1]  # phiên hôm nay chưa chốt giá
+
         funds: list[FundamentalPoint] = []
         if self._fundamentals is not None:
             try:
-                funds = await self._fundamentals.get_fundamentals(ticker.upper())
+                funds = await self._fundamentals.get_fundamentals(t)
             except Exception:  # noqa: BLE001 — thiếu dữ liệu cơ bản không chặn thống kê giá
                 funds = []
-        return analyze(ticker, bars, funds)
+
+        key = (
+            t,
+            bars[-1].date if bars else None,
+            round(float(bars[-1].close), 4) if bars else None,
+            len(bars),
+            len(funds),
+        )
+        cached = _REPORT_CACHE.get(key)
+        if cached is not None:
+            return cached
+        rep = analyze(t, bars, funds)
+        if len(_REPORT_CACHE) >= _REPORT_CACHE_MAX:
+            _REPORT_CACHE.clear()
+        _REPORT_CACHE[key] = rep
+        return rep
+
+
+_REPORT_CACHE: dict[tuple[object, ...], BaseRateReport] = {}
+_REPORT_CACHE_MAX = 500
+
+
+def _session_closed(ticker: str) -> bool:
+    """Phiên hôm nay của mã đã chốt giá đóng cửa chưa (HOSE/HNX 14:45, UPCoM 15:00)."""
+    from src.market.price_rules import is_session_closed  # noqa: PLC0415
+    from src.market.registry import registry  # noqa: PLC0415
+
+    info = registry.get(ticker) if ticker not in {"VN30", "VNINDEX"} else None
+    exchange = info.exchange if info is not None else "HOSE"
+    return is_session_closed(exchange)
