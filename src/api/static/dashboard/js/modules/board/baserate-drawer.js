@@ -84,24 +84,25 @@ export function fmtDateVi(d) {
 
 // ── Từ điển hiển thị ─────────────────────────────────────────────────────────
 export const SUGGESTION = Object.freeze({
-  NGHIENG_MUA:      { label: 'Nghiêng mua',      cls: 'sg-buy' },
-  NGHIENG_TRANH:    { label: 'Nghiêng tránh',    cls: 'sg-avoid' },
-  TRUNG_TINH:       { label: 'Trung tính',       cls: 'sg-neutral' },
-  KHONG_DU_TIEN_LE: { label: 'Không đủ base rate', cls: 'sg-insufficient' },
+  NGHIENG_MUA:      { label: 'Bullish',           cls: 'sg-buy' },
+  NGHIENG_TRANH:    { label: 'Bearish',           cls: 'sg-avoid' },
+  TRUNG_TINH:       { label: 'Neutral',           cls: 'sg-neutral' },
+  KHONG_DU_TIEN_LE: { label: 'Insufficient data', cls: 'sg-insufficient' },
 });
 
+// Thuật ngữ quốc tế giữ tiếng Anh. Mã nội bộ (NGHIENG_MUA…) không đổi.
 export const CONFIDENCE = Object.freeze({
-  khong_du:   'Không đủ',
-  thap:       'Thấp',
-  trung_binh: 'TB',
-  cao:        'Cao',
+  khong_du:   'N/A',
+  thap:       'Low',
+  trung_binh: 'Medium',
+  cao:        'High',
 });
 
 const CONFIDENCE_LONG = Object.freeze({
-  khong_du:   'Không đủ',
-  thap:       'Thấp',
-  trung_binh: 'Trung bình',
-  cao:        'Cao',
+  khong_du:   'N/A — chưa đủ episode',
+  thap:       'Low',
+  trung_binh: 'Medium',
+  cao:        'High',
 });
 
 /** Tên đặc trưng trạng thái (khóa của matched_on / dropped). */
