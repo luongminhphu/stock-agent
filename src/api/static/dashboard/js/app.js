@@ -66,7 +66,7 @@ async function _getDecisionTabs() {
   return _lazyDecisionTabs;
 }
 async function _getDerivatives() {
-  if (!_lazyDerivatives) _lazyDerivatives = import('./modules/derivatives/derivatives.js?v=2');
+  if (!_lazyDerivatives) _lazyDerivatives = import('./modules/derivatives/derivatives.js?v=3');
   return _lazyDerivatives;
 }
 async function loadDerivatives() {
