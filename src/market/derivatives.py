@@ -444,10 +444,26 @@ class DerivativesService:
         return basis_stats(fmap, imap, expiries, current=cur)
 
     async def vn30_baserate(self) -> object:
+        """Tiền lệ VN30 cho phiên ĐÃ ĐÓNG CỬA gần nhất (bỏ nến hôm nay nếu chưa chốt giá)."""
         from src.market.baserate import analyze  # noqa: PLC0415
+        from src.market.ohlcv_service import _today_ict  # noqa: PLC0415
+        from src.market.price_rules import is_session_closed  # noqa: PLC0415
 
-        bars = await self._candles(self.VN30_SYMBOL, 3650)
+        bars = list(await self._candles(self.VN30_SYMBOL, 3650))
+        if bars and bars[-1].date >= _today_ict() and not is_session_closed("HOSE"):
+            bars = bars[:-1]
         return analyze(self.VN30_SYMBOL, bars, horizons=self.BASERATE_HORIZONS)
+
+    async def sim_context(self, today: date) -> dict[str, float | None]:
+        """ATR14 VN30 (phiên đã đóng) + biến động VN30 trong phiên hôm nay (điểm) cho giả lập."""
+        from src.market.deriv_sim import atr  # noqa: PLC0415
+
+        bars = list(await self._candles(self.VN30_SYMBOL, 40))
+        move = None
+        if len(bars) >= 2 and bars[-1].date >= today:
+            move = round(bars[-1].close - bars[-2].close, 2)
+            bars = bars[:-1]
+        return {"atr": atr(bars), "move": move}
 
     async def betas(self, tickers: list[str], window: int = 120) -> dict[str, float | None]:
         idx = await self._candles(self.VN30_SYMBOL, window * 2)
