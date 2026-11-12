@@ -86,6 +86,9 @@ let _fetchSerial   = 0;             // in-flight guard: discard stale responses
 let _viewMode      = _loadViewMode(); // 'fit' (co theo dữ liệu) | 'center' (đối xứng quanh 100)
 let _viewport      = null;          // null = tự động; {rMin,rMax,mMin,mMax} sau khi người dùng zoom
 let _lastView      = null;          // khung đang vẽ — dùng để quy đổi toạ độ chuột khi zoom
+let _drag          = null;          // kéo (pan) bằng chuột: {id, x0, y0, view, moved}
+let _suppressClick = false;         // vừa kéo xong → bỏ qua click (không mở chi tiết mã)
+let _panFrame      = null;          // rAF gom các lần vẽ trong lúc kéo
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Persistence helpers
@@ -186,6 +189,16 @@ function _equalAspect(v, plotW, plotH) {
   return {
     rMin: rMid - (upp * plotW) / 2, rMax: rMid + (upp * plotW) / 2,
     mMin: mMid - (upp * plotH) / 2, mMax: mMid + (upp * plotH) / 2,
+  };
+}
+
+/** Kéo khung nhìn theo độ dời chuột (px) tính từ lúc bấm. */
+function _panBy(start, dxPx, dyPx) {
+  const dr = -(dxPx / start.plotW) * (start.rMax - start.rMin);
+  const dm = (dyPx / start.plotH) * (start.mMax - start.mMin);
+  _viewport = {
+    rMin: start.rMin + dr, rMax: start.rMax + dr,
+    mMin: start.mMin + dm, mMax: start.mMax + dm,
   };
 }
 
@@ -342,7 +355,8 @@ function _setCanvasA11y() {
   if (!cv) return;
   cv.setAttribute('tabindex', '0');
   cv.setAttribute('role', 'img');
-  cv.setAttribute('aria-label', 'Relative Rotation Graph — dùng ←→ để chọn ticker');
+  cv.setAttribute('aria-label', 'Relative Rotation Graph — ←→ chọn ticker · cuộn chuột để zoom · kéo để dịch · nhấp đúp để về khung tự động');
+  cv.title = 'Cuộn chuột: zoom · Kéo: dịch khung · Nhấp đúp: về khung tự động';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -785,6 +799,7 @@ function _wireWrapEvents(wrap) {
     const onDetail = e.target.closest(`#${DETAIL_ID}`);
 
     if (onDetail) return; // let panel's own delegated handler manage it
+    if (_suppressClick) { _suppressClick = false; return; } // kết thúc một lần kéo, không phải click
 
     if (!onCanvas) {
       // Click outside canvas and outside detail → close panel
@@ -818,19 +833,20 @@ function _wireWrapEvents(wrap) {
     const rect   = cv.getBoundingClientRect();
     const cx     = e.clientX - rect.left;
     const cy     = e.clientY - rect.top;
+    if (_drag) return; // đang kéo — con trỏ do pointer handlers quản
     const ticker = _hitTest(cx, cy);
     if (ticker) {
       _showTooltip(wrap, ticker, cx, cy);
       cv.style.cursor = 'pointer';
     } else {
       _hideTooltip(wrap);
-      cv.style.cursor = 'default';
+      cv.style.cursor = 'grab';
     }
   });
 
   wrap.addEventListener('mouseleave', () => _hideTooltip(wrap));
 
-  // ── Wheel: zoom quanh con trỏ · Double-click: về khung tự động ───────────
+  // ── Wheel: zoom quanh con trỏ · Kéo: dịch khung · Double-click: về khung tự động ──
   wrap.addEventListener('wheel', e => {
     const cv = document.getElementById(CANVAS_ID);
     if (!cv || !e.target.closest(`#${CANVAS_ID}`) || !_lastView) return;
@@ -845,6 +861,49 @@ function _wireWrapEvents(wrap) {
     _hideTooltip(wrap);
     _redraw(wrap);
   }, { passive: false });
+
+  // ── Kéo bằng bàn tay: giữ chuột trái trên vùng trống rồi kéo để dịch khung ──
+  // Chỉ chuột/bút; trên màn cảm ứng để nguyên cuộn trang.
+  wrap.addEventListener('pointerdown', e => {
+    _suppressClick = false; // lần kéo trước thả ngoài đồ thị → click không tới; xoá cờ cũ
+    const cv = document.getElementById(CANVAS_ID);
+    if (!cv || e.target !== cv || e.button !== 0 || e.pointerType === 'touch' || !_lastView) return;
+    const rect = cv.getBoundingClientRect();
+    if (_hitTest(e.clientX - rect.left, e.clientY - rect.top)) return; // bấm vào mã → click như cũ
+    _drag = { id: e.pointerId, x0: e.clientX, y0: e.clientY, view: { ..._lastView }, moved: false };
+    try { cv.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    cv.style.cursor = 'grabbing';
+    e.preventDefault();
+  });
+
+  wrap.addEventListener('pointermove', e => {
+    if (!_drag || e.pointerId !== _drag.id) return;
+    const dx = e.clientX - _drag.x0;
+    const dy = e.clientY - _drag.y0;
+    if (!_drag.moved && Math.hypot(dx, dy) < 3) return;
+    if (!_drag.moved) { _drag.moved = true; _hideTooltip(wrap); }
+    _panBy(_drag.view, dx, dy);
+    if (!_panFrame) {
+      _panFrame = requestAnimationFrame(() => {
+        _panFrame = null;
+        if (_animFrame) { cancelAnimationFrame(_animFrame); _animFrame = null; }
+        _drawCanvas(wrap, _allTickers.filter(t => !_hidden.has(t.ticker)));
+      });
+    }
+  });
+
+  const endDrag = e => {
+    if (!_drag || (e.pointerId !== undefined && e.pointerId !== _drag.id)) return;
+    const cv = document.getElementById(CANVAS_ID);
+    _suppressClick = _drag.moved;
+    _drag = null;
+    if (cv) {
+      try { cv.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+      cv.style.cursor = 'grab';
+    }
+  };
+  wrap.addEventListener('pointerup', endDrag);
+  wrap.addEventListener('pointercancel', endDrag);
 
   wrap.addEventListener('dblclick', e => {
     if (!e.target.closest(`#${CANVAS_ID}`) || !_viewport) return;
