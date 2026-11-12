@@ -1,8 +1,8 @@
 /**
- * app-tabs.js — Điều hướng 4 tab chính, đồng bộ với URL hash.
+ * app-tabs.js — Điều hướng 5 tab chính, đồng bộ với URL hash.
  * Owner: dashboard shell
  *
- * Tab: #board (mặc định) · #derivatives · #thesis · #context
+ * Tab: #board (mặc định) · #derivatives · #paper · #thesis · #context
  * - Nút tab: role="tab", aria-selected, roving tabindex, phím ←/→/↑/↓/Home/End.
  *   Desktop: menu dọc bên trái · mobile: thanh tab ngang (aria-orientation đồng bộ theo màn hình).
  * - Hash cũ (#cluster-a..e) và hash trỏ vào phần tử bên trong tab vẫn mở đúng tab.
@@ -15,7 +15,7 @@
  *   getActiveTab()
  */
 
-const TABS = ['board', 'derivatives', 'thesis', 'context'];
+const TABS = ['board', 'derivatives', 'paper', 'thesis', 'context'];
 const DEFAULT_TAB = 'board';
 const LEGACY = Object.freeze({
   'cluster-a': 'board',

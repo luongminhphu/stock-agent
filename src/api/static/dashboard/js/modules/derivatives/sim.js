@@ -1,5 +1,5 @@
 /**
- * sim.js — Panel "Giả lập tự động" trong tab Phái sinh (paper trading HĐTL VN30).
+ * sim.js — Tab "Paper Trading": giả lập HĐTL VN30 tự động theo base rate.
  * Owner: modules/derivatives
  *
  * Nguồn (prefix /api/v1/derivatives):
@@ -10,8 +10,7 @@
  * Bot quét 5 phút/lần trong giờ giao dịch; panel tự làm mới mỗi 60 giây khi tab đang mở.
  *
  * Exports:
- *   simShellHTML() — khung panel (gắn vào shell của tab)
- *   loadSim()      — tải + render; lần đầu bind sự kiện và hẹn giờ làm mới
+ *   loadSim() — lần đầu dựng khung trong #paperRoot + bind sự kiện + hẹn giờ làm mới; sau đó tải lại
  */
 
 import { getJson, sendJson } from '../../api/client.js?v=1';
@@ -50,7 +49,7 @@ const sideTag = (side) => (side
   : '<span class="dv-muted">Flat</span>');
 
 // ── Khung ───────────────────────────────────────────────────────────────────
-export function simShellHTML() {
+function _shellHTML() {
   return `
     <section class="panel dv-panel" aria-labelledby="dvSimTitle">
       <div class="panel-header split-header">
@@ -330,7 +329,7 @@ function _formBody(f) {
 function _bind() {
   if (_s.bound) return;
   _s.bound = true;
-  const root = document.getElementById('derivativesRoot');
+  const root = document.getElementById('paperRoot');
   if (!root) return;
   root.addEventListener('submit', (e) => {
     if (e.target.id !== 'dvSimForm') return;
@@ -338,6 +337,7 @@ function _bind() {
     _put(_formBody(e.target), 'Đã lưu cài đặt giả lập.');
   });
   root.addEventListener('click', async (e) => {
+    if (e.target.closest('[data-dv-retry="sim"]')) { loadSim(); return; }
     const tog = e.target.closest('[data-sim-toggle]');
     if (tog) {
       const on = tog.dataset.simToggle === '1';
@@ -364,6 +364,11 @@ function _bind() {
 }
 
 export async function loadSim({ silent = false } = {}) {
+  const root = document.getElementById('paperRoot');
+  if (root && !root.dataset.ready) {
+    root.innerHTML = _shellHTML();
+    root.dataset.ready = '1';
+  }
   _bind();
   const wrap = document.getElementById('dvSim');
   if (!wrap) return;

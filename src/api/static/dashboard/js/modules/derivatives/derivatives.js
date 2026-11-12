@@ -8,7 +8,6 @@
  *   /hedge?ratio=&series= → kế hoạch Short HĐ theo beta (404 = chưa có vị thế mở)
  *   /vn30/baserate        → cùng shape với /market/baserate (kỳ 5/20/60 phiên)
  *   /basis?days=730       → thống kê basis lịch sử
- *   /sim                  → giả lập tự động (xem sim.js)
  *
  * Exports:
  *   loadDerivatives() — render khung + fetch song song (gọi khi tab mở lần đầu)
@@ -19,7 +18,6 @@ import { esc } from '../../utils/format.js?v=1';
 import {
   fmtNum, fmtVnd, fmtPct, signClass, fmtDateVi, renderBaserate,
 } from '../board/baserate-drawer.js?v=2';
-import { simShellHTML, loadSim } from './sim.js?v=1';
 
 const BASE = '/api/v1/derivatives';
 const SERIES = ['F1M', 'F2M', 'F1Q', 'F2Q'];
@@ -75,8 +73,6 @@ function _shellHTML() {
       </div>
       <div class="panel-body" id="dvContracts">${_loading()}</div>
     </section>
-
-    ${simShellHTML()}
 
     <section class="panel dv-panel" aria-labelledby="dvHedgeTitle">
       <div class="panel-header">
@@ -346,7 +342,6 @@ function _bind(root) {
     else if (key === 'hedge') _loadHedge();
     else if (key === 'vn30') _loadVn30();
     else if (key === 'basis') _loadBasis();
-    else if (key === 'sim') loadSim();
   });
 }
 
@@ -358,5 +353,5 @@ export async function loadDerivatives() {
     root.dataset.ready = '1';
     _bind(root);
   }
-  await Promise.allSettled([_loadContracts(), _loadHedge(), _loadVn30(), _loadBasis(), loadSim()]);
+  await Promise.allSettled([_loadContracts(), _loadHedge(), _loadVn30(), _loadBasis()]);
 }
