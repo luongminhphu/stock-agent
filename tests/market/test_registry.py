@@ -34,8 +34,44 @@ def test_exists_true(reg: SymbolRegistry) -> None:
     assert reg.exists("FPT") is True
 
 
-def test_exists_false(reg: SymbolRegistry) -> None:
+def test_exists_false_with_full_listing(reg: SymbolRegistry) -> None:
+    # Đã có danh sách niêm yết đầy đủ → mã lạ là không tồn tại
+    for i in range(600):
+        reg.enrich(f"Z{i:03d}")
     assert reg.exists("XYZ") is False
+
+
+def test_provisional_ticker_without_listing(reg: SymbolRegistry) -> None:
+    # Chỉ có seed (không tải được danh sách) → mã đúng định dạng được tạm nhận
+    info = reg.resolve("tcx")
+    assert info.ticker == "TCX" and info.exchange == Exchange.HOSE
+    assert reg.exists("TCX") is True
+    # Sai định dạng vẫn bị từ chối
+    assert reg.exists("ABCD1") is False
+
+
+def test_parse_vci_listing_keeps_only_stocks() -> None:
+    from src.market.registry_loader import parse_vci_listing
+
+    rows = [
+        {
+            "symbol": "TCX",
+            "type": "STOCK",
+            "board": "HSX",
+            "organName": "CTCP Chứng khoán Kỹ Thương",
+        },
+        {"symbol": "SHS", "type": "STOCK", "board": "HNX", "organName": "SHS"},
+        {"symbol": "BSR", "type": "STOCK", "board": "UPCOM", "organName": "BSR"},
+        {"symbol": "CFPT2501", "type": "CW", "board": "HSX"},
+        {"symbol": "E1VFVN30", "type": "FUND", "board": "HSX"},
+        "rác",
+    ]
+    out = parse_vci_listing(rows)
+    assert set(out) == {"TCX", "SHS", "BSR"}
+    assert out["TCX"].exchange == Exchange.HOSE and "Kỹ Thương" in out["TCX"].name
+    assert out["SHS"].exchange == Exchange.HNX
+    assert out["BSR"].exchange == Exchange.UPCOM
+    assert parse_vci_listing({"not": "a list"}) == {}
 
 
 def test_list_by_exchange_hose(reg: SymbolRegistry) -> None:
