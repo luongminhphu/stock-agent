@@ -180,8 +180,24 @@ export async function openEditThesisModal(thesisId) {
   }
 }
 
-export async function openAssumptionModal(thesisId, assumId) {
-  const ticker = state.theses.find(t => String(t.id) === String(thesisId))?.ticker ?? '';
+/**
+ * Mã cổ phiếu của thesis: ưu tiên mã truyền vào (thesis đang mở), rồi danh sách đã tải,
+ * cuối cùng hỏi API — thesis mở từ tab Kế hoạch / bộ lọc khác không nằm trong state.theses.
+ */
+async function _resolveTicker(thesisId, ticker) {
+  if (ticker) return String(ticker).toUpperCase();
+  const known = state.theses.find(t => String(t.id ?? t.thesis_id) === String(thesisId))?.ticker;
+  if (known) return String(known).toUpperCase();
+  try {
+    const t = await getJson(`${thesisApiBase()}/${thesisId}`);
+    return t?.ticker ? String(t.ticker).toUpperCase() : '';
+  } catch {
+    return '';
+  }
+}
+
+export async function openAssumptionModal(thesisId, assumId, knownTicker = '') {
+  const ticker = await _resolveTicker(thesisId, knownTicker);
   // fix: reset() BEFORE setting hidden fields — both inputs are inside <form>,
   // calling reset() after would wipe thesisId/assumId and break the submit URL.
   el('assumptionForm').reset();
@@ -207,8 +223,8 @@ export async function openAssumptionModal(thesisId, assumId) {
   openModal('assumptionModal');
 }
 
-export async function openCatalystModal(thesisId, catId) {
-  const ticker = state.theses.find(t => String(t.id) === String(thesisId))?.ticker ?? '';
+export async function openCatalystModal(thesisId, catId, knownTicker = '') {
+  const ticker = await _resolveTicker(thesisId, knownTicker);
   // fix: reset() BEFORE setting hidden fields — both inputs are inside <form>,
   // calling reset() after would wipe thesisId/catId and break the submit URL.
   el('catalystForm').reset();
@@ -237,20 +253,20 @@ export async function openCatalystModal(thesisId, catId) {
 // ---------------------------------------------------------------------------
 // wireDetailActions — bind events bên trong detail panel sau khi render
 // ---------------------------------------------------------------------------
-export function wireDetailActions(thesisId, wrap) {
+export function wireDetailActions(thesisId, wrap, ticker = '') {
   wrap.querySelector('#detailEditBtn')?.addEventListener('click', () => openEditThesisModal(thesisId));
   wrap.querySelector('#detailDeleteBtn')?.addEventListener('click', () => confirmDeleteThesis(thesisId));
   wrap.querySelector('#detailCloseBtn')?.addEventListener('click', () => _confirmLifecycle(thesisId, 'close'));
   wrap.querySelector('#detailInvalidateBtn')?.addEventListener('click', () => _confirmLifecycle(thesisId, 'invalidate'));
   wrap.querySelector('#detailReactivateBtn')?.addEventListener('click', () => _confirmLifecycle(thesisId, 'reactivate'));
-  wrap.querySelector('#addAssumBtn')?.addEventListener('click', () => openAssumptionModal(thesisId, null));
+  wrap.querySelector('#addAssumBtn')?.addEventListener('click', () => openAssumptionModal(thesisId, null, ticker));
   wrap.querySelectorAll('.edit-assum-btn').forEach(btn =>
-    btn.addEventListener('click', () => openAssumptionModal(thesisId, btn.dataset.id)));
+    btn.addEventListener('click', () => openAssumptionModal(thesisId, btn.dataset.id, ticker)));
   wrap.querySelectorAll('.delete-assum-btn').forEach(btn =>
     btn.addEventListener('click', () => confirmDeleteAssumption(thesisId, btn.dataset.id)));
-  wrap.querySelector('#addCatBtn')?.addEventListener('click', () => openCatalystModal(thesisId, null));
+  wrap.querySelector('#addCatBtn')?.addEventListener('click', () => openCatalystModal(thesisId, null, ticker));
   wrap.querySelectorAll('.edit-cat-btn').forEach(btn =>
-    btn.addEventListener('click', () => openCatalystModal(thesisId, btn.dataset.id)));
+    btn.addEventListener('click', () => openCatalystModal(thesisId, btn.dataset.id, ticker)));
   wrap.querySelectorAll('.delete-cat-btn').forEach(btn =>
     btn.addEventListener('click', () => confirmDeleteCatalyst(thesisId, btn.dataset.id)));
   wrap.querySelector(`#aiReviewBtn-${thesisId}`)?.addEventListener('click', () => triggerAiReview(thesisId));
