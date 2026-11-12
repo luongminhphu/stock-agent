@@ -521,7 +521,14 @@ class DerivSimConfig(Base):
     alert_margin_pct: Mapped[float | None] = mapped_column(
         Float, nullable=True
     )  # cảnh báo khi |P&L/margin| ≥ %
+    # Tư duy ngược: follow (theo tín hiệu) | fade (đánh ngược) | auto (theo sổ vượt trội)
+    mode: Mapped[str] = mapped_column(String(8), default="follow", nullable=False)
+    stop_atr: Mapped[float | None] = mapped_column(Float, nullable=True)  # Stop = k × ATR
+    target_atr: Mapped[float | None] = mapped_column(Float, nullable=True)
+    avoid_round: Mapped[bool] = mapped_column(default=True, nullable=False)
+    crowd_atr: Mapped[float | None] = mapped_column(Float, nullable=True)  # lọc đuổi đám đông
     reentry_blocked_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    fade_reentry_blocked_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     last_signal: Mapped[str | None] = mapped_column(String(32), nullable=True)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -537,10 +544,13 @@ class DerivSimTrade(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    strategy: Mapped[str] = mapped_column(String(8), default="base", nullable=False)  # base|fade
     contract_code: Mapped[str] = mapped_column(String(16), nullable=False)
     side: Mapped[str] = mapped_column(String(5), nullable=False)  # LONG | SHORT
     qty: Mapped[int] = mapped_column(Integer, nullable=False)
     entry_price: Mapped[float] = mapped_column(Float, nullable=False)
+    stop_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    target_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     entry_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     entry_reason: Mapped[str] = mapped_column(String(16), nullable=False)  # signal | roll
     signal: Mapped[str | None] = mapped_column(String(32), nullable=True)  # tín hiệu lúc mở
@@ -561,6 +571,7 @@ class DerivSimTick(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, nullable=False)
+    strategy: Mapped[str] = mapped_column(String(8), default="base", nullable=False)
     contract_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
     side: Mapped[str | None] = mapped_column(String(5), nullable=True)
     price: Mapped[float | None] = mapped_column(Float, nullable=True)

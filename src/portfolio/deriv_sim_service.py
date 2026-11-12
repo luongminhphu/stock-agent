@@ -4,8 +4,10 @@ Owner: portfolio segment. Quy tắc giao dịch ở market.deriv_sim (thuần); 
 đọc/ghi DB và lấy giá HĐ + tín hiệu từ market.derivatives.DerivativesService.
 
 Luồng mỗi lần quét (bot gọi 5 phút/lần trong giờ giao dịch):
-  tín hiệu VN30 + giá HĐ → market.deriv_sim.step → ghi lệnh mở/đóng → ghi tick P&L
-  → trả danh sách sự kiện để bot gửi Discord (mở/đóng/stop/target/roll, cảnh báo margin).
+  tín hiệu VN30 + giá HĐ + ATR/biến động phiên → market.deriv_sim.step cho HAI sổ
+  (base = theo tín hiệu, fade = đánh ngược) → ghi lệnh mở/đóng → ghi tick P&L từng sổ
+  → trả sự kiện; ``SimEvent.primary`` đánh dấu sổ chính (theo ``mode``) để bot chỉ gửi
+  Discord cho sổ đó.
 """
 
 from __future__ import annotations
@@ -17,10 +19,13 @@ from typing import Any
 from sqlalchemy import select
 
 from src.market.deriv_sim import (
+    BOOKS,
     DEFAULT_FEE_PER_SIDE,
+    MODES,
     SERIES_ORDER,
     SimParams,
     SimPosition,
+    choose_primary,
     stats,
     step,
     trade_pnl,
@@ -45,15 +50,22 @@ class SimEvent:
     reason: str
     pnl: float | None = None  # đã trừ phí (close) hoặc chưa thực hiện (margin_alert)
     pnl_on_margin_pct: float | None = None
+    strategy: str = "base"
+    primary: bool = True  # sổ chính theo mode → bot gửi Discord
+    stop_price: float | None = None
+    target_price: float | None = None
 
 
 def _trade_dict(t: DerivSimTrade) -> dict[str, Any]:
     return {
         "id": t.id,
+        "strategy": t.strategy,
         "contract_code": t.contract_code,
         "side": t.side,
         "qty": t.qty,
         "entry_price": t.entry_price,
+        "stop_price": t.stop_price,
+        "target_price": t.target_price,
         "entry_at": t.entry_at,
         "entry_reason": t.entry_reason,
         "signal": t.signal,
@@ -81,15 +93,22 @@ class DerivSimService:
                 stop_points=15.0,
                 target_points=30.0,
                 alert_margin_pct=None,
+                mode="follow",
+                avoid_round=True,
+                crowd_atr=0.8,
             )
             self._session.add(cfg)
             await self._session.flush()
         return cfg
 
-    async def _open_trade(self, user_id: str) -> DerivSimTrade | None:
+    async def _open_trade(self, user_id: str, strategy: str = "base") -> DerivSimTrade | None:
         res = await self._session.execute(
             select(DerivSimTrade)
-            .where(DerivSimTrade.user_id == user_id, DerivSimTrade.exit_at.is_(None))
+            .where(
+                DerivSimTrade.user_id == user_id,
+                DerivSimTrade.strategy == strategy,
+                DerivSimTrade.exit_at.is_(None),
+            )
             .order_by(DerivSimTrade.id.desc())
         )
         return res.scalars().first()
@@ -107,6 +126,14 @@ class DerivSimService:
         clear_stop: bool = False,
         clear_target: bool = False,
         clear_alert: bool = False,
+        mode: str | None = None,
+        stop_atr: float | None = None,
+        target_atr: float | None = None,
+        avoid_round: bool | None = None,
+        crowd_atr: float | None = None,
+        clear_stop_atr: bool = False,
+        clear_target_atr: bool = False,
+        clear_crowd: bool = False,
         now: datetime | None = None,
     ) -> DerivSimConfig:
         now = now or datetime.now(UTC)
@@ -128,11 +155,24 @@ class DerivSimService:
             cfg.alert_margin_pct = (
                 None if clear_alert else abs(float(alert_margin_pct or 0)) or None
             )
+        if mode is not None:
+            if mode not in MODES:
+                raise DerivSimError(f"Chế độ phải là một trong {', '.join(MODES)}.")
+            cfg.mode = mode
+        if stop_atr is not None or clear_stop_atr:
+            cfg.stop_atr = None if clear_stop_atr else abs(float(stop_atr or 0)) or None
+        if target_atr is not None or clear_target_atr:
+            cfg.target_atr = None if clear_target_atr else abs(float(target_atr or 0)) or None
+        if crowd_atr is not None or clear_crowd:
+            cfg.crowd_atr = None if clear_crowd else abs(float(crowd_atr or 0)) or None
+        if avoid_round is not None:
+            cfg.avoid_round = avoid_round
         if active is not None and active != cfg.active:
             cfg.active = active
             if active:
                 cfg.started_at = now
                 cfg.reentry_blocked_on = None
+                cfg.fade_reentry_blocked_on = None
             else:
                 await self._close_open(user_id, "stopped", now)
         cfg.updated_at = now
@@ -140,26 +180,21 @@ class DerivSimService:
         return cfg
 
     async def _close_open(self, user_id: str, reason: str, now: datetime) -> None:
-        """Dừng giả lập → đóng vị thế đang mở theo giá hiện tại (nếu có giá)."""
-        trade = await self._open_trade(user_id)
-        if trade is None:
+        """Dừng giả lập → đóng vị thế đang mở của cả hai sổ theo giá hiện tại (nếu có giá)."""
+        trades = [t for b in BOOKS if (t := await self._open_trade(user_id, b)) is not None]
+        if not trades:
             return
         snap = await self._deriv.contracts(now.date())
-        px = next(
-            (
-                c.get("price")
-                for c in snap.get("contracts", [])
-                if c.get("code") == trade.contract_code
-            ),
-            None,
-        )
-        exit_px = float(px) if px is not None else trade.entry_price
-        trade.exit_price = exit_px
-        trade.exit_at = now
-        trade.exit_reason = reason
-        trade.realized_pnl = round(
-            trade_pnl(trade.side, trade.qty, trade.entry_price, exit_px, FEE_PER_SIDE)
-        )
+        prices = {c.get("code"): c.get("price") for c in snap.get("contracts", [])}
+        for trade in trades:
+            px = prices.get(trade.contract_code)
+            exit_px = float(px) if px is not None else trade.entry_price
+            trade.exit_price = exit_px
+            trade.exit_at = now
+            trade.exit_reason = reason
+            trade.realized_pnl = round(
+                trade_pnl(trade.side, trade.qty, trade.entry_price, exit_px, FEE_PER_SIDE)
+            )
 
     async def reset(self, user_id: str) -> None:
         """Xoá toàn bộ lệnh + tick giả lập (giữ cấu hình, tắt giả lập)."""
@@ -171,10 +206,34 @@ class DerivSimService:
         if cfg is not None:
             cfg.active = False
             cfg.reentry_blocked_on = None
+            cfg.fade_reentry_blocked_on = None
             cfg.last_signal = None
         await self._session.flush()
 
     # ── Một lần quét ────────────────────────────────────────────────────────
+    def _params(self, cfg: DerivSimConfig) -> SimParams:
+        return SimParams(
+            series=cfg.series,
+            qty=cfg.qty,
+            stop_points=cfg.stop_points,
+            target_points=cfg.target_points,
+            fee_per_side=FEE_PER_SIDE,
+            stop_atr=cfg.stop_atr,
+            target_atr=cfg.target_atr,
+            avoid_round=bool(cfg.avoid_round),
+            crowd_atr=cfg.crowd_atr,
+        )
+
+    async def _primary(self, user_id: str, mode: str) -> str:
+        if mode != "auto":
+            return choose_primary(mode, {}, {})
+        closed = await self._closed(user_id)
+        return choose_primary(
+            mode,
+            stats([t for t in closed if t["strategy"] == "base"]),
+            stats([t for t in closed if t["strategy"] == "fade"]),
+        )
+
     async def run_tick(self, user_id: str, now: datetime, today: date) -> list[SimEvent]:
         cfg = await self._config(user_id)
         if cfg is None or not cfg.active:
@@ -185,22 +244,66 @@ class DerivSimService:
             suggestion = getattr(await self._deriv.vn30_baserate(), "suggestion", None)
         except Exception:  # noqa: BLE001 — thiếu tiền lệ → giữ nguyên, không mở mới
             suggestion = None
+        ctx: dict[str, Any] = {}
+        if hasattr(self._deriv, "sim_context"):
+            try:
+                ctx = dict(await self._deriv.sim_context(today))
+            except Exception:  # noqa: BLE001 — thiếu ATR → Stop/Target theo điểm, tắt lọc
+                ctx = {}
+        params = self._params(cfg)
+        primary = await self._primary(user_id, cfg.mode or "follow")
 
-        params = SimParams(
-            series=cfg.series,
-            qty=cfg.qty,
-            stop_points=cfg.stop_points,
-            target_points=cfg.target_points,
-            fee_per_side=FEE_PER_SIDE,
-        )
-        trade = await self._open_trade(user_id)
+        events: list[SimEvent] = []
+        for book in BOOKS:
+            events += await self._run_book(
+                cfg, user_id, book, book == primary, suggestion, contracts, params, ctx, now, today
+            )
+        cfg.last_signal = suggestion
+        cfg.last_run_at = now
+        await self._session.flush()
+        return events
+
+    async def _run_book(
+        self,
+        cfg: DerivSimConfig,
+        user_id: str,
+        book: str,
+        primary: bool,
+        suggestion: str | None,
+        contracts: list[dict[str, Any]],
+        params: SimParams,
+        ctx: dict[str, Any],
+        now: datetime,
+        today: date,
+    ) -> list[SimEvent]:
+        fade = book == "fade"
+        trade = await self._open_trade(user_id, book)
         pos = (
-            SimPosition(trade.contract_code, trade.side, trade.qty, trade.entry_price)
+            SimPosition(
+                trade.contract_code,
+                trade.side,
+                trade.qty,
+                trade.entry_price,
+                trade.stop_price,
+                trade.target_price,
+            )
             if trade
             else None
         )
-        blocked = cfg.reentry_blocked_on == today
-        result = step(pos, suggestion, contracts, params, reentry_blocked=blocked)
+        blocked_on = cfg.fade_reentry_blocked_on if fade else cfg.reentry_blocked_on
+        result = step(
+            pos,
+            suggestion,
+            contracts,
+            params,
+            reentry_blocked=blocked_on == today,
+            fade=fade,
+            atr=ctx.get("atr"),
+            move=ctx.get("move"),
+        )
+
+        def ev(kind: str, **kw: Any) -> SimEvent:
+            return SimEvent(kind, strategy=book, primary=primary, **kw)
 
         events: list[SimEvent] = []
         for a in result.actions:
@@ -212,26 +315,51 @@ class DerivSimService:
                     trade_pnl(trade.side, trade.qty, trade.entry_price, a.price, FEE_PER_SIDE)
                 )
                 events.append(
-                    SimEvent("close", a.side, a.code, a.qty, a.price, a.reason, trade.realized_pnl)
+                    ev(
+                        "close",
+                        side=a.side,
+                        code=a.code,
+                        qty=a.qty,
+                        price=a.price,
+                        reason=a.reason,
+                        pnl=trade.realized_pnl,
+                    )
                 )
                 trade = None
             elif a.kind == "open":
                 trade = DerivSimTrade(
                     user_id=user_id,
+                    strategy=book,
                     contract_code=a.code,
                     side=a.side,
                     qty=a.qty,
                     entry_price=a.price,
+                    stop_price=a.stop_price,
+                    target_price=a.target_price,
                     entry_at=now,
                     entry_reason=a.reason,
                     signal=suggestion,
+                    margin_alerted=False,
                 )
                 self._session.add(trade)
-                events.append(SimEvent("open", a.side, a.code, a.qty, a.price, a.reason))
+                events.append(
+                    ev(
+                        "open",
+                        side=a.side,
+                        code=a.code,
+                        qty=a.qty,
+                        price=a.price,
+                        reason=a.reason,
+                        stop_price=a.stop_price,
+                        target_price=a.target_price,
+                    )
+                )
         if result.block_reentry:
-            cfg.reentry_blocked_on = today
+            if fade:
+                cfg.fade_reentry_blocked_on = today
+            else:
+                cfg.reentry_blocked_on = today
 
-        # Tick P&L
         unreal = 0.0
         mark = result.mark
         if trade is not None and mark is not None:
@@ -246,28 +374,27 @@ class DerivSimService:
             ):
                 trade.margin_alerted = True
                 events.append(
-                    SimEvent(
+                    ev(
                         "margin_alert",
-                        trade.side,
-                        trade.contract_code,
-                        trade.qty,
-                        mark,
-                        "margin",
-                        round(unreal),
-                        round(pct, 1),
+                        side=trade.side,
+                        code=trade.contract_code,
+                        qty=trade.qty,
+                        price=mark,
+                        reason="margin",
+                        pnl=round(unreal),
+                        pnl_on_margin_pct=round(pct, 1),
                     )
                 )
-        cfg.last_signal = suggestion
-        cfg.last_run_at = now
         await self._session.flush()
         if trade is not None and mark is None:
             # Đang có vị thế nhưng lần quét này không có giá HĐ → không ghi tick (tránh P&L = 0 giả)
             return events
-        realized_total = await self._realized_total(user_id)
+        realized_total = await self._realized_total(user_id, book)
         self._session.add(
             DerivSimTick(
                 user_id=user_id,
                 at=now,
+                strategy=book,
                 contract_code=trade.contract_code if trade else None,
                 side=trade.side if trade else None,
                 price=mark,
@@ -276,58 +403,86 @@ class DerivSimService:
                 signal=suggestion,
             )
         )
-        await self._session.flush()
         return events
 
-    async def _realized_total(self, user_id: str) -> float:
+    async def _realized_total(self, user_id: str, strategy: str) -> float:
         res = await self._session.execute(
             select(DerivSimTrade.realized_pnl).where(
-                DerivSimTrade.user_id == user_id, DerivSimTrade.realized_pnl.is_not(None)
+                DerivSimTrade.user_id == user_id,
+                DerivSimTrade.strategy == strategy,
+                DerivSimTrade.realized_pnl.is_not(None),
             )
         )
         return float(sum(v for v in res.scalars().all() if v is not None))
 
+    async def _closed(self, user_id: str) -> list[dict[str, Any]]:
+        res = await self._session.execute(
+            select(DerivSimTrade)
+            .where(DerivSimTrade.user_id == user_id, DerivSimTrade.exit_at.is_not(None))
+            .order_by(DerivSimTrade.id.desc())
+            .limit(1000)
+        )
+        return [_trade_dict(t) for t in res.scalars().all()]
+
     # ── Xem ─────────────────────────────────────────────────────────────────
+    def _open_view(self, t: DerivSimTrade, ticks: list[DerivSimTick]) -> dict[str, Any]:
+        last = next(
+            (
+                k
+                for k in reversed(ticks)
+                if k.strategy == t.strategy and k.contract_code == t.contract_code
+            ),
+            None,
+        )
+        mark = last.price if last else None
+        unreal = (
+            trade_pnl(t.side, t.qty, t.entry_price, mark, FEE_PER_SIDE)
+            if mark is not None
+            else None
+        )
+        margin = initial_margin(mark or t.entry_price, t.qty)
+        return {
+            **_trade_dict(t),
+            "mark_price": mark,
+            "unrealized_pnl": round(unreal) if unreal is not None else None,
+            "initial_margin": round(margin),
+            "pnl_on_margin_pct": round(unreal / margin * 100, 2)
+            if unreal is not None and margin
+            else None,
+        }
+
     async def view(self, user_id: str, today: date, tick_limit: int = 600) -> dict[str, Any]:
         cfg = await self._config(user_id)
-        trades_res = await self._session.execute(
-            select(DerivSimTrade)
-            .where(DerivSimTrade.user_id == user_id)
-            .order_by(DerivSimTrade.id.desc())
-            .limit(500)
-        )
-        trades = list(trades_res.scalars().all())
-        open_t = next((t for t in trades if t.exit_at is None), None)
+        mode = (cfg.mode if cfg else None) or "follow"
         ticks_res = await self._session.execute(
             select(DerivSimTick)
             .where(DerivSimTick.user_id == user_id)
-            .order_by(DerivSimTick.at.desc())
-            .limit(tick_limit)
+            .order_by(DerivSimTick.at.desc(), DerivSimTick.id.desc())
+            .limit(tick_limit * 2)
         )
         ticks = list(reversed(ticks_res.scalars().all()))
-
-        open_view: dict[str, Any] | None = None
-        if open_t is not None:
-            last = next(
-                (k for k in reversed(ticks) if k.contract_code == open_t.contract_code), None
-            )
-            mark = last.price if last else None
-            unreal = (
-                trade_pnl(open_t.side, open_t.qty, open_t.entry_price, mark, FEE_PER_SIDE)
-                if mark is not None
-                else None
-            )
-            margin = initial_margin(mark or open_t.entry_price, open_t.qty)
-            open_view = {
-                **_trade_dict(open_t),
-                "mark_price": mark,
-                "unrealized_pnl": round(unreal) if unreal is not None else None,
-                "initial_margin": round(margin),
-                "pnl_on_margin_pct": round(unreal / margin * 100, 2)
-                if unreal is not None and margin
-                else None,
+        closed = await self._closed(user_id)
+        books: dict[str, Any] = {}
+        for b in BOOKS:
+            t_open = await self._open_trade(user_id, b)
+            b_closed = [t for t in closed if t["strategy"] == b]
+            books[b] = {
+                "open": self._open_view(t_open, ticks) if t_open else None,
+                "trades": b_closed[:500],
+                "stats": stats(b_closed),
+                "ticks": [
+                    {
+                        "at": k.at,
+                        "price": k.price,
+                        "side": k.side,
+                        "equity": round((k.realized_total or 0) + (k.unrealized_pnl or 0)),
+                        "signal": k.signal,
+                    }
+                    for k in ticks
+                    if k.strategy == b
+                ][-tick_limit:],
             }
-        closed = [_trade_dict(t) for t in trades if t.exit_at is not None]
+        primary = choose_primary(mode, books["base"]["stats"], books["fade"]["stats"])
         return {
             "config": {
                 "active": bool(cfg.active) if cfg else False,
@@ -336,23 +491,22 @@ class DerivSimService:
                 "stop_points": cfg.stop_points if cfg else 15.0,
                 "target_points": cfg.target_points if cfg else 30.0,
                 "alert_margin_pct": cfg.alert_margin_pct if cfg else None,
+                "mode": mode,
+                "stop_atr": cfg.stop_atr if cfg else None,
+                "target_atr": cfg.target_atr if cfg else None,
+                "avoid_round": bool(cfg.avoid_round) if cfg else True,
+                "crowd_atr": cfg.crowd_atr if cfg else 0.8,
                 "started_at": cfg.started_at if cfg else None,
                 "last_run_at": cfg.last_run_at if cfg else None,
                 "last_signal": cfg.last_signal if cfg else None,
                 "reentry_blocked_today": bool(cfg and cfg.reentry_blocked_on == today),
                 "fee_per_side": FEE_PER_SIDE,
             },
-            "open": open_view,
-            "trades": closed,
-            "stats": stats(closed),
-            "ticks": [
-                {
-                    "at": k.at,
-                    "price": k.price,
-                    "side": k.side,
-                    "equity": round((k.realized_total or 0) + (k.unrealized_pnl or 0)),
-                    "signal": k.signal,
-                }
-                for k in ticks
-            ],
+            "primary": primary,
+            # Sổ chính ở cấp cao nhất để UI đọc trực tiếp
+            "open": books[primary]["open"],
+            "trades": books[primary]["trades"],
+            "stats": books[primary]["stats"],
+            "ticks": books[primary]["ticks"],
+            "books": books,
         }

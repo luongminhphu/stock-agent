@@ -110,3 +110,47 @@ def test_trading_slots() -> None:
     assert is_trading_slot(d, 845, always) and is_trading_slot(d, 1445, always)
     assert not is_trading_slot(d, 1200, always) and not is_trading_slot(d, 1500, always)
     assert not is_trading_slot(d, 1000, lambda _d: False)
+
+
+def test_levels_avoid_round_numbers_and_atr() -> None:
+    from src.market.deriv_sim import levels
+
+    p = SimParams(stop_points=15, target_points=30)
+    assert levels("LONG", 1380.0, p) == (1363.5, 1408.5)
+    assert levels("SHORT", 1380.0, p) == (1396.5, 1351.5)
+    assert levels("LONG", 1382.0, p) == (1367.0, 1412.0)  # không sát số tròn → giữ
+    off = SimParams(stop_points=15, target_points=None, avoid_round=False)
+    assert levels("LONG", 1380.0, off) == (1365.0, None)
+    atr_p = SimParams(stop_atr=0.5, target_atr=1.0, avoid_round=False)
+    assert levels("LONG", 1382.0, atr_p, atr=20.0) == (1372.0, 1402.0)
+    assert levels("LONG", 1382.0, atr_p, atr=None) == (1367.0, 1412.0)  # thiếu ATR → điểm
+
+
+def test_fade_book_and_crowd_filter() -> None:
+    r = step(None, "NGHIENG_MUA", CONTRACTS, P, fade=True)
+    assert r.actions[0].side == "SHORT"
+    chased = step(None, "NGHIENG_MUA", CONTRACTS, P, atr=20.0, move=17.0)
+    assert chased.actions == [] and chased.skipped == "crowd"
+    assert step(None, "NGHIENG_MUA", CONTRACTS, P, atr=20.0, move=-17.0).actions  # ngược chiều ok
+    assert step(None, "NGHIENG_MUA", CONTRACTS, P, fade=True, atr=20.0, move=17.0).actions
+
+
+def test_choose_primary_auto_needs_evidence() -> None:
+    from src.market.deriv_sim import choose_primary
+
+    base = {"trades": 25, "win_rate": 0.40, "total_pnl": -1_000_000}
+    good_fade = {"trades": 25, "win_rate": 0.55, "total_pnl": 2_000_000}
+    assert choose_primary("follow", base, good_fade) == "base"
+    assert choose_primary("fade", base, {}) == "fade"
+    assert choose_primary("auto", base, good_fade) == "fade"
+    assert choose_primary("auto", {**base, "trades": 10}, good_fade) == "base"  # chưa đủ mẫu
+    assert choose_primary("auto", base, {**good_fade, "win_rate": 0.45}) == "base"  # chưa rõ
+
+
+def test_atr() -> None:
+    from types import SimpleNamespace
+
+    from src.market.deriv_sim import atr
+
+    bars = [SimpleNamespace(high=105.0, low=95.0, close=100.0) for _ in range(15)]
+    assert atr(bars) == 10.0 and atr(bars[:5]) is None

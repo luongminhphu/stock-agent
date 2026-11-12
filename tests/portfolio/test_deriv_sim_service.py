@@ -53,35 +53,50 @@ async def test_config_validation(session) -> None:  # type: ignore[no-untyped-de
     assert cfg.stop_points == 10 and cfg.target_points is None
 
 
+def _p(events):  # type: ignore[no-untyped-def]
+    return [e for e in events if e.primary]
+
+
 async def test_open_stop_block_and_stats(session) -> None:  # type: ignore[no-untyped-def]
     d = FakeDeriv()
     svc = DerivSimService(session, d)
     await svc.update_config(USER, active=True, qty=2, stop_points=15, target_points=30, now=T0)
 
     ev = await svc.run_tick(USER, T0, TODAY)
-    assert [(e.kind, e.side, e.code, e.price) for e in ev] == [
-        ("open", "LONG", "VN30F2611", 1380.0)
+    assert [(e.kind, e.strategy, e.side, e.primary) for e in ev] == [
+        ("open", "base", "LONG", True),
+        ("open", "fade", "SHORT", False),  # sổ Fade đánh ngược chạy song song
     ]
+    # Stop 1380-15 = 1365 là số tròn → đẩy ra xa: 1363.5; Target 1410 → kéo về 1408.5
+    assert (ev[0].stop_price, ev[0].target_price) == (1363.5, 1408.5)
+    assert (ev[1].stop_price, ev[1].target_price) == (1396.5, 1351.5)
     d.price = 1385.0
     assert await svc.run_tick(USER, T0 + timedelta(minutes=5), TODAY) == []
     v = await svc.view(USER, TODAY)
     # +5 điểm × 100.000 × 2 HĐ − phí 2 chiều (5.000 × 2 × 2)
     assert v["open"]["mark_price"] == 1385.0 and v["open"]["unrealized_pnl"] == 980_000
 
-    d.price = 1364.0  # -16 điểm → Stop-loss
+    d.price = 1364.0  # chạm 1365 (vùng tròn) nhưng chưa thủng 1363.5 → chưa Stop
+    assert await svc.run_tick(USER, T0 + timedelta(minutes=8), TODAY) == []
+    d.price = 1363.0
     ev = await svc.run_tick(USER, T0 + timedelta(minutes=10), TODAY)
-    assert [(e.kind, e.reason, e.pnl) for e in ev] == [("close", "stop", -3_220_000)]
+    assert [(e.strategy, e.kind, e.reason, e.pnl) for e in ev] == [
+        ("base", "close", "stop", -3_420_000)
+    ]
     # Vẫn tín hiệu Bullish nhưng bị chặn vào lại trong phiên
     assert await svc.run_tick(USER, T0 + timedelta(minutes=15), TODAY) == []
     v = await svc.view(USER, TODAY)
     assert v["config"]["reentry_blocked_today"] is True and v["open"] is None
     assert v["stats"]["trades"] == 1 and v["stats"]["win_rate"] == 0.0
     assert v["stats"]["by_reason"]["stop"] == 1
-    assert [t["equity"] for t in v["ticks"]] == [-20_000, 980_000, -3_220_000, -3_220_000]
+    eq = [t["equity"] for t in v["ticks"]]
+    assert eq == [-20_000, 980_000, -3_220_000, -3_420_000, -3_420_000]
+    assert v["primary"] == "base" and v["books"]["fade"]["open"]["side"] == "SHORT"
+    assert v["books"]["fade"]["stats"]["trades"] == 0
 
     # Phiên sau → vào lại
     ev = await svc.run_tick(USER, T0 + timedelta(days=1), TODAY + timedelta(days=1))
-    assert [e.kind for e in ev] == ["open"]
+    assert [(e.strategy, e.kind) for e in ev] == [("base", "open")]
 
 
 async def test_flip_margin_alert_and_stop_sim(session) -> None:  # type: ignore[no-untyped-def]
@@ -93,12 +108,15 @@ async def test_flip_margin_alert_and_stop_sim(session) -> None:  # type: ignore[
     await svc.run_tick(USER, T0, TODAY)
     d.price = 1395.0  # +15 điểm → +1,5tr / ký quỹ ~ 25,5tr ≈ 5,9 %
     ev = await svc.run_tick(USER, T0 + timedelta(minutes=5), TODAY)
-    assert [e.kind for e in ev] == ["margin_alert"]
+    assert [(e.strategy, e.kind) for e in ev] == [
+        ("base", "margin_alert"),
+        ("fade", "margin_alert"),
+    ]
     assert await svc.run_tick(USER, T0 + timedelta(minutes=10), TODAY) == []  # chỉ báo 1 lần
 
     d.suggestion = "NGHIENG_TRANH"
     ev = await svc.run_tick(USER, T0 + timedelta(minutes=15), TODAY)
-    assert [(e.kind, e.side, e.reason) for e in ev] == [
+    assert [(e.kind, e.side, e.reason) for e in _p(ev)] == [
         ("close", "LONG", "signal"),
         ("open", "SHORT", "signal"),
     ]
@@ -111,8 +129,43 @@ async def test_flip_margin_alert_and_stop_sim(session) -> None:  # type: ignore[
     await svc.update_config(USER, active=False, now=T0 + timedelta(minutes=25))
     v = await svc.view(USER, TODAY)
     assert v["open"] is None and v["trades"][0]["exit_reason"] == "stopped"
-    assert v["stats"]["trades"] == 2
+    assert v["stats"]["trades"] == 2 and v["books"]["fade"]["stats"]["trades"] == 2
 
     await svc.reset(USER)
     v = await svc.view(USER, TODAY)
     assert v["trades"] == [] and v["ticks"] == [] and v["config"]["active"] is False
+
+
+class CrowdDeriv(FakeDeriv):
+    def __init__(self, move: float) -> None:
+        super().__init__()
+        self.move = move
+
+    async def sim_context(self, today: date) -> dict:
+        return {"atr": 20.0, "move": self.move}
+
+
+async def test_crowd_filter_blocks_chasing_only(session) -> None:  # type: ignore[no-untyped-def]
+    d = CrowdDeriv(move=18.0)  # VN30 đã +18 điểm trong phiên ≥ 0.8 × ATR 20
+    svc = DerivSimService(session, d)
+    await svc.update_config(USER, active=True, now=T0)
+    ev = await svc.run_tick(USER, T0, TODAY)
+    assert [(e.strategy, e.side) for e in ev] == [("fade", "SHORT")]  # base không đuổi theo
+    d.move = 5.0
+    ev = await svc.run_tick(USER, T0 + timedelta(minutes=5), TODAY)
+    assert [(e.strategy, e.side) for e in ev] == [("base", "LONG")]
+
+
+async def test_atr_stops_and_mode(session) -> None:  # type: ignore[no-untyped-def]
+    svc = DerivSimService(session, CrowdDeriv(move=0.0))
+    with pytest.raises(DerivSimError):
+        await svc.update_config(USER, mode="random")
+    await svc.update_config(
+        USER, active=True, mode="fade", stop_atr=0.6, target_atr=1.3, avoid_round=False, now=T0
+    )
+    ev = await svc.run_tick(USER, T0, TODAY)
+    prim = _p(ev)
+    assert [(e.strategy, e.side) for e in prim] == [("fade", "SHORT")]
+    assert (prim[0].stop_price, prim[0].target_price) == (1392.0, 1354.0)  # 0.6/1.3 × ATR 20
+    v = await svc.view(USER, TODAY)
+    assert v["primary"] == "fade" and v["open"]["side"] == "SHORT"
