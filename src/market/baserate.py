@@ -433,23 +433,31 @@ class FundamentalsProvider(Protocol):
     async def get_fundamentals(self, ticker: str) -> list[FundamentalPoint]: ...
 
 
+_AUTO = object()  # mặc định: nguồn dữ liệu cơ bản VCI (market.fundamentals), tắt khi test/mock
+
+
 class BaseRateService:
     """Lấy ~10 năm nến ngày của mã + dữ liệu cơ bản (nếu có) rồi chạy `analyze`.
 
     Args:
         ohlcv_service: OHLCVService (get_candles).
-        fundamentals:  nguồn P/E, tăng trưởng EPS theo ngày công bố; None → bỏ qua.
+        fundamentals:  nguồn P/E, tăng trưởng EPS theo ngày công bố; mặc định VCI
+                       (market.fundamentals.default_fundamentals); None → bỏ qua.
         history_days:  số ngày lịch sử lấy về (mặc định ~10 năm).
     """
 
     def __init__(
         self,
         ohlcv_service: object,
-        fundamentals: FundamentalsProvider | None = None,
+        fundamentals: FundamentalsProvider | None | object = _AUTO,
         history_days: int = 3650,
     ) -> None:
         self._ohlcv = ohlcv_service
-        self._fundamentals = fundamentals
+        if fundamentals is _AUTO:
+            from src.market.fundamentals import default_fundamentals  # noqa: PLC0415
+
+            fundamentals = default_fundamentals()
+        self._fundamentals: FundamentalsProvider | None = fundamentals  # type: ignore[assignment]
         self._history_days = history_days
 
     async def analyze(self, ticker: str, as_of: date | None = None) -> BaseRateReport:
