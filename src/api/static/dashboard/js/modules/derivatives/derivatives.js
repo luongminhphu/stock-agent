@@ -9,14 +9,12 @@
  *   /vn30/baserate        → cùng shape với /market/baserate (kỳ 5/20/60 phiên)
  *   /basis?days=730       → thống kê basis lịch sử
  *   /sim                  → giả lập tự động (xem sim.js)
- *   /positions            → sổ vị thế (GET), mở (POST), đóng (POST /positions/{id}/close)
  *
  * Exports:
  *   loadDerivatives() — render khung + fetch song song (gọi khi tab mở lần đầu)
  */
 
-import { getJson, sendJson } from '../../api/client.js?v=1';
-import { showToast } from '../../utils/dom.js?v=1';
+import { getJson } from '../../api/client.js?v=1';
 import { esc } from '../../utils/format.js?v=1';
 import {
   fmtNum, fmtVnd, fmtPct, signClass, fmtDateVi, renderBaserate,
@@ -78,49 +76,8 @@ function _shellHTML() {
       <div class="panel-body" id="dvContracts">${_loading()}</div>
     </section>
 
-    <section class="panel dv-panel" aria-labelledby="dvPosTitle">
-      <div class="panel-header split-header">
-        <div>
-          <p class="eyebrow">Sổ vị thế · P&amp;L theo giá HĐ hiện tại</p>
-          <h2 id="dvPosTitle">Vị thế của tôi</h2>
-        </div>
-        <button type="button" class="ghost-btn" data-dv-pos-new aria-expanded="false" aria-controls="dvPosForm">+ Ghi vị thế</button>
-      </div>
-      <div class="panel-body">
-        <div id="dvPositions" aria-live="polite">${_loading()}</div>
-        <form class="dv-calc dv-pos-form" id="dvPosForm" novalidate hidden>
-          <label class="dv-field">
-            <span class="dv-label">Mã HĐ</span>
-            <select id="dvPosCode" required><option value="">Đang tải…</option></select>
-          </label>
-          <label class="dv-field">
-            <span class="dv-label">Side</span>
-            <select id="dvPosSide">
-              <option value="LONG">Long (mua)</option>
-              <option value="SHORT">Short (bán)</option>
-            </select>
-          </label>
-          <label class="dv-field">
-            <span class="dv-label">Số HĐ</span>
-            <input id="dvPosQty" type="number" inputmode="numeric" min="1" max="10000" step="1" value="1" required />
-          </label>
-          <label class="dv-field">
-            <span class="dv-label">Entry (điểm)</span>
-            <input id="dvPosEntry" type="number" inputmode="decimal" min="0" step="0.1" required />
-          </label>
-          <label class="dv-field">
-            <span class="dv-label">Mục đích</span>
-            <select id="dvPosPurpose">
-              <option value="hedge">Hedge Portfolio</option>
-              <option value="trade">Trading</option>
-            </select>
-          </label>
-          <div class="dv-field dv-field--submit">
-            <button type="submit" class="primary-btn">Lưu vị thế</button>
-          </div>
-        </form>
-      </div>
-    </section>
+    ${simShellHTML()}
+
     <section class="panel dv-panel" aria-labelledby="dvHedgeTitle">
       <div class="panel-header">
         <p class="eyebrow">Hedge Portfolio cổ phiếu</p>
@@ -160,9 +117,7 @@ function _shellHTML() {
         </div>
         <div class="panel-body" id="dvBasis">${_loading()}</div>
       </section>
-    </div>
-
-    ${simShellHTML()}`;
+    </div>`;
 }
 
 // ── Contracts ───────────────────────────────────────────────────────────────
@@ -218,127 +173,12 @@ async function _loadContracts() {
     const d = await getJson(`${BASE}/contracts`);
     _state.contracts = d;
     _renderContracts(d);
-    _fillPosCodes(d);
   } catch (err) {
     if (wrap) wrap.innerHTML = _error(err?.message, 'contracts');
   }
 }
 
 // ── Sổ vị thế ───────────────────────────────────────────────────────────────
-function _fillPosCodes(d) {
-  const sel = document.getElementById('dvPosCode');
-  if (!sel) return;
-  const rows = Array.isArray(d?.contracts) ? d.contracts : [];
-  sel.innerHTML = rows.length
-    ? rows.map(c => `<option value="${esc(c.code)}" data-price="${c.price ?? ''}">${esc(c.code)} · ${esc(SERIES_LABEL[c.series] ?? c.series)}</option>`).join('')
-    : '<option value="">Không có HĐ</option>';
-  const first = rows.find(c => c.series === 'F1M') ?? rows[0];
-  const entry = document.getElementById('dvPosEntry');
-  if (first && entry && !entry.value && (first.price ?? d.vn30) != null) entry.value = Number(first.price ?? d.vn30).toFixed(1);
-}
-
-function _posRowHTML(p) {
-  const side = String(p.side).toUpperCase() === 'SHORT'
-    ? '<span class="dv-side dv-side--short">Short</span>'
-    : '<span class="dv-side dv-side--long">Long</span>';
-  const pnl = p.unrealized_pnl == null
-    ? '<span class="dv-muted">chưa có giá</span>'
-    : `<span class="${signClass(p.unrealized_pnl)}">${p.unrealized_pnl > 0 ? '+' : ''}${fmtVnd(p.unrealized_pnl)}</span>
-       <span class="dv-sub ${signClass(p.pnl_points)}">${fmtSignedPts(p.pnl_points)} điểm · ${p.pnl_on_margin_pct > 0 ? '+' : ''}${fmtPct(p.pnl_on_margin_pct)} trên Margin</span>`;
-  const expiry = p.expiry
-    ? `${fmtDateVi(p.expiry)}<span class="dv-sub">còn ${fmtNum(p.days_to_expiry)} ngày</span>${p.roll_warning ? '<span class="dv-warn-tag">Nên Roll</span>' : ''}`
-    : '<span class="dv-muted">—</span>';
-  return `<tr data-pos-id="${Number(p.id)}">
-    <th scope="row"><span class="dv-code">${esc(p.contract_code)}</span>
-      <span class="dv-sub">${p.purpose === 'hedge' ? 'Hedge' : p.purpose === 'trade' ? 'Trading' : ''}${p.note ? ` · ${esc(p.note)}` : ''}</span></th>
-    <td>${side}</td>
-    <td class="num">${fmtNum(p.qty)}</td>
-    <td class="num">${fmtPts(p.entry_price)}</td>
-    <td class="num">${p.mark_price == null ? '<span class="dv-muted">—</span>' : fmtPts(p.mark_price)}</td>
-    <td class="num">${pnl}</td>
-    <td class="num">${p.initial_margin == null ? '—' : fmtVnd(p.initial_margin)}</td>
-    <td>${expiry}</td>
-    <td class="num"><button type="button" class="ghost-btn dv-pos-close" data-dv-pos-close="${Number(p.id)}" data-mark="${p.mark_price ?? ''}">Đóng</button></td>
-  </tr>`;
-}
-
-async function _loadPositions() {
-  const wrap = document.getElementById('dvPositions');
-  if (!wrap) return;
-  try {
-    const d = await getJson(`${BASE}/positions`);
-    const rows = (Array.isArray(d?.positions) ? d.positions : []).filter(p => !p.closed_at);
-    if (!rows.length) {
-      wrap.innerHTML = `<p class="dv-state">Chưa có vị thế phái sinh nào đang mở.${
-        d?.realized_pnl ? ` Realized P&amp;L: <strong class="${signClass(d.realized_pnl)}">${fmtVnd(d.realized_pnl)} đ</strong>.` : ''}</p>`;
-      return;
-    }
-    wrap.innerHTML = `
-      <dl class="dv-kpis">
-        <div><dt>Unrealized P&amp;L</dt><dd class="${signClass(d.open_unrealized_pnl)}">${d.open_unrealized_pnl > 0 ? '+' : ''}${fmtVnd(d.open_unrealized_pnl)} đ</dd></div>
-        <div><dt>Margin đang dùng</dt><dd>${fmtVnd(d.open_margin)} đ</dd></div>
-        <div><dt>Realized P&amp;L</dt><dd class="${signClass(d.realized_pnl)}">${d.realized_pnl > 0 ? '+' : ''}${fmtVnd(d.realized_pnl)} đ</dd></div>
-      </dl>
-      <div class="tbl-scroll" tabindex="0" role="region" aria-label="Vị thế phái sinh đang mở">
-        <table class="dv-table">
-          <thead><tr>
-            <th scope="col">Mã HĐ</th><th scope="col">Side</th><th scope="col" class="num">Số HĐ</th>
-            <th scope="col" class="num">Entry</th><th scope="col" class="num">Mark</th>
-            <th scope="col" class="num">P&amp;L (đ)</th><th scope="col" class="num">Margin</th>
-            <th scope="col">Expiry</th><th scope="col"><span class="sr-only">Thao tác</span></th>
-          </tr></thead>
-          <tbody>${rows.map(_posRowHTML).join('')}</tbody>
-        </table>
-      </div>`;
-  } catch (err) {
-    wrap.innerHTML = _error(err?.message, 'positions');
-  }
-}
-
-async function _submitPosition() {
-  const code = document.getElementById('dvPosCode')?.value;
-  const qty = parseInt(document.getElementById('dvPosQty')?.value ?? '', 10);
-  const entry = parseFloat(document.getElementById('dvPosEntry')?.value ?? '');
-  if (!code || !(qty >= 1) || !(entry > 0)) {
-    showToast('Nhập đủ mã HĐ, số HĐ (≥ 1) và giá khớp.', 'error');
-    return;
-  }
-  try {
-    await sendJson(`${BASE}/positions`, 'POST', {
-      contract_code: code,
-      side: document.getElementById('dvPosSide')?.value ?? 'LONG',
-      qty,
-      entry_price: entry,
-      purpose: document.getElementById('dvPosPurpose')?.value ?? null,
-    });
-    showToast(`Đã ghi vị thế ${code}`);
-    const form = document.getElementById('dvPosForm');
-    if (form) form.hidden = true;
-    document.querySelector('[data-dv-pos-new]')?.setAttribute('aria-expanded', 'false');
-    _loadPositions();
-  } catch (err) {
-    showToast(`Chưa ghi được: ${err.message}`, 'error');
-  }
-}
-
-async function _closePosition(btn) {
-  const id = Number(btn.dataset.dvPosClose);
-  const mark = btn.dataset.mark;
-  const input = window.prompt('Giá đóng vị thế (điểm):', mark ? Number(mark).toFixed(1) : '');
-  if (input == null) return;
-  const exit = parseFloat(String(input).replace(',', '.'));
-  if (!(exit > 0)) { showToast('Giá đóng không hợp lệ.', 'error'); return; }
-  btn.disabled = true;
-  try {
-    const r = await sendJson(`${BASE}/positions/${id}/close`, 'POST', { exit_price: exit });
-    showToast(`Đã đóng vị thế · Realized P&L ${r?.realized_pnl > 0 ? '+' : ''}${fmtVnd(r?.realized_pnl)} đ`);
-    _loadPositions();
-  } catch (err) {
-    btn.disabled = false;
-    showToast(`Chưa đóng được: ${err.message}`, 'error');
-  }
-}
-
 // ── Hedge ───────────────────────────────────────────────────────────────────
 function _renderHedge(h) {
   const wrap = document.getElementById('dvHedge');
@@ -496,30 +336,9 @@ function _bind(root) {
     if (e.target.id === 'dvSeries') {
       _state.series = SERIES.includes(e.target.value) ? e.target.value : 'F1M';
       _loadHedge();
-    } else if (e.target.id === 'dvPosCode') {
-      const px = e.target.selectedOptions?.[0]?.dataset.price;
-      const entry = document.getElementById('dvPosEntry');
-      if (px && entry) entry.value = Number(px).toFixed(1);
     }
-  });
-  root.addEventListener('submit', (e) => {
-    if (e.target.id !== 'dvPosForm') return;
-    e.preventDefault();
-    _submitPosition();
   });
   root.addEventListener('click', (e) => {
-    const nw = e.target.closest('[data-dv-pos-new]');
-    if (nw) {
-      const form = document.getElementById('dvPosForm');
-      if (form) {
-        form.hidden = !form.hidden;
-        nw.setAttribute('aria-expanded', String(!form.hidden));
-        if (!form.hidden) document.getElementById('dvPosQty')?.focus();
-      }
-      return;
-    }
-    const close = e.target.closest('[data-dv-pos-close]');
-    if (close) { _closePosition(close); return; }
     const retry = e.target.closest('[data-dv-retry]');
     if (!retry) return;
     const key = retry.dataset.dvRetry;
@@ -527,7 +346,6 @@ function _bind(root) {
     else if (key === 'hedge') _loadHedge();
     else if (key === 'vn30') _loadVn30();
     else if (key === 'basis') _loadBasis();
-    else if (key === 'positions') _loadPositions();
     else if (key === 'sim') loadSim();
   });
 }
@@ -540,5 +358,5 @@ export async function loadDerivatives() {
     root.dataset.ready = '1';
     _bind(root);
   }
-  await Promise.allSettled([_loadContracts(), _loadPositions(), _loadHedge(), _loadVn30(), _loadBasis(), loadSim()]);
+  await Promise.allSettled([_loadContracts(), _loadHedge(), _loadVn30(), _loadBasis(), loadSim()]);
 }

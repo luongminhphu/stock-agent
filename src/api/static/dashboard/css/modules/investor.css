@@ -466,12 +466,9 @@ body.br-locked { overflow: hidden; }
 .dv-basis-now > div { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm, 6px); background: var(--bg); }
 .dv-basis-now .dv-label { font-weight: 400; font-size: var(--text-xs); color: var(--muted); }
 .dv-basis-now strong { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
-.dv-pos-close { padding: 4px 10px; font-size: var(--text-sm); }
 .dv-side { font-weight: 700; font-size: var(--text-sm); }
 .dv-side--long { color: var(--success); }
 .dv-side--short { color: var(--danger); }
-.dv-pos-form { border-top: 1px dashed var(--line); padding-top: var(--space-3); margin-top: var(--space-3); }
-.dv-pos-form[hidden] { display: none; }
 
 @media (max-width: 860px) {
   .dv-duo { grid-template-columns: 1fr; }
