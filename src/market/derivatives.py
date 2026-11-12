@@ -444,9 +444,14 @@ class DerivativesService:
         return basis_stats(fmap, imap, expiries, current=cur)
 
     async def vn30_baserate(self) -> object:
+        """Tiền lệ VN30 cho phiên ĐÃ ĐÓNG CỬA gần nhất (bỏ nến hôm nay nếu chưa chốt giá)."""
         from src.market.baserate import analyze  # noqa: PLC0415
+        from src.market.ohlcv_service import _today_ict  # noqa: PLC0415
+        from src.market.price_rules import is_session_closed  # noqa: PLC0415
 
-        bars = await self._candles(self.VN30_SYMBOL, 3650)
+        bars = list(await self._candles(self.VN30_SYMBOL, 3650))
+        if bars and bars[-1].date >= _today_ict() and not is_session_closed("HOSE"):
+            bars = bars[:-1]
         return analyze(self.VN30_SYMBOL, bars, horizons=self.BASERATE_HORIZONS)
 
     async def betas(self, tickers: list[str], window: int = 120) -> dict[str, float | None]:

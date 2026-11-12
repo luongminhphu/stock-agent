@@ -502,3 +502,68 @@ class DerivativePosition(Base):
     realized_pnl: Mapped[float | None] = mapped_column(Float, nullable=True)  # đồng
     purpose: Mapped[str | None] = mapped_column(String(16), nullable=True)  # hedge | trade
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+# ── Giả lập HĐTL VN30 (paper trading theo base rate) ─────────────────────────
+
+
+class DerivSimConfig(Base):
+    """Cấu hình giả lập của một người dùng (một dòng / user)."""
+
+    __tablename__ = "deriv_sim_configs"
+
+    user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    active: Mapped[bool] = mapped_column(default=False, nullable=False)
+    series: Mapped[str] = mapped_column(String(4), default="F1M", nullable=False)
+    qty: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    stop_points: Mapped[float | None] = mapped_column(Float, nullable=True)
+    target_points: Mapped[float | None] = mapped_column(Float, nullable=True)
+    alert_margin_pct: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )  # cảnh báo khi |P&L/margin| ≥ %
+    reentry_blocked_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    last_signal: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+
+class DerivSimTrade(Base):
+    """Một lệnh giả lập (mở → đóng). exit_* rỗng khi còn mở."""
+
+    __tablename__ = "deriv_sim_trades"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    contract_code: Mapped[str] = mapped_column(String(16), nullable=False)
+    side: Mapped[str] = mapped_column(String(5), nullable=False)  # LONG | SHORT
+    qty: Mapped[int] = mapped_column(Integer, nullable=False)
+    entry_price: Mapped[float] = mapped_column(Float, nullable=False)
+    entry_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    entry_reason: Mapped[str] = mapped_column(String(16), nullable=False)  # signal | roll
+    signal: Mapped[str | None] = mapped_column(String(32), nullable=True)  # tín hiệu lúc mở
+    exit_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    exit_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    exit_reason: Mapped[str | None] = mapped_column(
+        String(16), nullable=True
+    )  # signal|stop|target|roll|stopped
+    realized_pnl: Mapped[float | None] = mapped_column(Float, nullable=True)  # đồng, đã trừ phí
+    margin_alerted: Mapped[bool] = mapped_column(default=False, nullable=False)
+
+
+class DerivSimTick(Base):
+    """Ảnh chụp mỗi lần quét (mặc định 5 phút) — để vẽ đường P&L."""
+
+    __tablename__ = "deriv_sim_ticks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, nullable=False)
+    contract_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    side: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    unrealized_pnl: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    realized_total: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    signal: Mapped[str | None] = mapped_column(String(32), nullable=True)
