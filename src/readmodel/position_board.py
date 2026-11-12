@@ -9,7 +9,8 @@ Mỗi dòng trả lời 3 câu hỏi của nhà đầu tư nắm giữ trung h�
   3. Mức lỗ hiện tại có bất thường không? — so mức sụt từ giá vốn với mức sụt trung
      bình mà các tiền lệ từng chịu trước khi kết thúc kỳ nắm giữ.
 
-Không gọi AI. Tiền lệ cache theo (mã, ngày) vì nến ngày chỉ đổi mỗi phiên.
+Không gọi AI. Tiền lệ lấy từ market.BaseRateService (đã cache theo phiên đã đóng cửa)
+— cùng một nguồn với drawer chi tiết và kế hoạch, nên gợi ý luôn khớp nhau.
 """
 
 from __future__ import annotations
@@ -27,7 +28,6 @@ logger = get_logger(__name__)
 MAIN_HORIZON = 120
 SHORT_HORIZON = 60
 _MAX_CONCURRENT = 3
-_report_cache: dict[tuple[str, date], Any] = {}
 
 
 @dataclass
@@ -139,16 +139,9 @@ class PositionBoardService:
         self._baserate = baserate_service
         self._sem = asyncio.Semaphore(_MAX_CONCURRENT)
 
-    async def _report(self, ticker: str, today: date) -> Any:
-        key = (ticker, today)
-        if key in _report_cache:
-            return _report_cache[key]
+    async def _report(self, ticker: str) -> Any:
         async with self._sem:
-            rep = await self._baserate.analyze(ticker)
-        if len(_report_cache) > 500:
-            _report_cache.clear()
-        _report_cache[key] = rep
-        return rep
+            return await self._baserate.analyze(ticker)
 
     async def get_board(self, user_id: str, today: date) -> dict[str, Any]:
         from src.portfolio.repository import PortfolioRepository  # noqa: PLC0415
@@ -174,7 +167,7 @@ class PositionBoardService:
 
         async def one(t: str) -> None:
             try:
-                reports[t] = await self._report(t, today)
+                reports[t] = await self._report(t)
             except Exception as exc:  # noqa: BLE001
                 errors[t] = str(exc)[:200]
 

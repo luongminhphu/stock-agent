@@ -94,3 +94,54 @@ def test_relaxes_conditions_and_reports_dropped() -> None:
     assert set(rep.matched_on) | set(rep.dropped) <= set(rep.state)
     if rep.dropped:
         assert any("bỏ điều kiện" in n for n in rep.notes)
+
+
+# ── Service: chỉ dùng phiên đã đóng cửa + một báo cáo cho mọi nơi ────────────
+
+
+class _TodayOHLCV:
+    """Chuỗi nến kết thúc HÔM NAY (nến cuối = phiên đang giao dịch nếu chưa chốt)."""
+
+    def __init__(self, today: date, last_close: float) -> None:
+        bars = _series(700)
+        shift = today - bars[-1].date
+        self.bars = [_Bar(b.date + shift, b.close, b.low, b.volume) for b in bars]
+        last = self.bars[-1]
+        self.bars[-1] = _Bar(last.date, last_close, last_close * 0.99, last.volume)
+        self.calls = 0
+
+    async def get_candles(self, ticker, from_date, to_date):  # type: ignore[no-untyped-def]
+        self.calls += 1
+        return list(self.bars)
+
+
+def _run(coro):  # type: ignore[no-untyped-def]
+    import asyncio
+
+    return asyncio.run(coro)
+
+
+def test_service_ignores_unclosed_session_and_caches(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import src.market.baserate as br
+    from src.market.ohlcv_service import _today_ict
+
+    br._REPORT_CACHE.clear()
+    today = _today_ict()
+    src = _TodayOHLCV(today, last_close=99_999.0)
+    svc = br.BaseRateService(src)
+
+    # Trong phiên: nến hôm nay (giá đang chạy) bị bỏ → báo cáo tính đến phiên trước
+    monkeypatch.setattr(br, "_session_closed", lambda t: False)
+    r1 = _run(svc.analyze("hpg"))
+    assert r1.as_of < today and r1.last_close != 99_999.0
+
+    # Giá trong phiên đổi → kết quả KHÔNG đổi (bảng và drawer luôn khớp nhau)
+    src.bars[-1] = _Bar(today, 12_345.0, 12_000.0, 1)
+    r2 = _run(svc.analyze("HPG"))
+    assert r2 is r1
+
+    # Sau giờ chốt giá: dùng cả phiên hôm nay
+    monkeypatch.setattr(br, "_session_closed", lambda t: True)
+    r3 = _run(svc.analyze("HPG"))
+    assert r3.as_of == today and r3.last_close == 12_345.0
+    br._REPORT_CACHE.clear()

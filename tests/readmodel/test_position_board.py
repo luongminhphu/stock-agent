@@ -98,4 +98,6 @@ async def test_service_reads_positions_and_watchlist(session) -> None:  # type: 
     assert [r["ticker"] for r in out["rows"]] == ["FPT", "VNM"]
     assert out["rows"][0]["pnl_pct"] == 10.0
     await svc.get_board("u1", date(2026, 11, 10))
-    assert sorted(calls) == ["FPT", "VNM"], "tiền lệ cache theo (mã, ngày)"
+    # Bảng không giữ cache riêng: luôn hỏi BaseRateService (service tự cache theo phiên
+    # đã đóng cửa) → gợi ý trên bảng khớp với drawer chi tiết.
+    assert sorted(calls) == ["FPT", "FPT", "VNM", "VNM"]
