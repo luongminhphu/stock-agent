@@ -119,6 +119,15 @@ class BaseRateAnalogResponse(BaseModel):
     max_drawdown: dict[int, float]
 
 
+class CompanyInfo(BaseModel):
+    """Thông tin nhận diện mã — để nhà đầu tư chắc đang xem đúng công ty."""
+
+    name: str
+    exchange: str  # HOSE | HNX | UPCOM
+    sector: str  # tên ngành tiếng Việt
+    name_verified: bool  # False = chưa có tên từ danh sách niêm yết (mã tạm nhận)
+
+
 class BaseRateResponse(BaseModel):
     """GET /market/baserate/{ticker} — tiền lệ trong lịch sử chính mã, không dự báo."""
 
@@ -135,3 +144,5 @@ class BaseRateResponse(BaseModel):
     analogs: list[BaseRateAnalogResponse]
     history_from: date | None
     notes: list[str]
+    last_close: float | None = None  # giá đóng cửa phiên as_of
+    company: CompanyInfo | None = None  # None với chỉ số (VN30)

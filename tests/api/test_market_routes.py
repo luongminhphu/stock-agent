@@ -117,6 +117,11 @@ async def test_get_baserate_returns_outcomes(app, client):
     assert [o["horizon"] for o in body["outcomes"]] == [60, 120]
     assert body["state_labels"]["trend"] == "Giá dưới MA50 và MA200"
     assert body["analogs"] and "120" in body["analogs"][0]["returns"]
+    # Nhận diện công ty + giá đóng cửa để đối chiếu với bảng giá CTCK
+    assert body["company"]["exchange"] == "HOSE"
+    assert body["company"]["name"] and body["company"]["name_verified"] is True
+    assert body["company"]["sector"] == "Nguyên vật liệu"
+    assert body["last_close"] is not None and body["last_close"] > 0
 
 
 @pytest.mark.asyncio

@@ -341,6 +341,20 @@ body.br-locked { overflow: hidden; }
 .br-foot-hint { font-size: var(--text-sm); color: var(--muted); }
 
 .br-root { display: flex; flex-direction: column; gap: var(--space-4); }
+.br-company {
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.br-company-name { margin: 0; font-size: var(--text-md, 1rem); font-weight: 700; line-height: 1.35; }
+.br-company-meta { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: var(--text-sm); color: var(--muted); }
+.br-company-ticker { font-weight: 700; color: var(--brand); }
+.br-company-close strong { color: var(--text); font-variant-numeric: tabular-nums; }
+.br-company-warn { margin: 4px 0 0; font-size: var(--text-sm); color: var(--warning); }
 .br-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px var(--space-3); }
 .br-meta { font-size: var(--text-sm); color: var(--muted); }
 .br-meta strong { color: var(--text); }
