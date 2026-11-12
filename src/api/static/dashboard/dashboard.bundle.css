@@ -7859,6 +7859,7 @@ main#main-content { max-width: 1240px; margin: 0 auto; }
 .app-tab.active { color: var(--brand); border-bottom-color: var(--brand); }
 .app-tab:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; border-radius: 4px; }
 .app-tab-short { display: none; }
+.app-tab-icon { display: none; flex: none; }
 .app-tabpanel { display: flex; flex-direction: column; gap: var(--gap, 12px); }
 .app-tabpanel[hidden] { display: none !important; }
 .app-tabpanel:focus { outline: none; }
@@ -8462,4 +8463,68 @@ body.br-locked { overflow: hidden; }
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+@media (min-width: 901px) {
+  .shell {
+    display: grid;
+    grid-template-columns: 244px minmax(0, 1fr);
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas:
+      "topbar topbar"
+      "nav    banner"
+      "nav    main";
+  }
+  .shell > .topbar { grid-area: topbar; }
+  .shell > #errorBanner { grid-area: banner; margin: var(--space-3) var(--space-5) 0; }
+  .shell > main#main-content { grid-area: main; min-width: 0; }
+
+  .app-tabs {
+    grid-area: nav;
+    position: sticky;
+    top: 48px;
+    align-self: start;
+    height: calc(100dvh - 48px);
+    border-bottom: 0;
+    border-right: 1px solid var(--line);
+    background: var(--surface);
+    z-index: 60;
+  }
+  .app-tabs-inner {
+    flex-direction: column;
+    gap: 2px;
+    max-width: none;
+    margin: 0;
+    padding: var(--space-4) var(--space-3);
+    overflow: visible;
+  }
+  .app-tab {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    text-align: left;
+    white-space: nowrap;
+    padding: 10px 12px;
+    border-bottom: 0;
+    border-radius: var(--radius-md);
+    color: var(--muted);
+  }
+  .app-tab:hover { background: var(--surface-2); color: var(--text); }
+  .app-tab.active {
+    background: var(--brand-bg);
+    color: var(--brand);
+    box-shadow: inset 3px 0 0 var(--brand);
+  }
+  .app-tab:focus-visible { outline-offset: 2px; }
+  .app-tab-icon { display: block; }
+}
+
+.today-duo-row { grid-template-columns: 1fr; }
+.today-duo-row > * { grid-column: 1 / -1; }
+
+@media (min-width: 901px) and (max-width: 1440px) {
+  .bd-col-state, .bd-state-text { max-width: 120px; }
+  .bd-table td .bd-flag { white-space: normal; max-width: 110px; margin-left: auto; text-align: right; }
+  .bd-table th, .bd-table td { padding-left: 6px; padding-right: 6px; }
 }
