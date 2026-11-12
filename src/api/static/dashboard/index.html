@@ -24,7 +24,7 @@
          Đổi IBM Plex Mono (có Vietnamese, tabular nums). -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Display:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" />
     <!-- CSS bundle: link thẳng bundle (1 request, bỏ @import hop) — Wave 5d -->
-    <link rel="stylesheet" href="/static/dashboard/dashboard.bundle.css?v=59" />
+    <link rel="stylesheet" href="/static/dashboard/dashboard.bundle.css?v=60" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">Bỏ qua điều hướng</a>
@@ -80,6 +80,10 @@
           <button type="button" class="app-tab" role="tab" id="tabbtn-derivatives" data-tab-target="derivatives"
             aria-controls="tab-derivatives" aria-selected="false" tabindex="-1">
             <svg class="app-tab-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 6-6"/></svg><span class="app-tab-long">Derivatives</span><span class="app-tab-short">Phái sinh</span>
+          </button>
+          <button type="button" class="app-tab" role="tab" id="tabbtn-paper" data-tab-target="paper"
+            aria-controls="tab-paper" aria-selected="false" tabindex="-1">
+            <svg class="app-tab-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6"/><path d="M10 3v6L4.5 18.5A1.7 1.7 0 0 0 6 21h12a1.7 1.7 0 0 0 1.5-2.5L14 9V3"/><path d="M7 15h10"/></svg><span class="app-tab-long">Paper Trading</span><span class="app-tab-short">Paper</span>
           </button>
           <button type="button" class="app-tab" role="tab" id="tabbtn-thesis" data-tab-target="thesis"
             aria-controls="tab-thesis" aria-selected="false" tabindex="-1">
@@ -204,6 +208,15 @@
             <p class="dv-loading">Đang tải…</p>
           </div>
         </section><!-- /tab-derivatives -->
+
+        <!-- ══════════════════════════════════════════════════════════════════
+             TAB — Paper Trading: giả lập HĐTL VN30 tự động — render bởi modules/derivatives/sim.js
+        ══════════════════════════════════════════════════════════════════ -->
+        <section class="app-tabpanel cluster" id="tab-paper" data-app-tab="paper" role="tabpanel" aria-labelledby="tabbtn-paper" tabindex="-1" hidden>
+          <div id="paperRoot" class="dv-root" aria-live="polite">
+            <p class="dv-loading">Đang tải…</p>
+          </div>
+        </section><!-- /tab-paper -->
 
         <!-- ══════════════════════════════════════════════════════════════════
              TAB 3 — Kế hoạch nắm giữ & Quyết định
@@ -882,6 +895,6 @@
 
     <!-- quick-trade.js đã được chuyển thành ES module tại modules/portfolio/quick-trade.js -->
     <!-- và được import trực tiếp bởi portfolio-loader.js + portfolio-renderer.js          -->
-    <script type="module" src="/static/dashboard/js/app.js?v=40" data-cfasync="false"></script>
+    <script type="module" src="/static/dashboard/js/app.js?v=42" data-cfasync="false"></script>
   </body>
 </html>

@@ -35,7 +35,7 @@ import { bindBriefTabs, initBriefAutoOpen } from './modules/briefing/brief-tabs.
 import { bindBriefTickerClick }          from './modules/briefing/brief-ticker.js?v=2';
 import { loadAttentionPanel, startAttentionAutoRefresh } from './modules/attention/attention-loader.js?v=2';
 import { debounce }                      from './utils/debounce.js?v=1';
-import { initAppTabs }                  from './modules/app-tabs.js?v=1';
+import { initAppTabs }                  from './modules/app-tabs.js?v=2';
 import { loadBoard }                    from './modules/board/board.js?v=2';
 import { loadPlans }                    from './modules/plans/plans.js?v=1';
 import { state }                         from './state/dashboard-state.js?v=1';
@@ -55,6 +55,7 @@ import { initTopbarSearch, reapplySearch } from './modules/search/topbar-search.
 let _lazyDecisionLoader  = null;
 let _lazyDecisionTabs    = null;
 let _lazyTodayLoop       = null;
+let _lazyPaper = null;
 let _lazyDerivatives     = null;
 
 async function _getDecisionLoader() {
@@ -66,12 +67,17 @@ async function _getDecisionTabs() {
   return _lazyDecisionTabs;
 }
 async function _getDerivatives() {
-  if (!_lazyDerivatives) _lazyDerivatives = import('./modules/derivatives/derivatives.js?v=3');
+  if (!_lazyDerivatives) _lazyDerivatives = import('./modules/derivatives/derivatives.js?v=5');
   return _lazyDerivatives;
 }
 async function loadDerivatives() {
   const m = await _getDerivatives();
   return m.loadDerivatives();
+}
+async function loadPaper() {
+  if (!_lazyPaper) _lazyPaper = import('./modules/derivatives/sim.js?v=2');
+  const m = await _lazyPaper;
+  return m.loadSim();
 }
 async function _getTodayLoop() {
   if (!_lazyTodayLoop) _lazyTodayLoop = import('./modules/today-loop/today-loop-loader.js?v=1');
@@ -188,6 +194,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initAppTabs({
     onActivate: (tab, { first }) => {
       if (tab === 'derivatives' && first) loadDerivatives().catch(() => null);
+      if (tab === 'paper' && first) loadPaper().catch(() => null);
     },
   });
 
@@ -274,6 +281,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       loadDecisions(),
     ]);
     if (_lazyDerivatives) loadDerivatives().catch(() => null);
+    if (_lazyPaper) loadPaper().catch(() => null);
     loadAttentionPanel();
     // Wave 6: backtesting/memory chỉ reload nếu panel đang mở
     if (document.getElementById('backtestDetails')?.open) loadBacktesting().catch(() => null);
