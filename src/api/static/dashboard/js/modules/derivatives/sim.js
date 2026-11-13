@@ -88,6 +88,7 @@ function _shellHTML() {
             <li><strong>Follow</strong> theo tín hiệu base rate VN30 (Bullish → Long, Bearish → Short, Neutral → đứng ngoài). <strong>Fade</strong> luôn chạy song song và đánh ngược — so win rate hai sổ để biết tín hiệu đám đông còn lợi thế hay đang bị đánh ngược. <strong>Auto</strong> chỉ chuyển sang Fade khi mỗi sổ ≥ 20 lệnh và Fade vượt trội rõ (win rate +10 điểm %, tổng P&amp;L cao hơn).</li>
             <li><strong>Né số tròn</strong>: mức Stop sát bội 5 điểm được đẩy ra xa hơn (tránh vùng quét stop), Target kéo về gần hơn (khớp trước vùng cản). ATR = biên độ trung bình 14 phiên của VN30; đặt ATR thì ưu tiên hơn điểm cố định.</li>
             <li><strong>Lọc đám đông</strong>: sổ Follow không mở mới khi VN30 trong phiên đã chạy cùng chiều tín hiệu ≥ ngưỡng × ATR.</li>
+            <li><strong>Vùng đệm</strong>: vào lệnh khi tín hiệu Bullish/Bearish (độ lệch ≥ 10 điểm % so với mức nền). Đang giữ lệnh thì chỉ thoát vì tín hiệu khi độ lệch rút về dưới 5 điểm % hoặc tín hiệu đảo chiều — tránh vào ra liên tục khi tín hiệu dao động sát ngưỡng. Stop-loss / Take-profit vẫn áp dụng bình thường.</li>
           </ul>
         </details>
         <div id="dvSim" aria-live="polite"><p class="dv-loading" aria-busy="true"><span class="dv-spinner" aria-hidden="true"></span>Đang tải…</p></div>
@@ -116,12 +117,20 @@ function _fillForm(cfg) {
   f.avoid_round.checked = cfg.avoid_round !== false;
 }
 
+/** Lệnh đang giữ dù tín hiệu không còn cùng chiều → đang được giữ nhờ vùng đệm. */
+function _bufferNote(signal, o) {
+  if (!o || !signal || signal === 'KHONG_DU_TIEN_LE') return '';
+  const sigSide = signal === 'NGHIENG_MUA' ? 'LONG' : signal === 'NGHIENG_TRANH' ? 'SHORT' : null;
+  const held = o.strategy === 'fade' ? (o.side === 'LONG' ? 'SHORT' : 'LONG') : o.side;
+  return sigSide === held ? '' : '<span class="dv-sub">Đang giữ lệnh nhờ vùng đệm — thoát khi độ lệch rút về dưới 5 điểm %.</span>';
+}
+
 function _positionHTML(d) {
   const cfg = d.config ?? {};
   const o = d.open;
   const primary = d.primary ?? 'base';
   const head = `
-    <div><dt>Tín hiệu VN30</dt><dd>${cfg.last_signal ? suggestionBadge(cfg.last_signal) : '<span class="dv-muted">chưa quét</span>'}</dd></div>
+    <div><dt>Tín hiệu VN30</dt><dd>${cfg.last_signal ? suggestionBadge(cfg.last_signal) : '<span class="dv-muted">chưa quét</span>'}${_bufferNote(cfg.last_signal, o)}</dd></div>
     <div><dt>Sổ chính</dt><dd>${esc(BOOK_SHORT[primary])}<span class="dv-sub">${esc(MODE_LABEL[cfg.mode] ?? '')}</span></dd></div>`;
   if (!o) {
     return `<dl class="dv-kpis">${head}
