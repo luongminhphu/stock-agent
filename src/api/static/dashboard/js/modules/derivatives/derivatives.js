@@ -17,7 +17,7 @@ import { getJson } from '../../api/client.js?v=1';
 import { esc } from '../../utils/format.js?v=1';
 import {
   fmtNum, fmtVnd, fmtPct, signClass, fmtDateVi, renderBaserate,
-} from '../board/baserate-drawer.js?v=2';
+} from '../board/baserate-drawer.js?v=3';
 
 const BASE = '/api/v1/derivatives';
 const SERIES = ['F1M', 'F2M', 'F1Q', 'F2Q'];

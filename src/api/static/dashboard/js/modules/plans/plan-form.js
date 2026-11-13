@@ -14,7 +14,7 @@
 import { getJson, sendJson } from '../../api/client.js?v=1';
 import { esc } from '../../utils/format.js?v=1';
 import { showToast } from '../../utils/dom.js?v=1';
-import { fmtVnd } from '../board/baserate-drawer.js?v=2';
+import { fmtVnd } from '../board/baserate-drawer.js?v=3';
 
 const BASE = '/api/v1/plans';
 const DIALOG_ID = 'planModal';

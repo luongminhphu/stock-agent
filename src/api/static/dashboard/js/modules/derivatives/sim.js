@@ -18,7 +18,7 @@ import { showToast } from '../../utils/dom.js?v=1';
 import { esc } from '../../utils/format.js?v=1';
 import {
   fmtNum, fmtVnd, fmtPct, fmtProb, signClass, suggestionBadge,
-} from '../board/baserate-drawer.js?v=2';
+} from '../board/baserate-drawer.js?v=3';
 
 const URL_SIM = '/api/v1/derivatives/sim';
 const REFRESH_MS = 60_000;

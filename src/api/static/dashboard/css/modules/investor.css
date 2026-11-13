@@ -796,3 +796,38 @@ body.br-locked { overflow: hidden; }
   .dv-sim-stats th, .dv-sim-stats td { padding: 6px; font-size: var(--text-sm); }
   .dv-sim-stats td .dv-sub { display: block; margin: 0; }
 }
+
+/* ── Base rate: Nên làm gì tiếp theo · chạm Stop/Target · độ tin ─────────── */
+.br-next {
+  border: 1px solid var(--line); border-left: 4px solid var(--muted);
+  border-radius: var(--radius-sm, 6px); padding: 10px 12px; margin: var(--space-3) 0;
+  background: var(--surface);
+}
+.br-next--act { border-left-color: var(--success); }
+.br-next--watch { border-left-color: var(--brand); }
+.br-next--caution { border-left-color: var(--danger); }
+.br-next-eyebrow { margin: 0; font-size: var(--text-xs); color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.br-next-eyebrow span { font-weight: 700; color: var(--text); }
+.br-next-head { margin: 4px 0 6px; font-weight: 700; font-size: var(--text-md); }
+.br-next-steps { margin: 0 0 8px; padding-left: 18px; display: grid; gap: 4px; font-size: var(--text-sm); }
+.br-next-cta { margin: 2px 0 6px; }
+.br-next-foot { margin: 0; font-size: var(--text-xs); color: var(--muted); }
+.br-path-bar { display: flex; gap: 2px; height: 14px; border-radius: 4px; overflow: hidden; margin: 6px 0; }
+.br-path-seg { display: block; min-width: 2px; }
+.br-path-seg.is-target, .br-key.is-target { background: var(--success); }
+.br-path-seg.is-stop, .br-key.is-stop { background: var(--danger); }
+.br-path-seg.is-neither, .br-key.is-neither { background: var(--line-strong); }
+.br-path-legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 4px 12px; margin: 0 0 4px; font-size: var(--text-sm); }
+.br-path-legend dt { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.br-path-legend dd { margin: 0 0 0 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.br-key { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+.br-verdict { margin: 0 0 8px; font-size: var(--text-sm); }
+.br-verdict-tag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-weight: 700; font-size: var(--text-xs); border: 1px solid currentColor; margin-right: 4px; }
+.br-verdict-tag.is-good { color: var(--success); }
+.br-verdict-tag.is-bad { color: var(--danger); }
+.br-verdict-tag.is-muted { color: var(--muted); }
+.br-row-base th, .br-row-base td { color: var(--muted); }
+.br-sub { color: var(--muted); font-size: var(--text-xs); font-weight: 400; }
+.br-cal { margin: 8px 0; font-size: var(--text-sm); }
+.br-cal > summary { cursor: pointer; color: var(--brand); }
+.br-next-warn { margin: 0 0 8px; padding: 6px 8px; border-radius: var(--radius-sm, 6px); background: var(--warning-bg); color: var(--warning); font-size: var(--text-sm); }

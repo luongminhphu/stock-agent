@@ -128,3 +128,25 @@ async def test_get_baserate_returns_outcomes(app, client):
 async def test_get_baserate_unknown_ticker_404(bootstrapped_client):
     r = await bootstrapped_client.get("/api/v1/market/baserate/UNKNOWN")
     assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_baserate_next_step_path_and_track_record(app, client):
+    from src.api.deps import get_baserate_service
+    from src.market.baserate import BaseRateService
+
+    app.dependency_overrides[get_baserate_service] = lambda: BaseRateService(_FakeOHLCV())
+    try:
+        held = (await client.get("/api/v1/market/baserate/hpg?holding=true")).json()
+        fresh = (await client.get("/api/v1/market/baserate/hpg")).json()
+        tr = await client.get("/api/v1/market/baserate/hpg/track-record")
+    finally:
+        app.dependency_overrides.pop(get_baserate_service, None)
+    assert fresh["path"]["episodes"] > 0 and fresh["path"]["horizon"] == 120
+    assert fresh["next_step"]["tone"] in {"act", "watch", "caution"}
+    assert fresh["next_step"]["headline"] != held["next_step"]["headline"]
+    assert "market" in fresh["state"]  # bối cảnh VN-Index
+    assert tr.status_code == 200
+    body = tr.json()
+    assert body["verdict"] in {"dang_tin", "yeu", "chua_du"} and body["checked"] > 0
+    assert {s["suggestion"] for s in body["signals"]} >= {"NGHIENG_MUA", "NGHIENG_TRANH"}
