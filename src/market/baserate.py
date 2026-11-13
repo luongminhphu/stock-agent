@@ -42,6 +42,7 @@ WARMUP = 252  # cần 1 năm dữ liệu để tính MA200 / vùng 52 tuần
 FEATURE_PRIORITY: tuple[str, ...] = (
     "trend",
     "range_52w",
+    "market",
     "valuation",
     "earnings",
     "momentum_3m",
@@ -73,6 +74,11 @@ FEATURE_LABELS: dict[str, dict[str, str]] = {
         "cheap": "P/E thuộc 1/3 thấp nhất lịch sử của mã",
         "fair": "P/E ở vùng giữa lịch sử của mã",
         "expensive": "P/E thuộc 1/3 cao nhất lịch sử của mã",
+    },
+    "market": {
+        "bull": "Thị trường (VN-Index) trên MA200 và 3 tháng không giảm",
+        "mixed": "Thị trường (VN-Index) giằng co",
+        "bear": "Thị trường (VN-Index) dưới MA200 và 3 tháng giảm",
     },
     "earnings": {
         "declining": "EPS giảm so với cùng kỳ",
@@ -126,6 +132,21 @@ class Outcome:
 
 
 @dataclass(frozen=True)
+class PathStats:
+    """Trong các lần tiền lệ: giá chạm Target hay Stop-loss trước (trong `horizon` phiên)."""
+
+    stop_pct: float | None  # vd 0.12 = Stop-loss thấp hơn Entry 12%
+    target_pct: float | None  # vd 0.08 = Target cao hơn Entry 8%
+    horizon: int
+    episodes: int
+    target_first: float | None  # tỉ lệ 0..1
+    stop_first: float | None
+    neither: float | None  # hết kỳ chưa chạm mức nào
+    median_days_to_target: float | None
+    median_days_to_stop: float | None
+
+
+@dataclass(frozen=True)
 class Analog:
     """Một đợt tiền lệ — để người dùng tự kiểm tra từng lần."""
 
@@ -150,6 +171,7 @@ class BaseRateReport:
     history_from: date | None
     notes: list[str] = field(default_factory=list)
     last_close: float | None = None  # giá đóng cửa phiên as_of — để đối chiếu với bảng giá CTCK
+    path: PathStats | None = None  # xác suất chạm Target/Stop-loss trước trong các lần tiền lệ
 
 
 # ── Đặc trưng ───────────────────────────────────────────────────────────────
@@ -185,12 +207,32 @@ def _fundamental_at(points: Sequence[FundamentalPoint], d: date) -> FundamentalP
     return found
 
 
+def market_regimes(market_bars: Sequence[Bar]) -> list[tuple[date, str]]:
+    """Trạng thái thị trường chung theo ngày (VN-Index): bull / mixed / bear.
+
+    bull: trên MA200 và 3 tháng không giảm; bear: dưới MA200 và 3 tháng giảm; còn lại mixed.
+    """
+    closes = [float(b.close) for b in market_bars]
+    ma200 = _rolling_mean(closes, 200)
+    out: list[tuple[date, str]] = []
+    for i, b in enumerate(market_bars):
+        if ma200[i] is None or i < 63 or closes[i - 63] <= 0:
+            continue
+        above = closes[i] > (ma200[i] or 0)
+        up = closes[i] / closes[i - 63] - 1 >= 0
+        out.append((b.date, "bull" if above and up else "bear" if not (above or up) else "mixed"))
+    return out
+
+
 def compute_states(
     bars: Sequence[Bar],
     fundamentals: Sequence[FundamentalPoint] = (),
+    market_bars: Sequence[Bar] = (),
 ) -> list[dict[str, str] | None]:
     """Trạng thái từng ngày (None khi chưa đủ dữ liệu warm-up). Chỉ dùng dữ liệu <= ngày đó."""
     n = len(bars)
+    regimes = market_regimes(market_bars) if market_bars else []
+    reg_idx = -1
     closes = [float(b.close) for b in bars]
     vols = [float(b.volume) for b in bars]
     ma50 = _rolling_mean(closes, 50)
@@ -204,6 +246,8 @@ def compute_states(
     states: list[dict[str, str] | None] = []
     for i in range(n):
         d = bars[i].date
+        while reg_idx + 1 < len(regimes) and regimes[reg_idx + 1][0] <= d:
+            reg_idx += 1
         while fund_idx < len(funds) and funds[fund_idx].published_on <= d:
             pe = funds[fund_idx].pe
             if pe is not None and pe > 0:
@@ -228,6 +272,9 @@ def compute_states(
             s["volume"] = _bucket3(
                 (v20[i] or 0) / (v120[i] or 1), 0.8, 1.5, ("dry", "normal", "heavy")
             )
+        # Thị trường chung tại cùng ngày (hoặc phiên gần nhất trước đó, tối đa 7 ngày)
+        if reg_idx >= 0 and (d - regimes[reg_idx][0]).days <= 7:
+            s["market"] = regimes[reg_idx][1]
         fp = _fundamental_at(funds, d) if funds else None
         if fp is not None:
             if fp.pe is not None and fp.pe > 0 and len(pe_seen) >= 6:
@@ -315,6 +362,63 @@ def _outcome(
     )
 
 
+def default_levels(main: Outcome) -> tuple[float | None, float | None]:
+    """Stop/Target (tỉ lệ) cùng cách Kế hoạch nắm giữ gợi ý: Stop sâu hơn mức sụt điển hình
+    20% (không có tiền lệ → 10%); Target = trung vị lợi nhuận (> 0) hoặc p90 (> 0)."""
+    dd = main.avg_max_drawdown
+    stop = abs(dd) * 1.2 if dd is not None and dd < 0 else 0.10
+    tgt = None
+    if main.median_return is not None and main.median_return > 0:
+        tgt = main.median_return
+    elif main.p90_return is not None and main.p90_return > 0:
+        tgt = main.p90_return
+    return round(stop, 4), round(tgt, 4) if tgt is not None else None
+
+
+def path_stats(
+    bars: Sequence[Bar],
+    entries: Sequence[int],
+    stop_pct: float | None,
+    target_pct: float | None,
+    horizon: int,
+) -> PathStats:
+    """Mỗi lần tiền lệ: mua ở giá đóng cửa ngày vào, theo dõi `horizon` phiên sau đó.
+    Cùng phiên chạm cả hai mức → tính là chạm Stop-loss (thận trọng)."""
+    t_days: list[int] = []
+    s_days: list[int] = []
+    n = 0
+    for i in entries:
+        if i + horizon >= len(bars) or bars[i].close <= 0:
+            continue
+        n += 1
+        entry = float(bars[i].close)
+        stop_px = entry * (1 - stop_pct) if stop_pct else None
+        tgt_px = entry * (1 + target_pct) if target_pct else None
+        for k in range(1, horizon + 1):
+            b = bars[i + k]
+            lo = float(getattr(b, "low", b.close))
+            hi = float(getattr(b, "high", b.close))
+            if stop_px is not None and lo <= stop_px:
+                s_days.append(k)
+                break
+            if tgt_px is not None and hi >= tgt_px:
+                t_days.append(k)
+                break
+    if n == 0:
+        return PathStats(stop_pct, target_pct, horizon, 0, None, None, None, None, None)
+    return PathStats(
+        stop_pct=stop_pct,
+        target_pct=target_pct,
+        horizon=horizon,
+        episodes=n,
+        target_first=round(len(t_days) / n, 4),
+        stop_first=round(len(s_days) / n, 4),
+        neither=round((n - len(t_days) - len(s_days)) / n, 4),
+        median_days_to_target=float(median(t_days)) if t_days else None,
+        median_days_to_stop=float(median(s_days)) if s_days else None,
+    )
+
+
 def _confidence(n: int) -> str:
     if n < MIN_EPISODES:
         return "khong_du"
@@ -336,6 +440,26 @@ def _suggest(main: Outcome, cost: float = ROUND_TRIP_COST) -> str:
     return SUGGEST_NEUTRAL
 
 
+def _path_for(
+    bars: Sequence[Bar],
+    episodes: list[int],
+    main: Outcome,
+    horizon: int,
+    stop_pct: float | None,
+    target_pct: float | None,
+) -> PathStats | None:
+    if main.episodes < MIN_EPISODES:
+        return None
+    d_stop, d_tgt = default_levels(main)
+    return path_stats(
+        bars,
+        episodes,
+        stop_pct if stop_pct is not None else d_stop,
+        target_pct if target_pct is not None else d_tgt,
+        horizon,
+    )
+
+
 # ── API chính ────────────────────────────────────────────────────────────────
 
 
@@ -344,20 +468,25 @@ def analyze(
     bars: Sequence[Bar],
     fundamentals: Sequence[FundamentalPoint] = (),
     *,
+    market_bars: Sequence[Bar] = (),
     horizons: tuple[int, ...] = HORIZONS,
     max_analogs: int = 30,
     main_horizon: int | None = None,
     cost: float = ROUND_TRIP_COST,
+    stop_pct: float | None = None,
+    target_pct: float | None = None,
 ) -> BaseRateReport:
     """Thống kê tiền lệ cho trạng thái của phiên cuối cùng trong `bars` (oldest-first).
 
     main_horizon: tầm nhìn quyết định gợi ý (mặc định tầm dài nhất — hợp nắm giữ cổ
         phiếu). HĐ tương lai nắm ngắn hơn nên truyền tầm ngắn hơn (vd 20 phiên).
     cost: chi phí khứ hồi (tỉ lệ) — lợi nhuận phải vượt mức này mới tính là thắng.
+    stop_pct / target_pct: mức Stop-loss / Target (tỉ lệ) để thống kê chạm mức nào trước;
+        None → mặc định như Kế hoạch nắm giữ gợi ý (default_levels).
     """
     ticker = ticker.upper()
     notes: list[str] = []
-    states = compute_states(bars, fundamentals)
+    states = compute_states(bars, fundamentals, market_bars)
     as_of = bars[-1].date if bars else date.today()
     current = states[-1] if states else None
     main_h = main_horizon if main_horizon in horizons else max(horizons)
@@ -405,7 +534,7 @@ def analyze(
         outcomes[h] = _outcome(bars, usable, len(_pick_episodes(usable, h)), all_days, h, cost)
     main = outcomes[main_h]
     analogs = []
-    for i in episodes[-max_analogs:]:
+    for i in episodes[-max_analogs:] if max_analogs > 0 else []:
         rets: dict[int, float] = {}
         mdds: dict[int, float] = {}
         for h in horizons:
@@ -431,10 +560,161 @@ def analyze(
         outcomes=outcomes,
         analogs=analogs,
         suggestion=_suggest(main, cost),
+        path=_path_for(bars, episodes, main, main_h, stop_pct, target_pct),
         confidence=_confidence(main.episodes),
         history_from=bars[0].date,
         notes=notes,
         last_close=float(bars[-1].close),
+    )
+
+
+# ── Kiểm chứng độ tin (walk-forward) ────────────────────────────────────────
+
+RELIABLE = "dang_tin"  # tín hiệu từng vượt mức nền rõ rệt
+WEAK = "yeu"  # có tín hiệu nhưng không tốt hơn mức nền
+UNPROVEN = "chua_du"  # quá ít lần có tín hiệu để kết luận
+MIN_SIGNALS = 8
+
+
+@dataclass(frozen=True)
+class SignalRecord:
+    suggestion: str
+    count: int
+    hit_rate: float | None  # Bullish: lãi > chi phí; Bearish: sau đó giảm; Neutral: None
+    avg_return: float | None
+    median_return: float | None
+
+
+@dataclass(frozen=True)
+class CalibrationBin:
+    label: str  # vd "50–60%"
+    count: int
+    predicted: float  # xác suất app đưa ra (trung bình trong nhóm)
+    realized: float  # tỉ lệ thắng thực tế
+
+
+@dataclass(frozen=True)
+class TrackRecord:
+    ticker: str
+    horizon: int
+    step: int
+    checked: int  # số lần kiểm (mỗi `step` phiên)
+    period_from: date | None
+    period_to: date | None
+    base_win_rate: float | None  # mọi lần kiểm, không theo tín hiệu
+    base_avg_return: float | None
+    signals: dict[str, SignalRecord]
+    calibration: list[CalibrationBin]
+    verdict: str  # dang_tin | yeu | chua_du
+    notes: list[str] = field(default_factory=list)
+
+
+_CAL_EDGES = (0.0, 0.4, 0.5, 0.6, 0.7, 1.01)
+
+
+def track_record(
+    ticker: str,
+    bars: Sequence[Bar],
+    fundamentals: Sequence[FundamentalPoint] = (),
+    *,
+    market_bars: Sequence[Bar] = (),
+    horizons: tuple[int, ...] = HORIZONS,
+    main_horizon: int | None = None,
+    cost: float = ROUND_TRIP_COST,
+    step: int = 10,
+) -> TrackRecord:
+    """Chạy lại `analyze` tại các ngày trong quá khứ CHỈ với dữ liệu tới ngày đó (không nhìn
+    trước), rồi so tín hiệu với kết quả thực tế sau `main_horizon` phiên."""
+    main_h = main_horizon if main_horizon in horizons else max(horizons)
+    start = WARMUP + main_h + MIN_EPISODES * main_h  # cần đủ lịch sử để có tiền lệ
+    rows: list[tuple[str, float, float]] = []  # (gợi ý, xác suất thắng, lợi nhuận thực tế)
+    first: date | None = None
+    last: date | None = None
+    for t in range(start, len(bars) - main_h, step):
+        if bars[t].close <= 0:
+            continue
+        rep = analyze(
+            ticker,
+            bars[: t + 1],
+            fundamentals,
+            market_bars=market_bars,
+            horizons=horizons,
+            main_horizon=main_h,
+            cost=cost,
+            max_analogs=0,
+        )
+        main = rep.outcomes.get(main_h)
+        if main is None:
+            continue
+        r = float(bars[t + main_h].close) / float(bars[t].close) - 1
+        rows.append((rep.suggestion, main.win_prob, r))
+        first = first or bars[t].date
+        last = bars[t].date
+
+    def rec(sug: str) -> SignalRecord:
+        rs = [r for s_, _, r in rows if s_ == sug]
+        hit: float | None = None
+        if rs and sug == SUGGEST_LEAN_BUY:
+            hit = round(sum(1 for r in rs if r > cost) / len(rs), 4)
+        elif rs and sug == SUGGEST_LEAN_AVOID:
+            hit = round(sum(1 for r in rs if r < 0) / len(rs), 4)
+        return SignalRecord(
+            suggestion=sug,
+            count=len(rs),
+            hit_rate=hit,
+            avg_return=round(sum(rs) / len(rs), 4) if rs else None,
+            median_return=round(median(rs), 4) if rs else None,
+        )
+
+    all_r = [r for _, _, r in rows]
+    base_win = round(sum(1 for r in all_r if r > cost) / len(all_r), 4) if all_r else None
+    signals = {
+        s_: rec(s_)
+        for s_ in (SUGGEST_LEAN_BUY, SUGGEST_LEAN_AVOID, SUGGEST_NEUTRAL, SUGGEST_INSUFFICIENT)
+    }
+    cal: list[CalibrationBin] = []
+    for lo, hi in zip(_CAL_EDGES, _CAL_EDGES[1:], strict=False):
+        grp = [(p, r) for s_, p, r in rows if s_ != SUGGEST_INSUFFICIENT and lo <= p < hi]
+        if not grp:
+            continue
+        label = f"< {hi:.0%}" if lo == 0 else f"≥ {lo:.0%}" if hi > 1 else f"{lo:.0%}–{hi:.0%}"
+        cal.append(
+            CalibrationBin(
+                label=label,
+                count=len(grp),
+                predicted=round(sum(p for p, _ in grp) / len(grp), 4),
+                realized=round(sum(1 for _, r in grp if r > cost) / len(grp), 4),
+            )
+        )
+
+    buy, avoid = signals[SUGGEST_LEAN_BUY], signals[SUGGEST_LEAN_AVOID]
+    n_sig = buy.count + avoid.count
+    notes = [
+        f"Kiểm mỗi {step} phiên; kết quả {main_h} phiên của các lần kiểm liền nhau chồng lên "
+        "nhau nên số lần độc lập ít hơn số lần kiểm.",
+    ]
+    if n_sig < MIN_SIGNALS or base_win is None:
+        verdict = UNPROVEN
+    else:
+        good = 0
+        if buy.count >= MIN_SIGNALS // 2 and buy.hit_rate is not None:
+            good += 1 if buy.hit_rate >= base_win + 0.05 else -1
+        if avoid.count >= MIN_SIGNALS // 2 and avoid.hit_rate is not None:
+            good += 1 if avoid.hit_rate >= (1 - base_win) + 0.05 else -1
+        verdict = RELIABLE if good > 0 else WEAK if good < 0 else UNPROVEN
+    return TrackRecord(
+        ticker=ticker.upper(),
+        horizon=main_h,
+        step=step,
+        checked=len(rows),
+        period_from=first,
+        period_to=last,
+        base_win_rate=base_win,
+        base_avg_return=round(sum(all_r) / len(all_r), 4) if all_r else None,
+        signals=signals,
+        calibration=cal,
+        verdict=verdict,
+        notes=notes,
     )
 
 
@@ -483,11 +763,42 @@ class BaseRateService:
         Kết quả cache theo (mã, ngày + giá của nến cuối, số nến) — mọi nơi (bảng, drawer,
         kế hoạch) gọi trong cùng tiến trình nhận đúng một báo cáo.
         """
+        t = ticker.upper()
+        bars, funds, market = await self._load(t, as_of)
+        key = self._key(t, bars, funds, market)
+        cached = _REPORT_CACHE.get(key)
+        if cached is not None:
+            return cached
+        rep = analyze(t, bars, funds, market_bars=market)
+        if len(_REPORT_CACHE) >= _REPORT_CACHE_MAX:
+            _REPORT_CACHE.clear()
+        _REPORT_CACHE[key] = rep
+        return rep
+
+    async def track_record(self, ticker: str) -> TrackRecord:
+        """Kiểm chứng độ tin (walk-forward) — tốn vài giây/mã nên chạy ở thread riêng và
+        cache theo cùng khoá với báo cáo (đổi khi có nến mới)."""
+        import asyncio  # noqa: PLC0415
+
+        t = ticker.upper()
+        bars, funds, market = await self._load(t, None)
+        key = self._key(t, bars, funds, market)
+        cached = _TRACK_CACHE.get(key)
+        if cached is not None:
+            return cached
+        rec = await asyncio.to_thread(track_record, t, bars, funds, market_bars=market)
+        if len(_TRACK_CACHE) >= _REPORT_CACHE_MAX:
+            _TRACK_CACHE.clear()
+        _TRACK_CACHE[key] = rec
+        return rec
+
+    async def _load(
+        self, t: str, as_of: date | None
+    ) -> tuple[list[Bar], list[FundamentalPoint], list[Bar]]:
         from datetime import timedelta  # noqa: PLC0415
 
         from src.market.ohlcv_service import _today_ict  # noqa: PLC0415
 
-        t = ticker.upper()
         today = _today_ict()
         end = as_of or today
         bars = await self._ohlcv.get_candles(  # type: ignore[attr-defined]
@@ -496,32 +807,48 @@ class BaseRateService:
         bars = list(bars or [])
         if as_of is None and bars and bars[-1].date >= today and not _session_closed(t):
             bars = bars[:-1]  # phiên hôm nay chưa chốt giá
-
         funds: list[FundamentalPoint] = []
         if self._fundamentals is not None:
             try:
                 funds = await self._fundamentals.get_fundamentals(t)
             except Exception:  # noqa: BLE001 — thiếu dữ liệu cơ bản không chặn thống kê giá
                 funds = []
+        market = await self._market_bars(t, end, bars[-1].date if bars else None)
+        return bars, funds, market
 
-        key = (
+    @staticmethod
+    def _key(
+        t: str, bars: list[Bar], funds: list[FundamentalPoint], market: list[Bar]
+    ) -> tuple[object, ...]:
+        return (
             t,
             bars[-1].date if bars else None,
             round(float(bars[-1].close), 4) if bars else None,
             len(bars),
             len(funds),
+            len(market),
         )
-        cached = _REPORT_CACHE.get(key)
-        if cached is not None:
-            return cached
-        rep = analyze(t, bars, funds)
-        if len(_REPORT_CACHE) >= _REPORT_CACHE_MAX:
-            _REPORT_CACHE.clear()
-        _REPORT_CACHE[key] = rep
-        return rep
 
+    async def _market_bars(self, ticker: str, end: date, last: date | None) -> list[Bar]:
+        """Nến VN-Index cùng khoảng (bối cảnh thị trường). Chỉ số / lỗi → []."""
+        from datetime import timedelta  # noqa: PLC0415
+
+        if ticker in MARKET_INDEXES or last is None:
+            return []
+        try:
+            rows = await self._ohlcv.get_candles(  # type: ignore[attr-defined]
+                MARKET_SYMBOL, end - timedelta(days=self._history_days), end
+            )
+        except Exception:  # noqa: BLE001 — thiếu VN-Index không chặn thống kê của mã
+            return []
+        return [b for b in rows or [] if b.date <= last]
+
+
+MARKET_SYMBOL = "VNINDEX"
+MARKET_INDEXES = frozenset({"VNINDEX", "VN30", "HNXINDEX", "UPCOMINDEX", "VN30F1M"})
 
 _REPORT_CACHE: dict[tuple[object, ...], BaseRateReport] = {}
+_TRACK_CACHE: dict[tuple[object, ...], TrackRecord] = {}
 _REPORT_CACHE_MAX = 500
 
 
@@ -530,6 +857,6 @@ def _session_closed(ticker: str) -> bool:
     from src.market.price_rules import is_session_closed  # noqa: PLC0415
     from src.market.registry import registry  # noqa: PLC0415
 
-    info = registry.get(ticker) if ticker not in {"VN30", "VNINDEX"} else None
+    info = registry.get(ticker) if ticker not in MARKET_INDEXES else None
     exchange = info.exchange if info is not None else "HOSE"
     return is_session_closed(exchange)

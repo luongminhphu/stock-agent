@@ -160,3 +160,100 @@ def test_main_horizon_and_cost_drive_suggestion() -> None:
     assert short.outcomes[20].base_win_rate >= default.outcomes[20].base_win_rate
     # Tầm không có trong danh sách → về mặc định (tầm dài nhất)
     assert analyze("X", bars, horizons=(5, 60), main_horizon=20).suggestion == default.suggestion
+
+
+def test_market_regime_feature_point_in_time() -> None:
+    from src.market.baserate import market_regimes
+
+    up = [_Bar(date(2014, 1, 1) + timedelta(days=i), 1000 + i, 990 + i, 1) for i in range(300)]
+    down = [
+        _Bar(up[-1].date + timedelta(days=i + 1), 1300 - 3 * i, 1290 - 3 * i, 1) for i in range(300)
+    ]
+    regs = dict(market_regimes(up + down))
+    assert regs[up[-1].date] == "bull"
+    assert regs[down[-1].date] == "bear"
+    assert up[100].date not in regs  # chưa đủ MA200
+
+    stock = _series(600)
+    states = compute_states(stock, market_bars=up + down)
+    last = states[-1]
+    assert last is not None and last["market"] == regs[stock[-1].date]
+    # Ngày cổ phiếu không có phiên VN-Index trong 7 ngày → không gán bối cảnh
+    assert "market" not in (compute_states(stock, market_bars=up[:260])[-1] or {})
+
+
+def test_analyze_matches_on_market_when_available() -> None:
+    stock = _series(260 * 6, period=90)
+    market = [_Bar(b.date, 1000 + (i % 400), 990, 1) for i, b in enumerate(stock)]
+    rep = analyze("X", stock, market_bars=market)
+    assert "market" in rep.state
+    assert "market" in rep.matched_on or "market" in rep.dropped
+    assert "market" not in analyze("X", stock).state
+
+
+@dataclass(frozen=True)
+class _HLBar:
+    date: date
+    close: float
+    low: float
+    high: float
+    volume: int = 1
+
+
+def test_path_stats_target_vs_stop_first() -> None:
+    from src.market.baserate import path_stats
+
+    d0 = date(2020, 1, 1)
+
+    def mk(closes: list[float]) -> list[_HLBar]:
+        return [_HLBar(d0 + timedelta(days=i), c, c * 0.99, c * 1.01) for i, c in enumerate(closes)]
+
+    up = mk([100, 102, 104, 106, 108, 111, 112])  # +10% ở phiên 5 (high 112,1)
+    down = mk([100, 97, 93, 90, 88, 87, 86])  # −10% ở phiên 3 (low 89,1)
+    flat = mk([100, 101, 100, 101, 100, 101, 100])
+    bars = up + down + flat
+    ps = path_stats(bars, [0, 7, 14], stop_pct=0.10, target_pct=0.10, horizon=6)
+    assert ps.episodes == 3
+    assert (ps.target_first, ps.stop_first, ps.neither) == (0.3333, 0.3333, 0.3333)
+    assert ps.median_days_to_target == 5 and ps.median_days_to_stop == 3
+    # Không có Target → chỉ thống kê Stop-loss
+    assert path_stats(bars, [0, 7], 0.10, None, 6).target_first == 0.0
+    assert path_stats(bars, [20], 0.1, 0.1, 6).episodes == 0  # thiếu dữ liệu tương lai
+
+
+def test_analyze_reports_path_with_default_or_custom_levels() -> None:
+    from src.market.baserate import default_levels
+
+    bars = _series(260 * 6, period=90)
+    rep = analyze("X", bars)
+    assert rep.path is not None and rep.path.episodes > 0
+    main = rep.outcomes[max(rep.outcomes)]
+    assert (rep.path.stop_pct, rep.path.target_pct) == default_levels(main)
+    custom = analyze("X", bars, stop_pct=0.05, target_pct=0.2)
+    assert (custom.path.stop_pct, custom.path.target_pct) == (0.05, 0.2)
+    total = custom.path.target_first + custom.path.stop_first + custom.path.neither
+    assert abs(total - 1) < 1e-3
+
+
+def test_track_record_walk_forward_no_lookahead() -> None:
+    from src.market.baserate import RELIABLE, UNPROVEN, WEAK, track_record
+
+    bars = _series(260 * 8, period=90)
+    rec = track_record("X", bars, step=20)
+    assert rec.checked > 0 and rec.horizon == 120
+    assert rec.verdict in {RELIABLE, WEAK, UNPROVEN}
+    assert sum(r.count for r in rec.signals.values()) == rec.checked
+    # Lần kiểm cuối phải còn đủ `horizon` phiên tương lai để đo kết quả
+    assert rec.period_to is not None
+    assert rec.period_to <= bars[-1 - rec.horizon].date
+    for b in rec.calibration:
+        assert 0 <= b.predicted <= 1 and 0 <= b.realized <= 1 and b.count > 0
+    # Chu kỳ biết trước (sin) → engine tiền lệ phải bắt được ít nhất một chiều
+    assert rec.signals["NGHIENG_MUA"].count + rec.signals["NGHIENG_TRANH"].count > 0
+
+
+def test_track_record_too_short_history() -> None:
+    from src.market.baserate import UNPROVEN, track_record
+
+    rec = track_record("X", _series(400))
+    assert rec.checked == 0 and rec.verdict == UNPROVEN and rec.base_win_rate is None
