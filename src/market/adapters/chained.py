@@ -13,9 +13,15 @@ Design:
 - close(): đóng mọi adapter; lỗi được log và nuốt.
 
 Thứ tự mặc định (factory): VCI (Vietcap) → KBS (KB Securities) → VNDirect (EOD).
+
+Chính sách VCI-first (factory truyền ``fallback_allowed``): trong giờ giao dịch CHỈ dùng
+VCI — mọi dữ liệu thị trường đồng nhất một nguồn. Nguồn dự phòng chỉ được dùng ngoài giờ
+giao dịch, cho những mã VCI không trả dữ liệu.
 """
 
 from __future__ import annotations
+
+from collections.abc import Callable
 
 from src.market.quote_service import MarketDataAdapter, Quote
 from src.platform.logging import get_logger
@@ -30,6 +36,8 @@ class ChainedAdapter(MarketDataAdapter):
         primary:   nguồn ưu tiên (VCIAdapter).
         secondary: nguồn dự phòng thứ nhất.
         *fallbacks: các nguồn dự phòng tiếp theo (tuỳ chọn).
+        fallback_allowed: hàm trả True khi được dùng nguồn dự phòng (vd ngoài giờ giao
+            dịch). None → luôn được dùng.
     """
 
     def __init__(
@@ -37,8 +45,20 @@ class ChainedAdapter(MarketDataAdapter):
         primary: MarketDataAdapter,
         secondary: MarketDataAdapter,
         *fallbacks: MarketDataAdapter,
+        fallback_allowed: Callable[[], bool] | None = None,
     ) -> None:
         self._adapters: list[MarketDataAdapter] = [primary, secondary, *fallbacks]
+        self._fallback_allowed = fallback_allowed
+
+    def _active(self) -> list[MarketDataAdapter]:
+        """Nguồn được dùng ở thời điểm hiện tại (chỉ nguồn chính khi chưa cho phép dự phòng)."""
+        if self._fallback_allowed is None:
+            return self._adapters
+        try:
+            allowed = self._fallback_allowed()
+        except Exception:  # noqa: BLE001 — lỗi chính sách → an toàn: cho dùng dự phòng
+            allowed = True
+        return self._adapters if allowed else self._adapters[:1]
 
     @property
     def _primary(self) -> MarketDataAdapter:
@@ -50,7 +70,7 @@ class ChainedAdapter(MarketDataAdapter):
 
     async def fetch_quote(self, ticker: str) -> Quote:
         last_exc: Exception | None = None
-        for idx, adapter in enumerate(self._adapters):
+        for idx, adapter in enumerate(self._active()):
             try:
                 quote = await adapter.fetch_quote(ticker)
                 if idx:
@@ -70,7 +90,7 @@ class ChainedAdapter(MarketDataAdapter):
         found: dict[str, Quote] = {}
         last_exc: Exception | None = None
         any_ok = False
-        for idx, adapter in enumerate(self._adapters):
+        for idx, adapter in enumerate(self._active()):
             missing = [t for t in wanted if t not in found]
             if not missing:
                 break

@@ -5,7 +5,7 @@ Owner: market segment.
 Architecture — 3-layer data pipeline:
     Layer 1 (static seed)  : ~100 curated tickers with key_metrics annotations.
                              Always applied first. Used as baseline + fallback.
-    Layer 2 (HTTP)         : VNDirect finfo API listing — full HOSE/HNX/UPCoM
+    Layer 2 (HTTP)         : VCI listing (price/symbols/getAll) — full HOSE/HNX/UPCoM
                              (~1500+ symbols, name + sector + exchange).
                              Applied on startup; refreshed every TTL_HOURS.
     Layer 3 (DB)           : Tickers from Position/Watchlist/Thesis in the DB.
@@ -523,7 +523,7 @@ class SymbolRegistry:
 
     Holds an in-memory cache populated from:
       1. static seed (always)
-      2. VNDirect listing HTTP (on initialize)
+      2. VCI listing HTTP (on initialize)
       3. DB tickers (on initialize)
 
     After initialize(), all reads are O(1) dict lookups — no DB or HTTP on
