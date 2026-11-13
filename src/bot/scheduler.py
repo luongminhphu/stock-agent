@@ -1628,11 +1628,11 @@ class DerivSimScheduler:
 
     def _derivatives(self) -> Any:
         if self._deriv is None:
-            from src.market.adapters.factory import build_reference_adapter
+            from src.market.adapters.factory import build_derivative_quote_source
             from src.market.derivatives import DerivativesService
             from src.platform.bootstrap import get_ohlcv_service
 
-            self._deriv = DerivativesService(get_ohlcv_service(), build_reference_adapter())
+            self._deriv = DerivativesService(get_ohlcv_service(), build_derivative_quote_source())
         return self._deriv
 
     async def run_once(self, now_utc: datetime.datetime) -> dict[str, list[Any]]:
