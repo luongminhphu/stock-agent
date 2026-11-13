@@ -75,7 +75,7 @@ async function loadDerivatives() {
   return m.loadDerivatives();
 }
 async function loadPaper() {
-  if (!_lazyPaper) _lazyPaper = import('./modules/derivatives/sim.js?v=4');
+  if (!_lazyPaper) _lazyPaper = import('./modules/derivatives/sim.js?v=5');
   const m = await _lazyPaper;
   return m.loadSim();
 }
