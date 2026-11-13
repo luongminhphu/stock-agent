@@ -1373,7 +1373,7 @@ class EodCloseCaptureScheduler:
 
     Đồng nhất với CTCK (market.price_reconciliation):
         - Mỗi mã chỉ chốt khi sàn của nó đã đóng giá (UPCoM không có ATC, khớp tới 15:00).
-        - Open/close lấy theo nến ngày chính thức, đối chứng bảng giá KBS, làm tròn
+        - Open/close lấy theo nến ngày chính thức VCI (thiếu nến → bảng giá VCI), làm tròn
           theo bước giá — bất thường được log `price_reconcile.flagged`.
 
     Thứ tự trong ngày:
@@ -1461,23 +1461,16 @@ class EodCloseCaptureScheduler:
     async def _capture(self, tickers: list[str]) -> Any:
         import datetime as dt
 
-        from src.market.adapters.factory import build_reference_adapter
         from src.market.price_reconciliation import SessionPriceReconciler
         from src.platform.bootstrap import get_ohlcv_service, get_quote_service
 
-        reference = build_reference_adapter()
-        reconciler = SessionPriceReconciler(
-            ohlcv_service=get_ohlcv_service(), reference_adapter=reference
+        # VCI-first: giá chốt theo nến ngày chính thức VCI; thiếu nến → bảng giá VCI.
+        reconciler = SessionPriceReconciler(ohlcv_service=get_ohlcv_service())
+        return await get_quote_service().capture_eod_close(
+            tickers,
+            now=dt.datetime.now(tz=dt.timezone(dt.timedelta(hours=7))),
+            reconciler=reconciler,
         )
-        try:
-            return await get_quote_service().capture_eod_close(
-                tickers,
-                now=dt.datetime.now(tz=dt.timezone(dt.timedelta(hours=7))),
-                reconciler=reconciler,
-            )
-        finally:
-            if reference is not None:
-                await reference.close()
 
     async def _collect_universe(self) -> list[str]:
         """Vị thế mở + watchlist (mọi user) + thesis active của scheduler_user_id."""
