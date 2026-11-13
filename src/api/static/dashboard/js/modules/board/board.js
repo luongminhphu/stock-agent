@@ -20,8 +20,8 @@ import { openModal } from '../../utils/dom.js?v=1';
 import {
   fmtVnd, fmtPct, fmtProb, fmtPp, fmtNum, signClass, fmtDateVi,
   suggestionBadge, confidenceLabel, openBaserateDrawer,
-} from './baserate-drawer.js?v=2';
-import { getPlanLights, LIGHTS } from '../plans/plans.js?v=1';
+} from './baserate-drawer.js?v=3';
+import { getPlanLights, LIGHTS } from '../plans/plans.js?v=2';
 
 const BOARD_URL = '/api/v1/board';
 

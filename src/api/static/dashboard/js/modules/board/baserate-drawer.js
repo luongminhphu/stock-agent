@@ -108,6 +108,7 @@ const CONFIDENCE_LONG = Object.freeze({
 /** Tên đặc trưng trạng thái (khóa của matched_on / dropped). */
 const FEATURE_NAMES = Object.freeze({
   trend:       'xu hướng MA50/MA200',
+  market:      'thị trường chung (VN-Index)',
   range_52w:   'vị trí trong biên độ 52 tuần',
   momentum_3m: 'đà 3 tháng',
   volume:      'khối lượng',
@@ -137,6 +138,97 @@ function _featureName(key) {
  * @param {{ priceDecimals?: number, compact?: boolean, maxAnalogs?: number }} [opts]
  * @returns {string} HTML
  */
+const TONE = Object.freeze({
+  act:     { cls: 'br-next--act',     label: 'Có thể hành động' },
+  watch:   { cls: 'br-next--watch',   label: 'Theo dõi' },
+  caution: { cls: 'br-next--caution', label: 'Thận trọng' },
+});
+
+function _nextStepHTML(n, ticker) {
+  if (!n || typeof n !== 'object') return '';
+  const t = TONE[n.tone] ?? TONE.watch;
+  const steps = Array.isArray(n.steps) ? n.steps : [];
+  return `
+    <section class="br-next ${t.cls}" aria-label="Nên làm gì tiếp theo">
+      <p class="br-next-eyebrow">Nên làm gì tiếp theo · <span>${t.label}</span></p>
+      <p class="br-next-head">${esc(n.headline)}</p>
+      ${steps.length ? `<ul class="br-next-steps">${steps.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+      ${n.plan_cta && ticker ? `<button type="button" class="primary-btn br-next-cta" data-plan-new="${esc(ticker)}">Lập Kế hoạch nắm giữ ${esc(ticker)}</button>` : ''}
+      <p class="br-next-foot">Diễn giải theo quy tắc từ thống kê tiền lệ bên dưới — không phải khuyến nghị đầu tư.</p>
+    </section>`;
+}
+
+function _pathHTML(p) {
+  if (!p || typeof p !== 'object' || !p.episodes) return '';
+  const seg = (v, cls, label) => (_isNum(v) && v > 0
+    ? `<span class="br-path-seg ${cls}" style="flex:${Number(v)}" title="${label} ${fmtProb(v, 0)}"></span>` : '');
+  const lv = [
+    _isNum(p.stop_pct) ? `Stop-loss −${fmtPct(p.stop_pct * 100, 0)}` : null,
+    _isNum(p.target_pct) ? `Target +${fmtPct(p.target_pct * 100, 0)}` : null,
+  ].filter(Boolean).join(' · ');
+  const days = (v) => (_isNum(v) ? ` · trung vị ${fmtNum(v)} phiên` : '');
+  return `
+    <section class="br-section" aria-label="Xác suất chạm Stop-loss / Target">
+      <h3 class="br-h">Chạm Target hay Stop-loss trước? <span class="br-h-sub">${esc(lv)} · trong ${esc(p.horizon)} phiên · ${fmtNum(p.episodes)} lần tiền lệ</span></h3>
+      <div class="br-path-bar" role="img" aria-label="Chạm Target trước ${fmtProb(p.target_first, 0)}, chạm Stop-loss trước ${fmtProb(p.stop_first, 0)}, chưa chạm ${fmtProb(p.neither, 0)}">
+        ${seg(p.target_first, 'is-target', 'Chạm Target trước')}${seg(p.neither, 'is-neither', 'Hết kỳ chưa chạm')}${seg(p.stop_first, 'is-stop', 'Chạm Stop-loss trước')}
+      </div>
+      <dl class="br-path-legend">
+        <div><dt><i class="br-key is-target"></i>Chạm Target trước</dt><dd>${fmtProb(p.target_first, 0)}${days(p.median_days_to_target)}</dd></div>
+        <div><dt><i class="br-key is-neither"></i>Hết kỳ chưa chạm</dt><dd>${fmtProb(p.neither, 0)}</dd></div>
+        <div><dt><i class="br-key is-stop"></i>Chạm Stop-loss trước</dt><dd>${fmtProb(p.stop_first, 0)}${days(p.median_days_to_stop)}</dd></div>
+      </dl>
+      <p class="br-note">Mức mặc định như khi Lập kế hoạch: Stop-loss sâu hơn mức sụt điển hình 20%, Target = trung vị lợi nhuận các lần trước. Cùng phiên chạm cả hai tính là chạm Stop-loss.</p>
+    </section>`;
+}
+
+const VERDICT = Object.freeze({
+  dang_tin: { label: 'Đáng tin', cls: 'is-good', text: 'Trong quá khứ, khi app nói Bullish/Bearish với mã này, kết quả tốt hơn mức nền rõ rệt.' },
+  yeu:      { label: 'Yếu',      cls: 'is-bad',  text: 'Trong quá khứ, tín hiệu của mã này không tốt hơn mức nền — đừng dựa nhiều vào nó.' },
+  chua_du:  { label: 'Chưa đủ',  cls: 'is-muted', text: 'Quá ít lần có tín hiệu trong quá khứ để kết luận độ tin.' },
+});
+
+/** Kiểm chứng walk-forward: tín hiệu trong quá khứ đúng tới đâu. */
+export function renderTrackRecord(r) {
+  if (!r || typeof r !== 'object') return '';
+  const v = VERDICT[r.verdict] ?? VERDICT.chua_du;
+  const sig = Object.fromEntries((Array.isArray(r.signals) ? r.signals : []).map(x => [x.suggestion, x]));
+  const row = (code, hitLabel) => {
+    const x = sig[code];
+    if (!x) return '';
+    return `<tr>
+      <th scope="row">${suggestionBadge(code)}</th>
+      <td class="num">${fmtNum(x.count)}</td>
+      <td class="num">${hitLabel && _isNum(x.hit_rate) ? `${fmtProb(x.hit_rate, 0)} <span class="br-sub">${hitLabel}</span>` : '—'}</td>
+      <td class="num ${signClass(x.avg_return)}">${fmtSignedPct(x.avg_return)}</td>
+    </tr>`;
+  };
+  const cal = Array.isArray(r.calibration) ? r.calibration : [];
+  return `
+    <h3 class="br-h">Độ tin của tín hiệu <span class="br-h-sub">kiểm chứng ${esc(r.horizon)} phiên · ${r.period_from ? fmtDateVi(r.period_from) : ''} – ${r.period_to ? fmtDateVi(r.period_to) : ''}</span></h3>
+    <p class="br-verdict"><span class="br-verdict-tag ${v.cls}">${v.label}</span> ${esc(v.text)}</p>
+    <div class="tbl-scroll" tabindex="0" role="region" aria-label="Tín hiệu trong quá khứ">
+      <table class="br-table">
+        <thead><tr><th scope="col">Tín hiệu khi đó</th><th scope="col" class="num">Số lần</th><th scope="col" class="num">Đúng</th><th scope="col" class="num">Lợi nhuận TB sau ${esc(r.horizon)}p</th></tr></thead>
+        <tbody>
+          ${row('NGHIENG_MUA', 'lãi')}
+          ${row('NGHIENG_TRANH', 'giảm')}
+          ${row('TRUNG_TINH', null)}
+          <tr class="br-row-base"><th scope="row">Mọi lần kiểm (mức nền)</th><td class="num">${fmtNum(r.checked)}</td><td class="num">${fmtProb(r.base_win_rate, 0)} <span class="br-sub">lãi</span></td><td class="num ${signClass(r.base_avg_return)}">${fmtSignedPct(r.base_avg_return)}</td></tr>
+        </tbody>
+      </table>
+    </div>
+    ${cal.length ? `
+      <details class="br-cal">
+        <summary>Win rate app đưa ra có khớp thực tế không? (calibration)</summary>
+        <table class="br-table">
+          <thead><tr><th scope="col">App nói</th><th scope="col" class="num">Số lần</th><th scope="col" class="num">TB app nói</th><th scope="col" class="num">Thực tế lãi</th></tr></thead>
+          <tbody>${cal.map(b => `<tr><th scope="row">${esc(b.label)}</th><td class="num">${fmtNum(b.count)}</td><td class="num">${fmtProb(b.predicted, 0)}</td><td class="num">${fmtProb(b.realized, 0)}</td></tr>`).join('')}</tbody>
+        </table>
+      </details>` : ''}
+    ${(Array.isArray(r.notes) ? r.notes : []).map(n => `<p class="br-note">${esc(n)}</p>`).join('')}`;
+}
+
 export function renderBaserate(d, opts = {}) {
   if (!d || typeof d !== 'object') {
     return '<p class="br-empty">Không có dữ liệu base rate.</p>';
@@ -252,11 +344,14 @@ export function renderBaserate(d, opts = {}) {
   return `
     <div class="br-root${compact ? ' br-root--compact' : ''}">
       ${head}
+      ${opts.nextStep === false ? '' : _nextStepHTML(d.next_step, opts.planTicker ?? d.ticker)}
       ${state}
       <section class="br-section" aria-label="Kết quả theo kỳ nắm giữ">
         <div class="br-outcomes">${cards}</div>
         ${notes}
       </section>
+      ${_pathHTML(d.path)}
+      ${opts.trackRecord ? '<section class="br-section br-track" id="brTrack" aria-label="Độ tin của tín hiệu" aria-live="polite"><p class="br-note">Đang kiểm chứng tín hiệu trên dữ liệu quá khứ…</p></section>' : ''}
       ${analogTable}
     </div>`;
 }
@@ -354,10 +449,17 @@ async function _load() {
   const seq = ++_reqSeq;
   body.innerHTML = _skeleton();
   try {
-    const url = _currentOpts.url ?? `${marketApiBase()}/baserate/${encodeURIComponent(ticker)}`;
+    const custom = !!_currentOpts.url;
+    const base = `${marketApiBase()}/baserate/${encodeURIComponent(ticker)}`;
+    const url = custom ? _currentOpts.url : `${base}?holding=${_currentOpts.inPortfolio ? 'true' : 'false'}`;
     const data = await getJson(url);
     if (seq !== _reqSeq || root.hidden) return;
-    body.innerHTML = renderBaserate(data, { priceDecimals: _currentOpts.priceDecimals ?? 0 });
+    body.innerHTML = renderBaserate(data, {
+      priceDecimals: _currentOpts.priceDecimals ?? 0,
+      trackRecord: !custom,
+      planTicker: _currentOpts.tradable === false ? null : ticker,
+    });
+    if (!custom) _loadTrack(`${base}/track-record`, seq);
   } catch (err) {
     if (seq !== _reqSeq || root.hidden) return;
     const notFound = String(err?.message ?? '').startsWith('404');
@@ -367,6 +469,25 @@ async function _load() {
         <p class="br-error-detail">${esc(err?.message ?? '')}</p>
         ${notFound ? '' : '<button type="button" class="ghost-btn" data-br-retry>Thử lại</button>'}
       </div>`;
+  }
+}
+
+async function _loadTrack(url, seq) {
+  const root = document.getElementById(DRAWER_ID);
+  try {
+    const r = await getJson(url);
+    if (seq !== _reqSeq || !root || root.hidden) return;
+    const box = root.querySelector('#brTrack');
+    if (box) box.innerHTML = renderTrackRecord(r);
+    // Tín hiệu của mã này từng không đáng tin → nhắc ngay trong khung "Nên làm gì tiếp theo"
+    const next = root.querySelector('.br-next-steps, .br-next-head');
+    if (next && r?.verdict === 'yeu') {
+      next.insertAdjacentHTML('afterend', '<p class="br-next-warn" role="note">Lưu ý: kiểm chứng lịch sử cho thấy tín hiệu của mã này từng không tốt hơn mức nền — giảm khối lượng hoặc chỉ theo dõi.</p>');
+    }
+  } catch (err) {
+    if (seq !== _reqSeq || !root || root.hidden) return;
+    const box = root.querySelector('#brTrack');
+    if (box) box.innerHTML = `<p class="br-note">Chưa kiểm chứng được độ tin: ${esc(err?.message ?? '')}</p>`;
   }
 }
 

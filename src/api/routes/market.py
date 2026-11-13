@@ -27,14 +27,20 @@ from src.api.deps import (
 from src.api.dto.market import (
     BaseRateAnalogResponse,
     BaseRateOutcomeResponse,
+    BaseRatePathResponse,
     BaseRateResponse,
+    CalibrationBinResponse,
     CandleResponse,
     CompanyInfo,
+    NextStepResponse,
     QuoteResponse,
+    SignalRecordResponse,
     SymbolInfoResponse,
     TickerContextResponse,
+    TrackRecordResponse,
 )
 from src.market.baserate import FEATURE_LABELS, BaseRateService
+from src.market.baserate_actions import next_step
 from src.market.ohlcv_service import OHLCVService, OHLCVServiceNotConfiguredError
 from src.market.quote_service import QuoteService
 from src.market.registry import SymbolNotFoundError, registry
@@ -222,6 +228,7 @@ async def get_ohlcv(
 @router.get("/baserate/{ticker}", response_model=BaseRateResponse)
 async def get_base_rate(
     ticker: str,
+    holding: bool = Query(default=False, description="Đang nắm mã này → bước tiếp theo khác"),
     svc: BaseRateService = Depends(get_baserate_service),
 ) -> BaseRateResponse:
     """Thống kê tiền lệ: các lần TRƯỚC ĐÂY mã ở cùng trạng thái, 60/120 phiên sau ra sao.
@@ -252,7 +259,42 @@ async def get_base_rate(
 
     resp = baserate_response(rep)
     resp.company = company_info(info)
+    resp.next_step = NextStepResponse(**vars(next_step(rep, holding=holding)))
     return resp
+
+
+@router.get("/baserate/{ticker}/track-record", response_model=TrackRecordResponse)
+async def get_base_rate_track_record(
+    ticker: str,
+    svc: BaseRateService = Depends(get_baserate_service),
+) -> TrackRecordResponse:
+    """Kiểm chứng độ tin: chạy lại base rate tại các ngày trong quá khứ (chỉ dữ liệu tới ngày
+    đó) và so với kết quả thực tế. Vài giây cho lần đầu, sau đó cache tới khi có nến mới."""
+    ticker = ticker.upper()
+    try:
+        registry.resolve(ticker)
+    except SymbolNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Ticker '{ticker}' not found in registry.",
+        ) from exc
+    try:
+        rec = await svc.track_record(ticker)
+    except OHLCVServiceNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="OHLCV service not configured.",
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Track record unavailable for '{ticker}': {exc}",
+        ) from exc
+    return TrackRecordResponse(
+        **{k: v for k, v in vars(rec).items() if k not in ("signals", "calibration")},
+        signals=[SignalRecordResponse(**vars(x)) for x in rec.signals.values()],
+        calibration=[CalibrationBinResponse(**vars(b)) for b in rec.calibration],
+    )
 
 
 def baserate_response(rep: object) -> BaseRateResponse:
@@ -273,6 +315,7 @@ def baserate_response(rep: object) -> BaseRateResponse:
         history_from=r.history_from,
         notes=r.notes,
         last_close=getattr(r, "last_close", None),
+        path=BaseRatePathResponse(**vars(r.path)) if getattr(r, "path", None) else None,
     )
 
 

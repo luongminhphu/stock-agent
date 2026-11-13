@@ -128,6 +128,64 @@ class CompanyInfo(BaseModel):
     name_verified: bool  # False = chưa có tên từ danh sách niêm yết (mã tạm nhận)
 
 
+class BaseRatePathResponse(BaseModel):
+    """Trong các lần tiền lệ: chạm Target hay Stop-loss trước (trong `horizon` phiên)."""
+
+    stop_pct: float | None
+    target_pct: float | None
+    horizon: int
+    episodes: int
+    target_first: float | None
+    stop_first: float | None
+    neither: float | None
+    median_days_to_target: float | None
+    median_days_to_stop: float | None
+
+
+class NextStepResponse(BaseModel):
+    """ "Nên làm gì tiếp theo" — diễn giải base rate thành bước cụ thể (theo quy tắc)."""
+
+    tone: str  # act | watch | caution
+    headline: str
+    steps: list[str]
+    stop_price: float | None = None
+    target_price: float | None = None
+    review_sessions: int | None = None
+    plan_cta: bool = False
+
+
+class SignalRecordResponse(BaseModel):
+    suggestion: str
+    count: int
+    hit_rate: float | None
+    avg_return: float | None
+    median_return: float | None
+
+
+class CalibrationBinResponse(BaseModel):
+    label: str
+    count: int
+    predicted: float
+    realized: float
+
+
+class TrackRecordResponse(BaseModel):
+    """GET /market/baserate/{ticker}/track-record — tín hiệu trong quá khứ đúng tới đâu."""
+
+    ticker: str
+    horizon: int
+    step: int
+    checked: int
+    period_from: date | None
+    period_to: date | None
+    base_win_rate: float | None
+    base_avg_return: float | None
+    signals: list[SignalRecordResponse]
+    calibration: list[CalibrationBinResponse]
+    verdict: str  # dang_tin | yeu | chua_du
+    notes: list[str]
+
+
 class BaseRateResponse(BaseModel):
     """GET /market/baserate/{ticker} — tiền lệ trong lịch sử chính mã, không dự báo."""
 
@@ -146,3 +204,5 @@ class BaseRateResponse(BaseModel):
     notes: list[str]
     last_close: float | None = None  # giá đóng cửa phiên as_of
     company: CompanyInfo | None = None  # None với chỉ số (VN30)
+    path: BaseRatePathResponse | None = None
+    next_step: NextStepResponse | None = None
