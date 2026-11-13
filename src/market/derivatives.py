@@ -427,7 +427,7 @@ class DerivativesService:
         cho biết nguồn từng dòng.
         """
         cons = active_contracts(today)
-        prices = await self._contract_quotes([x for c in cons for x in (c.code, c.krx)])
+        prices = await self._contract_quotes([c.krx for c in cons])  # VCI dùng mã KRX
         vn30 = await self._candles(self.VN30_SYMBOL, 10)
         level = vn30[-1].close if vn30 else None
         rows = []

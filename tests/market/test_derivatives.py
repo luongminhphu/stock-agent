@@ -222,7 +222,7 @@ async def test_vci_adapter_parses_derivative_board(monkeypatch: pytest.MonkeyPat
         return [
             {
                 "listingInfo": {
-                    "symbol": "VN30F2611",
+                    "symbol": "41I1GB000",
                     "refPrice": 1375.0,
                     "ceiling": 1471.2,
                     "floor": 1278.8,
@@ -235,14 +235,15 @@ async def test_vci_adapter_parses_derivative_board(monkeypatch: pytest.MonkeyPat
                 },
             },
             {"listingInfo": {"symbol": "BAD"}, "matchPrice": {}},  # thiếu refPrice → bỏ
+            {"listingInfo": None, "matchPrice": {"matchPrice": 0}},  # mã VCI không nhận → bỏ
         ]
 
     monkeypatch.setattr(VCIAdapter, "_fetch_price_board", fake_board)
     adapter = VCIAdapter()
     try:
-        qs = await adapter.fetch_derivative_quotes(["vn30f2611", "41i1gb000"])
+        qs = await adapter.fetch_derivative_quotes(["41i1gb000", "vn30f2611"])
     finally:
         await adapter.close()
-    assert sent == [["VN30F2611", "41I1GB000"]]
-    assert [(q.ticker, q.price) for q in qs] == [("VN30F2611", 1381.4)]
+    assert sent == [["41I1GB000", "VN30F2611"]]
+    assert [(q.ticker, q.price) for q in qs] == [("41I1GB000", 1381.4)]
     assert await VCIAdapter().fetch_derivative_quotes([]) == []
