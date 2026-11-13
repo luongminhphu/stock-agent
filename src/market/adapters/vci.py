@@ -97,6 +97,24 @@ class VCIAdapter(MarketDataAdapter):
             results.extend(_parse_price_board(raw))
         return results
 
+    async def fetch_derivative_quotes(self, codes: list[str]) -> list[Quote]:
+        """Giá HĐ tương lai từ cùng bảng giá VCI (endpoint vnstock ``price_board`` dùng).
+
+        Giá theo ĐIỂM chỉ số. Gửi được cả mã cũ (VN30F2611) lẫn mã KRX (41I1GB000) —
+        mã nào VCI không có sẽ không xuất hiện trong kết quả. Không ghi vào registry cổ phiếu.
+        """
+        if not codes:
+            return []
+        rows = await self._fetch_price_board([c.upper() for c in codes])
+        quotes: list[Quote] = []
+        for item in rows if isinstance(rows, list) else []:
+            try:
+                quotes.append(_parse_item(item))
+            except (KeyError, TypeError, ValueError) as exc:
+                symbol = (item.get("listingInfo") or {}).get("symbol", "?")
+                logger.warning("vci.derivative_parse_error", symbol=symbol, error=str(exc))
+        return quotes
+
     async def _fetch_price_board(self, symbols: list[str]) -> list[dict[str, Any]]:
         try:
             response = await guarded_request(

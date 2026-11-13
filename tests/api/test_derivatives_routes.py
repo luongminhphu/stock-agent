@@ -6,7 +6,7 @@ from datetime import timedelta
 
 import pytest
 
-from tests.market.test_derivatives import _Bar, _FakeKBS, _FakeOHLCV
+from tests.market.test_derivatives import _Bar, _FakeBoard, _FakeOHLCV
 
 
 @pytest.fixture()
@@ -18,7 +18,7 @@ def fake_svc(app):  # type: ignore[no-untyped-def]
     today = _today_ict()
     days = [today - timedelta(days=i) for i in range(400, -1, -1)]
     vn30 = [_Bar(d, 1300 + (i % 9)) for i, d in enumerate(days)]
-    svc = DerivativesService(_FakeOHLCV({"VN30": vn30, "VN30F1M": vn30}), _FakeKBS())
+    svc = DerivativesService(_FakeOHLCV({"VN30": vn30, "VN30F1M": vn30}), _FakeBoard())
     app.dependency_overrides[get_derivatives_service] = lambda: svc
     app.dependency_overrides[get_current_user_id] = lambda: "nobody"
     yield svc
@@ -90,7 +90,7 @@ async def test_position_book_open_list_close(fake_svc, bootstrapped_client) -> N
     r = await c.get("/api/v1/derivatives/positions")
     body = r.json()
     [p] = body["positions"]
-    # _FakeKBS trả giá 1305 cho F1M → Short 2 HĐ từ 1310 lãi 5 điểm × 100.000 × 2
+    # _FakeBoard (bảng giá VCI giả) trả giá 1305 cho F1M → Short 2 HĐ từ 1310 lãi 5 điểm × 100.000 × 2
     assert p["mark_price"] == 1305.0 and p["unrealized_pnl"] == 1_000_000
     assert body["open_margin"] > 0
 

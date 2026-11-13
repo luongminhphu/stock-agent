@@ -22,15 +22,23 @@ Phòng hộ danh mục cổ phiếu:
 from __future__ import annotations
 
 import math
+import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from statistics import mean, median
 
+from src.platform.logging import get_logger
+
+logger = get_logger(__name__)
+
 MULTIPLIER = 100_000  # đ / điểm
 TICK = 0.1  # điểm
 IM_RATE_DEFAULT = 0.17  # tỉ lệ ký quỹ ban đầu tham khảo — cấu hình theo công bố VSDC
 QUARTER_MONTHS = (3, 6, 9, 12)
+
+QUOTE_BACKOFF_SECONDS = 600  # nguồn giá HĐ lỗi → chờ 10 phút mới gọi lại
+_quotes_backoff_until = 0.0
 
 LONG = "LONG"
 SHORT = "SHORT"
@@ -379,7 +387,7 @@ class DerivativesService:
 
     Args:
         ohlcv_service:    OHLCVService — nến ngày của chỉ số "VN30" và chuỗi liên tục "VN30F1M".
-        quote_source:     adapter có `fetch_derivative_quotes(krx_codes)` (KBSAdapter); None → không có giá HĐ.
+        quote_source:     adapter có `fetch_derivative_quotes(codes)` (VCIAdapter); None → không có giá HĐ.
     Tầm tiền lệ VN30 ngắn hơn cổ phiếu (5/20/60 phiên) vì HĐTL thường giữ ngắn.
     """
 
@@ -397,21 +405,39 @@ class DerivativesService:
         end = _today_ict()
         return await self._ohlcv.get_candles(symbol, end - timedelta(days=days), end)  # type: ignore[attr-defined]
 
+    async def _contract_quotes(self, codes: list[str]) -> dict[str, float]:
+        """Giá HĐ từ bảng giá (VCI). Lỗi → {} và tạm ngưng gọi lại trong một khoảng ngắn
+        để không gọi dồn nguồn đang lỗi (mỗi lần mở tab / mỗi lượt quét)."""
+        global _quotes_backoff_until
+        if self._quotes is None or time.monotonic() < _quotes_backoff_until:
+            return {}
+        try:
+            qs = await self._quotes.fetch_derivative_quotes(codes)  # type: ignore[attr-defined]
+        except Exception as exc:  # noqa: BLE001 — thiếu giá HĐ không chặn lịch đáo hạn
+            _quotes_backoff_until = time.monotonic() + QUOTE_BACKOFF_SECONDS
+            logger.warning("derivatives.quotes_unavailable", error=str(exc)[:300])
+            return {}
+        return {q.ticker.upper(): q.price for q in qs if q.price}
+
     async def contracts(self, today: date) -> dict[str, object]:
-        """HĐ đang lưu hành + giá (nếu có) + VN30 hiện tại + basis từng HĐ."""
+        """HĐ đang lưu hành + giá (nếu có) + VN30 hiện tại + basis từng HĐ.
+
+        Nguồn giá: bảng giá HĐ (VCI). Khi không có giá cho HĐ tháng gần (F1M), dùng nến
+        ngày của chuỗi liên tục VN30F1M (cache ≤ 5 phút trong phiên) — ``price_source``
+        cho biết nguồn từng dòng.
+        """
         cons = active_contracts(today)
-        prices: dict[str, float] = {}
-        if self._quotes is not None:
-            try:
-                qs = await self._quotes.fetch_derivative_quotes([c.krx for c in cons])  # type: ignore[attr-defined]
-                prices = {q.ticker.upper(): q.price for q in qs}
-            except Exception:  # noqa: BLE001 — thiếu giá HĐ không chặn lịch đáo hạn
-                prices = {}
+        prices = await self._contract_quotes([x for c in cons for x in (c.code, c.krx)])
         vn30 = await self._candles(self.VN30_SYMBOL, 10)
         level = vn30[-1].close if vn30 else None
         rows = []
         for c in cons:
             px = prices.get(c.krx) or prices.get(c.code)
+            source = "board" if px is not None else None
+            if px is None and c.series == "F1M":
+                fut = await self._candles(self.CONTINUOUS_SYMBOL, 10)
+                if fut and (today - fut[-1].date).days <= 4:
+                    px, source = float(fut[-1].close), "continuous"
             rows.append(
                 {
                     "series": c.series,
@@ -420,6 +446,7 @@ class DerivativesService:
                     "expiry": c.expiry,
                     "days_to_expiry": c.days_to_expiry(today),
                     "price": px,
+                    "price_source": source,
                     "basis": round(px - level, 1) if px is not None and level else None,
                     "contract_value": round(px * MULTIPLIER) if px is not None else None,
                 }
