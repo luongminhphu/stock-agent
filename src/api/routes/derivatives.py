@@ -36,6 +36,7 @@ class ContractRow(BaseModel):
     expiry: date
     days_to_expiry: int
     price: float | None
+    price_source: str | None = None  # board (bảng giá VCI) | continuous (nến VN30F1M)
     basis: float | None
     contract_value: float | None
 

@@ -122,7 +122,7 @@ class _FakeOHLCV:
         return [b for b in self.series.get(sym, []) if start <= b.date <= end]
 
 
-class _FakeKBS:
+class _FakeBoard:
     async def fetch_derivative_quotes(self, codes):  # type: ignore[no-untyped-def]
         from dataclasses import replace
 
@@ -142,7 +142,7 @@ async def test_service_contracts_basis_and_beta(monkeypatch: pytest.MonkeyPatch)
     vn30 = [_Bar(d, 1300 + (i % 5)) for i, d in enumerate(days)]
     fpt = [_Bar(d, 100 * (1 + 0.02 * ((i % 5) - 2))) for i, d in enumerate(days)]
     fut = [_Bar(d, b.close + 3) for d, b in zip(days, vn30, strict=True)]
-    svc = DerivativesService(_FakeOHLCV({"VN30": vn30, "FPT": fpt, "VN30F1M": fut}), _FakeKBS())
+    svc = DerivativesService(_FakeOHLCV({"VN30": vn30, "FPT": fpt, "VN30F1M": fut}), _FakeBoard())
 
     snap = await svc.contracts(today)
     f1 = snap["contracts"][0]
@@ -154,3 +154,95 @@ async def test_service_contracts_basis_and_beta(monkeypatch: pytest.MonkeyPatch)
 
     betas = await svc.betas(["FPT", "NONE"])
     assert betas["FPT"] is not None and betas["NONE"] is None
+
+
+@pytest.fixture(autouse=True)
+def _reset_quote_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.market import derivatives
+
+    monkeypatch.setattr(derivatives, "_quotes_backoff_until", 0.0)
+
+
+class _BrokenBoard:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def fetch_derivative_quotes(self, codes):  # type: ignore[no-untyped-def]
+        self.calls += 1
+        raise RuntimeError("400 Bad Request")
+
+
+@pytest.mark.anyio
+async def test_contracts_fallback_to_continuous_and_backoff(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.market import ohlcv_service
+    from src.market.derivatives import DerivativesService
+
+    today = date(2026, 11, 13)
+    monkeypatch.setattr(ohlcv_service, "_today_ict", lambda: today)
+    days = [today - timedelta(days=i) for i in range(20, -1, -1)]
+    vn30 = [_Bar(d, 1380.0) for d in days]
+    fut = [_Bar(d, 1376.5) for d in days]
+    board = _BrokenBoard()
+    svc = DerivativesService(_FakeOHLCV({"VN30": vn30, "VN30F1M": fut}), board)
+
+    snap = await svc.contracts(today)
+    rows = {r["series"]: r for r in snap["contracts"]}
+    assert rows["F1M"]["price"] == 1376.5 and rows["F1M"]["price_source"] == "continuous"
+    assert rows["F1M"]["basis"] == -3.5
+    assert rows["F2M"]["price"] is None and rows["F2M"]["price_source"] is None
+    # Nguồn lỗi → tạm ngưng gọi lại (không gọi dồn mỗi request)
+    await svc.contracts(today)
+    assert board.calls == 1
+
+
+@pytest.mark.anyio
+async def test_board_price_preferred_over_continuous(monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.market import ohlcv_service
+    from src.market.derivatives import DerivativesService
+
+    today = date(2026, 11, 13)
+    monkeypatch.setattr(ohlcv_service, "_today_ict", lambda: today)
+    days = [today - timedelta(days=i) for i in range(20, -1, -1)]
+    bars = [_Bar(d, 1380.0) for d in days]
+    svc = DerivativesService(_FakeOHLCV({"VN30": bars, "VN30F1M": bars}), _FakeBoard())
+    f1 = (await svc.contracts(today))["contracts"][0]
+    assert f1["price"] == 1305.0 and f1["price_source"] == "board"
+
+
+@pytest.mark.anyio
+async def test_vci_adapter_parses_derivative_board(monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.market.adapters.vci import VCIAdapter
+
+    sent: list[list[str]] = []
+
+    async def fake_board(self, symbols):  # type: ignore[no-untyped-def]
+        sent.append(symbols)
+        return [
+            {
+                "listingInfo": {
+                    "symbol": "VN30F2611",
+                    "refPrice": 1375.0,
+                    "ceiling": 1471.2,
+                    "floor": 1278.8,
+                },
+                "matchPrice": {
+                    "matchPrice": 1381.4,
+                    "matchVolume": 120000,
+                    "highest": 1385,
+                    "lowest": 1370,
+                },
+            },
+            {"listingInfo": {"symbol": "BAD"}, "matchPrice": {}},  # thiếu refPrice → bỏ
+        ]
+
+    monkeypatch.setattr(VCIAdapter, "_fetch_price_board", fake_board)
+    adapter = VCIAdapter()
+    try:
+        qs = await adapter.fetch_derivative_quotes(["vn30f2611", "41i1gb000"])
+    finally:
+        await adapter.close()
+    assert sent == [["VN30F2611", "41I1GB000"]]
+    assert [(q.ticker, q.price) for q in qs] == [("VN30F2611", 1381.4)]
+    assert await VCIAdapter().fetch_derivative_quotes([]) == []

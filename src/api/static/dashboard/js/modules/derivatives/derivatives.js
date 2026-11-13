@@ -151,7 +151,7 @@ function _renderContracts(d) {
               <td><span class="dv-code">${esc(c.code)}</span><span class="dv-sub">${esc(c.krx ?? '')}</span></td>
               <td>${fmtDateVi(c.expiry)}${soon ? '<span class="dv-warn-tag">Sắp đáo hạn – cân nhắc roll</span>' : ''}</td>
               <td class="num">${fmtNum(c.days_to_expiry)} ngày</td>
-              <td class="num">${c.price == null ? '<span class="dv-muted">chưa có</span>' : fmtPts(c.price)}</td>
+              <td class="num">${c.price == null ? '<span class="dv-muted">chưa có</span>' : fmtPts(c.price)}${c.price_source === 'continuous' ? '<span class="dv-sub" title="Bảng giá HĐ chưa có giá — dùng giá chuỗi liên tục VN30F1M (cập nhật ~5 phút)">theo VN30F1M</span>' : ''}</td>
               <td class="num">${fmtSignedPts(c.basis)}</td>
               <td class="num">${fmtVnd(c.contract_value)}</td>
             </tr>`;

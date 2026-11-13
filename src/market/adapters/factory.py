@@ -47,3 +47,12 @@ def build_reference_adapter() -> MarketDataAdapter | None:
     from src.market.adapters.kbs import KBSAdapter
 
     return KBSAdapter()
+
+
+def build_derivative_quote_source() -> MarketDataAdapter | None:
+    """Nguồn giá HĐ tương lai VN30 (bảng giá VCI). None trong test/mock."""
+    if settings.environment == "test" or getattr(settings, "mock_market", False):
+        return None
+    from src.market.adapters.vci import VCIAdapter
+
+    return VCIAdapter()
