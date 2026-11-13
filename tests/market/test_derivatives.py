@@ -247,3 +247,19 @@ async def test_vci_adapter_parses_derivative_board(monkeypatch: pytest.MonkeyPat
     assert sent == [["41I1GB000", "VN30F2611"]]
     assert [(q.ticker, q.price) for q in qs] == [("41I1GB000", 1381.4)]
     assert await VCIAdapter().fetch_derivative_quotes([]) == []
+
+
+@pytest.mark.anyio
+async def test_vn30_signal_uses_20_session_horizon(monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.market import ohlcv_service
+    from src.market.baserate import _suggest
+    from src.market.derivatives import DerivativesService
+    from tests.market.test_baserate import _series
+
+    bars = _series(260 * 6, period=90)
+    monkeypatch.setattr(ohlcv_service, "_today_ict", lambda: bars[-1].date + timedelta(days=1))
+    svc = DerivativesService(_FakeOHLCV({"VN30": bars}))
+    rep = await svc.vn30_baserate()
+    assert rep.suggestion == _suggest(rep.outcomes[20], DerivativesService.FUTURES_ROUND_TRIP_COST)
+    assert rep.notes[0].startswith("Tín hiệu HĐ tương lai theo tầm 20 phiên")
+    assert not any("dữ liệu cơ bản" in n for n in rep.notes)
