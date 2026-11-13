@@ -159,12 +159,20 @@ function _chartHTML(books, primary, width = 720) {
   const x = (t) => (t1 === t0 ? L + (W - L - R) / 2 : L + ((t - t0) / (t1 - t0)) * (W - L - R));
   const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
   const ticks = [lo + pad, 0, hi - pad].filter((v, i, a) => a.indexOf(v) === i);
-  const lines = series.map(s => {
+  // Nhãn cuối đường: tách ra ≥ 14px khi hai đường kết thúc sát nhau (vd cùng 0 đ khi Flat).
+  const labelY = series.map(s => y(s.pts[s.pts.length - 1].v) + 4);
+  if (labelY.length === 2 && Math.abs(labelY[0] - labelY[1]) < 14) {
+    const mid = (labelY[0] + labelY[1]) / 2;
+    const up = series[0].pts.at(-1).v >= series[1].pts.at(-1).v ? 0 : 1;
+    labelY[up] = mid - 7;
+    labelY[1 - up] = mid + 7;
+  }
+  const lines = series.map((s, k) => {
     const d = s.pts.map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join('');
     const last = s.pts[s.pts.length - 1];
     return `<path class="dv-sim-line dv-sim-line--${s.b}${s.b === primary ? ' is-primary' : ''}" d="${d}" />
       <circle class="dv-sim-dot dv-sim-dot--${s.b}" cx="${x(last.t).toFixed(1)}" cy="${y(last.v).toFixed(1)}" r="4" />
-      <text class="dv-sim-label" x="${(x(last.t) + 8).toFixed(1)}" y="${(y(last.v) + 4).toFixed(1)}">${BOOK_SHORT[s.b]}</text>`;
+      <text class="dv-sim-label" x="${(x(last.t) + 8).toFixed(1)}" y="${labelY[k].toFixed(1)}">${BOOK_SHORT[s.b]}</text>`;
   }).join('');
   const data = JSON.stringify(series.map(s => ({ b: s.b, pts: s.pts })));
   return `

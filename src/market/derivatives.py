@@ -394,6 +394,12 @@ class DerivativesService:
     VN30_SYMBOL = "VN30"
     CONTINUOUS_SYMBOL = "VN30F1M"
     BASERATE_HORIZONS = (5, 20, 60)
+    # Tín hiệu HĐ tương lai theo tầm 20 phiên (≈ vòng đời HĐ tháng gần), không phải tầm
+    # dài nhất như cổ phiếu: dữ liệu VN30 10 năm cho thấy tầm 60 phiên chỉ có ~7 đợt độc
+    # lập và ra Neutral ~88% thời gian. Chi phí khứ hồi HĐ ≈ 0,03% (phí + trượt giá 0,1
+    # điểm mỗi chiều), thay 0,4% của cổ phiếu (phí + thuế bán).
+    SIGNAL_HORIZON = 20
+    FUTURES_ROUND_TRIP_COST = 0.0003
 
     def __init__(self, ohlcv_service: object, quote_source: object | None = None) -> None:
         self._ohlcv = ohlcv_service
@@ -479,7 +485,21 @@ class DerivativesService:
         bars = list(await self._candles(self.VN30_SYMBOL, 3650))
         if bars and bars[-1].date >= _today_ict() and not is_session_closed("HOSE"):
             bars = bars[:-1]
-        return analyze(self.VN30_SYMBOL, bars, horizons=self.BASERATE_HORIZONS)
+        rep = analyze(
+            self.VN30_SYMBOL,
+            bars,
+            horizons=self.BASERATE_HORIZONS,
+            main_horizon=self.SIGNAL_HORIZON,
+            cost=self.FUTURES_ROUND_TRIP_COST,
+        )
+        # Chỉ số không có P/E/EPS → bỏ ghi chú "chưa có dữ liệu cơ bản" (gây hiểu nhầm).
+        rep.notes[:] = [n for n in rep.notes if "dữ liệu cơ bản" not in n]
+        rep.notes.insert(
+            0,
+            f"Tín hiệu HĐ tương lai theo tầm {self.SIGNAL_HORIZON} phiên, chi phí khứ hồi "
+            f"{self.FUTURES_ROUND_TRIP_COST:.2%}.",
+        )
+        return rep
 
     async def sim_context(self, today: date) -> dict[str, float | None]:
         """ATR14 VN30 (phiên đã đóng) + biến động VN30 trong phiên hôm nay (điểm) cho giả lập."""

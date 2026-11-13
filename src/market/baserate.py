@@ -281,16 +281,21 @@ def _posterior(wins: int, n: int, base: float) -> tuple[float, float, float]:
 
 
 def _outcome(
-    bars: Sequence[Bar], matches: list[int], n_eff: int, all_days: list[int], h: int
+    bars: Sequence[Bar],
+    matches: list[int],
+    n_eff: int,
+    all_days: list[int],
+    h: int,
+    cost: float = ROUND_TRIP_COST,
 ) -> Outcome:
     """Phân phối lấy trên MỌI ngày khớp (đủ mọi vị trí trong một đợt trạng thái), nhưng
     độ tin cậy và mức co về nền dùng số đợt độc lập `n_eff` — không thổi phồng mẫu."""
     fwd = [r for r in (_forward(bars, i, h) for i in matches) if r is not None]
     base_fwd = [r for r in (_forward(bars, i, h) for i in all_days) if r is not None]
-    base_wins = [r[0] > ROUND_TRIP_COST for r in base_fwd]
+    base_wins = [r[0] > cost for r in base_fwd]
     base = sum(base_wins) / len(base_wins) if base_wins else 0.5
     rets = sorted(r[0] for r in fwd)
-    rate = sum(1 for r in rets if r > ROUND_TRIP_COST) / len(rets) if rets else 0.0
+    rate = sum(1 for r in rets if r > cost) / len(rets) if rets else 0.0
     n = n_eff if rets else 0
     mean, lo, hi = _posterior(round(rate * n), n, base)
     return Outcome(
@@ -320,11 +325,11 @@ def _confidence(n: int) -> str:
     return "cao"
 
 
-def _suggest(main: Outcome) -> str:
+def _suggest(main: Outcome, cost: float = ROUND_TRIP_COST) -> str:
     if main.episodes < MIN_EPISODES:
         return SUGGEST_INSUFFICIENT
     med = main.median_return or 0.0
-    if main.edge >= EDGE_THRESHOLD and med > ROUND_TRIP_COST:
+    if main.edge >= EDGE_THRESHOLD and med > cost:
         return SUGGEST_LEAN_BUY
     if main.edge <= -EDGE_THRESHOLD:
         return SUGGEST_LEAN_AVOID
@@ -341,14 +346,21 @@ def analyze(
     *,
     horizons: tuple[int, ...] = HORIZONS,
     max_analogs: int = 30,
+    main_horizon: int | None = None,
+    cost: float = ROUND_TRIP_COST,
 ) -> BaseRateReport:
-    """Thống kê tiền lệ cho trạng thái của phiên cuối cùng trong `bars` (oldest-first)."""
+    """Thống kê tiền lệ cho trạng thái của phiên cuối cùng trong `bars` (oldest-first).
+
+    main_horizon: tầm nhìn quyết định gợi ý (mặc định tầm dài nhất — hợp nắm giữ cổ
+        phiếu). HĐ tương lai nắm ngắn hơn nên truyền tầm ngắn hơn (vd 20 phiên).
+    cost: chi phí khứ hồi (tỉ lệ) — lợi nhuận phải vượt mức này mới tính là thắng.
+    """
     ticker = ticker.upper()
     notes: list[str] = []
     states = compute_states(bars, fundamentals)
     as_of = bars[-1].date if bars else date.today()
     current = states[-1] if states else None
-    main_h = max(horizons)
+    main_h = main_horizon if main_horizon in horizons else max(horizons)
 
     if current is None:
         return BaseRateReport(
@@ -390,7 +402,7 @@ def analyze(
     outcomes = {}
     for h in horizons:
         usable = [i for i in matches if i + h < len(bars)]
-        outcomes[h] = _outcome(bars, usable, len(_pick_episodes(usable, h)), all_days, h)
+        outcomes[h] = _outcome(bars, usable, len(_pick_episodes(usable, h)), all_days, h, cost)
     main = outcomes[main_h]
     analogs = []
     for i in episodes[-max_analogs:]:
@@ -418,7 +430,7 @@ def analyze(
         matching_days=len(matches),
         outcomes=outcomes,
         analogs=analogs,
-        suggestion=_suggest(main),
+        suggestion=_suggest(main, cost),
         confidence=_confidence(main.episodes),
         history_from=bars[0].date,
         notes=notes,

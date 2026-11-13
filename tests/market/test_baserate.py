@@ -145,3 +145,18 @@ def test_service_ignores_unclosed_session_and_caches(monkeypatch) -> None:  # ty
     r3 = _run(svc.analyze("HPG"))
     assert r3.as_of == today and r3.last_close == 12_345.0
     br._REPORT_CACHE.clear()
+
+
+def test_main_horizon_and_cost_drive_suggestion() -> None:
+    """Tầm quyết định gợi ý + chi phí khứ hồi cấu hình được (HĐ tương lai dùng 20 phiên)."""
+    from src.market.baserate import _suggest
+
+    bars = _series(260 * 6, period=90)
+    default = analyze("X", bars, horizons=(5, 20, 60))
+    short = analyze("X", bars, horizons=(5, 20, 60), main_horizon=20, cost=0.0003)
+    assert default.suggestion == _suggest(default.outcomes[60])
+    assert short.suggestion == _suggest(short.outcomes[20], 0.0003)
+    # Chi phí thấp hơn → mức nền "thắng" không thấp hơn
+    assert short.outcomes[20].base_win_rate >= default.outcomes[20].base_win_rate
+    # Tầm không có trong danh sách → về mặc định (tầm dài nhất)
+    assert analyze("X", bars, horizons=(5, 60), main_horizon=20).suggestion == default.suggestion
