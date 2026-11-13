@@ -169,3 +169,47 @@ async def test_atr_stops_and_mode(session) -> None:  # type: ignore[no-untyped-d
     assert (prim[0].stop_price, prim[0].target_price) == (1392.0, 1354.0)  # 0.6/1.3 × ATR 20
     v = await svc.view(USER, TODAY)
     assert v["primary"] == "fade" and v["open"]["side"] == "SHORT"
+
+
+@dataclass
+class _O:
+    edge: float
+
+
+@dataclass
+class _RepEdge:
+    suggestion: str | None
+    outcomes: dict
+
+
+class EdgeDeriv(FakeDeriv):
+    SIGNAL_HORIZON = 20
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.suggestion = "NGHIENG_TRANH"
+        self.edge = -0.11
+
+    async def vn30_baserate(self) -> _RepEdge:  # type: ignore[override]
+        return _RepEdge(self.suggestion, {20: _O(self.edge), 60: _O(0.5)})
+
+
+async def test_service_uses_signal_horizon_edge_for_buffer(session) -> None:  # type: ignore[no-untyped-def]
+    d = EdgeDeriv()
+    svc = DerivSimService(session, d)
+    await svc.update_config(USER, active=True, clear_stop=True, clear_target=True, now=T0)
+    ev = await svc.run_tick(USER, T0, TODAY)
+    assert [(e.strategy, e.side) for e in ev if e.kind == "open"] == [
+        ("base", "SHORT"),
+        ("fade", "LONG"),
+    ]
+    # Hôm sau tín hiệu về Neutral, độ lệch -8 điểm % → cả hai sổ vẫn giữ
+    d.suggestion, d.edge = "TRUNG_TINH", -0.08
+    assert await svc.run_tick(USER, T0 + timedelta(days=1), TODAY + timedelta(days=1)) == []
+    # Độ lệch rút về -3 điểm % → đóng cả hai sổ
+    d.edge = -0.03
+    ev = await svc.run_tick(USER, T0 + timedelta(days=2), TODAY + timedelta(days=2))
+    assert sorted((e.strategy, e.kind, e.reason) for e in ev) == [
+        ("base", "close", "signal"),
+        ("fade", "close", "signal"),
+    ]
