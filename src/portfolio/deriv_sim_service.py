@@ -247,8 +247,14 @@ class DerivSimService:
             return []
         snap = await self._deriv.contracts(today)
         contracts = list(snap.get("contracts", []))
+        edge: float | None = None
         try:
-            suggestion = getattr(await self._deriv.vn30_baserate(), "suggestion", None)
+            rep = await self._deriv.vn30_baserate()
+            suggestion = getattr(rep, "suggestion", None)
+            # Độ lệch của tầm quyết định tín hiệu → vùng đệm khi đang giữ lệnh
+            h = getattr(self._deriv, "SIGNAL_HORIZON", None)
+            out = (getattr(rep, "outcomes", None) or {}).get(h) if h is not None else None
+            edge = getattr(out, "edge", None)
         except Exception:  # noqa: BLE001 — thiếu tiền lệ → giữ nguyên, không mở mới
             suggestion = None
         ctx: dict[str, Any] = {}
@@ -262,8 +268,18 @@ class DerivSimService:
 
         events: list[SimEvent] = []
         for book in BOOKS:
+            ctx_book = {**ctx, "edge": edge}
             events += await self._run_book(
-                cfg, user_id, book, book == primary, suggestion, contracts, params, ctx, now, today
+                cfg,
+                user_id,
+                book,
+                book == primary,
+                suggestion,
+                contracts,
+                params,
+                ctx_book,
+                now,
+                today,
             )
         cfg.last_signal = suggestion
         cfg.last_run_at = now
@@ -307,6 +323,7 @@ class DerivSimService:
             fade=fade,
             atr=ctx.get("atr"),
             move=ctx.get("move"),
+            edge=ctx.get("edge"),
         )
 
         def ev(kind: str, **kw: Any) -> SimEvent:

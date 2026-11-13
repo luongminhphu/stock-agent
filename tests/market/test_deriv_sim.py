@@ -154,3 +154,28 @@ def test_atr() -> None:
 
     bars = [SimpleNamespace(high=105.0, low=95.0, close=100.0) for _ in range(15)]
     assert atr(bars) == 10.0 and atr(bars[:5]) is None
+
+
+def test_buffer_keeps_position_until_edge_fades() -> None:
+    """Vùng đệm: tín hiệu về Neutral nhưng độ lệch còn ngoài ±5 điểm % → giữ lệnh."""
+    short = SimPosition("VN30F2611", "SHORT", 2, 1381.0)  # mark 1380 → +1 điểm, không chạm SL/TP
+    held = step(short, "TRUNG_TINH", CONTRACTS, P, edge=-0.08)
+    assert held.actions == [] and held.held_by_buffer and held.mark == 1380.0
+    gone = step(short, "TRUNG_TINH", CONTRACTS, P, edge=-0.03)
+    assert [(a.kind, a.reason) for a in gone.actions] == [("close", "signal")]
+    # Đảo chiều thật (Bullish, độ lệch dương) → đảo lệnh, không bị đệm giữ lại
+    flip = step(short, "NGHIENG_MUA", CONTRACTS, P, edge=0.12)
+    assert [(a.kind, a.side) for a in flip.actions] == [("close", "SHORT"), ("open", "LONG")]
+    # Không có độ lệch → hành vi cũ (đóng ngay khi về Neutral)
+    assert step(short, "TRUNG_TINH", CONTRACTS, P).actions[0].reason == "signal"
+
+
+def test_buffer_applies_to_fade_book_and_not_to_entries() -> None:
+    fade_long = SimPosition("VN30F2611", "LONG", 2, 1379.0)  # Fade giữ Long khi tín hiệu Bearish
+    assert step(fade_long, "TRUNG_TINH", CONTRACTS, P, fade=True, edge=-0.07).actions == []
+    assert step(fade_long, "TRUNG_TINH", CONTRACTS, P, fade=True, edge=-0.02).actions
+    # Chưa có vị thế: Neutral không mở lệnh dù độ lệch -8 điểm % (vào lệnh vẫn cần ≥ 10)
+    assert step(None, "TRUNG_TINH", CONTRACTS, P, edge=-0.08).actions == []
+    # Stop-loss vẫn chạy bình thường trong vùng đệm
+    losing = SimPosition("VN30F2611", "SHORT", 2, 1360.0)  # -20 điểm
+    assert step(losing, "TRUNG_TINH", CONTRACTS, P, edge=-0.08).actions[0].reason == "stop"

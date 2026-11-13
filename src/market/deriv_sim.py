@@ -22,6 +22,10 @@ Tư duy ngược (contrarian) — mọi cơ chế đều đo được bằng win
   - Né số tròn: mức Stop-loss/Take-profit cách bội số ``round_step`` điểm trong vòng
     ``round_band`` → đẩy Stop ra XA hơn mức tròn (tránh vùng quét stop), kéo Target về GẦN hơn
     (khớp trước khi chạm vùng cản tâm lý). Có thể đặt khoảng cách theo ATR thay vì điểm cố định.
+  - Vùng đệm (hysteresis): vào lệnh khi tín hiệu Bullish/Bearish (độ lệch ≥ 10 điểm % so với
+    mức nền); đang giữ lệnh thì chỉ thoát vì tín hiệu khi độ lệch rút về trong ±``exit_edge``
+    (mặc định 5 điểm %) hoặc tín hiệu đảo chiều — tránh vào-ra liên tục khi độ lệch dao động
+    sát ngưỡng 10. Stop-loss / Take-profit / roll không đổi.
   - Không đuổi đám đông: sổ theo tín hiệu không mở mới khi VN30 trong phiên đã chạy cùng chiều
     tín hiệu ≥ ``crowd_atr`` × ATR (đã muộn, rủi ro mua đỉnh/bán đáy). Sổ Fade không bị lọc.
 
@@ -61,6 +65,7 @@ class SimParams:
     round_band: float = 1.0
     round_offset: float = 1.5
     crowd_atr: float | None = 0.8  # None → tắt lọc đám đông
+    exit_edge: float = 0.05  # vùng đệm: đang giữ lệnh thì giữ tới khi |độ lệch| < mức này
 
 
 @dataclass(frozen=True)
@@ -91,6 +96,7 @@ class StepResult:
     mark: float | None = None  # giá đánh dấu của vị thế còn mở sau bước này
     block_reentry: bool = False  # vừa Stop-loss/Take-profit → không vào lại trong phiên
     skipped: str | None = None  # "crowd" khi bỏ qua lệnh mở vì đám đông đã chạy trước
+    held_by_buffer: bool = False  # tín hiệu đã về Neutral nhưng còn trong vùng đệm → giữ lệnh
 
 
 def signal_side(suggestion: str | None) -> str | None:
@@ -159,14 +165,25 @@ def step(
     fade: bool = False,
     atr: float | None = None,
     move: float | None = None,
+    edge: float | None = None,
 ) -> StepResult:
     """Một lần quét: trả các lệnh giả lập cần thực hiện theo thứ tự.
 
     fade=True → sổ đánh ngược tín hiệu. atr / move (biến động VN30 trong phiên, điểm) dùng
-    cho Stop/Target theo ATR và lọc đám đông.
+    cho Stop/Target theo ATR và lọc đám đông. edge = độ lệch xác suất thắng so với mức nền
+    của tầm quyết định tín hiệu — dùng cho vùng đệm khi đang giữ lệnh (None → không đệm).
     """
     res = StepResult()
     want = signal_side(suggestion)
+    if position is not None and edge is not None:
+        # Chiều tín hiệu ứng với lệnh đang giữ (sổ Fade giữ ngược chiều tín hiệu)
+        held = position.side if not fade else (SHORT if position.side == LONG else LONG)
+        still = (held == LONG and edge > params.exit_edge) or (
+            held == SHORT and edge < -params.exit_edge
+        )
+        if want != held and still:
+            want = held  # vẫn trong vùng đệm → giữ lệnh
+            res.held_by_buffer = True
     if fade and want is not None:
         want = SHORT if want == LONG else LONG
     by_code = {c.get("code"): c for c in contracts}
