@@ -100,14 +100,17 @@ class VCIAdapter(MarketDataAdapter):
     async def fetch_derivative_quotes(self, codes: list[str]) -> list[Quote]:
         """Giá HĐ tương lai từ cùng bảng giá VCI (endpoint vnstock ``price_board`` dùng).
 
-        Giá theo ĐIỂM chỉ số. Gửi được cả mã cũ (VN30F2611) lẫn mã KRX (41I1GB000) —
-        mã nào VCI không có sẽ không xuất hiện trong kết quả. Không ghi vào registry cổ phiếu.
+        Giá theo ĐIỂM chỉ số. VCI nhận HĐ theo mã KRX (41I1GB000; ``VN30F1M`` là alias
+        của HĐ tháng gần). Mã kiểu cũ (VN30F2611) trả về dòng rỗng ``listingInfo: null`` →
+        bỏ qua im lặng. Không ghi vào registry cổ phiếu.
         """
         if not codes:
             return []
         rows = await self._fetch_price_board([c.upper() for c in codes])
         quotes: list[Quote] = []
         for item in rows if isinstance(rows, list) else []:
+            if not isinstance(item, dict) or not item.get("listingInfo"):
+                continue  # mã VCI không nhận diện
             try:
                 quotes.append(_parse_item(item))
             except (KeyError, TypeError, ValueError) as exc:
